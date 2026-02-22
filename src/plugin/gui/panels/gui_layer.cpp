@@ -72,23 +72,22 @@ static void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 la
 }
 
 static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box root) {
-    using enum UiSizeId;
-
     auto layer_obj = &g.engine.Layer(layer_index);
     auto const inst_name = layer_obj->InstName();
 
     // Selector row container
-    auto const selector_box = DoBox(g.builder,
-                                    {
-                                        .parent = root,
-                                        .layout {
-                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                            .contents_padding {.r = LiveWw(LayerSelectorBoxButtonsMarginR)},
-                                            .contents_direction = layout::Direction::Row,
-                                            .contents_align = layout::Alignment::Start,
-                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                        },
-                                    });
+    auto const selector_box =
+        DoBox(g.builder,
+              {
+                  .parent = root,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_padding {.r = LiveWw(UiSizeId::LayerSelectorBoxButtonsMarginR)},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+              });
 
     // Custom background drawing
     if (auto const r = BoxRect(g.builder, selector_box)) {
@@ -168,14 +167,15 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
 
     // Icon box: takes up layout space so text is pushed over
     if (icon_tex) {
-        auto const icon_box = DoBox(g.builder,
-                                    {
-                                        .parent = inst_button,
-                                        .parent_dictates_hot_and_active = true,
-                                        .layout {
-                                            .size = {LiveWw(LayerSelectorBoxHeight), layout::k_fill_parent},
-                                        },
-                                    });
+        auto const icon_box =
+            DoBox(g.builder,
+                  {
+                      .parent = inst_button,
+                      .parent_dictates_hot_and_active = true,
+                      .layout {
+                          .size = {LiveWw(UiSizeId::LayerSelectorBoxHeight), layout::k_fill_parent},
+                      },
+                  });
         if (auto const r = BoxRect(g.builder, icon_box)) {
             auto const icon_r = r->Reduced(r->h / 10);
             g.imgui.draw_list->AddImageRect(*icon_tex, g.imgui.ViewportRectToWindowRect(icon_r));
@@ -199,7 +199,7 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
               .layout {
                   .size = {layout::k_fill_parent,
                            k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
-                  .margins {.l = icon_tex ? 0.0f : LiveWw(MenuButtonTextMarginL)},
+                  .margins {.l = icon_tex ? 0.0f : LiveWw(UiSizeId::MenuButtonTextMarginL)},
               },
           });
 
@@ -296,20 +296,19 @@ static void DoMuteSoloButton(GuiState& g, Box parent, DescribedParamValue const&
 }
 
 static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
-    using enum UiSizeId;
-
     auto& params = g.engine.processor.main_params;
 
-    auto const container = DoBox(g.builder,
-                                 {
-                                     .parent = root,
-                                     .layout {
-                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_gap = LiveWw(LayerTopSectionSpaceBetweenVolAndMs),
-                                         .contents_direction = layout::Direction::Row,
-                                         .contents_align = layout::Alignment::Middle,
-                                     },
-                                 });
+    auto const container =
+        DoBox(g.builder,
+              {
+                  .parent = root,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_gap = LiveWw(UiSizeId::LayerTopSectionSpaceBetweenVolAndMs),
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Middle,
+                  },
+              });
 
     // Volume knob with peak meter
     auto const& layer_processor = g.engine.processor.layer_processors[layer_index];
@@ -325,16 +324,16 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
 
     // Mute/Solo buttons
     {
-        auto const mute_solo_container =
-            DoBox(g.builder,
-                  {
-                      .parent = container,
-                      .layout {
-                          .size = {LiveWw(LayerMuteSoloWidth), LiveWw(LayerMuteSoloHeight)},
-                          .contents_direction = layout::Direction::Row,
-                          .contents_align = layout::Alignment::Start,
-                      },
-                  });
+        auto const mute_solo_container = DoBox(
+            g.builder,
+            {
+                .parent = container,
+                .layout {
+                    .size = {LiveWw(UiSizeId::LayerMuteSoloWidth), LiveWw(UiSizeId::LayerMuteSoloHeight)},
+                    .contents_direction = layout::Direction::Row,
+                    .contents_align = layout::Alignment::Start,
+                },
+            });
 
         // Background and divider
         if (auto const r = BoxRect(g.builder, mute_solo_container)) {
@@ -385,8 +384,6 @@ static void DoDivider(GuiState& g, Box parent, u64 loc_hash = SourceLocationHash
 }
 
 static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
-    using enum UiSizeId;
-
     auto& params = g.engine.processor.main_params;
     auto& layer_state = g.layer_panel_states[layer_index];
 
@@ -463,7 +460,8 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                   .text_justification = TextJustification::Centred,
                   .parent_dictates_hot_and_active = true,
                   .layout {
-                      .margins {.lr = LiveWw(LayerTabButtonMarginLR), .tb = LiveWw(LayerTabButtonMarginTB)},
+                      .margins {.lr = LiveWw(UiSizeId::LayerTabButtonMarginLR),
+                                .tb = LiveWw(UiSizeId::LayerTabButtonMarginTB)},
                   },
               });
 
@@ -474,8 +472,8 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             if (auto const r = BoxRect(g.builder, tab_btn)) {
                 auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
                 auto const dot_size = k_font_icons_size * 0.40f;
-                auto const dot_centre =
-                    f32x2 {window_r.x + (LivePx(LayerParamsGroupTabsIconW) / 2), window_r.Centre().y};
+                auto const dot_centre = f32x2 {window_r.x + (LivePx(UiSizeId::LayerParamsGroupTabsIconW) / 2),
+                                               window_r.Centre().y};
                 auto const col = is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidText);
                 g.imgui.draw_list->AddCircleFilled(dot_centre, dot_size / 2, col);
             }
@@ -509,8 +507,6 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
 }
 
 static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
-    using enum UiSizeId;
-
     auto& params = g.engine.processor.main_params;
 
     auto const container = DoBox(g.builder,
@@ -518,7 +514,7 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                                      .parent = root,
                                      .layout {
                                          .size = layout::k_hug_contents,
-                                         .contents_gap = LiveWw(LayerMixerKnobGapX2),
+                                         .contents_gap = LiveWw(UiSizeId::LayerMixerKnobGapX2),
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Middle,
                                      },
@@ -529,7 +525,7 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                    container,
                    params.DescribedValue(layer_index, LayerParamIndex::TuneSemitone),
                    {
-                       .width = LiveWw(LayerPitchWidth2),
+                       .width = LiveWw(UiSizeId::LayerPitchWidth2),
                        .always_show_plus = true,
                    });
 
@@ -538,7 +534,7 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                     container,
                     params.DescribedValue(layer_index, LayerParamIndex::TuneCents),
                     {
-                        .width = LiveWw(ParamComponentLargeWidth),
+                        .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                         .knob_height_fraction = 0.96f,
                         .style_system = GuiStyleSystem::MidPanel,
                         .bidirectional = true,
@@ -549,7 +545,7 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                     container,
                     params.DescribedValue(layer_index, LayerParamIndex::Pan),
                     {
-                        .width = LiveWw(ParamComponentLargeWidth),
+                        .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                         .knob_height_fraction = 0.96f,
                         .style_system = GuiStyleSystem::MidPanel,
                         .bidirectional = true,
@@ -557,8 +553,6 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
 }
 
 static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
-    using enum UiSizeId;
-
     auto& params = g.engine.processor.main_params;
     auto const param = params.DescribedValue(layer.index, LayerParamIndex::LoopMode);
     auto const desired_loop_mode = param.IntValue<param_values::LoopMode>();
@@ -590,7 +584,7 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
                       .size = {layout::k_fill_parent,
-                               k_font_body_size * LiveRaw(ParamControlTextHeightPercent) / 100.0f},
+                               k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       return fmt::Format(g.scratch_arena,
@@ -739,8 +733,6 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
 }
 
 static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
-    using enum UiSizeId;
-
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
     bool const filter_on = params.BoolValue(layer_index, LayerParamIndex::FilterOn);
@@ -764,10 +756,10 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                .contents_padding {
-                                                   .t = LiveWw(PageHeadingMarginT2),
-                                                   .b = LiveWw(PageHeadingMarginB2),
+                                                   .t = LiveWw(UiSizeId::PageHeadingMarginT2),
+                                                   .b = LiveWw(UiSizeId::PageHeadingMarginB2),
                                                },
-                                               .contents_gap = LiveWw(FilterHeadingGapX),
+                                               .contents_gap = LiveWw(UiSizeId::FilterHeadingGapX),
                                                .contents_direction = layout::Direction::Row,
                                            },
                                        });
@@ -775,15 +767,16 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
         DoButtonParameter(g,
                           heading_row,
                           params.DescribedValue(layer_index, LayerParamIndex::FilterOn),
-                          {.width = LiveWw(FilterOnWidth)});
+                          {.width = LiveWw(UiSizeId::FilterOnWidth)});
 
-        DoMenuParameter(g,
-                        heading_row,
-                        params.DescribedValue(layer_index, LayerParamIndex::FilterType),
-                        {.width = LiveWw(FilterTypeMenuWidth), .greyed_out = greyed_out, .label = false});
+        DoMenuParameter(
+            g,
+            heading_row,
+            params.DescribedValue(layer_index, LayerParamIndex::FilterType),
+            {.width = LiveWw(UiSizeId::FilterTypeMenuWidth), .greyed_out = greyed_out, .label = false});
     }
 
-    DoWhitespace(g.builder, page, LiveWw(FilterGapYBeforeKnobs));
+    DoWhitespace(g.builder, page, LiveWw(UiSizeId::FilterGapYBeforeKnobs));
 
     // Knobs row: Cutoff, Resonance, EnvAmount
     {
@@ -792,8 +785,8 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                          .parent = page,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_padding {.lr = LiveWw(Page3KnobGapX)},
-                                             .contents_gap = LiveWw(Page3KnobRowGapX),
+                                             .contents_padding {.lr = LiveWw(UiSizeId::Page3KnobGapX)},
+                                             .contents_gap = LiveWw(UiSizeId::Page3KnobRowGapX),
                                              .contents_direction = layout::Direction::Row,
                                              .contents_align = layout::Alignment::Middle,
                                          },
@@ -803,7 +796,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff),
                         {
-                            .width = LiveWw(ParamComponentLargeWidth),
+                            .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
@@ -811,7 +804,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, LayerParamIndex::FilterResonance),
                         {
-                            .width = LiveWw(ParamComponentLargeWidth),
+                            .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
@@ -819,7 +812,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, LayerParamIndex::FilterEnvAmount),
                         {
-                            .width = LiveWw(ParamComponentLargeWidth),
+                            .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                             .bidirectional = true,
@@ -828,17 +821,18 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Filter envelope
     {
-        auto const envelope_box = DoBox(g.builder,
-                                        {
-                                            .parent = page,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, LiveWw(MainEnvelopeH)},
-                                                .margins {
-                                                    .lr = LiveWw(FilterEnvelopeMarginLR),
-                                                    .tb = LiveWw(FilterEnvelopeMarginTB),
-                                                },
-                                            },
-                                        });
+        auto const envelope_box =
+            DoBox(g.builder,
+                  {
+                      .parent = page,
+                      .layout {
+                          .size = {layout::k_fill_parent, LiveWw(UiSizeId::MainEnvelopeH)},
+                          .margins {
+                              .lr = LiveWw(UiSizeId::FilterEnvelopeMarginLR),
+                              .tb = LiveWw(UiSizeId::FilterEnvelopeMarginTB),
+                          },
+                      },
+                  });
 
         bool const env_greyed_out =
             greyed_out || (params.LinearValue(layer_index, LayerParamIndex::FilterEnvAmount) == 0);
@@ -856,8 +850,6 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
 }
 
 static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
-    using enum UiSizeId;
-
     auto& params = g.engine.processor.main_params;
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::EqOn);
 
@@ -879,8 +871,8 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                                .layout {
                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                    .contents_padding {
-                                                       .t = LiveWw(PageHeadingMarginT2),
-                                                       .b = LiveWw(PageHeadingMarginB2),
+                                                       .t = LiveWw(UiSizeId::PageHeadingMarginT2),
+                                                       .b = LiveWw(UiSizeId::PageHeadingMarginB2),
                                                    },
                                                    .contents_align = layout::Alignment::Middle,
                                                },
@@ -900,7 +892,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                            .parent = page,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_gap = LiveWw(EqPageRowGapY),
+                                               .contents_gap = LiveWw(UiSizeId::EqPageRowGapY),
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                            },
@@ -918,7 +910,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                         .parent = bands_container,
                                         .layout {
                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                            .contents_padding {.lr = LiveWw(EqPageMenuMarginLR)},
+                                            .contents_padding {.lr = LiveWw(UiSizeId::EqPageMenuMarginLR)},
                                         },
                                     },
                                     loc_hash);
@@ -938,8 +930,8 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                          .id_extra = loc_hash,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_padding {.lr = LiveWw(Page3KnobGapX)},
-                                             .contents_gap = LiveWw(Page3KnobRowGapX),
+                                             .contents_padding {.lr = LiveWw(UiSizeId::Page3KnobGapX)},
+                                             .contents_gap = LiveWw(UiSizeId::Page3KnobRowGapX),
                                              .contents_direction = layout::Direction::Row,
                                              .contents_align = layout::Alignment::Middle,
                                          },
@@ -949,7 +941,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, freq_param),
                         {
-                            .width = LiveWw(ParamComponentLargeWidth),
+                            .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
@@ -957,7 +949,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, reso_param),
                         {
-                            .width = LiveWw(ParamComponentLargeWidth),
+                            .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
@@ -965,7 +957,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, gain_param),
                         {
-                            .width = LiveWw(ParamComponentLargeWidth),
+                            .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                             .bidirectional = true,
@@ -986,8 +978,6 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
 }
 
 static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
-    using enum UiSizeId;
-
     auto& params = g.engine.processor.main_params;
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
 
@@ -1009,8 +999,8 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                                .layout {
                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                    .contents_padding {
-                                                       .t = LiveWw(PageHeadingMarginT2),
-                                                       .b = LiveWw(PageHeadingMarginB2),
+                                                       .t = LiveWw(UiSizeId::PageHeadingMarginT2),
+                                                       .b = LiveWw(UiSizeId::PageHeadingMarginB2),
                                                    },
                                                    .contents_align = layout::Alignment::Middle,
                                                },
@@ -1025,16 +1015,17 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     }
 
     {
-        auto const menu_row_container = DoBox(g.builder,
-                                              {
-                                                  .parent = page,
-                                                  .layout {
-                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                      .contents_padding = {.l = LiveWw(LfoItemMarginL)},
-                                                      .contents_gap = LiveWw(LfoItemGapY2),
-                                                      .contents_direction = layout::Direction::Column,
-                                                  },
-                                              });
+        auto const menu_row_container =
+            DoBox(g.builder,
+                  {
+                      .parent = page,
+                      .layout {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                          .contents_padding = {.l = LiveWw(UiSizeId::LfoItemMarginL)},
+                          .contents_gap = LiveWw(UiSizeId::LfoItemGapY2),
+                          .contents_direction = layout::Direction::Column,
+                      },
+                  });
 
         // Menu + label rows
         auto const do_menu_label_row = [&](LayerParamIndex param_index, u64 loc_hash = SourceLocationHash()) {
@@ -1045,7 +1036,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                        .parent = menu_row_container,
                                        .layout {
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_gap = LiveWw(LfoItemGapX),
+                                           .contents_gap = LiveWw(UiSizeId::LfoItemGapX),
                                            .contents_direction = layout::Direction::Row,
                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                        },
@@ -1056,7 +1047,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                             row,
                             param,
                             {
-                                .width = LiveWw(LfoItemWidth),
+                                .width = LiveWw(UiSizeId::LfoItemWidth),
                                 .greyed_out = greyed_out,
                                 .label = false,
                             });
@@ -1079,7 +1070,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
         do_menu_label_row(LayerParamIndex::LfoRestart);
     }
 
-    DoWhitespace(g.builder, page, LiveWw(LfoGapYBeforeKnobs2));
+    DoWhitespace(g.builder, page, LiveWw(UiSizeId::LfoGapYBeforeKnobs2));
 
     // Knobs row: Amount + Rate column
     {
@@ -1088,7 +1079,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                          .parent = page,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = LiveWw(LfoKnobGapX),
+                                             .contents_gap = LiveWw(UiSizeId::LfoKnobGapX),
                                              .contents_direction = layout::Direction::Row,
                                              .contents_align = layout::Alignment::Middle,
                                          },
@@ -1098,7 +1089,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, LayerParamIndex::LfoAmount),
                         {
-                            .width = LiveWw(ParamComponentLargeWidth),
+                            .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                             .bidirectional = true,
@@ -1125,39 +1116,37 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                             rate_col,
                             params.DescribedValue(layer_index, LayerParamIndex::LfoRateHz),
                             {
-                                .width = LiveWw(ParamComponentLargeWidth),
+                                .width = LiveWw(UiSizeId::ParamComponentLargeWidth),
                                 .style_system = GuiStyleSystem::MidPanel,
                                 .greyed_out = greyed_out,
                             });
         }
 
-        DoWhitespace(g.builder, rate_col, LiveWw(LfoSyncSwitchGapY));
+        DoWhitespace(g.builder, rate_col, LiveWw(UiSizeId::LfoSyncSwitchGapY));
 
         DoButtonParameter(g,
                           rate_col,
                           params.DescribedValue(layer_index, LayerParamIndex::LfoSyncSwitch),
-                          {.width = LiveWw(LfoSyncSwitchWidth)});
+                          {.width = LiveWw(UiSizeId::LfoSyncSwitchWidth)});
     }
 }
 
 static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
-    using enum UiSizeId;
-
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
-    auto const row_height = LiveWw(MidiItemHeight);
-    auto const row_padding_lr = LiveWw(MidiItemMarginLR);
-    auto const item_gap = LiveWw(PlayPageItemGapX);
-    auto const control_label_gap = LiveWw(PlayPageControlLabelGapX);
-    auto const control_width = LiveWw(MidiItemWidth2);
+    auto const row_height = LiveWw(UiSizeId::MidiItemHeight);
+    auto const row_padding_lr = LiveWw(UiSizeId::MidiItemMarginLR);
+    auto const item_gap = LiveWw(UiSizeId::PlayPageItemGapX);
+    auto const control_label_gap = LiveWw(UiSizeId::PlayPageControlLabelGapX);
+    auto const control_width = LiveWw(UiSizeId::MidiItemWidth2);
 
     auto const page = DoBox(g.builder,
                             {
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_gap = LiveWw(PlayPageRowGapY),
+                                    .contents_gap = LiveWw(UiSizeId::PlayPageRowGapY),
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -1320,7 +1309,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                        row,
                        params.DescribedValue(layer_index, LayerParamIndex::KeyRangeLow),
                        {
-                           .width = LiveWw(MidiItemWidth),
+                           .width = LiveWw(UiSizeId::MidiItemWidth),
                            .midi_note_names = true,
                            .label = false,
                        });
@@ -1329,7 +1318,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                        row,
                        params.DescribedValue(layer_index, LayerParamIndex::KeyRangeHigh),
                        {
-                           .width = LiveWw(MidiItemWidth),
+                           .width = LiveWw(UiSizeId::MidiItemWidth),
                            .midi_note_names = true,
                            .label = false,
                        });
@@ -1364,7 +1353,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                        row,
                        params.DescribedValue(layer_index, LayerParamIndex::KeyRangeLowFade),
                        {
-                           .width = LiveWw(MidiItemWidth),
+                           .width = LiveWw(UiSizeId::MidiItemWidth),
                            .label = false,
                        });
 
@@ -1372,7 +1361,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                        row,
                        params.DescribedValue(layer_index, LayerParamIndex::KeyRangeHighFade),
                        {
-                           .width = LiveWw(MidiItemWidth),
+                           .width = LiveWw(UiSizeId::MidiItemWidth),
                            .label = false,
                        });
     }
@@ -1406,14 +1395,15 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Velocity graph
     {
-        auto const velo_box = DoBox(g.builder,
-                                    {
-                                        .parent = page,
-                                        .layout {
-                                            .size = {layout::k_fill_parent, LiveWw(MidiVeloGraphHeight)},
-                                            .margins {.lr = row_padding_lr},
-                                        },
-                                    });
+        auto const velo_box =
+            DoBox(g.builder,
+                  {
+                      .parent = page,
+                      .layout {
+                          .size = {layout::k_fill_parent, LiveWw(UiSizeId::MidiVeloGraphHeight)},
+                          .margins {.lr = row_padding_lr},
+                      },
+                  });
 
         if (auto const r = BoxRect(g.builder, velo_box)) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
@@ -1434,8 +1424,6 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
 }
 
 static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
-    using enum UiSizeId;
-
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
@@ -1451,17 +1439,18 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Waveform display
     {
-        auto const waveform_box = DoBox(g.builder,
-                                        {
-                                            .parent = page,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, LiveWw(MainWaveformH)},
-                                                .margins {
-                                                    .lr = LiveWw(MainWaveformMarginLR),
-                                                    .tb = LiveWw(MainWaveformMarginTB),
-                                                },
-                                            },
-                                        });
+        auto const waveform_box =
+            DoBox(g.builder,
+                  {
+                      .parent = page,
+                      .layout {
+                          .size = {layout::k_fill_parent, LiveWw(UiSizeId::MainWaveformH)},
+                          .margins {
+                              .lr = LiveWw(UiSizeId::MainWaveformMarginLR),
+                              .tb = LiveWw(UiSizeId::MainWaveformMarginTB),
+                          },
+                      },
+                  });
         if (auto const r = BoxRect(g.builder, waveform_box)) DoWaveformElement(g, layer, *r);
     }
 
@@ -1473,8 +1462,8 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
               .text_colours = LiveColStruct(UiColMap::MidText),
               .text_justification = TextJustification::Centred,
               .layout {
-                  .size = {layout::k_fill_parent, LiveWw(MainWaveformLabelH)},
-                  .margins {.lr = LiveWw(MainWaveformMarginLR)},
+                  .size = {layout::k_fill_parent, LiveWw(UiSizeId::MainWaveformLabelH)},
+                  .margins {.lr = LiveWw(UiSizeId::MainWaveformMarginLR)},
               },
           });
 
@@ -1486,9 +1475,9 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
                                        .layout {
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
                                            .contents_padding {
-                                               .l = LiveWw(MainItemMarginL),
-                                               .r = LiveWw(MainItemMarginR),
-                                               .tb = LiveWw(MainItemGapY),
+                                               .l = LiveWw(UiSizeId::MainItemMarginL),
+                                               .r = LiveWw(UiSizeId::MainItemMarginR),
+                                               .tb = LiveWw(UiSizeId::MainItemGapY),
                                            },
                                            .contents_direction = layout::Direction::Row,
                                        },
@@ -1499,7 +1488,7 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
                           btn_row,
                           params.DescribedValue(layer_index, LayerParamIndex::Reverse),
                           {
-                              .width = LiveWw(MainReverseButtonWidth),
+                              .width = LiveWw(UiSizeId::MainReverseButtonWidth),
                               .greyed_out = is_waveform_synth,
                           });
 
@@ -1507,9 +1496,9 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
     }
 
     // Divider
-    DoWhitespace(g.builder, page, LiveWw(MainDividerMarginT));
+    DoWhitespace(g.builder, page, LiveWw(UiSizeId::MainDividerMarginT));
     DoDivider(g, page);
-    DoWhitespace(g.builder, page, LiveWw(MainDividerMarginB));
+    DoWhitespace(g.builder, page, LiveWw(UiSizeId::MainDividerMarginB));
 
     // Volume envelope heading
     {
@@ -1519,8 +1508,8 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
                                                .layout {
                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                    .contents_padding {
-                                                       .l = LiveWw(PageHeadingMarginL),
-                                                       .t = LiveWw(PageHeadingMarginT),
+                                                       .l = LiveWw(UiSizeId::PageHeadingMarginL),
+                                                       .t = LiveWw(UiSizeId::PageHeadingMarginT),
                                                    },
                                                    .contents_align = layout::Alignment::Start,
                                                },
@@ -1534,17 +1523,18 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Envelope display
     {
-        auto const envelope_box = DoBox(g.builder,
-                                        {
-                                            .parent = page,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, LiveWw(MainEnvelopeH)},
-                                                .margins {
-                                                    .lr = LiveWw(MainEnvelopeMarginLR),
-                                                    .tb = LiveWw(MainEnvelopeMarginTB),
-                                                },
-                                            },
-                                        });
+        auto const envelope_box =
+            DoBox(g.builder,
+                  {
+                      .parent = page,
+                      .layout {
+                          .size = {layout::k_fill_parent, LiveWw(UiSizeId::MainEnvelopeH)},
+                          .margins {
+                              .lr = LiveWw(UiSizeId::MainEnvelopeMarginLR),
+                              .tb = LiveWw(UiSizeId::MainEnvelopeMarginTB),
+                          },
+                      },
+                  });
 
         bool const env_on = params.BoolValue(layer_index, LayerParamIndex::VolEnvOn) ||
                             layer.instrument.tag == InstrumentType::WaveformSynth;
@@ -1562,8 +1552,6 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
 }
 
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent) {
-    using enum UiSizeId;
-
     auto const root = DoBox(g.builder,
                             {
                                 .parent = parent,
@@ -1581,10 +1569,10 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
                                         .layout {
                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
                                             .contents_padding {
-                                                .l = LiveWw(LayerSelectorBoxMarginL),
-                                                .r = LiveWw(LayerSelectorBoxMarginR),
-                                                .t = LiveWw(LayerSelectorBoxMarginT),
-                                                .b = LiveWw(LayerSelectorBoxMarginB),
+                                                .l = LiveWw(UiSizeId::LayerSelectorBoxMarginL),
+                                                .r = LiveWw(UiSizeId::LayerSelectorBoxMarginR),
+                                                .t = LiveWw(UiSizeId::LayerSelectorBoxMarginT),
+                                                .b = LiveWw(UiSizeId::LayerSelectorBoxMarginB),
                                             },
                                             .contents_direction = layout::Direction::Column,
                                             .contents_align = layout::Alignment::Start,
