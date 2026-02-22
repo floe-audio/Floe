@@ -113,6 +113,7 @@ struct EffectIDs {
     };
 };
 
+// NOTE: this is already modernised
 static void DoIrSelectorRightClickMenu(GuiState& g, Rect r, imgui::Id imgui_id) {
     auto& imgui = g.imgui;
     auto const right_click_id = imgui.MakeId("ir-selector-popup");
