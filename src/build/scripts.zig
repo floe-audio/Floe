@@ -502,6 +502,7 @@ const CiReport = struct {
     mutex: std.Thread.Mutex,
     arena: std.heap.ArenaAllocator,
     tasks: std.ArrayListUnmanaged(CiTask),
+    any_timed_out: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
     pub fn returnCode(self: *const CiReport) u8 {
         for (self.tasks.items) |task| {
@@ -662,6 +663,11 @@ fn killProcess(child: *std.process.Child) !void {
 }
 
 fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
+    if (ci_report.any_timed_out.load(.acquire)) {
+        ciLog("Skipped", args, "a previous task timed out", .{});
+        return;
+    }
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer _ = arena.deinit();
     const allocator = arena.allocator();
@@ -765,6 +771,7 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
             std.time.sleep(100 * std.time.ns_per_ms);
             if (timer.read() >= timeout_seconds * std.time.ns_per_s) {
                 ciLog("Timeout", args, "timed out after {d} seconds, killing", .{timeout_seconds});
+                ci_report.any_timed_out.store(true, .release);
                 try killProcess(&child);
                 timed_out = true;
                 break;
