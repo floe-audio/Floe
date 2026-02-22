@@ -12,6 +12,7 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 
 static void DrawDarkModeModalBackground(imgui::Context const& imgui) {
     imgui.draw_list->PushClipRectFullScreen();
@@ -124,15 +125,16 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
 
         switch (desc.value_type) {
             case ParamValueType::Float: {
-                DoKnobParameter(g,
-                                container,
-                                g.engine.processor.main_params.DescribedValue(desc.index),
-                                {
-                                    .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                                    .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
-                                    .knob_highlight_col = {.c = Col::Highlight},
-                                    .knob_line_col = {.c = Col::Background0, .dark_mode = true},
-                                });
+                DoKnobParameter(
+                    g,
+                    container,
+                    g.engine.processor.main_params.DescribedValue(desc.index),
+                    {
+                        .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
+                        .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
+                        .knob_highlight_col = {.c = Col::Highlight},
+                        .knob_line_col = {.c = Col::Background0, .dark_mode = true},
+                    });
                 break;
             }
             case ParamValueType::Menu: {

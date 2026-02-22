@@ -12,6 +12,7 @@
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 #include "processor/param.hpp"
 #include "processor/processor.hpp"
 
@@ -229,30 +230,31 @@ Box DoMenuParameter(GuiState& g,
     bool const auto_width = options.width == 0;
     bool const fill_parent = options.width == layout::k_fill_parent;
 
-    auto const container = DoBox(g.builder,
-                                 {
-                                     .parent = parent,
-                                     .id_extra = (u64)param.info.id,
-                                     .layout {
-                                         .size = {fill_parent ? layout::k_fill_parent : layout::k_hug_contents,
-                                                  layout::k_hug_contents},
-                                         .contents_gap = LiveWw(UiSizeId::ParamComponentLabelGapY),
-                                         .contents_direction = layout::Direction::Column,
-                                         .contents_align = layout::Alignment::Start,
-                                     },
-                                 });
+    auto const container =
+        DoBox(g.builder,
+              {
+                  .parent = parent,
+                  .id_extra = (u64)param.info.id,
+                  .layout {
+                      .size = {fill_parent ? layout::k_fill_parent : layout::k_hug_contents,
+                               layout::k_hug_contents},
+                      .contents_gap = LiveWw(UiSizeId::ParamComponentLabelGapY),
+                      .contents_direction = layout::Direction::Column,
+                      .contents_align = layout::Alignment::Start,
+                  },
+              });
 
-    auto const row_width = auto_width ? layout::k_hug_contents
-                                      : (fill_parent ? layout::k_fill_parent : options.width);
+    auto const row_width =
+        auto_width ? layout::k_hug_contents : (fill_parent ? layout::k_fill_parent : options.width);
     auto const row = DoMidPanelPrevNextRow(g.builder, container, row_width);
 
     Optional<f32> new_val {};
 
     // Menu text button that opens a popup.
-    auto const menu_btn_width = auto_width ? g.imgui.draw_list->fonts.Current()->LargestStringWidth(
-                                                 0,
-                                                 ParameterMenuItems(param.info.index))
-                                           : layout::k_fill_parent;
+    auto const menu_btn_width =
+        auto_width
+            ? g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, ParameterMenuItems(param.info.index))
+            : layout::k_fill_parent;
     auto const menu_btn =
         DoBox(g.builder,
               {
