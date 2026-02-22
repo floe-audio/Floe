@@ -165,7 +165,7 @@ bool Dragger(GuiState& g, DescribedParamValue const& param, Rect r, Style const&
                     changed ? Optional<f32>((f32)result) : k_nullopt,
                     ParamDisplayFlagsNoValuePopup);
 
-    MacroAddDestinationRegion(g, g.imgui.ViewportRectToWindowRect(r), param.info.index);
+    OverlayMacroDestinationRegion(g, g.imgui.ViewportRectToWindowRect(r), param.info.index);
 
     return changed;
 }

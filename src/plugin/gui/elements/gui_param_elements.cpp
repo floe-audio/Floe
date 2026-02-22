@@ -324,11 +324,8 @@ Box DoMenuParameter(GuiState& g,
         if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
-        MacroAddDestinationRegion(g, window_r, param.info.index);
+        AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
     }
-
-    // Right-click menu.
-    AddParamContextMenuBehaviour(g, menu_btn, param);
 
     // Label.
     if (options.label)
@@ -422,11 +419,9 @@ Box DoKnobParameter(GuiState& g,
 
         ParameterValuePopup(g, param, container.imgui_id, window_r);
 
-        MacroAddDestinationRegion(g, window_r, param.info.index);
+        AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
+        OverlayMacroDestinationRegion(g, window_r, param.info.index);
     }
-
-    // Right-click menu.
-    AddParamContextMenuBehaviour(g, container, param);
 
     // Focus the text input if requested.
     if (g.builder.IsInputAndRenderPass()) {
@@ -688,7 +683,8 @@ Box DoIntParameter(GuiState& g,
         if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
-        MacroAddDestinationRegion(g, window_r, param.info.index);
+        AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
+        OverlayMacroDestinationRegion(g, window_r, param.info.index);
     }
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row);
@@ -705,9 +701,6 @@ Box DoIntParameter(GuiState& g,
             DrawParameterTextInput(g.builder.imgui, r, *param_text_input_result);
         }
     }
-
-    // Right-click menu.
-    AddParamContextMenuBehaviour(g, dragger_box, param);
 
     // Focus the text input if requested.
     if (g.builder.IsInputAndRenderPass()) {

@@ -38,7 +38,7 @@ struct MacrosGuiState {
 
 void DoMacrosEditGui(GuiState& g, Box const& parent);
 
-void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_index);
+void OverlayMacroDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_index);
 
 void MacroGuiBeginFrame(GuiState& g);
 void MacroGuiEndFrame(GuiState& g);

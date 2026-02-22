@@ -664,7 +664,7 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r) {
         };
         for (auto const [i, param] : Enumerate(macro_params)) {
             auto const r = Rect {.xywh {base_x, window_r.y + (cell_size * (f32)i), cell_size, cell_size}};
-            MacroAddDestinationRegion(g, r, param);
+            OverlayMacroDestinationRegion(g, r, param);
         }
     }
 }
