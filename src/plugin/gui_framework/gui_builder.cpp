@@ -208,6 +208,9 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
     ZoneScoped;
     auto const id =
         builder.imgui.MakeId(loc_hash ^ config.id_extra ^ (config.parent ? config.parent->imgui_id : 0));
+    ASSERT(config.parent || builder.state->pass != GuiBuilderPass::LayoutBoxes ||
+               builder.state->layout.num_items == 0,
+           "DoBox requires a parent unless it's the first item (root)");
     auto const font = builder.fonts.atlas[ToInt(config.font)];
     auto const font_size = config.font_size != 0 ? GuiIo().WwToPixels(config.font_size) : font->font_size;
     ASSERT(font_size > 0);

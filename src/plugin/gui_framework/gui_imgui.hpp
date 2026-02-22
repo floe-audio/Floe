@@ -631,6 +631,9 @@ struct Context {
     f32 CurrentVpWidth() const { return curr_viewport->bounds.w; }
     f32 CurrentVpHeight() const { return curr_viewport->bounds.h; }
     f32x2 CurrentVpSize() const { return curr_viewport->bounds.size; }
+    f32 CurrentVpWidthWw() const { return GuiIo().PixelsToWw(curr_viewport->bounds.w); }
+    f32 CurrentVpHeightWw() const { return GuiIo().PixelsToWw(curr_viewport->bounds.h); }
+    f32x2 CurrentVpSizeWw() const { return GuiIo().PixelsToWw(curr_viewport->bounds.size); }
 
     //
     // Popup menus (a special type of viewport)

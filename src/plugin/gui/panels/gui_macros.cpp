@@ -114,14 +114,15 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                          },
                                      });
-        auto const knob = DoKnobParameter(g,
-                                          knobs_box,
-                                          g.engine.processor.main_params.DescribedValue(param_index),
-                                          {
-                                              .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                                              .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
-                                              .label = false,
-                                          });
+        auto const knob = DoKnobParameter(
+            g,
+            knobs_box,
+            g.engine.processor.main_params.DescribedValue(param_index),
+            {
+                .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
+                .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
+                .label = false,
+            });
 
         constexpr f32 k_dest_knob_size = 25;
         constexpr f32 k_dest_knob_gap_x = 1;
@@ -323,7 +324,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
 
                 if (g.macros_gui_state.hot_destination_param &&
                     g.macros_gui_state.macro_destination_select_mode == macro_index) {
-                    auto const& hot_param = *g.macros_gui_state.hot_destination_param;
+                    auto const hot_param = *g.macros_gui_state.hot_destination_param;
                     dyn::Append(
                         g.macros_gui_state.draw_overlays,
                         [hot_param, p2 = knob_r.Centre(), macro_param = param_index](GuiState& g) {
