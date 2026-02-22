@@ -1710,6 +1710,10 @@ TEST_CASE(TestPackageInstallation) {
     // Modify files this time rather than just rename.
     TRY(AppendFile(floe_lua_path, "\n"));
 
+    // Tell the server to rescan so it notices the changes. It probably does this automatically via
+    // file watchers but it's not guaranteed.
+    sample_lib_server::RescanFolder(sample_lib_server, destination_folder);
+
     // If the components are modified and we set to Overwrite, it should overwrite them.
     TRY(Test(tester,
              {
