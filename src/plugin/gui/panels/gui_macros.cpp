@@ -450,7 +450,9 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
     }
 }
 
-void MacroAddDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_index) {
+// Must be the last call to register hotness (SetHot) on this rect, so that the macro destination
+// button takes priority when in destination select mode.
+void OverlayMacroDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_index) {
     if (k_param_descriptors[ToInt(param_index)].module_parts[0] == ParameterModule::Macro) return;
 
     auto const active_dest_knob_linked =

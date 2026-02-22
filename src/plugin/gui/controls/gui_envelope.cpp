@@ -240,7 +240,7 @@ void DoEnvelopeGui(GuiState& g,
         ParameterValuePopup(g, attack_param, attack_imgui_id, grabber);
         DoParameterTooltipIfNeeded(g, attack_param, attack_imgui_id, grabber);
 
-        MacroAddDestinationRegion(g, grabber, indices[k_attack_index]);
+        OverlayMacroDestinationRegion(g, grabber, indices[k_attack_index]);
     }
 
     // Decay and sustain interaction.
@@ -334,8 +334,8 @@ void DoEnvelopeGui(GuiState& g,
         {
             auto const h = grabber.h / 2;
             auto macro_r = grabber;
-            MacroAddDestinationRegion(g, rect_cut::CutTop(macro_r, h), indices[k_decay_index]);
-            MacroAddDestinationRegion(g, rect_cut::CutTop(macro_r, h), indices[k_sustain_index]);
+            OverlayMacroDestinationRegion(g, rect_cut::CutTop(macro_r, h), indices[k_decay_index]);
+            OverlayMacroDestinationRegion(g, rect_cut::CutTop(macro_r, h), indices[k_sustain_index]);
         }
     }
 
@@ -398,7 +398,7 @@ void DoEnvelopeGui(GuiState& g,
         ParameterValuePopup(g, release_param, release_imgui_id, grabber);
         DoParameterTooltipIfNeeded(g, release_param, release_imgui_id, grabber);
 
-        MacroAddDestinationRegion(g, grabber, indices[k_release_index]);
+        OverlayMacroDestinationRegion(g, grabber, indices[k_release_index]);
     }
 
     // Drawing.

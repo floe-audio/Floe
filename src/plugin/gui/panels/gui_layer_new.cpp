@@ -738,10 +738,8 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
         if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
-        MacroAddDestinationRegion(g, window_r, param.info.index);
+        AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
     }
-
-    AddParamContextMenuBehaviour(g, menu_btn, param);
 }
 
 static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {

@@ -296,9 +296,6 @@ void GuiUpdate(GuiState& g) {
 
     auto& imgui = g.imgui;
 
-    MacroGuiBeginFrame(g);
-    DEFER { MacroGuiEndFrame(g); };
-
     StartFrame(g.waveform_images, *frame_input.renderer);
     DEFER { EndFrame(g.waveform_images, *frame_input.renderer); };
 
@@ -313,6 +310,9 @@ void GuiUpdate(GuiState& g) {
         },
         g.fonts);
     DEFER { imgui.EndFrame(); };
+
+    MacroGuiBeginFrame(g);
+    DEFER { MacroGuiEndFrame(g); };
 
     g.fonts.Push(ToInt(FontType::Body));
     DEFER { g.fonts.Pop(); };

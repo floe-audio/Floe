@@ -109,7 +109,7 @@ bool Knob(GuiState& g, DescribedParamValue const& param, Rect r, Style const& st
 
     EndParameterGUI(g, id, param, r, new_val);
 
-    MacroAddDestinationRegion(g, window_r, param.info.index);
+    OverlayMacroDestinationRegion(g, window_r, param.info.index);
 
     return new_val.HasValue();
 }
