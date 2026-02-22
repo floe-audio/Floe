@@ -477,7 +477,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
         if (tab_has_active_content) {
             if (auto const r = BoxRect(g.builder, tab_btn)) {
                 auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-                auto const dot_size = LivePx(LayerParamsGroupTabsIconW) * 0.30f;
+                auto const dot_size = k_font_icons_size * 0.40f;
                 auto const dot_centre =
                     f32x2 {window_r.x + (LivePx(LayerParamsGroupTabsIconW) / 2), window_r.Centre().y};
                 auto const col = is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidText);
@@ -900,24 +900,47 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                           });
     }
 
-    // EQ band helper
+    // Container for all EQ band rows with consistent gap
+    auto const bands_container = DoBox(g.builder,
+                                       {
+                                           .parent = page,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_gap = LiveWw(EqPageRowGapY),
+                                               .contents_direction = layout::Direction::Column,
+                                               .contents_align = layout::Alignment::Start,
+                                           },
+                                       });
+
+    // EQ band helper - adds menu row and knobs row to bands_container
     auto const do_eq_band = [&](LayerParamIndex type_param,
                                 LayerParamIndex freq_param,
                                 LayerParamIndex reso_param,
                                 LayerParamIndex gain_param,
                                 u64 loc_hash = SourceLocationHash()) {
         // Type menu
+        auto const menu_row = DoBox(g.builder,
+                                    {
+                                        .parent = bands_container,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_padding {.lr = LiveWw(EqPageMenuMarginLR)},
+                                        },
+                                    },
+                                    loc_hash);
         DoMenuParameter(g,
-                        page,
+                        menu_row,
                         params.DescribedValue(layer_index, type_param),
-                        {.greyed_out = greyed_out, .label = false});
-
-        DoWhitespace(g.builder, page, LiveWw(EqBandGapY), loc_hash);
+                        {
+                            .width = layout::k_fill_parent,
+                            .greyed_out = greyed_out,
+                            .label = false,
+                        });
 
         // Knobs row
         auto const knobs_row = DoBox(g.builder,
                                      {
-                                         .parent = page,
+                                         .parent = bands_container,
                                          .id_extra = loc_hash,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -960,8 +983,6 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                LayerParamIndex::EqFreq1,
                LayerParamIndex::EqResonance1,
                LayerParamIndex::EqGain1);
-
-    DoWhitespace(g.builder, page, LiveWw(EqBandGapY));
 
     // Band 2
     do_eq_band(LayerParamIndex::EqType2,
@@ -1131,11 +1152,18 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
+    auto const row_height = LiveWw(MidiItemHeight);
+    auto const row_padding_lr = LiveWw(MidiItemMarginLR);
+    auto const item_gap = LiveWw(PlayPageItemGapX);
+    auto const control_label_gap = LiveWw(PlayPageControlLabelGapX);
+    auto const control_width = LiveWw(MidiItemWidth2);
+
     auto const page = DoBox(g.builder,
                             {
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
+                                    .contents_gap = LiveWw(PlayPageRowGapY),
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -1149,12 +1177,11 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_padding {
-                                           .lr = LiveWw(MidiItemMarginLR),
-                                           .tb = LiveWw(MidiItemGapY),
-                                       },
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = control_label_gap,
                                        .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
                                },
                                loc_hash);
@@ -1163,7 +1190,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                        row,
                        param,
                        {
-                           .width = LiveWw(MidiItemWidth),
+                           .width = control_width,
                            .label = false,
                        });
 
@@ -1174,7 +1201,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredLeft,
                   .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .size = layout::k_fill_parent,
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String { return param.info.tooltip; }},
               },
@@ -1189,21 +1216,55 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Keytrack
     {
-        auto const keytrack_wrapper = DoBox(g.builder,
-                                            {
-                                                .parent = page,
-                                                .layout {
-                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                    .contents_padding {
-                                                        .lr = LiveWw(MidiItemMarginLR),
-                                                        .tb = LiveWw(MidiItemGapY),
-                                                    },
-                                                },
-                                            });
-        DoButtonParameter(g,
-                          keytrack_wrapper,
-                          params.DescribedValue(layer_index, LayerParamIndex::Keytrack),
-                          {});
+        auto const param = params.DescribedValue(layer_index, LayerParamIndex::Keytrack);
+        bool const state = param.BoolValue();
+
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .id_extra = (u64)param.info.id,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = control_label_gap,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                                   .tooltip = FunctionRef<String()> {[&]() -> String {
+                                       return ParamTooltipText(param, g.builder.arena);
+                                   }},
+                                   .button_behaviour = imgui::ButtonConfig {},
+                               });
+
+        DoToggleIcon(g.builder,
+                     row,
+                     {
+                         .state = state,
+                         .width = control_width,
+                         .justify = TextJustification::CentredRight,
+                     });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = param.info.gui_label,
+                  .text_colours =
+                      ColSet {
+                          .base = LiveColStruct(UiColMap::MidText),
+                          .hot = LiveColStruct(UiColMap::MidTextHot),
+                          .active = LiveColStruct(UiColMap::MidTextHot),
+                      },
+                  .text_justification = TextJustification::CentredLeft,
+                  .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .size = layout::k_fill_parent,
+                  },
+              });
+
+        if (row.button_fired)
+            SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
+
+        AddParamContextMenuBehaviour(g, row, param);
     }
 
     // Monophonic mode
@@ -1214,16 +1275,15 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_padding {
-                                           .lr = LiveWw(MidiItemMarginLR),
-                                           .tb = LiveWw(MidiItemGapY),
-                                       },
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = control_label_gap,
                                        .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
                                });
 
-        DoMenuParameter(g, row, param, {.label = false});
+        DoMenuParameter(g, row, param, {.width = control_width, .label = false});
 
         DoBox(g.builder,
               {
@@ -1232,7 +1292,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredLeft,
                   .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .size = layout::k_fill_parent,
                   },
               });
     }
@@ -1243,13 +1303,11 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_padding {
-                                           .lr = LiveWw(MidiItemMarginLR),
-                                           .tb = LiveWw(MidiItemGapY),
-                                       },
-                                       .contents_gap = 4.0f,
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = item_gap,
                                        .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
                                });
 
@@ -1260,7 +1318,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredLeft,
                   .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .size = layout::k_fill_parent,
                   },
               });
 
@@ -1289,13 +1347,11 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_padding {
-                                           .lr = LiveWw(MidiItemMarginLR),
-                                           .tb = LiveWw(MidiItemGapY),
-                                       },
-                                       .contents_gap = 4.0f,
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = item_gap,
                                        .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
                                });
 
@@ -1306,7 +1362,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredLeft,
                   .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .size = layout::k_fill_parent,
                   },
               });
 
@@ -1328,22 +1384,31 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
     }
 
     // Velocity label
-    DoBox(g.builder,
-          {
-              .parent = page,
-              .text = "Velocity to volume curve"_s,
-              .text_colours = LiveColStruct(UiColMap::MidText),
-              .text_justification = TextJustification::CentredLeft,
-              .layout {
-                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                  .margins {
-                      .lr = LiveWw(MidiItemMarginLR),
-                      .tb = LiveWw(MidiItemGapY),
+    {
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = "Velocity to volume curve"_s,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = layout::k_fill_parent,
                   },
-              },
-              .tooltip =
-                  FunctionRef<String()> {[&]() -> String { return "Curve that maps velocity to volume"_s; }},
-          });
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      return "Curve that maps velocity to volume"_s;
+                  }},
+              });
+    }
 
     // Velocity graph
     {
@@ -1352,7 +1417,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                         .parent = page,
                                         .layout {
                                             .size = {layout::k_fill_parent, LiveWw(MidiVeloGraphHeight)},
-                                            .margins {.lr = LiveWw(MidiItemMarginLR)},
+                                            .margins {.lr = row_padding_lr},
                                         },
                                     });
 

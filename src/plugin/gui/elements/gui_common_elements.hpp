@@ -32,3 +32,13 @@ struct MidPanelShuffleButtonOptions {
     String tooltip {"Shuffle"};
 };
 Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options = {});
+
+// Toggle icon for use inside a parent container with button_behaviour.
+struct ToggleIconOptions {
+    bool state;
+    bool greyed_out = false;
+    bool parent_dictates_hot_and_active = true;
+    f32 width = 0; // 0 means use default icon width
+    TextJustification justify = TextJustification::CentredLeft;
+};
+Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& options);
