@@ -227,25 +227,32 @@ Box DoMenuParameter(GuiState& g,
     ASSERT(param.info.value_type == ParamValueType::Menu);
 
     bool const auto_width = options.width == 0;
+    bool const fill_parent = options.width == layout::k_fill_parent;
 
     auto const container = DoBox(g.builder,
                                  {
                                      .parent = parent,
                                      .id_extra = (u64)param.info.id,
                                      .layout {
-                                         .size = layout::k_hug_contents,
+                                         .size = {fill_parent ? layout::k_fill_parent : layout::k_hug_contents,
+                                                  layout::k_hug_contents},
                                          .contents_gap = LiveWw(UiSizeId::ParamComponentLabelGapY),
                                          .contents_direction = layout::Direction::Column,
                                          .contents_align = layout::Alignment::Start,
                                      },
                                  });
 
-    auto const row =
-        DoMidPanelPrevNextRow(g.builder, container, auto_width ? layout::k_hug_contents : options.width);
+    auto const row_width = auto_width ? layout::k_hug_contents
+                                      : (fill_parent ? layout::k_fill_parent : options.width);
+    auto const row = DoMidPanelPrevNextRow(g.builder, container, row_width);
 
     Optional<f32> new_val {};
 
     // Menu text button that opens a popup.
+    auto const menu_btn_width = auto_width ? g.imgui.draw_list->fonts.Current()->LargestStringWidth(
+                                                 0,
+                                                 ParameterMenuItems(param.info.index))
+                                           : layout::k_fill_parent;
     auto const menu_btn =
         DoBox(g.builder,
               {
@@ -260,9 +267,7 @@ Box DoMenuParameter(GuiState& g,
                   .text_justification = TextJustification::CentredLeft,
                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
-                      .size = {auto_width ? g.imgui.draw_list->fonts.Current()
-                                                ->LargestStringWidth(0, ParameterMenuItems(param.info.index))
-                                          : layout::k_fill_parent,
+                      .size = {menu_btn_width,
                                k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
@@ -516,7 +521,6 @@ Box DoButtonParameter(GuiState& g,
                       DescribedParamValue const& param,
                       ButtonParameterComponentOptions const& options) {
     auto const height = LiveWw(UiSizeId::PageHeadingHeight);
-    auto const icon_area_width = LiveWw(UiSizeId::PageHeadingTextOffset);
     bool const state = param.BoolValue();
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
@@ -541,24 +545,7 @@ Box DoButtonParameter(GuiState& g,
               });
 
     // Toggle icon.
-    DoBox(g.builder,
-          {
-              .parent = container,
-              .text = state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
-              .font = FontType::Icons,
-              .font_size = k_font_icons_size * 0.75f,
-              .text_colours = state ? Colours {LiveColStruct(UiColMap::MidTextOn)}
-                                    : Colours {ColSet {
-                                          .base = LiveColStruct(UiColMap::MidIcon),
-                                          .hot = LiveColStruct(UiColMap::MidIcon),
-                                          .active = LiveColStruct(UiColMap::MidTextOn),
-                                      }},
-              .text_justification = TextJustification::CentredLeft,
-              .parent_dictates_hot_and_active = true,
-              .layout {
-                  .size = {icon_area_width, height},
-              },
-          });
+    DoToggleIcon(g.builder, container, {.state = state, .greyed_out = options.greyed_out});
 
     // Text label.
     DoBox(g.builder,
