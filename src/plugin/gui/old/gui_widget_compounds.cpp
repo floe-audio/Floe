@@ -29,7 +29,7 @@ layout::Id LayoutParameterComponent(GuiState& g,
                                     bool set_gapx_independent_of_size,
                                     bool set_bottom_gap_independent_of_size) {
     auto width = type == LayoutType::Layer
-                     ? LivePx(UiSizeId::ParamComponentLargeWidth)
+                     ? LivePx(UiSizeId::KnobLargeW)
                      : (type == LayoutType::Effect ? LivePx(UiSizeId::ParamComponentSmallWidth)
                                                    : LivePx(UiSizeId::ParamComponentExtraSmallWidth));
     auto const starting_width = width;
@@ -44,7 +44,7 @@ layout::Id LayoutParameterComponent(GuiState& g,
     auto const param_popup_button_height = LivePx(UiSizeId::ParamPopupButtonHeight);
     if (index_for_menu_items) {
         auto const menu_items = ParameterMenuItems(*index_for_menu_items);
-        auto strings_width = MaxStringLength(g, menu_items) + (LivePx(UiSizeId::MenuButtonTextMarginL) * 2);
+        auto strings_width = MaxStringLength(g, menu_items) + (LivePx(UiSizeId::MenuTextMarginL) * 2);
         auto const btn_w = LivePx(UiSizeId::NextPrevButtonSize);
         auto const margin_r = LivePx(UiSizeId::ParamIntButtonMarginR);
         strings_width += btn_w * 2 + margin_r;
