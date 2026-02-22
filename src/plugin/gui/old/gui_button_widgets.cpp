@@ -94,9 +94,9 @@ static void DrawIconOrText(GuiState& g,
     DrawBackground(g, style, r, id, state);
 
     if (style.icon_or_text.justification & TextJustification::Left) {
-        if (style.icon_or_text.add_margin_x) r = r.CutLeft(LivePx(UiSizeId::MenuButtonTextMarginL));
+        if (style.icon_or_text.add_margin_x) r = r.CutLeft(LivePx(UiSizeId::MenuTextMarginL));
     } else if (style.icon_or_text.justification & TextJustification::Right) {
-        if (style.icon_or_text.add_margin_x) r = r.CutRight(LivePx(UiSizeId::MenuButtonTextMarginL));
+        if (style.icon_or_text.add_margin_x) r = r.CutRight(LivePx(UiSizeId::MenuTextMarginL));
     }
 
     if (style.icon_or_text.capitalise) str = GetTempCapitalisedString(str);
@@ -125,10 +125,10 @@ DrawIconAndTextButton(GuiState& g, Style const& style, Rect r, imgui::Id id, Str
         auto just = TextJustification::CentredLeft;
         auto btn_r = r;
         if (style.type == LayoutAndSizeType::IconAndTextLayerTab) {
-            btn_r = r.WithW(LivePx(UiSizeId::LayerParamsGroupTabsIconW));
+            btn_r = r.WithW(LivePx(UiSizeId::LayerTabDotOffsetX));
             just = TextJustification::CentredRight;
         } else if (style.type == LayoutAndSizeType::IconAndTextMidiButton) {
-            btn_r = r.WithW(LivePx(UiSizeId::MidiItemWidth));
+            btn_r = r.WithW(LivePx(UiSizeId::PlayNarrowControlW));
             just = TextJustification::CentredRight;
         } else if (style.type == LayoutAndSizeType::IconAndTextMenuItem) {
             btn_r =
@@ -157,7 +157,7 @@ DrawIconAndTextButton(GuiState& g, Style const& style, Rect r, imgui::Id id, Str
     auto text_offset = LivePx(UiSizeId::PageHeadingTextOffset);
     auto overflow = TextOverflowType::AllowOverflow;
     if (style.type == LayoutAndSizeType::IconAndTextMidiButton) {
-        text_offset = LivePx(UiSizeId::MidiItemWidth) + LivePx(UiSizeId::MidiItemMarginLR);
+        text_offset = LivePx(UiSizeId::PlayNarrowControlW) + LivePx(UiSizeId::PlayRowPadLR);
     } else if (style.type == LayoutAndSizeType::IconAndTextMenuItem ||
                style.type == LayoutAndSizeType::IconAndTextSubMenuItem) {
         text_offset = LivePx(UiSizeId::MenuItemTickWidth);
@@ -169,7 +169,7 @@ DrawIconAndTextButton(GuiState& g, Style const& style, Rect r, imgui::Id id, Str
         if (style.icon_and_text.icon_texture)
             text_offset = r.h + r.h / 5;
         else
-            text_offset = LivePx(UiSizeId::MenuButtonTextMarginL);
+            text_offset = LivePx(UiSizeId::MenuTextMarginL);
     }
     im.draw_list->AddTextInRect(r.CutLeft(text_offset),
                                 text_col,

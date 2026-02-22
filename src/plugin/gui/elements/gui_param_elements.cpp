@@ -270,7 +270,7 @@ Box DoMenuParameter(GuiState& g,
                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
                       .size = {menu_btn_width,
-                               k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
+                               k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
@@ -449,7 +449,7 @@ Box DoKnobParameter(GuiState& g,
         if (options.peak_meter) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
             auto const knob_width_px = window_r.w;
-            auto const peak_meter_width_px = LivePx(UiSizeId::LayerPeakMeterWidth);
+            auto const peak_meter_width_px = LivePx(UiSizeId::LayerPeakMeterW);
             auto const peak_meter_height_px =
                 knob_width_px * LiveRaw(UiSizeId::KnobPeakMeterHeightPercent) / 100.0f;
             auto const peak_meter_y_offs =
@@ -621,7 +621,7 @@ Box DoIntParameter(GuiState& g,
                   .text_overflow = TextOverflowType::AllowOverflow,
                   .layout {
                       .size = {layout::k_fill_parent,
-                               k_font_body_size * LiveRaw(UiSizeId::ParamControlTextHeightPercent) / 100.0f},
+                               k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
