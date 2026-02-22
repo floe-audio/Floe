@@ -8,6 +8,7 @@
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 
 static ColSet MidIconButtonColours() {
     return {
@@ -108,29 +109,29 @@ Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& optio
     auto const height = LiveWw(UiSizeId::PageHeadingHeight);
     auto const width = options.width != 0 ? options.width : LiveWw(UiSizeId::PageHeadingTextOffset);
 
-    return DoBox(builder,
-                 {
-                     .parent = parent,
-                     .text = options.state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
-                     .font = FontType::Icons,
-                     .font_size = k_font_icons_size * 0.75f,
-                     .text_colours =
-                         options.state
-                             ? Colours {LiveColStruct(UiColMap::MidTextOn)}
-                             : (options.greyed_out ? Colours {ColSet {
-                                                         .base = LiveColStruct(UiColMap::MidTextDimmed),
-                                                         .hot = LiveColStruct(UiColMap::MidIcon),
-                                                         .active = LiveColStruct(UiColMap::MidTextOn),
-                                                     }}
-                                                   : Colours {ColSet {
-                                                         .base = LiveColStruct(UiColMap::MidIcon),
-                                                         .hot = LiveColStruct(UiColMap::MidIcon),
-                                                         .active = LiveColStruct(UiColMap::MidTextOn),
-                                                     }}),
-                     .text_justification = options.justify,
-                     .parent_dictates_hot_and_active = options.parent_dictates_hot_and_active,
-                     .layout {
-                         .size = {width, height},
-                     },
-                 });
+    return DoBox(
+        builder,
+        {
+            .parent = parent,
+            .text = options.state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
+            .font = FontType::Icons,
+            .font_size = k_font_icons_size * 0.75f,
+            .text_colours = options.state
+                                ? Colours {LiveColStruct(UiColMap::MidTextOn)}
+                                : (options.greyed_out ? Colours {ColSet {
+                                                            .base = LiveColStruct(UiColMap::MidTextDimmed),
+                                                            .hot = LiveColStruct(UiColMap::MidIcon),
+                                                            .active = LiveColStruct(UiColMap::MidTextOn),
+                                                        }}
+                                                      : Colours {ColSet {
+                                                            .base = LiveColStruct(UiColMap::MidIcon),
+                                                            .hot = LiveColStruct(UiColMap::MidIcon),
+                                                            .active = LiveColStruct(UiColMap::MidTextOn),
+                                                        }}),
+            .text_justification = options.justify,
+            .parent_dictates_hot_and_active = options.parent_dictates_hot_and_active,
+            .layout {
+                .size = {width, height},
+            },
+        });
 }

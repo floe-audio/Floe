@@ -6,4 +6,6 @@
 #include "gui/core/gui_fwd.hpp"
 #include "gui/panels/gui_layer.hpp"
 
+struct LayerProcessor;
+
 void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r);

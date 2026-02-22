@@ -18,6 +18,7 @@
 #include "gui/panels/gui_ir_browser.hpp"
 #include "gui/panels/gui_legacy_params_panel.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 
 static Optional<ImageID> LogoImage(GuiState& g) {
     if (!g.imgui.draw_list->renderer.ImageIdIsValid(g.floe_logo_image)) {

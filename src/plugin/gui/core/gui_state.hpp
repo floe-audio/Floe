@@ -83,7 +83,7 @@ struct GuiState {
         .fonts = fonts,
     };
 
-    layer_gui::LayerLayout layer_gui[k_num_layers] = {};
+    Array<LayerPanelState, k_num_layers> layer_panel_states;
 
     WaveformImagesTable waveform_images {};
     Optional<ImageID> floe_logo_image {};

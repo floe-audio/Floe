@@ -8,6 +8,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 
 static bool IconButton(GuiBuilder& builder,
                        Box const parent,
@@ -248,7 +249,8 @@ static void DoBotPanel(GuiState& g) {
                         g.engine.processor.main_params.DescribedValue(param_index),
                         {
                             .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                            .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
+                            .knob_height_fraction =
+                                LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
                             .greyed_out = g.engine.processor.main_macro_destinations[macro_index].Size() == 0,
                             .override_label = g.engine.macro_names[macro_index],
                         });

@@ -7,6 +7,7 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 
 static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
     auto const padding_radius_p1 = g.fonts.atlas[ToInt(FontType::Icons)]->font_size * 0.5f;
