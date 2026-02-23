@@ -509,6 +509,7 @@ pub fn build(b: *std.Build) void {
     var top_level_steps: TopLevelSteps = .{
         .build_release = b.step("release", "Create release artifacts (zipped, codesigned, etc.)"),
         .install_plugins = b.getInstallStep(),
+        .install_clap = b.step("install:clap", "Install only the CLAP plugin"),
         .install_all = b.step("install:all", "Install all; development files as well as plugins"),
 
         .test_step = b.step("test", "Run unit tests"),
@@ -2802,6 +2803,7 @@ fn doTarget(
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
             );
             top_level_steps.install_plugins.dependOn(clap.install_step);
+            top_level_steps.install_clap.dependOn(clap.install_step);
             top_level_steps.install_all.dependOn(clap.install_step);
             break :blk clap;
         } else {
