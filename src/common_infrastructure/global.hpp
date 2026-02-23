@@ -7,6 +7,7 @@
 struct GlobalInitOptions {
     bool init_error_reporting = false;
     bool set_main_thread = false;
+    bool force_log_to_stderr = false;
 };
 
 void GlobalInit(GlobalInitOptions options);

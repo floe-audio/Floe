@@ -111,17 +111,21 @@ void GlobalInit(GlobalInitOptions options) {
 
     InitLogger({.destination = ({
                     LogConfig::Destination d;
-                    switch (g_final_binary_type) {
-                        case FinalBinaryType::Clap:
-                        case FinalBinaryType::AuV2:
-                        case FinalBinaryType::Vst3: d = LogConfig::Destination::File; break;
-                        case FinalBinaryType::Standalone:
-                        case FinalBinaryType::Packager:
-                        case FinalBinaryType::PresetEditor:
-                        case FinalBinaryType::WindowsInstaller:
-                        case FinalBinaryType::WindowsUninstaller:
-                        case FinalBinaryType::DocsGenerator:
-                        case FinalBinaryType::Tests: d = LogConfig::Destination::Stderr; break;
+                    if (options.force_log_to_stderr) {
+                        d = LogConfig::Destination::Stderr;
+                    } else {
+                        switch (g_final_binary_type) {
+                            case FinalBinaryType::Clap:
+                            case FinalBinaryType::AuV2:
+                            case FinalBinaryType::Vst3: d = LogConfig::Destination::File; break;
+                            case FinalBinaryType::Standalone:
+                            case FinalBinaryType::Packager:
+                            case FinalBinaryType::PresetEditor:
+                            case FinalBinaryType::WindowsInstaller:
+                            case FinalBinaryType::WindowsUninstaller:
+                            case FinalBinaryType::DocsGenerator:
+                            case FinalBinaryType::Tests: d = LogConfig::Destination::Stderr; break;
+                        }
                     }
                     d;
                 })});

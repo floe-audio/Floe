@@ -38,7 +38,6 @@ constexpr UiSize32 k_invalid_ui_size = {0, 0};
 struct ClapEntrySource {
     clap_plugin_entry const* entry; // always valid after construction
     Optional<LibraryHandle> library_handle; // set only when loaded from DSO
-    char const* plugin_path {}; // null-terminated path for entry->init()
 };
 
 struct Standalone;
@@ -538,7 +537,6 @@ static ErrorCodeOr<ClapEntrySource> LoadClapEntry(Optional<String> dso_path, Are
     return ClapEntrySource {
         .entry = entry,
         .library_handle = handle,
-        .plugin_path = NullTerminated(*dso_path, arena),
     };
 }
 
@@ -553,7 +551,8 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
         if (!success && entry_source.library_handle) UnloadLibrary(*entry_source.library_handle);
     };
 
-    entry_source.entry->init(entry_source.plugin_path);
+    entry_source.entry->init(entry_source.library_handle.HasValue() ? k_clap_init_log_to_stderr_sentinel
+                                                                    : nullptr);
     DEFER {
         if (!success) entry_source.entry->deinit();
     };
