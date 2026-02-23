@@ -17,6 +17,7 @@
 #include <pugl/stub.h>
 
 #include "os/misc.hpp"
+#include "utils/cli_arg_parse.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 #include "utils/logger/logger.hpp"
 
@@ -29,10 +30,16 @@
 
 constexpr UiSize32 k_invalid_ui_size = {0, 0};
 
-inline auto Factory() { return (clap_plugin_factory const*)clap_entry.get_factory(CLAP_PLUGIN_FACTORY_ID); }
+struct ClapEntrySource {
+    clap_plugin_entry const* entry; // always valid after construction
+    Optional<LibraryHandle> library_handle; // set only when loaded from DSO
+    char const* plugin_path {}; // null-terminated path for entry->init()
+};
 
 struct Standalone {
-    Standalone() : plugin(*Factory()->create_plugin(Factory(), &host, g_plugin_info.id)) {
+    Standalone(clap_plugin_factory const* factory, bool is_external_plugin)
+        : is_external_plugin(is_external_plugin)
+        , plugin(*factory->create_plugin(factory, &host, g_plugin_info.id)) {
         plugin_created = true;
     }
 
@@ -127,6 +134,7 @@ struct Standalone {
             },
     };
 
+    bool is_external_plugin;
     u64 main_thread_id {CurrentThreadId()};
     Atomic<u64> audio_thread_id {};
     Atomic<bool> callback_requested {false};
@@ -473,19 +481,39 @@ inline ErrorCodeCategory const& ErrorCategoryForEnum(StandaloneError) { return s
 
 extern clap_plugin_entry const clap_entry;
 
-static ErrorCodeOr<void> Main() {
-    FixedSizeAllocator<Kb(1)> allocator {nullptr};
+static ErrorCodeOr<ClapEntrySource> LoadClapEntry(Optional<String> dso_path, ArenaAllocator& arena) {
+    if (!dso_path) {
+        return ClapEntrySource {
+            .entry = &clap_entry,
+            .library_handle = k_nullopt,
+        };
+    }
 
-    GlobalInit({
-        .init_error_reporting = true,
-        .set_main_thread = true,
-    });
-    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+    auto const handle = TRY(LoadLibrary(({
+        auto p = TRY(AbsolutePath(arena, *dso_path));
+        if constexpr (IS_MACOS)
+            p = path::JoinAppendResizeAllocation(arena, p, Array {"Contents/MacOS/Floe"_s});
+        p;
+    })));
 
-    clap_entry.init("");
-    DEFER { clap_entry.deinit(); };
+    auto const entry = (clap_plugin_entry const*)TRY(SymbolFromLibrary(handle, "clap_entry"));
+    ASSERT(entry);
 
-    Standalone standalone {};
+    return ClapEntrySource {
+        .entry = entry,
+        .library_handle = handle,
+        .plugin_path = NullTerminated(*dso_path, arena),
+    };
+}
+
+static ErrorCodeOr<void> Run(ClapEntrySource const& entry_source) {
+    entry_source.entry->init(entry_source.plugin_path);
+    DEFER { entry_source.entry->deinit(); };
+
+    auto const factory = (clap_plugin_factory const*)entry_source.entry->get_factory(CLAP_PLUGIN_FACTORY_ID);
+    if (!factory) return ErrorCode {StandaloneError::PluginInterfaceError};
+
+    Standalone standalone {factory, entry_source.library_handle.HasValue()};
 
     standalone.plugin.init(&standalone.plugin);
     DEFER { standalone.plugin.destroy(&standalone.plugin); };
@@ -613,12 +641,54 @@ static ErrorCodeOr<void> Main() {
     return k_success;
 }
 
-int main(int, char**) {
-    auto _ = EnterLogicalMainThread();
-    auto const o = Main();
+static int Main(ArgsCstr args) {
+    enum class CommandLineArgId : u32 {
+        ClapPluginPath,
+        Count,
+    };
+
+    auto constexpr k_cli_arg_defs = MakeCommandLineArgDefs<CommandLineArgId>({
+        {
+            .id = (u32)CommandLineArgId::ClapPluginPath,
+            .key = "clap-plugin-path",
+            .description = "Path to an external CLAP plugin to load instead of the built-in one",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
+    });
+
+    ArenaAllocator arena {PageAllocator::Instance()};
+    auto const cli_args_outcome = ParseCommandLineArgsStandard(arena, args, k_cli_arg_defs);
+    if (cli_args_outcome.HasError()) return cli_args_outcome.Error();
+    auto const cli_args = cli_args_outcome.ReleaseValue();
+
+    GlobalInit({
+        .init_error_reporting = true,
+        .set_main_thread = true,
+    });
+    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+
+    auto const entry_source_outcome =
+        LoadClapEntry(cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(), arena);
+    if (entry_source_outcome.HasError()) {
+        LogError(ModuleName::Standalone, "Failed to load CLAP plugin: {}", entry_source_outcome.Error());
+        return 1;
+    }
+    auto const entry_source = entry_source_outcome.Value();
+    DEFER {
+        if (entry_source.library_handle) UnloadLibrary(*entry_source.library_handle);
+    };
+
+    auto const o = Run(entry_source);
     if (o.HasError()) {
         LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());
         return 1;
     }
     return 0;
+}
+
+int main(int argc, char** argv) {
+    auto _ = EnterLogicalMainThread();
+    return Main({argc, argv});
 }
