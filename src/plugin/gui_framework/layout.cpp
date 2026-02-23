@@ -308,7 +308,8 @@ static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id, u32 dim) {
         max_child_size = Max(max_child_size, child_size);
         child_id = child->next_sibling;
     }
-    return max_child_size2 + max_child_size + (num_lines > 1 ? (f32)(num_lines - 1) * item->contents_gap[dim] : 0);
+    return max_child_size2 + max_child_size +
+           (num_lines > 1 ? (f32)(num_lines - 1) * item->contents_gap[dim] : 0);
 }
 
 static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id, u32 dim) {
