@@ -294,6 +294,7 @@ static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id, u32 dim) {
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto max_child_size2 = 0.0f;
+    u32 num_lines = 1;
     auto child_id = item->first_child;
     while (child_id != k_invalid_id) {
         auto const child = GetItem(ctx, child_id);
@@ -301,12 +302,13 @@ static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id, u32 dim) {
         if (child->flags & flags::LineBreak) {
             max_child_size2 += max_child_size;
             max_child_size = 0;
+            ++num_lines;
         }
         auto const child_size = rect[dim] + rect[size_dim] + child->margins_ltrb[size_dim];
         max_child_size = Max(max_child_size, child_size);
         child_id = child->next_sibling;
     }
-    return max_child_size2 + max_child_size;
+    return max_child_size2 + max_child_size + (num_lines > 1 ? (f32)(num_lines - 1) * item->contents_gap[dim] : 0);
 }
 
 static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id, u32 dim) {
@@ -401,6 +403,14 @@ static void CalcSize(Context& ctx, Id const id, u32 const dim) {
             // NoLayout
             cal_size = MaxChildSize(ctx, id, dim);
             break;
+    }
+
+    // For wrapping layouts, cross-axis padding is not added to children's margins (it's applied during
+    // arrangement instead), so we need to include it in the container's calculated size.
+    {
+        auto const is_wrapping = (item->flags & flags::Wrap) && (item->flags & flags::AutoLayout);
+        if (is_wrapping && dim != item_layout_dim)
+            cal_size += item->container_padding_ltrb[dim] + item->container_padding_ltrb[size_dim];
     }
 
     // Set our output data size. Will be used by parent calc_size procedures., and by arrange procedures.
@@ -642,7 +652,7 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
         Item* child = GetItem(ctx, child_id);
         if (child->flags & flags::LineBreak) {
             ArrangeOverlaySqueezedRange(ctx, dim, start_child_id, child_id, offset, need_size);
-            offset += need_size;
+            offset += need_size + item->contents_gap[dim];
             start_child_id = child_id;
             need_size = 0;
         }
