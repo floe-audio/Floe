@@ -238,7 +238,7 @@ Box DoMenuParameter(GuiState& g,
                   .layout {
                       .size = {fill_parent ? layout::k_fill_parent : layout::k_hug_contents,
                                layout::k_hug_contents},
-                      .contents_gap = LiveWw(UiSizeId::ParamComponentLabelGapY),
+                      .contents_gap = LiveWw(UiSizeId::ParamElementMenuLabelGap),
                       .contents_direction = layout::Direction::Column,
                       .contents_align = layout::Alignment::Start,
                   },
@@ -269,8 +269,7 @@ Box DoMenuParameter(GuiState& g,
                   .text_justification = TextJustification::CentredLeft,
                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
-                      .size = {menu_btn_width,
-                               k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f},
+                      .size = {menu_btn_width, TextButtonHeight()},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
@@ -359,6 +358,7 @@ Box DoKnobParameter(GuiState& g,
                                      .id_extra = param.info.id,
                                      .layout {
                                          .size = layout::k_hug_contents,
+                                         .contents_gap = LiveWw(UiSizeId::ParamElementKnobLabelGap),
                                          .contents_direction = layout::Direction::Column,
                                          .contents_align = layout::Alignment::Start,
                                      },
@@ -443,17 +443,16 @@ Box DoKnobParameter(GuiState& g,
                                          .parent = container,
                                          .layout {
                                              .size = {knob_width, knob_height},
-                                             .margins = {.b = LiveWw(UiSizeId::ParamComponentLabelGapY)},
                                          },
                                      }))) {
         if (options.peak_meter) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
             auto const knob_width_px = window_r.w;
-            auto const peak_meter_width_px = LivePx(UiSizeId::LayerPeakMeterW);
+            auto const peak_meter_width_px = LivePx(UiSizeId::ParamElementKnobPeakMeterW);
             auto const peak_meter_height_px =
-                knob_width_px * LiveRaw(UiSizeId::KnobPeakMeterHeightPercent) / 100.0f;
+                knob_width_px * LiveRaw(UiSizeId::ParamElementKnobPeakMeterHeightPercent) / 100.0f;
             auto const peak_meter_y_offs =
-                knob_width_px * LiveRaw(UiSizeId::KnobPeakMeterYOffsetPercent) / 100.0f;
+                knob_width_px * LiveRaw(UiSizeId::ParamElementKnobPeakMeterYOffsetPercent) / 100.0f;
 
             Rect const peak_meter_r {
                 .x = window_r.Centre().x - (peak_meter_width_px / 2),
@@ -517,7 +516,7 @@ Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
                       ButtonParameterComponentOptions const& options) {
-    auto const height = LiveWw(UiSizeId::PageHeadingHeight);
+    auto const height = TextButtonHeight();
     bool const state = param.BoolValue();
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
@@ -590,7 +589,7 @@ Box DoIntParameter(GuiState& g,
                                      .id_extra = (u64)param.info.id,
                                      .layout {
                                          .size = layout::k_hug_contents,
-                                         .contents_gap = LiveWw(UiSizeId::ParamIntComponentGapY),
+                                         .contents_gap = LiveWw(UiSizeId::ParamElementMenuLabelGap),
                                          .contents_direction = layout::Direction::Column,
                                          .contents_align = layout::Alignment::Start,
                                      },
@@ -620,8 +619,7 @@ Box DoIntParameter(GuiState& g,
                   .text_justification = TextJustification::CentredLeft,
                   .text_overflow = TextOverflowType::AllowOverflow,
                   .layout {
-                      .size = {layout::k_fill_parent,
-                               k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f},
+                      .size = {layout::k_fill_parent, TextButtonHeight()},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;

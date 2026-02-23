@@ -22,22 +22,21 @@
 #include "processor/processor.hpp"
 
 static void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_index) {
-    auto& imgui = g.imgui;
-    auto layer_obj = &g.engine.Layer(layer_index);
-    auto const right_click_id = imgui.MakeId("inst-selector-popup");
+    auto const& layer_obj = g.engine.Layer(layer_index);
+    auto const right_click_id = g.imgui.MakeId("inst-selector-popup");
 
     if (auto const r = BoxRect(g.builder, selector_button)) {
-        auto const window_r = imgui.ViewportRectToWindowRect(*r);
-        if (imgui.ButtonBehaviour(window_r,
-                                  selector_button.imgui_id,
-                                  {
-                                      .mouse_button = MouseButton::Right,
-                                      .event = MouseButtonEvent::Up,
-                                  })) {
-            imgui.OpenPopupMenu(right_click_id, selector_button.imgui_id);
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+        if (g.imgui.ButtonBehaviour(window_r,
+                                    selector_button.imgui_id,
+                                    {
+                                        .mouse_button = MouseButton::Right,
+                                        .event = MouseButtonEvent::Up,
+                                    })) {
+            g.imgui.OpenPopupMenu(right_click_id, selector_button.imgui_id);
         }
 
-        if (imgui.IsPopupMenuOpen(right_click_id))
+        if (g.imgui.IsPopupMenuOpen(right_click_id))
             DoBoxViewport(
                 g.builder,
                 {
@@ -55,7 +54,7 @@ static void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 la
                                          root,
                                          {
                                              .text = "Unload instrument"_s,
-                                             .mode = layer_obj->instrument_id.tag == InstrumentType::None
+                                             .mode = layer_obj.instrument_id.tag == InstrumentType::None
                                                          ? MenuItemOptions::Mode::Disabled
                                                          : MenuItemOptions::Mode::Active,
                                              .no_icon_gap = true,
@@ -72,27 +71,26 @@ static void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 la
 }
 
 static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box root) {
-    auto layer_obj = &g.engine.Layer(layer_index);
-    auto const inst_name = layer_obj->InstName();
+    auto& layer_obj = g.engine.Layer(layer_index);
+    auto const inst_name = layer_obj.InstName();
 
     // Selector row container
-    auto const selector_box =
-        DoBox(g.builder,
-              {
-                  .parent = root,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding {.r = LiveWw(UiSizeId::LayerInstSelectorPadR)},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
+    auto const selector_box = DoBox(g.builder,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_padding {.r = LiveWw(UiSizeId::LayerInstSelectorPadR)},
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                    });
 
     // Custom background drawing
     if (auto const r = BoxRect(g.builder, selector_box)) {
         bool should_highlight = false;
-        if (layer_obj->UsesTimbreLayering() &&
+        if (layer_obj.UsesTimbreLayering() &&
             (g.timbre_slider_is_held ||
              CcControllerMovedParamRecently(g.engine.processor, ParamIndex::MasterTimbre))) {
             should_highlight = true;
@@ -119,8 +117,8 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
 
     // Instrument name button (icon + text)
     Optional<TextureHandle> icon_tex {};
-    if (layer_obj->instrument_id.tag == InstrumentType::Sampler) {
-        auto sample_inst_id = layer_obj->instrument_id.Get<sample_lib::InstrumentId>();
+    if (layer_obj.instrument_id.tag == InstrumentType::Sampler) {
+        auto sample_inst_id = layer_obj.instrument_id.Get<sample_lib::InstrumentId>();
         auto imgs = GetLibraryImages(g.library_images,
                                      g.imgui,
                                      sample_inst_id.library,
@@ -141,7 +139,7 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
             },
             .tooltip = FunctionRef<String()> {[&]() -> String {
-                switch (layer_obj->instrument.tag) {
+                switch (layer_obj.instrument.tag) {
                     case InstrumentType::None: return "Select the instrument for this layer"_s;
                     case InstrumentType::WaveformSynth:
                         return fmt::Format(
@@ -149,7 +147,7 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
                             "Current instrument: {}\nChange or remove the instrument for this layer",
                             inst_name);
                     case InstrumentType::Sampler: {
-                        auto const& sample = layer_obj->instrument.GetFromTag<InstrumentType::Sampler>();
+                        auto const& sample = layer_obj.instrument.GetFromTag<InstrumentType::Sampler>();
                         return fmt::Format(
                             g.scratch_arena,
                             "Change or remove the instrument for this layer\n\nCurrent instrument: {} from {} by {}.{}{}",
@@ -197,8 +195,7 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {layout::k_fill_parent,
-                           k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f},
+                  .size = {layout::k_fill_parent, TextButtonHeight()},
                   .margins {.l = icon_tex ? 0.0f : LiveWw(UiSizeId::MenuTextMarginL)},
               },
           });
@@ -225,7 +222,7 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
 
     auto const make_browser_context = [&]() -> InstBrowserContext {
         return {
-            .layer = *layer_obj,
+            .layer = layer_obj,
             .sample_library_server = g.shared_engine_systems.sample_library_server,
             .library_images = g.library_images,
             .engine = g.engine,
@@ -298,17 +295,16 @@ static void DoMuteSoloButton(GuiState& g, Box parent, DescribedParamValue const&
 static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
     auto& params = g.engine.processor.main_params;
 
-    auto const container =
-        DoBox(g.builder,
-              {
-                  .parent = root,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_gap = LiveWw(UiSizeId::LayerMixerRowGap),
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Middle,
-                  },
-              });
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                         .contents_gap = LiveWw(UiSizeId::LayerMixerRowGap),
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Middle,
+                                     },
+                                 });
 
     // Volume knob with peak meter
     auto const& layer_processor = g.engine.processor.layer_processors[layer_index];
@@ -324,16 +320,16 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
 
     // Mute/Solo buttons
     {
-        auto const mute_solo_container = DoBox(
-            g.builder,
-            {
-                .parent = container,
-                .layout {
-                    .size = {LiveWw(UiSizeId::LayerMuteSoloW), LiveWw(UiSizeId::LayerMuteSoloH)},
-                    .contents_direction = layout::Direction::Row,
-                    .contents_align = layout::Alignment::Start,
-                },
-            });
+        auto const mute_solo_container =
+            DoBox(g.builder,
+                  {
+                      .parent = container,
+                      .layout {
+                          .size = {LiveWw(UiSizeId::LayerMuteSoloW), LiveWw(UiSizeId::LayerMuteSoloH)},
+                          .contents_direction = layout::Direction::Row,
+                          .contents_align = layout::Alignment::Start,
+                      },
+                  });
 
         // Background and divider
         if (auto const r = BoxRect(g.builder, mute_solo_container)) {
@@ -460,8 +456,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                   .text_justification = TextJustification::Centred,
                   .parent_dictates_hot_and_active = true,
                   .layout {
-                      .margins {.lr = LiveWw(UiSizeId::LayerTabPadLR),
-                                .tb = LiveWw(UiSizeId::LayerTabPadTB)},
+                      .margins {.lr = LiveWw(UiSizeId::LayerTabPadLR), .tb = LiveWw(UiSizeId::LayerTabPadTB)},
                   },
               });
 
@@ -472,8 +467,8 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             if (auto const r = BoxRect(g.builder, tab_btn)) {
                 auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
                 auto const dot_size = k_font_icons_size * 0.40f;
-                auto const dot_centre = f32x2 {window_r.x + (LivePx(UiSizeId::LayerTabDotOffsetX) / 2),
-                                               window_r.Centre().y};
+                auto const dot_centre =
+                    f32x2 {window_r.x + (LivePx(UiSizeId::LayerTabDotOffsetX) / 2), window_r.Centre().y};
                 auto const col = is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidText);
                 g.imgui.draw_list->AddCircleFilled(dot_centre, dot_size / 2, col);
             }
@@ -569,33 +564,31 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     Optional<f32> new_val {};
 
     // Text button showing current mode
-    auto const menu_btn =
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = actual_loop_behaviour.value.short_name,
-                  .text_colours =
-                      ColSet {
-                          .base = LiveColStruct(UiColMap::MidText),
-                          .hot = LiveColStruct(UiColMap::MidTextHot),
-                          .active = LiveColStruct(UiColMap::MidTextHot),
-                      },
-                  .text_justification = TextJustification::CentredLeft,
-                  .text_overflow = TextOverflowType::ShowDotsOnRight,
-                  .layout {
-                      .size = {layout::k_fill_parent,
-                               k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f},
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      return fmt::Format(g.scratch_arena,
-                                         "{}: {}\n\n{} {}",
-                                         param.info.name,
-                                         actual_loop_behaviour.value.name,
-                                         actual_loop_behaviour.value.description,
-                                         actual_loop_behaviour.reason);
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
+    auto const menu_btn = DoBox(g.builder,
+                                {
+                                    .parent = row,
+                                    .text = actual_loop_behaviour.value.short_name,
+                                    .text_colours =
+                                        ColSet {
+                                            .base = LiveColStruct(UiColMap::MidText),
+                                            .hot = LiveColStruct(UiColMap::MidTextHot),
+                                            .active = LiveColStruct(UiColMap::MidTextHot),
+                                        },
+                                    .text_justification = TextJustification::CentredLeft,
+                                    .text_overflow = TextOverflowType::ShowDotsOnRight,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, TextButtonHeight()},
+                                    },
+                                    .tooltip = FunctionRef<String()> {[&]() -> String {
+                                        return fmt::Format(g.scratch_arena,
+                                                           "{}: {}\n\n{} {}",
+                                                           param.info.name,
+                                                           actual_loop_behaviour.value.name,
+                                                           actual_loop_behaviour.value.description,
+                                                           actual_loop_behaviour.reason);
+                                    }},
+                                    .button_behaviour = imgui::ButtonConfig {},
+                                });
 
     // Popup menu
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
@@ -607,7 +600,7 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
             g.builder,
             {
                 // This is a bit weird: it seems using a [=] capture-by-value here for the lambda results in
-                // the lambda not being a trvially copyable type for some reason. To work around this, we add
+                // the lambda not being a trivially copyable type for some reason. To work around this, we add
                 // this verbose lambda capture list.
                 .run =
                     [desired_loop_mode = desired_loop_mode,
@@ -1395,15 +1388,14 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Velocity graph
     {
-        auto const velo_box =
-            DoBox(g.builder,
-                  {
-                      .parent = page,
-                      .layout {
-                          .size = {layout::k_fill_parent, LiveWw(UiSizeId::PlayVeloGraphH)},
-                          .margins {.lr = row_padding_lr},
-                      },
-                  });
+        auto const velo_box = DoBox(g.builder,
+                                    {
+                                        .parent = page,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, LiveWw(UiSizeId::PlayVeloGraphH)},
+                                            .margins {.lr = row_padding_lr},
+                                        },
+                                    });
 
         if (auto const r = BoxRect(g.builder, velo_box)) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
