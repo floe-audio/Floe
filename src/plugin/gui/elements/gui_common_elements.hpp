@@ -24,6 +24,7 @@ struct MidPanelPrevNextButtonsResult {
     bool next_fired;
 };
 struct MidPanelPrevNextButtonsOptions {
+    bool greyed_out = false;
     String prev_tooltip {"Previous"};
     String next_tooltip {"Next"};
 };
@@ -31,6 +32,7 @@ MidPanelPrevNextButtonsResult
 DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options = {});
 
 struct MidPanelShuffleButtonOptions {
+    bool greyed_out = false;
     String tooltip {"Shuffle"};
 };
 Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options = {});

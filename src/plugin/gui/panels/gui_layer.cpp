@@ -547,7 +547,7 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                     });
 }
 
-static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
+void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     auto& params = g.engine.processor.main_params;
     auto const param = params.DescribedValue(layer.index, LayerParamIndex::LoopMode);
     auto const desired_loop_mode = param.IntValue<param_values::LoopMode>();

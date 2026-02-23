@@ -318,13 +318,15 @@ void GuiUpdate(GuiState& g) {
     DEFER { MacroGuiEndFrame(g); };
 
     {
-        auto const top_h = Round(LivePx(UiSizeId::TopHeight));
-        auto const bot_h = Round(LivePx(UiSizeId::BotPanelHeight));
-        auto const mid_h = frame_input.window_size.height - top_h - bot_h;
+        Rect remaining {.pos = 0, .size = frame_input.window_size.ToFloat2()};
+        auto const top = rect_cut::CutTop(remaining, Round(LivePx(UiSizeId::TopHeight)));
+        auto const bot = rect_cut::CutBottom(remaining, Round(LivePx(UiSizeId::BotPanelHeight)));
+        auto const left = rect_cut::CutLeft(remaining, Round(LivePx(UiSizeId::TabBarWidth)));
 
-        TopPanel(g, {.xywh {0, 0, imgui.CurrentVpWidth(), top_h}}, frame_context);
-        MidPanel(g, {.xywh {0, top_h, imgui.CurrentVpWidth(), mid_h}}, frame_context);
-        BotPanel(g, {.xywh {0, top_h + mid_h, imgui.CurrentVpWidth(), bot_h}});
+        TopPanel(g, top, frame_context);
+        MidPanelTabs(g, left);
+        MidPanel(g, remaining, frame_context);
+        BotPanel(g, bot);
     }
 
     DoResizeCorner(g);

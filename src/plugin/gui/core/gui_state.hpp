@@ -22,6 +22,7 @@
 #include "gui/panels/gui_layer.hpp"
 #include "gui/panels/gui_library_dev_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
+#include "gui/panels/gui_mid_panel.hpp"
 #include "gui/panels/gui_prefs_panel_state.hpp"
 #include "gui/panels/gui_preset_browser.hpp"
 #include "gui/panels/gui_save_preset_panel.hpp"
@@ -67,6 +68,7 @@ struct GuiState {
     LibraryDevPanelState library_dev_panel_state {};
     bool show_new_version_indicator {};
     BottomPanelState bottom_panel_state {};
+    MidPanelState mid_panel_state {};
     MacrosGuiState macros_gui_state {};
     f32x2 curve_map_add_point_click_pos {};
 

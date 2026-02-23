@@ -292,7 +292,7 @@ Box DoMenuParameter(GuiState& g,
                           .viewport_config = k_default_popup_menu_viewport,
                       });
 
-    auto const arrows = DoMidPanelPrevNextButtons(g.builder, row);
+    auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
     if (arrows.prev_fired || arrows.next_fired) {
         auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
         if (val < param.info.linear_range.min) val = param.info.linear_range.max;
@@ -703,7 +703,7 @@ Box DoIntParameter(GuiState& g,
         OverlayMacroDestinationRegion(g, window_r, param.info.index);
     }
 
-    auto const arrows = DoMidPanelPrevNextButtons(g.builder, row);
+    auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
     if (arrows.prev_fired || arrows.next_fired) {
         auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
         val = Clamp(val, param.info.linear_range.min, param.info.linear_range.max);

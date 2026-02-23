@@ -139,8 +139,10 @@ void DoEnvelopeGui(GuiState& g,
 
     auto const handle_size = GuiIo().WwToPixels(30.8f);
 
-    imgui.PushId(SourceLocationHash() + layer.index);
-    DEFER { imgui.PopId(); };
+    auto id = HashInit();
+    HashUpdate(id, SourceLocationHash());
+    HashUpdate(id, layer.index);
+    HashUpdate(id, ToInt(adsr_layer_params[0]));
 
     imgui.BeginViewport(
         {
@@ -152,6 +154,7 @@ void DoEnvelopeGui(GuiState& g,
                 },
             .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
         },
+        id,
         viewport_r,
         "env-container");
     DEFER { imgui.EndViewport(); };

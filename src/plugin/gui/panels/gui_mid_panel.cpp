@@ -1,26 +1,21 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <IconsFontAwesome6.h>
+#include "gui_mid_panel.hpp"
 
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_common_elements.hpp"
-#include "gui/panels/gui_effects.hpp"
-#include "gui/panels/gui_inst_browser.hpp"
-#include "gui/panels/gui_ir_browser.hpp"
-#include "gui/panels/gui_layer.hpp"
+#include "gui/panels/gui_mid_panel_layer.hpp"
 #include "gui_framework/colours.hpp"
-#include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 
-static void DrawBlurredBackground(GuiState& g,
-                                  Rect r,
-                                  Rect clipped_to,
-                                  sample_lib::LibraryIdRef library_id,
-                                  f32 opacity) {
+void DrawMidBlurredBackground(GuiState& g,
+                              Rect r,
+                              Rect clipped_to,
+                              sample_lib::LibraryIdRef library_id,
+                              f32 opacity) {
     auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
 
     if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
@@ -32,8 +27,6 @@ static void DrawBlurredBackground(GuiState& g,
 
         if (imgs.blurred_background) {
             if (auto tex = GuiIo().in.renderer->GetTextureFromImage(imgs.blurred_background)) {
-                // In order to align this blurred image with the overall blurred image, we consider the bounds
-                // of the current viewport (which we assume to contain the overall image).
                 auto const whole_panel_bounds = g.imgui.curr_viewport->bounds;
                 auto const whole_uv =
                     GetMaxUVToMaintainAspectRatio(*imgs.blurred_background, whole_panel_bounds.size);
@@ -71,7 +64,7 @@ static void DrawBlurredBackground(GuiState& g,
     g.imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
 }
 
-static void DoOverlayGradient(imgui::Context const& imgui, Rect r) {
+void DoMidOverlayGradient(imgui::Context const& imgui, Rect r) {
     auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
 
     auto const vtx_idx_0 = imgui.draw_list->vtx_buffer.size;
@@ -107,285 +100,144 @@ static void DoOverlayGradient(imgui::Context const& imgui, Rect r) {
                                                     0);
 }
 
-static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
+void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_id) {
+    auto const r = g.imgui.curr_viewport->unpadded_bounds;
 
-static void DrawMidPanelOverallBackground(GuiState& g, imgui::Context const& imgui) {
-    auto const r = imgui.curr_viewport->unpadded_bounds;
-
-    imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
+    g.imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
 
     if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
-        auto overall_library = LibraryForOverallBackground(g.engine);
-        if (overall_library) {
-            auto imgs = GetLibraryImages(g.library_images,
-                                         g.imgui,
-                                         *overall_library,
-                                         g.shared_engine_systems.sample_library_server,
-                                         LibraryImagesTypes::Backgrounds);
-            if (imgs.background) {
-                auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
-                if (tex) {
-                    imgui.draw_list->AddImageRect(*tex,
-                                                  r,
-                                                  {0, 0},
-                                                  GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
-                }
+        auto imgs = GetLibraryImages(g.library_images,
+                                     g.imgui,
+                                     library_id,
+                                     g.shared_engine_systems.sample_library_server,
+                                     LibraryImagesTypes::Backgrounds);
+        if (imgs.background) {
+            auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
+            if (tex) {
+                g.imgui.draw_list->AddImageRect(*tex,
+                                                r,
+                                                {0, 0},
+                                                GetMaxUVToMaintainAspectRatio(*imgs.background, r.size));
             }
         }
     }
 }
 
-static void DrawLayersContainerBackground(GuiState& g, Rect r) {
-    auto const mid_panel_title_height = LivePx(UiSizeId::MidPanelTitleHeight);
-    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
-
-    auto const layer_width_without_pad = RoundUpToNearestMultiple(r.w, k_num_layers) / k_num_layers;
-
-    auto const overall_lib = LibraryForOverallBackground(g.engine);
-    if (overall_lib)
-        DrawBlurredBackground(g,
-                              r,
-                              r,
-                              *overall_lib,
-                              Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
-
-    auto const layer_opacity = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
-    for (auto const layer_index : Range(k_num_layers)) {
-        if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
-            if (*lib_id == overall_lib) continue;
-            auto const layer_r = Rect {.x = r.x + ((f32)layer_index * layer_width_without_pad),
-                                       .y = r.y,
-                                       .w = layer_width_without_pad,
-                                       .h = r.h}
-                                     .CutTop(mid_panel_title_height);
-            DrawBlurredBackground(g, r, layer_r, *lib_id, layer_opacity);
-        }
-    }
-
-    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
-        DoOverlayGradient(g.imgui, r);
-
-    g.imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
-
-    g.imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                               {r.Right(), r.y + mid_panel_title_height},
-                               LiveCol(UiColMap::MidViewportDivider));
-    for (u32 i = 1; i < k_num_layers; ++i) {
-        auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
-        g.imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
-                                   {x_pos, r.Bottom()},
-                                   LiveCol(UiColMap::MidViewportDivider));
+static String MidPanelTabLabel(MidPanelTab tab) {
+    switch (tab) {
+        case MidPanelTab::All: return "All"_s;
+        case MidPanelTab::Layer1: return "L1"_s;
+        case MidPanelTab::Layer2: return "L2"_s;
+        case MidPanelTab::Layer3: return "L3"_s;
+        case MidPanelTab::Effects: return "FX"_s;
+        case MidPanelTab::Count: PanicIfReached();
     }
 }
 
-static void DrawEffectsContainerBackground(GuiState& g, Rect r) {
-    auto const mid_panel_title_height = LivePx(UiSizeId::MidPanelTitleHeight);
-    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
+void MidPanelTabs(GuiState& g, Rect bounds) {
+    DoBoxViewport(
+        g.builder,
+        {
+            .run =
+                [&](GuiBuilder& builder) {
+                    auto const root =
+                        DoBox(builder,
+                              {
+                                  .background_fill_colours = Col {.c = Col::Background1, .dark_mode = true},
+                                  .layout {
+                                      .size = layout::k_fill_parent,
+                                      .contents_padding = {.lr = 3, .tb = 6},
+                                      .contents_gap = 2,
+                                      .contents_direction = layout::Direction::Column,
+                                      .contents_align = layout::Alignment::Start,
+                                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                  },
+                              });
 
-    auto const overall_lib = LibraryForOverallBackground(g.engine);
-    if (overall_lib)
-        DrawBlurredBackground(g,
-                              r,
-                              r,
-                              *overall_lib,
-                              Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+                    Optional<MidPanelTab> new_tab {};
 
-    DoOverlayGradient(g.imgui, r);
+                    auto const divider = [&](u64 id_extra) {
+                        DoBox(builder,
+                              {
+                                  .parent = root,
+                                  .id_extra = id_extra,
+                                  .background_fill_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                                  .layout {
+                                      .size = {layout::k_fill_parent, 1},
+                                      .margins = {.tb = 3},
+                                  },
+                              });
+                    };
 
-    g.imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
+                    for (auto const i : Range(ToInt(MidPanelTab::Count))) {
+                        auto const tab = (MidPanelTab)i;
 
-    g.imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                               {r.Right(), r.y + mid_panel_title_height},
-                               LiveCol(UiColMap::MidViewportDivider));
-}
+                        if (tab == MidPanelTab::Layer1 || tab == MidPanelTab::Effects) divider((u64)tab);
 
-static void
-DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
-    auto const layer_width_ww = RoundUpToNearestMultiple(LiveWw(UiSizeId::LayerWidth), k_num_layers);
-    auto const total_layer_width_ww = layer_width_ww * k_num_layers;
+                        bool const is_selected = tab == g.mid_panel_state.tab;
 
-    auto const root = DoBox(builder,
-                            {
-                                .parent = parent,
-                                .layout {
-                                    .size = {total_layer_width_ww, layout::k_fill_parent},
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
-
-    if (auto const r = BoxRect(builder, root))
-        DrawLayersContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
-
-    // Title row
-    auto const title_row =
-        DoBox(builder,
-              {
-                  .parent = root,
-                  .layout {
-                      .size = {layout::k_fill_parent, LiveWw(UiSizeId::MidPanelTitleHeight)},
-                      .contents_padding = {.lr = LiveWw(UiSizeId::MidPanelTitleMarginLeft)},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Justify,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
-
-    DoBox(builder,
-          {
-              .parent = title_row,
-              .text = "Layers",
-              .size_from_text = true,
-              .text_colours = LiveColStruct(UiColMap::MidText),
-              .text_justification = TextJustification::CentredLeft,
-          });
-
-    auto const rand_btn = DoMidPanelShuffleButton(builder,
-                                                  title_row,
-                                                  {.tooltip = "Load random instruments for all 3 layers"_s});
-
-    if (rand_btn.button_fired) {
-        for (auto& layer : g.engine.processor.layer_processors) {
-            InstBrowserContext context {
-                .layer = layer,
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            LoadRandomInstrument(context, g.inst_browser_state[layer.index]);
-        }
-    }
-
-    // Layer panels
-    auto const layers_row = DoBox(builder,
+                        auto const btn =
+                            DoBox(builder,
                                   {
                                       .parent = root,
+                                      .id_extra = (u64)tab,
+                                      .background_fill_colours =
+                                          is_selected
+                                              ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
+                                              : Colours {ColSet {
+                                                    .base = Col {.c = Col::None},
+                                                    .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
+                                                    .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
+                                                }},
+                                      .round_background_corners = 0b1111,
+                                      .corner_rounding = 4.0f,
                                       .layout {
-                                          .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          .size = {layout::k_fill_parent, 24},
                                           .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::Middle,
+                                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                       },
+                                      .button_behaviour = imgui::ButtonConfig {},
                                   });
 
-    for (auto const layer_index : Range<u8>(k_num_layers)) {
-        auto const layer_box = DoBox(builder,
-                                     {
-                                         .parent = layers_row,
-                                         .id_extra = layer_index,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                         },
-                                     });
+                        DoBox(builder,
+                              {
+                                  .parent = btn,
+                                  .text = MidPanelTabLabel(tab),
+                                  .size_from_text = true,
+                                  .font = FontType::Heading3,
+                                  .text_colours =
+                                      is_selected ? Colours {LiveColStruct(UiColMap::MidTabTextActive)}
+                                                  : Colours {ColSet {
+                                                        .base = LiveColStruct(UiColMap::MidTabText),
+                                                        .hot = LiveColStruct(UiColMap::MidTabTextHot),
+                                                        .active = LiveColStruct(UiColMap::MidTabTextActive),
+                                                    }},
+                                  .text_justification = TextJustification::Centred,
+                                  .parent_dictates_hot_and_active = true,
+                              });
 
-        DoLayerPanel(g, frame_context, layer_index, layer_box);
-    }
-}
+                        if (btn.button_fired) new_tab = tab;
+                    }
 
-static void
-DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
-    auto const root = DoBox(builder,
-                            {
-                                .parent = parent,
-                                .layout {
-                                    .size = layout::k_fill_parent,
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
-
-    if (auto const r = BoxRect(builder, root))
-        DrawEffectsContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
-
-    // Title row
-    auto const title_row =
-        DoBox(builder,
-              {
-                  .parent = root,
-                  .layout {
-                      .size = {layout::k_fill_parent, LiveWw(UiSizeId::MidPanelTitleHeight)},
-                      .contents_padding = {.lr = LiveWw(UiSizeId::MidPanelTitleMarginLeft)},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Justify,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
-
-    DoBox(builder,
-          {
-              .parent = title_row,
-              .text = "Effects",
-              .size_from_text = true,
-              .text_colours = LiveColStruct(UiColMap::MidText),
-              .text_justification = TextJustification::CentredLeft,
-          });
-
-    auto const rand_btn =
-        DoMidPanelShuffleButton(builder, title_row, {.tooltip = "Randomise all of the effects"_s});
-
-    if (rand_btn.button_fired) {
-        RandomiseAllEffectParameterValues(g.engine.processor);
-        IrBrowserContext ir_context {
-            .sample_library_server = g.shared_engine_systems.sample_library_server,
-            .library_images = g.library_images,
-            .engine = g.engine,
-            .prefs = g.prefs,
-            .notifications = g.notifications,
-            .persistent_store = g.shared_engine_systems.persistent_store,
-            .confirmation_dialog_state = g.confirmation_dialog_state,
-            .frame_context = frame_context,
-        };
-        LoadRandomIr(ir_context, g.ir_browser_state);
-    }
-
-    // Effects content
-    auto const effects_box = DoBox(builder,
-                                   {
-                                       .parent = root,
-                                       .layout {
-                                           .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                       },
-                                   });
-
-    DoEffectsPanel(g, frame_context, effects_box);
+                    if (new_tab) g.mid_panel_state.tab = *new_tab;
+                },
+            .bounds = bounds,
+            .imgui_id = SourceLocationHash(),
+            .viewport_config {
+                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
+            },
+            .debug_name = "MidPanelTabs",
+        });
 }
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
-    DoBoxViewport(g.builder,
-                  {
-                      .run =
-                          [&](GuiBuilder& builder) {
-                              auto const subpanel_gap_ww = LiveWw(UiSizeId::MidPanelSubpanelGapX);
-
-                              auto const root =
-                                  DoBox(builder,
-                                        {
-                                            .layout {
-                                                .size = layout::k_fill_parent,
-                                                .contents_padding =
-                                                    {
-                                                        .lr = subpanel_gap_ww,
-                                                        .tb = LiveWw(UiSizeId::MidPanelSubpanelGapY),
-                                                    },
-                                                .contents_gap = subpanel_gap_ww,
-                                                .contents_direction = layout::Direction::Row,
-                                                .contents_align = layout::Alignment::Start,
-                                            },
-                                        });
-
-                              DoLayersContainer(builder, g, frame_context, root);
-                              DoEffectsContainer(builder, g, frame_context, root);
-                          },
-                      .bounds = bounds,
-                      .imgui_id = SourceLocationHash(),
-                      .viewport_config {
-                          .draw_background =
-                              [&](imgui::Context const& imgui) { DrawMidPanelOverallBackground(g, imgui); },
-                          .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                      },
-                      .debug_name = "MidPanel",
-                  });
+    switch (g.mid_panel_state.tab) {
+        case MidPanelTab::All: MidPanelCombined(g, bounds, frame_context); break;
+        case MidPanelTab::Layer1: MidPanelSingleLayer(g, bounds, frame_context, 0); break;
+        case MidPanelTab::Layer2: MidPanelSingleLayer(g, bounds, frame_context, 1); break;
+        case MidPanelTab::Layer3: MidPanelSingleLayer(g, bounds, frame_context, 2); break;
+        case MidPanelTab::Effects:
+        case MidPanelTab::Count: break;
+    }
 }

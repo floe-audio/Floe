@@ -10,9 +10,9 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-static ColSet MidIconButtonColours() {
+static ColSet MidIconButtonColours(bool greyed_out) {
     return {
-        .base = LiveColStruct(UiColMap::MidIcon),
+        .base = LiveColStruct(greyed_out ? UiColMap::MidIconDimmed : UiColMap::MidIcon),
         .hot = LiveColStruct(UiColMap::MidTextHot),
         .active = LiveColStruct(UiColMap::MidTextOn),
     };
@@ -44,7 +44,12 @@ Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
                  });
 }
 
-static Box DoMidIconButton(GuiBuilder& builder, Box parent, String icon, String tooltip, f32 font_size = 0) {
+static Box DoMidIconButton(GuiBuilder& builder,
+                           Box parent,
+                           String icon,
+                           String tooltip,
+                           bool greyed_out,
+                           f32 font_size = 0) {
     auto const margin = LiveWw(UiSizeId::IconButtonMargin);
     auto const btn = DoBox(builder,
                            {
@@ -63,7 +68,7 @@ static Box DoMidIconButton(GuiBuilder& builder, Box parent, String icon, String 
               .size_from_text = true,
               .font = FontType::Icons,
               .font_size = font_size,
-              .text_colours = MidIconButtonColours(),
+              .text_colours = MidIconButtonColours(greyed_out),
               .text_justification = TextJustification::Centred,
               .parent_dictates_hot_and_active = true,
               .layout {
@@ -77,14 +82,23 @@ MidPanelPrevNextButtonsResult
 DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options) {
     MidPanelPrevNextButtonsResult result {};
 
-    result.prev_fired = DoMidIconButton(builder, row, ICON_FA_CARET_LEFT, options.prev_tooltip).button_fired;
-    result.next_fired = DoMidIconButton(builder, row, ICON_FA_CARET_RIGHT, options.next_tooltip).button_fired;
+    result.prev_fired =
+        DoMidIconButton(builder, row, ICON_FA_CARET_LEFT, options.prev_tooltip, options.greyed_out)
+            .button_fired;
+    result.next_fired =
+        DoMidIconButton(builder, row, ICON_FA_CARET_RIGHT, options.next_tooltip, options.greyed_out)
+            .button_fired;
 
     return result;
 }
 
 Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options) {
-    return DoMidIconButton(builder, row, ICON_FA_SHUFFLE, options.tooltip, k_font_icons_size * 0.82f);
+    return DoMidIconButton(builder,
+                           row,
+                           ICON_FA_SHUFFLE,
+                           options.tooltip,
+                           options.greyed_out,
+                           k_font_icons_size * 0.82f);
 }
 
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options) {
@@ -111,30 +125,20 @@ Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& optio
     auto const height = LiveWw(UiSizeId::PageHeadingHeight);
     auto const width = options.width != 0 ? options.width : LiveWw(UiSizeId::PageHeadingTextOffset);
 
-    return DoBox(
-        builder,
-        {
-            .parent = parent,
-            .text = options.state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
-            .font = FontType::Icons,
-            .font_size = k_font_icons_size * 0.75f,
-            .text_colours =
-                options.state
-                    ? Colours {options.on_colour ? *options.on_colour : LiveColStruct(UiColMap::MidTextOn)}
-                    : (options.greyed_out ? Colours {ColSet {
-                                                .base = LiveColStruct(UiColMap::MidTextDimmed),
-                                                .hot = LiveColStruct(UiColMap::MidIcon),
-                                                .active = LiveColStruct(UiColMap::MidTextOn),
-                                            }}
-                                          : Colours {ColSet {
-                                                .base = LiveColStruct(UiColMap::MidIcon),
-                                                .hot = LiveColStruct(UiColMap::MidIcon),
-                                                .active = LiveColStruct(UiColMap::MidTextOn),
-                                            }}),
-            .text_justification = options.justify,
-            .parent_dictates_hot_and_active = options.parent_dictates_hot_and_active,
-            .layout {
-                .size = {width, height},
-            },
-        });
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .text = options.state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
+                     .font = FontType::Icons,
+                     .font_size = k_font_icons_size * 0.75f,
+                     .text_colours = options.state
+                                         ? Colours {options.on_colour ? *options.on_colour
+                                                                      : LiveColStruct(UiColMap::MidTextOn)}
+                                         : MidIconButtonColours(options.greyed_out),
+                     .text_justification = options.justify,
+                     .parent_dictates_hot_and_active = options.parent_dictates_hot_and_active,
+                     .layout {
+                         .size = {width, height},
+                     },
+                 });
 }

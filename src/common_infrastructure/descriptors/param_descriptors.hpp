@@ -1041,7 +1041,7 @@ consteval auto CreateParams() {
     };
 
     constexpr String k_macro_tooltip =
-        "A macro that can be assigned to any parameter in the instrument. The macro will affect all parameters that are assigned to it.";
+        "A macro that can be assigned to any parameter in the plugin. The macro will affect all parameters that are assigned to it.";
 
     mp(Macro1) = Args {
         .id = id(IdRegion::Master, 101), // never change
