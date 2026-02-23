@@ -96,7 +96,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                                 .layout {
                                     .size = layout::k_fill_parent,
                                     .contents_padding = {.lrtb = k_default_spacing},
-                                    .contents_gap = {8, 0},
+                                    .contents_gap = {8, 8},
                                     .contents_direction = layout::Direction::Row,
                                     .contents_multiline = true,
                                     .contents_align = layout::Alignment::Start,

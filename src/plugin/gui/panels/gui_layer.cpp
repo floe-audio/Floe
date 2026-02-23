@@ -23,7 +23,7 @@
 
 static void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_index) {
     auto const& layer_obj = g.engine.Layer(layer_index);
-    auto const right_click_id = g.imgui.MakeId("inst-selector-popup");
+    auto const right_click_id = SourceLocationHash() + layer_index;
 
     if (auto const r = BoxRect(g.builder, selector_button)) {
         auto const window_r = g.imgui.ViewportRectToWindowRect(*r);

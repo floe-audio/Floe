@@ -496,18 +496,32 @@ Box DoKnobParameter(GuiState& g,
         }
     }
 
-    if (options.label)
-        DoBox(
-            g.builder,
-            {
-                .parent = container,
-                .text = options.override_label.size ? options.override_label : param.info.gui_label,
-                .text_colours = Col {.c = options.greyed_out ? Col::Overlay0 : Col::Text, .dark_mode = true},
-                .text_justification = TextJustification::Centred,
-                .layout {
-                    .size = {knob_width, k_font_body_size},
-                },
-            });
+    if (options.label) {
+        auto const label_colours = [&]() -> Colours {
+            switch (options.style_system) {
+                case GuiStyleSystem::MidPanel: {
+                    return options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                              : Colours {LiveColStruct(UiColMap::MidText)};
+                }
+                case GuiStyleSystem::TopBottomPanels:
+                case GuiStyleSystem::Overlay: {
+                    return Col {.c = options.greyed_out ? Col::Overlay0 : Col::Text, .dark_mode = true};
+                }
+            }
+            Panic("Invalid style system");
+        }();
+
+        DoBox(g.builder,
+              {
+                  .parent = container,
+                  .text = options.override_label.size ? options.override_label : param.info.gui_label,
+                  .text_colours = label_colours,
+                  .text_justification = TextJustification::Centred,
+                  .layout {
+                      .size = {knob_width, k_font_body_size},
+                  },
+              });
+    }
 
     return container;
 }
@@ -541,7 +555,9 @@ Box DoButtonParameter(GuiState& g,
               });
 
     // Toggle icon.
-    DoToggleIcon(g.builder, container, {.state = state, .greyed_out = options.greyed_out});
+    DoToggleIcon(g.builder,
+                 container,
+                 {.state = state, .greyed_out = options.greyed_out, .on_colour = options.on_colour});
 
     // Text label.
     DoBox(g.builder,

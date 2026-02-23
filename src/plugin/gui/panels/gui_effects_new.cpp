@@ -99,7 +99,7 @@ static void DoKnobJoiningLine(GuiState& g, Box knob1, Box knob2) {
             auto const wr2 = g.imgui.ViewportRectToWindowRect(*r2);
             auto const thickness = LivePx(UiSizeId::FXKnobJoiningLineThickness);
             auto const pad = LivePx(UiSizeId::FXKnobJoiningLinePadLR);
-            auto const y = wr1.CentreY() - (thickness / 2);
+            auto const y = wr1.CentreY() - (thickness / 2) - LivePx(UiSizeId::FXKnobJoiningLineYOffs);
             g.imgui.draw_list->AddLine({wr1.Right() + pad, y},
                                        {wr2.x - pad, y},
                                        LiveCol(UiColMap::FXKnobJoiningLine),
@@ -131,31 +131,40 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
                                   });
 
     // Heading button
-    auto const heading_btn =
-        DoBox(g.builder,
-              {
-                  .parent = master_row,
-                  .text = name,
-                  .size_from_text = true,
-                  .size_from_text_preserve_height = true,
-                  .text_colours =
-                      ColSet {
-                          .base = LiveColStruct(UiColMap::MidText),
-                          .hot = LiveColStruct(UiColMap::MidText),
-                          .active = LiveColStruct(UiColMap::MidText),
-                      },
-                  .text_justification = TextJustification::CentredLeft,
-                  .background_fill_colours = LiveColStruct(cols.back),
-                  .round_background_corners = 0b0010,
-                  .layout {
-                      .size = {1, LiveWw(UiSizeId::FXHeadingH)},
-                      .margins {.l = LiveWw(UiSizeId::FXHeadingL), .r = LiveWw(UiSizeId::FXHeadingR)},
+    auto const heading_btn = DoBox(g.builder,
+                                   {
+                                       .parent = master_row,
+                                       .background_fill_colours = LiveColStruct(cols.back),
+                                       .round_background_corners = 0b0010,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                           .contents_padding {.lr = LiveWw(UiSizeId::FXHeadingTextPadLR)},
+                                       },
+                                       .button_behaviour = imgui::ButtonConfig {},
+                                   });
+
+    // Heading button inner (text)
+    DoBox(g.builder,
+          {
+              .parent = heading_btn,
+              .text = name,
+              .size_from_text = true,
+              .size_from_text_preserve_height = true,
+              .text_colours =
+                  ColSet {
+                      .base = LiveColStruct(UiColMap::MidText),
+                      .hot = LiveColStruct(UiColMap::MidText),
+                      .active = LiveColStruct(UiColMap::MidText),
                   },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      return fmt::Format(g.scratch_arena, "{}", k_effect_info[ToInt(fx.type)].description);
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
+              .text_justification = TextJustification::CentredLeft,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {1, LiveWw(UiSizeId::FXHeadingH)},
+              },
+              .tooltip = FunctionRef<String()> {[&]() -> String {
+                  return fmt::Format(g.scratch_arena, "{}", k_effect_info[ToInt(fx.type)].description);
+              }},
+          });
 
     // Extras container (for compressor auto-gain, delay sync, etc.)
     auto const extras = DoBox(g.builder,
@@ -173,11 +182,11 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
         DoBox(g.builder,
               {
                   .parent = master_row,
-                  .text = ICON_FA_XMARK ""_s,
+                  .text = String {ICON_FA_XMARK},
                   .font = FontType::Icons,
                   .text_colours =
                       ColSet {
-                          .base = LiveColStruct(UiColMap::MidText),
+                          .base = LiveColStruct(UiColMap::MidIcon),
                           .hot = LiveColStruct(UiColMap::MidTextHot),
                           .active = LiveColStruct(UiColMap::MidTextHot),
                       },
@@ -206,6 +215,7 @@ static Box DoEffectParamContainer(GuiBuilder& builder, Box parent, u64 loc_hash 
                      .parent = parent,
                      .layout {
                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                         .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
                          .contents_direction = layout::Direction::Row,
                          .contents_multiline = true,
                          .contents_align = layout::Alignment::Middle,
@@ -280,14 +290,6 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
 
     // Row for button + arrows + shuffle
     auto const btn_row = DoMidPanelPrevNextRow(g.builder, selector_row, layout::k_fill_parent);
-
-    // Background fill for the whole row
-    if (auto const r = BoxRect(g.builder, btn_row)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        g.imgui.draw_list->AddRectFilled(window_r,
-                                         LiveCol(UiColMap::MidDarkSurface),
-                                         LivePx(UiSizeId::CornerRounding));
-    }
 
     // IR name button
     auto const ir_btn = DoBox(g.builder,
@@ -371,8 +373,6 @@ struct EffectSectionInfo {
 };
 
 // Switchboard: effect toggle buttons arranged in two columns.
-// Layout phase: creates a pure structural grid of boxes.
-// Input+render phase: draws toggle buttons, labels, drop zones, and handles interaction.
 static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
     using enum UiSizeId;
     auto& imgui = g.imgui;
@@ -493,33 +493,44 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
                 dragging_fx->drop_slot = slot;
                 draw_list.AddRectFilled(window_slot_r, LiveCol(UiColMap::FXButtonDropZone), corner_rounding);
             } else {
-                // Normal slot: show toggle button for the effect assigned to this slot
+                // Normal slot: show toggle icon + text label (matching old button style)
                 auto fx = ordered_effects[fx_index++];
                 if (dragging_fx && fx == dragging_fx->fx) fx = ordered_effects[fx_index++];
 
                 auto const fx_cols = GetFxColMap(fx->type);
                 bool const is_on = EffectIsOn(params, fx);
 
-                // Toggle button: register behaviour, draw background, draw text
+                // Toggle button: register behaviour
                 auto const btn_id = imgui.MakeId(slots[slot].slot_box.imgui_id);
                 bool const fired = imgui.ButtonBehaviour(window_slot_r, btn_id, {});
                 bool const is_hot = imgui.IsHot(btn_id);
                 bool const is_active = imgui.IsActive(btn_id, MouseButton::Left);
 
-                auto bg_col = is_on ? LiveCol(fx_cols.button) : LiveCol(UiColMap::MidDarkSurface);
-                if (is_active)
-                    bg_col = ChangeBrightness(bg_col, 0.8f);
-                else if (is_hot)
-                    bg_col = ChangeBrightness(bg_col, 1.2f);
-                draw_list.AddRectFilled(window_slot_r, bg_col, corner_rounding);
+                // Toggle icon (coloured when on, grey when off)
+                auto const icon_text = is_on ? ICON_FA_TOGGLE_ON ""_s : ICON_FA_TOGGLE_OFF ""_s;
+                auto const icon_col =
+                    is_on ? LiveCol(fx_cols.button)
+                          : ((is_hot || is_active) ? LiveCol(UiColMap::MidIcon) : LiveCol(UiColMap::MidIcon));
+                auto const icon_width = LivePx(UiSizeId::PageHeadingTextOffset);
+                auto const icon_r = window_slot_r.WithW(icon_width);
 
-                auto const text_col = (is_hot || is_active) ? LiveCol(UiColMap::MidTextHot)
-                                      : is_on               ? LiveCol(UiColMap::MidTextOn)
-                                                            : LiveCol(UiColMap::MidText);
-                draw_list.AddTextInRect(window_slot_r,
+                {
+                    g.fonts.Push(ToInt(FontType::Icons));
+                    DEFER { g.fonts.Pop(); };
+                    draw_list.AddTextInRect(
+                        icon_r,
+                        icon_col,
+                        icon_text,
+                        {.justification = TextJustification::CentredLeft, .font_scaling = 0.75f});
+                }
+
+                // Text label
+                auto const text_r = window_slot_r.CutLeft(icon_width);
+                auto const text_col = LiveCol(UiColMap::MidText);
+                draw_list.AddTextInRect(text_r,
                                         text_col,
                                         k_effect_info[ToInt(fx->type)].name,
-                                        {.justification = TextJustification::Centred});
+                                        {.justification = TextJustification::CentredLeft});
 
                 if (fired) {
                     SetParameterValue(g.engine.processor,
@@ -531,10 +542,13 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
                 // Grab handle icon (show only on hover)
                 imgui.RegisterRectForMouseTracking(window_grab_r);
                 if (is_hot || window_grab_r.Contains(GuiIo().in.cursor_pos)) {
-                    draw_list.AddTextInRect(window_grab_r,
-                                            LiveCol(UiColMap::FXButtonGripIcon),
-                                            ICON_FA_ARROWS_UP_DOWN ""_s,
-                                            {.justification = TextJustification::CentredRight});
+                    g.fonts.Push(ToInt(FontType::Icons));
+                    DEFER { g.fonts.Pop(); };
+                    draw_list.AddTextInRect(
+                        window_grab_r,
+                        LiveCol(UiColMap::FXButtonGripIcon),
+                        ICON_FA_ARROWS_UP_DOWN ""_s,
+                        {.justification = TextJustification::CentredRight, .font_scaling = 0.7f});
                 }
                 if (window_grab_r.Contains(GuiIo().in.cursor_pos))
                     GuiIo().out.wants.cursor_type = CursorType::AllArrows;
@@ -561,14 +575,29 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
             Rect btn_r = imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0].slot_box).Value());
             btn_r.pos = GuiIo().in.cursor_pos - dragging_fx->relative_grab_point;
 
-            auto const bg = is_on_drag ? LiveCol(fx_cols.button) : LiveCol(UiColMap::MidDarkSurface);
-            draw_list.AddRectFilled(btn_r, bg, corner_rounding);
+            // Toggle icon
+            auto const icon_text = is_on_drag ? String {ICON_FA_TOGGLE_ON} : String {ICON_FA_TOGGLE_OFF};
+            auto const icon_col = is_on_drag ? LiveCol(fx_cols.button) : LiveCol(UiColMap::MidIcon);
+            auto const icon_width = LivePx(UiSizeId::PageHeadingTextOffset);
+            auto const icon_r = btn_r.WithW(icon_width);
 
-            auto const text_col = is_on_drag ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidText);
-            draw_list.AddTextInRect(btn_r,
+            {
+                g.fonts.Push(ToInt(FontType::Icons));
+                DEFER { g.fonts.Pop(); };
+                draw_list.AddTextInRect(
+                    icon_r,
+                    icon_col,
+                    icon_text,
+                    {.justification = TextJustification::CentredLeft, .font_scaling = 0.75f});
+            }
+
+            // Text label
+            auto const text_r = btn_r.CutLeft(icon_width);
+            auto const text_col = LiveCol(UiColMap::MidText);
+            draw_list.AddTextInRect(text_r,
                                     text_col,
                                     k_effect_info[ToInt(dragging_fx->fx->type)].name,
-                                    {.justification = TextJustification::Centred});
+                                    {.justification = TextJustification::CentredLeft});
 
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         }
@@ -638,14 +667,16 @@ static void DoEffectParams(GuiState& g,
                             params.DescribedValue(ParamIndex::BitCrushBitRate),
                             {.width = knob_w, .knob_highlight_col = highlight_col});
 
-            auto sub = DoBox(g.builder,
-                             {
-                                 .parent = param_container,
-                                 .layout {
-                                     .size = layout::k_hug_contents,
-                                     .contents_direction = layout::Direction::Row,
-                                 },
-                             });
+            auto sub = DoBox(
+                g.builder,
+                {
+                    .parent = param_container,
+                    .layout {
+                        .size = layout::k_hug_contents,
+                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
+                        .contents_direction = layout::Direction::Row,
+                    },
+                });
             auto const wet_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::BitCrushWet),
@@ -662,7 +693,7 @@ static void DoEffectParams(GuiState& g,
             DoButtonParameter(g,
                               extras_container,
                               params.DescribedValue(ParamIndex::CompressorAutoGain),
-                              {.width = LiveWw(FXCompressorAutoGainWidth)});
+                              {.width = LiveWw(FXCompressorAutoGainWidth), .on_colour = highlight_col});
 
             DoKnobParameter(g,
                             param_container,
@@ -701,6 +732,7 @@ static void DoEffectParams(GuiState& g,
                                 .width = knob_w,
                                 .knob_highlight_col = highlight_col,
                                 .greyed_out = !using_gain,
+                                .bidirectional = true,
                             });
             break;
         }
@@ -719,14 +751,16 @@ static void DoEffectParams(GuiState& g,
                             params.DescribedValue(ParamIndex::ChorusHighpass),
                             {.width = knob_w, .knob_highlight_col = highlight_col});
 
-            auto sub = DoBox(g.builder,
-                             {
-                                 .parent = param_container,
-                                 .layout {
-                                     .size = layout::k_hug_contents,
-                                     .contents_direction = layout::Direction::Row,
-                                 },
-                             });
+            auto sub = DoBox(
+                g.builder,
+                {
+                    .parent = param_container,
+                    .layout {
+                        .size = layout::k_hug_contents,
+                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
+                        .contents_direction = layout::Direction::Row,
+                    },
+                });
             auto const wet_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::ChorusWet),
@@ -754,16 +788,19 @@ static void DoEffectParams(GuiState& g,
                                                     .id_extra = (u64)i,
                                                     .layout {
                                                         .size = layout::k_hug_contents,
+                                                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX),
+                                                                         LiveWw(UiSizeId::FXControlsGapY)},
                                                         .contents_direction = layout::Direction::Row,
                                                     },
                                                 });
                     }
                     knob_parent = *group_container;
                     if (info.grouping_within_module == previous_group) {
-                        auto const knob = DoKnobParameter(g,
-                                                          knob_parent,
-                                                          params.DescribedValue(k_reverb_params[i]),
-                                                          {.width = knob_w, .knob_highlight_col = highlight_col});
+                        auto const knob =
+                            DoKnobParameter(g,
+                                            knob_parent,
+                                            params.DescribedValue(k_reverb_params[i]),
+                                            {.width = knob_w, .knob_highlight_col = highlight_col});
                         DoKnobJoiningLine(g, prev_knob, knob);
                         prev_knob = knob;
                         previous_group = info.grouping_within_module;
@@ -797,16 +834,19 @@ static void DoEffectParams(GuiState& g,
                                                     .id_extra = (u64)i,
                                                     .layout {
                                                         .size = layout::k_hug_contents,
+                                                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX),
+                                                                         LiveWw(UiSizeId::FXControlsGapY)},
                                                         .contents_direction = layout::Direction::Row,
                                                     },
                                                 });
                     }
                     knob_parent = *group_container;
                     if (info.grouping_within_module == previous_group) {
-                        auto const knob = DoKnobParameter(g,
-                                                          knob_parent,
-                                                          params.DescribedValue(k_phaser_params[i]),
-                                                          {.width = knob_w, .knob_highlight_col = highlight_col});
+                        auto const knob =
+                            DoKnobParameter(g,
+                                            knob_parent,
+                                            params.DescribedValue(k_phaser_params[i]),
+                                            {.width = knob_w, .knob_highlight_col = highlight_col});
                         DoKnobJoiningLine(g, prev_knob, knob);
                         prev_knob = knob;
                         previous_group = info.grouping_within_module;
@@ -832,21 +872,23 @@ static void DoEffectParams(GuiState& g,
             DoButtonParameter(g,
                               extras_container,
                               params.DescribedValue(ParamIndex::DelayTimeSyncSwitch),
-                              {.width = LiveWw(FXDelaySyncBtnWidth)});
+                              {.width = LiveWw(FXDelaySyncBtnWidth), .on_colour = highlight_col});
 
             // Time params (conditional)
             if (synced) {
                 DoMenuParameter(g, param_container, params.DescribedValue(ParamIndex::DelayTimeSyncedL), {});
                 DoMenuParameter(g, param_container, params.DescribedValue(ParamIndex::DelayTimeSyncedR), {});
             } else {
-                auto const left_knob = DoKnobParameter(g,
-                                                       param_container,
-                                                       params.DescribedValue(ParamIndex::DelayTimeLMs),
-                                                       {.width = knob_w, .knob_highlight_col = highlight_col});
-                auto const right_knob = DoKnobParameter(g,
-                                                        param_container,
-                                                        params.DescribedValue(ParamIndex::DelayTimeRMs),
-                                                        {.width = knob_w, .knob_highlight_col = highlight_col});
+                auto const left_knob =
+                    DoKnobParameter(g,
+                                    param_container,
+                                    params.DescribedValue(ParamIndex::DelayTimeLMs),
+                                    {.width = knob_w, .knob_highlight_col = highlight_col});
+                auto const right_knob =
+                    DoKnobParameter(g,
+                                    param_container,
+                                    params.DescribedValue(ParamIndex::DelayTimeRMs),
+                                    {.width = knob_w, .knob_highlight_col = highlight_col});
                 DoKnobJoiningLine(g, left_knob, right_knob);
             }
 
@@ -860,14 +902,16 @@ static void DoEffectParams(GuiState& g,
             // Second row for filter + mix
             auto const param_container2 = DoEffectParamContainer(g.builder, root);
 
-            auto sub = DoBox(g.builder,
-                             {
-                                 .parent = param_container2,
-                                 .layout {
-                                     .size = layout::k_hug_contents,
-                                     .contents_direction = layout::Direction::Row,
-                                 },
-                             });
+            auto sub = DoBox(
+                g.builder,
+                {
+                    .parent = param_container2,
+                    .layout {
+                        .size = layout::k_hug_contents,
+                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
+                        .contents_direction = layout::Direction::Row,
+                    },
+                });
             auto const cutoff_knob =
                 DoKnobParameter(g,
                                 sub,
@@ -894,14 +938,16 @@ static void DoEffectParams(GuiState& g,
                             params.DescribedValue(ParamIndex::ConvolutionReverbHighpass),
                             {.width = knob_w, .knob_highlight_col = highlight_col});
 
-            auto sub = DoBox(g.builder,
-                             {
-                                 .parent = param_container,
-                                 .layout {
-                                     .size = layout::k_hug_contents,
-                                     .contents_direction = layout::Direction::Row,
-                                 },
-                             });
+            auto sub = DoBox(
+                g.builder,
+                {
+                    .parent = param_container,
+                    .layout {
+                        .size = layout::k_hug_contents,
+                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
+                        .contents_direction = layout::Direction::Row,
+                    },
+                });
             auto const wet_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::ConvolutionReverbWet),
@@ -950,7 +996,20 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                 GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         }
 
-        auto const param_container = DoEffectParamContainer(g.builder, root);
+        auto const contents = DoBox(g.builder,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_padding =
+                                                {
+                                                    .lr = 12,
+                                                    .tb = 8,
+                                                },
+                                        },
+                                    });
+
+        auto const param_container = DoEffectParamContainer(g.builder, contents);
 
         DoEffectParams(g, frame_context, *fx, param_container, extras_container, highlight_col, root);
 
@@ -967,21 +1026,18 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
 
 // Drag-and-drop for both effect unit reordering and switchboard reordering.
 [[maybe_unused]] static void DoEffectDragAndDrop(GuiState& g,
-                                                 Box root,
                                                  Box switches_bottom_divider,
                                                  Span<EffectSectionInfo const> effect_sections,
                                                  EffectsArray& ordered_effects) {
     auto& engine = g.engine;
-    auto& dragging_fx_unit = g.dragging_fx_unit;
-    auto& dragging_fx_switch = g.dragging_fx_switch;
 
     // Effect unit drag (heading drag to reorder sections)
-    if (dragging_fx_unit && g.imgui.IsViewportHovered(g.imgui.curr_viewport)) {
+    if (g.dragging_fx_unit && g.imgui.IsViewportHovered(g.imgui.curr_viewport)) {
         // Find closest divider
         f32 const rel_y_pos = g.imgui.WindowPosToViewportPos(GuiIo().in.cursor_pos).y;
         Box closest_div = switches_bottom_divider;
         usize closest_slot = 0;
-        auto const original_slot = FindSlotInEffects(ordered_effects, dragging_fx_unit->fx);
+        auto const original_slot = FindSlotInEffects(ordered_effects, g.dragging_fx_unit->fx);
 
         f32 distance = FLT_MAX;
         if (auto const r = BoxRect(g.builder, switches_bottom_divider)) distance = Abs(r->y - rel_y_pos);
@@ -1000,45 +1056,38 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
         // Highlight closest divider
         DoDividerColoured(g, closest_div, LiveCol(UiColMap::FXDividerLineDropZone));
 
-        if (dragging_fx_unit->drop_slot != closest_slot)
+        if (g.dragging_fx_unit->drop_slot != closest_slot)
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
-        dragging_fx_unit->drop_slot = closest_slot;
+        g.dragging_fx_unit->drop_slot = closest_slot;
     }
 
     // Floating heading during drag
-    if (dragging_fx_unit) {
+    if (g.dragging_fx_unit) {
         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
-        auto const drag_cols = GetFxColMap(dragging_fx_unit->fx->type);
-        auto const text = k_effect_info[ToInt(dragging_fx_unit->fx->type)].name;
+        auto const drag_cols = GetFxColMap(g.dragging_fx_unit->fx->type);
+        auto const text = k_effect_info[ToInt(g.dragging_fx_unit->fx->type)].name;
 
-        auto const cursor_vp = g.imgui.WindowPosToViewportPos(GuiIo().in.cursor_pos);
+        auto const cursor_pos = GuiIo().in.cursor_pos;
+        auto const heading_h = LivePx(UiSizeId::FXHeadingH);
+        auto const pad_lr = LivePx(UiSizeId::FXHeadingTextPadLR);
+        auto const text_w = g.fonts.CalcTextSize(text, {}).x;
+        auto const rounding = LivePx(UiSizeId::CornerRounding);
 
-        auto const floating_heading =
-            DoBox(g.builder,
-                  {
-                      .parent = root,
-                      .id_extra = 998,
-                      .text = text,
-                      .text_colours = LiveColStruct(UiColMap::MidText),
-                      .text_justification = TextJustification::Centred,
-                      .round_background_corners = 0b0010,
-                      .layout {
-                          .size = {layout::k_hug_contents, LiveWw(UiSizeId::FXHeadingH)},
-                          .margins {
-                              .l = Max(0.0f, cursor_vp.x + LiveWw(UiSizeId::FXHeadingH)),
-                              .t = Max(0.0f, cursor_vp.y),
-                          },
-                          .anchor = layout::Anchor::Left | layout::Anchor::Top,
-                      },
-                  });
+        auto const floating_r = Rect {
+            .x = cursor_pos.x + heading_h,
+            .y = cursor_pos.y,
+            .w = text_w + (pad_lr * 2),
+            .h = heading_h,
+        };
 
-        if (auto const fhr = BoxRect(g.builder, floating_heading)) {
-            auto const window_fhr = g.imgui.ViewportRectToWindowRect(*fhr);
-            g.imgui.draw_list->AddRectFilled(window_fhr,
-                                             ChangeBrightness(LiveCol(drag_cols.back) | 0xff000000, 0.7f),
-                                             LivePx(UiSizeId::CornerRounding));
-        }
+        g.imgui.draw_list->AddRectFilled(floating_r,
+                                         ChangeBrightness(WithAlphaU8(LiveCol(drag_cols.back), 255), 0.6f),
+                                         rounding);
+        g.imgui.draw_list->AddTextInRect(floating_r,
+                                         LiveCol(UiColMap::MidText),
+                                         text,
+                                         {.justification = TextJustification::Centred});
 
         // Auto-scroll
         {
@@ -1064,16 +1113,16 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
     // Handle release for both drag types
     bool effects_order_changed = false;
 
-    if (dragging_fx_unit && g.imgui.WasJustDeactivated(dragging_fx_unit->id, MouseButton::Left)) {
-        MoveEffectToNewSlot(ordered_effects, dragging_fx_unit->fx, dragging_fx_unit->drop_slot);
+    if (g.dragging_fx_unit && g.imgui.WasJustDeactivated(g.dragging_fx_unit->id, MouseButton::Left)) {
+        MoveEffectToNewSlot(ordered_effects, g.dragging_fx_unit->fx, g.dragging_fx_unit->drop_slot);
         effects_order_changed = true;
-        dragging_fx_unit.Clear();
+        g.dragging_fx_unit.Clear();
     }
 
-    if (dragging_fx_switch && g.imgui.WasJustDeactivated(dragging_fx_switch->id, MouseButton::Left)) {
-        MoveEffectToNewSlot(ordered_effects, dragging_fx_switch->fx, dragging_fx_switch->drop_slot);
+    if (g.dragging_fx_switch && g.imgui.WasJustDeactivated(g.dragging_fx_switch->id, MouseButton::Left)) {
+        MoveEffectToNewSlot(ordered_effects, g.dragging_fx_switch->fx, g.dragging_fx_switch->drop_slot);
         effects_order_changed = true;
-        dragging_fx_switch.Clear();
+        g.dragging_fx_switch.Clear();
     }
 
     if (effects_order_changed) {
@@ -1105,7 +1154,7 @@ void DoEffectsPanel(GuiState& g, GuiFrameContext const& frame_context, Box paren
 
                     auto const switches_bottom_divider = DoSwitchboard(g, root, ordered_effects);
                     auto const effect_sections = DoEffectSections(g, frame_context, root, ordered_effects);
-                    DoEffectDragAndDrop(g, root, switches_bottom_divider, effect_sections, ordered_effects);
+                    DoEffectDragAndDrop(g, switches_bottom_divider, effect_sections, ordered_effects);
                 },
             .bounds = parent,
             .imgui_id = g.imgui.MakeId("Effects"),

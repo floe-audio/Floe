@@ -311,11 +311,11 @@ void GuiUpdate(GuiState& g) {
         g.fonts);
     DEFER { imgui.EndFrame(); };
 
-    MacroGuiBeginFrame(g);
-    DEFER { MacroGuiEndFrame(g); };
-
     g.fonts.Push(ToInt(FontType::Body));
     DEFER { g.fonts.Pop(); };
+
+    MacroGuiBeginFrame(g);
+    DEFER { MacroGuiEndFrame(g); };
 
     {
         auto const top_h = Round(LivePx(UiSizeId::TopHeight));

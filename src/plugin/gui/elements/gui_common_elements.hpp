@@ -42,5 +42,6 @@ struct ToggleIconOptions {
     bool parent_dictates_hot_and_active = true;
     f32 width = 0; // 0 means use default icon width
     TextJustification justify = TextJustification::CentredLeft;
+    Optional<Col> on_colour {}; // Custom colour for the "on" state icon.
 };
 Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& options);

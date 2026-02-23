@@ -48,6 +48,7 @@ Box DoMenuParameter(GuiState& g,
 struct ButtonParameterComponentOptions {
     f32 width = 0; // 0 means auto-size from text + icon.
     bool greyed_out = false;
+    Optional<Col> on_colour {}; // Custom colour for the toggle icon "on" state.
     String override_tooltip {};
     String override_label {};
 };

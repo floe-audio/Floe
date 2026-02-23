@@ -137,7 +137,7 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
     auto inner_arc_col = LiveCol(mid_panel_colours ? UiColMap::KnobMidInnerArc : UiColMap::KnobInnerArc);
     auto bright_arc_col = options.highlight_col;
     if (options.greyed_out) {
-        bright_arc_col = LiveCol(UiColMap::KnobOuterArcGreyedOut);
+        bright_arc_col = WithAlphaU8(bright_arc_col, 105);
         inner_arc_col =
             LiveCol(mid_panel_colours ? UiColMap::KnobMidInnerArcGreyedOut : UiColMap::KnobInnerArcGreyedOut);
     }

@@ -119,7 +119,8 @@ Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& optio
             .font = FontType::Icons,
             .font_size = k_font_icons_size * 0.75f,
             .text_colours = options.state
-                                ? Colours {LiveColStruct(UiColMap::MidTextOn)}
+                                ? Colours {options.on_colour ? *options.on_colour
+                                                             : LiveColStruct(UiColMap::MidTextOn)}
                                 : (options.greyed_out ? Colours {ColSet {
                                                             .base = LiveColStruct(UiColMap::MidTextDimmed),
                                                             .hot = LiveColStruct(UiColMap::MidIcon),
