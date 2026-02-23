@@ -6,6 +6,7 @@
 #include <clap/events.h>
 #include <clap/ext/gui.h>
 #include <clap/ext/params.h>
+#include <clap/ext/state.h>
 #include <clap/ext/thread-check.h>
 #include <clap/factory/plugin-factory.h>
 #include <clap/host.h>
@@ -21,6 +22,7 @@
 #include "utils/cli_arg_parse.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 #include "utils/logger/logger.hpp"
+#include "utils/reader.hpp"
 
 #include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/global.hpp"
@@ -694,6 +696,69 @@ static void UnloadPluginInstance(Standalone& standalone) {
     if (inst->entry_source.library_handle) UnloadLibrary(*inst->entry_source.library_handle);
 }
 
+static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, ArenaAllocator& arena) {
+    ASSERT(standalone.plugin_instance_state.Load(LoadMemoryOrder::Relaxed) == PluginInstanceState::Active);
+    auto* inst = standalone.plugin_instance;
+
+    // Save the plugin state before unloading.
+    DynamicArray<u8> saved_state {PageAllocator::Instance()};
+    bool state_saved = false;
+    {
+        auto const state_ext =
+            (clap_plugin_state const*)inst->plugin->get_extension(inst->plugin, CLAP_EXT_STATE);
+        if (state_ext) {
+            clap_ostream const stream {
+                .ctx = (void*)&saved_state,
+                .write = [](clap_ostream const* stream, void const* buffer, uint64_t size) -> s64 {
+                    auto& buf = *(DynamicArray<u8>*)stream->ctx;
+                    dyn::AppendSpan(buf, Span {(u8 const*)buffer, (usize)size});
+                    return (s64)size;
+                },
+            };
+            state_saved = state_ext->save(inst->plugin, &stream);
+            if (state_saved)
+                LogInfo(ModuleName::Standalone,
+                        "Hot-reload: saved plugin state ({} bytes)",
+                        saved_state.size);
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to save plugin state");
+        }
+    }
+
+    UnloadPluginInstance(standalone);
+
+    auto const reload_outcome = LoadPluginInstance(standalone, dso_path, arena);
+    if (reload_outcome.HasError()) {
+        LogError(ModuleName::Standalone, "Hot-reload: failed to reload plugin: {}", reload_outcome.Error());
+        return;
+    }
+
+    // Restore the saved state into the new plugin instance.
+    if (state_saved) {
+        auto* new_inst = standalone.plugin_instance;
+        auto const state_ext =
+            (clap_plugin_state const*)new_inst->plugin->get_extension(new_inst->plugin, CLAP_EXT_STATE);
+        if (state_ext) {
+            auto reader = Reader::FromMemory(saved_state.Items());
+            clap_istream const stream {
+                .ctx = (void*)&reader,
+                .read = [](clap_istream const* stream, void* buffer, uint64_t size) -> s64 {
+                    auto& r = *(Reader*)stream->ctx;
+                    auto const read = r.Read(Span<u8>((u8*)buffer, size));
+                    if (read.HasError()) return -1;
+                    return CheckedCast<s64>(read.Value());
+                },
+            };
+            if (state_ext->load(new_inst->plugin, &stream))
+                LogInfo(ModuleName::Standalone, "Hot-reload: restored plugin state");
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to restore plugin state");
+        }
+    }
+
+    LogInfo(ModuleName::Standalone, "Hot-reload: plugin reloaded successfully");
+}
+
 static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
     Standalone standalone {};
 
@@ -830,7 +895,8 @@ static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
                                     changeset.subpath,
                                     DirectoryWatcher::ChangeType::ToString(changeset.changes));
                         }
-                        // TODO: trigger hot-reload of the plugin
+
+                        HotReloadPlugin(standalone, dso_path, arena);
                     }
                 }
             }
@@ -855,7 +921,8 @@ static int Main(ArgsCstr args) {
         {
             .id = (u32)CommandLineArgId::ClapPluginPath,
             .key = "clap-plugin-path",
-            .description = "Path to an external CLAP plugin to load instead of the built-in one",
+            .description =
+                "Path to an external CLAP plugin to load instead of the built-in one - this file is watched and the plugin is hot-reloaded if it changes.",
             .value_type = "path",
             .required = false,
             .num_values = 1,
