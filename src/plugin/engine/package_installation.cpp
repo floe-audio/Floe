@@ -1585,6 +1585,9 @@ TEST_CASE(TestPackageInstallation) {
 
     ThreadsafeErrorNotifications error_notif;
     sample_lib_server::Server sample_lib_server {thread_pool, destination_folder, error_notif};
+    // Disable file watching so that the directory watcher doesn't trigger additional scans that race with
+    // the explicit rescans in this test.
+    sample_lib_server.disable_file_watching.Store(true, StoreMemoryOrder::Relaxed);
     PresetServer preset_server {
         .error_notifications = error_notif,
     };
