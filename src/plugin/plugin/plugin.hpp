@@ -14,6 +14,11 @@
 #include "config.h"
 #include "pugl/pugl.h"
 
+// Non-production builds: pass this as the plugin_path to clap_entry.init() to make the plugin log
+// to stderr instead of a file. Useful when hosting a CLAP DSO in the standalone where the DSO has
+// its own separate logger state.
+constexpr char k_clap_init_log_to_stderr_sentinel[] = "log-to-stderr";
+
 struct PluginActivateArgs {
     f64 sample_rate;
     u32 min_block_size;

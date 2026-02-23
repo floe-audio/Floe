@@ -1585,6 +1585,9 @@ TEST_CASE(TestPackageInstallation) {
 
     ThreadsafeErrorNotifications error_notif;
     sample_lib_server::Server sample_lib_server {thread_pool, destination_folder, error_notif};
+    // Disable file watching so that the directory watcher doesn't trigger additional scans that race with
+    // the explicit rescans in this test.
+    sample_lib_server.disable_file_watching.Store(true, StoreMemoryOrder::Relaxed);
     PresetServer preset_server {
         .error_notifications = error_notif,
     };
@@ -1709,6 +1712,10 @@ TEST_CASE(TestPackageInstallation) {
     // Setup for the next tests.
     // Modify files this time rather than just rename.
     TRY(AppendFile(floe_lua_path, "\n"));
+
+    // Tell the server to rescan so it notices the changes. It probably does this automatically via
+    // file watchers but it's not guaranteed.
+    sample_lib_server::RescanFolder(sample_lib_server, destination_folder);
 
     // If the components are modified and we set to Overwrite, it should overwrite them.
     TRY(Test(tester,

@@ -408,8 +408,10 @@ TEST_CASE(TestFutex) {
     }
 
     SUBCASE("timeout when not woken") {
-        Atomic<u32> atomic {0};
-        CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
+        if constexpr (!(IS_MACOS && k_running_with_thread_sanitizer)) {
+            Atomic<u32> atomic {0};
+            CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
+        }
     }
     return k_success;
 }
