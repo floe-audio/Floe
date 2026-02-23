@@ -350,7 +350,7 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
                                        },
                                    });
 
-    if (auto const r = BoxRect(builder, effects_box)) DoEffectsViewport(g, frame_context, *r);
+    DoEffectsPanel(g, frame_context, effects_box);
 }
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
