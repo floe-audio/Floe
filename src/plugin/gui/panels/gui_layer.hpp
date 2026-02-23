@@ -11,7 +11,7 @@ struct GuiFrameContext;
 
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent);
 
-enum class LayerPageType {
+enum class LayerPageType : u8 {
     Main,
     Filter,
     Lfo,

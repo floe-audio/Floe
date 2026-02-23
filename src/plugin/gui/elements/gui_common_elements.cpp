@@ -25,6 +25,8 @@ static Margins ParamControlPadding() {
     };
 }
 
+f32 TextButtonHeight() { return k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f; }
+
 Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
     return DoBox(builder,
                  {
