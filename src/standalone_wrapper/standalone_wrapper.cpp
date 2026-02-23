@@ -16,6 +16,7 @@
 #include <pugl/pugl.h>
 #include <pugl/stub.h>
 
+#include "os/filesystem.hpp"
 #include "os/misc.hpp"
 #include "utils/cli_arg_parse.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
@@ -518,6 +519,34 @@ static ErrorCodeOr<void> Run(ClapEntrySource const& entry_source) {
     standalone.plugin.init(&standalone.plugin);
     DEFER { standalone.plugin.destroy(&standalone.plugin); };
 
+    // Modify detection if given a plugin path.
+    Optional<DirectoryWatcher> dir_watcher {};
+    DirectoryToWatch dso_dir_to_watch {};
+    if (entry_source.library_handle) {
+        auto outcome = CreateDirectoryWatcher(PageAllocator::Instance());
+        if (outcome.HasError()) {
+            LogWarning(ModuleName::Standalone,
+                       "Failed to create directory watcher for hot-reload: {}",
+                       outcome.Error());
+        } else {
+            dir_watcher.Emplace(outcome.ReleaseValue());
+        }
+
+        String const dso_path = FromNullTerminated(entry_source.plugin_path);
+        if constexpr (IS_MACOS) {
+            // The plugin_path points to the .clap bundle. Watch it recursively.
+            dso_dir_to_watch = {.path = dso_path, .recursive = true, .user_data = nullptr};
+        } else {
+            // Watch the directory containing the DSO file.
+            auto const dir = path::Directory(dso_path);
+            ASSERT(dir.HasValue()); // plugin_path should be an absolute path
+            dso_dir_to_watch = {.path = *dir, .recursive = false, .user_data = nullptr};
+        }
+    }
+    DEFER {
+        if (dir_watcher) DestoryDirectoryWatcher(*dir_watcher);
+    };
+
     if (!OpenMidi(standalone)) {
         LogError(ModuleName::Standalone, "Could not open Midi");
         return ErrorCode {StandaloneError::DeviceError};
@@ -593,6 +622,8 @@ static ErrorCodeOr<void> Run(ClapEntrySource const& entry_source) {
     TRY_PUGL(puglShow(standalone.gui_view, PUGL_SHOW_RAISE));
     TRY_CLAP(gui->show(&standalone.plugin));
 
+    ArenaAllocator scratch_arena {PageAllocator::Instance()};
+
     while (!standalone.quit) {
         if (standalone.callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
             standalone.plugin.on_main_thread(&standalone.plugin);
@@ -633,8 +664,39 @@ static ErrorCodeOr<void> Run(ClapEntrySource const& entry_source) {
                             physical_pixels.height);
         }
 
+        if (dir_watcher) {
+            auto const dirs_to_watch = Array {dso_dir_to_watch};
+            auto const outcome = PollDirectoryChanges(*dir_watcher,
+                                                      {
+                                                          .dirs_to_watch = dirs_to_watch,
+                                                          .result_arena = scratch_arena,
+                                                          .scratch_arena = scratch_arena,
+                                                      });
+            if (outcome.HasError()) {
+                LogWarning(ModuleName::Standalone, "Failed to poll directory changes: {}", outcome.Error());
+            } else {
+                for (auto const& dir_changes : outcome.Value()) {
+                    if (dir_changes.error) {
+                        LogWarning(ModuleName::Standalone, "Directory watcher error: {}", *dir_changes.error);
+                        continue;
+                    }
+                    if (dir_changes.subpath_changesets.size) {
+                        for (auto const& changeset : dir_changes.subpath_changesets) {
+                            LogInfo(ModuleName::Standalone,
+                                    "DSO file change detected: subpath='{}', changes={}",
+                                    changeset.subpath,
+                                    DirectoryWatcher::ChangeType::ToString(changeset.changes));
+                        }
+                        // TODO: trigger hot-reload of the plugin
+                    }
+                }
+            }
+        }
+
         auto const st = puglUpdate(standalone.gui_world, 1.0 / 60.0);
         if (st != PUGL_SUCCESS && st != PUGL_FAILURE) return ErrorCode {st};
+
+        scratch_arena.ResetCursorAndConsolidateRegions();
     }
 
     gui->destroy(&standalone.plugin);
