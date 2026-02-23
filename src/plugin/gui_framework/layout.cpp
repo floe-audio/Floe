@@ -350,8 +350,12 @@ static void CalcSize(Context& ctx, Id const id, u32 const dim) {
             increase[size_dim] =
                 child->next_sibling == k_invalid_id ? item->container_padding_ltrb[size_dim] : 0;
         } else {
-            increase[dim] = item->container_padding_ltrb[dim];
-            increase[size_dim] = item->container_padding_ltrb[size_dim];
+            // Cross-axis direction: for wrapping layouts, padding is added during arrangement instead
+            auto const is_wrapping = (item->flags & flags::Wrap) && (item->flags & flags::AutoLayout);
+            if (!is_wrapping) {
+                increase[dim] = item->container_padding_ltrb[dim];
+                increase[size_dim] = item->container_padding_ltrb[size_dim];
+            }
         }
         child->margins_ltrb += increase;
 
@@ -447,6 +451,40 @@ static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, u32 const dim, boo
                 child_id = child->next_sibling;
             }
             ++total;
+        }
+
+        // For wrapping layouts, adjust gaps and padding for line breaks
+        if (wrap) {
+            // Add start padding to first item of this line (if not the very first child overall)
+            if (start_child_id != item->first_child) {
+                auto* first_on_line = GetItem(ctx, start_child_id);
+                first_on_line->margins_ltrb[dim] += item->container_padding_ltrb[dim];
+                ctx.rects[ToInt(start_child_id)][dim] += item->container_padding_ltrb[dim];
+                used += item->container_padding_ltrb[dim];
+            }
+
+            // Find and handle last item on this line (if there's a next line)
+            if (end_child_id != k_invalid_id) {
+                auto scan_id = start_child_id;
+                Id last_on_line_id = k_invalid_id;
+                while (scan_id != end_child_id) {
+                    last_on_line_id = scan_id;
+                    auto* scan_child = GetItem(ctx, scan_id);
+                    scan_id = scan_child->next_sibling;
+                }
+
+                if (last_on_line_id != k_invalid_id) {
+                    auto* last_on_line = GetItem(ctx, last_on_line_id);
+
+                    // Remove the gap since next item is on a different line
+                    last_on_line->margins_ltrb[size_dim] -= item->contents_gap[dim];
+                    used -= item->contents_gap[dim];
+
+                    // Add end padding to last item of this line
+                    last_on_line->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
+                    used += item->container_padding_ltrb[size_dim];
+                }
+            }
         }
 
         auto extra_space = space - used;
@@ -593,6 +631,10 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
     auto const size_dim = dim + 2;
     auto* item = GetItem(ctx, id);
     auto offset = ctx.rects[ToInt(id)][dim];
+
+    // Add top/start padding for wrapping layouts in cross-axis
+    offset += item->container_padding_ltrb[dim];
+
     auto need_size = 0.0f;
     auto child_id = item->first_child;
     auto start_child_id = child_id;
@@ -611,6 +653,10 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
     }
     ArrangeOverlaySqueezedRange(ctx, dim, start_child_id, k_invalid_id, offset, need_size);
     offset += need_size;
+
+    // Add bottom/end padding for wrapping layouts in cross-axis
+    offset += item->container_padding_ltrb[size_dim];
+
     return offset;
 }
 
