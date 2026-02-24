@@ -249,6 +249,28 @@ void MidPanelTabs(GuiState& g, Rect bounds) {
                                   .parent_dictates_hot_and_active = true,
                               });
 
+                        if (is_layer_tab) {
+                            auto const layer_index =
+                                (u32)(ToInt(tab) - ToInt(MidPanelTab::Layer1));
+                            auto const meter_box = DoBox(builder,
+                                                         {
+                                                             .parent = btn,
+                                                             .layout {
+                                                                 .size = {6, 12},
+                                                                 .margins = {.l = 2},
+                                                             },
+                                                         });
+                            if (auto const meter_r = BoxRect(builder, meter_box))
+                                DrawPeakMeter(g.imgui,
+                                              builder.imgui.RegisterAndConvertRect(*meter_r),
+                                              g.engine.processor.layer_processors[layer_index].peak_meter,
+                                              {
+                                                  .flash_when_clipping = false,
+                                                  .show_db_markers = false,
+                                                  .gap = 1,
+                                              });
+                        }
+
                         if (btn.button_fired) new_tab = tab;
                     }
 
