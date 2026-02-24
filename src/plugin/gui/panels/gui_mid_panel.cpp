@@ -101,6 +101,24 @@ void DoMidOverlayGradient(imgui::Context const& imgui, Rect r) {
                                                     0);
 }
 
+void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id) {
+    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
+
+    if (lib_id)
+        DrawMidBlurredBackground(g,
+                                 window_r,
+                                 window_r,
+                                 *lib_id,
+                                 Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+    else
+        g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
+
+    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
+        DoMidOverlayGradient(g.imgui, window_r);
+
+    g.imgui.draw_list->AddRect(window_r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
+}
+
 void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_id) {
     auto const r = g.imgui.curr_viewport->unpadded_bounds;
 
@@ -171,25 +189,8 @@ static void DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
                                    },
                                });
 
-    if (auto const r = BoxRect(builder, tab_bar)) {
-        auto const window_r = builder.imgui.ViewportRectToWindowRect(*r);
-        auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
-        auto const lib_id = LibIdForCurrentTab(g);
-
-        if (lib_id)
-            DrawMidBlurredBackground(g,
-                                     window_r,
-                                     window_r,
-                                     *lib_id,
-                                     Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
-        else
-            g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
-
-        if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
-            DoMidOverlayGradient(g.imgui, window_r);
-
-        g.imgui.draw_list->AddRect(window_r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
-    }
+    if (auto const r = BoxRect(builder, tab_bar))
+        DrawMidBlurredPanelSurface(g, builder.imgui.ViewportRectToWindowRect(*r), LibIdForCurrentTab(g));
 
     Optional<MidPanelTab> new_tab {};
 
@@ -237,6 +238,36 @@ static void DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
                       },
                       .button_behaviour = imgui::ButtonConfig {},
                   });
+
+        if (is_layer_tab) {
+            auto const layer_index = (u32)(ToInt(tab) - ToInt(MidPanelTab::Layer1));
+            auto& layer_obj = g.engine.Layer(layer_index);
+            if (layer_obj.instrument_id.tag == InstrumentType::Sampler) {
+                auto sample_inst_id = layer_obj.instrument_id.Get<sample_lib::InstrumentId>();
+                auto imgs = GetLibraryImages(g.library_images,
+                                             g.imgui,
+                                             sample_inst_id.library,
+                                             g.shared_engine_systems.sample_library_server,
+                                             LibraryImagesTypes::Icon);
+                if (imgs.icon) {
+                    if (auto icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon)) {
+                        auto const icon_box = DoBox(builder,
+                                                    {
+                                                        .parent = btn,
+                                                        .parent_dictates_hot_and_active = true,
+                                                        .layout {
+                                                            .size = {12, 12},
+                                                            .margins = {.r = 2},
+                                                        },
+                                                    });
+                        if (auto const r = BoxRect(builder, icon_box)) {
+                            g.imgui.draw_list->AddImageRect(*icon_tex,
+                                                            builder.imgui.ViewportRectToWindowRect(*r));
+                        }
+                    }
+                }
+            }
+        }
 
         DoBox(builder,
               {

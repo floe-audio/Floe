@@ -3,7 +3,6 @@
 
 #include <IconsFontAwesome6.h>
 
-#include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -11,10 +10,8 @@
 #include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
 #include "gui/panels/gui_layer_subtabbed.hpp"
-#include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "gui_framework/image.hpp"
 #include "gui_mid_panel.hpp"
 
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
@@ -63,19 +60,7 @@ static void DrawLayersContainerBackground(GuiState& g, Rect r) {
 }
 
 static void DrawEffectsContainerBackground(GuiState& g, Rect r) {
-    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
-
-    auto const overall_lib = LibraryForOverallBackground(g.engine);
-    if (overall_lib)
-        DrawMidBlurredBackground(g,
-                                 r,
-                                 r,
-                                 *overall_lib,
-                                 Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
-
-    DoMidOverlayGradient(g.imgui, r);
-
-    g.imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
+    DrawMidBlurredPanelSurface(g, r, LibraryForOverallBackground(g.engine));
 }
 
 static void

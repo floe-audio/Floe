@@ -38,3 +38,4 @@ void DrawMidBlurredBackground(GuiState& g,
                               f32 opacity);
 void DoMidOverlayGradient(imgui::Context const& imgui, Rect r);
 void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_id);
+void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id);

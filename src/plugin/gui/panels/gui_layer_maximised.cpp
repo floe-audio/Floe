@@ -67,24 +67,8 @@ static Box DoSectionContainer(GuiState& g, Box parent, f32 width, u64 id_extra =
 // Instrument selector row
 
 static void DrawBlurredBackgroundForBox(GuiState& g, Box box, Optional<sample_lib::LibraryIdRef> lib_id) {
-    if (auto const r = BoxRect(g.builder, box)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
-
-        if (lib_id)
-            DrawMidBlurredBackground(g,
-                                     window_r,
-                                     window_r,
-                                     *lib_id,
-                                     Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
-        else
-            g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
-
-        if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
-            DoMidOverlayGradient(g.imgui, window_r);
-
-        g.imgui.draw_list->AddRect(window_r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
-    }
+    if (auto const r = BoxRect(g.builder, box))
+        DrawMidBlurredPanelSurface(g, g.imgui.ViewportRectToWindowRect(*r), lib_id);
 }
 
 static void
@@ -323,17 +307,6 @@ static void DoEngineSection(GuiState& g, u8 layer_index, Box parent) {
                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                },
                            });
-
-    DoBox(g.builder,
-          {
-              .parent = col,
-              .text = layer_processor.InstTypeName(),
-              .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
-              .text_justification = TextJustification::CentredLeft,
-              .layout {
-                  .size = {layout::k_fill_parent, k_font_body_size},
-              },
-          });
 
     bool const is_waveform_synth = layer_processor.instrument_id.tag == InstrumentType::WaveformSynth;
     DoButtonParameter(g,
@@ -936,6 +909,91 @@ static void VerticalDivider(GuiState& g, Box parent, u64 loc_hash = SourceLocati
 }
 
 // =================================================================================================
+// Instrument info strip below waveform
+
+static void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
+    auto& layer_processor = g.engine.processor.layer_processors[layer_index];
+
+    if (layer_processor.instrument.tag == InstrumentType::None) return;
+
+    // Collect info segments to display, separated by dot dividers
+    DynamicArrayBounded<String, 6> segments {};
+
+    switch (layer_processor.instrument.tag) {
+        case InstrumentType::WaveformSynth: {
+            dyn::Append(segments, "Oscillator waveform"_s);
+            break;
+        }
+        case InstrumentType::Sampler: {
+            auto const& inst = layer_processor.instrument
+                                   .Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
+            auto const num_regions = inst->instrument.regions.size;
+            if (num_regions == 0) {
+                dyn::Append(segments, "Empty instrument"_s);
+            } else if (num_regions == 1) {
+                dyn::Append(segments, "Single sample"_s);
+                auto const& smpl = *inst->audio_datas[0];
+                dyn::Append(
+                    segments,
+                    fmt::Format(g.scratch_arena, "{.2} s", (f64)smpl.num_frames / (f64)smpl.sample_rate));
+                dyn::Append(segments,
+                            fmt::Format(g.scratch_arena,
+                                        "Root key {}",
+                                        NoteName((u7)inst->instrument.regions[0].root_key)));
+            } else {
+                dyn::Append(segments, "Multisample instrument"_s);
+                dyn::Append(segments, fmt::Format(g.scratch_arena, "{} samples", num_regions));
+            }
+            break;
+        }
+        case InstrumentType::None: break;
+    }
+
+    if (!segments.size) return;
+
+    auto const strip = DoBox(g.builder,
+                             {
+                                 .parent = parent,
+                                 .layout {
+                                     .size = {layout::k_fill_parent, 20},
+                                     .contents_padding = {.lr = 8},
+                                     .contents_gap = 6,
+                                     .contents_direction = layout::Direction::Row,
+                                     .contents_align = layout::Alignment::Start,
+                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                 },
+                             });
+
+    for (auto const i : Range(segments.size)) {
+        if (i > 0) {
+            auto const dot = DoBox(g.builder,
+                                   {
+                                       .parent = strip,
+                                       .id_extra = i,
+                                       .layout {
+                                           .size = {3, 3},
+                                       },
+                                   });
+            if (auto const r = BoxRect(g.builder, dot)) {
+                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+                g.imgui.draw_list->AddCircleFilled(window_r.Centre(), 1.5f, LiveCol(UiColMap::MidTextDimmed));
+            }
+        }
+
+        DoBox(g.builder,
+              {
+                  .parent = strip,
+                  .id_extra = i,
+                  .text = segments[i],
+                  .size_from_text = true,
+                  .font = FontType::Heading3,
+                  .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                  .text_justification = TextJustification::CentredLeft,
+              });
+    }
+}
+
+// =================================================================================================
 // Main entry point
 
 void MidPanelSingleLayerContent(GuiBuilder& builder,
@@ -944,97 +1002,105 @@ void MidPanelSingleLayerContent(GuiBuilder& builder,
                                 u8 layer_index,
                                 Box parent) {
     {
-                    auto& layer = g.engine.Layer(layer_index);
+        auto& layer = g.engine.Layer(layer_index);
 
-                    auto const root =
-                        DoBox(builder,
-                              {
-                                  .parent = parent,
-                                  .layout {
-                                      .size = layout::k_fill_parent,
-                                      .contents_padding = {.lr = 12, .tb = 10},
-                                      .contents_gap = 8,
-                                      .contents_direction = layout::Direction::Column,
-                                      .contents_align = layout::Alignment::Middle,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                  },
-                              });
+        auto const root = DoBox(builder,
+                                {
+                                    .parent = parent,
+                                    .layout {
+                                        .size = layout::k_fill_parent,
+                                        .contents_padding = {.lr = 12, .tb = 10},
+                                        .contents_gap = 8,
+                                        .contents_direction = layout::Direction::Column,
+                                        .contents_align = layout::Alignment::Middle,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                    },
+                                });
 
-                    // === TOP ROW: Instrument selector + Mute/Solo ===
-                    auto const top_row =
-                        DoBox(builder,
-                              {
-                                  .parent = root,
-                                  .layout {
-                                      .size = {300, layout::k_hug_contents},
-                                      .contents_gap = 8,
-                                      .contents_direction = layout::Direction::Row,
-                                      .contents_align = layout::Alignment::Start,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                  },
-                              });
+        // === TOP ROW: Instrument selector + Mute/Solo ===
+        auto const top_row = DoBox(builder,
+                                   {
+                                       .parent = root,
+                                       .layout {
+                                           .size = {300, layout::k_hug_contents},
+                                           .contents_gap = 8,
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                   });
 
-                    DoLayerInstSelector(g, frame_context, layer_index, top_row);
-                    DoMuteSoloCompact(g, layer_index, top_row);
+        DoLayerInstSelector(g, frame_context, layer_index, top_row);
+        DoMuteSoloCompact(g, layer_index, top_row);
 
-                    bool const has_instrument = layer.instrument.tag != InstrumentType::None;
+        bool const has_instrument = layer.instrument.tag != InstrumentType::None;
 
-                    // === LARGE WAVEFORM ===
-                    auto const waveform_box = DoBox(builder,
-                                                    {
-                                                        .parent = root,
-                                                        .layout {
-                                                            .size = {layout::k_fill_parent, 120},
-                                                        },
-                                                    });
+        // === LARGE WAVEFORM + INFO STRIP ===
+        auto const waveform_container = DoBox(builder,
+                                              {
+                                                  .parent = root,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                      .contents_direction = layout::Direction::Column,
+                                                  },
+                                              });
 
-                    if (auto const r = BoxRect(builder, waveform_box)) {
-                        DrawBlurredBackgroundForBox(g, waveform_box, g.engine.Layer(layer_index).LibId());
+        if (auto const r = BoxRect(builder, waveform_container))
+            DrawBlurredBackgroundForBox(g, waveform_container, layer.LibId());
 
-                        if (has_instrument) DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true});
-                    }
+        auto const waveform_box = DoBox(builder,
+                                        {
+                                            .parent = waveform_container,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, 120},
+                                            },
+                                        });
 
-                    // === PARAMETER SECTIONS ROW 1: Mixer | Vol Env | Filter ===
-                    auto const params_row1 =
-                        DoBox(builder,
-                              {
-                                  .parent = root,
-                                  .layout {
-                                      .size = layout::k_hug_contents,
-                                      .contents_direction = layout::Direction::Row,
-                                      .contents_align = layout::Alignment::Middle,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                  },
-                              });
-                    DrawBlurredBackgroundForBox(g, params_row1, g.engine.Layer(layer_index).LibId());
+        if (auto const r = BoxRect(builder, waveform_box)) {
+            if (has_instrument) DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true});
+        }
 
-                    DoEngineSection(g, layer_index, params_row1);
-                    VerticalDivider(g, params_row1);
-                    DoMixerSection(g, layer_index, params_row1);
-                    VerticalDivider(g, params_row1);
-                    DoVolEnvSection(g, layer_index, params_row1);
+        if (has_instrument) DoInstrumentInfoStrip(g, layer_index, waveform_container);
 
-                    // === PARAMETER SECTIONS ROW 2: LFO | EQ | Play ===
-                    auto const params_row2 =
-                        DoBox(builder,
-                              {
-                                  .parent = root,
-                                  .layout {
-                                      .size = layout::k_hug_contents,
-                                      .contents_direction = layout::Direction::Row,
-                                      .contents_align = layout::Alignment::Middle,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                  },
-                              });
+        // === PARAMETER SECTIONS ROW 1: Mixer | Vol Env | Filter ===
+        auto const params_row1 = DoBox(builder,
+                                       {
+                                           .parent = root,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Middle,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                           },
+                                       });
+        DrawBlurredBackgroundForBox(g, params_row1, g.engine.Layer(layer_index).LibId());
 
-                    DrawBlurredBackgroundForBox(g, params_row2, g.engine.Layer(layer_index).LibId());
+        DoEngineSection(g, layer_index, params_row1);
+        VerticalDivider(g, params_row1);
+        DoMixerSection(g, layer_index, params_row1);
+        VerticalDivider(g, params_row1);
+        DoVolEnvSection(g, layer_index, params_row1);
 
-                    DoFilterSection(g, layer_index, params_row2);
-                    VerticalDivider(g, params_row2);
-                    DoLfoSection(g, layer_index, params_row2);
-                    VerticalDivider(g, params_row2);
-                    DoEqSection(g, layer_index, params_row2);
-                    VerticalDivider(g, params_row2);
-                    DoPlaySection(g, layer_index, params_row2);
+        // === PARAMETER SECTIONS ROW 2: LFO | EQ | Play ===
+        auto const params_row2 = DoBox(builder,
+                                       {
+                                           .parent = root,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Middle,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                           },
+                                       });
+
+        DrawBlurredBackgroundForBox(g, params_row2, g.engine.Layer(layer_index).LibId());
+
+        DoFilterSection(g, layer_index, params_row2);
+        VerticalDivider(g, params_row2);
+        DoLfoSection(g, layer_index, params_row2);
+        VerticalDivider(g, params_row2);
+        DoEqSection(g, layer_index, params_row2);
+        VerticalDivider(g, params_row2);
+        DoPlaySection(g, layer_index, params_row2);
     }
 }
