@@ -369,14 +369,12 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
 
 struct EffectSectionInfo {
     Effect* fx;
-    Box heading_btn;
     Box divider;
 };
 
 // Switchboard: effect toggle buttons arranged in two columns.
-static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
+static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
     using enum UiSizeId;
-    auto& imgui = g.imgui;
     auto& params = g.engine.processor.main_params;
 
     int const switches_left_col_size = (k_num_effect_types / 2) + (k_num_effect_types % 2);
@@ -388,10 +386,8 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
                                               .parent = root,
                                               .layout {
                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_padding = {.l = LiveWw(FXSwitchBoardMarginL),
-                                                                       .r = LiveWw(FXSwitchBoardMarginR),
-                                                                       .t = LiveWw(FXSwitchBoardMarginT),
-                                                                       .b = LiveWw(FXSwitchBoardMarginB)},
+                                                  .contents_padding = {.l = 8, .t = 4, .r = 2, .b = 4},
+                                                  .contents_gap = 2,
                                                   .contents_direction = layout::Direction::Row,
                                               },
                                           });
@@ -417,7 +413,6 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
         Box switch_row;
         Box number_box;
         Box slot_box;
-        Box grab_box;
     };
     Array<SlotBoxes, k_num_effect_types> slots {};
 
@@ -452,33 +447,21 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
                                         },
                                     });
 
-        auto const grab_box =
-            DoBox(g.builder,
-                  {
-                      .parent = switch_row,
-                      .layout {
-                          .size = {LiveWw(FXSwitchBoardGrabRegionWidth), layout::k_fill_parent},
-                      },
-                  });
-
-        slots[slot] = {switch_row, number_box, slot_box, grab_box};
+        slots[slot] = {switch_row, number_box, slot_box};
     }
 
     // === Input + render: drawing and interaction ===
 
     if (g.builder.IsInputAndRenderPass()) {
-        auto& draw_list = *imgui.draw_list;
+        auto& draw_list = *g.imgui.draw_list;
         auto const corner_rounding = LivePx(UiSizeId::CornerRounding);
-        auto& dragging_fx = g.dragging_fx_switch;
 
         usize fx_index = 0;
         for (auto const slot : Range(k_num_effect_types)) {
             auto const window_number_r =
-                imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot].number_box).Value());
+                g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot].number_box).Value());
             auto const window_slot_r =
-                imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot].slot_box).Value());
-            auto const window_grab_r =
-                imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot].grab_box).Value());
+                g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot].slot_box).Value());
 
             // Number label
             draw_list.AddTextInRect(window_number_r,
@@ -487,25 +470,25 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
                                     {.justification = TextJustification::CentredLeft});
 
             // Drop zone: if dragging and cursor is over this slot (or it's the current drop slot)
-            if (dragging_fx &&
-                (window_slot_r.Contains(GuiIo().in.cursor_pos) || dragging_fx->drop_slot == slot)) {
-                if (dragging_fx->drop_slot != slot)
+            if (g.dragging_fx_switch &&
+                (window_slot_r.Contains(GuiIo().in.cursor_pos) || g.dragging_fx_switch->drop_slot == slot)) {
+                if (g.dragging_fx_switch->drop_slot != slot)
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
-                dragging_fx->drop_slot = slot;
+                g.dragging_fx_switch->drop_slot = slot;
                 draw_list.AddRectFilled(window_slot_r, LiveCol(UiColMap::FXButtonDropZone), corner_rounding);
             } else {
-                // Normal slot: show toggle icon + text label (matching old button style)
+                // Normal slot
                 auto fx = ordered_effects[fx_index++];
-                if (dragging_fx && fx == dragging_fx->fx) fx = ordered_effects[fx_index++];
+                if (g.dragging_fx_switch && fx == g.dragging_fx_switch->fx) fx = ordered_effects[fx_index++];
 
                 auto const fx_cols = GetFxColMap(fx->type);
                 bool const is_on = EffectIsOn(params, fx);
 
                 // Toggle button: register behaviour
-                auto const btn_id = imgui.MakeId(slots[slot].slot_box.imgui_id);
-                bool const fired = imgui.ButtonBehaviour(window_slot_r, btn_id, {});
-                bool const is_hot = imgui.IsHot(btn_id);
-                bool const is_active = imgui.IsActive(btn_id, MouseButton::Left);
+                auto const btn_id = g.imgui.MakeId(SourceLocationHash() + ToInt(fx->type));
+                bool const fired = g.imgui.ButtonBehaviour(window_slot_r, btn_id, {});
+                bool const is_hot = g.imgui.IsHot(btn_id);
+                bool const is_active = g.imgui.IsActive(btn_id, MouseButton::Left);
 
                 // Toggle icon (coloured when on, grey when off)
                 auto const icon_text = is_on ? ICON_FA_TOGGLE_ON ""_s : ICON_FA_TOGGLE_OFF ""_s;
@@ -540,8 +523,16 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
                                       {});
                 }
 
+                auto const window_grab_r = ({
+                    auto w = LiveWw(FXSwitchBoardGrabRegionWidth);
+                    auto r = window_slot_r;
+                    r.x += r.w - w;
+                    r.w = w;
+                    r;
+                });
+
                 // Grab handle icon (show only on hover)
-                imgui.RegisterRectForMouseTracking(window_grab_r);
+                g.imgui.RegisterRectForMouseTracking(window_grab_r);
                 if (is_hot || window_grab_r.Contains(GuiIo().in.cursor_pos)) {
                     g.fonts.Push(ToInt(FontType::Icons));
                     DEFER { g.fonts.Pop(); };
@@ -555,26 +546,26 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
                     GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
                 // Drag start detection
-                if (is_active && !dragging_fx) {
+                if (is_active && !g.dragging_fx_switch) {
                     auto const click_pos = GuiIo().in.mouse_buttons[0].last_press.point;
                     auto const current_pos = GuiIo().in.cursor_pos;
                     auto const delta = current_pos - click_pos;
 
                     constexpr f32 k_wiggle_room = 3;
                     if (Sqrt((delta.x * delta.x) + (delta.y * delta.y)) > k_wiggle_room)
-                        dragging_fx =
+                        g.dragging_fx_switch =
                             DraggingFX {btn_id, fx, slot, GuiIo().in.cursor_pos - window_slot_r.pos};
                 }
             }
         }
 
         // Floating switch during drag
-        if (dragging_fx) {
-            auto const fx_cols = GetFxColMap(dragging_fx->fx->type);
-            bool const is_on_drag = EffectIsOn(params, dragging_fx->fx);
+        if (g.dragging_fx_switch) {
+            auto const fx_cols = GetFxColMap(g.dragging_fx_switch->fx->type);
+            bool const is_on_drag = EffectIsOn(params, g.dragging_fx_switch->fx);
 
-            Rect btn_r = imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0].slot_box).Value());
-            btn_r.pos = GuiIo().in.cursor_pos - dragging_fx->relative_grab_point;
+            Rect btn_r = g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0].slot_box).Value());
+            btn_r.pos = GuiIo().in.cursor_pos - g.dragging_fx_switch->relative_grab_point;
 
             // Toggle icon
             auto const icon_text = is_on_drag ? String {ICON_FA_TOGGLE_ON} : String {ICON_FA_TOGGLE_OFF};
@@ -597,30 +588,23 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
             auto const text_col = LiveCol(UiColMap::MidText);
             draw_list.AddTextInRect(text_r,
                                     text_col,
-                                    k_effect_info[ToInt(dragging_fx->fx->type)].name,
+                                    k_effect_info[ToInt(g.dragging_fx_switch->fx->type)].name,
                                     {.justification = TextJustification::CentredLeft});
 
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         }
 
         // Handle release
-        if (dragging_fx && imgui.WasJustDeactivated(dragging_fx->id, MouseButton::Left)) {
-            MoveEffectToNewSlot(ordered_effects, dragging_fx->fx, dragging_fx->drop_slot);
+        if (g.dragging_fx_switch && g.imgui.WasJustDeactivated(g.dragging_fx_switch->id, MouseButton::Left)) {
+            MoveEffectToNewSlot(ordered_effects, g.dragging_fx_switch->fx, g.dragging_fx_switch->drop_slot);
             g.engine.processor.desired_effects_order.Store(EncodeEffectsArray(ordered_effects),
                                                            StoreMemoryOrder::Release);
             g.engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged,
                                                    RmwMemoryOrder::Release);
             g.engine.processor.host.request_process(&g.engine.processor.host);
-            dragging_fx.Clear();
+            g.dragging_fx_switch.Clear();
         }
     }
-
-    // Switchboard bottom divider
-    DoWhitespace(g.builder, root, LiveWw(FXDividerMarginT));
-    auto const switches_bottom_divider = DoDivider(g, root);
-    DoWhitespace(g.builder, root, LiveWw(FXDividerMarginB));
-
-    return switches_bottom_divider;
 }
 
 // Per-effect-type parameter controls.
@@ -966,7 +950,7 @@ static void DoEffectParams(GuiState& g,
 }
 
 // Effect sections: heading + params + divider for each active effect.
-[[maybe_unused]] static DynamicArrayBounded<EffectSectionInfo, k_num_effect_types>
+static DynamicArrayBounded<EffectSectionInfo, k_num_effect_types>
 DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, EffectsArray& ordered_effects) {
     using enum UiSizeId;
     auto& params = g.engine.processor.main_params;
@@ -1017,45 +1001,72 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
         // Divider after effect section
         DoWhitespace(g.builder, root, LiveWw(FXDividerMarginT));
         auto const div = DoDivider(g, root);
-        DoWhitespace(g.builder, root, LiveWw(FXDividerMarginB));
 
-        dyn::Append(effect_sections, EffectSectionInfo {fx, heading_btn, div});
+        dyn::Append(effect_sections, EffectSectionInfo {fx, div});
     }
 
     return effect_sections;
 }
 
 // Drag-and-drop for both effect unit reordering and switchboard reordering.
-[[maybe_unused]] static void DoEffectDragAndDrop(GuiState& g,
-                                                 Box switches_bottom_divider,
-                                                 Span<EffectSectionInfo const> effect_sections,
-                                                 EffectsArray& ordered_effects) {
+static void DoEffectDragAndDrop(GuiState& g,
+                                Box switches_bottom_divider,
+                                Span<EffectSectionInfo const> effect_sections,
+                                EffectsArray& ordered_effects) {
+    if (!g.builder.IsInputAndRenderPass()) return;
     auto& engine = g.engine;
 
     // Effect unit drag (heading drag to reorder sections)
     if (g.dragging_fx_unit && g.imgui.IsViewportHovered(g.imgui.curr_viewport)) {
         // Find closest divider
-        f32 const rel_y_pos = g.imgui.WindowPosToViewportPos(GuiIo().in.cursor_pos).y;
-        Box closest_div = switches_bottom_divider;
-        usize closest_slot = 0;
-        auto const original_slot = FindSlotInEffects(ordered_effects, g.dragging_fx_unit->fx);
 
-        f32 distance = FLT_MAX;
-        if (auto const r = BoxRect(g.builder, switches_bottom_divider)) distance = Abs(r->y - rel_y_pos);
+        EffectSectionInfo zeroth_section {};
 
-        for (auto const& section : effect_sections) {
-            if (auto const r = BoxRect(g.builder, section.divider)) {
-                if (f32 const d = Abs(r->y - rel_y_pos); d < distance) {
-                    distance = d;
-                    closest_div = section.divider;
-                    closest_slot = FindSlotInEffects(ordered_effects, section.fx) + 1;
-                    if (closest_slot > original_slot) --closest_slot;
+        EffectSectionInfo const* closest_section = nullptr;
+        {
+            f32 const rel_y_pos = g.imgui.WindowPosToViewportPos(GuiIo().in.cursor_pos).y;
+
+            f32 distance = FLT_MAX;
+
+            if (auto const r = BoxRect(g.builder, switches_bottom_divider)) {
+                distance = Abs(r->y - rel_y_pos);
+                zeroth_section = {
+                    .fx = ({
+                        Effect* first_fx = nullptr;
+                        for (auto f : ordered_effects)
+                            if (EffectIsOn(g.engine.processor.main_params, f)) {
+                                first_fx = f;
+                                break;
+                            }
+                        first_fx;
+                    }),
+                    .divider = switches_bottom_divider,
+                };
+                closest_section = &zeroth_section;
+            }
+
+            for (auto const& section : effect_sections) {
+                if (auto const r = BoxRect(g.builder, section.divider)) {
+                    if (f32 const d = Abs(r->y - rel_y_pos); d < distance) {
+                        distance = d;
+                        closest_section = &section;
+                    }
                 }
             }
         }
 
+        ASSERT(closest_section);
+
+        auto const closest_slot = ({
+            usize dest = 0;
+            auto const source = FindSlotInEffects(ordered_effects, g.dragging_fx_unit->fx);
+            dest = FindSlotInEffects(ordered_effects, closest_section->fx);
+            if (dest < source && closest_section != &zeroth_section) ++dest;
+            dest;
+        });
+
         // Highlight closest divider
-        DoDividerColoured(g, closest_div, LiveCol(UiColMap::FXDividerLineDropZone));
+        DoDividerColoured(g, closest_section->divider, LiveCol(UiColMap::FXDividerLineDropZone));
 
         if (g.dragging_fx_unit->drop_slot != closest_slot)
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
@@ -1067,7 +1078,11 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
         auto const drag_cols = GetFxColMap(g.dragging_fx_unit->fx->type);
-        auto const text = k_effect_info[ToInt(g.dragging_fx_unit->fx->type)].name;
+        auto const text = fmt::Format(g.scratch_arena,
+                                      "{} dst: {} src: {}",
+                                      k_effect_info[ToInt(g.dragging_fx_unit->fx->type)].name,
+                                      g.dragging_fx_unit->drop_slot,
+                                      FindSlotInEffects(ordered_effects, g.dragging_fx_unit->fx));
 
         auto const cursor_pos = GuiIo().in.cursor_pos;
         auto const heading_h = LivePx(UiSizeId::FXHeadingH);
@@ -1134,7 +1149,7 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
     }
 }
 
-void DoEffectsPanel(GuiState& g, GuiFrameContext const& frame_context, Box parent) {
+void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     DoBoxViewport(
         g.builder,
         {
@@ -1147,33 +1162,31 @@ void DoEffectsPanel(GuiState& g, GuiFrameContext const& frame_context, Box paren
                     auto const root = DoBox(g.builder,
                                             {
                                                 .layout {
-                                                    .size = layout::k_fill_parent,
+                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                     .contents_direction = layout::Direction::Column,
                                                     .contents_align = layout::Alignment::Start,
                                                 },
                                             });
 
-                    auto const switches_bottom_divider = DoSwitchboard(g, root, ordered_effects);
+                    DoSwitchboard(g, root, ordered_effects);
+                    auto const switches_bottom_divider = DoDivider(g, root);
                     auto const effect_sections = DoEffectSections(g, frame_context, root, ordered_effects);
                     DoEffectDragAndDrop(g, switches_bottom_divider, effect_sections, ordered_effects);
+
+                    // Add gap at bottom so you can see the last divider.
+                    DoBox(g.builder, {.parent = root, .layout {.size = {1, 9}}});
                 },
             .bounds = parent,
-            .imgui_id = g.imgui.MakeId("Effects"),
+            .imgui_id = SourceLocationHash(),
             .viewport_config =
                 {
                     .draw_scrollbars = DrawMidPanelScrollbars,
-                    .padding =
-                        {
-                            .l = LiveWw(UiSizeId::FXViewportPadL),
-                            .t = LiveWw(UiSizeId::FXViewportPadT),
-                            .r = LiveWw(UiSizeId::FXViewportPadR),
-                            .b = LiveWw(UiSizeId::FXViewportPadB),
-                        },
+                    .padding = {.r = 7},
                     .scrollbar_padding = 4,
-                    .scrollbar_width = LiveWw(UiSizeId::ScrollbarWidth),
                     .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
-                                             imgui::ViewportScrollbarVisibility::Always},
+                                             imgui::ViewportScrollbarVisibility::Auto},
+                    .scrollbar_inside_padding = true,
                 },
-            .debug_name = "Effects",
+            .debug_name = "EffectsStrip",
         });
 }

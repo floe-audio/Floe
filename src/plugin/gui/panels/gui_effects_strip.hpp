@@ -7,4 +7,4 @@
 #include "gui/core/gui_fwd.hpp"
 #include "gui_framework/gui_builder.hpp"
 
-void DoEffectsPanel(GuiState& g, GuiFrameContext const& frame_context, Box parent);
+void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box parent);

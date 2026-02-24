@@ -17,7 +17,6 @@
 #include "gui_framework/image.hpp"
 #include "gui_mid_panel.hpp"
 
-
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
 
 static void DrawLayersContainerBackground(GuiState& g, Rect r) {
@@ -29,10 +28,10 @@ static void DrawLayersContainerBackground(GuiState& g, Rect r) {
     auto const overall_lib = LibraryForOverallBackground(g.engine);
     if (overall_lib)
         DrawMidBlurredBackground(g,
-                              r,
-                              r,
-                              *overall_lib,
-                              Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+                                 r,
+                                 r,
+                                 *overall_lib,
+                                 Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
 
     auto const layer_opacity = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
     for (auto const layer_index : Range(k_num_layers)) {
@@ -64,24 +63,19 @@ static void DrawLayersContainerBackground(GuiState& g, Rect r) {
 }
 
 static void DrawEffectsContainerBackground(GuiState& g, Rect r) {
-    auto const mid_panel_title_height = LivePx(UiSizeId::MidPanelTitleHeight);
     auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
 
     auto const overall_lib = LibraryForOverallBackground(g.engine);
     if (overall_lib)
         DrawMidBlurredBackground(g,
-                              r,
-                              r,
-                              *overall_lib,
-                              Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+                                 r,
+                                 r,
+                                 *overall_lib,
+                                 Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
 
     DoMidOverlayGradient(g.imgui, r);
 
     g.imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
-
-    g.imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                               {r.Right(), r.y + mid_panel_title_height},
-                               LiveCol(UiColMap::MidViewportDivider));
 }
 
 static void
@@ -190,6 +184,8 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
         DoBox(builder,
               {
                   .parent = root,
+                  .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                  .border_edges = 0b0001,
                   .layout {
                       .size = {layout::k_fill_parent, LiveWw(UiSizeId::MidPanelTitleHeight)},
                       .contents_padding = {.lr = LiveWw(UiSizeId::MidPanelTitleMarginLeft)},
@@ -231,11 +227,11 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
                                    {
                                        .parent = root,
                                        .layout {
-                                           .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                           .size = layout::k_fill_parent,
                                        },
                                    });
 
-    DoEffectsPanel(g, frame_context, effects_box);
+    DoEffectsStripPanel(g, frame_context, effects_box);
 }
 
 void MidPanelCombinedContent(GuiBuilder& builder,
