@@ -5,6 +5,7 @@
 
 #include "foundation/container/function.hpp"
 #include "foundation/utils/geometry.hpp"
+
 #include "gui/core/gui_fwd.hpp"
 #include "gui_framework/gui_builder.hpp"
 
@@ -26,6 +27,7 @@ void DoInstSelector(GuiState& g,
 
 enum class LayerPageType : u8 {
     Main,
+    Engine,
     Filter,
     Lfo,
     Eq,

@@ -499,12 +499,15 @@ enum class StateVersion : u16 {
     // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
     AddedMonophonicModeParameter,
 
+    // Added EngineType parameter to layers.
+    AddedEngineTypeParameter,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == 228,
+    static_assert(k_num_parameters == 231,
                   "You have changed the number of parameters. You must now bump the "
                   "state version number and handle setting any new parameters to "
                   "backwards-compatible states. In other words, these new parameters "
@@ -660,6 +663,14 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                 mode_val = was_monophonic ? (f32)param_values::MonophonicMode::Retrigger
                                           : (f32)param_values::MonophonicMode::Off;
             }
+        }
+    }
+
+    if (version < StateVersion::AddedEngineTypeParameter) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            state.LinearParam(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::EngineType)) =
+                (f32)param_values::EngineType::Standard;
         }
     }
 }

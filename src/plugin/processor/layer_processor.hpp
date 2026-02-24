@@ -156,6 +156,8 @@ struct VoiceProcessingController {
     param_values::LoopMode loop_mode {};
     bool reverse {};
 
+    param_values::EngineType engine_type {};
+
     bool no_key_tracking = false;
 };
 

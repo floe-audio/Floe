@@ -60,6 +60,7 @@ enum class LayerParamIndex : u16 {
     KeyRangeHigh,
     KeyRangeLowFade,
     KeyRangeHighFade,
+    EngineType,
 
     Count,
 };
@@ -499,6 +500,17 @@ constexpr auto k_monophonic_mode_strings = ArrayT<String>({
 });
 static_assert(k_monophonic_mode_strings.size == ToInt(MonophonicMode::Count));
 
+enum class EngineType : u8 {
+    Standard,
+    Granular,
+    Count,
+};
+constexpr auto k_engine_type_strings = ArrayT<String>({
+    "Standard",
+    "Granular",
+});
+static_assert(k_engine_type_strings.size == ToInt(EngineType::Count));
+
 } // namespace param_values
 
 struct ParamDescriptor {
@@ -517,6 +529,7 @@ struct ParamDescriptor {
         DelayMode,
         VelocityMappingMode,
         MonophonicMode,
+        EngineType,
         Count,
     };
 
@@ -724,6 +737,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::DelayMode: return k_delay_mode_strings;
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
         case ParamDescriptor::MenuType::MonophonicMode: return k_monophonic_mode_strings;
+        case ParamDescriptor::MenuType::EngineType: return k_engine_type_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -2193,6 +2207,17 @@ consteval auto CreateParams() {
             .name = "Pitch Bend Range"_s,
             .gui_label = "Pitch Bend Range"_s,
             .tooltip = "The pitch range in semitones of the MIDI pitch wheel"_s,
+        };
+        lp(EngineType) = Args {
+            .id = id(region, 56), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::EngineType,
+                .default_val = (u32)param_values::EngineType::Standard,
+            }),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Engine Type"_s,
+            .gui_label = "Engine"_s,
+            .tooltip = "The audio engine used for this layer"_s,
         };
     }
 

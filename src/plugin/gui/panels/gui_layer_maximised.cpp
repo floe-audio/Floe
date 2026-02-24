@@ -836,7 +836,14 @@ void MidPanelSingleLayerContent(GuiBuilder& builder,
                                         });
 
         if (auto const r = BoxRect(builder, waveform_box)) {
-            if (has_instrument) DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true});
+            if (has_instrument) {
+                auto const engine_type = (param_values::EngineType)(int)g.engine.processor.main_params
+                                             .LinearValue(layer_index, LayerParamIndex::EngineType);
+                DoWaveformElement(g,
+                                  layer,
+                                  *r,
+                                  {.handles_follow_cursor = true, .engine_type = engine_type});
+            }
         }
 
         if (has_instrument) DoInstrumentInfoStrip(g, layer_index, waveform_container);

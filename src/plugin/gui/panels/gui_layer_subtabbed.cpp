@@ -3,8 +3,6 @@
 
 #include "gui/panels/gui_layer_subtabbed.hpp"
 
-#include "gui/panels/gui_layer_common.hpp"
-
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
@@ -14,6 +12,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/layer_processor.hpp"
@@ -172,6 +171,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                     break;
                 case LayerPageType::Eq: result = params.BoolValue(layer_index, LayerParamIndex::EqOn); break;
                 case LayerPageType::Main:
+                case LayerPageType::Engine:
                 case LayerPageType::Play:
                 case LayerPageType::Count: break;
             }
@@ -181,6 +181,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
         auto const name = [&]() -> String {
             switch (page_type) {
                 case LayerPageType::Main: return "Main"_s;
+                case LayerPageType::Engine: return "Engine"_s;
                 case LayerPageType::Eq: return "EQ"_s;
                 case LayerPageType::Play: return "Play"_s;
                 case LayerPageType::Lfo: return "LFO"_s;
@@ -1002,6 +1003,151 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
     }
 }
 
+static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
+    auto& layer = g.engine.Layer(layer_index);
+    auto& params = g.engine.processor.main_params;
+
+    auto const row_height = LiveWw(UiSizeId::PlayRowH);
+    auto const row_padding_lr = LiveWw(UiSizeId::PlayRowPadLR);
+    auto const control_label_gap = LiveWw(UiSizeId::PlayLabelGap);
+    auto const control_width = 130;
+
+    auto const page = DoBox(g.builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_gap = LiveWw(UiSizeId::PlayRowGap),
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // Engine type menu
+    {
+        auto const param = params.DescribedValue(layer_index, LayerParamIndex::EngineType);
+
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = control_label_gap,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
+
+        DoMenuParameter(g, row, param, {.width = control_width, .label = false});
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = param.info.gui_label,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = layout::k_fill_parent,
+                  },
+              });
+    }
+
+    auto const engine_type =
+        (param_values::EngineType)(int)params.LinearValue(layer_index, LayerParamIndex::EngineType);
+
+    // Waveform display
+    {
+        auto const waveform_box =
+            DoBox(g.builder,
+                  {
+                      .parent = page,
+                      .layout {
+                          .size = {layout::k_fill_parent, LiveWw(UiSizeId::MainWaveformH)},
+                          .margins {
+                              .lr = LiveWw(UiSizeId::MainWaveformMarginLR),
+                              .tb = LiveWw(UiSizeId::MainWaveformMarginTB),
+                          },
+                      },
+                  });
+        if (auto const r = BoxRect(g.builder, waveform_box))
+            DoWaveformElement(g, layer, *r, {.engine_type = engine_type});
+    }
+
+    // Loop mode selector (only for Standard engine)
+    if (engine_type == param_values::EngineType::Standard) {
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = control_label_gap,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
+
+        auto const loop_container = DoBox(g.builder,
+                                          {
+                                              .parent = row,
+                                              .layout {
+                                                  .size = {control_width, layout::k_fill_parent},
+                                              },
+                                          });
+
+        DoLoopModeSelector(g, loop_container, layer);
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = "Loop"_s,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = layout::k_fill_parent,
+                  },
+              });
+    }
+
+    // Reverse toggle
+    {
+        auto const param = params.DescribedValue(layer_index, LayerParamIndex::Reverse);
+        bool const is_waveform_synth = layer.instrument_id.tag == InstrumentType::WaveformSynth;
+
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, row_height},
+                                       .contents_padding {.lr = row_padding_lr},
+                                       .contents_gap = control_label_gap,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
+
+        DoButtonParameter(g,
+                          row,
+                          param,
+                          {
+                              .width = control_width,
+                              .greyed_out = is_waveform_synth,
+                          });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = param.info.gui_label,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = layout::k_fill_parent,
+                  },
+              });
+    }
+}
+
 static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
@@ -1013,6 +1159,7 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
                                     .size = layout::k_fill_parent,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                 },
                             });
 
@@ -1036,38 +1183,8 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
     // Instrument info strip
     DoInstrumentInfoStrip(g, layer_index, page);
 
-    // Button row: Reverse toggle + Loop mode selector
-    {
-        auto const btn_row = DoBox(g.builder,
-                                   {
-                                       .parent = page,
-                                       .layout {
-                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_padding {
-                                               .l = LiveWw(UiSizeId::MainRowPadL),
-                                               .r = LiveWw(UiSizeId::MainRowPadR),
-                                               .tb = LiveWw(UiSizeId::MainRowPadTB),
-                                           },
-                                           .contents_direction = layout::Direction::Row,
-                                       },
-                                   });
-
-        bool const is_waveform_synth = layer.instrument_id.tag == InstrumentType::WaveformSynth;
-        DoButtonParameter(g,
-                          btn_row,
-                          params.DescribedValue(layer_index, LayerParamIndex::Reverse),
-                          {
-                              .width = LiveWw(UiSizeId::MainReverseBtnW),
-                              .greyed_out = is_waveform_synth,
-                          });
-
-        DoLoopModeSelector(g, btn_row, layer);
-    }
-
     // Divider
-    DoWhitespace(g.builder, page, LiveWw(UiSizeId::MainDividerGapAbove));
-    DoDivider(g, page);
-    DoWhitespace(g.builder, page, LiveWw(UiSizeId::MainDividerGapBelow));
+    DoWhitespace(g.builder, page, 13);
 
     // Volume envelope heading
     {
@@ -1092,18 +1209,17 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Envelope display
     {
-        auto const envelope_box =
-            DoBox(g.builder,
-                  {
-                      .parent = page,
-                      .layout {
-                          .size = {layout::k_fill_parent, LiveWw(UiSizeId::MainEnvelopeH)},
-                          .margins {
-                              .lr = LiveWw(UiSizeId::MainEnvelopeMarginLR),
-                              .tb = LiveWw(UiSizeId::MainEnvelopeMarginTB),
-                          },
-                      },
-                  });
+        auto const envelope_box = DoBox(g.builder,
+                                        {
+                                            .parent = page,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, 95},
+                                                .margins {
+                                                    .lr = LiveWw(UiSizeId::MainEnvelopeMarginLR),
+                                                    .tb = LiveWw(UiSizeId::MainEnvelopeMarginTB),
+                                                },
+                                            },
+                                        });
 
         bool const env_on = params.BoolValue(layer_index, LayerParamIndex::VolEnvOn) ||
                             layer.instrument.tag == InstrumentType::WaveformSynth;
@@ -1170,6 +1286,7 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
     switch (g.layer_panel_states[layer_index].selected_page) {
         case LayerPageType::Main: DoMainPage(g, layer_index, root); break;
         case LayerPageType::Filter: DoFilterPage(g, layer_index, root); break;
+        case LayerPageType::Engine: DoEnginePage(g, layer_index, root); break;
         case LayerPageType::Lfo: DoLfoPage(g, layer_index, root); break;
         case LayerPageType::Eq: DoEqPage(g, layer_index, root); break;
         case LayerPageType::Play: DoPlayPage(g, layer_index, root); break;
