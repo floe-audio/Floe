@@ -94,7 +94,7 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
               .size_from_text = true,
               .font = FontType::Body,
               .text_colours =
-                  Col {.c = options.mode != MenuItemOptions::Mode::Active ? Col::Subtext0 : Col::Text},
+                  Col {.c = options.mode != MenuItemOptions::Mode::Active ? Col::Overlay1 : Col::Text},
           });
     if (options.subtext && options.subtext->size) {
         DoBox(builder,
