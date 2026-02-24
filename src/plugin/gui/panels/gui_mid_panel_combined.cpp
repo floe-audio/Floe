@@ -7,10 +7,10 @@
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
-#include "gui/panels/gui_effects.hpp"
+#include "gui/panels/gui_effects_strip.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
-#include "gui/panels/gui_layer.hpp"
+#include "gui/panels/gui_layer_subtabbed.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -19,15 +19,6 @@
 
 
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
-
-static void DrawMidPanelOverallBackground(GuiState& g, imgui::Context const& imgui) {
-    auto overall_library = LibraryForOverallBackground(g.engine);
-    if (overall_library)
-        DrawMidPanelBackgroundImage(g, *overall_library);
-    else
-        imgui.draw_list->AddRectFilled(imgui.curr_viewport->unpadded_bounds,
-                                       LiveCol(UiColMap::MidViewportBackground));
-}
 
 static void DrawLayersContainerBackground(GuiState& g, Rect r) {
     auto const mid_panel_title_height = LivePx(UiSizeId::MidPanelTitleHeight);
@@ -247,39 +238,28 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
     DoEffectsPanel(g, frame_context, effects_box);
 }
 
-void MidPanelCombined(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
-    DoBoxViewport(g.builder,
-                  {
-                      .run =
-                          [&](GuiBuilder& builder) {
-                              auto const subpanel_gap_ww = LiveWw(UiSizeId::MidPanelSubpanelGapX);
+void MidPanelCombinedContent(GuiBuilder& builder,
+                             GuiState& g,
+                             GuiFrameContext const& frame_context,
+                             Box parent) {
+    auto const subpanel_gap_ww = LiveWw(UiSizeId::MidPanelSubpanelGapX);
 
-                              auto const root =
-                                  DoBox(builder,
+    auto const root = DoBox(builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding =
                                         {
-                                            .layout {
-                                                .size = layout::k_fill_parent,
-                                                .contents_padding =
-                                                    {
-                                                        .lr = subpanel_gap_ww,
-                                                        .tb = LiveWw(UiSizeId::MidPanelSubpanelGapY),
-                                                    },
-                                                .contents_gap = subpanel_gap_ww,
-                                                .contents_direction = layout::Direction::Row,
-                                                .contents_align = layout::Alignment::Start,
-                                            },
-                                        });
+                                            .lr = subpanel_gap_ww,
+                                            .tb = LiveWw(UiSizeId::MidPanelSubpanelGapY),
+                                        },
+                                    .contents_gap = subpanel_gap_ww,
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
 
-                              DoLayersContainer(builder, g, frame_context, root);
-                              DoEffectsContainer(builder, g, frame_context, root);
-                          },
-                      .bounds = bounds,
-                      .imgui_id = SourceLocationHash(),
-                      .viewport_config {
-                          .draw_background =
-                              [&](imgui::Context const& imgui) { DrawMidPanelOverallBackground(g, imgui); },
-                          .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-                      },
-                      .debug_name = "MidPanel",
-                  });
+    DoLayersContainer(builder, g, frame_context, root);
+    DoEffectsContainer(builder, g, frame_context, root);
 }

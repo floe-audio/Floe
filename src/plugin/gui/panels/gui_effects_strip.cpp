@@ -1,7 +1,7 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui_effects.hpp"
+#include "gui/panels/gui_effects_strip.hpp"
 
 #include <IconsFontAwesome6.h>
 #include <float.h>

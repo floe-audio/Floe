@@ -321,10 +321,7 @@ void GuiUpdate(GuiState& g) {
         Rect remaining {.pos = 0, .size = frame_input.window_size.ToFloat2()};
         auto const top = rect_cut::CutTop(remaining, Round(LivePx(UiSizeId::TopHeight)));
         auto const bot = rect_cut::CutBottom(remaining, Round(LivePx(UiSizeId::BotPanelHeight)));
-        auto const left = rect_cut::CutLeft(remaining, Round(LivePx(UiSizeId::TabBarWidth)));
-
         TopPanel(g, top, frame_context);
-        MidPanelTabs(g, left);
         MidPanel(g, remaining, frame_context);
         BotPanel(g, bot);
     }

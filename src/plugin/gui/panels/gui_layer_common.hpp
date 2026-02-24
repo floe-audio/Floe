@@ -7,11 +7,8 @@
 #include "gui_framework/gui_builder.hpp"
 
 struct GuiState;
-struct GuiFrameContext;
-
-void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent);
-
 struct LayerProcessor;
+
 void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer);
 
 enum class LayerPageType : u8 {

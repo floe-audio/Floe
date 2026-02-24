@@ -8,6 +8,8 @@ struct GuiState;
 struct Engine;
 struct DescribedParamValue;
 struct GuiFrameContext;
+struct GuiBuilder;
+struct Box;
 
 namespace imgui {
 struct Context;

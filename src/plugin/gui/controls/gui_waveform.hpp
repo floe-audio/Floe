@@ -4,7 +4,6 @@
 #pragma once
 
 #include "gui/core/gui_fwd.hpp"
-#include "gui/panels/gui_layer.hpp"
 
 struct LayerProcessor;
 

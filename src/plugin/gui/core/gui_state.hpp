@@ -19,7 +19,7 @@
 #include "gui/panels/gui_info_panel_state.hpp"
 #include "gui/panels/gui_inst_browser_state.hpp"
 #include "gui/panels/gui_ir_browser_state.hpp"
-#include "gui/panels/gui_layer.hpp"
+#include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_library_dev_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui/panels/gui_mid_panel.hpp"

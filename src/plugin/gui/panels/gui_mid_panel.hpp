@@ -20,12 +20,12 @@ struct MidPanelState {
     MidPanelTab tab = MidPanelTab::All;
 };
 
-void MidPanelTabs(GuiState& g, Rect bounds);
-
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);
 
-// Internal
-void MidPanelCombined(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);
+// Internal: called from MidPanel, accepting a parent box instead of creating their own viewport
+struct GuiBuilder;
+struct Box;
+void MidPanelCombinedContent(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent);
 
 namespace imgui {
 struct Context;

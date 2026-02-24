@@ -1,7 +1,7 @@
 // Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui_mid_panel_layer.hpp"
+#include "gui_layer_maximised.hpp"
 
 #include <IconsFontAwesome6.h>
 
@@ -16,7 +16,7 @@
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
-#include "gui/panels/gui_layer.hpp"
+#include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -938,17 +938,18 @@ static void VerticalDivider(GuiState& g, Box parent, u64 loc_hash = SourceLocati
 // =================================================================================================
 // Main entry point
 
-void MidPanelSingleLayer(GuiState& g, Rect bounds, GuiFrameContext const& frame_context, u8 layer_index) {
-    DoBoxViewport(
-        g.builder,
-        {
-            .run =
-                [&](GuiBuilder& builder) {
+void MidPanelSingleLayerContent(GuiBuilder& builder,
+                                GuiState& g,
+                                GuiFrameContext const& frame_context,
+                                u8 layer_index,
+                                Box parent) {
+    {
                     auto& layer = g.engine.Layer(layer_index);
 
                     auto const root =
                         DoBox(builder,
                               {
+                                  .parent = parent,
                                   .layout {
                                       .size = layout::k_fill_parent,
                                       .contents_padding = {.lr = 12, .tb = 10},
@@ -1035,20 +1036,5 @@ void MidPanelSingleLayer(GuiState& g, Rect bounds, GuiFrameContext const& frame_
                     DoEqSection(g, layer_index, params_row2);
                     VerticalDivider(g, params_row2);
                     DoPlaySection(g, layer_index, params_row2);
-                },
-            .bounds = bounds,
-            .imgui_id = SourceLocationHash() + layer_index,
-            .viewport_config {
-                .draw_background =
-                    [&](imgui::Context const& imgui) {
-                        if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id)
-                            DrawMidPanelBackgroundImage(g, *lib_id);
-                        else
-                            imgui.draw_list->AddRectFilled(imgui.curr_viewport->unpadded_bounds,
-                                                           LiveCol(UiColMap::MidViewportBackground));
-                    },
-                .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-            },
-            .debug_name = "MidPanelSingleLayer",
-        });
+    }
 }
