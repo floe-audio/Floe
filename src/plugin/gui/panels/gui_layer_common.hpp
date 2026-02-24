@@ -36,3 +36,5 @@ enum class LayerPageType : u8 {
 struct LayerPanelState {
     LayerPageType selected_page {};
 };
+
+void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent);

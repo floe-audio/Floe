@@ -1033,18 +1033,8 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
         if (auto const r = BoxRect(g.builder, waveform_box)) DoWaveformElement(g, layer, *r);
     }
 
-    // Waveform label (instrument type name)
-    DoBox(g.builder,
-          {
-              .parent = page,
-              .text = layer.InstTypeName(),
-              .text_colours = LiveColStruct(UiColMap::MidText),
-              .text_justification = TextJustification::Centred,
-              .layout {
-                  .size = {layout::k_fill_parent, LiveWw(UiSizeId::MainWaveformLabelH)},
-                  .margins {.lr = LiveWw(UiSizeId::MainWaveformMarginLR)},
-              },
-          });
+    // Instrument info strip
+    DoInstrumentInfoStrip(g, layer_index, page);
 
     // Button row: Reverse toggle + Loop mode selector
     {

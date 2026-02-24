@@ -5,6 +5,7 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "common_infrastructure/audio_utils.hpp"
 #include "engine/engine.hpp"
 #include "engine/loop_modes.hpp"
 #include "gui/core/gui_library_images.hpp"
@@ -435,5 +436,87 @@ void DoInstSelector(GuiState& g,
     if (shuffle_btn.button_fired) {
         auto context = make_browser_context();
         LoadRandomInstrument(context, g.inst_browser_state[layer_index]);
+    }
+}
+
+void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
+    auto& layer_processor = g.engine.processor.layer_processors[layer_index];
+
+    if (layer_processor.instrument.tag == InstrumentType::None) return;
+
+    // Collect info segments to display, separated by dot dividers
+    DynamicArrayBounded<String, 6> segments {};
+
+    switch (layer_processor.instrument.tag) {
+        case InstrumentType::WaveformSynth: {
+            dyn::Append(segments, "Oscillator waveform"_s);
+            break;
+        }
+        case InstrumentType::Sampler: {
+            auto const& inst = layer_processor.instrument
+                                   .Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
+            auto const num_regions = inst->instrument.regions.size;
+            if (num_regions == 0) {
+                dyn::Append(segments, "Empty instrument"_s);
+            } else if (num_regions == 1) {
+                dyn::Append(segments, "Single sample"_s);
+                auto const& smpl = *inst->audio_datas[0];
+                dyn::Append(
+                    segments,
+                    fmt::Format(g.scratch_arena, "{.2} s", (f64)smpl.num_frames / (f64)smpl.sample_rate));
+                dyn::Append(segments,
+                            fmt::Format(g.scratch_arena,
+                                        "Root key {}",
+                                        NoteName((u7)inst->instrument.regions[0].root_key)));
+            } else {
+                dyn::Append(segments, "Multisample instrument"_s);
+                dyn::Append(segments, fmt::Format(g.scratch_arena, "{} samples", num_regions));
+            }
+            break;
+        }
+        case InstrumentType::None: break;
+    }
+
+    if (!segments.size) return;
+
+    auto const strip = DoBox(g.builder,
+                             {
+                                 .parent = parent,
+                                 .layout {
+                                     .size = {layout::k_fill_parent, 20},
+                                     .contents_padding = {.lr = 8},
+                                     .contents_gap = 6,
+                                     .contents_direction = layout::Direction::Row,
+                                     .contents_align = layout::Alignment::Start,
+                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                 },
+                             });
+
+    for (auto const i : Range(segments.size)) {
+        if (i > 0) {
+            auto const dot = DoBox(g.builder,
+                                   {
+                                       .parent = strip,
+                                       .id_extra = i,
+                                       .layout {
+                                           .size = {3, 3},
+                                       },
+                                   });
+            if (auto const r = BoxRect(g.builder, dot)) {
+                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+                g.imgui.draw_list->AddCircleFilled(window_r.Centre(), 1.5f, LiveCol(UiColMap::MidTextDimmed));
+            }
+        }
+
+        DoBox(g.builder,
+              {
+                  .parent = strip,
+                  .id_extra = i,
+                  .text = segments[i],
+                  .size_from_text = true,
+                  .font = FontType::Heading3,
+                  .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                  .text_justification = TextJustification::CentredLeft,
+              });
     }
 }
