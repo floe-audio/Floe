@@ -231,15 +231,20 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
     }
 }
 
-void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, bool flash_when_clipping) {
+void DrawPeakMeter(imgui::Context& imgui,
+                   Rect r,
+                   StereoPeakMeter const& level,
+                   DrawPeakMeterOptions const& options) {
     auto const snapshot = level.GetSnapshot();
     auto const v = snapshot.levels;
-    auto const did_clip = flash_when_clipping && level.DidClipRecently();
+    auto const did_clip = options.flash_when_clipping && level.DidClipRecently();
 
-    auto const gap = LivePx(UiSizeId::PeakMeterGap);
+    auto const gap = options.gap != 0 ? options.gap : LivePx(UiSizeId::PeakMeterGap);
     auto const marker_w = LivePx(UiSizeId::PeakMeterMarkerWidth);
     auto const marker_pad = LivePx(UiSizeId::PeakMeterMarkerPad);
-    auto padded_r = Rect {.x = r.x + marker_w, .y = r.y, .w = r.w - (marker_w * 2), .h = r.h};
+    auto padded_r = options.show_db_markers
+                        ? Rect {.x = r.x + marker_w, .y = r.y, .w = r.w - (marker_w * 2), .h = r.h}
+                        : r;
     auto w = (padded_r.w / 2) - (gap / 2);
 
     constexpr f32 k_max_db = 10;
@@ -262,24 +267,26 @@ void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, 
             imgui.draw_list->AddRectFilled(r_channel, LiveCol(UiColMap::PeakMeterBack), rounding);
         }
 
-        auto draw_marker = [&](f32 db, bool bold) {
-            f32 const pos = MapTo01(db, k_min_db, k_max_db);
-            auto const line_y = padded_r.y + ((1 - pos) * padded_r.h);
-            imgui.draw_list->AddLine({r.x, line_y},
-                                     {r.x + (marker_w - marker_pad), line_y},
-                                     bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
-                                          : LiveCol(UiColMap::PeakMeterMarkers));
-            imgui.draw_list->AddLine({r.Right() - (marker_w - marker_pad), line_y},
-                                     {r.Right(), line_y},
-                                     bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
-                                          : LiveCol(UiColMap::PeakMeterMarkers));
-        };
+        if (options.show_db_markers) {
+            auto draw_marker = [&](f32 db, bool bold) {
+                f32 const pos = MapTo01(db, k_min_db, k_max_db);
+                auto const line_y = padded_r.y + ((1 - pos) * padded_r.h);
+                imgui.draw_list->AddLine({r.x, line_y},
+                                         {r.x + (marker_w - marker_pad), line_y},
+                                         bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
+                                              : LiveCol(UiColMap::PeakMeterMarkers));
+                imgui.draw_list->AddLine({r.Right() - (marker_w - marker_pad), line_y},
+                                         {r.Right(), line_y},
+                                         bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
+                                              : LiveCol(UiColMap::PeakMeterMarkers));
+            };
 
-        draw_marker(0, true);
-        draw_marker(-12, false);
-        draw_marker(-24, false);
-        draw_marker(-36, false);
-        draw_marker(-48, false);
+            draw_marker(0, true);
+            draw_marker(-12, false);
+            draw_marker(-24, false);
+            draw_marker(-36, false);
+            draw_marker(-48, false);
+        }
     }
 
     auto const clamped_v = Max(v, f32x2(k_min_amp)); // Ensure we don't Log10 zero.

@@ -460,7 +460,7 @@ Box DoKnobParameter(GuiState& g,
                 .w = peak_meter_width_px,
                 .h = peak_meter_height_px,
             };
-            DrawPeakMeter(g.imgui, peak_meter_r, *options.peak_meter, false);
+            DrawPeakMeter(g.imgui, peak_meter_r, *options.peak_meter, {.flash_when_clipping = false});
         }
 
         DrawKnob(

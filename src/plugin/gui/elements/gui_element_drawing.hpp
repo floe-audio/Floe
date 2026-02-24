@@ -46,7 +46,16 @@ struct DrawKnobOptions {
 
 void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnobOptions const& style);
 
-void DrawPeakMeter(imgui::Context& imgui, Rect r, StereoPeakMeter const& level, bool flash_when_clipping);
+struct DrawPeakMeterOptions {
+    bool flash_when_clipping;
+    bool show_db_markers = true;
+    f32 gap = 0; // 0 means use default
+};
+
+void DrawPeakMeter(imgui::Context& imgui,
+                   Rect r,
+                   StereoPeakMeter const& level,
+                   DrawPeakMeterOptions const& options);
 
 void DrawOverlayTooltipForRect(imgui::Context const& imgui,
                                Fonts& fonts,

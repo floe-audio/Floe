@@ -954,7 +954,7 @@ void MidPanelSingleLayer(GuiState& g, Rect bounds, GuiFrameContext const& frame_
                                       .contents_padding = {.lr = 12, .tb = 10},
                                       .contents_gap = 8,
                                       .contents_direction = layout::Direction::Column,
-                                      .contents_align = layout::Alignment::Start,
+                                      .contents_align = layout::Alignment::Middle,
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                   },
                               });
@@ -990,7 +990,7 @@ void MidPanelSingleLayer(GuiState& g, Rect bounds, GuiFrameContext const& frame_
                     if (auto const r = BoxRect(builder, waveform_box)) {
                         DrawBlurredBackgroundForBox(g, waveform_box, g.engine.Layer(layer_index).LibId());
 
-                        if (has_instrument) DoWaveformElement(g, layer, *r);
+                        if (has_instrument) DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true});
                     }
 
                     // === PARAMETER SECTIONS ROW 1: Mixer | Vol Env | Filter ===
