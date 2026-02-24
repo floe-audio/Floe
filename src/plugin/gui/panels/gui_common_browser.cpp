@@ -1947,7 +1947,6 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 DoBox(builder,
                       {
                           .parent = filter_search_box,
-                          .text = (String)context.state.filter_search,
                           .round_background_corners = 0b1111,
                           .layout {
                               .size = {layout::k_fill_parent, k_browser_item_height},
@@ -2171,7 +2170,6 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 auto const text_input = DoBox(builder,
                                               {
                                                   .parent = search_box,
-                                                  .text = (String)context.state.search,
                                                   .round_background_corners = 0b1111,
                                                   .layout {
                                                       .size = {layout::k_fill_parent, k_browser_item_height},

@@ -1104,18 +1104,16 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         reset_cursor = true;
     }
     if (IsActive(id, button_cfg.mouse_button)) {
-        if (!frame_input.mouse_buttons[0].is_down) {
+        if (!frame_input.Mouse(MouseButton::Left).is_down) {
             ClearActive();
         } else if (!WasJustActivated(id, button_cfg.mouse_button)) {
-            if (button_cfg.event == MouseButtonEvent::Down) {
-                if (frame_input.Mouse(MouseButton::Left).dragging_started) {
-                    auto rel_pos = get_rel_click_point(r.pos, x_offset);
-                    stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
-                    reset_cursor = true;
-                } else if (frame_input.mouse_buttons[0].is_dragging) {
-                    auto rel_pos = get_rel_click_point(r.pos, x_offset);
-                    stb_textedit_drag(this, &stb_state, rel_pos.x, rel_pos.y);
-                }
+            if (frame_input.Mouse(MouseButton::Left).dragging_started) {
+                auto rel_pos = get_rel_click_point(r.pos, x_offset);
+                stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
+                reset_cursor = true;
+            } else if (frame_input.Mouse(MouseButton::Left).is_dragging) {
+                auto rel_pos = get_rel_click_point(r.pos, x_offset);
+                stb_textedit_drag(this, &stb_state, rel_pos.x, rel_pos.y);
             }
         }
     }
