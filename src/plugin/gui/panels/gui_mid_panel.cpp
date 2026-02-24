@@ -6,6 +6,7 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/panels/gui_mid_panel_layer.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -171,6 +172,8 @@ void MidPanelTabs(GuiState& g, Rect bounds) {
 
                     for (auto const i : Range(ToInt(MidPanelTab::Count))) {
                         auto const tab = (MidPanelTab)i;
+                        bool const is_layer_tab =
+                            tab >= MidPanelTab::Layer1 && tab <= MidPanelTab::Layer3;
 
                         if (tab == MidPanelTab::Layer1 || tab == MidPanelTab::Effects) divider((u64)tab);
 
@@ -181,14 +184,10 @@ void MidPanelTabs(GuiState& g, Rect bounds) {
                                   {
                                       .parent = root,
                                       .id_extra = (u64)tab,
-                                      .background_fill_colours =
-                                          is_selected
-                                              ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
-                                              : Colours {ColSet {
-                                                    .base = Col {.c = Col::None},
-                                                    .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
-                                                    .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
-                                                }},
+                                      .background_fill_colours = Col {.c = Col::None},
+                                      .border_colours =
+                                          is_selected ? Colours {LiveColStruct(UiColMap::MidTabBorderActive)}
+                                                      : Colours {Col {.c = Col::None}},
                                       .round_background_corners = 0b1111,
                                       .corner_rounding = 4.0f,
                                       .layout {
@@ -199,6 +198,39 @@ void MidPanelTabs(GuiState& g, Rect bounds) {
                                       },
                                       .button_behaviour = imgui::ButtonConfig {},
                                   });
+
+                        if (auto const btn_r = BoxRect(builder, btn)) {
+                            auto const window_r = g.imgui.ViewportRectToWindowRect(*btn_r);
+                            auto const rounding = 4.0f;
+
+                            Optional<sample_lib::LibraryIdRef> lib_id;
+                            if (is_layer_tab) {
+                                auto const layer_index =
+                                    (u32)(ToInt(tab) - ToInt(MidPanelTab::Layer1));
+                                lib_id = g.engine.Layer(layer_index).LibId();
+                            } else {
+                                lib_id = LibraryForOverallBackground(g.engine);
+                            }
+
+                            g.imgui.draw_list->PushClipRect(window_r.Min(), window_r.Max());
+
+                            if (lib_id)
+                                DrawMidBlurredBackground(g, window_r, window_r, *lib_id, 0.6f);
+                            else
+                                g.imgui.draw_list->AddRectFilled(
+                                    window_r,
+                                    LiveCol(UiColMap::MidViewportSurface),
+                                    rounding);
+
+                            if (btn.is_hot || btn.is_active) {
+                                auto col = btn.is_active
+                                               ? LiveCol(UiColMap::MidTabBackgroundActive)
+                                               : LiveCol(UiColMap::MidTabBackgroundHot);
+                                g.imgui.draw_list->AddRectFilled(window_r, col, rounding);
+                            }
+
+                            g.imgui.draw_list->PopClipRect();
+                        }
 
                         DoBox(builder,
                               {

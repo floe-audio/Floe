@@ -159,12 +159,14 @@ static void DoBotPanel(GuiState& g) {
                           .parent = tabs,
                           .id_extra = id_extra,
                           .background_fill_colours =
-                              is_selected ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
-                                          : Colours {ColSet {
-                                                .base = Col {.c = Col::None},
-                                                .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
-                                                .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
-                                            }},
+                              Colours {ColSet {
+                                  .base = Col {.c = Col::None},
+                                  .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
+                                  .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
+                              }},
+                          .border_colours =
+                              is_selected ? Colours {LiveColStruct(UiColMap::MidTabBorderActive)}
+                                          : Colours {Col {.c = Col::None}},
                           .round_background_corners = 0b1111,
                           .corner_rounding = 4.0f,
                           .layout {
