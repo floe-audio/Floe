@@ -352,21 +352,21 @@ Box DoKnobParameter(GuiState& g,
                     ParameterComponentOptions const& options) {
     ASSERT(param.info.value_type == ParamValueType::Float);
 
-    auto const container = DoBox(g.builder,
-                                 {
-                                     .parent = parent,
-                                     .id_extra = param.info.id,
-                                     .layout {
-                                         .size = layout::k_hug_contents,
-                                         .contents_gap = LiveWw(UiSizeId::ParamElementKnobLabelGap),
-                                         .contents_direction = layout::Direction::Column,
-                                         .contents_align = layout::Alignment::Start,
-                                     },
-                                     .tooltip = FunctionRef<String()> {[&]() -> String {
-                                         if (options.override_tooltip.size) return options.override_tooltip;
-                                         return ParamTooltipText(param, g.builder.arena);
-                                     }},
-                                 });
+    auto container = DoBox(g.builder,
+                           {
+                               .parent = parent,
+                               .id_extra = param.info.id,
+                               .layout {
+                                   .size = layout::k_hug_contents,
+                                   .contents_gap = LiveWw(UiSizeId::ParamElementKnobLabelGap),
+                                   .contents_direction = layout::Direction::Column,
+                                   .contents_align = layout::Alignment::Start,
+                               },
+                               .tooltip = FunctionRef<String()> {[&]() -> String {
+                                   if (options.override_tooltip.size) return options.override_tooltip;
+                                   return ParamTooltipText(param, g.builder.arena);
+                               }},
+                           });
 
     auto val = param.LinearValue();
     auto const display_string = param.info.LinearValueToString(val).ReleaseValueOr({});
@@ -401,6 +401,9 @@ Box DoKnobParameter(GuiState& g,
                 .default_on_modifer = true,
             },
         });
+
+        container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
+        container.is_hot = g.imgui.IsHot(container.imgui_id);
 
         if (dragger_result.new_string_value) {
             if (auto v = param.info.StringToLinearValue(*dragger_result.new_string_value)) {

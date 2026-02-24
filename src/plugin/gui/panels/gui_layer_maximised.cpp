@@ -10,12 +10,10 @@
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
-#include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_param_elements.hpp"
-#include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
 #include "gui_framework/colours.hpp"
@@ -71,148 +69,14 @@ static void DrawBlurredBackgroundForBox(GuiState& g, Box box, Optional<sample_li
         DrawMidBlurredPanelSurface(g, g.imgui.ViewportRectToWindowRect(*r), lib_id);
 }
 
-static void
-DoLayerInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent) {
-    auto& layer_obj = g.engine.Layer(layer_index);
-    auto const inst_name = layer_obj.InstName();
-
-    // Inst name button
-    Optional<TextureHandle> icon_tex {};
-    if (layer_obj.instrument_id.tag == InstrumentType::Sampler) {
-        auto sample_inst_id = layer_obj.instrument_id.Get<sample_lib::InstrumentId>();
-        auto imgs = GetLibraryImages(g.library_images,
-                                     g.imgui,
-                                     sample_inst_id.library,
-                                     g.shared_engine_systems.sample_library_server,
-                                     LibraryImagesTypes::Icon);
-        if (imgs.icon) icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon);
-    }
-
-    // Selector background
-    auto const selector_bg = DoBox(g.builder,
-                                   {
-                                       .parent = parent,
-                                       .layout {
-                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_direction = layout::Direction::Row,
-                                           .contents_align = layout::Alignment::Start,
-                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                       },
-                                   });
-
-    if (auto const r = BoxRect(g.builder, selector_bg)) {
-        DrawBlurredBackgroundForBox(g, selector_bg, layer_obj.LibId());
-
-        // Loading progress bar
-        if (auto percent =
-                g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer_index].Load(
-                    LoadMemoryOrder::Relaxed);
-            percent != -1) {
-            auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
-            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-            f32 const load_percent = (f32)percent / 100.0f;
-            auto const min = window_r.Min();
-            auto const max = f32x2 {window_r.x + Max(4.0f, window_r.w * load_percent), window_r.Bottom()};
-            g.imgui.draw_list->AddRectFilled(min,
-                                             max,
-                                             LiveCol(UiColMap::InstSelectorMenuLoading),
-                                             panel_rounding);
-            GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.1);
-        }
-    }
-
-    auto const inst_button = DoBox(g.builder,
-                                   {
-                                       .parent = selector_bg,
-                                       .layout {
-                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_direction = layout::Direction::Row,
-                                           .contents_align = layout::Alignment::Start,
-                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                       },
-                                       .tooltip = "Click to browse instruments"_s,
-                                       .button_behaviour = imgui::ButtonConfig {},
-                                   });
-
-    if (icon_tex) {
-        auto const icon_box =
-            DoBox(g.builder,
-                  {
-                      .parent = inst_button,
-                      .parent_dictates_hot_and_active = true,
-                      .layout {
-                          .size = {LiveWw(UiSizeId::LayerInstIconSize), layout::k_fill_parent},
-                      },
-                  });
-        if (auto const r = BoxRect(g.builder, icon_box)) {
-            auto const icon_r = r->Reduced(r->h / 10);
-            g.imgui.draw_list->AddImageRect(*icon_tex, g.imgui.ViewportRectToWindowRect(icon_r));
-        }
-    }
-
-    DoBox(g.builder,
-          {
-              .parent = inst_button,
-              .text = inst_name,
-              .text_colours =
-                  ColSet {
-                      .base = LiveColStruct(UiColMap::MidText),
-                      .hot = LiveColStruct(UiColMap::MidTextHot),
-                      .active = LiveColStruct(UiColMap::MidTextOn),
-                  },
-              .text_justification = TextJustification::CentredLeft,
-              .text_overflow = TextOverflowType::ShowDotsOnRight,
-              .parent_dictates_hot_and_active = true,
-              .layout {
-                  .size = {layout::k_fill_parent, TextButtonHeight()},
-                  .margins {.l = icon_tex ? 0.0f : LiveWw(UiSizeId::MenuTextMarginL)},
-              },
-          });
-
-    if (inst_button.button_fired) {
-        g.imgui.OpenModalViewport(g.inst_browser_state[layer_index].id);
-        if (auto const r = BoxRect(g.builder, inst_button))
-            g.inst_browser_state[layer_index].common_state.absolute_button_rect =
-                g.imgui.ViewportRectToWindowRect(*r);
-    }
-
-    // Prev/next
-    auto const prev_next = DoMidPanelPrevNextButtons(g.builder,
-                                                     selector_bg,
-                                                     {
-                                                         .prev_tooltip = "Load the previous instrument"_s,
-                                                         .next_tooltip = "Load the next instrument"_s,
-                                                     });
-
-    auto const make_browser_context = [&]() -> InstBrowserContext {
-        return {
-            .layer = layer_obj,
-            .sample_library_server = g.shared_engine_systems.sample_library_server,
-            .library_images = g.library_images,
-            .engine = g.engine,
-            .prefs = g.prefs,
-            .notifications = g.notifications,
-            .persistent_store = g.shared_engine_systems.persistent_store,
-            .confirmation_dialog_state = g.confirmation_dialog_state,
-            .frame_context = frame_context,
-        };
-    };
-
-    if (prev_next.prev_fired) {
-        auto context = make_browser_context();
-        LoadAdjacentInstrument(context, g.inst_browser_state[layer_index], SearchDirection::Backward);
-    }
-    if (prev_next.next_fired) {
-        auto context = make_browser_context();
-        LoadAdjacentInstrument(context, g.inst_browser_state[layer_index], SearchDirection::Forward);
-    }
-
-    auto const shuffle_btn =
-        DoMidPanelShuffleButton(g.builder, selector_bg, {.tooltip = "Load a random instrument"_s});
-    if (shuffle_btn.button_fired) {
-        auto context = make_browser_context();
-        LoadRandomInstrument(context, g.inst_browser_state[layer_index]);
-    }
+static void DoLayerInstSelector(GuiState& g,
+                                GuiFrameContext const& frame_context,
+                                u8 layer_index,
+                                Box parent) {
+    auto const lib_id = g.engine.Layer(layer_index).LibId();
+    DoInstSelector(g, frame_context, layer_index, parent, [&g, lib_id](Rect window_r) {
+        DrawMidBlurredPanelSurface(g, window_r, lib_id);
+    });
 }
 
 // =================================================================================================
