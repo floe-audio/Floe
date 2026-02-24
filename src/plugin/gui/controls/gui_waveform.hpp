@@ -8,4 +8,11 @@
 
 struct LayerProcessor;
 
-void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r);
+struct WaveformGuiOptions {
+    bool handles_follow_cursor {};
+};
+
+void DoWaveformElement(GuiState& g,
+                       LayerProcessor& layer,
+                       Rect viewport_r,
+                       WaveformGuiOptions const& options = {});
