@@ -296,8 +296,14 @@ void GuiUpdate(GuiState& g) {
 
     auto& imgui = g.imgui;
 
-    StartFrame(g.waveform_images, *frame_input.renderer);
-    DEFER { EndFrame(g.waveform_images, *frame_input.renderer); };
+    DynamicArrayBounded<Instrument const*, k_num_layers> available_instruments;
+    for (auto const layer_index : Range<u32>(k_num_layers)) {
+        auto& l = g.engine.Layer(layer_index);
+        dyn::Append(available_instruments, &l.instrument);
+    }
+
+    StartFrame(g.waveform_images, *frame_input.renderer, available_instruments);
+    DEFER { EndFrame(g.waveform_images); };
 
     imgui.BeginFrame(
         {

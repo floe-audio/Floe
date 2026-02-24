@@ -10,8 +10,8 @@
 struct WaveformImage {
     using FuturePixels = Future<ImageBytes>;
     Optional<ImageID> image_id {};
-    bool used {};
     FuturePixels* loading_pixels {};
+    u64 source_hash {};
 };
 
 struct WaveformImagesTable {
@@ -26,6 +26,6 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
                                    ThreadPool& thread_pool,
                                    f32x2 size);
 
-void StartFrame(WaveformImagesTable& table, Renderer& renderer);
-void EndFrame(WaveformImagesTable& table, Renderer& renderer);
+void StartFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument const*> possible_instruments);
+void EndFrame(WaveformImagesTable& table);
 void Shutdown(WaveformImagesTable& table);

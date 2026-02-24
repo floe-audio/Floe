@@ -35,6 +35,40 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
         JobPriority::High);
 }
 
+static u64 TableKey(u64 source_hash, UiSize size) {
+    auto hash = HashInit();
+    HashUpdate(hash, source_hash);
+    HashUpdate(hash, size.width);
+    HashUpdate(hash, size.height);
+    return hash;
+}
+
+static Optional<u64> SourceHashForInstrument(Instrument const& inst) {
+    switch (inst.tag) {
+        case InstrumentType::None: return k_nullopt;
+
+        case InstrumentType::WaveformSynth: {
+            WaveformAudioSource source {WaveformAudioSourceType::Sine};
+            switch (inst.Get<WaveformType>()) {
+                case WaveformType::Sine: source = WaveformAudioSourceType::Sine; break;
+                case WaveformType::WhiteNoiseMono:
+                case WaveformType::WhiteNoiseStereo: source = WaveformAudioSourceType::WhiteNoise; break;
+                case WaveformType::Count: PanicIfReached();
+            }
+            return (u64)source.tag + 1;
+        }
+
+        case InstrumentType::Sampler: {
+            auto sampled_inst = inst.GetFromTag<InstrumentType::Sampler>();
+            auto audio_data = sampled_inst->file_for_gui_waveform;
+            if (!audio_data) return k_nullopt;
+            return audio_data->hash;
+        }
+    }
+    PanicIfReached();
+    return k_nullopt;
+}
+
 Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
                                    Instrument const& inst,
                                    Renderer& renderer,
@@ -42,11 +76,13 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
                                    f32x2 f32_size) {
     auto const size = UiSize::FromFloat2(f32_size);
 
-    u64 source_hash = 0;
-    WaveformAudioSource source {WaveformAudioSourceType::Sine};
+    auto const opt_source_hash = SourceHashForInstrument(inst);
+    if (!opt_source_hash) return k_nullopt;
+    auto const source_hash = *opt_source_hash;
 
+    WaveformAudioSource source {WaveformAudioSourceType::Sine};
     switch (inst.tag) {
-        case InstrumentType::None: return k_nullopt;
+        case InstrumentType::None: PanicIfReached(); break;
 
         case InstrumentType::WaveformSynth: {
             switch (inst.Get<WaveformType>()) {
@@ -55,23 +91,20 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
                 case WaveformType::WhiteNoiseStereo: source = WaveformAudioSourceType::WhiteNoise; break;
                 case WaveformType::Count: PanicIfReached();
             }
-            source_hash = (u64)source.tag + 1;
             break;
         }
 
         case InstrumentType::Sampler: {
             auto sampled_inst = inst.GetFromTag<InstrumentType::Sampler>();
-            auto audio_data = sampled_inst->file_for_gui_waveform;
-            if (!audio_data) return k_nullopt;
-            source = audio_data;
-            source_hash = audio_data->hash;
+            source = sampled_inst->file_for_gui_waveform;
             break;
         }
     }
 
-    auto e = table.table.FindOrInsertGrowIfNeeded(table.arena, source_hash, {});
+    auto const key = TableKey(source_hash, size);
+    auto e = table.table.FindOrInsertGrowIfNeeded(table.arena, key, {});
     auto& waveform = e.element.data;
-    waveform.used = true;
+    waveform.source_hash = source_hash;
 
     if (!renderer.ImageIdIsValid(waveform.image_id)) {
         bool need_start_loading = false;
@@ -89,10 +122,10 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
     return waveform.image_id;
 }
 
-void StartFrame(WaveformImagesTable& table, Renderer& renderer) {
+void StartFrame(WaveformImagesTable& table,
+                Renderer& renderer,
+                Span<Instrument const*> possible_instruments) {
     for (auto [_, waveform, _] : table.table) {
-        waveform.used = false;
-
         // Consume any finished loading operations.
         if (waveform.loading_pixels) {
             if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
@@ -101,23 +134,27 @@ void StartFrame(WaveformImagesTable& table, Renderer& renderer) {
             }
         }
     }
-}
 
-void EndFrame(WaveformImagesTable& table, Renderer& renderer) {
+    // Remove entries that don't correspond to any current instrument.
     table.table.RemoveIf([&](u64 const&, WaveformImage& waveform) {
-        if (!waveform.used) {
+        bool still_needed = false;
+        for (auto const inst : possible_instruments) {
+            if (auto const h = SourceHashForInstrument(*inst); h && *h == waveform.source_hash) {
+                still_needed = true;
+                break;
+            }
+        }
+
+        if (!still_needed) {
             if (waveform.image_id) {
                 renderer.DestroyImageID(*waveform.image_id);
                 waveform.image_id = k_nullopt;
             }
             if (waveform.loading_pixels) {
                 if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
-                    // If there's a result, we can completely free the future and its resources.
                     result->Free(PixelsAllocator());
                     table.loading_pixels.Remove(waveform.loading_pixels);
                 } else {
-                    // If there's no result, we cancel without waiting or freeing. We leave it in the
-                    // loading_pixels list though so that we can try again to free it at a later time.
                     waveform.loading_pixels->Cancel();
                 }
             }
@@ -125,7 +162,10 @@ void EndFrame(WaveformImagesTable& table, Renderer& renderer) {
         }
         return false;
     });
+}
 
+void EndFrame(WaveformImagesTable& table) {
+    // Clean up orphaned loading futures (cancelled in StartFrame but not yet finished at that time).
     table.loading_pixels.RemoveIf([](WaveformImage::FuturePixels& future) {
         auto const status = future.AcquireStatus();
         if (!future.IsInProgress(status) && future.IsCancelled(status)) {
