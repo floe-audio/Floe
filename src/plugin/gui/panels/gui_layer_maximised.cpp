@@ -842,7 +842,7 @@ void MidPanelSingleLayerContent(GuiBuilder& builder,
             }
         }
 
-        if (has_instrument) DoInstrumentInfoStrip(g, layer_index, waveform_container);
+        if (has_instrument) DoInstrumentInfoStrip(g, layer_index, waveform_container, {.margins = {.lr = 6}});
 
         // === PARAMETER SECTIONS ROW 1: Mixer | Vol Env | Filter ===
         auto const params_row1 = DoBox(builder,

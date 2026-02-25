@@ -39,4 +39,10 @@ struct LayerPanelState {
     LayerPageType selected_page {};
 };
 
-void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent);
+struct InstrumentInfoStripOptions {
+    Margins margins {};
+};
+void DoInstrumentInfoStrip(GuiState& g,
+                           u8 layer_index,
+                           Box parent,
+                           InstrumentInfoStripOptions const& options = {});

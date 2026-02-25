@@ -144,26 +144,21 @@ void DoEnvelopeGui(GuiState& g,
     HashUpdate(id, layer.index);
     HashUpdate(id, ToInt(adsr_layer_params[0]));
 
-    imgui.BeginViewport(
-        {
-            .draw_background =
-                [&handle_size](imgui::Context const& imgui) {
-                    auto const& r = imgui.curr_viewport->bounds.Reduced(handle_size / 2);
-                    auto const rounding = LivePx(UiSizeId::CornerRounding);
-                    imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::EnvelopeBack), rounding);
-                },
-            .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
-        },
-        id,
-        viewport_r,
-        "env-container");
-    DEFER { imgui.EndViewport(); };
+    imgui.PushId(id);
+    DEFER { imgui.PopId(); };
 
-    auto const padded_x = handle_size / 2;
-    auto const padded_y = handle_size / 2;
-    auto const padded_height = imgui.CurrentVpHeight() - handle_size;
-    auto const padded_width = imgui.CurrentVpWidth() - handle_size;
-    auto const padded_bottom = imgui.CurrentVpHeight() - (handle_size / 2);
+    {
+        auto const rounding = LivePx(UiSizeId::CornerRounding);
+        imgui.draw_list->AddRectFilled(imgui.ViewportRectToWindowRect(viewport_r),
+                                       LiveCol(UiColMap::EnvelopeBack),
+                                       rounding);
+    }
+
+    auto const padded_x = viewport_r.x;
+    auto const padded_y = viewport_r.y;
+    auto const padded_height = viewport_r.h;
+    auto const padded_width = viewport_r.w;
+    auto const padded_bottom = viewport_r.Bottom();
     constexpr auto k_max_attack_percent = 0.31f;
     constexpr auto k_max_decay_percent = 0.31f;
     constexpr auto k_max_release_percent = 0.31f;
@@ -205,7 +200,10 @@ void DoEnvelopeGui(GuiState& g,
         attack_x_range.max = get_x_coord_at_percent(1);
 
         auto const grabber = imgui.RegisterAndConvertRect(
-            {.xywh {0, 0, adsr_points[k_attack_index].x + (handle_size / 2), imgui.CurrentVpHeight()}});
+            {.xywh {viewport_r.x - (handle_size / 2),
+                     viewport_r.y - (handle_size / 2),
+                     adsr_points[k_attack_index].x - viewport_r.x + handle_size,
+                     viewport_r.h + (handle_size / 2)}});
 
         auto new_value = norm_attack_val;
         auto const changed = imgui.SliderBehaviourFraction({
@@ -261,9 +259,9 @@ void DoEnvelopeGui(GuiState& g,
         };
 
         auto const get_y_coord_at_percent = [&](f32 percent) {
-            auto const min_x = padded_x;
-            auto const max_x = min_x + padded_height;
-            return MapFrom01(percent, min_x, max_x);
+            auto const min_y = padded_y;
+            auto const max_y = min_y + padded_height;
+            return MapFrom01(percent, min_y, max_y);
         };
 
         adsr_points[k_decay_index] = {get_x_coord_at_percent(decay_norm_value),
@@ -279,7 +277,7 @@ void DoEnvelopeGui(GuiState& g,
         f32x2 const grabber_min {Min(adsr_points[k_decay_index].x - (handle_size / 2),
                                      adsr_points[k_attack_index].x + (handle_size / 2)),
                                  grabber_y};
-        f32x2 const grabber_max {adsr_points[k_sustain_index].x, imgui.CurrentVpHeight()};
+        f32x2 const grabber_max {adsr_points[k_sustain_index].x, viewport_r.Bottom()};
         auto const grabber = imgui.RegisterAndConvertRect(Rect::FromMinMax(grabber_min, grabber_max));
 
         static f32x2 rel_click_pos;
@@ -359,10 +357,10 @@ void DoEnvelopeGui(GuiState& g,
         release_x_range.max = get_x_coord_at_percent(1);
 
         auto const grabber =
-            imgui.RegisterAndConvertRect({.xywh {adsr_points[k_sustain_index].x,
-                                                 0,
-                                                 (k_max_release_percent * padded_width) + (handle_size / 2),
-                                                 imgui.CurrentVpHeight()}});
+            imgui.RegisterAndConvertRect({.xywh {adsr_points[k_sustain_index].x - (handle_size / 2),
+                                                 viewport_r.y,
+                                                 (k_max_release_percent * padded_width) + handle_size,
+                                                 viewport_r.h + (handle_size / 2)}});
 
         AddParamContextMenuBehaviour(g, grabber, release_imgui_id, release_param);
 
@@ -421,9 +419,9 @@ void DoEnvelopeGui(GuiState& g,
         auto const line_col = LiveCol(UiColMap::EnvelopeLine);
 
         // Range lines.
-        DrawEnvelopeRangeLines(imgui, attack_x_range, attack_imgui_id, padded_x, padded_bottom);
-        DrawEnvelopeRangeLines(imgui, decay_x_range, dec_sus_imgui_id, padded_x, padded_bottom);
-        DrawEnvelopeRangeLines(imgui, release_x_range, release_imgui_id, padded_x, padded_bottom);
+        DrawEnvelopeRangeLines(imgui, attack_x_range, attack_imgui_id, padded_y, padded_bottom);
+        DrawEnvelopeRangeLines(imgui, decay_x_range, dec_sus_imgui_id, padded_y, padded_bottom);
+        DrawEnvelopeRangeLines(imgui, release_x_range, release_imgui_id, padded_y, padded_bottom);
 
         // Area fill.
         auto const area_points_a = Array {bottom_left,
@@ -471,8 +469,8 @@ void DoEnvelopeGui(GuiState& g,
 
     // Text editor popup.
     if (g.param_text_editor_to_open) {
-        auto const cut = imgui.CurrentVpWidth() / 3;
-        Rect const edit_r {.xywh {cut, 0, imgui.CurrentVpWidth() - (cut * 2), imgui.CurrentVpHeight()}};
+        auto const cut = viewport_r.w / 3;
+        Rect const edit_r {.xywh {viewport_r.x + cut, viewport_r.y, viewport_r.w - (cut * 2), viewport_r.h}};
         HandleShowingTextEditorForParams(g, edit_r, indices);
     }
 }

@@ -13,7 +13,7 @@ struct TooltipOptions {
 };
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options);
 
-f32 TextButtonHeight();
+constexpr f32 k_mid_button_height = 22.4f;
 
 // Reusable row with prev/next arrow buttons. Add your content to the row, then call
 // DoMidPanelPrevNextButtons.

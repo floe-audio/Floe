@@ -16,6 +16,8 @@
 #include "processor/param.hpp"
 #include "processor/processor.hpp"
 
+constexpr f32 k_row_button_label_gap_y = 6;
+
 static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices) {
     auto const root = DoBox(g.builder,
                             {
@@ -227,34 +229,29 @@ Box DoMenuParameter(GuiState& g,
                     MenuParameterComponentOptions const& options) {
     ASSERT(param.info.value_type == ParamValueType::Menu);
 
-    bool const auto_width = options.width == 0;
-    bool const fill_parent = options.width == layout::k_fill_parent;
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .id_extra = (u64)param.info.id,
+                                     .layout {
+                                         .size = {options.width, layout::k_hug_contents},
+                                         .contents_gap = k_row_button_label_gap_y,
+                                         .contents_direction = layout::Direction::Column,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
 
-    auto const container =
-        DoBox(g.builder,
-              {
-                  .parent = parent,
-                  .id_extra = (u64)param.info.id,
-                  .layout {
-                      .size = {fill_parent ? layout::k_fill_parent : layout::k_hug_contents,
-                               layout::k_hug_contents},
-                      .contents_gap = LiveWw(UiSizeId::ParamElementMenuLabelGap),
-                      .contents_direction = layout::Direction::Column,
-                      .contents_align = layout::Alignment::Start,
-                  },
-              });
-
-    auto const row_width =
-        auto_width ? layout::k_hug_contents : (fill_parent ? layout::k_fill_parent : options.width);
-    auto const row = DoMidPanelPrevNextRow(g.builder, container, row_width);
+    auto const row = DoMidPanelPrevNextRow(g.builder, container, options.width);
 
     Optional<f32> new_val {};
 
-    // Menu text button that opens a popup.
+    // We want a special behaviour when doing hug-contents.
     auto const menu_btn_width =
-        auto_width
+        options.width == layout::k_hug_contents
             ? g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, ParameterMenuItems(param.info.index))
             : layout::k_fill_parent;
+
+    // Menu text button that opens a popup.
     auto const menu_btn =
         DoBox(g.builder,
               {
@@ -269,7 +266,7 @@ Box DoMenuParameter(GuiState& g,
                   .text_justification = TextJustification::CentredLeft,
                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .layout {
-                      .size = {menu_btn_width, TextButtonHeight()},
+                      .size = {menu_btn_width, k_mid_button_height},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
@@ -358,7 +355,7 @@ Box DoKnobParameter(GuiState& g,
                                .id_extra = param.info.id,
                                .layout {
                                    .size = layout::k_hug_contents,
-                                   .contents_gap = LiveWw(UiSizeId::ParamElementKnobLabelGap),
+                                   .contents_gap = 2,
                                    .contents_direction = layout::Direction::Column,
                                    .contents_align = layout::Alignment::Start,
                                },
@@ -451,11 +448,9 @@ Box DoKnobParameter(GuiState& g,
         if (options.peak_meter) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
             auto const knob_width_px = window_r.w;
-            auto const peak_meter_width_px = LivePx(UiSizeId::ParamElementKnobPeakMeterW);
-            auto const peak_meter_height_px =
-                knob_width_px * LiveRaw(UiSizeId::ParamElementKnobPeakMeterHeightPercent) / 100.0f;
-            auto const peak_meter_y_offs =
-                knob_width_px * LiveRaw(UiSizeId::ParamElementKnobPeakMeterYOffsetPercent) / 100.0f;
+            auto const peak_meter_width_px = WwToPixels(21.0f);
+            auto const peak_meter_height_px = knob_width_px * 0.52f;
+            auto const peak_meter_y_offs = knob_width_px * 0.26f;
 
             Rect const peak_meter_r {
                 .x = window_r.Centre().x - (peak_meter_width_px / 2),
@@ -533,29 +528,28 @@ Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
                       ButtonParameterComponentOptions const& options) {
-    auto const height = TextButtonHeight();
+    auto const height = k_mid_button_height;
     bool const state = param.BoolValue();
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
-    bool const auto_width = options.width == 0;
 
-    auto const container =
-        DoBox(g.builder,
-              {
-                  .parent = parent,
-                  .id_extra = (u64)param.info.id,
-                  .layout {
-                      .size = {auto_width ? layout::k_hug_contents : options.width, height},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      if (options.override_tooltip.size) return options.override_tooltip;
-                      return ParamTooltipText(param, g.builder.arena);
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .id_extra = (u64)param.info.id,
+                                     .layout {
+                                         .size = {options.width, height},
+                                         .margins = options.margins,
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Start,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                     .tooltip = FunctionRef<String()> {[&]() -> String {
+                                         if (options.override_tooltip.size) return options.override_tooltip;
+                                         return ParamTooltipText(param, g.builder.arena);
+                                     }},
+                                     .button_behaviour = imgui::ButtonConfig {},
+                                 });
 
     // Toggle icon.
     DoToggleIcon(g.builder,
@@ -580,8 +574,9 @@ Box DoButtonParameter(GuiState& g,
               .text_justification = TextJustification::CentredLeft,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {auto_width ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x
-                                      : layout::k_fill_parent,
+                  .size = {options.width == layout::k_hug_contents
+                               ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x
+                               : layout::k_fill_parent,
                            height},
               },
           });
@@ -608,7 +603,7 @@ Box DoIntParameter(GuiState& g,
                                      .id_extra = (u64)param.info.id,
                                      .layout {
                                          .size = layout::k_hug_contents,
-                                         .contents_gap = LiveWw(UiSizeId::ParamElementMenuLabelGap),
+                                         .contents_gap = k_row_button_label_gap_y,
                                          .contents_direction = layout::Direction::Column,
                                          .contents_align = layout::Alignment::Start,
                                      },
@@ -638,7 +633,7 @@ Box DoIntParameter(GuiState& g,
                   .text_justification = TextJustification::CentredLeft,
                   .text_overflow = TextOverflowType::AllowOverflow,
                   .layout {
-                      .size = {layout::k_fill_parent, TextButtonHeight()},
+                      .size = {layout::k_fill_parent, k_mid_button_height},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;

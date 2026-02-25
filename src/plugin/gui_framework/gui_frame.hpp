@@ -300,6 +300,7 @@ struct GuiFrameIo {
 // it is invalid to use this data. A large percentage of GUI code needs access to the frame input and output.
 // Rather than pass it around everywhere which will be incredibly noisy, we use this global.
 GuiFrameIo GuiIo();
+// Because of the convenient auto, you may need to specify the type of the input arg.
 inline auto WwToPixels(auto ww) { return ww * GuiIo().in.pixels_per_ww; }
 inline auto PixelsToWw(auto pixels) { return pixels / GuiIo().in.pixels_per_ww; }
 

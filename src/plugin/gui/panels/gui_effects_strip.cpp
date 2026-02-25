@@ -306,7 +306,7 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
                                   .text_justification = TextJustification::CentredLeft,
                                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                                   .layout {
-                                      .size = {layout::k_fill_parent, TextButtonHeight()},
+                                      .size = {layout::k_fill_parent, k_mid_button_height},
                                   },
                                   .tooltip = FunctionRef<String()> {[&]() -> String {
                                       return fmt::Format(g.scratch_arena,

@@ -18,25 +18,16 @@ static ColSet MidIconButtonColours(bool greyed_out) {
     };
 }
 
-static Margins ParamControlPadding() {
-    return {
-        .l = LiveWw(UiSizeId::ParamControlPadL),
-        .r = LiveWw(UiSizeId::ParamControlPadR),
-    };
-}
-
-f32 TextButtonHeight() { return k_font_body_size * LiveRaw(UiSizeId::TextBtnHPct) / 100.0f; }
-
 Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
     return DoBox(builder,
                  {
                      .parent = parent,
                      .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
                      .round_background_corners = 0b1111,
-                     .corner_rounding = LiveWw(UiSizeId::CornerRounding),
+                     .corner_rounding = k_button_rounding,
                      .layout {
                          .size = {width, layout::k_hug_contents},
-                         .contents_padding = ParamControlPadding(),
+                         .contents_padding = {.l = 7.5f, .r = 2.9f},
                          .contents_direction = layout::Direction::Row,
                          .contents_align = layout::Alignment::Middle,
                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -50,7 +41,6 @@ static Box DoMidIconButton(GuiBuilder& builder,
                            String tooltip,
                            bool greyed_out,
                            f32 font_size = 0) {
-    auto const margin = LiveWw(UiSizeId::IconButtonMargin);
     auto const btn = DoBox(builder,
                            {
                                .parent = parent,
@@ -72,7 +62,7 @@ static Box DoMidIconButton(GuiBuilder& builder,
               .text_justification = TextJustification::Centred,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .margins = {.lrtb = margin},
+                  .margins = {.lrtb = 2.1f},
               },
           });
     return btn;
@@ -122,23 +112,20 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
 }
 
 Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& options) {
-    auto const height = LiveWw(UiSizeId::PageHeadingHeight);
-    auto const width = options.width != 0 ? options.width : LiveWw(UiSizeId::PageHeadingTextOffset);
-
-    return DoBox(builder,
-                 {
-                     .parent = parent,
-                     .text = options.state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
-                     .font = FontType::Icons,
-                     .font_size = k_font_icons_size * 0.75f,
-                     .text_colours = options.state
-                                         ? Colours {options.on_colour ? *options.on_colour
-                                                                      : LiveColStruct(UiColMap::MidTextOn)}
-                                         : MidIconButtonColours(options.greyed_out),
-                     .text_justification = options.justify,
-                     .parent_dictates_hot_and_active = options.parent_dictates_hot_and_active,
-                     .layout {
-                         .size = {width, height},
-                     },
-                 });
+    return DoBox(
+        builder,
+        {
+            .parent = parent,
+            .text = options.state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
+            .font = FontType::Icons,
+            .font_size = k_font_icons_size * 0.75f,
+            .text_colours = options.state ? Colours {options.on_colour ? *options.on_colour
+                                                                       : LiveColStruct(UiColMap::MidTextOn)}
+                                          : MidIconButtonColours(options.greyed_out),
+            .text_justification = options.justify,
+            .parent_dictates_hot_and_active = options.parent_dictates_hot_and_active,
+            .layout {
+                .size = {options.width == layout::k_hug_contents ? 20 : options.width, k_mid_button_height},
+            },
+        });
 }

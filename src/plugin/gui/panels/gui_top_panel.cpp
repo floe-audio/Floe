@@ -143,6 +143,16 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
             g.shared_engine_systems.AddMirageFoldersIfNeeded();
         }
     }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Help",
+                     .tooltip = "Open Floe's documentation website"_s,
+                 })
+            .button_fired) {
+        OpenUrlInBrowser("https://floe.audio/docs/getting-started/quick-start-guide");
+    }
 }
 
 static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context) {

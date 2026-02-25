@@ -6,6 +6,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/audio_utils.hpp"
+
 #include "engine/engine.hpp"
 #include "engine/loop_modes.hpp"
 #include "gui/core/gui_library_images.hpp"
@@ -48,7 +49,7 @@ void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
                                     .text_justification = TextJustification::CentredLeft,
                                     .text_overflow = TextOverflowType::ShowDotsOnRight,
                                     .layout {
-                                        .size = {layout::k_fill_parent, TextButtonHeight()},
+                                        .size = {layout::k_fill_parent, k_mid_button_height},
                                     },
                                     .tooltip = FunctionRef<String()> {[&]() -> String {
                                         return fmt::Format(g.scratch_arena,
@@ -283,7 +284,9 @@ void DoInstSelector(GuiState& g,
             (g.timbre_slider_is_held ||
              CcControllerMovedParamRecently(g.engine.processor, ParamIndex::MasterTimbre))) {
             auto const rounding = LivePx(UiSizeId::CornerRounding);
-            g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::InstSelectorMenuBackHighlight), rounding);
+            g.imgui.draw_list->AddRectFilled(window_r,
+                                             LiveCol(UiColMap::InstSelectorMenuBackHighlight),
+                                             rounding);
         }
 
         // Loading progress bar
@@ -380,7 +383,7 @@ void DoInstSelector(GuiState& g,
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {layout::k_fill_parent, TextButtonHeight()},
+                  .size = {layout::k_fill_parent, k_mid_button_height},
                   .margins {.l = icon_tex ? 0.0f : LiveWw(UiSizeId::MenuTextMarginL)},
               },
           });
@@ -429,17 +432,20 @@ void DoInstSelector(GuiState& g,
     }
 
     // Shuffle button
-    auto const shuffle_btn =
-        DoMidPanelShuffleButton(g.builder,
-                               selector_box,
-                               {.tooltip = "Load a random instrument.\n\nThis is based on the currently selected filters."_s});
+    auto const shuffle_btn = DoMidPanelShuffleButton(
+        g.builder,
+        selector_box,
+        {.tooltip = "Load a random instrument.\n\nThis is based on the currently selected filters."_s});
     if (shuffle_btn.button_fired) {
         auto context = make_browser_context();
         LoadRandomInstrument(context, g.inst_browser_state[layer_index]);
     }
 }
 
-void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
+void DoInstrumentInfoStrip(GuiState& g,
+                           u8 layer_index,
+                           Box parent,
+                           InstrumentInfoStripOptions const& options) {
     auto& layer_processor = g.engine.processor.layer_processors[layer_index];
 
     if (layer_processor.instrument.tag == InstrumentType::None) return;
@@ -484,7 +490,7 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
                                  .parent = parent,
                                  .layout {
                                      .size = {layout::k_fill_parent, 20},
-                                     .contents_padding = {.lr = 8},
+                                     .margins = options.margins,
                                      .contents_gap = 6,
                                      .contents_direction = layout::Direction::Row,
                                      .contents_align = layout::Alignment::Start,

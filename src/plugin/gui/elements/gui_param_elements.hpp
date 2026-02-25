@@ -33,7 +33,7 @@ Box DoKnobParameter(GuiState& g,
                     ParameterComponentOptions const& options = {});
 
 struct MenuParameterComponentOptions {
-    f32 width = 0; // 0 means auto-size from the widest menu item string.
+    f32 width = layout::k_hug_contents;
     bool greyed_out = false;
     bool label = true;
     String override_tooltip {};
@@ -46,7 +46,8 @@ Box DoMenuParameter(GuiState& g,
                     MenuParameterComponentOptions const& options = {});
 
 struct ButtonParameterComponentOptions {
-    f32 width = 0; // 0 means auto-size from text + icon.
+    f32 width = layout::k_hug_contents;
+    Margins margins {};
     bool greyed_out = false;
     Optional<Col> on_colour {}; // Custom colour for the toggle icon "on" state.
     String override_tooltip {};
