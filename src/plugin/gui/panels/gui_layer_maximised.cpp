@@ -6,11 +6,9 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
-#include "engine/loop_modes.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
-#include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -19,9 +17,10 @@
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "gui_framework/image.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
+
+// IMPORTANT: this panel is incomplete - needs more design and layout work.
 
 constexpr f32 k_knob_large_w = 36.17f;
 

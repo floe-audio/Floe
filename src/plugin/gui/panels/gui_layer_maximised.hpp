@@ -5,6 +5,8 @@
 
 #include "gui/core/gui_fwd.hpp"
 
+// IMPORTANT: this panel is incomplete - needs more design and layout work.
+
 void MidPanelSingleLayerContent(GuiBuilder& builder,
                                 GuiState& g,
                                 GuiFrameContext const& frame_context,
