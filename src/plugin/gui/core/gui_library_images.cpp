@@ -6,7 +6,6 @@
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
 #include "gui/elements/gui_constants.hpp"
-#include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 
 enum class LibraryImageType { Icon, Background };
@@ -116,13 +115,13 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
                                  sample_lib_server::Server& server,
                                  ThreadPool& thread_pool) {
     BlurredImageBackgroundOptions const blur_options {
-        .downscale_factor = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringDownscaleFactor1) / 100.0f),
-        .brightness_scaling_exponent = LiveRaw(UiSizeId::BackgroundBlurringBrightnessExponent1) / 100.0f,
-        .overlay_value = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayColour1) / 100.0f),
-        .overlay_alpha = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayIntensity1) / 100.0f),
-        .blur1_radius_percent = LiveRaw(UiSizeId::BackgroundBlurringBlur1Radius1) / 100,
-        .blur2_radius_percent = LiveRaw(UiSizeId::BackgroundBlurringBlur2Radius1) / 100,
-        .blur2_alpha = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringBlur2Alpha1) / 100.0f),
+        .downscale_factor = Clamp01(29.13f / 100.0f),
+        .brightness_scaling_exponent = 62.0f / 100.0f,
+        .overlay_value = Clamp01(14.77f / 100.0f),
+        .overlay_alpha = Clamp01(26.12f / 100.0f),
+        .blur1_radius_percent = 55.0f / 100,
+        .blur2_radius_percent = 2.47f / 100,
+        .blur2_alpha = Clamp01(12.92f / 100.0f),
     };
 
     thread_pool.Async(

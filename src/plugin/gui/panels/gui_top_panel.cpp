@@ -18,7 +18,6 @@
 #include "gui/panels/gui_ir_browser.hpp"
 #include "gui/panels/gui_legacy_params_panel.hpp"
 #include "gui_framework/gui_builder.hpp"
-#include "gui_framework/gui_live_edit.hpp"
 
 static Optional<ImageID> LogoImage(GuiState& g) {
     if (!g.imgui.draw_list->renderer.ImageIdIsValid(g.floe_logo_image)) {
@@ -502,8 +501,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             knob_container,
             g.engine.processor.main_params.DescribedValue(ParamIndex::MasterTimbre),
             {
-                .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
+                .width = k_small_knob_width,
                 .greyed_out = !has_insts_with_timbre_layers,
                 .is_fake = !has_insts_with_timbre_layers,
                 .override_tooltip =
@@ -526,20 +524,18 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     knob_container,
                     g.engine.processor.main_params.DescribedValue(ParamIndex::MasterVolume),
                     {
-                        .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                        .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
+                        .width = k_small_knob_width,
                     });
 
     // peak meter
-    if (auto const viewport_r =
-            BoxRect(builder,
-                    DoBox(builder,
-                          {
-                              .parent = root,
-                              .layout {
-                                  .size = {LiveWw(UiSizeId::TopPeakMeterW), LiveWw(UiSizeId::TopPeakMeterH)},
-                              },
-                          })))
+    if (auto const viewport_r = BoxRect(builder,
+                                        DoBox(builder,
+                                              {
+                                                  .parent = root,
+                                                  .layout {
+                                                      .size = {22.0f, 37.06f},
+                                                  },
+                                              })))
         DrawPeakMeter(g.imgui,
                       builder.imgui.RegisterAndConvertRect(*viewport_r),
                       g.engine.processor.peak_meter,

@@ -187,7 +187,7 @@ struct ItemArgs {
 static void DrawFocusBox(GuiBuilder& builder, Rect relative_rect) {
     builder.imgui.draw_list->AddRect(builder.imgui.RegisterAndConvertRect(relative_rect),
                                      ToU32({.c = Col::Blue}),
-                                     WwToPixels(k_button_rounding),
+                                     WwToPixels(k_corner_rounding),
                                      0b1111,
                                      2);
 }

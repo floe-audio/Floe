@@ -260,7 +260,7 @@ void DoInstSelector(GuiState& g,
                                         .parent = root,
                                         .layout {
                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                            .contents_padding {.r = LiveWw(UiSizeId::LayerInstSelectorPadR)},
+                                            .contents_padding {.r = 3.44f},
                                             .contents_direction = layout::Direction::Row,
                                             .contents_align = layout::Alignment::Start,
                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -275,7 +275,7 @@ void DoInstSelector(GuiState& g,
             draw_background(window_r);
         } else {
             auto const col = LiveCol(UiColMap::MidDarkSurface);
-            auto const rounding = LivePx(UiSizeId::CornerRounding);
+            auto const rounding = WwToPixels(k_corner_rounding);
             g.imgui.draw_list->AddRectFilled(window_r, col, rounding);
         }
 
@@ -283,7 +283,7 @@ void DoInstSelector(GuiState& g,
         if (layer_obj.UsesTimbreLayering() &&
             (g.timbre_slider_is_held ||
              CcControllerMovedParamRecently(g.engine.processor, ParamIndex::MasterTimbre))) {
-            auto const rounding = LivePx(UiSizeId::CornerRounding);
+            auto const rounding = WwToPixels(k_corner_rounding);
             g.imgui.draw_list->AddRectFilled(window_r,
                                              LiveCol(UiColMap::InstSelectorMenuBackHighlight),
                                              rounding);
@@ -295,7 +295,7 @@ void DoInstSelector(GuiState& g,
                     LoadMemoryOrder::Relaxed);
             percent != -1) {
             f32 const load_percent = (f32)percent / 100.0f;
-            auto const rounding = LivePx(UiSizeId::CornerRounding);
+            auto const rounding = WwToPixels(k_corner_rounding);
             auto const min = window_r.Min();
             auto const max = f32x2 {window_r.x + Max(4.0f, window_r.w * load_percent), window_r.Bottom()};
             g.imgui.draw_list->AddRectFilled(min, max, LiveCol(UiColMap::InstSelectorMenuLoading), rounding);
@@ -359,7 +359,7 @@ void DoInstSelector(GuiState& g,
                       .parent = inst_button,
                       .parent_dictates_hot_and_active = true,
                       .layout {
-                          .size = {LiveWw(UiSizeId::LayerInstIconSize), layout::k_fill_parent},
+                          .size = {22.54f, layout::k_fill_parent},
                       },
                   });
         if (auto const r = BoxRect(g.builder, icon_box)) {
@@ -384,7 +384,7 @@ void DoInstSelector(GuiState& g,
               .parent_dictates_hot_and_active = true,
               .layout {
                   .size = {layout::k_fill_parent, k_mid_button_height},
-                  .margins {.l = icon_tex ? 0.0f : LiveWw(UiSizeId::MenuTextMarginL)},
+                  .margins {.l = icon_tex ? 0.0f : 7.54f},
               },
           });
 

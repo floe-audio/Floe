@@ -10,7 +10,7 @@ enum class GuiStyleSystem {
     TopBottomPanels, // Dark-mode, bold.
 };
 
-constexpr f32 k_button_rounding = 3.0f;
+constexpr f32 k_corner_rounding = 3.94f;
 constexpr f32 k_default_spacing = 16.0f;
 constexpr f32 k_button_padding_x = 5.0f;
 constexpr f32 k_button_padding_y = 2.0f;
@@ -24,3 +24,5 @@ constexpr f32 k_menu_item_padding_x = 8;
 constexpr f32 k_menu_item_padding_y = 3;
 
 constexpr f32 k_library_icon_standard_size = 20;
+constexpr f32 k_small_knob_width = 28.90f;
+constexpr f32x2 k_tooltip_pad = {7.6f, 6.4f};

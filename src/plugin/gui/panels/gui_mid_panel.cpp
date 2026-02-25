@@ -17,7 +17,7 @@ void DrawMidBlurredBackground(GuiState& g,
                               Rect clipped_to,
                               sample_lib::LibraryIdRef library_id,
                               f32 opacity) {
-    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
+    auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
         auto imgs = GetLibraryImages(g.library_images,
@@ -66,7 +66,7 @@ void DrawMidBlurredBackground(GuiState& g,
 }
 
 void DoMidOverlayGradient(imgui::Context const& imgui, Rect r) {
-    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
+    auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     auto const vtx_idx_0 = imgui.draw_list->vtx_buffer.size;
     auto const pos = r.Min() + f32x2 {1, 1};
@@ -76,10 +76,11 @@ void DoMidOverlayGradient(imgui::Context const& imgui, Rect r) {
     imgui.draw_list->AddRectFilled(pos, pos + size, 0xffffffff, panel_rounding);
     auto const vtx_idx_2 = imgui.draw_list->vtx_buffer.size;
 
-    auto const col_value =
-        (u8)(Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayGradientColour1) / 100.0f) * 255);
+    constexpr f32 k_overlay_gradient_colour = 0.0f;
+    constexpr f32 k_overlay_gradient_opacity = 0.0f;
+    auto const col_value = (u8)(Clamp01(k_overlay_gradient_colour / 100.0f) * 255);
     auto const col = ToU32({
-        .a = (u8)(Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOverlayGradientOpacity1) / 100.0f) * 255),
+        .a = (u8)(Clamp01(k_overlay_gradient_opacity / 100.0f) * 255),
         .b = col_value,
         .g = col_value,
         .r = col_value,
@@ -102,14 +103,14 @@ void DoMidOverlayGradient(imgui::Context const& imgui, Rect r) {
 }
 
 void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id) {
-    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
+    auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     if (lib_id)
         DrawMidBlurredBackground(g,
                                  window_r,
                                  window_r,
                                  *lib_id,
-                                 Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+                                 Clamp01(k_background_blurring_opacity / 100.0f));
     else
         g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
 
@@ -179,7 +180,7 @@ static void DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
                                {
                                    .parent = parent,
                                    .layout {
-                                       .size = {layout::k_hug_contents, LiveWw(UiSizeId::TabBarHeight)},
+                                       .size = {layout::k_hug_contents, 28.0f},
                                        .margins = {.t = 5},
                                        .contents_padding = {.lr = 3, .tb = 3},
                                        .contents_gap = 2,

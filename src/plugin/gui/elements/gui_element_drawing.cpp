@@ -13,8 +13,8 @@
 #include "gui_framework/gui_live_edit.hpp"
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt) {
-    auto const rounding = rounding_opt ? *rounding_opt : LivePx(UiSizeId::CornerRounding);
-    auto const blur = LivePx(UiSizeId::ViewportDropShadowBlur);
+    auto const rounding = rounding_opt ? *rounding_opt : WwToPixels(k_corner_rounding);
+    auto const blur = WwToPixels(7.84f);
     imgui.draw_list->AddDropShadow(r.Min(), r.Max(), LiveCol(UiColMap::ViewportDropShadow), blur, rounding);
 }
 
@@ -76,7 +76,7 @@ void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInpu
     auto const text_pos = result.text_pos;
     auto const w = Max(r.w, font->CalcTextSize(result.text, {}).x);
     Rect const background_r {.xywh {r.CentreX() - (w / 2), text_pos.y, w, font->font_size}};
-    auto const rounding = LivePx(UiSizeId::CornerRounding);
+    auto const rounding = WwToPixels(k_corner_rounding);
 
     imgui.draw_list->AddRectFilled(background_r, LiveCol(UiColMap::KnobTextInputBack), rounding);
     imgui.draw_list->AddRect(background_r, LiveCol(UiColMap::KnobTextInputBorder), rounding);
@@ -149,7 +149,7 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
     }
 
     // outer arc
-    auto const outer_arc_thickness = LivePx(UiSizeId::KnobOuterArcWeight);
+    auto const outer_arc_thickness = WwToPixels(2.6f);
     auto const outer_arc_radius_mid = r.w * 0.5f;
     auto const empty_outer_arc_col =
         LiveCol(mid_panel_colours ? UiColMap::KnobMidOuterArcEmpty : UiColMap::KnobOuterArcEmpty);
@@ -209,14 +209,14 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
     }
 
     // inner arc
-    auto const inner_arc_radius_mid = outer_arc_radius_mid - LivePx(UiSizeId::KnobInnerArc);
-    auto const inner_arc_thickness = LivePx(UiSizeId::KnobInnerArcWeight);
+    auto const inner_arc_radius_mid = outer_arc_radius_mid - WwToPixels(9.2f);
+    auto const inner_arc_thickness = WwToPixels(5.6f);
     imgui.draw_list->PathArcTo(c, inner_arc_radius_mid, start_radians, end_radians, 32);
     imgui.draw_list->PathStroke(inner_arc_col, false, inner_arc_thickness);
 
     // cursor
     if (!options.is_fake) {
-        auto const line_weight = LivePx(UiSizeId::KnobLineWeight);
+        auto const line_weight = WwToPixels(2.3f);
 
         auto const inner_arc_radius_outer = inner_arc_radius_mid + (inner_arc_thickness / 2);
         auto const inner_arc_radius_inner = inner_arc_radius_mid - (inner_arc_thickness / 2);
@@ -239,9 +239,9 @@ void DrawPeakMeter(imgui::Context& imgui,
     auto const v = snapshot.levels;
     auto const did_clip = options.flash_when_clipping && level.DidClipRecently();
 
-    auto const gap = options.gap != 0 ? options.gap : LivePx(UiSizeId::PeakMeterGap);
-    auto const marker_w = LivePx(UiSizeId::PeakMeterMarkerWidth);
-    auto const marker_pad = LivePx(UiSizeId::PeakMeterMarkerPad);
+    auto const gap = options.gap != 0 ? options.gap : WwToPixels(2.6f);
+    auto const marker_w = WwToPixels(5.7f);
+    auto const marker_pad = WwToPixels(1.8f);
     auto padded_r = options.show_db_markers
                         ? Rect {.x = r.x + marker_w, .y = r.y, .w = r.w - (marker_w * 2), .h = r.h}
                         : r;
@@ -251,7 +251,7 @@ void DrawPeakMeter(imgui::Context& imgui,
     constexpr f32 k_min_db = -60;
     constexpr f32 k_min_amp = constexpr_math::Powf(10, k_min_db / 20);
 
-    auto const rounding = LivePx(UiSizeId::CornerRounding);
+    auto const rounding = WwToPixels(k_corner_rounding);
 
     {
         // constexpr auto k_channel_col = WithAlphaF(ToU32(ColType::Background0), 0.2f);
@@ -336,7 +336,7 @@ void DrawPeakMeter(imgui::Context& imgui,
 void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
     for (auto const b : bars) {
         if (!b) continue;
-        auto const rounding = LivePx(UiSizeId::CornerRounding);
+        auto const rounding = WwToPixels(k_corner_rounding);
         imgui.draw_list->AddRectFilled(b->strip, LiveCol(UiColMap::ScrollbarBack), rounding);
         u32 handle_col = LiveCol(UiColMap::ScrollbarHandle);
         if (imgui.IsHot(b->id))
@@ -405,8 +405,8 @@ void DrawOverlayTooltipForRect(imgui::Context const& imgui,
     fonts.Push(ToInt(FontType::Body));
     DEFER { fonts.Pop(); };
 
-    auto const max_width = LivePx(UiSizeId::TooltipMaxWidth);
-    auto const text_margin = f32x2 {LivePx(UiSizeId::TooltipPadX), LivePx(UiSizeId::TooltipPadY)};
+    auto const max_width = WwToPixels(244.f);
+    auto const text_margin = WwToPixels(k_tooltip_pad);
 
     auto const wrapped_size = fonts.CalcTextSize(str, {.wrap_width = max_width});
 
@@ -435,7 +435,7 @@ void DrawOverlayTooltipForRect(imgui::Context const& imgui,
 
     imgui.overlay_draw_list->AddRectFilled(popup_r,
                                            ToU32(Col {.c = Col::Background0}),
-                                           LivePx(UiSizeId::CornerRounding));
+                                           WwToPixels(k_corner_rounding));
 
     imgui.overlay_draw_list->AddText(popup_r.pos + text_margin,
                                      ToU32(Col {.c = Col::Text}),

@@ -45,7 +45,7 @@ struct KeyboardLayout {
         constexpr auto k_white_key_width_factor = 1.0f / (k_num_octaves_shown * 7.0f);
         layout.white_key_width = keyboard_w * k_white_key_width_factor;
         layout.black_key_width =
-            (layout.white_key_width * (0.5f * LiveRaw(UiSizeId::MidiKeyboardBlackNoteWidth) / 100.0f));
+            (layout.white_key_width * (0.5f * 118.52f / 100.0f));
 
         auto const d1 = ((layout.white_key_width * 3) - (layout.black_key_width * 2)) / 3;
         auto const d2 = ((layout.white_key_width * 4) - (layout.black_key_width * 3)) / 4;
@@ -165,7 +165,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
 
     f32 const white_height = r.h;
     auto const black_height = (f32)RoundPositiveFloat(r.h * 0.65f);
-    f32 const active_voice_marker_h = r.h * (LiveRaw(UiSizeId::MidiKeyboardActiveMarkerH) / 100.0f);
+    f32 const active_voice_marker_h = r.h * (11.93f / 100.0f);
 
     Optional<KeyboardGuiKeyPressed> result {};
 
@@ -678,7 +678,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                     [](imgui::Context const& imgui) {
                         imgui.draw_list->AddRectFilled(imgui.curr_viewport->unpadded_bounds,
                                                        ToU32(Col {.c = Col::Background1, .dark_mode = true}),
-                                                       LivePx(UiSizeId::CornerRounding));
+                                                       WwToPixels(k_corner_rounding));
                     },
                 .padding = {.lr = 0, .tb = enlarged_viewport_padding},
                 .auto_size = true,

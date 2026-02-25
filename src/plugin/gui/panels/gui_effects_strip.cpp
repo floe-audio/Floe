@@ -23,6 +23,12 @@
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/effect.hpp"
 
+constexpr f32 k_fx_controls_gap_x = 26;
+constexpr f32 k_fx_controls_gap_y = 8;
+constexpr f32 k_fx_heading_h = 18;
+constexpr f32 k_fx_heading_text_pad_lr = 8;
+constexpr f32 k_fx_icon_width = 20.5f;
+
 constexpr auto k_reverb_params = ComptimeParamSearch<ComptimeParamSearchOptions {
     .modules = {ParameterModule::Effect, ParameterModule::Reverb},
     .skip = ParamIndex::ReverbOn,
@@ -98,9 +104,9 @@ static void DoKnobJoiningLine(GuiState& g, Box knob1, Box knob2) {
         if (auto const r2 = BoxRect(g.builder, knob2)) {
             auto const wr1 = g.imgui.ViewportRectToWindowRect(*r1);
             auto const wr2 = g.imgui.ViewportRectToWindowRect(*r2);
-            auto const thickness = LivePx(UiSizeId::FXKnobJoiningLineThickness);
-            auto const pad = LivePx(UiSizeId::FXKnobJoiningLinePadLR);
-            auto const y = wr1.CentreY() - (thickness / 2) - LivePx(UiSizeId::FXKnobJoiningLineYOffs);
+            auto const thickness = WwToPixels(3.0f);
+            auto const pad = WwToPixels(6.0f);
+            auto const y = wr1.CentreY() - (thickness / 2) - WwToPixels(7.4f);
             g.imgui.draw_list->AddLine({wr1.Right() + pad, y},
                                        {wr2.x - pad, y},
                                        LiveCol(UiColMap::FXKnobJoiningLine),
@@ -139,7 +145,7 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
                                        .round_background_corners = 0b0010,
                                        .layout {
                                            .size = layout::k_hug_contents,
-                                           .contents_padding {.lr = LiveWw(UiSizeId::FXHeadingTextPadLR)},
+                                           .contents_padding {.lr = k_fx_heading_text_pad_lr},
                                        },
                                        .button_behaviour = imgui::ButtonConfig {},
                                    });
@@ -160,7 +166,7 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
               .text_justification = TextJustification::CentredLeft,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {1, LiveWw(UiSizeId::FXHeadingH)},
+                  .size = {1, k_fx_heading_h},
               },
               .tooltip = FunctionRef<String()> {[&]() -> String {
                   return fmt::Format(g.scratch_arena, "{}", k_effect_info[ToInt(fx.type)].description);
@@ -193,7 +199,7 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
                       },
                   .text_justification = TextJustification::Centred,
                   .layout {
-                      .size = {LiveWw(UiSizeId::FXCloseButtonWidth), LiveWw(UiSizeId::FXCloseButtonHeight)},
+                      .size = {19, 17},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       return fmt::Format(g.scratch_arena, "Remove {}", k_effect_info[ToInt(fx.type)].name);
@@ -216,7 +222,7 @@ static Box DoEffectParamContainer(GuiBuilder& builder, Box parent, u64 loc_hash 
                      .parent = parent,
                      .layout {
                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                         .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
+                         .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
                          .contents_direction = layout::Direction::Row,
                          .contents_multiline = true,
                          .contents_align = layout::Alignment::Middle,
@@ -278,16 +284,15 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
     auto const ir_name = IrName(g.engine);
 
     // Selector row
-    auto const selector_row =
-        DoBox(g.builder,
-              {
-                  .parent = param_container,
-                  .layout {
-                      .size = {LiveWw(UiSizeId::FXConvoIRWidth), layout::k_hug_contents},
-                      .contents_padding {.r = LiveWw(UiSizeId::ParamIntButtonMarginR)},
-                      .contents_direction = layout::Direction::Column,
-                  },
-              });
+    auto const selector_row = DoBox(g.builder,
+                                    {
+                                        .parent = param_container,
+                                        .layout {
+                                            .size = {183, layout::k_hug_contents},
+                                            .contents_padding {.r = 3},
+                                            .contents_direction = layout::Direction::Column,
+                                        },
+                                    });
 
     // Row for button + arrows + shuffle
     auto const btn_row = DoMidPanelPrevNextRow(g.builder, selector_row, layout::k_fill_parent);
@@ -374,7 +379,7 @@ struct EffectSectionInfo {
 
 // Switchboard: effect toggle buttons arranged in two columns.
 static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
-    using enum UiSizeId;
+
     auto& params = g.engine.processor.main_params;
 
     int const switches_left_col_size = (k_num_effect_types / 2) + (k_num_effect_types % 2);
@@ -419,25 +424,23 @@ static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) 
     for (auto const slot : Range(k_num_effect_types)) {
         auto const col_parent = ((int)slot < switches_left_col_size) ? left_col : right_col;
 
-        auto const switch_row =
-            DoBox(g.builder,
-                  {
-                      .parent = col_parent,
-                      .id_extra = (u64)slot,
-                      .layout {
-                          .size = {layout::k_fill_parent, LiveWw(FXSwitchBoardItemHeight)},
-                          .contents_direction = layout::Direction::Row,
-                      },
-                  });
+        auto const switch_row = DoBox(g.builder,
+                                      {
+                                          .parent = col_parent,
+                                          .id_extra = (u64)slot,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, 18.0f},
+                                              .contents_direction = layout::Direction::Row,
+                                          },
+                                      });
 
-        auto const number_box =
-            DoBox(g.builder,
-                  {
-                      .parent = switch_row,
-                      .layout {
-                          .size = {LiveWw(FXSwitchBoardNumberWidth), layout::k_fill_parent},
-                      },
-                  });
+        auto const number_box = DoBox(g.builder,
+                                      {
+                                          .parent = switch_row,
+                                          .layout {
+                                              .size = {18.0f, layout::k_fill_parent},
+                                          },
+                                      });
 
         auto const slot_box = DoBox(g.builder,
                                     {
@@ -454,7 +457,7 @@ static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) 
 
     if (g.builder.IsInputAndRenderPass()) {
         auto& draw_list = *g.imgui.draw_list;
-        auto const corner_rounding = LivePx(UiSizeId::CornerRounding);
+        auto const corner_rounding = WwToPixels(k_corner_rounding);
 
         usize fx_index = 0;
         for (auto const slot : Range(k_num_effect_types)) {
@@ -495,7 +498,7 @@ static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) 
                 auto const icon_col =
                     is_on ? LiveCol(fx_cols.button)
                           : ((is_hot || is_active) ? LiveCol(UiColMap::MidIcon) : LiveCol(UiColMap::MidIcon));
-                auto const icon_width = LivePx(UiSizeId::PageHeadingTextOffset);
+                auto const icon_width = WwToPixels(k_fx_icon_width);
                 auto const icon_r = window_slot_r.WithW(icon_width);
 
                 {
@@ -524,7 +527,7 @@ static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) 
                 }
 
                 auto const window_grab_r = ({
-                    auto w = LiveWw(FXSwitchBoardGrabRegionWidth);
+                    auto w = 18.0f;
                     auto r = window_slot_r;
                     r.x += r.w - w;
                     r.w = w;
@@ -570,7 +573,7 @@ static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) 
             // Toggle icon
             auto const icon_text = is_on_drag ? String {ICON_FA_TOGGLE_ON} : String {ICON_FA_TOGGLE_OFF};
             auto const icon_col = is_on_drag ? LiveCol(fx_cols.button) : LiveCol(UiColMap::MidIcon);
-            auto const icon_width = LivePx(UiSizeId::PageHeadingTextOffset);
+            auto const icon_width = WwToPixels(k_fx_icon_width);
             auto const icon_r = btn_r.WithW(icon_width);
 
             {
@@ -615,10 +618,10 @@ static void DoEffectParams(GuiState& g,
                            Box extras_container,
                            Col highlight_col,
                            Box root) {
-    using enum UiSizeId;
+
     auto& engine = g.engine;
     auto& params = engine.processor.main_params;
-    auto const knob_w = LiveWw(ParamComponentSmallWidth);
+    constexpr f32 k_knob_w = 30.0f;
 
     switch (fx.type) {
         case EffectType::StereoWiden: {
@@ -626,7 +629,7 @@ static void DoEffectParams(GuiState& g,
                             param_container,
                             params.DescribedValue(ParamIndex::StereoWidenWidth),
                             {
-                                .width = knob_w,
+                                .width = k_knob_w,
                                 .knob_highlight_col = highlight_col,
                                 .bidirectional = true,
                             });
@@ -638,7 +641,7 @@ static void DoEffectParams(GuiState& g,
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::DistortionDrive),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             break;
         }
 
@@ -646,30 +649,29 @@ static void DoEffectParams(GuiState& g,
             DoIntParameter(g,
                            param_container,
                            params.DescribedValue(ParamIndex::BitCrushBits),
-                           {.width = LiveWw(FXDraggerWidth)});
+                           {.width = 52.0f});
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::BitCrushBitRate),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
 
-            auto sub = DoBox(
-                g.builder,
-                {
-                    .parent = param_container,
-                    .layout {
-                        .size = layout::k_hug_contents,
-                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
-                        .contents_direction = layout::Direction::Row,
-                    },
-                });
+            auto sub = DoBox(g.builder,
+                             {
+                                 .parent = param_container,
+                                 .layout {
+                                     .size = layout::k_hug_contents,
+                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                     .contents_direction = layout::Direction::Row,
+                                 },
+                             });
             auto const wet_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::BitCrushWet),
-                                                 {.width = knob_w, .knob_highlight_col = highlight_col});
+                                                 {.width = k_knob_w, .knob_highlight_col = highlight_col});
             auto const dry_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::BitCrushDry),
-                                                 {.width = knob_w, .knob_highlight_col = highlight_col});
+                                                 {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobJoiningLine(g, wet_box, dry_box);
             break;
         }
@@ -678,21 +680,21 @@ static void DoEffectParams(GuiState& g,
             DoButtonParameter(g,
                               extras_container,
                               params.DescribedValue(ParamIndex::CompressorAutoGain),
-                              {.width = LiveWw(FXCompressorAutoGainWidth), .on_colour = highlight_col});
+                              {.width = 80.0f, .on_colour = highlight_col});
 
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::CompressorThreshold),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::CompressorRatio),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::CompressorGain),
                             {
-                                .width = knob_w,
+                                .width = k_knob_w,
                                 .knob_highlight_col = highlight_col,
                                 .bidirectional = true,
                             });
@@ -705,16 +707,16 @@ static void DoEffectParams(GuiState& g,
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::FilterCutoff),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::FilterResonance),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::FilterGain),
                             {
-                                .width = knob_w,
+                                .width = k_knob_w,
                                 .knob_highlight_col = highlight_col,
                                 .greyed_out = !using_gain,
                                 .bidirectional = true,
@@ -726,34 +728,33 @@ static void DoEffectParams(GuiState& g,
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::ChorusRate),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::ChorusDepth),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::ChorusHighpass),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
 
-            auto sub = DoBox(
-                g.builder,
-                {
-                    .parent = param_container,
-                    .layout {
-                        .size = layout::k_hug_contents,
-                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
-                        .contents_direction = layout::Direction::Row,
-                    },
-                });
+            auto sub = DoBox(g.builder,
+                             {
+                                 .parent = param_container,
+                                 .layout {
+                                     .size = layout::k_hug_contents,
+                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                     .contents_direction = layout::Direction::Row,
+                                 },
+                             });
             auto const wet_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::ChorusWet),
-                                                 {.width = knob_w, .knob_highlight_col = highlight_col});
+                                                 {.width = k_knob_w, .knob_highlight_col = highlight_col});
             auto const dry_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::ChorusDry),
-                                                 {.width = knob_w, .knob_highlight_col = highlight_col});
+                                                 {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobJoiningLine(g, wet_box, dry_box);
             break;
         }
@@ -767,17 +768,17 @@ static void DoEffectParams(GuiState& g,
                 auto knob_parent = param_container;
                 if (info.grouping_within_module != 0) {
                     if (!group_container || info.grouping_within_module != previous_group) {
-                        group_container = DoBox(g.builder,
-                                                {
-                                                    .parent = param_container,
-                                                    .id_extra = (u64)i,
-                                                    .layout {
-                                                        .size = layout::k_hug_contents,
-                                                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX),
-                                                                         LiveWw(UiSizeId::FXControlsGapY)},
-                                                        .contents_direction = layout::Direction::Row,
-                                                    },
-                                                });
+                        group_container =
+                            DoBox(g.builder,
+                                  {
+                                      .parent = param_container,
+                                      .id_extra = (u64)i,
+                                      .layout {
+                                          .size = layout::k_hug_contents,
+                                          .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                          .contents_direction = layout::Direction::Row,
+                                      },
+                                  });
                     }
                     knob_parent = *group_container;
                     if (info.grouping_within_module == previous_group) {
@@ -785,7 +786,7 @@ static void DoEffectParams(GuiState& g,
                             DoKnobParameter(g,
                                             knob_parent,
                                             params.DescribedValue(k_reverb_params[i]),
-                                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
                         DoKnobJoiningLine(g, prev_knob, knob);
                         prev_knob = knob;
                         previous_group = info.grouping_within_module;
@@ -799,7 +800,7 @@ static void DoEffectParams(GuiState& g,
                 prev_knob = DoKnobParameter(g,
                                             knob_parent,
                                             params.DescribedValue(k_reverb_params[i]),
-                                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             }
             break;
         }
@@ -813,17 +814,17 @@ static void DoEffectParams(GuiState& g,
                 auto knob_parent = param_container;
                 if (info.grouping_within_module != 0) {
                     if (!group_container || info.grouping_within_module != previous_group) {
-                        group_container = DoBox(g.builder,
-                                                {
-                                                    .parent = param_container,
-                                                    .id_extra = (u64)i,
-                                                    .layout {
-                                                        .size = layout::k_hug_contents,
-                                                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX),
-                                                                         LiveWw(UiSizeId::FXControlsGapY)},
-                                                        .contents_direction = layout::Direction::Row,
-                                                    },
-                                                });
+                        group_container =
+                            DoBox(g.builder,
+                                  {
+                                      .parent = param_container,
+                                      .id_extra = (u64)i,
+                                      .layout {
+                                          .size = layout::k_hug_contents,
+                                          .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                          .contents_direction = layout::Direction::Row,
+                                      },
+                                  });
                     }
                     knob_parent = *group_container;
                     if (info.grouping_within_module == previous_group) {
@@ -831,7 +832,7 @@ static void DoEffectParams(GuiState& g,
                             DoKnobParameter(g,
                                             knob_parent,
                                             params.DescribedValue(k_phaser_params[i]),
-                                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
                         DoKnobJoiningLine(g, prev_knob, knob);
                         prev_knob = knob;
                         previous_group = info.grouping_within_module;
@@ -845,7 +846,7 @@ static void DoEffectParams(GuiState& g,
                 prev_knob = DoKnobParameter(g,
                                             knob_parent,
                                             params.DescribedValue(k_phaser_params[i]),
-                                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             }
             break;
         }
@@ -857,7 +858,7 @@ static void DoEffectParams(GuiState& g,
             DoButtonParameter(g,
                               extras_container,
                               params.DescribedValue(ParamIndex::DelayTimeSyncSwitch),
-                              {.width = LiveWw(FXDelaySyncBtnWidth), .on_colour = highlight_col});
+                              {.width = 98.f, .on_colour = highlight_col});
 
             // Time params (conditional)
             if (synced) {
@@ -868,50 +869,50 @@ static void DoEffectParams(GuiState& g,
                     DoKnobParameter(g,
                                     param_container,
                                     params.DescribedValue(ParamIndex::DelayTimeLMs),
-                                    {.width = knob_w, .knob_highlight_col = highlight_col});
+                                    {.width = k_knob_w, .knob_highlight_col = highlight_col});
                 auto const right_knob =
                     DoKnobParameter(g,
                                     param_container,
                                     params.DescribedValue(ParamIndex::DelayTimeRMs),
-                                    {.width = knob_w, .knob_highlight_col = highlight_col});
+                                    {.width = k_knob_w, .knob_highlight_col = highlight_col});
                 DoKnobJoiningLine(g, left_knob, right_knob);
             }
 
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::DelayFeedback),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
 
             DoMenuParameter(g, param_container, params.DescribedValue(ParamIndex::DelayMode), {});
 
             // Second row for filter + mix
             auto const param_container2 = DoEffectParamContainer(g.builder, root);
 
-            auto sub = DoBox(
-                g.builder,
-                {
-                    .parent = param_container2,
-                    .layout {
-                        .size = layout::k_hug_contents,
-                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
-                        .contents_direction = layout::Direction::Row,
-                    },
-                });
+            auto sub = DoBox(g.builder,
+                             {
+                                 .parent = param_container2,
+                                 .layout {
+                                     .size = layout::k_hug_contents,
+                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                     .contents_direction = layout::Direction::Row,
+                                 },
+                             });
             auto const cutoff_knob =
                 DoKnobParameter(g,
                                 sub,
                                 params.DescribedValue(ParamIndex::DelayFilterCutoffSemitones),
-                                {.width = knob_w, .knob_highlight_col = highlight_col});
-            auto const spread_knob = DoKnobParameter(g,
-                                                     sub,
-                                                     params.DescribedValue(ParamIndex::DelayFilterSpread),
-                                                     {.width = knob_w, .knob_highlight_col = highlight_col});
+                                {.width = k_knob_w, .knob_highlight_col = highlight_col});
+            auto const spread_knob =
+                DoKnobParameter(g,
+                                sub,
+                                params.DescribedValue(ParamIndex::DelayFilterSpread),
+                                {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobJoiningLine(g, cutoff_knob, spread_knob);
 
             DoKnobParameter(g,
                             param_container2,
                             params.DescribedValue(ParamIndex::DelayMix),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
             break;
         }
 
@@ -921,26 +922,25 @@ static void DoEffectParams(GuiState& g,
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::ConvolutionReverbHighpass),
-                            {.width = knob_w, .knob_highlight_col = highlight_col});
+                            {.width = k_knob_w, .knob_highlight_col = highlight_col});
 
-            auto sub = DoBox(
-                g.builder,
-                {
-                    .parent = param_container,
-                    .layout {
-                        .size = layout::k_hug_contents,
-                        .contents_gap = {LiveWw(UiSizeId::FXControlsGapX), LiveWw(UiSizeId::FXControlsGapY)},
-                        .contents_direction = layout::Direction::Row,
-                    },
-                });
+            auto sub = DoBox(g.builder,
+                             {
+                                 .parent = param_container,
+                                 .layout {
+                                     .size = layout::k_hug_contents,
+                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                     .contents_direction = layout::Direction::Row,
+                                 },
+                             });
             auto const wet_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::ConvolutionReverbWet),
-                                                 {.width = knob_w, .knob_highlight_col = highlight_col});
+                                                 {.width = k_knob_w, .knob_highlight_col = highlight_col});
             auto const dry_box = DoKnobParameter(g,
                                                  sub,
                                                  params.DescribedValue(ParamIndex::ConvolutionReverbDry),
-                                                 {.width = knob_w, .knob_highlight_col = highlight_col});
+                                                 {.width = k_knob_w, .knob_highlight_col = highlight_col});
             DoKnobJoiningLine(g, wet_box, dry_box);
             break;
         }
@@ -952,7 +952,6 @@ static void DoEffectParams(GuiState& g,
 // Effect sections: heading + params + divider for each active effect.
 static DynamicArrayBounded<EffectSectionInfo, k_num_effect_types>
 DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, EffectsArray& ordered_effects) {
-    using enum UiSizeId;
     auto& params = g.engine.processor.main_params;
     auto& dragging_fx_unit = g.dragging_fx_unit;
     DynamicArrayBounded<EffectSectionInfo, k_num_effect_types> effect_sections;
@@ -999,7 +998,7 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
         DoEffectParams(g, frame_context, *fx, param_container, extras_container, highlight_col, root);
 
         // Divider after effect section
-        DoWhitespace(g.builder, root, LiveWw(FXDividerMarginT));
+        DoWhitespace(g.builder, root, 7.4f);
         auto const div = DoDivider(g, root);
 
         dyn::Append(effect_sections, EffectSectionInfo {fx, div});
@@ -1085,10 +1084,10 @@ static void DoEffectDragAndDrop(GuiState& g,
                                       FindSlotInEffects(ordered_effects, g.dragging_fx_unit->fx));
 
         auto const cursor_pos = GuiIo().in.cursor_pos;
-        auto const heading_h = LivePx(UiSizeId::FXHeadingH);
-        auto const pad_lr = LivePx(UiSizeId::FXHeadingTextPadLR);
+        auto const heading_h = WwToPixels(k_fx_heading_h);
+        auto const pad_lr = WwToPixels(k_fx_heading_text_pad_lr);
         auto const text_w = g.fonts.CalcTextSize(text, {}).x;
-        auto const rounding = LivePx(UiSizeId::CornerRounding);
+        auto const rounding = WwToPixels(k_corner_rounding);
 
         auto const floating_r = Rect {
             .x = cursor_pos.x + heading_h,
@@ -1181,8 +1180,8 @@ void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box 
             .viewport_config =
                 {
                     .draw_scrollbars = DrawMidPanelScrollbars,
-                    .padding = {.r = 7},
-                    .scrollbar_padding = 4,
+                    .padding = {.r = k_scrollbar_width},
+                    .scrollbar_padding = k_scrollbar_rhs_space,
                     .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                                              imgui::ViewportScrollbarVisibility::Auto},
                     .scrollbar_inside_padding = true,

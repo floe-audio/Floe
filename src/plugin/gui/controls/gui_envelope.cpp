@@ -148,7 +148,7 @@ void DoEnvelopeGui(GuiState& g,
     DEFER { imgui.PopId(); };
 
     {
-        auto const rounding = LivePx(UiSizeId::CornerRounding);
+        auto const rounding = WwToPixels(k_corner_rounding);
         imgui.draw_list->AddRectFilled(imgui.ViewportRectToWindowRect(viewport_r),
                                        LiveCol(UiColMap::EnvelopeBack),
                                        rounding);

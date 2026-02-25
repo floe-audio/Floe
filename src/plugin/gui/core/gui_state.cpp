@@ -35,7 +35,6 @@
 #include "gui/panels/gui_prefs_panel.hpp"
 #include "gui/panels/gui_top_panel.hpp"
 #include "gui_framework/gui_imgui.hpp"
-#include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 #include "gui_framework/renderer.hpp"
 #include "plugin/plugin.hpp"
@@ -180,7 +179,7 @@ static void DoResizeCorner(GuiState& g) {
     auto const& frame_input = GuiIo().in;
     auto& frame_output = GuiIo().out;
 
-    auto const corner_size = LivePx(UiSizeId::ViewportResizeCornerSize);
+    auto const corner_size = WwToPixels(14.37f);
     imgui.BeginViewport(
         {
             .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
@@ -228,7 +227,7 @@ static void DoResizeCorner(GuiState& g) {
 
     auto const line_col = ToU32(
         Col {.c = imgui.IsHotOrActive(id, MouseButton::Left) ? Col::Text : Col::Overlay2, .dark_mode = true});
-    auto const line_gap = LivePx(UiSizeId::ViewportResizeCornerLineGap);
+    auto const line_gap = WwToPixels(3.55f);
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
                              r.BottomLeft() + f32x2 {line_gap, 0},
                              line_col);
@@ -325,8 +324,8 @@ void GuiUpdate(GuiState& g) {
 
     {
         Rect remaining {.pos = 0, .size = frame_input.window_size.ToFloat2()};
-        auto const top = rect_cut::CutTop(remaining, Round(LivePx(UiSizeId::TopHeight)));
-        auto const bot = rect_cut::CutBottom(remaining, Round(LivePx(UiSizeId::BotPanelHeight)));
+        auto const top = rect_cut::CutTop(remaining, Round(WwToPixels(52.61f)));
+        auto const bot = rect_cut::CutBottom(remaining, Round(WwToPixels(72.82f)));
         TopPanel(g, top, frame_context);
         MidPanel(g, remaining, frame_context);
         BotPanel(g, bot);

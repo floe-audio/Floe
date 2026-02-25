@@ -7,7 +7,6 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_builder.hpp"
-#include "gui_framework/gui_live_edit.hpp"
 
 static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
     auto const padding_radius_p1 = g.fonts.atlas[ToInt(FontType::Icons)]->font_size * 0.5f;
@@ -28,30 +27,26 @@ static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
 
 static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
     auto const size = g.fonts.CalcTextSize(str, {});
-    auto const pad_x = LivePx(UiSizeId::TooltipPadX);
-    auto const pad_y = LivePx(UiSizeId::TooltipPadY);
+    auto const pad = WwToPixels(k_tooltip_pad);
 
     r = r.Expanded(WwToPixels(4.0f));
 
     Rect popup_r;
-    popup_r.x = r.x + (r.w / 2) - (size.x / 2 + pad_x);
+    popup_r.x = r.x + (r.w / 2) - (size.x / 2 + pad.x);
     popup_r.y = r.y + r.h;
-    popup_r.w = size.x + pad_x * 2;
-    popup_r.h = size.y + pad_y * 2;
+    popup_r.size = size + pad * 2;
 
     popup_r.pos = imgui::BestPopupPos(popup_r,
                                       r,
                                       GuiIo().in.window_size.ToFloat2(),
                                       imgui::PopupJustification::AboveOrBelow);
 
-    f32x2 text_start;
-    text_start.x = popup_r.x + pad_x;
-    text_start.y = popup_r.y + pad_y;
+    auto const text_start = popup_r.pos + pad;
 
     DrawDropShadow(g.builder.imgui, popup_r);
     g.builder.imgui.overlay_draw_list->AddRectFilled(popup_r,
                                                      ToU32({.c = Col::Background0}),
-                                                     LivePx(UiSizeId::CornerRounding));
+                                                     WwToPixels(k_corner_rounding));
     g.builder.imgui.overlay_draw_list->AddText(text_start, ToU32({.c = Col::Text}), str);
 }
 
@@ -115,15 +110,13 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                          },
                                      });
-        auto const knob = DoKnobParameter(
-            g,
-            knobs_box,
-            g.engine.processor.main_params.DescribedValue(param_index),
-            {
-                .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                .knob_height_fraction = LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
-                .label = false,
-            });
+        auto const knob = DoKnobParameter(g,
+                                          knobs_box,
+                                          g.engine.processor.main_params.DescribedValue(param_index),
+                                          {
+                                              .width = k_small_knob_width,
+                                              .label = false,
+                                          });
 
         constexpr f32 k_dest_knob_size = 25;
         constexpr f32 k_dest_knob_gap_x = 1;

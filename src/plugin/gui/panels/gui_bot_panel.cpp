@@ -139,7 +139,7 @@ static void DoBotPanel(GuiState& g) {
                                     .parent = root,
                                     .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
                                     .layout {
-                                        .size = {LiveWw(UiSizeId::TabBarWidth), layout::k_fill_parent},
+                                        .size = {41.86f, layout::k_fill_parent},
                                         .contents_padding = {.lr = 3, .tb = 6},
                                         .contents_gap = 2,
                                         .contents_direction = layout::Direction::Column,
@@ -241,9 +241,7 @@ static void DoBotPanel(GuiState& g) {
                         macro_box,
                         g.engine.processor.main_params.DescribedValue(param_index),
                         {
-                            .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                            .knob_height_fraction =
-                                LiveRaw(UiSizeId::ParamComponentKnobHeightPercent) / 100.0f,
+                            .width = k_small_knob_width,
                             .greyed_out = g.engine.processor.main_macro_destinations[macro_index].Size() == 0,
                             .override_label = g.engine.macro_names[macro_index],
                         });

@@ -161,10 +161,6 @@ fn runRemoveUnusedGuiDefs(context: *Context) !u8 {
 
     const checks = [_]DefCheck{
         .{
-            .def_file = "src/plugin/gui/live_edit_defs/gui_sizes.def",
-            .enum_name = "UiSizeId",
-        },
-        .{
             .def_file = "src/plugin/gui/live_edit_defs/gui_colour_map.def",
             .enum_name = "UiColMap",
         },

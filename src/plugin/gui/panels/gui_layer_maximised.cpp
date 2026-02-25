@@ -23,6 +23,8 @@
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
 
+constexpr f32 k_knob_large_w = 36.17f;
+
 // =================================================================================================
 // Section heading helper
 
@@ -83,16 +85,15 @@ DoLayerInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
 static void DoMuteSoloCompact(GuiState& g, u8 layer_index, Box parent) {
     auto& params = g.engine.processor.main_params;
 
-    auto const container =
-        DoBox(g.builder,
-              {
-                  .parent = parent,
-                  .layout {
-                      .size = {LiveWw(UiSizeId::LayerMuteSoloW), LiveWw(UiSizeId::LayerMuteSoloH)},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                  },
-              });
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .layout {
+                                         .size = {k_mid_button_height * 2, k_mid_button_height},
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
 
     if (auto const r = BoxRect(g.builder, container)) {
         DrawBlurredBackgroundForBox(g, container, g.engine.Layer(layer_index).LibId());
@@ -128,7 +129,7 @@ static void DoMuteSoloCompact(GuiState& g, u8 layer_index, Box parent) {
                 .text_justification = TextJustification::Centred,
                 .background_fill_colours = state ? Colours {on_back_col} : Colours {Col {.c = Col::None}},
                 .round_background_corners = is_solo ? (Corners)0b0110 : (Corners)0b1001,
-                .corner_rounding = LiveWw(UiSizeId::CornerRounding),
+                .corner_rounding = k_corner_rounding,
                 .layout {
                     .size = layout::k_fill_parent,
                 },
@@ -204,7 +205,6 @@ static void DoMixerSection(GuiState& g, u8 layer_index, Box parent) {
                     params.DescribedValue(layer_index, LayerParamIndex::Volume),
                     {
                         .width = 80,
-                        .knob_height_fraction = 0.96f,
                         .style_system = GuiStyleSystem::MidPanel,
                         .peak_meter = &layer_processor.peak_meter,
                     });
@@ -213,8 +213,7 @@ static void DoMixerSection(GuiState& g, u8 layer_index, Box parent) {
                     row,
                     params.DescribedValue(layer_index, LayerParamIndex::Pan),
                     {
-                        .width = LiveWw(UiSizeId::KnobLargeW),
-                        .knob_height_fraction = 0.96f,
+                        .width = k_knob_large_w,
                         .style_system = GuiStyleSystem::MidPanel,
                         .bidirectional = true,
                     });
@@ -235,8 +234,7 @@ static void DoMixerSection(GuiState& g, u8 layer_index, Box parent) {
                     col,
                     params.DescribedValue(layer_index, LayerParamIndex::TuneCents),
                     {
-                        .width = LiveWw(UiSizeId::KnobLargeW),
-                        .knob_height_fraction = 0.96f,
+                        .width = k_knob_large_w,
                         .style_system = GuiStyleSystem::MidPanel,
                         .bidirectional = true,
                     });
@@ -338,7 +336,7 @@ static void DoFilterSection(GuiState& g, u8 layer_index, Box parent) {
                     knobs_row,
                     params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff),
                     {
-                        .width = LiveWw(UiSizeId::KnobLargeW),
+                        .width = k_knob_large_w,
                         .style_system = GuiStyleSystem::MidPanel,
                         .greyed_out = greyed_out,
                     });
@@ -346,7 +344,7 @@ static void DoFilterSection(GuiState& g, u8 layer_index, Box parent) {
                     knobs_row,
                     params.DescribedValue(layer_index, LayerParamIndex::FilterResonance),
                     {
-                        .width = LiveWw(UiSizeId::KnobLargeW),
+                        .width = k_knob_large_w,
                         .style_system = GuiStyleSystem::MidPanel,
                         .greyed_out = greyed_out,
                     });
@@ -354,7 +352,7 @@ static void DoFilterSection(GuiState& g, u8 layer_index, Box parent) {
                     knobs_row,
                     params.DescribedValue(layer_index, LayerParamIndex::FilterEnvAmount),
                     {
-                        .width = LiveWw(UiSizeId::KnobLargeW),
+                        .width = k_knob_large_w,
                         .style_system = GuiStyleSystem::MidPanel,
                         .greyed_out = greyed_out,
                         .bidirectional = true,
@@ -467,7 +465,7 @@ static void DoLfoSection(GuiState& g, u8 layer_index, Box parent) {
                     knobs_row,
                     params.DescribedValue(layer_index, LayerParamIndex::LfoAmount),
                     {
-                        .width = LiveWw(UiSizeId::KnobLargeW),
+                        .width = k_knob_large_w,
                         .style_system = GuiStyleSystem::MidPanel,
                         .greyed_out = greyed_out,
                         .bidirectional = true,
@@ -494,7 +492,7 @@ static void DoLfoSection(GuiState& g, u8 layer_index, Box parent) {
                         rate_col,
                         params.DescribedValue(layer_index, LayerParamIndex::LfoRateHz),
                         {
-                            .width = LiveWw(UiSizeId::KnobLargeW),
+                            .width = k_knob_large_w,
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
@@ -552,12 +550,13 @@ static void DoEqSection(GuiState& g, u8 layer_index, Box parent) {
                                          },
                                      });
 
+        constexpr f32 k_knob_width = 29;
+
         DoKnobParameter(g,
                         knobs_row,
                         params.DescribedValue(layer_index, freq_param),
                         {
-                            .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                            .knob_height_fraction = 0.96f,
+                            .width = k_knob_width,
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
@@ -565,8 +564,7 @@ static void DoEqSection(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, reso_param),
                         {
-                            .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                            .knob_height_fraction = 0.96f,
+                            .width = k_knob_width,
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
@@ -574,8 +572,7 @@ static void DoEqSection(GuiState& g, u8 layer_index, Box parent) {
                         knobs_row,
                         params.DescribedValue(layer_index, gain_param),
                         {
-                            .width = LiveWw(UiSizeId::ParamComponentExtraSmallWidth),
-                            .knob_height_fraction = 0.96f,
+                            .width = k_knob_width,
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                             .bidirectional = true,

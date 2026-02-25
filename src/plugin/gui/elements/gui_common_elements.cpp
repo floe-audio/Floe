@@ -24,7 +24,7 @@ Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
                      .parent = parent,
                      .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
                      .round_background_corners = 0b1111,
-                     .corner_rounding = k_button_rounding,
+                     .corner_rounding = k_corner_rounding,
                      .layout {
                          .size = {width, layout::k_hug_contents},
                          .contents_padding = {.l = 7.5f, .r = 2.9f},

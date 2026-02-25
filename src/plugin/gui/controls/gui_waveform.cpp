@@ -20,8 +20,8 @@ static void
 DoStandardWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, WaveformGuiOptions const& options) {
     if (layer.instrument_id.tag == InstrumentType::WaveformSynth) return;
 
-    auto const handle_height = LivePx(UiSizeId::MainWaveformHandleHeight);
-    auto const handle_width = LivePx(UiSizeId::MainWaveformHandleWidth);
+    auto const handle_height = WwToPixels(12.8f);
+    auto const handle_width = WwToPixels(14.0f);
     constexpr auto k_epsilon = 0.001f;
     constexpr auto k_slider_sensitivity = 320.0f;
 
@@ -567,7 +567,7 @@ void DoWaveformElement(GuiState& g,
 
     g.imgui.draw_list->AddRectFilled(window_r,
                                      LiveCol(UiColMap::WaveformLoopBack),
-                                     LivePx(UiSizeId::CornerRounding));
+                                     WwToPixels(k_corner_rounding));
 
     if (g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
             LoadMemoryOrder::Relaxed) != -1) {

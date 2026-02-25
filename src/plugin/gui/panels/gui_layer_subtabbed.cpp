@@ -46,7 +46,7 @@ static void DoMuteSoloButton(GuiState& g, Box parent, DescribedParamValue const&
             .text_justification = TextJustification::Centred,
             .background_fill_colours = state ? Colours {on_back_col} : Colours {Col {.c = Col::None}},
             .round_background_corners = is_solo ? (Corners)0b0110 : (Corners)0b1001,
-            .corner_rounding = k_button_rounding,
+            .corner_rounding = k_corner_rounding,
             .layout {
                 .size = layout::k_fill_parent,
             },
@@ -68,7 +68,6 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
                                      .parent = root,
                                      .layout {
                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_padding = {.t = 6},
                                          .contents_gap = 14,
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Middle,
@@ -82,7 +81,7 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
                     params.DescribedValue(layer_index, LayerParamIndex::Volume),
                     {
                         .width = 88,
-                        .knob_height_fraction = LiveRaw(UiSizeId::LayerVolumeKnobHPct) / 100.0f,
+                        .knob_height_fraction = 0.88f,
                         .style_system = GuiStyleSystem::MidPanel,
                         .peak_meter = &layer_processor.peak_meter,
                     });
@@ -102,7 +101,7 @@ static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
         // Background and divider
         if (auto const r = BoxRect(g.builder, mute_solo_container)) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-            auto const rounding = WwToPixels(k_button_rounding);
+            auto const rounding = WwToPixels(k_corner_rounding);
             g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidDarkSurface), rounding);
             // Vertical divider in the middle
             g.imgui.draw_list->AddLine({window_r.Centre().x, window_r.y},
@@ -298,7 +297,6 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                     params.DescribedValue(layer_index, LayerParamIndex::TuneCents),
                     {
                         .width = k_knob_width,
-                        .knob_height_fraction = 0.96f,
                         .style_system = GuiStyleSystem::MidPanel,
                         .bidirectional = true,
                     });
@@ -309,7 +307,6 @@ static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
                     params.DescribedValue(layer_index, LayerParamIndex::Pan),
                     {
                         .width = k_knob_width,
-                        .knob_height_fraction = 0.96f,
                         .style_system = GuiStyleSystem::MidPanel,
                         .bidirectional = true,
                     });
@@ -1184,10 +1181,10 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
 
     if (g.engine.Layer(layer_index).instrument.tag == InstrumentType::None) return;
 
-    DoWhitespace(g.builder, top_controls, 4);
+    DoWhitespace(g.builder, top_controls, 11);
 
     DoMixerContainer1(g, layer_index, top_controls);
-    DoWhitespace(g.builder, top_controls, 8);
+    DoWhitespace(g.builder, top_controls, 10);
     DoMixerContainer2(g, layer_index, top_controls);
 
     DoWhitespace(g.builder, top_controls, 10);

@@ -5,7 +5,10 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/sample_library/sample_library.hpp"
+
 #include "gui/core/gui_fwd.hpp"
+
+constexpr f32 k_background_blurring_opacity = 100.0f;
 
 enum class MidPanelTab : u8 {
     All,
@@ -25,7 +28,10 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);
 // Internal: called from MidPanel, accepting a parent box instead of creating their own viewport
 struct GuiBuilder;
 struct Box;
-void MidPanelCombinedContent(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent);
+void MidPanelCombinedContent(GuiBuilder& builder,
+                             GuiState& g,
+                             GuiFrameContext const& frame_context,
+                             Box parent);
 
 namespace imgui {
 struct Context;

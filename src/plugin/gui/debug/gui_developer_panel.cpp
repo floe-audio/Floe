@@ -328,12 +328,6 @@ static bool DevGuiMenu(DeveloperPanel& g, Rect r, Span<String const> items, int&
     return result;
 }
 
-constexpr String k_ui_sizes_categories[ToInt(UiSizeId::Count)] = {
-#define X(cat, n, v) cat,
-#include SIZES_DEF_FILENAME
-#undef X
-};
-
 constexpr String const k_ui_col_map_names[ToInt(UiColMap::Count)] = {
 #define X(cat, n, col_id, alpha, dark_mode) #n,
 #include COLOUR_MAP_DEF_FILENAME
@@ -356,30 +350,6 @@ static void WriteHeader(Writer writer) {
         writer,
         "// Copyright 2018-2026 Sam Windell\n// SPDX-License-Identifier: GPL-3.0-or-later\n\n");
     // REUSE-IgnoreEnd
-}
-
-static void WriteSizesFile(LiveEditGui const& gui) {
-    ArenaAllocator scratch_arena {PageAllocator::Instance()};
-
-    auto outcome = OpenFile(UiStyleFilepath(scratch_arena, SIZES_DEF_FILENAME), FileMode::Write());
-    if (outcome.HasError()) {
-        LogError(ModuleName::Gui, "{} failed: {}", __FUNCTION__, outcome.Error());
-        return;
-    }
-
-    WriteHeader(outcome.Value().Writer());
-
-    for (auto const i : Range(ToInt(UiSizeId::Count))) {
-        auto const sz = gui.ui_sizes[i];
-        String const name = gui.ui_sizes_names[i];
-        auto cat = k_ui_sizes_categories[i];
-        auto o = fmt::FormatToWriter(outcome.Value().Writer(), "X(\"{}\", {}, {.6}f)\n", cat, name, sz);
-        if (o.HasError())
-            LogError(ModuleName::Gui,
-                     "could not write to file {} for reason {}",
-                     SIZES_DEF_FILENAME,
-                     o.Error());
-    }
 }
 
 static void WriteColourMapFile(LiveEditGui const& gui) {
@@ -409,63 +379,6 @@ static void WriteColourMapFile(LiveEditGui const& gui) {
                      "could not write to file {} for reason {}",
                      COLOUR_MAP_DEF_FILENAME,
                      o.Error());
-    }
-}
-
-static void LiveEditSliders(DeveloperPanel& g, String search) {
-    auto& live_gui = g_live_edit_values;
-    DevGuiHeading(g, "Sizes");
-
-    static DynamicArrayBounded<String, ToInt(UiSizeId::Count)> categories {};
-    if (categories.size == 0)
-        for (auto const i : Range(ToInt(UiSizeId::Count)))
-            dyn::AppendIfNotAlreadyThere(categories, k_ui_sizes_categories[i]);
-
-    for (auto cat : categories) {
-        g.imgui.PushId(cat);
-        DEFER { g.imgui.PopId(); };
-
-        bool contains_values = search.size && ContainsCaseInsensitiveAscii(cat, search);
-        if (!contains_values) {
-            for (auto const i : Range(ToInt(UiSizeId::Count))) {
-                if (k_ui_sizes_categories[i] != cat) continue;
-                if (!ContainsCaseInsensitiveAscii(live_gui.ui_sizes_names[i], search)) continue;
-                contains_values = true;
-                break;
-            }
-        }
-
-        if (!contains_values) continue;
-
-        DevGuiHeading(g, cat);
-
-        for (auto const i : Range(ToInt(UiSizeId::Count))) {
-            if (k_ui_sizes_categories[i] != cat) continue;
-            auto name = live_gui.ui_sizes_names[i];
-            if (!ContainsCaseInsensitiveAscii(name, search) && !ContainsCaseInsensitiveAscii(cat, search))
-                continue;
-
-            if (DoDevGuiFloatDragger(g,
-                                     {
-                                         .viewport_r = DevGuiGetRightR(g),
-                                         .id = g.imgui.MakeId(name),
-                                         .format_string = "{.1}",
-                                         .min = 0,
-                                         .max = 1500,
-                                         .value = live_gui.ui_sizes[i],
-                                         .default_value = 0,
-                                         .slider_cfg = ({
-                                             auto f = imgui::SliderConfig {};
-                                             f.sensitivity = 2;
-                                             f;
-                                         }),
-                                     }))
-                WriteSizesFile(live_gui);
-
-            DevGuiLabel(g, DevGuiGetLeftR(g), name, TextJustification::CentredRight);
-
-            DevGuiIncrementPos(g);
-        }
     }
 }
 
@@ -746,17 +659,6 @@ static void DoLiveEditColourMapEditor(DeveloperPanel& g, Rect r) {
     LiveEditColourMapMenus(g, search);
 }
 
-static void DoLiveEditSizeEditor(DeveloperPanel& g, Rect r) {
-    g.imgui.BeginViewport(DevGuiViewport(), r, "size-edit");
-    DEFER { g.imgui.EndViewport(); };
-
-    DevGuiReset(g);
-
-    static DevGuiTextInputBuffer search;
-    DevGuiTextInput(g, "Search:", search);
-    LiveEditSliders(g, search);
-}
-
 static bool g_show_dev_gui = false;
 static bool g_show_dev_gui_on_left = true;
 
@@ -810,7 +712,6 @@ void DoDeveloperPanel(DeveloperPanel& g) {
             "Commands",
             "Audio",
             "ColMap",
-            "Sizes",
             "UI Inspect",
         };
         static auto const num_tabs = ArraySize(tab_text);
@@ -835,8 +736,7 @@ void DoDeveloperPanel(DeveloperPanel& g) {
             case 0: DoCommandPanel(g, selected_r); break;
             case 1: DoAudioDebugPanel(g, selected_r); break;
             case 2: DoLiveEditColourMapEditor(g, selected_r); break;
-            case 3: DoLiveEditSizeEditor(g, selected_r); break;
-            case 4: DoImGuiInspector(g, selected_r); break;
+            case 3: DoImGuiInspector(g, selected_r); break;
             default: PanicIfReached();
         }
     }

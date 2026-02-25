@@ -14,7 +14,7 @@ struct StereoPeakMeter;
 
 struct ParameterComponentOptions {
     f32 width; // In window-width units.
-    f32 knob_height_fraction = 1; // Height = width * knob_height_fraction.
+    f32 knob_height_fraction = 0.96f; // Height of the knob aspect = width * knob_height_fraction.
     Col knob_highlight_col = {Col::Highlight};
     Col knob_line_col = {Col::Background0};
     GuiStyleSystem style_system {};

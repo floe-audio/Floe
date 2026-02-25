@@ -16,21 +16,20 @@
 
 static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple * Ceil(value / multiple); }
 
+constexpr f32 k_mid_panel_title_height = 25.81f;
+constexpr f32 k_mid_panel_title_margin_left = 10.32f;
+
 static void DrawLayersContainerBackground(GuiState& g, Rect r) {
-    auto const mid_panel_title_height = LivePx(UiSizeId::MidPanelTitleHeight);
-    auto const panel_rounding = LivePx(UiSizeId::BlurredPanelRounding);
+    auto const mid_panel_title_height = WwToPixels(k_mid_panel_title_height);
+    auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     auto const layer_width_without_pad = RoundUpToNearestMultiple(r.w, k_num_layers) / k_num_layers;
 
     auto const overall_lib = LibraryForOverallBackground(g.engine);
     if (overall_lib)
-        DrawMidBlurredBackground(g,
-                                 r,
-                                 r,
-                                 *overall_lib,
-                                 Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacity1) / 100.0f));
+        DrawMidBlurredBackground(g, r, r, *overall_lib, Clamp01(k_background_blurring_opacity / 100.0f));
 
-    auto const layer_opacity = Clamp01(LiveRaw(UiSizeId::BackgroundBlurringOpacitySingleLayer1) / 100.0f);
+    auto const layer_opacity = Clamp01(33.09f / 100.0f);
     for (auto const layer_index : Range(k_num_layers)) {
         if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
             if (*lib_id == overall_lib) continue;
@@ -65,7 +64,7 @@ static void DrawEffectsContainerBackground(GuiState& g, Rect r) {
 
 static void
 DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
-    auto const layer_width_ww = RoundUpToNearestMultiple(LiveWw(UiSizeId::LayerWidth), k_num_layers);
+    auto const layer_width_ww = RoundUpToNearestMultiple(215.99f, k_num_layers);
     auto const total_layer_width_ww = layer_width_ww * k_num_layers;
 
     auto const root = DoBox(builder,
@@ -82,18 +81,17 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
         DrawLayersContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
 
     // Title row
-    auto const title_row =
-        DoBox(builder,
-              {
-                  .parent = root,
-                  .layout {
-                      .size = {layout::k_fill_parent, LiveWw(UiSizeId::MidPanelTitleHeight)},
-                      .contents_padding = {.lr = LiveWw(UiSizeId::MidPanelTitleMarginLeft)},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Justify,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
+    auto const title_row = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = {layout::k_fill_parent, k_mid_panel_title_height},
+                                         .contents_padding = {.lr = k_mid_panel_title_margin_left},
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Justify,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                 });
 
     DoBox(builder,
           {
@@ -165,20 +163,19 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
         DrawEffectsContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
 
     // Title row
-    auto const title_row =
-        DoBox(builder,
-              {
-                  .parent = root,
-                  .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
-                  .border_edges = 0b0001,
-                  .layout {
-                      .size = {layout::k_fill_parent, LiveWw(UiSizeId::MidPanelTitleHeight)},
-                      .contents_padding = {.lr = LiveWw(UiSizeId::MidPanelTitleMarginLeft)},
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Justify,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
+    auto const title_row = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                                     .border_edges = 0b0001,
+                                     .layout {
+                                         .size = {layout::k_fill_parent, k_mid_panel_title_height},
+                                         .contents_padding = {.lr = k_mid_panel_title_margin_left},
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Justify,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                 });
 
     DoBox(builder,
           {
@@ -223,7 +220,7 @@ void MidPanelCombinedContent(GuiBuilder& builder,
                              GuiState& g,
                              GuiFrameContext const& frame_context,
                              Box parent) {
-    auto const subpanel_gap_ww = LiveWw(UiSizeId::MidPanelSubpanelGapX);
+    constexpr f32 k_subpanel_gap_x = 8.08f;
 
     auto const root = DoBox(builder,
                             {
@@ -232,10 +229,10 @@ void MidPanelCombinedContent(GuiBuilder& builder,
                                     .size = layout::k_fill_parent,
                                     .contents_padding =
                                         {
-                                            .lr = subpanel_gap_ww,
-                                            .tb = LiveWw(UiSizeId::MidPanelSubpanelGapY),
+                                            .lr = k_subpanel_gap_x,
+                                            .tb = 6.08f,
                                         },
-                                    .contents_gap = subpanel_gap_ww,
+                                    .contents_gap = k_subpanel_gap_x,
                                     .contents_direction = layout::Direction::Row,
                                     .contents_align = layout::Alignment::Start,
                                 },
