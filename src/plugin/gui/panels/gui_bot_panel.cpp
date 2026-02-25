@@ -139,7 +139,7 @@ static void DoBotPanel(GuiState& g) {
                                     .parent = root,
                                     .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
                                     .layout {
-                                        .size = {41.86f, layout::k_fill_parent},
+                                        .size = {53, layout::k_fill_parent},
                                         .contents_padding = {.lr = 3, .tb = 6},
                                         .contents_gap = 2,
                                         .contents_direction = layout::Direction::Column,
@@ -184,7 +184,7 @@ static void DoBotPanel(GuiState& g) {
                           [type]() {
                               switch (type) {
                                   case BottomPanelType::Play: return "PLAY"_s;
-                                  case BottomPanelType::EditMacros: return "MACRO"_s;
+                                  case BottomPanelType::EditMacros: return "MACROS"_s;
                                   case BottomPanelType::Count: PanicIfReached();
                               }
                           }(),
