@@ -40,7 +40,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .id = id,
                 .mode = k_nullopt,
                 .name = "No Loop",
-                .short_name = "No Loop",
+                .short_name = "None",
                 .description = "No looping will be applied to this instrument.",
                 .editable = false,
             };
@@ -49,7 +49,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .id = id,
                 .mode = sample_lib::LoopMode::Standard,
                 .name = "Loop - Built-in Standard",
-                .short_name = "Loop b/standard",
+                .short_name = "Built-in Standard",
                 .description =
                     "Every region in this instrument will use built-in loops in standard wrap-around mode.",
                 .editable = false,
@@ -59,7 +59,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .id = id,
                 .mode = sample_lib::LoopMode::PingPong,
                 .name = "Loop - Built-in Ping-Pong",
-                .short_name = "Loop b/ping-pong",
+                .short_name = "Built-in Ping-Pong",
                 .description = "Every region in this instrument will use built-in loops in ping-pong mode.",
                 .editable = false,
             };
@@ -68,7 +68,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .id = id,
                 .mode = sample_lib::LoopMode::Standard,
                 .name = "Loop - Custom Standard",
-                .short_name = "Loop standard",
+                .short_name = "Standard",
                 .description =
                     "Custom loop points will be applied to this instrument and use standard wrap-around mode.",
                 .editable = true,
@@ -78,7 +78,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .id = id,
                 .mode = sample_lib::LoopMode::PingPong,
                 .name = "Loop - Custom Ping-Pong",
-                .short_name = "Loop ping-pong",
+                .short_name = "Ping-pong",
                 .description =
                     "Custom loop points will be applied to this instrument and use ping-pong mode.",
                 .editable = true,
