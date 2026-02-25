@@ -999,16 +999,28 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
         params.IntValue<param_values::EngineType>(layer_index, LayerParamIndex::EngineType);
 
     // Waveform display
+    if (auto const r = BoxRect(g.builder,
+                               DoBox(g.builder,
+                                     {
+                                         .parent = page,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, 70},
+                                         },
+                                     })))
+        DoWaveformElement(g, layer, *r, {.engine_type = engine_type});
+
+    // Reverse toggle
     {
-        auto const waveform_box = DoBox(g.builder,
-                                        {
-                                            .parent = page,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, 70},
-                                            },
-                                        });
-        if (auto const r = BoxRect(g.builder, waveform_box))
-            DoWaveformElement(g, layer, *r, {.engine_type = engine_type});
+        auto const param = params.DescribedValue(layer_index, LayerParamIndex::Reverse);
+        bool const is_waveform_synth = layer.instrument_id.tag == InstrumentType::WaveformSynth;
+
+        DoButtonParameter(g,
+                          page,
+                          param,
+                          {
+                              .width = layout::k_fill_parent,
+                              .greyed_out = is_waveform_synth,
+                          });
     }
 
     // Loop mode selector (only for Standard engine)
@@ -1038,42 +1050,6 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
               {
                   .parent = row,
                   .text = "Loop"_s,
-                  .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
-                  .layout {
-                      .size = layout::k_fill_parent,
-                  },
-              });
-    }
-
-    // Reverse toggle
-    {
-        auto const param = params.DescribedValue(layer_index, LayerParamIndex::Reverse);
-        bool const is_waveform_synth = layer.instrument_id.tag == InstrumentType::WaveformSynth;
-
-        auto const row = DoBox(g.builder,
-                               {
-                                   .parent = page,
-                                   .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_gap = k_page_row_gap_x,
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                   },
-                               });
-
-        DoButtonParameter(g,
-                          row,
-                          param,
-                          {
-                              .width = control_width,
-                              .greyed_out = is_waveform_synth,
-                          });
-
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = param.info.gui_label,
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredLeft,
                   .layout {
