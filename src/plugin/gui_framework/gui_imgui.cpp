@@ -575,7 +575,7 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
         if (final_viewport) {
             f32 const pixels_per_line = final_viewport->cfg.scroll_line_size > 0
                                             ? final_viewport->cfg.scroll_line_size
-                                            : GuiIo().WwToPixels(20.0f);
+                                            : WwToPixels(20.0f);
             f32 const lines = -frame_input.mouse_scroll_delta_in_lines;
             f32 const new_scroll = (lines * pixels_per_line) + final_viewport->scroll_offset.y;
             final_viewport->scroll_offset.y = Round(Clamp(new_scroll, 0.0f, final_viewport->scroll_max.y));

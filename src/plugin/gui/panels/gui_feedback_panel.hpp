@@ -141,7 +141,7 @@ PUBLIC void DoFeedbackPanel(GuiBuilder& builder, FeedbackPanelContext& context, 
                   {
                       .run = [&context, &state](GuiBuilder& b) { FeedbackPanel(b, context, state); },
                       .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          GuiIo().WwToPixels(f32x2 {400, 443})),
+                          WwToPixels(f32x2 {400, 443})),
                       .imgui_id = state.k_panel_id,
                       .viewport_config = k_default_modal_viewport,
                   });

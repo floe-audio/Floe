@@ -352,7 +352,7 @@ void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars 
         if (!b) continue;
         if (imgui.IsViewportHovered(imgui.curr_viewport) || imgui.IsActive(b->id, MouseButton::Left)) {
             auto const hot_or_active = imgui.IsHotOrActive(b->id, MouseButton::Left);
-            auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
+            auto const rounding = WwToPixels(k_panel_rounding);
 
             // Channel.
             if (hot_or_active) {
@@ -366,7 +366,7 @@ void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars 
                 u32 handle_col = ToU32({.c = Col::Surface1});
                 if (hot_or_active) handle_col = ToU32({.c = Col::Overlay0});
                 if (imgui.curr_viewport->cfg.scrollbar_inside_padding) {
-                    auto const pad_l = GuiIo().WwToPixels(hot_or_active ? 1 : 3.0f);
+                    auto const pad_l = WwToPixels(hot_or_active ? 1 : 3.0f);
                     auto const pad_r = 0;
                     auto const total_pad = pad_l + pad_r;
                     if (handle_rect.w > total_pad) {
@@ -385,14 +385,14 @@ void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui) {
     imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x6c0f0d0d);
     imgui.draw_list->PopClipRect();
 
-    auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
+    auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
     DrawDropShadow(imgui, r, rounding);
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0}), rounding);
 }
 
 void DrawOverlayViewportBackground(imgui::Context const& imgui) {
-    auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
+    auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
     DrawDropShadow(imgui, r, rounding);
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0}), rounding);

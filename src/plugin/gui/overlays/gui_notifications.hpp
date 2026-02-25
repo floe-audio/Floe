@@ -179,8 +179,8 @@ PUBLIC void NotificationsPanel(GuiBuilder& builder, Notifications& notifications
 
 PUBLIC void DoNotifications(GuiBuilder& builder, Notifications& notifications) {
     if (!notifications.Empty()) {
-        auto const width_px = GuiIo().WwToPixels(400.0f);
-        auto const spacing = GuiIo().PixelsToWw(k_default_spacing);
+        auto const width_px = WwToPixels(400.0f);
+        auto const spacing = PixelsToWw(k_default_spacing);
 
         DoBoxViewport(builder,
                       {

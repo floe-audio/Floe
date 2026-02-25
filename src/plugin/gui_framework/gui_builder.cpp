@@ -25,10 +25,10 @@ static f32 HeightOfWrappedText(GuiBuilder& builder, layout::Id id, f32 width) {
 }
 
 static imgui::ViewportConfig ConvertViewportConfigWwToPixels(imgui::ViewportConfig c) {
-    c.padding = {.lrtb = GuiIo().WwToPixels(c.padding.lrtb)};
-    c.scrollbar_width = GuiIo().WwToPixels(c.scrollbar_width);
-    c.scrollbar_padding = Max(2.0f, GuiIo().WwToPixels(c.scrollbar_padding));
-    c.scroll_line_size = GuiIo().WwToPixels(c.scroll_line_size);
+    c.padding = {.lrtb = WwToPixels(c.padding.lrtb)};
+    c.scrollbar_width = WwToPixels(c.scrollbar_width);
+    c.scrollbar_padding = Max(2.0f, WwToPixels(c.scrollbar_padding));
+    c.scroll_line_size = WwToPixels(c.scroll_line_size);
     return c;
 }
 
@@ -212,7 +212,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                builder.state->layout.num_items == 0,
            "DoBox requires a parent unless it's the first item (root)");
     auto const font = builder.fonts.atlas[ToInt(config.font)];
-    auto const font_size = config.font_size != 0 ? GuiIo().WwToPixels(config.font_size) : font->font_size;
+    auto const font_size = config.font_size != 0 ? WwToPixels(config.font_size) : font->font_size;
     ASSERT(font_size > 0);
     ASSERT(font_size < 10000);
 
@@ -360,7 +360,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                 // exclusively for the mouse so we should use the mouse rectangle.
                 if (config.background_fill_colours.s.base.c == Col::None) r = mouse_rect;
 
-                auto const rounding = Min(GuiIo().WwToPixels(config.corner_rounding), Min(r.w, r.h) / 2);
+                auto const rounding = Min(WwToPixels(config.corner_rounding), Min(r.w, r.h) / 2);
 
                 u32 col_u32 = ToU32(background_fill);
                 if (config.background_fill_auto_hot_active_overlay) {
@@ -421,7 +421,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                 // Convert ImageID to TextureHandle for rendering
                 if (auto const texture = GuiIo().in.renderer->GetTextureFromImage(*config.background_tex)) {
                     auto const rounding =
-                        Min(GuiIo().WwToPixels(config.corner_rounding), Min(rect.w, rect.h) / 2);
+                        Min(WwToPixels(config.corner_rounding), Min(rect.w, rect.h) / 2);
                     builder.imgui.draw_list->AddImageRounded(*texture,
                                                              rect.Min(),
                                                              rect.Max(),
@@ -462,7 +462,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
                 if (config.border_edges == 0b1111) {
                     auto const rounding =
-                        config.round_background_corners ? GuiIo().WwToPixels(config.corner_rounding) : 0;
+                        config.round_background_corners ? WwToPixels(config.corner_rounding) : 0;
                     builder.imgui.draw_list->AddRect(r,
                                                      col_u32,
                                                      rounding,

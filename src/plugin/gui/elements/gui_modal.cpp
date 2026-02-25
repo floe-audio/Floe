@@ -77,7 +77,7 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config) {
 }
 
 Box DoModalDivider(GuiBuilder& builder, Box parent, DividerOptions options, u64 id_extra) {
-    auto const one_pixel = GuiIo().PixelsToWw(1.0f);
+    auto const one_pixel = PixelsToWw(1.0f);
     return DoBox(builder,
                  {
                      .parent = parent,
@@ -322,7 +322,7 @@ TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions cons
             .text = options.text,
             .input_cfg =
                 {
-                    .x_padding = GuiIo().WwToPixels(4.0f),
+                    .x_padding = WwToPixels(4.0f),
                     .centre_align = false,
                     .escape_unfocuses = true,
                     .select_all_when_opening = false,

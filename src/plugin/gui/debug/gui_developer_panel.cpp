@@ -60,7 +60,7 @@ static void DrawDevGuiTextButton(imgui::Context const& imgui, Rect r, imgui::Id 
                                    }));
 
     auto const font_size = imgui.draw_list->fonts.Current()->font_size;
-    imgui.draw_list->AddText(f32x2 {r.x + GuiIo().WwToPixels(4.0f), r.y + (r.h / 2 - font_size / 2)},
+    imgui.draw_list->AddText(f32x2 {r.x + WwToPixels(4.0f), r.y + (r.h / 2 - font_size / 2)},
                              0xff000000,
                              str);
 }

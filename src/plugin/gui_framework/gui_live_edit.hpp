@@ -52,7 +52,7 @@ inline Col LiveColStruct(UiColMap type) { return g_live_edit_values.ui_col_map[T
 
 inline f32 LiveWw(UiSizeId size_id) { return g_live_edit_values.ui_sizes[ToInt(size_id)]; }
 inline f32 LivePx(UiSizeId size_id) {
-    return GuiIo().WwToPixels(g_live_edit_values.ui_sizes[ToInt(size_id)]);
+    return WwToPixels(g_live_edit_values.ui_sizes[ToInt(size_id)]);
 }
 
 inline f32 LiveRaw(UiSizeId size_id) { return g_live_edit_values.ui_sizes[ToInt(size_id)]; }

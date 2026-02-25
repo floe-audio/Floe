@@ -393,7 +393,7 @@ InstallLocationMenu(GuiBuilder& builder, PreferencesPanelContext& context, ScanF
               .parent = root,
               .background_fill_colours = Col {.c = Col::Overlay0},
               .layout {
-                  .size = {layout::k_fill_parent, GuiIo().PixelsToWw(1.0f)},
+                  .size = {layout::k_fill_parent, PixelsToWw(1.0f)},
                   .margins {.tb = k_menu_item_padding_y},
               },
           });
@@ -702,7 +702,7 @@ DoPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, Prefer
                   {
                       .run = [&context, &state](GuiBuilder& b) { PreferencesPanel(b, context, state); },
                       .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          GuiIo().WwToPixels(f32x2 {625, 443})),
+                          WwToPixels(f32x2 {625, 443})),
                       .imgui_id = state.k_panel_id,
                       .viewport_config = k_default_modal_viewport,
                   });

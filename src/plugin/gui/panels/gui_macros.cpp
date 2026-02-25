@@ -23,7 +23,7 @@ static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
     g.imgui.overlay_draw_list->AddLine(p1,
                                        p2,
                                        ChangeAlpha(ToU32({.c = Col::Blue}), 0.7f),
-                                       Max(1.0f, GuiIo().WwToPixels(2.0f)));
+                                       Max(1.0f, WwToPixels(2.0f)));
 }
 
 static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
@@ -31,7 +31,7 @@ static void DrawPopupTextbox(GuiState& g, String str, Rect r) {
     auto const pad_x = LivePx(UiSizeId::TooltipPadX);
     auto const pad_y = LivePx(UiSizeId::TooltipPadY);
 
-    r = r.Expanded(GuiIo().WwToPixels(4.0f));
+    r = r.Expanded(WwToPixels(4.0f));
 
     Rect popup_r;
     popup_r.x = r.x + (r.w / 2) - (size.x / 2 + pad_x);
@@ -127,8 +127,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
 
         constexpr f32 k_dest_knob_size = 25;
         constexpr f32 k_dest_knob_gap_x = 1;
-        auto const dest_knob_size_px = GuiIo().WwToPixels(k_dest_knob_size);
-        auto const dest_knob_gap_x_px = GuiIo().WwToPixels(k_dest_knob_gap_x);
+        auto const dest_knob_size_px = WwToPixels(k_dest_knob_size);
+        auto const dest_knob_gap_x_px = WwToPixels(k_dest_knob_gap_x);
 
         auto const destination_box =
             DoBox(builder,
@@ -388,7 +388,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 .text = g.engine.macro_names[macro_index],
                 .input_cfg =
                     {
-                        .x_padding = GuiIo().WwToPixels(k_text_input_x_padding),
+                        .x_padding = WwToPixels(k_text_input_x_padding),
                         .centre_align = false,
                         .escape_unfocuses = true,
                         .select_all_when_opening = true,

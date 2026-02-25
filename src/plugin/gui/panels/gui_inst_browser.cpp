@@ -552,7 +552,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 auto const window_height = GuiIo().in.window_size.height;
                 auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
                 auto const available_height = window_height - button_bottom - 20;
-                GuiIo().PixelsToWw(available_height);
+                PixelsToWw(available_height);
             }),
             .rhs_width = 300,
             .filters_col_width = 250,

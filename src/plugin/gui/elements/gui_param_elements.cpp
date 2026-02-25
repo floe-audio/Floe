@@ -390,7 +390,7 @@ Box DoKnobParameter(GuiState& g,
                 .event = MouseButtonEvent::DoubleClick,
             },
             .text_input_cfg {
-                .x_padding = GuiIo().WwToPixels(4.0f),
+                .x_padding = WwToPixels(4.0f),
                 .centre_align = true,
                 .escape_unfocuses = true,
                 .select_all_when_opening = true,

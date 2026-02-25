@@ -362,7 +362,7 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                     }
                 },
             .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                GuiIo().WwToPixels(f32x2 {640, 600})),
+                WwToPixels(f32x2 {640, 600})),
             .imgui_id = state.k_panel_id,
             .viewport_config = ({
                 auto cfg = k_default_modal_viewport;

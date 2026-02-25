@@ -643,7 +643,7 @@ PUBLIC void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPane
                   {
                       .run = [&context, &state](GuiBuilder& b) { InfoPanel(b, context, state); },
                       .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          GuiIo().WwToPixels(f32x2 {625, 443})),
+                          WwToPixels(f32x2 {625, 443})),
                       .imgui_id = state.k_panel_id,
                       .viewport_config = k_default_modal_viewport,
                   });

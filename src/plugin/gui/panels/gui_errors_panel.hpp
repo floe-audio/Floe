@@ -30,7 +30,7 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
     auto const viewport = builder.imgui.FindViewport(k_errors_panel_id);
 
     auto const window_size = GuiIo().in.window_size.ToFloat2();
-    auto const panel_size = f32x2 {GuiIo().WwToPixels(400.0f), viewport ? viewport->prev_content_size.y : 0};
+    auto const panel_size = f32x2 {WwToPixels(400.0f), viewport ? viewport->prev_content_size.y : 0};
     auto const bounds = Rect {.pos = 0, .size = window_size}.CentredRect(panel_size);
 
     DoBoxViewport(builder,

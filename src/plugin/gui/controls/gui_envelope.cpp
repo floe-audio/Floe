@@ -137,7 +137,7 @@ void DoEnvelopeGui(GuiState& g,
     auto& imgui = g.imgui;
     auto& engine = g.engine;
 
-    auto const handle_size = GuiIo().WwToPixels(30.8f);
+    auto const handle_size = WwToPixels(30.8f);
 
     auto id = HashInit();
     HashUpdate(id, SourceLocationHash());

@@ -19,7 +19,7 @@ static void DrawDarkModeModalBackground(imgui::Context const& imgui) {
     imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x6c0f0d0d);
     imgui.draw_list->PopClipRect();
 
-    auto const rounding = GuiIo().WwToPixels(k_panel_rounding);
+    auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
 }
@@ -78,7 +78,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
 
     // Divider
     {
-        auto const one_pixel = GuiIo().PixelsToWw(1.0f);
+        auto const one_pixel = PixelsToWw(1.0f);
         DoBox(builder,
               {
                   .parent = root,
@@ -173,7 +173,7 @@ void DoLegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
     viewport_config.draw_background = DrawDarkModeModalBackground;
 
     auto const window_size = GuiIo().in.window_size.ToFloat2();
-    auto const panel_size = GuiIo().WwToPixels(f32x2 {500, 400});
+    auto const panel_size = WwToPixels(f32x2 {500, 400});
     auto const bounds = Rect {.pos = 0, .size = window_size}.CentredRect(panel_size);
 
     DoBoxViewport(builder,

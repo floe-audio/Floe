@@ -67,7 +67,7 @@ PUBLIC void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& s
                   {
                       .run = [&state](GuiBuilder& b) { ConfirmationDialog(b, state); },
                       .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          GuiIo().WwToPixels(f32x2 {300.0f, 220.0f})),
+                          WwToPixels(f32x2 {300.0f, 220.0f})),
                       .imgui_id = state.k_id,
                       .viewport_config = k_default_modal_viewport,
                   });

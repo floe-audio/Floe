@@ -17,7 +17,8 @@
 #include "processor/layer_processor.hpp"
 #include "processor/sample_processing.hpp"
 
-static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, WaveformGuiOptions const& options) {
+static void
+DoStandardWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, WaveformGuiOptions const& options) {
     if (layer.instrument_id.tag == InstrumentType::WaveformSynth) return;
 
     auto const handle_height = LivePx(UiSizeId::MainWaveformHandleHeight);
@@ -421,8 +422,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, Wavef
     // Offset.
     Rect offs_handle {};
     auto const offs_imgui_id = g.imgui.MakeId("offset");
-    bool const show_offset = options.engine_type == param_values::EngineType::Standard;
-    if (show_offset) {
+    {
         auto const sample_offset = params.LinearValue(layer.index, LayerParamIndex::SampleOffset);
         auto const param_id = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::SampleOffset);
         auto const& param = g.engine.processor.main_params.DescribedValue(param_id);
@@ -535,7 +535,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, Wavef
         draw_handle(end_handle, end_id, HandleType::LoopEnd, false);
         if (draw_xfade) draw_handle(xfade_handle, xfade_id, HandleType::Xfade, draw_xfade_as_inactive);
     }
-    if (show_offset) draw_handle(offs_handle, offs_imgui_id, HandleType::Offset, false);
+    draw_handle(offs_handle, offs_imgui_id, HandleType::Offset, false);
 
     // Text editor.
     if (g.param_text_editor_to_open) {
@@ -550,7 +550,10 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, Wavef
     }
 }
 
-void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r, WaveformGuiOptions const& options) {
+void DoWaveformElement(GuiState& g,
+                       LayerProcessor& layer,
+                       Rect viewport_r,
+                       WaveformGuiOptions const& options) {
     g.imgui.PushId(SourceLocationHash() + layer.index);
     DEFER { g.imgui.PopId(); };
 
@@ -582,11 +585,9 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r, Wave
 
         // Waveform image.
         if (layer.instrument_id.tag != InstrumentType::None) {
-            bool const show_standard_overlays =
-                options.engine_type == param_values::EngineType::Standard;
+            bool const show_standard_overlays = options.engine_type == param_values::EngineType::Standard;
 
-            auto const offset = (show_standard_overlays &&
-                                 layer.instrument_id.tag == InstrumentType::Sampler)
+            auto const offset = (show_standard_overlays && layer.instrument_id.tag == InstrumentType::Sampler)
                                     ? params.LinearValue(layer.index, LayerParamIndex::SampleOffset)
                                     : 0;
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
@@ -607,10 +608,8 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r, Wave
                                      *GuiIo().in.renderer,
                                      g.shared_engine_systems.thread_pool,
                                      viewport_r.size))) {
-
                 if (show_standard_overlays) {
-                    auto const loop_start =
-                        params.LinearValue(layer.index, LayerParamIndex::LoopStart);
+                    auto const loop_start = params.LinearValue(layer.index, LayerParamIndex::LoopStart);
                     auto const loop_end =
                         Max(params.LinearValue(layer.index, LayerParamIndex::LoopEnd), loop_start);
                     auto const loop_mode =
@@ -637,8 +636,7 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r, Wave
                             tex.Value(),
                             window_r.Min() +
                                 f32x2 {viewport_r.w * (reverse ? (1.0f - loop_start) : loop_start), 0},
-                            window_r.Max() -
-                                f32x2 {window_r.w * (reverse ? loop_end : (1.0f - loop_end)), 0},
+                            window_r.Max() - f32x2 {window_r.w * (reverse ? loop_end : (1.0f - loop_end)), 0},
                             loop_section_uv.lo,
                             loop_section_uv.hi,
                             LiveCol(UiColMap::WaveformLoopWaveformLoop));
@@ -649,13 +647,13 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r, Wave
                             .lo = {reverse ? 1.0f : 0.0f, 0},
                             .hi = {reverse ? 1.0f - offset : offset, 1},
                         };
-                        g.imgui.draw_list->AddImage(
-                            tex.Value(),
-                            window_r.Min(),
-                            window_r.Max() - f32x2 {viewport_r.w * (1.0f - offset), 0},
-                            offset_section_uv.lo,
-                            offset_section_uv.hi,
-                            LiveCol(UiColMap::WaveformLoopWaveformOffset));
+                        g.imgui.draw_list->AddImage(tex.Value(),
+                                                    window_r.Min(),
+                                                    window_r.Max() -
+                                                        f32x2 {viewport_r.w * (1.0f - offset), 0},
+                                                    offset_section_uv.lo,
+                                                    offset_section_uv.hi,
+                                                    LiveCol(UiColMap::WaveformLoopWaveformOffset));
                     }
                 } else {
                     // Plain waveform with no overlays.
@@ -671,7 +669,7 @@ void DoWaveformElement(GuiState& g, LayerProcessor& layer, Rect viewport_r, Wave
 
         // Controls.
         if (options.engine_type == param_values::EngineType::Standard)
-            DoWaveformControls(g, layer, viewport_r, options);
+            DoStandardWaveformControls(g, layer, viewport_r, options);
 
         // Voice cursors.
         if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {

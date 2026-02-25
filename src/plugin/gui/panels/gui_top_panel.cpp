@@ -146,7 +146,7 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
 }
 
 static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context) {
-    auto const root_size = GuiIo().PixelsToWw(builder.imgui.CurrentVpSize());
+    auto const root_size = PixelsToWw(builder.imgui.CurrentVpSize());
     auto root = DoBox(builder,
                       {
                           .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},

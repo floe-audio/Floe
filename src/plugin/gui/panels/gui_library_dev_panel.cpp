@@ -416,7 +416,7 @@ void DoLibraryDevPanel(GuiBuilder& builder, LibraryDevPanelContext& context, Lib
 
     if (!is_open) return;
 
-    f32x2 const size = {GuiIo().WwToPixels(350.0f), GuiIo().WwToPixels(570.0f)};
+    f32x2 const size = {WwToPixels(350.0f), WwToPixels(570.0f)};
     auto const window_size = GuiIo().in.window_size.ToFloat2();
     f32x2 pos = 0;
     pos.x += window_size.x - size.x;

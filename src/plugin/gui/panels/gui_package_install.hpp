@@ -264,7 +264,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                     .run = [&package_install_jobs](
                                GuiBuilder& b) { PackageInstallAlertsPanel(b, package_install_jobs); },
                     .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                        GuiIo().WwToPixels(f32x2 {400, 300})),
+                        WwToPixels(f32x2 {400, 300})),
                     .imgui_id = builder.imgui.MakeId("install alerts"),
                     .viewport_config = ({
                         auto cfg = k_default_modal_viewport;

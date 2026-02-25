@@ -1054,7 +1054,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
     }
 
     auto const engine_type =
-        (param_values::EngineType)(int)params.LinearValue(layer_index, LayerParamIndex::EngineType);
+        params.IntValue<param_values::EngineType>(layer_index, LayerParamIndex::EngineType);
 
     // Waveform display
     {

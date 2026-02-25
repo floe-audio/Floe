@@ -292,9 +292,6 @@ struct GuiFrameIo {
         return triggered;
     }
 
-    auto WwToPixels(auto ww) const { return ww * in.pixels_per_ww; }
-    auto PixelsToWw(auto pixels) const { return pixels / in.pixels_per_ww; }
-
     GuiFrameInput const& in;
     GuiFrameOutput& out;
 };
@@ -303,6 +300,8 @@ struct GuiFrameIo {
 // it is invalid to use this data. A large percentage of GUI code needs access to the frame input and output.
 // Rather than pass it around everywhere which will be incredibly noisy, we use this global.
 GuiFrameIo GuiIo();
+inline auto WwToPixels(auto ww) { return ww * GuiIo().in.pixels_per_ww; }
+inline auto PixelsToWw(auto pixels) { return pixels / GuiIo().in.pixels_per_ww; }
 
 // Set this at any time from any thread to request a GUI update at some point in the future.
 extern Atomic<bool> g_request_gui_update;

@@ -69,10 +69,8 @@ static void DrawBlurredBackgroundForBox(GuiState& g, Box box, Optional<sample_li
         DrawMidBlurredPanelSurface(g, g.imgui.ViewportRectToWindowRect(*r), lib_id);
 }
 
-static void DoLayerInstSelector(GuiState& g,
-                                GuiFrameContext const& frame_context,
-                                u8 layer_index,
-                                Box parent) {
+static void
+DoLayerInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent) {
     auto const lib_id = g.engine.Layer(layer_index).LibId();
     DoInstSelector(g, frame_context, layer_index, parent, [&g, lib_id](Rect window_r) {
         DrawMidBlurredPanelSurface(g, window_r, lib_id);
@@ -837,12 +835,10 @@ void MidPanelSingleLayerContent(GuiBuilder& builder,
 
         if (auto const r = BoxRect(builder, waveform_box)) {
             if (has_instrument) {
-                auto const engine_type = (param_values::EngineType)(int)g.engine.processor.main_params
-                                             .LinearValue(layer_index, LayerParamIndex::EngineType);
-                DoWaveformElement(g,
-                                  layer,
-                                  *r,
-                                  {.handles_follow_cursor = true, .engine_type = engine_type});
+                auto const engine_type = g.engine.processor.main_params.IntValue<param_values::EngineType>(
+                    layer_index,
+                    LayerParamIndex::EngineType);
+                DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true, .engine_type = engine_type});
             }
         }
 

@@ -305,9 +305,9 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
     constexpr auto k_line_width = 2.0f;
     constexpr auto k_stopper_width = k_line_width;
 
-    auto const strip_h = GuiIo().WwToPixels(options.strip_height);
-    auto const k_strip_gap = GuiIo().WwToPixels(options.strip_gap);
-    auto const text_gap = GuiIo().WwToPixels(options.text_gap);
+    auto const strip_h = WwToPixels(options.strip_height);
+    auto const k_strip_gap = WwToPixels(options.strip_gap);
+    auto const text_gap = WwToPixels(options.text_gap);
 
     auto const capsule_cols = Array {
         Rgba(80, 90, 105, 1.0f), // Layer 1 - Cool blue-grey
@@ -318,7 +318,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 
     auto y_pos = options.start_pos.y;
 
-    auto const text_pad_x = GuiIo().WwToPixels(6.0f);
+    auto const text_pad_x = WwToPixels(6.0f);
 
     if (options.display_type == DisplayType::Full) {
         // Title
@@ -354,7 +354,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                 imgui.draw_list->AddCircleFilled(imgui.ViewportPosToWindowPos({circle_x, circle_y}),
                                                  circle_radius,
                                                  capsule_cols[layer_idx]);
-                x_pos += circle_radius * 2 + GuiIo().WwToPixels(6.0f);
+                x_pos += circle_radius * 2 + WwToPixels(6.0f);
             }
 
             {
@@ -598,7 +598,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
         {
             auto const stopper_top = (f32)RoundPositiveFloat(strip_y);
             auto const stopper_bottom = (f32)RoundPositiveFloat(strip_y + strip_h);
-            auto const chevron_x_delta = GuiIo().WwToPixels(5.0f);
+            auto const chevron_x_delta = WwToPixels(5.0f);
 
             if (layer_start_x >= container_left) {
                 auto const stopper_x = (f32)RoundPositiveFloat(layer_start_x);
@@ -666,7 +666,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
         imgui.OpenPopupMenu(popup_id, id);
 
-    auto const enlarged_viewport_padding = GuiIo().WwToPixels(4.0f);
+    auto const enlarged_viewport_padding = WwToPixels(4.0f);
 
     keyboard_rect = imgui.RegisterAndConvertRect(keyboard_rect);
     if (imgui.IsPopupMenuOpen(popup_id)) {
@@ -712,7 +712,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                                     .starting_octave = starting_octave,
                                     .display_type = DisplayType::Minimal,
                                     .strip_height = k_minimal_strip_height_ww,
-                                    .strip_gap = GuiIo().PixelsToWw(k_minimal_strip_gap_px),
+                                    .strip_gap = PixelsToWw(k_minimal_strip_gap_px),
                                     .text_gap = 0,
                                 });
     }
@@ -748,14 +748,14 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_oc
             !all_default) {
             auto const top_display_r =
                 rect_cut::CutTop(r,
-                                 GuiIo().WwToPixels(num_active_layers * k_minimal_strip_height_ww) +
+                                 WwToPixels(num_active_layers * k_minimal_strip_height_ww) +
                                      ((num_active_layers - 1) * k_minimal_strip_gap_px));
 
             TopDisplay(g, top_display_r, starting_octave, r);
         }
     }
 
-    rect_cut::CutTop(r, GuiIo().WwToPixels(4.0f));
+    rect_cut::CutTop(r, WwToPixels(4.0f));
 
     return InternalKeyboardGui(g, r, starting_octave);
 }

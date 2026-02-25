@@ -187,7 +187,7 @@ struct ItemArgs {
 static void DrawFocusBox(GuiBuilder& builder, Rect relative_rect) {
     builder.imgui.draw_list->AddRect(builder.imgui.RegisterAndConvertRect(relative_rect),
                                      ToU32({.c = Col::Blue}),
-                                     GuiIo().WwToPixels(k_button_rounding),
+                                     WwToPixels(k_button_rounding),
                                      0b1111,
                                      2);
 }
@@ -1964,7 +1964,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     .placeholder_text = options.filter_search_placeholder_text,
                     .input_cfg =
                         {
-                            .x_padding = GuiIo().WwToPixels(4.0f),
+                            .x_padding = WwToPixels(4.0f),
                             .centre_align = false,
                             .escape_unfocuses = true,
                             .select_all_when_opening = true,
@@ -2187,7 +2187,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                         .placeholder_text = options.item_search_placeholder_text,
                         .input_cfg =
                             {
-                                .x_padding = GuiIo().WwToPixels(4.0f),
+                                .x_padding = WwToPixels(4.0f),
                                 .centre_align = false,
                                 .escape_unfocuses = true,
                                 .select_all_when_opening = true,

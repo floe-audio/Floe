@@ -39,7 +39,7 @@ void DoCurveMap(GuiState& g,
                 Optional<f32> velocity_marker,
                 String additional_tooltip) {
     auto& imgui = g.imgui;
-    auto const point_radius = GuiIo().WwToPixels(3.65f);
+    auto const point_radius = WwToPixels(3.65f);
     constexpr f32 k_extra_grabber_scale = 3.0f;
     auto const grabber_radius = point_radius * k_extra_grabber_scale;
 
