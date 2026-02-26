@@ -237,7 +237,8 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             if (auto const r = BoxRect(g.builder, tab_btn)) {
                 auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
                 auto const dot_centre = f32x2 {window_r.CentreX(), window_r.CentreY() + WwToPixels(10.0f)};
-                auto const col = is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidText);
+                auto const col =
+                    is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidTextDimmed);
                 g.imgui.draw_list->AddCircleFilled(dot_centre, WwToPixels(2.0f), col);
             }
         }
