@@ -102,7 +102,7 @@ struct InstallJob {
 // ==========================================================================================================
 
 struct CreateJobOptions {
-    String zip_path;
+    String package_path;
     Array<String, ToInt(ComponentType::Count)> install_folders;
     sample_lib_server::Server& sample_lib_server;
     PresetServer& preset_server;
@@ -160,7 +160,7 @@ using InstallJobs = BoundedList<ManagedInstallJob, 16>;
 
 // [main thread]
 void AddJob(InstallJobs& jobs,
-            String zip_path,
+            String package_path,
             prefs::Preferences& prefs,
             FloePaths const& paths,
             sample_lib_server::Server& sample_library_server,

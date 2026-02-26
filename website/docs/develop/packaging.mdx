@@ -15,18 +15,18 @@ import CodeBlock from '@theme/CodeBlock';
 
 The easiest and most reliable way to distribute your Floe content is with [Floe Packages](../key-concepts/components#packages).
 
-Floe Packages are ZIP files containing **sample libraries** (which provide instruments and IRs) and/or **presets** (ready-to-use professional sounds). Packages are what users download and install into Floe.
+Floe Packages are `.floe-pkg` files (ZIP files internally) containing **sample libraries** (which provide instruments and IRs) and/or **presets** (ready-to-use professional sounds). Packages are what users download and install into Floe. Floe also accepts `.zip` packages for backwards compatibility.
 
 Floe offers an easy-to-use GUI for [installing packages](../installation/install-packages). This installation process carefully considers existing content, versions, installation preferences, and whether installed libraries have been modified. The result should 'just work' or provide clear instructions on what to do next.
 
-As with Floe's sample library format, openness is key. That's why Floe Packages are just normal ZIP files with a specific structure. Anyone can create them and anyone can open them. Additionally, it gives the user the option to extract them manually rather than use Floe's GUI if they wish.
+As with Floe's sample library format, openness is key. That's why Floe Packages are just ZIP files with a specific structure and a `.floe-pkg` extension. Anyone can create them and anyone can open them (rename to `.zip` to extract). Additionally, it gives the user the option to extract them manually rather than use Floe's GUI if they wish.
 
 Create Floe Packages using our command-line tool or any ZIP program.
 
 ## Packager command-line tool
 If you're comfortable with such things, we have a command-line tool to create Floe Packages. It ensures everything is set up correctly and adds a couple of nice-to-have features, particularly for users who want to install the package manually rather than with Floe's GUI.
 
-However, you can use any ZIP program to create Floe Packages. Just make sure they follow the structure described in the next section.
+However, you can use any ZIP program to create Floe Packages. Just make sure they follow the structure described in the next section, and rename the resulting `.zip` to `.floe-pkg`.
 
 #### Download
 
@@ -35,7 +35,7 @@ However, you can use any ZIP program to create Floe Packages. Just make sure the
 - **<FAIcon icon="fa-brands fa-apple" /> Floe Packager macOS Intel**: <a href={data["Floe-Packager-macOS-Intel"]["url"]}>{data["Floe-Packager-macOS-Intel"]["name"]}</a> ({data["Floe-Packager-macOS-Intel"]["size"]})
 - **<FAIcon icon="fa-brands fa-linux" /> Floe Packager Linux**: <a href={data["Floe-Packager-Linux"]["url"]}>{data["Floe-Packager-Linux"]["name"]}</a> ({data["Floe-Packager-Linux"]["size"]})
 
-Download the program, extract it, and run it from the command line. 
+Download the program, extract it, and run it from the command line.
 
 #### Usage
 Here's the output of `floe-packager --help`:
@@ -46,13 +46,13 @@ Here's the output of `floe-packager --help`:
 #### Examples
 These examples use bash syntax.
 ```bash
-# Creates a Floe Package from the Slow library and the Slow Factory Presets.
+# Creates a .floe-pkg from the Slow library and the Slow Factory Presets.
 # Slow and "Slow Factory Presets" are folders in the current directory.
 ./floe-packager --library-folders "Slow" \
                 --preset-folders "Slow Factory Presets" \
                 --output-folder .
 
-# Creates a Floe Package containing multiple libraries and no presets
+# Creates a .floe-pkg containing multiple libraries and no presets
 ./floe-packager --library-folders "C:/Users/Sam/Floe-Dev/Strings" \
                                   "C:/Users/Sam/Floe-Dev/Common-IRs" \
                 --output-folder "C:/Users/Sam/Floe-Dev/Releases" \
@@ -65,13 +65,13 @@ These examples use bash syntax.
 If you're not using the packager tool, you need to know the structure of the Floe Package. It's very simple.
 
 Requirements of a floe package:
-- The ZIP must contain a folder called `Libraries` and/or a folder called `Presets`. If present, these folders must contain the libraries and presets respectively.
+- The package must contain a folder called `Libraries` and/or a folder called `Presets`. If present, these folders must contain the libraries and presets respectively.
 
 Be careful that your ZIP program is not adding an extra folder when you create the ZIP file. There should not be a top-level folder in the ZIP file, just the `Libraries` and/or `Presets` folders.
 
 #### Example: single library & factory presets
 ```
-📦FrozenPlain - Arctic Strings Package.zip/
+📦FrozenPlain - Arctic Strings Package.floe-pkg/
 ├── 📁Libraries
 │   └── 📁Arctic Strings
 │       ├── 📄arctic-strings.floe.lua
@@ -93,7 +93,7 @@ Be careful that your ZIP program is not adding an extra folder when you create t
 
 #### Example: multiple libraries
 ```
-📦Audioata - Synthwave Bundle Package.zip/
+📦Audioata - Synthwave Bundle Package.floe-pkg/
 ├── 📁Libraries
 │   ├── 📁Synthwave Bass
 │   │   ├── 📄synthwave-bass.floe.lua

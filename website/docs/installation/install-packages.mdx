@@ -12,11 +12,11 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 import data from "@site/static/generated-data.json";
 
-Floe can install sample libraries and presets from ZIP files called _Floe packages_.
+Floe can install sample libraries and presets from package files (`.floe-pkg` or `.zip`).
 
 ### At a glance
 
-Download your package ZIP file(s). **Don't extract them**. Instead, click the 'Install package' button in Floe's Preferences panel. Direct it to the ZIP file.
+Download your package file(s). Click the 'Install package' button in Floe's Preferences panel. Direct it to the package file.
 
 <video width="100%" controls>
   <source src="/images/package-installation.mp4" type="video/mp4" />
@@ -27,21 +27,21 @@ Download your package ZIP file(s). **Don't extract them**. Instead, click the 'I
 
 Firstly, if you haven't already, [download & install Floe](/download). Next, load up the Floe plugin in your DAW.
 
-Download your chosen package(s) (ZIP files containing sample libraries and presets). **Don't extract them.**
-
-:::tip[Safari on macOS auto-extracts ZIP files]
-By default, Safari automatically extracts ZIP files after downloading, which means your package ZIP is replaced with an extracted folder. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab. Alternatively, you can use a different browser to download.
-:::
+Download your chosen package(s) (`.floe-pkg` or `.zip` files containing sample libraries and presets).
 
 To install:
 1. Open Floe's Preferences panel (<FAIcon icon="fa-solid fa-cog" /> cog icon)
 2. Go to the Packages tab
-3. Click 'Install package' and select your ZIP file(s)
+3. Click 'Install package' and select your package file(s)
 4. Done - libraries/presets are immediately available
 
-The package ZIP files can be deleted after installation. No restart required.
+The package files can be deleted after installation. No restart required.
 
 ![Floe's GUI](/images/install-package-gui.png)
+
+:::note[ZIP files and Safari on macOS]
+If you have a `.zip` package rather than `.floe-pkg`, be aware that Safari automatically extracts ZIP files after downloading. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab. This is not an issue with `.floe-pkg` files.
+:::
 
 ## Advanced Details
 
@@ -55,7 +55,7 @@ By default, Floe installs content to standard folders on your main drive. This c
 
 If you've not done this before, the dropdowns for _install folder_ menus might only show 'Default' locations. You need to first tell Floe about your custom folders and then select them here.
 
-To do that, use your file browser program (Finder/File Explorer) and create the folder(s) where you want to keep Floe content and add them on Floe's preferences. 
+To do that, use your file browser program (Finder/File Explorer) and create the folder(s) where you want to keep Floe content and add them on Floe's preferences.
 
 Floe uses separate folders for sample libraries versus presets, so you might want to create one for each. For example, on your _SAMPLES_ hard drive, create folders: "Floe Libraries" and "Floe Presets". Add these 2 folders on Floe's preferences panels and select them as the default installation locations.
 
@@ -67,14 +67,19 @@ Floe handles the installation process intelligently. It will check existing inst
 
 ### Manually installing
 
-Instead of using the 'install package' button, you can manually install libraries and presets by extracting the ZIP file into the correct folders.
+Instead of using the 'install package' button, you can manually install libraries and presets by extracting the package file into the correct folders. Packages are just ZIP files. If you have a `.floe-pkg` file, rename it to `.zip` first and then extract it using any ZIP extraction tool - often just a matter of double-clicking on it.
 
-1. Extract the package ZIP file.
+1. Extract the package file.
 1. Open Floe.
 1. Open the Preferences panel using the gear icon at the top.
 1. Open the Folders tab.
 1. Here you can control which folders Floe looks for libraries and presets in. Copy/move the contents of the package's Libraries into one of Floe's library folders, and the same for Presets into one Floe's presets folder.
 1. Done. No need to restart Floe.
+
+### Convert floe-pkg to zip
+No conversion needed! Just change the file extension. There are countless ways to do this. As quick guidance for our users:
+- On macOS Finder: right-click the file -> Get Info -> edit Name & Extension.
+- On Windows File Explorer: View -> Show -> File name extensions. Then right-click the file and rename.
 
 ### Uninstalling packages
 Floe doesn't track packages - they are just the installation format. However, you can uninstall libraries and presets. Visit the [Uninstalling](./uninstalling) page for full instructions.

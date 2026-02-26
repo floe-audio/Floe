@@ -24,7 +24,15 @@ namespace package {
 constexpr String k_libraries_subdir = "Libraries";
 constexpr String k_presets_subdir = "Presets";
 constexpr auto k_component_subdirs = Array {k_libraries_subdir, k_presets_subdir};
-constexpr String k_file_extension = ".zip"_s;
+constexpr String k_file_extension = ".floe-pkg"_s;
+constexpr auto k_package_extensions = Array {k_file_extension, ".zip"};
+
+inline bool HasPackageExtension(String path) {
+    auto const ext = path::Extension(path);
+    for (auto const& e : k_package_extensions)
+        if (path::Equal(ext, e)) return true;
+    return false;
+}
 constexpr String k_checksums_file = "Floe-Details/checksums.crc32"_s;
 enum class ComponentType : u8 { Library, Presets, Count };
 
