@@ -199,11 +199,11 @@ void DoEnvelopeGui(GuiState& g,
         attack_x_range.min = get_x_coord_at_percent(0);
         attack_x_range.max = get_x_coord_at_percent(1);
 
-        auto const grabber = imgui.RegisterAndConvertRect(
-            {.xywh {viewport_r.x - (handle_size / 2),
-                     viewport_r.y - (handle_size / 2),
-                     adsr_points[k_attack_index].x - viewport_r.x + handle_size,
-                     viewport_r.h + (handle_size / 2)}});
+        auto const grabber =
+            imgui.RegisterAndConvertRect({.xywh {viewport_r.x - (handle_size / 2),
+                                                 viewport_r.y - (handle_size / 2),
+                                                 adsr_points[k_attack_index].x - viewport_r.x + handle_size,
+                                                 viewport_r.h + (handle_size / 2)}});
 
         auto new_value = norm_attack_val;
         auto const changed = imgui.SliderBehaviourFraction({

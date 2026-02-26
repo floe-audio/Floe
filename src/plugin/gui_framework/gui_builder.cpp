@@ -420,8 +420,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
                 // Convert ImageID to TextureHandle for rendering
                 if (auto const texture = GuiIo().in.renderer->GetTextureFromImage(*config.background_tex)) {
-                    auto const rounding =
-                        Min(WwToPixels(config.corner_rounding), Min(rect.w, rect.h) / 2);
+                    auto const rounding = Min(WwToPixels(config.corner_rounding), Min(rect.w, rect.h) / 2);
                     builder.imgui.draw_list->AddImageRounded(*texture,
                                                              rect.Min(),
                                                              rect.Max(),

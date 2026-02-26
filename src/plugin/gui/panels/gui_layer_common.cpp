@@ -353,15 +353,14 @@ void DoInstSelector(GuiState& g,
 
     // Icon box
     if (icon_tex) {
-        auto const icon_box =
-            DoBox(g.builder,
-                  {
-                      .parent = inst_button,
-                      .parent_dictates_hot_and_active = true,
-                      .layout {
-                          .size = {22.54f, layout::k_fill_parent},
-                      },
-                  });
+        auto const icon_box = DoBox(g.builder,
+                                    {
+                                        .parent = inst_button,
+                                        .parent_dictates_hot_and_active = true,
+                                        .layout {
+                                            .size = {22.54f, layout::k_fill_parent},
+                                        },
+                                    });
         if (auto const r = BoxRect(g.builder, icon_box)) {
             auto const icon_r = r->Reduced(r->h / 10);
             g.imgui.draw_list->AddImageRect(*icon_tex, g.imgui.ViewportRectToWindowRect(icon_r));

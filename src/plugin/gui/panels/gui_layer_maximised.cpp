@@ -172,13 +172,9 @@ static void DoEngineSection(GuiState& g, u8 layer_index, Box parent) {
                            });
 
     // Play Mode selector
-    DoMenuParameter(g,
-                    col,
-                    params.DescribedValue(layer_index, LayerParamIndex::PlayMode),
-                    {.width = 100});
+    DoMenuParameter(g, col, params.DescribedValue(layer_index, LayerParamIndex::PlayMode), {.width = 100});
 
-    auto const play_mode =
-        params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
+    auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
 
     bool const is_waveform_synth = layer_processor.instrument_id.tag == InstrumentType::WaveformSynth;
     DoButtonParameter(g,
@@ -187,17 +183,15 @@ static void DoEngineSection(GuiState& g, u8 layer_index, Box parent) {
                       {.width = 60, .greyed_out = is_waveform_synth});
 
     // Loop mode selector (hidden in granular position mode)
-    if (play_mode != param_values::PlayMode::GranularFixed)
-        DoLoopModeSelector(g, col, layer_processor);
+    if (play_mode != param_values::PlayMode::GranularFixed) DoLoopModeSelector(g, col, layer_processor);
 
     // Granular controls
     if (IsGranular(play_mode)) {
         // Speed or Position knob depending on play mode
         {
-            auto const contextual_param =
-                (play_mode == param_values::PlayMode::GranularPlayback)
-                    ? LayerParamIndex::GranularSpeed
-                    : LayerParamIndex::GranularPosition;
+            auto const contextual_param = (play_mode == param_values::PlayMode::GranularPlayback)
+                                              ? LayerParamIndex::GranularSpeed
+                                              : LayerParamIndex::GranularPosition;
             DoKnobParameter(g,
                             col,
                             params.DescribedValue(layer_index, contextual_param),

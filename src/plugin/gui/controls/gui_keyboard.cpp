@@ -44,8 +44,7 @@ struct KeyboardLayout {
 
         constexpr auto k_white_key_width_factor = 1.0f / (k_num_octaves_shown * 7.0f);
         layout.white_key_width = keyboard_w * k_white_key_width_factor;
-        layout.black_key_width =
-            (layout.white_key_width * (0.5f * 118.52f / 100.0f));
+        layout.black_key_width = (layout.white_key_width * (0.5f * 118.52f / 100.0f));
 
         auto const d1 = ((layout.white_key_width * 3) - (layout.black_key_width * 2)) / 3;
         auto const d2 = ((layout.white_key_width * 4) - (layout.black_key_width * 3)) / 4;
