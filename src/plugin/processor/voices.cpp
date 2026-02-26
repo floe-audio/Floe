@@ -263,6 +263,11 @@ static Optional<BoundsCheckedLoop> ConfigureLoop(param_values::LoopMode desired_
     return k_nullopt;
 }
 
+static f64 EffectiveStartOffset(f32 sample_offset_01, u32 start_offset_frames, u32 num_frames) {
+    return Max<f64>((f64)sample_offset_01 * (f64)(num_frames - 1),
+                     Min<f64>((f64)(num_frames - 1), (f64)start_offset_frames));
+}
+
 static Optional<BoundsCheckedLoop> LoopForSource(VoiceProcessingController const& controller,
                                                  VoiceSoundSource::SampleSource const& sampler) {
     return controller.vol_env_on ? ConfigureLoop(controller.loop_mode,
@@ -386,24 +391,34 @@ void StartVoice(VoicePool& pool,
                 s.pitch_ratio = CalculatePitchRatio(RootKey(voice, s), s, params.initial_pitch, sample_rate);
                 s.pitch_ratio_smoother.Reset();
 
-                auto const num_frames = (f64)s_sampler.data->num_frames;
-                auto const offs =
-                    Max<f64>((f64)sampler.initial_sample_offset_01 * (num_frames - 1),
-                             Min<f64>(num_frames - 1, s_params.region.audio_props.start_offset_frames));
+                if (voice_controller.play_mode == param_values::PlayMode::GranularFixed) {
+                    // GranularFixed ignores loops and sample offset; position is user-controlled.
+                    ResetPlayhead(s_sampler.playhead,
+                                  0,
+                                  k_nullopt,
+                                  voice_controller.reverse,
+                                  s_sampler.data->num_frames);
+                } else {
+                    auto const offs = EffectiveStartOffset(voice_controller.sample_offset_01,
+                                                            s_params.region.audio_props.start_offset_frames,
+                                                            s_sampler.data->num_frames);
 
-                ResetPlayhead(s_sampler.playhead,
-                              offs,
-                              ConfigureLoop(voice_controller.loop_mode,
-                                            s_sampler.region->loop,
-                                            s_sampler.data->num_frames,
-                                            voice_controller.loop),
-                              voice_controller.reverse,
-                              s_sampler.data->num_frames);
+                    ResetPlayhead(s_sampler.playhead,
+                                  offs,
+                                  ConfigureLoop(voice_controller.loop_mode,
+                                                s_sampler.region->loop,
+                                                s_sampler.data->num_frames,
+                                                voice_controller.loop),
+                                  voice_controller.reverse,
+                                  s_sampler.data->num_frames);
+                }
             }
             for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_sound_sources; ++i)
                 voice.sound_sources[i].is_active = false;
 
             UpdateXfade(voice, sampler.initial_timbre_param_value_01, true);
+
+            if (IsGranular(voice_controller.play_mode)) voice.grain_pool.Reset();
 
             if (g_final_binary_type == FinalBinaryType::Standalone) {
                 DynamicArrayBounded<SampleLogItem, k_max_num_voice_sound_sources> sample_log_items;
@@ -532,13 +547,13 @@ struct VoiceProcessor {
 
             constexpr f32 k_max_u16 = LargestRepresentableValue<u16>();
             voice.pool.voice_waveform_markers_for_gui.Write()[voice.index] = {
-                .layer_index = (u8)voice.controller->layer_index,
                 .position = (u16)(Clamp01(position_for_gui) * (f64)k_max_u16),
                 .intensity = (u16)(Clamp01(voice.current_gain) * k_max_u16),
+                .layer_index = voice.controller->layer_index,
             };
             voice.pool.voice_vol_env_markers_for_gui.Write()[voice.index] = {
                 .on = voice.controller->vol_env_on && !voice.disable_vol_env && !voice.vol_env.IsIdle(),
-                .layer_index = (u8)voice.controller->layer_index,
+                .layer_index = voice.controller->layer_index,
                 .state = voice.vol_env.state,
                 .pos = (u16)(Clamp01(voice.vol_env.output) * k_max_u16),
                 .sustain_level = (u16)(Clamp01(voice.controller->vol_env.sustain_amount) * k_max_u16),
@@ -546,12 +561,40 @@ struct VoiceProcessor {
             };
             voice.pool.voice_fil_env_markers_for_gui.Write()[voice.index] = {
                 .on = voice.controller->fil_env_amount != 0 && !voice.fil_env.IsIdle(),
-                .layer_index = (u8)voice.controller->layer_index,
+                .layer_index = voice.controller->layer_index,
                 .state = voice.fil_env.state,
                 .pos = (u16)(Clamp01(voice.fil_env.output) * k_max_u16),
                 .sustain_level = (u16)(Clamp01(voice.controller->fil_env.sustain_amount) * k_max_u16),
                 .id = voice.id,
             };
+
+            // Publish grain markers for GUI.
+            auto& grain_markers = voice.pool.grain_markers_for_gui.Write()[voice.index];
+            grain_markers.num_active = 0;
+            if (IsGranular(voice.controller->play_mode)) {
+                grain_markers.layer_index = voice.controller->layer_index;
+
+                // Find first active sampler source for position normalization.
+                u32 ref_num_frames = 0;
+                for (auto const& s : voice.sound_sources) {
+                    if (!s.is_active || s.source_data.tag != InstrumentType::Sampler) continue;
+                    ref_num_frames = s.source_data.Get<VoiceSoundSource::SampleSource>().data->num_frames;
+                    break;
+                }
+
+                if (ref_num_frames) {
+                    for (auto const& grain : voice.grain_pool.grains) {
+                        if (!grain.active || grain_markers.num_active >= k_max_grains_per_voice) continue;
+                        auto const pos = grain.playhead.RealFramePos(ref_num_frames);
+                        if (pos) {
+                            grain_markers.grains[grain_markers.num_active++] = {
+                                .position =
+                                    (u16)((*pos / (f64)ref_num_frames) * (f64)LargestRepresentableValue<u16>()),
+                            };
+                        }
+                    }
+                }
+            }
         }
 
         if (block_result == VoiceBlockResult::End || !voice.num_active_voice_samples)
@@ -661,6 +704,156 @@ struct VoiceProcessor {
         return true;
     }
 
+    // Process granular synthesis for a single sound source.
+    // Returns false if playback has ended (no loop, past end, no active grains for this source).
+    static bool AddGranularSampleDataOntoBuffer(Voice& voice,
+                                                VoiceSoundSource& s,
+                                                u8 source_index,
+                                                Span<f32x2> buffer,
+                                                Span<f32 const> lfo_amounts,
+                                                AudioProcessingContext const& context) {
+        auto const& ctrl = *voice.controller;
+        auto const is_fixed = ctrl.play_mode == param_values::PlayMode::GranularFixed;
+        auto& pool = voice.grain_pool;
+        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
+        auto const num_frames = sampler.data->num_frames;
+
+        for (auto [frame_index, out_val] : Enumerate(buffer)) {
+            // Advance main playhead for this source.
+            bool source_alive;
+            if (is_fixed) {
+                sampler.playhead.frame_pos = (f64)ctrl.granular.position * (f64)(num_frames - 1);
+                source_alive = true;
+            } else {
+                if (PlaybackEnded(sampler.playhead, num_frames)) {
+                    source_alive = false;
+                } else {
+                    auto const rate_ratio = (f64)sampler.data->sample_rate / (f64)context.sample_rate;
+                    IncrementPlaybackPos(sampler.playhead,
+                                         (f64)ctrl.granular.speed * rate_ratio,
+                                         num_frames);
+                    source_alive = true;
+                }
+            }
+
+            // Spawn check for this source.
+            if (pool.spawn_counters[source_index] == 0 && source_alive) {
+                // Find first inactive grain slot.
+                Grain* new_grain = nullptr;
+                for (auto& g : pool.grains) {
+                    if (!g.active) {
+                        new_grain = &g;
+                        break;
+                    }
+                }
+
+                if (new_grain) {
+                    auto const spread_fraction = GrainSpreadParamToFraction(ctrl.granular.spread);
+                    auto const rand_val =
+                        ((f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand) * 2.0f - 1.0f;
+                    auto const spread_offset_norm = rand_val * spread_fraction * 0.5f;
+
+                    auto grain_pos =
+                        sampler.playhead.frame_pos + (f64)spread_offset_norm * (f64)num_frames;
+                    grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
+
+                    auto& gph = new_grain->playhead;
+                    if (is_fixed) {
+                        // GranularFixed ignores loops entirely.
+                        ResetPlayhead(gph,
+                                      grain_pos,
+                                      k_nullopt,
+                                      sampler.playhead.inverse_data_lookup,
+                                      num_frames);
+                    } else {
+                        auto const min_pos = EffectiveStartOffset(
+                            ctrl.sample_offset_01, sampler.region->audio_props.start_offset_frames, num_frames);
+                        if (grain_pos < min_pos) {
+                            auto const undershoot = min_pos - grain_pos;
+                            auto const playable_range = (f64)(num_frames - 1) - min_pos;
+                            if (playable_range > 0) {
+                                auto const bounded = Fmod(undershoot, playable_range);
+                                grain_pos = min_pos + bounded;
+                            } else {
+                                grain_pos = min_pos;
+                            }
+                        }
+
+                        // When the main playhead is inside the loop, wrap the grain
+                        // position into the loop range so that spread doesn't collapse
+                        // all grains onto loop->start.
+                        auto const& main_loop = sampler.playhead.loop;
+                        if (main_loop && main_loop->only_use_frames_within_loop) {
+                            auto const loop_start = (f64)main_loop->start;
+                            auto const loop_size = (f64)(main_loop->end - main_loop->start);
+                            auto offset = Fmod(grain_pos - loop_start, loop_size);
+                            if (offset < 0) offset += loop_size;
+                            grain_pos = loop_start + offset;
+                        }
+
+                        // The main playhead's loop is already in frame_pos space
+                        // (inverted if reversed). Pass is_reversed=false to avoid
+                        // double-inverting, then copy inverse_data_lookup manually.
+                        ResetPlayhead(gph,
+                                      grain_pos,
+                                      main_loop ? Optional<BoundsCheckedLoop>(*main_loop) : k_nullopt,
+                                      false,
+                                      num_frames);
+                        gph.inverse_data_lookup = sampler.playhead.inverse_data_lookup;
+                    }
+
+                    new_grain->source_index = source_index;
+                    new_grain->duration_samples =
+                        GrainLengthParamToSamples(ctrl.granular.length, context.sample_rate);
+                    new_grain->samples_elapsed = 0;
+                    new_grain->active = true;
+                }
+
+                pool.spawn_counters[source_index] =
+                    GrainsParamToSpawnInterval(ctrl.granular.grains, context.sample_rate);
+            } else if (source_alive) {
+                pool.spawn_counters[source_index]--;
+            }
+
+            // Process active grains belonging to this source.
+            for (auto& grain : pool.grains) {
+                if (!grain.active || grain.source_index != source_index) continue;
+
+                auto const phase = (f32)grain.samples_elapsed / (f32)Max(1u, grain.duration_samples);
+                auto const envelope = GrainEnvelope(phase, ctrl.granular.smoothing);
+
+                if (!PlaybackEnded(grain.playhead, num_frames)) {
+                    auto const sample = GetSampleFrame(*sampler.data, grain.playhead);
+
+                    auto const xfade_vol = sampler.xfade_vol_smoother.LowPass(
+                        sampler.xfade_vol, context.one_pole_smoothing_cutoff_10ms);
+
+                    out_val += sample * envelope * s.amp * xfade_vol;
+
+                    auto const pitch_ratio = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+                    IncrementPlaybackPos(grain.playhead, pitch_ratio, num_frames);
+                }
+
+                grain.samples_elapsed++;
+                if (grain.samples_elapsed >= grain.duration_samples) grain.active = false;
+            }
+
+            // Check if we should end.
+            if (!is_fixed && !source_alive) {
+                bool any_grain_active = false;
+                for (auto const& g : pool.grains) {
+                    if (g.active && g.source_index == source_index) {
+                        any_grain_active = true;
+                        break;
+                    }
+                }
+                if (!any_grain_active) return false;
+            }
+        }
+
+        return true;
+    }
+
     static constexpr unsigned int k_max_fast_rand = 0x7FFF;
 
     static void ScaleDownRandom(f32x2& val) {
@@ -679,14 +872,23 @@ struct VoiceProcessor {
                                          Span<f32 const> lfo_amounts,
                                          AudioProcessingContext const& context) {
         ZoneScoped;
+
+        auto const is_granular = IsGranular(voice.controller->play_mode);
+        u8 source_index = 0;
         for (auto& s : voice.sound_sources) {
             if (!s.is_active) continue;
             switch (s.source_data.tag) {
                 case InstrumentType::Sampler: {
-                    if (!AddSampleDataOntoBuffer(voice, s, buffer, lfo_amounts, context)) {
+                    bool ok;
+                    if (is_granular)
+                        ok = AddGranularSampleDataOntoBuffer(voice, s, source_index, buffer, lfo_amounts, context);
+                    else
+                        ok = AddSampleDataOntoBuffer(voice, s, buffer, lfo_amounts, context);
+                    if (!ok) {
                         s.is_active = false;
                         voice.num_active_voice_samples--;
                     }
+                    source_index++;
                     break;
                 }
                 case InstrumentType::WaveformSynth: {
@@ -904,14 +1106,17 @@ void Reset(VoicePool& pool) {
     auto& waveform_markers = pool.voice_waveform_markers_for_gui.Write();
     auto& vol_env_markers = pool.voice_vol_env_markers_for_gui.Write();
     auto& fil_env_markers = pool.voice_fil_env_markers_for_gui.Write();
+    auto& grain_markers = pool.grain_markers_for_gui.Write();
     for (auto const i : Range(k_num_voices)) {
         waveform_markers[i] = {};
         vol_env_markers[i] = {};
         fil_env_markers[i] = {};
+        grain_markers[i] = {};
     }
     pool.voice_waveform_markers_for_gui.Publish();
     pool.voice_vol_env_markers_for_gui.Publish();
     pool.voice_fil_env_markers_for_gui.Publish();
+    pool.grain_markers_for_gui.Publish();
 }
 
 void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context) {
@@ -956,10 +1161,12 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
             pool.voice_waveform_markers_for_gui.Write()[v.index] = {};
             pool.voice_vol_env_markers_for_gui.Write()[v.index] = {};
             pool.voice_fil_env_markers_for_gui.Write()[v.index] = {};
+            pool.grain_markers_for_gui.Write()[v.index] = {};
         }
     }
 
     pool.voice_waveform_markers_for_gui.Publish();
     pool.voice_vol_env_markers_for_gui.Publish();
     pool.voice_fil_env_markers_for_gui.Publish();
+    pool.grain_markers_for_gui.Publish();
 }

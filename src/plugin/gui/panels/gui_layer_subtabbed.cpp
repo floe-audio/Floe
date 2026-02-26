@@ -6,6 +6,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
+#include "processor/granular.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
@@ -968,7 +969,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
 
     // Engine type menu
     {
-        auto const param = params.DescribedValue(layer_index, LayerParamIndex::EngineType);
+        auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
         auto const row = DoBox(g.builder,
                                {
@@ -995,8 +996,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
               });
     }
 
-    auto const engine_type =
-        params.IntValue<param_values::EngineType>(layer_index, LayerParamIndex::EngineType);
+    auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
 
     // Waveform display
     if (auto const r = BoxRect(g.builder,
@@ -1007,7 +1007,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                              .size = {layout::k_fill_parent, 70},
                                          },
                                      })))
-        DoWaveformElement(g, layer, *r, {.engine_type = engine_type});
+        DoWaveformElement(g, layer, *r, {.play_mode = play_mode});
 
     // Reverse toggle
     {
@@ -1023,8 +1023,8 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                           });
     }
 
-    // Loop mode selector (only for Standard engine)
-    if (engine_type == param_values::EngineType::Standard) {
+    // Loop mode selector (hidden in granular position mode)
+    if (play_mode != param_values::PlayMode::GranularFixed) {
         auto const row = DoBox(g.builder,
                                {
                                    .parent = page,
@@ -1056,6 +1056,52 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                       .size = layout::k_fill_parent,
                   },
               });
+    }
+
+    // Granular controls
+    if (IsGranular(play_mode)) {
+        auto const knobs_row = DoBox(g.builder,
+                                     {
+                                         .parent = page,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_gap = 10,
+                                             .contents_direction = layout::Direction::Row,
+                                             .contents_align = layout::Alignment::Middle,
+                                         },
+                                     });
+
+        // Speed knob (in GranularSpeed mode) or Position knob (in GranularPosition mode)
+        {
+            auto const contextual_param = (play_mode == param_values::PlayMode::GranularPlayback)
+                                              ? LayerParamIndex::GranularSpeed
+                                              : LayerParamIndex::GranularPosition;
+            DoKnobParameter(g,
+                            knobs_row,
+                            params.DescribedValue(layer_index, contextual_param),
+                            {
+                                .width = 32,
+                                .style_system = GuiStyleSystem::MidPanel,
+                            });
+        }
+
+        // Grain knobs row
+        {
+            auto const do_knob = [&](LayerParamIndex param) {
+                DoKnobParameter(g,
+                                knobs_row,
+                                params.DescribedValue(layer_index, param),
+                                {
+                                    .width = 32,
+                                    .style_system = GuiStyleSystem::MidPanel,
+                                });
+            };
+
+            do_knob(LayerParamIndex::GranularGrains);
+            do_knob(LayerParamIndex::GranularLength);
+            do_knob(LayerParamIndex::GranularSpread);
+            do_knob(LayerParamIndex::GranularSmoothing);
+        }
     }
 }
 

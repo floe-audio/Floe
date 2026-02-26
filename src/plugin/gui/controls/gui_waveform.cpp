@@ -13,11 +13,58 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "processor/granular.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/sample_processing.hpp"
 
-static void
-DoStandardWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, WaveformGuiOptions const& options) {
+struct PlayModeFeatures {
+    bool has_play_mode;
+    bool show_sample_offset;
+    bool show_loop_controls; // Loop handles, offset handle, crossfade handle
+    bool show_crossfade;
+    bool show_grain_position_indicator;
+    bool show_macro_destinations;
+};
+
+static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
+    switch (play_mode) {
+        case param_values::PlayMode::Standard:
+            return {
+                .has_play_mode = true,
+                .show_sample_offset = true,
+                .show_loop_controls = true,
+                .show_crossfade = true,
+                .show_grain_position_indicator = false,
+                .show_macro_destinations = true,
+            };
+        case param_values::PlayMode::GranularPlayback:
+            return {
+                .has_play_mode = true,
+                .show_sample_offset = true,
+                .show_loop_controls = true,
+                .show_crossfade = true,
+                .show_grain_position_indicator = false,
+                .show_macro_destinations = false,
+            };
+        case param_values::PlayMode::GranularFixed:
+            return {
+                .has_play_mode = true,
+                .show_sample_offset = false,
+                .show_loop_controls = false,
+                .show_crossfade = false,
+                .show_grain_position_indicator = true,
+                .show_macro_destinations = false,
+            };
+        case param_values::PlayMode::Count: PanicIfReached();
+    }
+    PanicIfReached();
+}
+
+static void DoWaveformControls(GuiState& g,
+                               LayerProcessor& layer,
+                               Rect r,
+                               PlayModeFeatures const& features,
+                               bool handles_follow_cursor) {
     if (layer.instrument_id.tag == InstrumentType::WaveformSynth) return;
 
     auto const handle_height = WwToPixels(12.8f);
@@ -166,7 +213,7 @@ DoStandardWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, WaveformG
                                          g.engine.processor.main_params.DescribedValue(*tooltip_param));
 
         bool changed = false;
-        if (options.handles_follow_cursor) {
+        if (handles_follow_cursor) {
             auto const range_min_x = g.imgui.ViewportPosToWindowPos({r.x, 0}).x;
             auto const range_max_x = g.imgui.ViewportPosToWindowPos({r.x + r.w, 0}).x;
 
@@ -378,8 +425,8 @@ DoStandardWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, WaveformG
             loop_region_r = g.imgui.RegisterAndConvertRect(loop_region_r);
         }
 
-        // Crossfade.
-        {
+        // Crossfade control.
+        if (features.show_crossfade) {
             auto const& param = g.engine.processor.main_params.DescribedValue(xfade_param_id);
 
             xfade_line = r.WithXW(r.x + loop_xfade_line_pos, 1);
@@ -581,14 +628,16 @@ void DoWaveformElement(GuiState& g,
                                          });
     } else {
         auto const& params = g.engine.processor.main_params;
+        auto const features =
+            options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
 
         // Waveform image.
         if (layer.instrument_id.tag != InstrumentType::None) {
-            bool const show_standard_overlays = options.engine_type == param_values::EngineType::Standard;
 
-            auto const offset = (show_standard_overlays && layer.instrument_id.tag == InstrumentType::Sampler)
-                                    ? params.LinearValue(layer.index, LayerParamIndex::SampleOffset)
-                                    : 0;
+            auto const offset =
+                (features.show_sample_offset && layer.instrument_id.tag == InstrumentType::Sampler)
+                    ? params.LinearValue(layer.index, LayerParamIndex::SampleOffset)
+                    : 0;
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
 
             struct Range {
@@ -607,13 +656,14 @@ void DoWaveformElement(GuiState& g,
                                      *GuiIo().in.renderer,
                                      g.shared_engine_systems.thread_pool,
                                      viewport_r.size))) {
-                if (show_standard_overlays) {
+                if (features.has_play_mode) {
                     auto const loop_start = params.LinearValue(layer.index, LayerParamIndex::LoopStart);
                     auto const loop_end =
                         Max(params.LinearValue(layer.index, LayerParamIndex::LoopEnd), loop_start);
                     auto const loop_mode =
                         params.IntValue<param_values::LoopMode>(layer.index, LayerParamIndex::LoopMode);
                     bool const loop_points_editable =
+                        features.show_loop_controls &&
                         ActualLoopBehaviour(layer.instrument, loop_mode, layer.VolumeEnvelopeIsOn(params))
                             .value.editable;
 
@@ -626,7 +676,10 @@ void DoWaveformElement(GuiState& g,
                                                     ? LiveCol(UiColMap::WaveformLoopWaveformLoop)
                                                     : LiveCol(UiColMap::WaveformLoopWaveform));
 
-                    if ((loop_end - loop_start) != 0 && loop_points_editable) {
+                    // Loop region highlight (shown in standard and granular speed, but only
+                    // editable/draggable in standard).
+                    if ((loop_end - loop_start) != 0 &&
+                        (loop_points_editable || features.show_loop_controls)) {
                         Range const loop_section_uv {
                             .lo = {loop_start, 0},
                             .hi = {loop_start + (loop_end - loop_start), 1},
@@ -654,6 +707,31 @@ void DoWaveformElement(GuiState& g,
                                                     offset_section_uv.hi,
                                                     LiveCol(UiColMap::WaveformLoopWaveformOffset));
                     }
+
+                    // Granular position indicator: a thin vertical line at the grain position,
+                    // flanked by subtle gradient edges showing the grain size region.
+                    if (features.show_grain_position_indicator) {
+                        auto const grain_pos =
+                            params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
+                        auto const grain_size =
+                            params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
+
+                        // Centre line position.
+                        f32 const centre_x = window_r.x + (viewport_r.w * grain_pos);
+
+                        // Thin vertical line at the grain position.
+                        g.imgui.draw_list->AddRectFilled(f32x2 {Round(centre_x) - 0.5f, window_r.y},
+                                                         f32x2 {Round(centre_x) + 0.5f, window_r.Bottom()},
+                                                         LiveCol(UiColMap::WaveformLoopHandle));
+
+                        // Translucent rectangle showing grain size region.
+                        f32 const half_region = GrainSpreadParamToFraction(grain_size) * 0.5f * viewport_r.w;
+                        f32 const region_left = Max(centre_x - half_region, window_r.x);
+                        f32 const region_right = Min(centre_x + half_region, window_r.Right());
+                        g.imgui.draw_list->AddRectFilled(f32x2 {region_left, window_r.y},
+                                                         f32x2 {region_right, window_r.Bottom()},
+                                                         LiveCol(UiColMap::WaveformRegionOverlay));
+                    }
                 } else {
                     // Plain waveform with no overlays.
                     g.imgui.draw_list->AddImage(tex.Value(),
@@ -666,11 +744,11 @@ void DoWaveformElement(GuiState& g,
             }
         }
 
-        // Controls.
-        if (options.engine_type == param_values::EngineType::Standard)
-            DoStandardWaveformControls(g, layer, viewport_r, options);
+        // Waveform controls: loop handles, offset handle, crossfade handle.
+        if (features.show_loop_controls)
+            DoWaveformControls(g, layer, viewport_r, features, options.handles_follow_cursor);
 
-        // Voice cursors.
+        // Voice cursors (shown in both modes).
         if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
             auto& voice_waveform_markers =
                 g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
@@ -693,21 +771,48 @@ void DoWaveformElement(GuiState& g,
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
             }
         }
-    }
 
-    // Macro destination regions: stacked vertically in the top-right corner.
-    if (options.engine_type == param_values::EngineType::Standard) {
-        auto const cell_size = Min(window_r.w, window_r.h) / 3;
-        auto const base_x = window_r.Right() - cell_size;
+        // Grain markers.
+        if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
+            auto& grain_markers_arr = g.engine.processor.voice_pool.grain_markers_for_gui.Consume().data;
+            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            for (auto const voice_index : Range(k_num_voices)) {
+                auto const& vm = grain_markers_arr[voice_index];
+                if (!vm.num_active || vm.layer_index != layer.index) continue;
 
-        auto const macro_params = Array {
-            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopStart),
-            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd),
-            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopCrossfade),
-        };
-        for (auto const [i, param] : Enumerate(macro_params)) {
-            auto const r = Rect {.xywh {base_x, window_r.y + (cell_size * (f32)i), cell_size, cell_size}};
-            OverlayMacroDestinationRegion(g, r, param);
+                for (auto const i : Range(vm.num_active)) {
+                    f32 pos = (f32)vm.grains[i].position / (f32)UINT16_MAX;
+                    if (reverse) pos = 1.0f - pos;
+
+                    f32x2 marker_pos {Round(viewport_r.x + (pos * viewport_r.w)), viewport_r.y};
+                    marker_pos = g.imgui.ViewportPosToWindowPos(marker_pos);
+
+                    // Draw grain markers as thin semi-transparent lines.
+                    DrawVoiceMarkerLine(g.imgui,
+                                        marker_pos,
+                                        viewport_r.h,
+                                        g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
+                                        {},
+                                        0.3f);
+                }
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+            }
+        }
+
+        // Macro destination regions: standard only (loop param drag targets).
+        if (features.show_macro_destinations) {
+            auto const cell_size = Min(window_r.w, window_r.h) / 3;
+            auto const base_x = window_r.Right() - cell_size;
+
+            auto const macro_params = Array {
+                ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopStart),
+                ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd),
+                ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopCrossfade),
+            };
+            for (auto const [i, param] : Enumerate(macro_params)) {
+                auto const r = Rect {.xywh {base_x, window_r.y + (cell_size * (f32)i), cell_size, cell_size}};
+                OverlayMacroDestinationRegion(g, r, param);
+            }
         }
     }
 }

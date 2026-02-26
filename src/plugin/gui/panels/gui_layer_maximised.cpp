@@ -6,6 +6,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
+#include "processor/granular.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
@@ -170,13 +171,72 @@ static void DoEngineSection(GuiState& g, u8 layer_index, Box parent) {
                                },
                            });
 
+    // Play Mode selector
+    DoMenuParameter(g,
+                    col,
+                    params.DescribedValue(layer_index, LayerParamIndex::PlayMode),
+                    {.width = 100});
+
+    auto const play_mode =
+        params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
+
     bool const is_waveform_synth = layer_processor.instrument_id.tag == InstrumentType::WaveformSynth;
     DoButtonParameter(g,
                       col,
                       params.DescribedValue(layer_index, LayerParamIndex::Reverse),
                       {.width = 60, .greyed_out = is_waveform_synth});
 
-    DoLoopModeSelector(g, col, layer_processor);
+    // Loop mode selector (hidden in granular position mode)
+    if (play_mode != param_values::PlayMode::GranularFixed)
+        DoLoopModeSelector(g, col, layer_processor);
+
+    // Granular controls
+    if (IsGranular(play_mode)) {
+        // Speed or Position knob depending on play mode
+        {
+            auto const contextual_param =
+                (play_mode == param_values::PlayMode::GranularPlayback)
+                    ? LayerParamIndex::GranularSpeed
+                    : LayerParamIndex::GranularPosition;
+            DoKnobParameter(g,
+                            col,
+                            params.DescribedValue(layer_index, contextual_param),
+                            {
+                                .width = k_knob_large_w,
+                                .style_system = GuiStyleSystem::MidPanel,
+                            });
+        }
+
+        // Grain knobs row
+        {
+            auto const knobs_row = DoBox(g.builder,
+                                         {
+                                             .parent = col,
+                                             .layout {
+                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                 .contents_gap = 6,
+                                                 .contents_direction = layout::Direction::Row,
+                                                 .contents_align = layout::Alignment::Start,
+                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                             },
+                                         });
+
+            auto const do_knob = [&](LayerParamIndex param) {
+                DoKnobParameter(g,
+                                knobs_row,
+                                params.DescribedValue(layer_index, param),
+                                {
+                                    .width = k_knob_large_w,
+                                    .style_system = GuiStyleSystem::MidPanel,
+                                });
+            };
+
+            do_knob(LayerParamIndex::GranularGrains);
+            do_knob(LayerParamIndex::GranularLength);
+            do_knob(LayerParamIndex::GranularSpread);
+            do_knob(LayerParamIndex::GranularSmoothing);
+        }
+    }
 }
 
 static void DoMixerSection(GuiState& g, u8 layer_index, Box parent) {
@@ -831,10 +891,10 @@ void MidPanelSingleLayerContent(GuiBuilder& builder,
 
         if (auto const r = BoxRect(builder, waveform_box)) {
             if (has_instrument) {
-                auto const engine_type = g.engine.processor.main_params.IntValue<param_values::EngineType>(
+                auto const play_mode = g.engine.processor.main_params.IntValue<param_values::PlayMode>(
                     layer_index,
-                    LayerParamIndex::EngineType);
-                DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true, .engine_type = engine_type});
+                    LayerParamIndex::PlayMode);
+                DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true, .play_mode = play_mode});
             }
         }
 

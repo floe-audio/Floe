@@ -204,7 +204,6 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     if (auto i_ptr = layer.audio_thread_inst.TryGet<sample_lib::LoadedInstrument const*>()) {
         auto const& inst = **i_ptr;
         p.params = VoiceStartParams::SamplerParams {
-            .initial_sample_offset_01 = layer.sample_offset_01,
             .initial_timbre_param_value_01 = layer.shared_params.timbre_value_01,
             .voice_sample_params = {},
         };
@@ -670,10 +669,28 @@ void ProcessLayerChanges(LayerProcessor& layer,
             vmst.loop_mode = *p;
         }
         if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::SampleOffset))
-            layer.sample_offset_01 = *p;
+            vmst.sample_offset_01 = *p;
 
         if (update_loop_info) UpdateLoopPointsForVoices(layer, voice_pool);
     }
+
+    // Playback / Granular
+    // =======================================================================================================
+    if (auto p = changes.changed_params.IntValue<param_values::PlayMode>(layer.index,
+                                                                         LayerParamIndex::PlayMode))
+        vmst.play_mode = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSpeed))
+        vmst.granular.speed = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularPosition))
+        vmst.granular.position = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularGrains))
+        vmst.granular.grains = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularLength))
+        vmst.granular.length = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread))
+        vmst.granular.spread = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSmoothing))
+        vmst.granular.smoothing = *p;
 
     // EQ
     // =======================================================================================================

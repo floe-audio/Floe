@@ -156,9 +156,20 @@ struct VoiceProcessingController {
     param_values::LoopMode loop_mode {};
     bool reverse {};
 
-    param_values::EngineType engine_type {};
+    param_values::PlayMode play_mode {};
+
+    struct {
+        f32 speed {};
+        f32 position {};
+        f32 grains {};
+        f32 length {};
+        f32 spread {};
+        f32 smoothing {};
+    } granular {};
 
     bool no_key_tracking = false;
+
+    f32 sample_offset_01 = 0;
 };
 
 struct VoicePool;
@@ -305,8 +316,6 @@ struct LayerProcessor {
     f32 tune_semitone = 0;
     f32 tune_cents = 0;
     f32 pitch_bend_range_semitone = 0;
-    f32 sample_offset_01 = 0;
-
     param_values::MonophonicMode monophonic_mode {};
     bool monophonic_retrigger_legacy {}; // Legacy
     bool monophonic_latch {};
