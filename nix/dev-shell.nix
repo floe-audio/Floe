@@ -34,7 +34,6 @@ pkgs.mkShell rec {
     pkgs.jq
     pkgs.just
     pkgs.reuse
-    pkgs.osslsigncode
     pkgs.wget
     pkgs.hunspell
     pkgs.hunspellDicts.en_GB-ise
