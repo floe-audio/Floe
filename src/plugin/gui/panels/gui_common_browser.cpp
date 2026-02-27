@@ -381,7 +381,7 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                                       });
     }
 
-    if (item.is_hot) {
+    if (item.button_fired) {
         ShowTipIfNeeded(options.notifications,
                         options.store,
                         "You can double-click on items on browsers to load the item and close the panel."_s);
