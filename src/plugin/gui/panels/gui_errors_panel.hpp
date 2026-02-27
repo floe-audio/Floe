@@ -99,8 +99,35 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
                                                     });
                                       }
 
-                                      // Dismiss button
-                                      if (TextButton(builder, root, {.text = "Dismiss"_s}))
+                                      // Buttons
+                                      auto const button_container = DoBox(builder,
+                                                                          {
+                                                                              .parent = root,
+                                                                              .layout {
+                                                                                  .size = {layout::k_fill_parent,
+                                                                                           layout::k_hug_contents},
+                                                                                  .contents_gap = 8,
+                                                                                  .contents_direction =
+                                                                                      layout::Direction::Row,
+                                                                                  .contents_align =
+                                                                                      layout::Alignment::Start,
+                                                                              },
+                                                                          });
+
+                                      if (TextButton(builder, button_container, {.text = "Copy to clipboard"_s})) {
+                                          auto& clipboard = GuiIo().out.set_clipboard_text;
+                                          dyn::Assign(clipboard, e.title);
+                                          if (e.message.size) {
+                                              dyn::Append(clipboard, '\n');
+                                              dyn::AppendSpan(clipboard, e.message);
+                                          }
+                                          if (e.error_code) {
+                                              dyn::Append(clipboard, '\n');
+                                              fmt::Append(clipboard, "{u}.", *e.error_code);
+                                          }
+                                      }
+
+                                      if (TextButton(builder, button_container, {.text = "Dismiss"_s}))
                                           return ThreadsafeErrorNotifications::ItemIterationResult::Remove;
 
                                       ++num_errors;
