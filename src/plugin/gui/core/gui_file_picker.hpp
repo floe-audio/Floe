@@ -64,14 +64,11 @@ PUBLIC void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
 }
 
 PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state) {
+    static constexpr auto k_package_wildcards = Array {"*.floe-pkg"_s, "*.zip"_s};
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
             .description = "Floe Package"_s,
-            .wildcard_filter = "*.floe-pkg"_s,
-        },
-        {
-            .description = "Floe Package (ZIP)"_s,
-            .wildcard_filter = "*.zip"_s,
+            .wildcard_filters = k_package_wildcards,
         },
     });
 
@@ -101,10 +98,11 @@ static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode
 }
 
 PUBLIC void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths) {
+    static constexpr auto k_save_preset_wildcards = Array {String {"*" FLOE_PRESET_FILE_EXTENSION}};
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
             .description = "Floe Preset"_s,
-            .wildcard_filter = "*" FLOE_PRESET_FILE_EXTENSION,
+            .wildcard_filters = k_save_preset_wildcards,
         },
     });
 
@@ -125,14 +123,11 @@ PUBLIC void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& pa
 }
 
 PUBLIC void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths) {
+    static constexpr auto k_preset_wildcards = Array {"*.floe-*"_s, "*.mirage-*"_s};
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
             .description = "Floe Preset"_s,
-            .wildcard_filter = "*.floe-*"_s,
-        },
-        {
-            .description = "Mirage Preset"_s,
-            .wildcard_filter = "*.mirage-*"_s,
+            .wildcard_filters = k_preset_wildcards,
         },
     });
 

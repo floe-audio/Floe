@@ -33,8 +33,9 @@
     if (self.filters.size) {
         if (NSString* ns_filename = [url lastPathComponent]) {
             auto const filename = NSStringToString(ns_filename);
-            for (auto const filter : self.filters)
-                if (MatchWildcard(filter.wildcard_filter, filename)) return YES;
+            for (auto const& filter : self.filters)
+                for (auto const& w : filter.wildcard_filters)
+                    if (MatchWildcard(w, filename)) return YES;
         }
 
         if ([url isFileURL]) {

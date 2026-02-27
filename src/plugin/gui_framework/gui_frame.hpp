@@ -192,11 +192,11 @@ struct FilePickerDialogOptions {
         FileFilter Clone(Allocator& a, CloneType t = CloneType::Deep) const {
             return {
                 .description = description.Clone(a, t),
-                .wildcard_filter = wildcard_filter.Clone(a, t),
+                .wildcard_filters = wildcard_filters.Clone(a, t),
             };
         }
         String description;
-        String wildcard_filter;
+        Span<String const> wildcard_filters;
     };
 
     FilePickerDialogOptions Clone(Allocator& a, CloneType t = CloneType::Deep) const {
