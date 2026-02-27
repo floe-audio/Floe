@@ -47,10 +47,11 @@ struct Item;
 
 struct Context {
     Item* items {};
-    f32x4* rects {};
+    f32x4* rects {}; // xywh
     u32 capacity {};
     u32 num_items {};
     TrivialFixedSizeFunction<8, f32(Id id, f32 width)> item_height_from_width_calculation {};
+    bool snap_to_integers {};
 };
 
 // =========================================================================================================

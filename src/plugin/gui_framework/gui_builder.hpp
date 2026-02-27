@@ -136,7 +136,9 @@ struct GuiBuilder {
     struct CurrentViewportState {
         BoxViewportConfig cfg;
         Optional<Rect> rect {};
-        layout::Context layout {};
+        layout::Context layout {
+            .snap_to_integers = true,
+        };
         GuiBuilderPass pass {GuiBuilderPass::LayoutBoxes};
         HashTable<u64, Box, NoHash> boxes {};
         HashTable<layout::Id, WordWrappedText> word_wrapped_texts {};

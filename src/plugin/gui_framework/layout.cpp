@@ -164,6 +164,17 @@ void RunItem(Context& ctx, Id id) {
 
     CalcSize(ctx, id, 1);
     Arrange(ctx, id, 1);
+
+    if (ctx.snap_to_integers) {
+        // We round the edges (pos and pos+size) independently so that two elements sharing a float edge
+        // always snap to the same pixel.
+        for (auto const i : Range(ctx.num_items)) {
+            auto& r = ctx.rects[i];
+            auto const min = Round(r.xy);
+            auto const max = Round(r.xy + r.zw);
+            r = __builtin_shufflevector(min, max - min, 0, 1, 2, 3);
+        }
+    }
 }
 
 void RunContext(Context& ctx) {
