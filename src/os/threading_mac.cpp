@@ -18,12 +18,15 @@
 //
 // [ulock.h]: https://github.com/apple/darwin-xnu/blob/master/bsd/sys/ulock.h
 // [sys_ulock.c]: https://github.com/apple/darwin-xnu/blob/master/bsd/kern/sys_ulock.c
+// clang-format off
 // NOLINTNEXTLINE(readability-identifier-naming, bugprone-reserved-identifier)
-extern "C" int __ulock_wait(uint32_t operation, void* addr, uint64_t value, uint32_t timeout_microseconds);
+extern "C" int __ulock_wait2(uint32_t operation, void* addr, uint64_t value, uint64_t timeout_ns, uint64_t value2);
 // NOLINTNEXTLINE(readability-identifier-naming, bugprone-reserved-identifier)
 extern "C" int __ulock_wake(uint32_t operation, void* addr, uint64_t wake_value);
+// clang-format on
 #define UL_COMPARE_AND_WAIT 1
 #define ULF_WAKE_ALL        0x00000100
+#define ULF_NO_ERRNO        0x01000000
 
 // The Semaphore class is based on Jeff Preshing's Semaphore class
 // Copyright (c) 2015 Jeff Preshing
@@ -76,14 +79,17 @@ void WakeWaitingThreads(Atomic<u32>& value, NumWaitingThreads num_waiters) {
 }
 
 WaitResult WaitIfValueIsExpected(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds) {
-    auto const return_code = __ulock_wait(UL_COMPARE_AND_WAIT,
-                                          &value.raw,
-                                          expected,
-                                          timeout_milliseconds ? *timeout_milliseconds * 1000 : 0);
+    u64 const timeout_ns = timeout_milliseconds ? (u64)*timeout_milliseconds * 1000 * 1000 : 0;
+    auto const return_code =
+        __ulock_wait2(UL_COMPARE_AND_WAIT | ULF_NO_ERRNO, &value.raw, expected, timeout_ns, 0);
     if (return_code < 0) {
-        auto const err = errno;
-        if (err == ETIMEDOUT) return WaitResult::TimedOut;
-        ASSERT(err == EINTR || err == EFAULT);
+        // With ULF_NO_ERRNO, the return code contains the negated error number directly.
+        switch (-return_code) {
+            case EINTR: break; // Interrupted by OS or other spurious signalling.
+            case EFAULT: break; // Address was paged out (unlikely but possible).
+            case ETIMEDOUT: return WaitResult::TimedOut;
+            default: PanicIfReached();
+        }
     }
     return WaitResult::WokenOrSpuriousOrNotExpected;
 }

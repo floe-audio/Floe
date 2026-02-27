@@ -545,7 +545,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                 sample_lib_server::RequestScanningOfUnscannedFolders(job.sample_lib_server);
 
                 auto const succeed =
-                    sample_lib_server::WaitIfLibrariesAreLoading(job.sample_lib_server, 120u * 1000);
+                    sample_lib_server::WaitIfLibrariesAreScanning(job.sample_lib_server, 120u * 1000);
                 if (!succeed) {
                     ReportError(ErrorLevel::Error,
                                 SourceLocationHash(),
@@ -852,14 +852,14 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
 // ==========================================================================================================
 
 InstallJob* CreateInstallJob(ArenaAllocator& arena, CreateJobOptions opts) {
-    ASSERT(path::IsAbsolute(opts.zip_path));
+    ASSERT(path::IsAbsolute(opts.package_path));
     for (auto const& f : opts.install_folders)
         ASSERT(path::IsAbsolute(f));
     auto j = arena.NewUninitialised<InstallJob>();
     PLACEMENT_NEW(j)
     InstallJob {
         .arena = arena,
-        .path = arena.Clone(opts.zip_path),
+        .path = arena.Clone(opts.package_path),
         .install_folders = ({
             Array<String, ToInt(ComponentType::Count)> f;
             for (auto const i : Range(ToInt(ComponentType::Count)))
@@ -979,13 +979,13 @@ String TypeOfActionTaken(InstallJob::Component const& component) {
 
 // [main thread]
 void AddJob(InstallJobs& jobs,
-            String zip_path,
+            String package_path,
             prefs::Preferences& prefs,
             FloePaths const& paths,
             sample_lib_server::Server& sample_library_server,
             PresetServer& preset_server) {
     ASSERT(!jobs.Full());
-    ASSERT(path::IsAbsolute(zip_path));
+    ASSERT(path::IsAbsolute(package_path));
     ASSERT(g_is_logical_main_thread);
 
     auto job = jobs.AppendUninitialised();
@@ -993,7 +993,7 @@ void AddJob(InstallJobs& jobs,
     job->job = CreateInstallJob(
         job->arena,
         CreateJobOptions {
-            .zip_path = zip_path,
+            .package_path = package_path,
             .install_folders = ({
                 Array<String, ToInt(ComponentType::Count)> fs;
                 fs[ToInt(ComponentType::Library)] =
@@ -1141,7 +1141,7 @@ static ErrorCodeOr<void> PrintDirectory(tests::Tester& tester, String dir, Strin
 struct TestOptions {
     String test_name;
     String destination_folder;
-    String zip_path;
+    String package_path;
     sample_lib_server::Server& sample_lib_server;
     PresetServer& preset_server;
 
@@ -1161,7 +1161,7 @@ static ErrorCodeOr<void> Test(tests::Tester& tester, TestOptions options) {
     auto job =
         CreateInstallJob(tester.scratch_arena,
                          {
-                             .zip_path = options.zip_path,
+                             .package_path = options.package_path,
                              .install_folders = {options.destination_folder, options.destination_folder},
                              .sample_lib_server = options.sample_lib_server,
                              .preset_server = options.preset_server,
@@ -1281,7 +1281,7 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
     auto const zip_path_v2 = TRY(create_zip_file(k_preset_filename_v2, 2));
 
     CreateJobOptions job_opts {
-        .zip_path = zip_path_v1,
+        .package_path = zip_path_v1,
         .install_folders = {destination_folder, destination_folder},
         .sample_lib_server = server,
         .preset_server = preset_server,
@@ -1322,7 +1322,7 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
     }
 
     // Now we test the various cases of installing verison 2.
-    job_opts.zip_path = zip_path_v2;
+    job_opts.package_path = zip_path_v2;
 
     SUBCASE("updates automatically when unmodified") {
         auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
@@ -1433,7 +1433,7 @@ TEST_CASE(TestPackageInstallationMdataToLua) {
         CreatePackageZipFile(tester, LibFolder::Regular, "shared_files_test_lib.mdata", false);
 
     CreateJobOptions job_opts {
-        .zip_path = mdata_package,
+        .package_path = mdata_package,
         .install_folders = {destination_folder, destination_folder},
         .sample_lib_server = server,
         .preset_server = preset_server,
@@ -1455,7 +1455,7 @@ TEST_CASE(TestPackageInstallationMdataToLua) {
     }
 
     // Installing the Lua should automatically replace the existing since the Lua is the same ID but newer.
-    job_opts.zip_path = lua_package;
+    job_opts.package_path = lua_package;
     {
         CHECK(!MirageIsInstalled());
         auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
@@ -1504,7 +1504,7 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
         CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1-v2/floe.lua", false);
 
     CreateJobOptions job_opts {
-        .zip_path = zip_path_v1,
+        .package_path = zip_path_v1,
         .install_folders = {destination_folder, destination_folder},
         .sample_lib_server = server,
         .preset_server = preset_server,
@@ -1549,7 +1549,7 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
 
     // Update to a new version - this should prompt user input because overwriting the existing folder
     // would delete the extra file that was added - we should be asking permission before doing that.
-    job_opts.zip_path = zip_path_v2;
+    job_opts.package_path = zip_path_v2;
     {
         auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
         DEFER { DestroyInstallJob(job); };
@@ -1585,6 +1585,9 @@ TEST_CASE(TestPackageInstallation) {
 
     ThreadsafeErrorNotifications error_notif;
     sample_lib_server::Server sample_lib_server {thread_pool, destination_folder, error_notif};
+    // Disable file watching so that the directory watcher doesn't trigger additional scans that race with
+    // the explicit rescans in this test.
+    sample_lib_server.disable_file_watching.Store(true, StoreMemoryOrder::Relaxed);
     PresetServer preset_server {
         .error_notifications = error_notif,
     };
@@ -1599,7 +1602,7 @@ TEST_CASE(TestPackageInstallation) {
              {
                  .test_name = "Initial installation succeeds",
                  .destination_folder = destination_folder,
-                 .zip_path = zip_path,
+                 .package_path = zip_path,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
@@ -1614,7 +1617,7 @@ TEST_CASE(TestPackageInstallation) {
              {
                  .test_name = "Reinstalling the same package does nothing",
                  .destination_folder = destination_folder,
-                 .zip_path = zip_path,
+                 .package_path = zip_path,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
@@ -1660,7 +1663,7 @@ TEST_CASE(TestPackageInstallation) {
              {
                  .test_name = "Skipping modified-by-rename components",
                  .destination_folder = destination_folder,
-                 .zip_path = zip_path,
+                 .package_path = zip_path,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::AwaitingUserInput,
@@ -1682,7 +1685,7 @@ TEST_CASE(TestPackageInstallation) {
              {
                  .test_name = "Overwriting modified-by-rename components",
                  .destination_folder = destination_folder,
-                 .zip_path = zip_path,
+                 .package_path = zip_path,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::AwaitingUserInput,
@@ -1710,12 +1713,16 @@ TEST_CASE(TestPackageInstallation) {
     // Modify files this time rather than just rename.
     TRY(AppendFile(floe_lua_path, "\n"));
 
+    // Tell the server to rescan so it notices the changes. It probably does this automatically via
+    // file watchers but it's not guaranteed.
+    sample_lib_server::RescanFolder(sample_lib_server, destination_folder);
+
     // If the components are modified and we set to Overwrite, it should overwrite them.
     TRY(Test(tester,
              {
                  .test_name = "Overwriting modified-by-edit components",
                  .destination_folder = destination_folder,
-                 .zip_path = zip_path,
+                 .package_path = zip_path,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::AwaitingUserInput,
@@ -1740,36 +1747,37 @@ TEST_CASE(TestPackageInstallation) {
              }));
 
     // Try updating a library to a newer version.
-    TRY(Test(tester,
-             {
-                 .test_name = "Updating library to newer version",
-                 .destination_folder = destination_folder,
-                 .zip_path = CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1-v2/floe.lua", true),
-                 .sample_lib_server = sample_lib_server,
-                 .preset_server = preset_server,
-                 .expected_state = InstallJob::State::DoneSuccess,
+    TRY(Test(
+        tester,
+        {
+            .test_name = "Updating library to newer version",
+            .destination_folder = destination_folder,
+            .package_path = CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1-v2/floe.lua", true),
+            .sample_lib_server = sample_lib_server,
+            .preset_server = preset_server,
+            .expected_state = InstallJob::State::DoneSuccess,
 
-                 .expected_library_status {
-                     .installed = true,
-                     .version_difference = VersionDifference::InstalledIsOlder,
-                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
-                 },
-                 .expected_library_action = "updated"_s,
+            .expected_library_status {
+                .installed = true,
+                .version_difference = VersionDifference::InstalledIsOlder,
+                .modified_since_installed = ModifiedSinceInstalled::Unmodified,
+            },
+            .expected_library_action = "updated"_s,
 
-                 .expected_presets_status {
-                     .installed = true,
-                     .version_difference = VersionDifference::Equal,
-                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
-                 },
-                 .expected_presets_action = "already installed"_s,
-             }));
+            .expected_presets_status {
+                .installed = true,
+                .version_difference = VersionDifference::Equal,
+                .modified_since_installed = ModifiedSinceInstalled::Unmodified,
+            },
+            .expected_presets_action = "already installed"_s,
+        }));
 
     // Do nothing if we now try to downgrade a library
     TRY(Test(tester,
              {
                  .test_name = "Downgrading library does nothing",
                  .destination_folder = destination_folder,
-                 .zip_path = zip_path,
+                 .package_path = zip_path,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
@@ -1796,7 +1804,7 @@ TEST_CASE(TestPackageInstallation) {
              {
                  .test_name = "Installing MDATA library",
                  .destination_folder = destination_folder,
-                 .zip_path = mdata_package,
+                 .package_path = mdata_package,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,
@@ -1812,7 +1820,7 @@ TEST_CASE(TestPackageInstallation) {
              {
                  .test_name = "Installing MDATA library again does nothing",
                  .destination_folder = destination_folder,
-                 .zip_path = mdata_package,
+                 .package_path = mdata_package,
                  .sample_lib_server = sample_lib_server,
                  .preset_server = preset_server,
                  .expected_state = InstallJob::State::DoneSuccess,

@@ -14,6 +14,8 @@ pub const BgfxApi = enum { vulkan, direct3d11, metal };
 
 pub const Options = struct {
     build_mode: BuildMode,
+    granular: bool,
+    mid_panel_tabs: bool,
     windows_installer_require_admin: bool,
     enable_tracy: bool,
     sanitize_thread: bool,
@@ -64,6 +66,7 @@ pub const TopLevelSteps = struct {
     // Installs.
     build_release: *std.Build.Step,
     install_plugins: *std.Build.Step, // only plugins
+    install_clap: *std.Build.Step, // only CLAP plugin
     install_all: *std.Build.Step, // everything, dev tools as well
 
     // Tests.
@@ -89,6 +92,7 @@ pub const TopLevelSteps = struct {
     website_build: *std.Build.Step,
     website_dev: *std.Build.Step,
     website_promote: *std.Build.Step,
+    remove_unused_gui_defs: *std.Build.Step,
 };
 
 pub const TargetConfig = struct {
@@ -143,6 +147,8 @@ pub const TargetConfig = struct {
                 .FLOE_DOWNLOAD_URL = constants.floe_download_url,
                 .FLOE_CHANGELOG_URL = constants.floe_changelog_url,
                 .FLOE_SOURCE_CODE_URL = constants.floe_source_code_url,
+                .EXPERIMENTAL_GRANULAR = options.granular,
+                .EXPERIMENTAL_MID_PANEL_TABS = options.mid_panel_tabs,
                 .FLOE_PROJECT_ROOT_PATH = ctx.b.build_root.path.?,
                 .FLOE_PROJECT_CACHE_PATH = ctx.b.pathJoin(&.{
                     ctx.b.build_root.path.?,

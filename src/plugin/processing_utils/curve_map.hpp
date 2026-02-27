@@ -15,12 +15,8 @@ struct CurveMap {
         // -1.0 to 1.0, where 0=linear, >0=exponential, <0=logarithmic.
         // Controls the line after this point.
         f32 curve;
-    };
 
-    // Used just to simplify the code.
-    struct WorkingPoint : Point {
-        bool is_virtual;
-        s8 real_index;
+        u32 unique_id {}; // For GUI purposes.
     };
 
     // This constant controls how extreme the curves can get - it scales the curve parameter (-1.0 to 1.0).
@@ -28,30 +24,37 @@ struct CurveMap {
 
     using FloatArray = Array<f32, 200>;
     using Points = DynamicArrayBounded<Point, 8>;
+
+    struct WorkingPoint : Point {
+        s8 real_index; // Negative if it's a virtual point.
+    };
+
     using WorkingPoints = DynamicArrayBounded<WorkingPoint, Points::Capacity() + 2>;
 
     // Producer thread.
     static WorkingPoints CreateWorkingPoints(Points const& user_points) {
         WorkingPoints working;
 
+        constexpr WorkingPoint k_origin = {{0.0f, 0.0f, 0.0f, 0}, -1};
+        constexpr WorkingPoint k_end = {{1.0f, 1.0f, 0.0f, 1}, -1};
+
         if (user_points.size) {
             // Add virtual (0,0) if first point isn't at origin
-            if (user_points[0].x > 0.0f)
-                dyn::Append(working, {{0.0f, 0.0f, 0.0f}, true, -1}); // curve=0 for linear
+            if (user_points[0].x > 0.0f) dyn::Append(working, k_origin); // curve=0 for linear
 
             // Add all user points
-            for (auto const [index, p] : Enumerate<s8>(user_points))
-                dyn::Append(working, {{p.x, p.y, p.curve}, false, index});
+            for (auto const [index, p] : Enumerate<s8>(user_points)) {
+                for (auto const& other_p : user_points) {
+                    if (&p == &other_p) continue;
+                    ASSERT(other_p.unique_id != p.unique_id);
+                }
+                dyn::Append(working, {p, index});
+            }
 
             // Add virtual (1,1) if last point isn't at end
-            if (user_points[user_points.size - 1].x < 1.0f)
-                dyn::Append(working, {{1.0f, 1.0f, 0.0f}, true, -2});
+            if (user_points[user_points.size - 1].x < 1.0f) dyn::Append(working, k_end);
         } else {
-            dyn::AppendSpan(working,
-                            Array {
-                                WorkingPoint {{0.0f, 0.0f, 0.0f}, true, -1},
-                                WorkingPoint {{1.0f, 1.0f, 0.0f}, true, -2},
-                            });
+            dyn::AppendSpan(working, Array {k_origin, k_end});
         }
 
         return working;
@@ -60,6 +63,23 @@ struct CurveMap {
     // Producer thread.
     void SetNewPoints(Points const& new_points) {
         points = new_points;
+        for (auto& p : points)
+            p.unique_id = id_counter++;
+        RenderCurveToLookupTable();
+    }
+
+    void RemoveIndex(usize i) {
+        dyn::Remove(points, i);
+        RenderCurveToLookupTable();
+    }
+    void Clear() {
+        dyn::Clear(points);
+        RenderCurveToLookupTable();
+    }
+    void AddPoint(Point p) {
+        p.unique_id = id_counter++;
+        dyn::Append(points, p);
+        Sort(points, [](auto const& a, auto const& b) { return a.x < b.x; });
         RenderCurveToLookupTable();
     }
 
@@ -92,7 +112,7 @@ struct CurveMap {
         auto& table = lookup_table.Write();
         DEFER { lookup_table.Publish(); };
 
-        auto working = CreateWorkingPoints(points);
+        auto const working = CreateWorkingPoints(points);
 
         for (usize i = 0; i < table.size; ++i) {
             f32 x = (f32)i / (f32)(table.size - 1);
@@ -102,4 +122,5 @@ struct CurveMap {
 
     AtomicSwapBuffer<FloatArray, true> lookup_table;
     Points points;
+    u32 id_counter {2};
 };

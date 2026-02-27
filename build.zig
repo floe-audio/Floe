@@ -426,6 +426,9 @@ pub fn build(b: *std.Build) void {
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
 
+        .granular = b.option(bool, "granular", "Experimental granular") orelse false,
+        .mid_panel_tabs = b.option(bool, "mid-panel-tabs", "Experimental mid-panel tabs") orelse false,
+
         // Installing plugins to global plugin folders requires admin rights but it's often easier to debug
         // things without requiring admin. For production builds it's always enabled.
         .windows_installer_require_admin = b.option(
@@ -509,6 +512,7 @@ pub fn build(b: *std.Build) void {
     var top_level_steps: TopLevelSteps = .{
         .build_release = b.step("release", "Create release artifacts (zipped, codesigned, etc.)"),
         .install_plugins = b.getInstallStep(),
+        .install_clap = b.step("install:clap", "Install only the CLAP plugin"),
         .install_all = b.step("install:all", "Install all; development files as well as plugins"),
 
         .test_step = b.step("test", "Run unit tests"),
@@ -532,6 +536,7 @@ pub fn build(b: *std.Build) void {
         .website_build = b.step("script:website-build", "Build the website"),
         .website_dev = b.step("script:website-dev", "Start website dev build locally"),
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
+        .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused size/colour-map entries from def files"),
     };
 
     // The default is to compile everything.
@@ -600,6 +605,7 @@ pub fn build(b: *std.Build) void {
         addRunScript(exe, top_level_steps.ci, "ci");
         addRunScript(exe, top_level_steps.ci_basic, "ci-basic");
         addRunScript(exe, top_level_steps.website_promote, "website-promote-beta-to-stable");
+        addRunScript(exe, top_level_steps.remove_unused_gui_defs, "remove-unused-gui-defs");
     }
 
     // Shader compiler.
@@ -632,6 +638,16 @@ pub fn build(b: *std.Build) void {
                 .miniz = buildMiniz(&ctx, &native_target_cfg),
             });
         };
+
+        if (builtin.os.tag != .windows) {
+            for (targets.items) |target| {
+                if (target.result.os.tag == .windows) {
+                    const warn = std_extras.addWarn(b, "building Windows release on a non-Windows host, codesigning will be skipped");
+                    top_level_steps.build_release.dependOn(&warn.step);
+                    break;
+                }
+            }
+        }
 
         for (artifacts_list, 0..) |artifacts, i| {
             const install_steps = release_artifacts.makeRelease(
@@ -1546,45 +1562,46 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "engine/favourite_items.cpp",
             "engine/package_installation.cpp",
             "engine/shared_engine_systems.cpp",
-            "gui/gui.cpp",
-            "gui/gui2_bot_panel.cpp",
-            "gui/gui2_common_browser.cpp",
-            "gui/gui2_inst_browser.cpp",
-            "gui/gui2_ir_browser.cpp",
-            "gui/gui2_library_dev_panel.cpp",
-            "gui/gui2_macros.cpp",
-            "gui/gui2_parameter_component.cpp",
-            "gui/gui2_preset_browser.cpp",
-            "gui/gui2_save_preset_panel.cpp",
-            "gui/gui2_top_panel.cpp",
-            "gui/gui_button_widgets.cpp",
-            "gui/gui_dragger_widgets.cpp",
-            "gui/gui_draw_knob.cpp",
-            "gui/gui_drawing_helpers.cpp",
-            "gui/gui_editor_widgets.cpp",
-            "gui/gui_effects.cpp",
-            "gui/gui_envelope.cpp",
-            "gui/gui_keyboard.cpp",
-            "gui/gui_knob_widgets.cpp",
-            "gui/gui_label_widgets.cpp",
-            "gui/gui_layer.cpp",
-            "gui/gui_library_images.cpp",
-            "gui/gui_mid_panel.cpp",
-            "gui/gui_modal_windows.cpp",
-            "gui/gui_peak_meter_widget.cpp",
-            "gui/gui_prefs.cpp",
-            "gui/gui_waveform.cpp",
-            "gui/gui_waveform_images.cpp",
-            "gui/gui_widget_compounds.cpp",
-            "gui/gui_widget_helpers.cpp",
-            "gui/gui_window.cpp",
+            "gui/controls/gui_curve_map.cpp",
+            "gui/controls/gui_envelope.cpp",
+            "gui/controls/gui_keyboard.cpp",
+            "gui/controls/gui_waveform.cpp",
+            "gui/core/gui_library_images.cpp",
+            "gui/core/gui_prefs.cpp",
+            "gui/core/gui_state.cpp",
+            "gui/core/gui_waveform_images.cpp",
+            "gui/debug/gui_developer_panel.cpp",
+            "gui/elements/gui_modal.cpp",
+            "gui/elements/gui_popup_menu.cpp",
+            "gui/elements/gui_param_elements.cpp",
+            "gui/elements/gui_element_drawing.cpp",
+            "gui/elements/gui_common_elements.cpp",
+            "gui/panels/gui_bot_panel.cpp",
+            "gui/panels/gui_common_browser.cpp",
+            "gui/panels/gui_inst_browser.cpp",
+            "gui/panels/gui_ir_browser.cpp",
+            "gui/panels/gui_legacy_params_panel.cpp",
+            "gui/panels/gui_library_dev_panel.cpp",
+            "gui/panels/gui_macros.cpp",
+            "gui/panels/gui_preset_browser.cpp",
+            "gui/panels/gui_save_preset_panel.cpp",
+            "gui/panels/gui_top_panel.cpp",
+            "gui/panels/gui_effects_strip.cpp",
+            "gui/panels/gui_layer_common.cpp",
+            "gui/panels/gui_layer_subtabbed.cpp",
+            "gui/panels/gui_mid_panel.cpp",
+            "gui/panels/gui_mid_panel_combined.cpp",
+            "gui/panels/gui_layer_maximised.cpp",
             "gui_framework/app_window.cpp",
-            "gui_framework/graphics.cpp",
-            "gui_framework/gui_box_system.cpp",
+            "gui_framework/draw_list.cpp",
+            "gui_framework/fonts.cpp",
+            "gui_framework/gui_builder.cpp",
             "gui_framework/gui_frame.cpp",
             "gui_framework/gui_imgui.cpp",
+            "gui_framework/gui_live_edit.cpp",
             "gui_framework/image.cpp",
             "gui_framework/layout.cpp",
+            "gui_framework/renderer.cpp",
             "gui_framework/renderer_bgfx.cpp",
             "plugin/hosting_tests.cpp",
             "plugin/plugin.cpp",
@@ -1596,6 +1613,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "processor/sample_processing.cpp",
             "processor/voices.cpp",
             "sample_lib_server/sample_library_server.cpp",
+            "sample_lib_server/scan_folders.cpp",
         }),
         .flags = flags,
     });
@@ -1607,7 +1625,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .files = &[_][]const u8{
                     "gui_framework/app_window_windows.cpp",
                     "gui_framework/renderer_direct3d9.cpp",
-                    "gui_framework/bgfx_init_window_windows.cpp",
+                    "gui_framework/renderer_bgfx_init_window_windows.cpp",
                 },
                 .flags = flags,
             });
@@ -1619,7 +1637,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .files = &[_][]const u8{
                     "gui_framework/app_window_linux.cpp",
                     "gui_framework/renderer_opengl.cpp",
-                    "gui_framework/bgfx_init_window_linux.cpp",
+                    "gui_framework/renderer_bgfx_init_window_linux.cpp",
                 },
                 .flags = flags,
             });
@@ -1630,7 +1648,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
                 .files = &[_][]const u8{
                     "gui_framework/app_window_mac.mm",
                     "gui_framework/renderer_opengl.cpp",
-                    "gui_framework/bgfx_init_window_macos.mm",
+                    "gui_framework/renderer_bgfx_init_window_macos.mm",
                 },
                 .flags = FlagsBuilder.init(ctx, cfg, .{
                     .all_warnings = true,
@@ -1853,8 +1871,8 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
                 .gen_cdb_fragments = true,
             }).flags.items,
         });
-        // NOTE(Sam): disabling pulse audio because it was causing lots of stutters on my machine.
-        lib.root_module.addCMacro("MA_NO_PULSEAUDIO", "1");
+        // NOTE(Sam): disabling alsa because it was causing a deadlock on my machine.
+        lib.root_module.addCMacro("MA_NO_ALSA", "1");
         lib.linkLibC();
         lib.addIncludePath(ctx.dep_miniaudio.path(""));
         switch (cfg.target.os.tag) {
@@ -2795,6 +2813,7 @@ fn doTarget(
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
             );
             top_level_steps.install_plugins.dependOn(clap.install_step);
+            top_level_steps.install_clap.dependOn(clap.install_step);
             top_level_steps.install_all.dependOn(clap.install_step);
             break :blk clap;
         } else {

@@ -1,23 +1,68 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 #include "foundation/foundation.hpp"
 
-#include "graphics.hpp"
 #include "gui_frame.hpp"
-#include "gui_live_edit.hpp"
+#include "renderer.hpp"
+
+// An immediate-mode GUI system.
+//
+// The entire GUI is rebuilt every frame. There are no persistent widget objects. When you call a
+// behaviour function (e.g. ButtonBehaviour), you're not creating or updating a widget - you're declaring that
+// a rectangle with a given ID should have button behaviour *for this frame*. Next frame, if you don't call
+// ButtonBehaviour for that ID, the button ceases to exist. The only persistent state is: which ID is hot,
+// which is active, which has text input focus, and viewport data (which is mostly reconfigured each frame).
+//
+// Element Z-ORDER: The order you register elements within a viewport matters. Elements registered later in
+// the frame logically sit "on top" of earlier elements. For example, if two overlapping rectangles both have
+// button behaviour, the one registered later will receive mouse events and become hot/active, while the
+// earlier one will be ignored. Internally, this is achieved by adding a frame of delay to these interactions
+// (although our system actually immediately requests a re-run of the GUI in these cases).
+//
+// Viewport Z-ORDER: In general, viewports have the z-order rules as elements, however, we additionally offer
+// some order-independent features for viewports. By setting the mode of a viewport config to Floating, Modal
+// or PopupMenu, you break outside of the ordering requirement. Instead, you can use the z_order field (popup
+// menus automatically handle this).
+//
+// IDs: Every element and viewport must have a constant, unique ID. This is how the system tracks the minimal
+// persistent state (hot, active, text input focus). Use MakeId() with a string or number, or PushId()/PopId()
+// to scope IDs hierarchically. Alternatively, hash anything that uniquely identifies the element: a string,
+// pointer, SourceLocationHash(), or existing hash.
+//
+// It provides the building blocks for creating your own 'elements' (not widgets - they don't persist). This
+// is a reasonably low-level API for handling UI interaction; it does not do any layouts, or any drawing.
+// There should only be one Context per GUI window.
+//
+// The system is built around 'viewports' - containers that introduce their own coordinate system where the
+// top left is the origin. Viewports are started with a 'begin' call and ended with an 'end' call. Inside
+// these 2 calls, you build the UI elements by registering rectangles into the current viewport, calling
+// 'behaviour' functions, and then drawing using the current draw-list.
+//
+// Behaviours can often be combined. For example, internally, 'draggers' just use both slider and text input
+// behaviour on the same ID and rectangle.
+//
+// Viewports can be nested. Additionally, viewports can be configured to automatically handle scrollbars, and
+// can configured as popup-menus or modals that sit on top of other viewports. While viewports have some
+// persistent data (like scroll offset), they are mostly reconfigured each frame, and the viewport hierarchy
+// is rebuilt every frame through Begin/EndViewport calls.
+//
+// There's 2 coordinate systems here: viewport-related (relative to the top left of the current viewport), and
+// window-relative (relative to the top left of the whole GUI). It's mostly convenient to work using
+// viewport-relative positions, and only convert them to window-relative for the final Behaviour* call and
+// drawing. The internals of this system typically work with window-relative, but users of this API typically
+// work with viewport-relative. IMPORTANT: any drawing is assumed to be window-relative.
+//
+// All sizes/positions in this system are pixels.
+//
+// There's still some technical debt here. This system has been ad-hoc built bit-by-bit over 10+ years.
 
 namespace imgui {
 
 struct Context;
-struct Window;
-struct SliderSettings;
-struct TextInputResult;
-
-using Id = u32;
+struct Viewport;
 using Char32 = u32;
-using WindowFlags = u32;
 
 #undef STB_TEXTEDIT_STRING
 #undef STB_TEXTEDIT_CHARTYPE
@@ -30,458 +75,367 @@ namespace stb {
 #include <stb_textedit.h>
 }
 
-constexpr Id k_imgui_misc_id = 1; // something we dont care about was clicked (eg. background)
-constexpr Id k_imgui_app_window_id = 4; // id of the full size window created with Begin()
+using Id = u64;
 
-// TODO: refactor into a bitfield probably
-#define IMGUI_WINDOW_FLAGS                                                                                   \
-    X(None, 0, 0)                                                                                            \
-    X(NoPadding, 1, 1)                                                                                       \
-    X(NeverClosesPopup, 1, 2)                                                                                \
-    X(AutoWidth, 1, 3)                                                                                       \
-    X(AutoHeight, 1, 4)                                                                                      \
-    X(AutoPosition, 1, 5)                                                                                    \
-    X(DontCloseWithExternalClick, 1, 6)                                                                      \
-    X(NoScrollbarX, 1, 7)                                                                                    \
-    X(NoScrollbarY, 1, 8)                                                                                    \
-    X(DrawOnTop, 1, 9)                                                                                       \
-    X(DrawingOnly, 1, 10)                                                                                    \
-    X(NestedInsidePopup, 1, 11)                                                                              \
-    X(Popup, 1, 12)                                                                                          \
-    X(ChildPopup, 1, 13)                                                                                     \
-    X(Nested, 1, 14)                                                                                         \
-    X(AlwaysDrawScrollX, 1, 15)                                                                              \
-    X(AlwaysDrawScrollY, 1, 16)                                                                              \
-    X(PositionOnTopOfParentPopup, 1, 17)                                                                     \
-    X(ModalPopup, 1, 18)                                                                                     \
-    X(ScrollbarInsidePadding, 1, 19)
+constexpr Id k_null_id = 0;
 
-enum WindowFlagsEnum : u32 {
-#define X(name, val, num) WindowFlags_##name = val << num,
-    IMGUI_WINDOW_FLAGS
-#undef X
+struct ButtonConfig {
+    bool operator==(ButtonConfig const&) const = default;
+
+    // The mouse button that will cause the button to fire.
+    MouseButton mouse_button = MouseButton::Left;
+
+    // What type of event for this mouse button should trigger the element to fire. Typically mouse-up is used
+    // for buttons - in which case the system internally checks that both the mouse down and up occurred in
+    // the button rectangle - giving the user the opportunity to change their mind and release elsewhere.
+    MouseButtonEvent event = MouseButtonEvent::Up;
+
+    // Modifiers required to fire the button. Currently not supported for MouseButtonEvent::Up events.
+    ModifierFlags required_modifiers {};
+
+    // Cursor to show while hot.
+    CursorType cursor_type = CursorType::Hand;
+
+    // For a single-click event, don't fire another single-click if the click is detected to be a double-click
+    // (that is, a click that happens in quick succession to the first). The default is that rapid clicks all
+    // fire single-click events even if the second click might typically be considered a double-click. Turning
+    // this on allows you to handle double-clicks separately.
+    bool32 dont_fire_on_double_click : 1 = false;
+
+    // If this button is inside a popup menu or modal, close it when the button fires.
+    bool32 closes_popup_or_modal : 1 = false;
+
+    // Fire the button at a regular interval if held down.
+    bool32 hold_to_repeat : 1 = false;
+
+    // Internal. Specify that this element does not live inside the typical content of a viewport, instead
+    // it's inside the padding or scrollbar.
+    bool32 is_non_viewport_content : 1 = false;
 };
 
-constexpr u32 k_imgui_window_flag_vals[] = {
-#define X(name, val, num) val << num,
-    IMGUI_WINDOW_FLAGS
-#undef X
+struct SliderConfig {
+    static constexpr ButtonConfig const k_activation_cfg = {.mouse_button = MouseButton::Left,
+                                                            .event = MouseButtonEvent::Down};
+
+    // Number of pixels for a value change of a full turn (from min to max).
+    f32 sensitivity = 256;
+
+    // Increase the sensitivity while the shift key is held.
+    bool32 slower_with_shift : 1 = true;
+
+    // Set the slider's value to its default when its clicked while holding the modifier key.
+    bool32 default_on_modifer : 1 = true;
 };
 
-constexpr String k_imgui_window_flag_text[] = {
-#define X(name, val, num) #name,
-    IMGUI_WINDOW_FLAGS
-#undef X
-};
-
-struct ButtonFlags {
-    bool32 closes_popups : 1; // when inside a popup, close it when this button is clicked
-    bool32 left_mouse : 1;
-    bool32 right_mouse : 1;
-    bool32 middle_mouse : 1;
-    bool32 double_click : 1;
-    bool32 ignore_double_click : 1;
-    bool32 triggers_on_mouse_down : 1;
-    bool32 triggers_on_mouse_up : 1;
-    bool32 requires_modifer : 1;
-    bool32 requires_shift : 1;
-    bool32 requires_alt : 1;
-    bool32 disabled : 1;
-    bool32 is_non_window_content : 1; // is something that does not live inside a window (e.g. scrollbar)
-    bool32 hold_to_repeat : 1;
-    bool32 dont_check_for_release : 1;
-    bool32 padding : 17 = 0; // We want to cast this to bool32 so we need to ensure padding is 0.
-};
-static_assert(sizeof(ButtonFlags) == 4, "Adjust padding");
-
-bool ClickCheck(ButtonFlags flags, GuiFrameInput const& io, Rect const* rect = nullptr);
-
-struct SliderFlags {
-    bool32 slower_with_shift : 1;
-    bool32 default_on_modifer : 1;
-};
-
-struct TextInputFlags {
+struct TextInputConfig {
     f32 x_padding = 4;
-    bool32 chars_decimal : 1; // Allow 0123456789.+-*/
-    bool32 chars_hexadecimal : 1; // Allow 0123456789ABCDEFabcdef
-    bool32 chars_uppercase : 1; // Turn a..z into A..Z
-    bool32 chars_no_blank : 1; // Filter out spaces, tabs
-    bool32 chars_note_names : 1; // Allow 0123456789+-#abcdefgABCDEFG
-    bool32 tab_focuses_next_input : 1;
-    bool32 centre_align : 1;
-    bool32 escape_unfocuses : 1;
-    bool32 multiline : 1;
-    bool32 multiline_wordwrap_hack : 1; // quick and dirty word wrap
+
+    bool32 chars_decimal : 1 = false; // Allow 0123456789.+-*/
+    bool32 chars_hexadecimal : 1 = false; // Allow 0123456789ABCDEFabcdef
+    bool32 chars_uppercase : 1 = false; // Turn a..z into A..Z
+    bool32 chars_no_blank : 1 = false; // Filter out spaces, tabs
+    bool32 chars_note_names : 1 = false; // Allow 0123456789+-#abcdefgABCDEFG
+                                         //
+    bool32 tab_focuses_next_input : 1 = true;
+    bool32 centre_align : 1 = false;
+    bool32 escape_unfocuses : 1 = true;
+    bool32 select_all_when_opening : 1 = true;
+
+    // Our multi-line text input leaves a lot to be desired... but it sort of works for now.
+    bool32 multiline : 1 = false;
+    bool32 multiline_wordwrap_hack : 1 = false;
 };
 
-//
-//
-//
+// Draw the background of the imgui.curr_viewport. Typically using the viewport's unpadded bounded.
+using DrawViewportBackgroundFunction = TrivialFunctionRef<void(Context const& imgui)>;
 
-#define IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS                                                                     \
-    MAYBE_UNUSED const imgui::Context &imgui, MAYBE_UNUSED Rect bounds, MAYBE_UNUSED Rect handle_rect,       \
-        MAYBE_UNUSED imgui::Id id
-#define IMGUI_DRAW_WINDOW_SCROLLBAR(name) void name(IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS)
-using DrawWindowScrollbar = void(IMGUI_DRAW_WINDOW_SCROLLBAR_ARGS);
-
-#define IMGUI_DRAW_WINDOW_BG_ARGS                                                                            \
-    _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wshadow\"")                        \
-        MAYBE_UNUSED const imgui::Context &imgui,                                                            \
-        MAYBE_UNUSED imgui::Window *window _Pragma("clang diagnostic pop")
-#define IMGUI_DRAW_WINDOW_BG_ARGS_TYPES const imgui::Context&, imgui::Window*
-#define IMGUI_DRAW_WINDOW_BG(name)      void name(IMGUI_DRAW_WINDOW_BG_ARGS)
-using DrawWindowBackground = void(IMGUI_DRAW_WINDOW_BG_ARGS);
-
-#define IMGUI_DRAW_BUTTON_ARGS                                                                               \
-    MAYBE_UNUSED const imgui::Context &imgui, MAYBE_UNUSED Rect r, MAYBE_UNUSED imgui::Id id,                \
-        MAYBE_UNUSED String str, MAYBE_UNUSED bool state
-#define IMGUI_DRAW_BUTTON(name) void name(IMGUI_DRAW_BUTTON_ARGS)
-using DrawButton = void(IMGUI_DRAW_BUTTON_ARGS);
-
-#define IMGUI_DRAW_SLIDER_ARGS                                                                               \
-    MAYBE_UNUSED const imgui::Context &imgui, MAYBE_UNUSED Rect r, MAYBE_UNUSED imgui::Id id,                \
-        MAYBE_UNUSED f32 percent, MAYBE_UNUSED const imgui::SliderSettings *settings
-#define IMGUI_DRAW_SLIDER(name) void name(IMGUI_DRAW_SLIDER_ARGS)
-using DrawSlider = void(IMGUI_DRAW_SLIDER_ARGS);
-
-#define IMGUI_DRAW_TEXT_INPUT_ARGS                                                                           \
-    MAYBE_UNUSED const imgui::Context &imgui, MAYBE_UNUSED Rect r, MAYBE_UNUSED imgui::Id id,                \
-        MAYBE_UNUSED String text, MAYBE_UNUSED imgui::TextInputResult *result
-#define IMGUI_DRAW_TEXT_INPUT(name) void name(IMGUI_DRAW_TEXT_INPUT_ARGS)
-using DrawTextInput = void(IMGUI_DRAW_TEXT_INPUT_ARGS);
-
-#define IMGUI_DRAW_TEXT_ARGS  const imgui::Context &imgui, Rect r, u32 col, String str
-#define IMGUI_DRAW_TEXT(name) void name(IMGUI_DRAW_TEXT_ARGS)
-using DrawText = void(IMGUI_DRAW_TEXT_ARGS);
-
-struct WindowSettings {
-    f32 TotalWidthPad() { return pad_top_left.x + pad_bottom_right.x; }
-    f32 TotalHeightPad() { return pad_top_left.y + pad_bottom_right.y; }
-    f32x2 TotalPadSize() { return pad_top_left + pad_bottom_right; }
-
-    WindowFlags flags;
-    f32x2 pad_top_left;
-    f32x2 pad_bottom_right;
-    f32 scrollbar_padding;
-    f32 scrollbar_padding_top;
-    f32 scrollbar_width;
-    f32 pixels_per_line; // How pixels make up a 'line'. 0 means use default.
-    DrawWindowScrollbar* draw_routine_scrollbar;
-    TrivialFixedSizeFunction<48, void(IMGUI_DRAW_WINDOW_BG_ARGS)> draw_routine_window_background;
-    TrivialFixedSizeFunction<48, void(IMGUI_DRAW_WINDOW_BG_ARGS)> draw_routine_popup_background;
+struct ViewportScrollbar {
+    Rect strip; // Long strip that the handle sits in.
+    Rect handle; // The bit that you can grab.
+    imgui::Id id; // ID for the handle - use with IsHot(), etc.
 };
 
-struct ButtonSettings {
-    ButtonFlags flags;
-    TrivialFixedSizeFunction<24, void(IMGUI_DRAW_BUTTON_ARGS)> draw;
-    WindowSettings window;
+using ViewportScrollbars = Array<Optional<ViewportScrollbar>, 2>; // x, y
+
+// Draw the scrollbars if they are given.
+using DrawScrollbarsFunction =
+    TrivialFunctionRef<void(Context const& imgui, ViewportScrollbars const& scrollbars)>;
+
+enum class ViewportMode : u8 {
+    // Contained viewports live inside their parent. They clip inside the drawable region of the parent.
+    // (default).
+    Contained,
+    // Floating viewports escape their parent - and sit on top of any contained viewports on the UI. There's a
+    // few additional flags for configuring a Floating behaviour in the config, including the z-order which
+    // effects the ordering of Floating and Modal viewports.
+    Floating,
+    // Modal viewports are the same as Floating, except they have their lifecycle managed by this IMGUI
+    // system. All the same config applies.
+    Modal,
+    // Popup menu's are similar to modals. They float, their lifecycle is managed, but additionally, they have
+    // behaviours appropriate for a popup menu: sub-menus stack and have auto-open/close hover behaviour.
+    // They're typically designed for context menus. Z-ordering for popup menus is handled automatically -
+    // they sit on top of all other viewport types.
+    PopupMenu,
 };
 
-struct TextSettings {
-    DrawText* draw;
-    u32 col;
+enum class ViewportPositioning : u8 {
+    ParentRelative, // rect is viewport-relative (default)
+    WindowAbsolute, // rect is already in window coordinates
+    AutoPosition, // rect is avoid-rect in window coords; actual position is calculated
 };
 
-struct SliderSettings {
-    SliderFlags flags;
-    // Pixels for a value change of 1.0. Lots of sliders use the range 0-1 anyways to this represents the
-    // pixels for a full turn.
-    f32 sensitivity;
-    TrivialFixedSizeFunction<24, void(IMGUI_DRAW_SLIDER_ARGS)> draw;
+enum class ViewportScrollbarVisibility : u8 {
+    // Scrollbars are shown when the viewport's contents is larger than its bounds.
+    Auto,
+    // Always position and draw a scrollbar, even if the viewport doesn't currently need any scrolling.
+    Always,
+    // Never show scrollbars.
+    Never,
 };
 
-struct TextInputSettings {
-    ButtonFlags button_flags;
-    TextInputFlags text_flags;
-    bool select_all_on_first_open;
-    TrivialFixedSizeFunction<24, void(IMGUI_DRAW_TEXT_INPUT_ARGS)> draw;
+struct ViewportConfig {
+    ViewportConfig Clone(ArenaAllocator& arena) {
+        auto result = *this;
+        result.draw_background = result.draw_background.CloneObject(arena);
+        result.draw_scrollbars = result.draw_scrollbars.CloneObject(arena);
+        return result;
+    }
+
+    // Custom little wrapper to make ViewportScrollbarVisibility behave like a clang vector extension (which
+    // can't be used for enum class types).
+    struct ViewportScrollbarVisibilityx2 {
+        // Set both to the same.
+        constexpr ViewportScrollbarVisibilityx2(ViewportScrollbarVisibility v) { x = y = v; }
+        // Set individually.
+        constexpr ViewportScrollbarVisibilityx2(ViewportScrollbarVisibility x, ViewportScrollbarVisibility y)
+            : x(x)
+            , y(y) {}
+        constexpr ViewportScrollbarVisibility operator[](usize i) const { return i == 0 ? x : y; }
+        ViewportScrollbarVisibility x;
+        ViewportScrollbarVisibility y;
+    };
+
+    f32 TotalWidthPad() { return padding.l + padding.r; }
+    f32 TotalHeightPad() { return padding.t + padding.b; }
+    f32x2 TotalPadSize() { return padding.lrtb.xw + padding.lrtb.yz; }
+
+    ViewportMode mode = ViewportMode::Contained;
+    ViewportPositioning positioning = ViewportPositioning::ParentRelative;
+
+    DrawViewportBackgroundFunction draw_background {}; // Optional.
+    DrawScrollbarsFunction draw_scrollbars {}; // Required unless set to use no automatic scrollbars.
+
+    // Gap inside the viewport area for left, top, right, and bottom. This is like CSS padding. The space
+    // inside the viewport becomes smaller. Set using designated initializer syntax.
+    Margins padding {};
+
+    // Gap between the viewport content, and the scrollbar. Like padding, it reduces the size of internal
+    // usable space in the axis that the scrollbar would appear.
+    f32 scrollbar_padding {};
+    f32 scrollbar_width {4}; // Ignored if scrollbar_inside_padding.
+    f32 scroll_line_size {}; // Mouse scroll step amount. 0 means use default.
+
+    // Automatically set the size of the viewport based on what rectangles are registered into it.
+    b8x2 auto_size = false;
+
+    ViewportScrollbarVisibilityx2 scrollbar_visibility = ViewportScrollbarVisibility::Auto;
+
+    // Rather than use the scrollbar_width field, the scrollbars size is set to the padding of the
+    // viewport: right for y scrollbars, and bottom for x scrollbars. This is typically a good idea
+    // because it reduces gaps. IMPROVE: make this the default mode?
+    bool32 scrollbar_inside_padding : 1 = false;
+
+    u8 z_order {}; // [Floating or Modal]. Viewports with larger values sit on top of lower values.
+    bool32 exclusive_focus : 1 = false; // [Floating or Modal]. Make all other viewports uninteractable.
+    bool32 ignore_exclusive_focus : 1 = false; // [Floating]. Allow interaction even when another viewport
+                                               // has exclusive focus. Clicks on this viewport won't
+                                               // trigger close_on_click_outside for modals.
+    bool32 close_on_click_outside : 1 = false; // [Modal]. Close with clicks outside viewport.
+    bool32 close_on_escape : 1 = false; // [Modal]. Close when escape key pressed.
 };
 
-struct TextInputDraggerSettings {
-    TextInputSettings text_input_settings;
-    SliderSettings slider_settings;
-    String format;
-};
+// Viewport internals are not frequently used by the user of this API.
+struct Viewport {
+    // The active draw list for this Viewport, it might be the same as owned_draw_list or it might be another
+    // Viewport's draw list in the case that it's more efficient to share a draw list. Shouldn't be null. Use
+    // this to do all your drawing for this viewport.
+    DrawList* draw_list = nullptr;
 
-//
-//
-//
+    // The draw list that is actually allocated and owned by this viewport - might be null.
+    DrawList* owned_draw_list = nullptr;
 
-struct Window {
-    DynamicArrayBounded<char, 128> name;
-    bool is_open = false;
-    bool skip_drawing_this_frame = false;
+    // The viewport's rectangle minus padding, this is probably the one you want to use for positioning/sizing
+    // elements inside the viewport. Window-coordinates.
+    Rect bounds = {};
 
-    // The active draw list for this Window, it might be the same as owned_draw_list or it might be another
-    // Window's draw list in the case that it's more efficient to share a draw list. Shouldn't be null. Use
-    // this to do all your drawing for this window.
-    graphics::DrawList* draw_list = nullptr;
+    // The whole viewport excluding the padding, probably use this for drawing the viewport background.
+    // Window-coordinates.
+    Rect unpadded_bounds = {};
 
-    // The draw list that is actually allocated and owned by this window.
-    graphics::DrawList* owned_draw_list = nullptr;
+    // The region of the viewport that is visible on the screen. Window-coordinates.
+    Rect visible_bounds = {};
 
-    bool has_been_sorted = false; // internal
+    // The area that can be drawn in. Window-coordinates.
+    Rect clipping_rect = {};
 
-    Window* root_window = nullptr;
-    Window* parent_window = nullptr;
-    DynamicArray<Window*> children {Malloc::Instance()};
+    Id id = k_null_id;
 
-    Window* parent_popup = nullptr;
-    Id creator_of_this_popup = 0;
+    // The root of this viewport tree - never null. It will point to itself if it's the root.
+    Viewport* root_viewport = nullptr;
 
-    int nested_level = 0;
-    int child_nesting_counter = 0;
+    // The viewport that this viewport lives inside.
+    Viewport* parent_viewport = nullptr;
 
-    WindowFlags flags = 0;
-    u32 user_flags = 0; // optional user storage
+    Id creator_of_this_popup_menu = k_null_id;
 
-    WindowSettings style = {};
+    u16 nested_level = k_null_id;
+    u16 child_nesting_counter = k_null_id;
 
-    // all bounds are in absolute coordinates - never relative to parent windows
-    Rect bounds = {}; // the windows region minus padding, this is probably the one you want to use for
-                      // positioning/sizing your gui
-    Rect unpadded_bounds = {}; // the whole window
-    Rect visible_bounds = {}; // the region of the window that is visible on the screen IMPROVE: fix bug when
-                              // child window is scroll down - the top of the visible bounds in not clipped
-    Rect clipping_rect = {}; // the area that can be drawn to when in a begin/end block
+    ViewportConfig cfg = {};
 
-    Id id = 0;
+    DynamicArrayBounded<char, 128> debug_name;
+    bool active = false;
 
-    bool x_contents_was_auto = false; // internal
-    bool y_contents_was_auto = false; // internal
+    b8x2 contents_was_auto = false;
 
-    f32x2 prev_content_size = {}; // the size of the stuff put into the window from last frame, this is
-                                  // updated when a component calls Register
-    f32x2 prevprev_content_size = {}; // the size of the stuff put into the window from last frame, this
-                                      // is updated when a component calls Register
+    // The size of the stuff put into the viewport from last frame.
+    f32x2 prev_content_size = {};
+    f32x2 prevprev_content_size = {};
 
-    f32x2 scroll_offset = {}; // the pixel offset from scrollbars
+    f32x2 scroll_offset = {}; // The pixel offset from scrollbars.
     f32x2 scroll_max = {};
-    bool has_yscrollbar = false;
-    bool has_xscrollbar = false;
+    b8x2 has_scrollbar = false;
 };
 
-struct ActiveItem {
-    Id id = 0;
-    // ActiveItemType type = ActiveItem_None;
-    bool closes_popups = true;
-    bool just_activated = false;
-    Window* window = nullptr;
-
-    bool check_for_release = false;
-    ButtonFlags button_flags {};
-};
-
+// Data about interactions with a text input, and data required to draw a text input.
+// Example processor to draw a text input:
+// - Draw a background using the rectangle you passed into the text input behaviour function.
+// - Check if HasSelection, if so, create an iterator and loop NextSelectionRect - drawing a blue highlight
+//   box for each.
+// - Check cursor_rect - fill black if present.
+// - Draw the text at position text_pos.
 struct TextInputResult {
     bool HasSelection() const { return selection_start != selection_end; }
 
-    Rect GetCursorRect() const {
-        ASSERT(show_cursor);
-        return cursor_rect;
-    }
-
-    f32x2 GetTextPos() const { return text_pos; }
-
+    // Create an iterator, filling in the required reference fields. And then repeatadly call
+    // NextSelectionRect to get all parts of the selection - this can happen when it's a multi-line text
+    // input.
     struct SelectionIterator {
-        graphics::Renderer& renderer;
-        char const* pos;
-        u32 remaining_chars;
-        u32 line_index;
-        bool reached_end;
+        Context const& imgui;
+        char const* pos {};
+        u32 remaining_chars {};
+        u32 line_index {};
+        bool reached_end {};
     };
     Optional<Rect> NextSelectionRect(SelectionIterator& it) const;
 
+    // The current text in the text input. Temporary memory. Changes when another text input is run. Copy this
+    // into your own buffer if buffer_changed is true (or other criteria that you want).
+    String text {};
+
+    // Information about if the text has changed.
     bool enter_pressed {};
     bool buffer_changed {};
 
+    // The position to draw_list->AddText().
     f32x2 text_pos = {};
-    Rect cursor_rect = {};
-    // temporary, changes when TextInput is called again, copy this into your own buffer if
-    // buffer_changed is true
-    String text {};
 
+    // The rectangle for the cursor if it should currently be shown.
+    Optional<Rect> cursor_rect = {};
+
+    // Internals.
     int cursor = 0;
     int selection_start = 0;
     int selection_end = 0;
-    bool show_cursor = false;
     bool is_placeholder = false;
 };
 
-extern LiveEditGui g_live_edit_values;
+// Returns the position to draw_list->AddText() at. This function is also used internally by the text input
+// and returned automatically in TextInputResult::text_pos. Use this if you want to render text in the same
+// position as the text input.
+f32x2 TextInputTextPos(String text, Rect r, TextInputConfig cfg, Fonts const& fonts);
+
+// Tries to find a appropriate position for a popup, given the constraints.
+enum class PopupJustification { AboveOrBelow, LeftOrRight };
+f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustification justification);
 
 struct Context {
-    Context();
-    ~Context();
-
-    void Begin(WindowSettings settings); // Call at the start of the frame
-    void End(ArenaAllocator& scratch_arena); // Call at the end of the frame
-
     //
-    // > Widget Behaviours
+    // Public fields
     //
 
-    //
-    // Sliders
-    //
-    // Returns true when the slider value changes
-    bool SliderBehavior(Rect r, Id id, f32& percent, SliderFlags flags);
-    bool SliderBehavior(Rect r, Id id, f32& percent, f32 default_percent, SliderFlags flags);
-    bool SliderBehavior(Rect r, Id id, f32& percent, f32 default_percent, f32 sensitivity, SliderFlags flags);
+    // Shortcut to the current viewport.
+    Viewport* curr_viewport = nullptr;
 
-    bool SliderRangeBehavior(Rect r, Id id, f32 min, f32 max, f32& value, SliderFlags flags);
-    bool
-    SliderRangeBehavior(Rect r, Id id, f32 min, f32 max, f32& value, f32 default_value, SliderFlags flags);
-    bool SliderRangeBehavior(Rect r,
-                             Id id,
-                             f32 min,
-                             f32 max,
-                             f32& value,
-                             f32 default_value,
-                             f32 sensitivity,
-                             SliderFlags flags);
+    // Shortcut to the current viewport's draw list.
+    DrawList* draw_list = nullptr;
 
-    bool SliderRangeBehavior(Rect r,
-                             Id id,
-                             int min,
-                             int max,
-                             int& value,
-                             int default_value,
-                             f32 sensitivity,
-                             SliderFlags flags);
-
-    bool
-    SliderUnboundedBehavior(Rect r, Id id, f32& val, f32 default_val, f32 sensitivity, SliderFlags flags);
+    // A draw list that is layered on top of all viewports. Use this for occasion sit-on-top graphics.
+    DrawList* overlay_draw_list = {};
 
     //
-    // Buttons
-    //
-    // Returns true when clicked, the conditions that determine 'clicked' are set in the flags
-    bool ButtonBehavior(Rect r, Id id, ButtonFlags flags);
-
-    // Opens a popup which appears in an appropriate place relative to the rect passed here
-    // You must call BeginWindowPopup on the popup_id after calling this
-    bool PopupButtonBehavior(Rect r, Id button_id, Id popup_id, ButtonFlags flags);
-
-    //
-    // Text Input
-    //
-    TextInputResult TextInput(Rect r,
-                              Id id,
-                              String text,
-                              String placeholder_text,
-                              TextInputFlags flags,
-                              ButtonFlags button_flags,
-                              bool select_all);
-
-    Id GetTextInput() const { return active_text_input; }
-    bool TextInputHasFocus(Id id) const;
-    bool TextInputJustFocused(Id id) const;
-    bool TextInputJustUnfocused(Id id) const;
-    void SetImguiTextEditState(String new_text, bool multiline);
-    void SetTextInputFocus(Id id, String new_text, bool multiline); // pass 0 to unfocus
-    void TextInputSelectAll();
-    void ResetTextInputCursorAnim();
-
-    //
-    // > Windows
+    // Viewport coordinates
     //
 
-    Window* CurrentWindow() const { return window_stack.size ? Last(window_stack) : nullptr; }
-    Window* HoveredWindow() const { return hovered_window; }
-    f32 X() const { return curr_window->bounds.x; }
-    f32 Y() const { return curr_window->bounds.y; }
-    f32 Width() const { return curr_window->bounds.w; }
-    f32 Height() const { return curr_window->bounds.h; }
-    Rect Bounds() const { return curr_window->bounds; }
-    f32x2 Size() const { return curr_window->bounds.size; }
-    f32x2 Min() const { return curr_window->bounds.pos; }
-    f32x2 Max() const { return curr_window->bounds.Max(); }
+    // Every element should use this before doing *Behaviour calls or drawing. It does 2 things:
+    // - Converts coordinates from viewport-relative to window-relative.
+    // - Registers the rectangle with the current viewport (so the viewport knows scrollbars, clipping, etc).
+    [[nodiscard]] Rect RegisterAndConvertRect(Rect r);
 
-    void BeginWindow(WindowSettings settings, Rect r, String str);
-    void BeginWindow(WindowSettings settings, Id id, Rect r);
-    void BeginWindow(WindowSettings settings, Id id, Rect r, String str);
-    void BeginWindow(WindowSettings settings, Window* window, Rect r);
-    void BeginWindow(WindowSettings settings, Window* window, Rect r, String str);
-
-    void EndWindow();
-
-    Window* FindWindow(Id id);
-
-    static void SetYScroll(Window* window, f32 val) {
-        window->scroll_offset.y = val;
-        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    // Convert to/from window (OS level) to viewport (IMGUI container) coordinates.
+    f32x2 ViewportPosToWindowPos(f32x2 viewport_pos) const;
+    f32x2 WindowPosToViewportPos(f32x2 window_pos) const;
+    Rect ViewportRectToWindowRect(Rect viewport) const {
+        return {.pos = ViewportPosToWindowPos(viewport.pos), .size = viewport.size};
     }
-    static void SetXScroll(Window* window, f32 val) {
-        window->scroll_offset.x = val;
-        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    Rect WindowRectToViewportRect(Rect window) const {
+        return {.pos = WindowPosToViewportPos(window.pos), .size = window.size};
     }
-    bool ScrollWindowToShowRectangle(Rect r);
-
-    bool WasWindowJustCreated(Window* window);
-    bool WasWindowJustCreated(Id id);
-
-    bool WasWindowJustHovered(Window* window);
-    bool WasWindowJustHovered(Id id);
-    bool WasWindowJustUnhovered(Window* window);
-    bool WasWindowJustUnhovered(Id id);
-    bool IsWindowHovered(Window* window) const;
-    bool IsWindowHovered(Id id) const;
 
     //
-    // > Popups (a type of window)
+    // IDs
     //
 
-    // Opens a popup ready to be 'Begin'ed into
-    Window* OpenPopup(Id id, Id creator_of_this_popup = 0); // returns the window for convenience
-    // Begins a popup window - EndWindow() must be called if this returns true.
-    bool BeginWindowPopup(WindowSettings settings, Id id, Rect r);
-    bool BeginWindowPopup(WindowSettings settings, Id id, Rect r, String str);
+    // Hashes an input and returns an ID. This ID is seeded on the current ID stack, so the hash will be
+    // different depending on what is pushed before with PushId()/PopId()
+    Id MakeId(String str) const;
+    Id MakeId(uintptr num) const;
 
-    void SetMinimumPopupSize(f32 width, f32 height); // use this in a BeginWindowPopup block
-    bool IsPopupOpen(Id id);
-
-    void ClosePopupToLevel(int remaining);
-    void CloseCurrentPopup(); // closes the whole popup stack
-    void CloseTopPopupOnly(); // just closes the top popup
-    bool DidPopupMenuJustOpen(Id id);
-    Window* GetPopupFromID(Id id);
-
-    f32 LargestStringWidth(f32 pad, void* items, int num, String (*GetStr)(void* items, int index));
-    f32 LargestStringWidth(f32 pad, Span<String const> strs);
+    void PushId(String str);
+    void PushId(uintptr num);
+    void PopId();
 
     //
-    // > IDs
+    // Interaction checks
     //
 
-    // Hashes an input and returns a ID. This id affected by the whole id stack,
-    // so the hash will be different depending on what is pushed onto the id stack
-    // before with PushID()/PopID()
-    Id GetID(String str);
-    Id GetID(uintptr num);
+    // Once an element has been given a behaviour (button, slider, etc.), you can check its user-interaction
+    // state. Text inputs have an additional concept of 'focus', outlined further down.
 
-    void PushID(String str);
-    void PushID(uintptr num);
-    void PopID();
+    // 'active' means the user holding the element with a mouse-click.
+    bool IsActive(Id id, Optional<MouseButton> via_mouse_button = {}) const;
+    bool WasJustActivated(Id id, Optional<MouseButton> via_mouse_button = {}) const;
+    bool WasJustDeactivated(Id id, Optional<MouseButton> via_mouse_button = {}) const;
+    bool AnItemIsActive() const;
+    Id GetActive() const { return active_item.id; }
 
-    bool IsActive(Id id) const;
-    bool WasJustActivated(Id id);
-    bool WasJustDeactivated(Id id);
-    bool AnItemIsActive();
-    Id GetActive() { return active_item.id; }
-
+    // 'hot' means that the user is hovering over an element and it would become active if they clicked.
     bool IsHot(Id id) const;
-    bool WasJustMadeHot(Id id);
-    bool WasJustMadeUnhot(Id id);
-    bool AnItemIsHot();
-    Id GetHot() { return hot_item; }
-    f64 SecondsSpentHot() {
+    bool WasJustMadeHot(Id id) const;
+    bool WasJustMadeUnhot(Id id) const;
+    bool AnItemIsHot() const;
+    Id GetHot() const { return hot_item; }
+    f64 SecondsSpentHot() const {
         return time_when_turned_hot ? GuiIo().in.current_time - time_when_turned_hot : 0;
     }
 
-    bool IsHotOrActive(Id id) const { return IsHot(id) || IsActive(id); }
+    bool IsHotOrActive(Id id, Optional<MouseButton> via_mouse_button = {}) const {
+        return IsHot(id) || IsActive(id, via_mouse_button);
+    }
 
-    // Returns true if the ID is the keyboard focus item.
+    // Having keyboard focus means that this element is allowed to consume text events. This is different to
+    // text input focus. Returns true if the ID is the keyboard focus item.
     bool RequestKeyboardFocus(Id id);
     bool IsKeyboardFocus(Id id) const { return keyboard_focus_item == id; }
     Id KeyboardFocus() const { return keyboard_focus_item; }
@@ -489,202 +443,297 @@ struct Context {
     // 'Is the cursor over the given ID' is often the same as IsHot(). But unlike the hot item,
     // there can be both an active item and a hovered item at the same time, you most likely
     // want to check IsHot for when you are drawing.
-    bool IsHovered(Id id);
-    bool WasJustHovered(Id id);
-    bool WasJustUnhovered(Id id);
-    Id GetHovered() { return hovered_item; }
+    bool IsHovered(Id id) const;
+    bool WasJustHovered(Id id) const;
+    bool WasJustUnhovered(Id id) const;
+    Id GetHovered() const { return hovered_item; }
 
     //
-    // > Rects
+    // Button behaviour
     //
 
-    // is the rectangle visible at all on the GUI - useful for efficiency purposes
-    bool IsRectVisible(Rect r);
-    Rect GetCurrentClipRect() { return current_scissor_rect; }
+    // Returns true when clicked, the conditions that determine 'clicked' are set in the config. The given
+    // rectangle is window-relative, not viewport-relative. You typically will need to register-and-convert
+    // the rectangle before calling this. You can call this multiple times for the same ID with different
+    // configurations to specify different interactions. You can call this on the same ID as previously used
+    // for another type of behaviour (such as slider behaviour).
+    bool ButtonBehaviour(Rect rect_in_window_coords, Id id, ButtonConfig cfg);
+
+    // Same as ButtonBehaviour but also swaps a boolean for you.
+    bool ToggleButtonBehaviour(Rect rect_in_window_coords, Id id, ButtonConfig cfg, bool& state) {
+        auto const clicked = ButtonBehaviour(rect_in_window_coords, id, cfg);
+        if (clicked) state = !state;
+        return clicked;
+    }
+
+    struct PopupMenuButtonBehaviourResult {
+        bool clicked;
+        // True if the button's corresponding popup is open, and the cursor is not on this viewport - in this
+        // situation it makes sense to display this button in an 'active' colour showing to the user the
+        // association between what button resulted in the popup opening.
+        bool show_as_active;
+    };
+    // If clicked, opens a popup menu which appears in an appropriate place relative to the rectangle passed
+    // here. Remember, opening a popup does not mean the popup is actually run: you must check IsPopupOpen and
+    // call BeginViewport on the popup_id after calling this.
+    PopupMenuButtonBehaviourResult
+    PopupMenuButtonBehaviour(Rect rect_in_window_coords, Id button_id, Id popup_id, ButtonConfig cfg);
+
+    //
+    // Slider/knob behaviour
+    //
+
+    // Adds DAW-like drag behaviour to the rectangle, modifying the given value based on vertical/horizontal
+    // drags. This variant works with fractions (values from 0 to 1). Returns true when the slider value
+    // changes. Uses the left-mouse button.
+    struct SliderBehaviourFractionArgs {
+        Rect rect_in_window_coords {};
+        Id id {};
+        f32& fraction;
+        f32 default_fraction {};
+        SliderConfig cfg = {};
+    };
+    bool SliderBehaviourFraction(SliderBehaviourFractionArgs const& args);
+
+    // Same as the fraction variant, but can work on any given range.
+    struct SliderBehaviourRangeArgs {
+        Rect rect_in_window_coords {};
+        Id id {};
+        f32 min {};
+        f32 max {};
+        f32& value;
+        f32 default_value {};
+        SliderConfig cfg = {};
+    };
+    bool SliderBehaviourRange(SliderBehaviourRangeArgs const& args);
+
+    //
+    // Text input behaviour
+    //
+
+    // A text input is an element that you can type text into. Only one text input can be focused at a time.
+    // You receive a result struct with lots of data about the text, selection, interactions. Multi-line text
+    // input is sort of supported but it's incredibly hacky - it needs to be redone.
+    struct TextInputBehaviourArgs {
+        Rect rect_in_window_coords {};
+        Id id {};
+
+        // Optional. The text that will be displayed when it's unfocused, and the will become the default text
+        // when it first gains focus. It doesn't have to be static memory. When the input is focused, the data
+        // is copied into the IMGUI system's internal string buffer.
+        String text {};
+
+        // Optional. The text that will be displayed when it's unfocused. It is not in the actual buffer.
+        String placeholder_text {};
+
+        TextInputConfig input_cfg = {};
+
+        // The 'click' criteria for focusing the text input. Typically a single or double left-click.
+        ButtonConfig button_cfg = {};
+    };
+    TextInputResult TextInputBehaviour(TextInputBehaviourArgs const& args);
+
+    bool TextInputHasFocus(Id id) const;
+    bool TextInputJustFocused(Id id) const;
+    bool TextInputJustUnfocused(Id id) const;
+    Id GetTextInput() const { return active_text_input; }
+    void SetImguiTextEditState(String new_text, bool multiline);
+    void SetTextInputFocus(Id id, String new_text, bool multiline); // Pass 0 to unfocus.
+    void TextInputSelectAll();
+    void ResetTextInputCursorAnim();
+
+    //
+    // Dragger behaviour
+    //
+
+    // A dragger is simply a combination of a text input and a slider. When the text input is not focused, it
+    // behaves like a slider. Typically double-clicks are used to focus the text input. Read more about
+    // SliderBehaviour and TextInputBehaviour.
+    struct DraggerBehaviourArgs {
+        Rect rect_in_window_coords {};
+        Id id {};
+        String text {};
+        f32 min {};
+        f32 max {};
+        f32& value;
+        f32 default_value {};
+
+        // The 'click' requirements to focus the text input.
+        ButtonConfig text_input_button_cfg = {
+            .mouse_button = MouseButton::Left,
+            .event = MouseButtonEvent::DoubleClick,
+        };
+        TextInputConfig text_input_cfg = {
+            .chars_decimal = true,
+            .tab_focuses_next_input = true,
+            .escape_unfocuses = true,
+            .select_all_when_opening = true,
+        };
+        SliderConfig slider_cfg = {};
+    };
+    struct DraggerResult {
+        bool value_changed {}; // Valued dragged to new value.
+        Optional<String> new_string_value {}; // New text confirmed. Parse this and set your own value.
+
+        // When the text input is active for this element, use this to draw it. Otherwise, if you want to
+        // render text that is in the same place as what the text input would, format your value to a string
+        // (after consuming new values if needed), and then use TextInputTextPos to know where to place it.
+        Optional<TextInputResult> text_input_result {};
+    };
+    DraggerResult DraggerBehaviour(DraggerBehaviourArgs const& args);
+
+    //
+    // Tooltip behaviour
+    //
+
+    // Returns true if you should draw a tooltip for the given ID. Probably use overlay draw-list for drawing
+    // tooltips.
+    bool TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id);
+
+    //
+    // Viewports
+    //
+
+    // Any Begin* call must be paired with an EndViewport. Use DEFER { imgui.EndViewport(); };. There's 2 core
+    // overloads: either pass a unique name that will be converted to an ID, or make an ID first.
+    //
+    // IMPORTANT: what the rectangle argument menas depends on the config's positioning. See
+    // ViewportPositioning. Additionally, for auto_width/auto_height viewports, the corresponding dimension in
+    // the rectangle is ignored.
+    void BeginViewport(ViewportConfig const& config, Rect r, String unique_name);
+    void BeginViewport(ViewportConfig const& config, Id id, Rect r, String debug_name = {});
+
+    void EndViewport();
+
+    // Mostly internal overload.
+    void BeginViewport(ViewportConfig const& config,
+                       Viewport* viewport,
+                       Rect r_in_viewport_coords,
+                       String debug_name = {});
+
+    bool WasViewportJustCreated(Id id) const;
+    bool WasViewportJustHovered(Id id) const;
+    bool WasViewportJustUnhovered(Id id) const;
+    bool IsViewportHovered(Id id) const;
+
+    bool IsViewportHovered(Viewport* viewport) const;
+
+    Viewport* FindViewport(Id id) const;
+
+    static void SetYScroll(Viewport* viewport, f32 val) {
+        viewport->scroll_offset.y = Round(val);
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    }
+    static void SetXScroll(Viewport* viewport, f32 val) {
+        viewport->scroll_offset.x = Round(val);
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    }
+    bool ScrollViewportToShowRectangle(Rect r);
+
+    // Handy shortcuts.
+    f32 CurrentVpWidth() const { return curr_viewport->bounds.w; }
+    f32 CurrentVpHeight() const { return curr_viewport->bounds.h; }
+    f32x2 CurrentVpSize() const { return curr_viewport->bounds.size; }
+    f32 CurrentVpWidthWw() const { return PixelsToWw(curr_viewport->bounds.w); }
+    f32 CurrentVpHeightWw() const { return PixelsToWw(curr_viewport->bounds.h); }
+    f32x2 CurrentVpSizeWw() const { return PixelsToWw(curr_viewport->bounds.size); }
+
+    //
+    // Popup menus (a special type of viewport)
+    //
+
+    // Opens a popup ready to be 'Begin'ed into.
+    void OpenPopupMenu(Id id, Id creator_of_this_popup = k_null_id);
+
+    bool IsPopupMenuOpen(Id id);
+    bool IsAnyPopupMenuOpen();
+
+    void ClosePopupToLevel(usize level);
+    void CloseAllPopups();
+    void CloseTopPopupOnly();
+    bool DidPopupMenuJustOpen(Id id);
+
+    //
+    // Modal viewports
+    //
+    // Modals are floating viewports that be opened and closed, but unlike popups they have no
+    // child-menu stacking, auto-hover sub-menu behaviour, or creator tracking. Multiple modals
+    // can be open simultaneously (e.g. an "are you sure?" dialog on top of another modal).
+
+    void OpenModalViewport(Id id);
+    bool IsModalOpen(Id id);
+    bool IsAnyModalOpen();
+    void CloseModal(Id id);
+    void CloseTopModal();
+    void CloseAllModals();
+
+    // Inside a viewport begin/end that has auto_width and/or auto_height, use this to configure a minimum
+    // size. Alternatively, call RegisterAndConvertRect.
+    void SetViewportMinimumAutoSize(f32x2 size);
+
+    //
+    // Rects
+    //
+
+    // Is the rectangle visible at all on the GUI - useful for efficiency purposes.
+    bool IsRectVisible(Rect r) const;
+    Rect GetCurrentClipRect() const { return current_scissor_rect; }
 
     void PushRectToCurrentScissorStack(Rect const& r);
     void PopRectFromCurrentScissorStack();
+
     void PushScissorStack();
     void PopScissorStack();
-    void DisableScissor();
-    void EnableScissor();
 
     //
-    // > Misc
+    //
     //
 
-    // Similar to CSS vw units, we have a concept of 'viewport width' relative units. They allow us to
-    // make our GUI scale with the window size.
-    f32 VwToPixels(f32 vw) const {
-        ASSERT_HOT(vw >= 0);
-        return vw * pixels_per_vw;
-    }
-    f32x2 VwToPixels(f32x2 vw) const {
-        ASSERT_HOT(All(vw >= 0.0f));
-        return vw * pixels_per_vw;
-    }
-    f32 PixelsToVw(f32 pixels) const {
-        ASSERT_HOT(pixels_per_vw >= 0);
-        return pixels / pixels_per_vw;
-    }
-    f32x2 PixelsToVw(f32x2 pixels) const {
-        ASSERT_HOT(All(pixels >= 0.0f));
-        return pixels / pixels_per_vw;
-    }
-    void SetPixelsPerVw(f32 v) {
-        ASSERT(v > 0);
-        pixels_per_vw = v;
-    }
-
-    // FIXME: 'Screen' coordinates is not the right term. It's actually coordinates relative to the top-left
-    // of the GUI window, as opposed to 'Window' coordinates which are relative to the top-left of the current
-    // imgui::Context window.
-    f32x2 WindowPosToScreenPos(f32x2 rel_pos);
-    f32x2 ScreenPosToWindowPos(f32x2 screen_pos);
-    Rect WindowRectToScreenRect(Rect rel_rect) {
-        return {.pos = WindowPosToScreenPos(rel_rect.pos), .size = rel_rect.size};
-    }
-    Rect ScreenRectToWindowRect(Rect screen_rect) {
-        return {.pos = ScreenPosToWindowPos(screen_rect.pos), .size = screen_rect.size};
-    }
-
-    void RegisterToWindow(Rect window_bounds);
-
-    // Every widget should use these before doing *Behaviour calls or drawing. It does 2 things:
-    // - Converts coordinates.
-    // - Registers the rectangle with the current window (so the window knows scrollbars, clipping, etc).
-    Rect GetRegisteredAndConvertedRect(Rect r);
-    void RegisterAndConvertRect(Rect* r);
+    Context(ArenaAllocator& scratch_arena);
+    void BeginFrame(ViewportConfig config, Fonts& fonts); // Call at the start of the frame
+    void EndFrame(); // Call at the end of the frame
 
     //
-    // > High level funcs
+    // Misc
     //
 
-    bool Button(ButtonSettings settings, Rect r, Id id, String str);
-    bool Button(ButtonSettings settings, Rect r, String str);
+    // Registering a rectangle means the GUI updates when the cursor enters/leaves it. Returns true if the
+    // widget is visible.
+    bool RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_intersection = true);
 
-    bool ToggleButton(ButtonSettings settings, Rect r, Id id, bool& state, String str);
+    // Set a rectangle to the 'hot' state if possible.
+    // is_not_viewport_content means something that is not inside a viewport, but part of it e.g. scrollbar.
+    void SetHot(Rect r_in_window_coords, Id id, bool32 is_not_viewport_content = false);
 
-    bool Slider(SliderSettings settings, Rect r, Id id, f32& percent, f32 def);
-    bool SliderRange(SliderSettings settings, Rect r, Id id, f32 min, f32 max, f32& val, f32 def);
+    // Set an ID as the active. Most likely the element would have previously been made hot.
+    void SetActive(Id id, MouseButton mouse_button);
 
-    bool PopupButton(ButtonFlags flags, WindowSettings window_settings, Rect r, Id button_id, Id popup_id);
-    bool PopupButton(ButtonSettings settings, Rect r, Id popup_id, String str);
-    bool PopupButton(ButtonSettings settings, Rect r, Id button_id, Id popup_id, String str);
-
-    TextInputResult TextInput(TextInputSettings settings, Rect r, Id id, String text);
-
-    bool TextInputDraggerInt(TextInputDraggerSettings settings,
-                             Rect r,
-                             Id id,
-                             int min,
-                             int max,
-                             int& value,
-                             int default_value = 0);
-    bool TextInputDraggerFloat(TextInputDraggerSettings settings,
-                               Rect r,
-                               Id id,
-                               f32 min,
-                               f32 max,
-                               f32& value,
-                               f32 default_value = 0);
-
-    struct DraggerResult {
-        bool value_changed {};
-        Optional<String> new_string_value {};
-    };
-    [[nodiscard]] DraggerResult TextInputDraggerCustom(TextInputDraggerSettings settings,
-                                                       Rect r,
-                                                       Id id,
-                                                       String display_string,
-                                                       f32 min,
-                                                       f32 max,
-                                                       f32& value,
-                                                       f32 default_value);
-
-    void Text(TextSettings settings, Rect r, String str);
-    void Textf(TextSettings settings, Rect r, char const* text, ...);
-    void Textf(TextSettings settings, Rect r, char const* text, va_list args);
+    // Clear the current active ID.
+    void ClearActive();
 
     //
-
-    f32 debug_y_pos = 0;
-    bool debug_ids = true;
-    bool debug_perf = true;
-    bool debug_windows = true;
-    bool debug_general = true;
-    bool debug_popup = true;
-    bool debug_show_register_widget_overlay = false;
-
-    void DebugTextItem(char const* label, char const* text, ...);
-    bool DebugTextHeading(bool& state, char const* text);
-
-    bool DebugButton(char const* text);
-    void DebugWindow(Rect r);
-
+    //
     //
 
-    bool
-    RegisterRegionForMouseTracking(Rect r,
-                                   bool check_intersection = true); // returns true if the widget is visible
-
-    // is_not_window_content == something that is not inside a window, but part of it e.g. scrollbar
-    bool SetHot(Rect r, Id id, bool32 is_not_window_content = false);
-    void SetActiveID(Id id, bool closes_popups, ButtonFlags button_flags, bool check_for_release);
-    void SetActiveIDZero();
-
-    // adds a window to the window array, returns the new (or found) window
-    Window* AddWindowIfNotAlreadyThere(Id id);
-    void SetHotRaw(Id id);
-
-    struct ScrollbarResult {
-        f32 new_scroll_value;
-        f32 new_scroll_max;
-    };
-    [[nodiscard]] ScrollbarResult Scrollbar(Window* window,
-                                            bool is_vertical,
-                                            f32 window_y,
-                                            f32 window_h,
-                                            f32 window_right,
-                                            f32 content_size_y,
-                                            f32 y_scroll_value,
-                                            f32 y_scroll_max,
-                                            f32 cursor_y);
-    void HandleHoverPopupOpeningAndClosing(Id id);
+    // Internal.
+    void UpdateExclusiveFocusViewport();
+    Viewport* FindOrCreateViewport(Id id);
     void OnScissorChanged() const;
 
-    //
-    //
-    //
-    static constexpr f64 k_text_cursor_blink_rate {0.5};
-    f64 hover_popup_delay {0.10}; // delay before popups close
-    f64 button_repeat_rate {0.1}; // rate at which button hold to repeat triggers
-    WindowSettings default_window_style = {};
-    f32 pixels_per_vw = 1.0f;
+    struct ActiveItem {
+        Id id = k_null_id;
+        bool just_activated = false;
+        Viewport* viewport = nullptr;
+        MouseButton mouse_button {};
+    };
 
-    graphics::DrawList* draw_list = nullptr; // Shortcut to the current window's draw list
+    bool debug_show_register_widget_overlay = false;
 
-    u32 frame_counter = 0;
-
-    graphics::DrawList* overlay_draw_list = {};
-
-    // we need a way for drawing functions that only have access to imgui::Context to get images from
-    // your external object
-    graphics::ImageID (*get_image_callback)(void*, int) = nullptr;
-    void* user_callback_data = nullptr;
-
-    char temp_buffer[1024];
-    Char32 w_temp_buffer[1024];
-
-    f32x2 cached_pos = {}; // misc cached variable
-
-    Window* debug_window_to_inspect = nullptr;
-
-    // input text
+    ArenaAllocator& scratch_arena;
 
     stb::STB_TexteditState stb_state = {};
-    Id active_text_input = 0;
-    Id prev_active_text_input = 0;
+    Id active_text_input = k_null_id;
+    Id prev_active_text_input = k_null_id;
     bool text_cursor_is_shown = true;
     bool tab_to_focus_next_input = false;
     bool tab_just_used_to_focus = false;
@@ -693,41 +742,35 @@ struct Context {
     int textedit_len = 0;
     bool active_text_input_shown = false; // Unfocus active input if it's not shown in the frame
 
-    // window
-    DynamicArray<Window*> sorted_windows {Malloc::Instance()}; // internal
-    DynamicArray<Window*> active_windows {Malloc::Instance()}; // internal
+    DynamicArray<Viewport*> sorted_viewports {Malloc::Instance()};
 
-    // storage of windows, grows whenever a different BeginWindow is called for the first time
-    // this array actually owns each window pointer, and will delete them when finished
-    DynamicArray<Window*> windows {Malloc::Instance()};
+    ArenaAllocator viewport_arena {Malloc::Instance(), 0, sizeof(Viewport) * 12};
 
-    DynamicArray<Window*> window_stack {Malloc::Instance()}; // grows to show the layering of the windows,
-                                                             // should always start and end frames empty
-    Window* curr_window = nullptr; // pushed/popped to represent what window is currently active
-    Window* hovered_window = nullptr; // at the beginning of the frame find which layer the mouse is over
-                                      // using the rects from last frame
-    Window* hovered_window_last_frame = nullptr;
-    Window* hovered_window_content =
-        nullptr; // used to differentiate between when the mouse is over the padding of the window
-    Window* focused_popup_window = nullptr;
-    Window* window_just_created = nullptr;
+    // Storage of viewports, grows whenever a different BeginViewport is called for the first time
+    // this array actually owns each viewport pointer.
+    DynamicArray<Viewport*> viewports {Malloc::Instance()};
 
-    // popups
-    // If there are multiple popups open they are in a single stack, with each having at most one child and
-    // one parent.
-    DynamicArray<Window*> persistent_popup_stack {Malloc::Instance()};
-    DynamicArray<Window*> current_popup_stack {Malloc::Instance()};
-    Id popup_menu_just_created =
-        0; // IMPROVE: could there be multiple popups created? in which case we might need to store
-           // a stack of ids in order to ensure DidPopupMenuJustOpen performs correctly
-    Id prev_popup_menu_just_created = 0;
-    Id prevprev_popup_menu_just_created = 0;
-    s64 popup_hover_counter = 0;
-    // ID next_idopens_apopup = 0; // push and pop this value so that any ids behave correctly with popup
-    // hover to open int64_t popup_opened_timer = 0; Window *new_popup_window = nullptr; ID
-    // popup_opened_timer_id = 0; ID id_that_just_opened_apopup = 0; bool inside_popup_triangle = false;
+    // Grows to show the layering of the viewports. Should always start and end frames empty if you are using
+    // correct matching begin/end calls.
+    DynamicArray<Viewport*> viewport_stack {Malloc::Instance()};
 
-    // scissor and layers
+    // At the beginning of the frame, find which layer the mouse is over using the rects from last frame.
+    Viewport* hovered_viewport = nullptr;
+    Viewport* hovered_viewport_last_frame = nullptr;
+    // Used to differentiate between when the mouse is over the padding of the viewport.
+    Viewport* hovered_viewport_content = nullptr;
+    Viewport* exclusive_focus_viewport = nullptr;
+    Viewport* viewport_just_created = nullptr;
+    Viewport* floating_exclusive_viewport = nullptr;
+    Viewport* floating_exclusive_viewport_last_frame = nullptr;
+
+    DynamicArray<Viewport*> open_popups {Malloc::Instance()};
+    DynamicArray<Viewport*> current_popup_stack {Malloc::Instance()};
+    Id popup_menu_just_opened = k_null_id;
+
+    DynamicArray<Viewport*> open_modals {Malloc::Instance()};
+    Id modal_just_opened = k_null_id;
+
     DynamicArray<DynamicArray<Rect>> scissor_stacks {Malloc::Instance()};
     Rect current_scissor_rect = {};
     bool scissor_rect_is_active = false;
@@ -735,268 +778,31 @@ struct Context {
     TimePoint button_repeat_counter = {};
     TimePoint cursor_blink_counter {};
 
-    // ids
+    // IDs
     //
-    // we use temp variables to add a frame of lag so that you can layer widgets
-    // on top of each other and the behaviour is as expected. if we don't do this,
-    // if you put a button on top of another button, they will both highlight on
-    // on hovering.
-    Id active_item_last_frame = 0;
-    Id hot_item_last_frame = 0;
-    Id hovered_item_last_frame = 0;
+    // We use temp variables to add a frame of lag so that you can layer widgets on top of each other and the
+    // behaviour is as expected. If we don't do this, if you put a button on top of another button, they will
+    // both highlight on hovering.
+    ActiveItem active_item_last_frame = {};
+    Id hot_item_last_frame = k_null_id;
+    Id hovered_item_last_frame = k_null_id;
 
-    Id hot_item = 0;
-    Id temp_hot_item = 0;
+    Id hot_item = k_null_id;
+    Id temp_hot_item = k_null_id;
+    CursorType temp_hot_item_cursor {};
     TimePoint time_when_turned_hot = {};
 
-    Id hovered_item = 0;
-    Id temp_hovered_item = 0;
+    Id hovered_item = k_null_id;
+    Id temp_hovered_item = k_null_id;
 
     ActiveItem active_item = {};
     ActiveItem temp_active_item = {};
 
-    Id keyboard_focus_item = 0;
+    Id keyboard_focus_item = k_null_id;
     Id temp_keyboard_focus_item = {};
     bool temp_keyboard_focus_item_is_popup = false;
-
-    Id dragged_id = 0;
-    int dragged_value = 0;
-    int dragged_identifier = 0;
-    int dragged_mouse = -1;
 
     DynamicArray<Id> id_stack {Malloc::Instance()};
 };
 
-f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 window_size, bool find_left_or_right);
-
-PUBLIC IMGUI_DRAW_WINDOW_BG(DefaultDrawWindowBackground) {
-    auto r = window->unpadded_bounds;
-    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), 0xff202020);
-    imgui.draw_list->AddRect(r.Min(), r.Max(), 0xffffffff);
-}
-
-PUBLIC IMGUI_DRAW_WINDOW_BG(DefaultDrawPopupBackground) {
-    auto r = window->unpadded_bounds;
-    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), 0xff202020);
-    imgui.draw_list->AddRect(r.Min(), r.Max(), 0xffffffff);
-}
-
-PUBLIC IMGUI_DRAW_WINDOW_SCROLLBAR(DefaultDrawWindowScrollbar) {
-    imgui.draw_list->AddRectFilled(bounds.Min(), bounds.Max(), 0xff404040);
-    u32 col = 0xffe5e5e5;
-    if (imgui.IsHot(id))
-        col = 0xffffffff;
-    else if (imgui.IsActive(id))
-        col = 0xffb5b5b5;
-    imgui.draw_list->AddRectFilled(handle_rect.Min(), handle_rect.Max(), col);
-}
-
-PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawButton) {
-    u32 col = 0xffd5d5d5;
-    if (imgui.IsHot(id)) col = 0xfff0f0f0;
-    if (imgui.IsActive(id)) col = 0xff808080;
-    if (state) col = 0xff808080;
-    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), col);
-
-    auto font_size = imgui.draw_list->renderer->CurrentFontSize();
-    auto pad = (f32)GuiIo().in.window_size.width / 200.0f;
-    imgui.draw_list->AddText(f32x2 {r.x + pad, r.y + (r.h / 2 - font_size / 2)}, 0xff000000, str);
-}
-
-PUBLIC IMGUI_DRAW_BUTTON(DefaultDrawPopupButton) {
-    (void)state;
-    u32 col = 0xffd5d5d5;
-    if (imgui.IsHot(id)) col = 0xfff0f0f0;
-    if (imgui.IsActive(id)) col = 0xff808080;
-    imgui.draw_list->AddRectFilled(r.Min(), r.Max(), col);
-
-    auto font_size = imgui.draw_list->renderer->CurrentFontSize();
-    imgui.draw_list->AddText(f32x2 {r.x + 4, r.y + ((r.h - font_size) / 2)}, 0xff000000, str);
-
-    imgui.draw_list->AddTriangleFilled({r.Right() - 14, r.y + 4},
-                                       {r.Right() - 4, r.y + (r.h / 2)},
-                                       {r.Right() - 14, r.y + r.h - 4},
-                                       0xff000000);
-}
-
-PUBLIC void DefaultDrawSlider(Context const& s, Rect r, Id, f32 percent, SliderSettings const*) {
-    s.draw_list->AddRectFilled(r.Min(), r.Max(), 0xffffffff);
-
-    s.draw_list->AddRectFilled(f32x2 {r.x, (r.y + r.h) - (percent * r.h)}, r.Max(), 0xff3f3f3f);
-}
-
-PUBLIC void DefaultDrawTextInput(Context const& s, Rect r, Id id, String text, TextInputResult* result) {
-    u32 col = 0xffffffff;
-    if (s.IsHot(id) && !s.TextInputHasFocus(id)) col = 0xffe5e5e5;
-    s.draw_list->AddRectFilled(r.Min(), r.Max(), col);
-
-    if (result->HasSelection()) {
-        TextInputResult::SelectionIterator it {*s.draw_list->renderer};
-        while (auto const sel_r = result->NextSelectionRect(it))
-            s.draw_list->AddRectFilled(*sel_r, 0xff0000ff);
-    }
-
-    if (result->show_cursor) {
-        auto cursor_r = result->GetCursorRect();
-        s.draw_list->AddRectFilled(cursor_r.Min(), cursor_r.Max(), 0xff000000);
-    }
-
-    s.draw_list->AddText(result->GetTextPos(), 0xff000000, text);
-}
-
-// These are functions instead of just constants so we can declare initial values with names
-// in c++ {} syntax you have can only initialise in order
-
-PUBLIC WindowSettings DefMainWindow() {
-    WindowSettings s = {};
-    s.flags = WindowFlags_NoPadding | WindowFlags_NoScrollbarX | WindowFlags_NoScrollbarY;
-    s.pad_top_left = {4, 4};
-    s.pad_bottom_right = {4, 4};
-    s.draw_routine_window_background = [](IMGUI_DRAW_WINDOW_BG_ARGS) {
-        auto r = window->unpadded_bounds;
-        imgui.draw_list->AddRectFilled(r.Min(), r.Max(), 0xff151515);
-    };
-    return s;
-}
-
-PUBLIC WindowSettings DefWindow() {
-    WindowSettings s = {};
-    s.flags = WindowFlags_NoScrollbarX | WindowFlags_NoScrollbarY;
-    s.pad_top_left = {4, 4};
-    s.pad_bottom_right = {4, 4};
-    s.scrollbar_padding = 4;
-    s.scrollbar_width = 8;
-    s.draw_routine_scrollbar = DefaultDrawWindowScrollbar;
-    s.draw_routine_window_background = DefaultDrawWindowBackground;
-    s.draw_routine_popup_background = DefaultDrawPopupBackground;
-    return s;
-}
-
-PUBLIC WindowSettings DefPopup() {
-    WindowSettings s = {};
-    s.flags = WindowFlags_AutoWidth | WindowFlags_AutoHeight | WindowFlags_AutoPosition;
-    s.pad_top_left = {4, 4};
-    s.pad_bottom_right = {4, 4};
-    s.scrollbar_padding = 4;
-    s.scrollbar_padding_top = 0;
-    s.scrollbar_width = 8;
-    s.draw_routine_scrollbar = DefaultDrawWindowScrollbar;
-    s.draw_routine_window_background = DefaultDrawWindowBackground;
-    s.draw_routine_popup_background = DefaultDrawPopupBackground;
-    return s;
-}
-
-PUBLIC ButtonSettings DefButton() {
-    ButtonSettings s = {};
-    s.flags = {.left_mouse = true, .triggers_on_mouse_up = true};
-    s.draw = DefaultDrawButton;
-    return s;
-}
-
-PUBLIC ButtonSettings DefToggleButton() {
-    ButtonSettings s = {};
-    s.flags = {.left_mouse = true, .triggers_on_mouse_up = true};
-    s.draw = DefaultDrawButton;
-    return s;
-}
-
-PUBLIC ButtonSettings DefButtonPopup() {
-    ButtonSettings s = {};
-    s.flags = {.left_mouse = true, .triggers_on_mouse_up = true};
-    s.draw = DefaultDrawPopupButton;
-    s.window = DefPopup();
-    return s;
-}
-
-PUBLIC SliderSettings DefSlider() {
-    SliderSettings s = {};
-    s.flags = {.slower_with_shift = true, .default_on_modifer = true};
-    s.sensitivity = 256;
-    s.draw = DefaultDrawSlider;
-    return s;
-}
-
-PUBLIC TextInputSettings DefTextInput() {
-    TextInputSettings s;
-    s.button_flags = {.left_mouse = true, .triggers_on_mouse_down = true};
-    s.text_flags = {.tab_focuses_next_input = true, .escape_unfocuses = true};
-    s.draw = DefaultDrawTextInput;
-    s.select_all_on_first_open = true;
-    return s;
-}
-
-PUBLIC TextInputDraggerSettings DefTextInputDraggerInt() {
-    TextInputDraggerSettings s;
-    s.slider_settings.flags = {.slower_with_shift = true, .default_on_modifer = true};
-    s.slider_settings.draw = [](IMGUI_DRAW_SLIDER_ARGS) {};
-    s.slider_settings.sensitivity = 256;
-    s.text_input_settings.button_flags = {.left_mouse = true,
-                                          .double_click = true,
-                                          .triggers_on_mouse_down = true};
-    s.text_input_settings.text_flags = {
-        .chars_decimal = true,
-        .tab_focuses_next_input = true,
-        .escape_unfocuses = true,
-    };
-    s.text_input_settings.draw = DefaultDrawTextInput;
-    s.text_input_settings.select_all_on_first_open = true;
-    s.format = "{}";
-    return s;
-}
-
-PUBLIC TextInputDraggerSettings DefTextInputDraggerFloat() {
-    TextInputDraggerSettings s = DefTextInputDraggerInt();
-    s.format = "{.1}";
-    return s;
-}
-
-PUBLIC TextSettings DefText() {
-    TextSettings s;
-    s.col = 0xffffffff;
-    s.draw = [](IMGUI_DRAW_TEXT_ARGS) {
-        auto font_size = imgui.draw_list->renderer->CurrentFontSize();
-        f32x2 pos;
-        pos.x = (f32)(int)r.x;
-        pos.y = r.y + ((r.h / 2) - (font_size / 2));
-        pos.y = (f32)(int)pos.y;
-        imgui.draw_list->AddText(imgui.draw_list->renderer->CurrentFont(), font_size, pos, col, str, 0);
-    };
-    return s;
-}
-
 } // namespace imgui
-
-namespace live_edit {
-
-extern bool g_high_contrast_gui; // IMPROVE: this is hacky
-
-} // namespace live_edit
-
-// IMPROVE: separate out possibly constexpr lookup from runtime calculation for better performance
-inline u32 LiveCol(imgui::Context const&, UiColMap type) {
-    auto const map_index = ToInt(type);
-
-    String const col_string = (live_edit::g_high_contrast_gui &&
-                               imgui::g_live_edit_values.ui_col_map[map_index].high_contrast_colour.size)
-                                  ? imgui::g_live_edit_values.ui_col_map[map_index].high_contrast_colour
-                                  : imgui::g_live_edit_values.ui_col_map[map_index].colour;
-
-    // NOTE: linear search but probably ok
-    for (auto const i : Range(k_max_num_colours))
-        if (String(imgui::g_live_edit_values.ui_cols[i].name) == col_string)
-            return imgui::g_live_edit_values.ui_cols[i].col;
-
-    return {};
-}
-
-inline f32 LiveSize(imgui::Context const& imgui, UiSizeId size_id) {
-    f32 res = 1;
-    switch (imgui::g_live_edit_values.ui_sizes_units[ToInt(size_id)]) {
-        case UiSizeUnit::Vw:
-            res = imgui.VwToPixels(imgui::g_live_edit_values.ui_sizes[ToInt(size_id)]);
-            break;
-        case UiSizeUnit::None: res = imgui::g_live_edit_values.ui_sizes[ToInt(size_id)]; break;
-        case UiSizeUnit::Count: PanicIfReached();
-    }
-    return res;
-}

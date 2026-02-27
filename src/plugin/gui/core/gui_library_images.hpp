@@ -1,0 +1,64 @@
+// Copyright 2025 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#pragma once
+
+#include "gui_framework/gui_imgui.hpp"
+#include "gui_framework/image.hpp"
+#include "sample_lib_server/sample_library_server.hpp"
+
+// Images for a particular sample library.
+struct LibraryImages {
+    struct LoadingBackgrounds {
+        Optional<ImageBytes> background {};
+        Optional<ImageBytes> blurred_background {};
+    };
+
+    using FutureIcon = Future<Optional<ImageBytes>>;
+    using FutureBackgrounds = Future<Optional<LibraryImages::LoadingBackgrounds>>;
+
+    enum class ImageType : u8 { Icon, Background, BlurredBackground, Count };
+
+    Optional<ImageID> icon {};
+    Optional<ImageID> background {};
+    Optional<ImageID> blurred_background {};
+    bool icon_missing {};
+    bool background_missing {};
+
+    // Futures cannot be moved around (for example when a hash table resizes), so they are allocated elsewhere
+    // and we have pointers to them.
+    FutureIcon* loading_icon;
+    FutureBackgrounds* loading_backgrounds;
+
+    // Per-frame state.
+    Bitset<ToInt(ImageType::Count)> needs_reload {};
+};
+
+struct LibraryImagesTable {
+    // Memory for library images is never freed until Shutdown. We do free the pixel data and GPU resources,
+    // but the Futures and table is never freed - they are small and very infrequently changing - simplifying
+    // lifetime management.
+    ArenaAllocator arena {PageAllocator::Instance()}; // Never reset.
+    HashTable<sample_lib::LibraryId, LibraryImages> table;
+};
+
+enum class LibraryImagesTypes : u8 {
+    Icon = 1 << 0,
+    Backgrounds = 1 << 1,
+    All = Icon | Backgrounds,
+};
+BITWISE_OPERATORS(LibraryImagesTypes)
+
+// Very efficiently retrieves library images for a given library - starting any asynchronous loading if
+// needed. Use needed_types to trigger loading only for the images you need.
+LibraryImages GetLibraryImages(LibraryImagesTable& table,
+                               imgui::Context& imgui,
+                               sample_lib::LibraryIdRef const& library_id,
+                               sample_lib_server::Server& server,
+                               LibraryImagesTypes needed_types = LibraryImagesTypes::All);
+
+void BeginFrame(LibraryImagesTable& table);
+void Shutdown(LibraryImagesTable& table);
+void InvalidateLibraryImages(LibraryImagesTable& table,
+                             sample_lib::LibraryIdRef library_id,
+                             Renderer& renderer);

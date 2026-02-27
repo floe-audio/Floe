@@ -41,9 +41,55 @@ jobs:
           if-no-files-found: error
           path: ${{ env.ZIG_RELEASE_FOLDER }}
 
+  # Windows codesigning requires signtool.exe with Azure Code Signing, so we need a Windows runner.
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+
+      - name: Install Microsoft signing tools via NuGet
+        shell: pwsh
+        run: |
+          $signDir = "$env:RUNNER_TEMP\sign"
+          New-Item -ItemType Directory -Force -Path $signDir
+          Invoke-WebRequest -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile "$signDir\nuget.exe"
+          & "$signDir\nuget.exe" install Microsoft.Windows.SDK.BuildTools -OutputDirectory $signDir -NonInteractive
+          & "$signDir\nuget.exe" install Microsoft.Trusted.Signing.Client -OutputDirectory $signDir -NonInteractive
+
+          $signtool = Get-ChildItem -Recurse -Filter "signtool.exe" "$signDir" | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          if (-not $signtool) { throw "Unable to find signtool.exe in NuGet packages" }
+          Write-Host "Adding to PATH: $($signtool.DirectoryName)"
+          echo $signtool.DirectoryName >> $env:GITHUB_PATH
+
+          $dlib = Get-ChildItem -Recurse -Filter "Azure.CodeSigning.Dlib.dll" "$signDir" | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          if (-not $dlib) { throw "Unable to find Azure.CodeSigning.Dlib.dll in NuGet packages" }
+          Write-Host "AZURE_DLIB_PATH=$($dlib.FullName)"
+          echo "AZURE_DLIB_PATH=$($dlib.FullName)" >> $env:GITHUB_ENV
+
+      - run: zig build release -Dbuild-mode=production -Dtargets=windows -Dfetch-floe-logos=true
+        env:
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_ENDPOINT: ${{ secrets.AZURE_ENDPOINT }}
+          AZURE_CODE_SIGNING_NAME: ${{ secrets.AZURE_CODE_SIGNING_NAME }}
+          AZURE_CERT_PROFILE_NAME: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-windows
+          if-no-files-found: error
+          path: ${{ env.ZIG_RELEASE_FOLDER }}
+
   # We can do the rest on a Linux runner.
   build-and-release:
-    needs: [build-macos]
+    needs: [build-macos, build-windows]
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
@@ -55,13 +101,10 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
 
-      - name: Build Linux and Windows releases
-        run: nix develop --command zig build release -Dbuild-mode=production -Dtargets=linux,windows -Dfetch-floe-logos=true
-        env:
-          WINDOWS_CODESIGN_CERT_PFX: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX }}
-          WINDOWS_CODESIGN_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PFX_PASSWORD }}
+      - name: Build Linux release
+        run: nix develop --command zig build release -Dbuild-mode=production -Dtargets=linux -Dfetch-floe-logos=true
 
-      - name: Download macOS artifacts
+      - name: Download macOS and Windows artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: final-*

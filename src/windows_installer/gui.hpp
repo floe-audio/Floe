@@ -32,7 +32,7 @@ enum class Alignment { Start, End };
 enum class TextAlignment { Left, Right, Centre };
 enum class LabelStyle { Regular, DullColour, Bold, Heading };
 enum class ButtonStyle { Push, ExpandCollapseToggle };
-struct Margins {
+struct WidgetMargins {
     u16 l {}, r {}, t {}, b {};
 };
 
@@ -53,7 +53,7 @@ enum class WidgetType {
 
 struct WidgetOptions {
     Optional<UiSize> fixed_size {};
-    Margins margins {};
+    WidgetMargins margins {};
     bool expand_x = false;
     bool expand_y = false;
     String text {};

@@ -3,7 +3,7 @@
 
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.11";
     flake-utils = {
       url = "github:numtide/flake-utils";
     };
@@ -22,23 +22,10 @@
       let
         pkgs = import nixpkgs { inherit system; };
         zigpkgs = zig.packages.${system};
-
-        # Optional validation tools
-        clap-val = import ./nix/clap-validator.nix { inherit pkgs; };
-        pluginval = import ./nix/pluginval.nix { inherit pkgs; };
       in
       {
         devShells.default = import ./nix/dev-shell.nix {
           inherit pkgs zigpkgs;
-        };
-
-        # Dev shell with validation tools included
-        devShells.with-validators = import ./nix/dev-shell.nix {
-          inherit pkgs zigpkgs;
-          extraPackages = [
-            clap-val
-            pluginval
-          ];
         };
       }
     );

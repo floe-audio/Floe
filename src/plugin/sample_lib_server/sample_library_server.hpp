@@ -14,6 +14,8 @@
 #include "common_infrastructure/sample_library/sample_library.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 
+#include "scan_folders.hpp"
+
 // Sample library server
 // A centralised manager for sample libraries that multiple plugins/systems can use at once.
 //
@@ -226,17 +228,6 @@ struct ListedLibrary {
 
 using LibrariesAtomicList = AtomicRefList<ListedLibrary>;
 
-struct ScanFolder {
-    enum class Source { AlwaysScannedFolder, ExtraFolder };
-    enum State : u32 { Inactive, NotScanned, RescanRequested, Scanning, ScannedSuccessfully, ScanFailed };
-    DynamicArray<char> path {Malloc::Instance()};
-    Source source {};
-    Atomic<u32> state {Inactive}; // Only modified under mutex, but atomic for futex waits.
-};
-
-// The first folder is the AlwaysScannedFolder.
-using ScanFolders = Array<MutexProtected<ScanFolder>, k_max_extra_scan_folders + 1>;
-
 struct QueuedRequest {
     RequestId id;
     LoadRequest request;
@@ -251,7 +242,7 @@ struct QueuedRequest {
 
 struct Server {
     Server(ThreadPool& pool,
-           String always_scanned_folder,
+           Optional<String> always_scanned_folder,
            ThreadsafeErrorNotifications& connection_independent_error_notif);
     ~Server();
 
@@ -262,7 +253,6 @@ struct Server {
     Atomic<u32> num_samples_loaded {};
 
     // private
-    detail::ScanFolders scan_folders;
     detail::LibrariesAtomicList libraries;
     Mutex libraries_by_id_mutex;
     DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesAtomicList::Node*> libraries_by_id {
@@ -270,7 +260,6 @@ struct Server {
     // Connection-independent errors. If we have access to a channel, we post to the channel's
     // error_notifications instead of this.
     ThreadsafeErrorNotifications& error_notifications;
-    Atomic<u32> libraries_loading {false};
     ThreadPool& thread_pool;
     Atomic<RequestId> request_id_counter {};
     ArenaAllocator channels_arena {Malloc::Instance()};
@@ -280,6 +269,7 @@ struct Server {
     Atomic<bool> end_thread {false};
     ThreadsafeQueue<detail::QueuedRequest> request_queue {PageAllocator::Instance()};
     Semaphore work_signaller {};
+    ScanFolders scan_folders;
     Atomic<bool> request_debug_dump_current_state {false};
 
     // IMPROVE: we can set limits on some things here: we know there's only going to be
@@ -378,11 +368,10 @@ void RescanFolder(Server& server, String folder);
 
 // Waits until all libraries have finished loading and all scan folders have finished scanning.
 // Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
-// If timeout is 0, just returns 'is loading' status immediately.
 // [threadsafe]
-bool WaitIfLibrariesAreLoading(Server& server, Optional<u32> timeout);
+bool WaitIfLibrariesAreScanning(Server& server, Optional<u32> timeout_ms);
 
-bool AreLibrariesLoading(Server& server);
+bool AreLibrariesScanning(Server& server);
 
 } // namespace sample_lib_server
 

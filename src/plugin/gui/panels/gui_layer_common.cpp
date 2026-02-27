@@ -1,0 +1,527 @@
+// Copyright 2026 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include "gui/panels/gui_layer_common.hpp"
+
+#include <IconsFontAwesome6.h>
+
+#include "common_infrastructure/audio_utils.hpp"
+
+#include "engine/engine.hpp"
+#include "engine/loop_modes.hpp"
+#include "gui/core/gui_library_images.hpp"
+#include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
+#include "gui/elements/gui_param_elements.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
+#include "gui/panels/gui_inst_browser.hpp"
+#include "gui_framework/gui_live_edit.hpp"
+#include "processor/layer_processor.hpp"
+#include "processor/processor.hpp"
+
+void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
+    auto& params = g.engine.processor.main_params;
+    auto const param = params.DescribedValue(layer.index, LayerParamIndex::LoopMode);
+    auto const desired_loop_mode = param.IntValue<param_values::LoopMode>();
+    auto const vol_env_on = layer.VolumeEnvelopeIsOn(params);
+    auto const actual_loop_behaviour = ActualLoopBehaviour(layer.instrument, desired_loop_mode, vol_env_on);
+    auto const default_loop_behaviour =
+        ActualLoopBehaviour(layer.instrument, param_values::LoopMode::InstrumentDefault, vol_env_on);
+
+    auto const default_mode_str =
+        (String)fmt::Format(g.scratch_arena, "Default: {}", default_loop_behaviour.value.name);
+
+    auto const row = DoMidPanelPrevNextRow(g.builder, parent, layout::k_fill_parent);
+
+    Optional<f32> new_val {};
+
+    // Text button showing current mode
+    auto const menu_btn = DoBox(g.builder,
+                                {
+                                    .parent = row,
+                                    .text = actual_loop_behaviour.value.short_name,
+                                    .text_colours =
+                                        ColSet {
+                                            .base = LiveColStruct(UiColMap::MidText),
+                                            .hot = LiveColStruct(UiColMap::MidTextHot),
+                                            .active = LiveColStruct(UiColMap::MidTextHot),
+                                        },
+                                    .text_justification = TextJustification::CentredLeft,
+                                    .text_overflow = TextOverflowType::ShowDotsOnRight,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, k_mid_button_height},
+                                    },
+                                    .tooltip = FunctionRef<String()> {[&]() -> String {
+                                        return fmt::Format(g.scratch_arena,
+                                                           "{}: {}\n\n{} {}",
+                                                           param.info.name,
+                                                           actual_loop_behaviour.value.name,
+                                                           actual_loop_behaviour.value.description,
+                                                           actual_loop_behaviour.reason);
+                                    }},
+                                    .button_behaviour = imgui::ButtonConfig {},
+                                });
+
+    // Popup menu
+    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
+    if (menu_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
+
+    // NOTE: bounds is a Box so the run lambda is deferred - capture by value, not by reference.
+    if (g.imgui.IsPopupMenuOpen(popup_id))
+        DoBoxViewport(
+            g.builder,
+            {
+                // This is a bit weird: it seems using a [=] capture-by-value here for the lambda results in
+                // the lambda not being a trivially copyable type for some reason. To work around this, we add
+                // this verbose lambda capture list.
+                .run =
+                    [desired_loop_mode = desired_loop_mode,
+                     vol_env_on = vol_env_on,
+                     default_mode_str = default_mode_str,
+                     &g,
+                     &layer](GuiBuilder&) {
+                        auto const popup_root = DoBox(g.builder,
+                                                      {
+                                                          .layout {
+                                                              .size = layout::k_hug_contents,
+                                                              .contents_direction = layout::Direction::Column,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+
+                        auto const default_loop_behaviour =
+                            ActualLoopBehaviour(layer.instrument,
+                                                param_values::LoopMode::InstrumentDefault,
+                                                vol_env_on);
+
+                        auto const param_index =
+                            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopMode);
+
+                        for (auto const i : Range(ToInt(param_values::LoopMode::Count))) {
+                            auto const mode = (param_values::LoopMode)i;
+                            bool const is_selected = mode == desired_loop_mode;
+                            auto const behaviour = ActualLoopBehaviour(layer.instrument, mode, vol_env_on);
+                            auto const valid = behaviour.is_desired;
+
+                            auto const item_text = (mode == param_values::LoopMode::InstrumentDefault)
+                                                       ? default_mode_str
+                                                       : param_values::k_loop_mode_strings[i];
+
+                            DynamicArray<char> tooltip_text {g.scratch_arena};
+                            if (!valid)
+                                fmt::Append(tooltip_text,
+                                            ICON_FA_REPEAT " Not available: {}\n\n",
+                                            behaviour.reason);
+                            dyn::AppendSpan(tooltip_text, LoopModeDescription(mode));
+                            if (mode == param_values::LoopMode::InstrumentDefault) {
+                                fmt::Append(tooltip_text, "\n\n{}'s default behaviour: \n", layer.InstName());
+                                dyn::AppendSpan(tooltip_text, default_loop_behaviour.value.description);
+                                if (auto const reason = default_loop_behaviour.reason; reason.size) {
+                                    dyn::Append(tooltip_text, ' ');
+                                    dyn::AppendSpan(tooltip_text, reason);
+                                }
+                            }
+
+                            auto const item = MenuItem(g.builder,
+                                                       popup_root,
+                                                       {
+                                                           .text = item_text,
+                                                           .tooltip = String(tooltip_text),
+                                                           .is_selected = is_selected,
+                                                           .mode = valid ? MenuItemOptions::Mode::Active
+                                                                         : MenuItemOptions::Mode::Dimmed,
+                                                       },
+                                                       (u64)i);
+                            if (item.button_fired && mode != desired_loop_mode)
+                                SetParameterValue(g.engine.processor, param_index, (f32)i, {});
+                        }
+                    },
+                .bounds = menu_btn,
+                .imgui_id = popup_id,
+                .viewport_config = k_default_popup_menu_viewport,
+            });
+
+    // Prev/next arrows (skip invalid modes)
+    auto const arrows = DoMidPanelPrevNextButtons(g.builder,
+                                                  row,
+                                                  {
+                                                      .prev_tooltip = "Previous loop mode"_s,
+                                                      .next_tooltip = "Next loop mode"_s,
+                                                  });
+
+    if (arrows.prev_fired || arrows.next_fired) {
+        f32 const step = arrows.prev_fired ? -1.0f : 1.0f;
+        auto check_val = (f32)param.IntValue<int>() + step;
+        for (auto _ : Range(ToInt(param_values::LoopMode::Count))) {
+            if (check_val < param.info.linear_range.min) check_val = param.info.linear_range.max;
+            if (check_val > param.info.linear_range.max) check_val = param.info.linear_range.min;
+
+            auto const mode = (param_values::LoopMode)(int)check_val;
+            if (mode != param_values::LoopMode::InstrumentDefault) {
+                if (auto const other = ActualLoopBehaviour(layer.instrument, mode, vol_env_on);
+                    other.is_desired && other.value.id != actual_loop_behaviour.value.id) {
+                    new_val = check_val;
+                    break;
+                }
+            }
+            check_val += step;
+        }
+    }
+
+    // Slider behaviour and parameter lifecycle
+    if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
+        auto const window_r = g.imgui.RegisterAndConvertRect(*viewport_r);
+
+        auto current = param.LinearValue();
+        if (g.imgui.SliderBehaviourRange({
+                .rect_in_window_coords = window_r,
+                .id = menu_btn.imgui_id,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = current,
+                .default_value = param.info.default_linear_value,
+                .cfg = {.sensitivity = 20},
+            })) {
+            new_val = current;
+        }
+
+        if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left))
+            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+        if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
+            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+        AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
+    }
+}
+
+static void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_index) {
+    auto const& layer_obj = g.engine.Layer(layer_index);
+    auto const right_click_id = SourceLocationHash() + layer_index;
+
+    if (auto const r = BoxRect(g.builder, selector_button)) {
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+        if (g.imgui.ButtonBehaviour(window_r,
+                                    selector_button.imgui_id,
+                                    {
+                                        .mouse_button = MouseButton::Right,
+                                        .event = MouseButtonEvent::Up,
+                                    })) {
+            g.imgui.OpenPopupMenu(right_click_id, selector_button.imgui_id);
+        }
+
+        if (g.imgui.IsPopupMenuOpen(right_click_id))
+            DoBoxViewport(
+                g.builder,
+                {
+                    .run =
+                        [&](GuiBuilder&) {
+                            auto const root = DoBox(g.builder,
+                                                    {
+                                                        .layout {
+                                                            .size = layout::k_hug_contents,
+                                                            .contents_direction = layout::Direction::Column,
+                                                            .contents_align = layout::Alignment::Start,
+                                                        },
+                                                    });
+                            if (MenuItem(g.builder,
+                                         root,
+                                         {
+                                             .text = "Unload instrument"_s,
+                                             .mode = layer_obj.instrument_id.tag == InstrumentType::None
+                                                         ? MenuItemOptions::Mode::Disabled
+                                                         : MenuItemOptions::Mode::Active,
+                                             .no_icon_gap = true,
+                                         })
+                                    .button_fired) {
+                                LoadInstrument(g.engine, layer_index, InstrumentType::None);
+                            }
+                        },
+                    .bounds = window_r,
+                    .imgui_id = right_click_id,
+                    .viewport_config = k_default_popup_menu_viewport,
+                });
+    }
+}
+
+void DoInstSelector(GuiState& g,
+                    GuiFrameContext const& frame_context,
+                    u8 layer_index,
+                    Box root,
+                    InstSelectorDrawBackground draw_background) {
+    auto& layer_obj = g.engine.Layer(layer_index);
+    auto const inst_name = layer_obj.InstName();
+
+    // Selector row container
+    auto const selector_box = DoBox(g.builder,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_padding {.r = 3.44f},
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                    });
+
+    // Background drawing
+    if (auto const r = BoxRect(g.builder, selector_box)) {
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+
+        if (draw_background) {
+            draw_background(window_r);
+        } else {
+            auto const col = LiveCol(UiColMap::MidDarkSurface);
+            auto const rounding = WwToPixels(k_corner_rounding);
+            g.imgui.draw_list->AddRectFilled(window_r, col, rounding);
+        }
+
+        // Timbre layer highlight
+        if (layer_obj.UsesTimbreLayering() &&
+            (g.timbre_slider_is_held ||
+             CcControllerMovedParamRecently(g.engine.processor, ParamIndex::MasterTimbre))) {
+            auto const rounding = WwToPixels(k_corner_rounding);
+            g.imgui.draw_list->AddRectFilled(window_r,
+                                             LiveCol(UiColMap::InstSelectorMenuBackHighlight),
+                                             rounding);
+        }
+
+        // Loading progress bar
+        if (auto percent =
+                g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer_index].Load(
+                    LoadMemoryOrder::Relaxed);
+            percent != -1) {
+            f32 const load_percent = (f32)percent / 100.0f;
+            auto const rounding = WwToPixels(k_corner_rounding);
+            auto const min = window_r.Min();
+            auto const max = f32x2 {window_r.x + Max(4.0f, window_r.w * load_percent), window_r.Bottom()};
+            g.imgui.draw_list->AddRectFilled(min, max, LiveCol(UiColMap::InstSelectorMenuLoading), rounding);
+            GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.1);
+        }
+    }
+
+    // Instrument name button (icon + text)
+    Optional<TextureHandle> icon_tex {};
+    if (layer_obj.instrument_id.tag == InstrumentType::Sampler) {
+        auto sample_inst_id = layer_obj.instrument_id.Get<sample_lib::InstrumentId>();
+        auto imgs = GetLibraryImages(g.library_images,
+                                     g.imgui,
+                                     sample_inst_id.library,
+                                     g.shared_engine_systems.sample_library_server,
+                                     LibraryImagesTypes::Icon);
+        if (imgs.icon) icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon);
+    }
+
+    auto const inst_button = DoBox(
+        g.builder,
+        {
+            .parent = selector_box,
+            .parent_dictates_hot_and_active = true,
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_direction = layout::Direction::Row,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+            },
+            .tooltip = FunctionRef<String()> {[&]() -> String {
+                switch (layer_obj.instrument.tag) {
+                    case InstrumentType::None: return "Select the instrument for this layer"_s;
+                    case InstrumentType::WaveformSynth:
+                        return fmt::Format(
+                            g.scratch_arena,
+                            "Current instrument: {}\nChange or remove the instrument for this layer",
+                            inst_name);
+                    case InstrumentType::Sampler: {
+                        auto const& sample = layer_obj.instrument.GetFromTag<InstrumentType::Sampler>();
+                        return fmt::Format(
+                            g.scratch_arena,
+                            "Change or remove the instrument for this layer\n\nCurrent instrument: {} from {} by {}.{}{}",
+                            inst_name,
+                            sample->instrument.library.name,
+                            sample->instrument.library.author,
+                            sample->instrument.description ? "\n\n" : "",
+                            sample->instrument.description ? sample->instrument.description : "");
+                    }
+                }
+                return {};
+            }},
+            .button_behaviour = imgui::ButtonConfig {},
+        });
+
+    // Icon box
+    if (icon_tex) {
+        auto const icon_box = DoBox(g.builder,
+                                    {
+                                        .parent = inst_button,
+                                        .parent_dictates_hot_and_active = true,
+                                        .layout {
+                                            .size = {22.54f, layout::k_fill_parent},
+                                        },
+                                    });
+        if (auto const r = BoxRect(g.builder, icon_box)) {
+            auto const icon_r = r->Reduced(r->h / 10);
+            g.imgui.draw_list->AddImageRect(*icon_tex, g.imgui.ViewportRectToWindowRect(icon_r));
+        }
+    }
+
+    // Text box
+    DoBox(g.builder,
+          {
+              .parent = inst_button,
+              .text = inst_name,
+              .text_colours =
+                  ColSet {
+                      .base = LiveColStruct(UiColMap::MidText),
+                      .hot = LiveColStruct(UiColMap::MidTextHot),
+                      .active = LiveColStruct(UiColMap::MidTextOn),
+                  },
+              .text_justification = TextJustification::CentredLeft,
+              .text_overflow = TextOverflowType::ShowDotsOnRight,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {layout::k_fill_parent, k_mid_button_height},
+                  .margins {.l = icon_tex ? 0.0f : 7.54f},
+              },
+          });
+
+    if (inst_button.button_fired) {
+        g.imgui.OpenModalViewport(g.inst_browser_state[layer_index].id);
+        if (auto const r = BoxRect(g.builder, inst_button))
+            g.inst_browser_state[layer_index].common_state.absolute_button_rect =
+                g.imgui.ViewportRectToWindowRect(*r);
+    }
+
+    // Right-click menu
+    DoInstSelectorRightClickMenu(g, inst_button, layer_index);
+
+    // Prev/next buttons
+    auto const prev_next = DoMidPanelPrevNextButtons(
+        g.builder,
+        selector_box,
+        {
+            .prev_tooltip =
+                "Load the previous instrument\n\nThis is based on the currently selected filters."_s,
+            .next_tooltip = "Load the next instrument\n\nThis is based on the currently selected filters."_s,
+        });
+
+    auto const make_browser_context = [&]() -> InstBrowserContext {
+        return {
+            .layer = layer_obj,
+            .sample_library_server = g.shared_engine_systems.sample_library_server,
+            .library_images = g.library_images,
+            .engine = g.engine,
+            .prefs = g.prefs,
+            .notifications = g.notifications,
+            .persistent_store = g.shared_engine_systems.persistent_store,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
+            .frame_context = frame_context,
+        };
+    };
+
+    if (prev_next.prev_fired) {
+        auto context = make_browser_context();
+        LoadAdjacentInstrument(context, g.inst_browser_state[layer_index], SearchDirection::Backward);
+    }
+    if (prev_next.next_fired) {
+        auto context = make_browser_context();
+        LoadAdjacentInstrument(context, g.inst_browser_state[layer_index], SearchDirection::Forward);
+    }
+
+    // Shuffle button
+    auto const shuffle_btn = DoMidPanelShuffleButton(
+        g.builder,
+        selector_box,
+        {.tooltip = "Load a random instrument.\n\nThis is based on the currently selected filters."_s});
+    if (shuffle_btn.button_fired) {
+        auto context = make_browser_context();
+        LoadRandomInstrument(context, g.inst_browser_state[layer_index]);
+    }
+}
+
+void DoInstrumentInfoStrip(GuiState& g,
+                           u8 layer_index,
+                           Box parent,
+                           InstrumentInfoStripOptions const& options) {
+    auto& layer_processor = g.engine.processor.layer_processors[layer_index];
+
+    if (layer_processor.instrument.tag == InstrumentType::None) return;
+
+    // Collect info segments to display, separated by dot dividers
+    DynamicArrayBounded<String, 6> segments {};
+
+    switch (layer_processor.instrument.tag) {
+        case InstrumentType::WaveformSynth: {
+            dyn::Append(segments, "Oscillator waveform"_s);
+            break;
+        }
+        case InstrumentType::Sampler: {
+            auto const& inst = layer_processor.instrument
+                                   .Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
+            auto const num_regions = inst->instrument.regions.size;
+            if (num_regions == 0) {
+                dyn::Append(segments, "Empty instrument"_s);
+            } else if (num_regions == 1) {
+                dyn::Append(segments, "Single sample"_s);
+                auto const& smpl = *inst->audio_datas[0];
+                dyn::Append(
+                    segments,
+                    fmt::Format(g.scratch_arena, "{.2} s", (f64)smpl.num_frames / (f64)smpl.sample_rate));
+                dyn::Append(segments,
+                            fmt::Format(g.scratch_arena,
+                                        "Root key {}",
+                                        NoteName((u7)inst->instrument.regions[0].root_key)));
+            } else {
+                dyn::Append(segments, "Multisample instrument"_s);
+                dyn::Append(segments, fmt::Format(g.scratch_arena, "{} samples", num_regions));
+            }
+            break;
+        }
+        case InstrumentType::None: break;
+    }
+
+    if (!segments.size) return;
+
+    auto const strip = DoBox(g.builder,
+                             {
+                                 .parent = parent,
+                                 .layout {
+                                     .size = {layout::k_fill_parent, 20},
+                                     .margins = options.margins,
+                                     .contents_gap = 6,
+                                     .contents_direction = layout::Direction::Row,
+                                     .contents_align = layout::Alignment::Start,
+                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                 },
+                             });
+
+    for (auto const i : Range(segments.size)) {
+        if (i > 0) {
+            auto const dot = DoBox(g.builder,
+                                   {
+                                       .parent = strip,
+                                       .id_extra = i,
+                                       .layout {
+                                           .size = {3, 3},
+                                       },
+                                   });
+            if (auto const r = BoxRect(g.builder, dot)) {
+                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+                g.imgui.draw_list->AddCircleFilled(window_r.Centre(), 1.5f, LiveCol(UiColMap::MidTextDimmed));
+            }
+        }
+
+        DoBox(g.builder,
+              {
+                  .parent = strip,
+                  .id_extra = i,
+                  .text = segments[i],
+                  .size_from_text = true,
+                  .font = FontType::Heading3,
+                  .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                  .text_justification = TextJustification::CentredLeft,
+              });
+    }
+}

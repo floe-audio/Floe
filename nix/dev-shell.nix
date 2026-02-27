@@ -34,18 +34,30 @@ pkgs.mkShell rec {
     pkgs.jq
     pkgs.just
     pkgs.reuse
-    pkgs.osslsigncode
     pkgs.wget
     pkgs.hunspell
     pkgs.hunspellDicts.en_GB-ise
     pkgs.lychee # link checker
     zigpkgs."0.14.0"
-    pkgs.zls
+    pkgs.zls_0_14
     pkgs.sentry-cli
     pkgs.nodejs_24 # For Docusaurus website development
 
     # dsymutil internally calls "lipo", so we have to make sure it's available under that name
     (pkgs.writeShellScriptBin "lipo" "llvm-lipo $@")
+
+    # Wrapper around zig build that suppresses noise and only shows errors
+    (pkgs.writeShellScriptBin "zb" ''
+      echo "Building..."
+      output=$(zig build --prominent-compile-errors "$@" 2>&1)
+      exit_code=$?
+      if [ $exit_code -eq 0 ]; then
+        echo "Build succeeded"
+      else
+        echo "$output" | sed -n '/Build Summary/,$p'
+      fi
+      exit $exit_code
+    '')
   ]
   ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
     pkgs.pkg-config
@@ -60,15 +72,16 @@ pkgs.mkShell rec {
     [ ]
     ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
       pkgs.alsa-lib
-      pkgs.xorg.libX11
-      pkgs.xorg.libXext
-      pkgs.xorg.libXcursor
-      pkgs.libGL
       pkgs.curl
-      pkgs.libGLU
       pkgs.glibc
+      pkgs.libGL
+      pkgs.libGLU
+      pkgs.libxcb
       pkgs.vulkan-headers
       pkgs.vulkan-loader
+      pkgs.xorg.libX11
+      pkgs.xorg.libXcursor
+      pkgs.xorg.libXext
     ];
 
   shellHook = ''

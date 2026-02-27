@@ -13,7 +13,7 @@
 
 #include "common_infrastructure/common_errors.hpp"
 
-#include "gui_framework/graphics.hpp"
+#include "gui_framework/renderer.hpp"
 
 static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, Allocator& allocator) {
     if (!image_data.size) return ErrorCode(CommonError::InvalidFileFormat);
@@ -288,7 +288,8 @@ ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
     // Shrink the image down for better speed. We are about to blur it, we don't need detail.
     auto const shrunk_width = Max(CheckedCast<u16>(original.size.width * options.downscale_factor),
                                   Min((u16)16, original.size.width));
-    auto const result = ResizeImage(original, shrunk_width, allocator).ValueOr(original.Clone(allocator));
+    auto const result =
+        ResizeImage(original, shrunk_width, allocator).OrElse([&] { return original.Clone(allocator); });
 
     // For ease-of-use and performance, we convert the image to f32x4 format
     auto const pixels = ImageBytesToImageF32(result, scratch_arena);
@@ -335,7 +336,7 @@ ImageBytes CreateBlurredLibraryBackground(ImageBytes original,
     return result;
 }
 
-graphics::ImageID CreateImageIdChecked(graphics::Renderer& renderer, ImageBytes const& px) {
+ImageID CreateImageIdChecked(Renderer& renderer, ImageBytes const& px) {
     ASSERT(px.rgba);
     auto const outcome = renderer.CreateImageID(px.rgba, px.size, k_rgba_channels);
     if (outcome.HasError()) {
@@ -349,7 +350,7 @@ graphics::ImageID CreateImageIdChecked(graphics::Renderer& renderer, ImageBytes 
     return outcome.Value();
 }
 
-f32x2 GetMaxUVToMaintainAspectRatio(graphics::ImageID img, f32x2 container_size) {
+f32x2 GetMaxUVToMaintainAspectRatio(ImageID img, f32x2 container_size) {
     if (!img.size.width || !img.size.height) return {1, 1};
     auto const img_w = (f32)img.size.width;
     auto const img_h = (f32)img.size.height;

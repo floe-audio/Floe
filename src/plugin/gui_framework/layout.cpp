@@ -11,6 +11,94 @@
 
 namespace layout {
 
+struct Item {
+    u32 flags;
+    Id first_child;
+    Id next_sibling;
+    f32x4 margins_ltrb;
+    f32x2 size;
+    f32x2 contents_gap; // gap between children
+    f32x4 container_padding_ltrb; // padding around all children
+};
+
+Item* GetItem(Context const& ctx, Id id) {
+    ASSERT(id != k_invalid_id && ToInt(id) < ctx.num_items);
+    return ctx.items + ToInt(id);
+}
+
+Id FirstChild(Context const& ctx, Id id) {
+    Item const* item = GetItem(ctx, id);
+    return item->first_child;
+}
+
+Id NextSibling(Context const& ctx, Id id) {
+    Item const* item = GetItem(ctx, id);
+    return item->next_sibling;
+}
+
+Rect GetRect(Context const& ctx, Id id) {
+    ASSERT(id != k_invalid_id && ToInt(id) < ctx.num_items);
+    auto const xywh = ctx.rects[ToInt(id)];
+    return {.xywh = xywh};
+}
+
+f32x2 GetSize(Context& ctx, Id item) { return GetItem(ctx, item)->size; }
+
+static void SetItemSize(Item& item, f32x2 size) {
+    item.size = size;
+
+    auto const w = size[0];
+    if (w == k_hug_contents)
+        item.flags &= ~flags::HorizontalSizeFixed;
+    else if (w == k_fill_parent) {
+        item.size[0] = 0;
+        item.flags &= ~flags::HorizontalSizeFixed;
+        item.flags |= flags::AnchorLeftAndRight;
+    } else {
+        ASSERT(w > 0);
+        item.flags |= flags::HorizontalSizeFixed;
+    }
+
+    auto const h = size[1];
+    if (h == k_hug_contents)
+        item.flags &= ~flags::VerticalSizeFixed;
+    else if (h == k_fill_parent) {
+        item.size[1] = 0;
+        item.flags &= ~flags::VerticalSizeFixed;
+        item.flags |= flags::AnchorTopAndBottom;
+    } else {
+        ASSERT(h > 0);
+        item.flags |= flags::VerticalSizeFixed;
+    }
+}
+
+void SetSize(Context& ctx, Id id, f32x2 size) { SetItemSize(*GetItem(ctx, id), size); }
+
+static void SetBehave(Item& item, u32 flags) {
+    ASSERT_EQ(flags & flags::ChildBehaviourMask, flags);
+    item.flags = (item.flags & ~flags::ChildBehaviourMask) | flags;
+}
+void SetBehave(Context& ctx, Id id, u32 flags) { SetBehave(*GetItem(ctx, id), flags); }
+
+static void SetContain(Item& item, u32 flags) {
+    ASSERT_EQ(flags & flags::ContainerMask, flags);
+    item.flags = (item.flags & ~flags::ContainerMask) | flags;
+}
+void SetContain(Context& ctx, Id id, u32 flags) { SetContain(*GetItem(ctx, id), flags); }
+
+static void SetMargins(Item& item, Margins m) {
+    ASSERT(All(m.lrtb >= 0));
+    ASSERT(All(m.lrtb < 65536)); // just some large value for sanity
+    auto const ltrb = __builtin_shufflevector(m.lrtb, m.lrtb, 0, 2, 1, 3);
+    item.margins_ltrb = ltrb;
+}
+void SetMargins(Context& ctx, Id id, Margins m) { SetMargins(*GetItem(ctx, id), m); }
+
+Margins GetMargins(Context& ctx, Id id) {
+    auto const ltrb = GetItem(ctx, id)->margins_ltrb;
+    return {.lrtb = __builtin_shufflevector(ltrb, ltrb, 0, 2, 1, 3)};
+}
+
 constexpr usize k_total_item_size = sizeof(Item) + sizeof(f32x4);
 
 static Span<u8> Allocation(Context& ctx) { return {(u8*)ctx.items, ctx.capacity * k_total_item_size}; }
@@ -76,6 +164,17 @@ void RunItem(Context& ctx, Id id) {
 
     CalcSize(ctx, id, 1);
     Arrange(ctx, id, 1);
+
+    if (ctx.snap_to_integers) {
+        // We round the edges (pos and pos+size) independently so that two elements sharing a float edge
+        // always snap to the same pixel.
+        for (auto const i : Range(ctx.num_items)) {
+            auto& r = ctx.rects[i];
+            auto const min = Round(r.xy);
+            auto const max = Round(r.xy + r.zw);
+            r = __builtin_shufflevector(min, max - min, 0, 1, 2, 3);
+        }
+    }
 }
 
 void RunContext(Context& ctx) {
@@ -206,6 +305,7 @@ static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id, u32 dim) {
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto max_child_size2 = 0.0f;
+    u32 num_lines = 1;
     auto child_id = item->first_child;
     while (child_id != k_invalid_id) {
         auto const child = GetItem(ctx, child_id);
@@ -213,12 +313,14 @@ static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id, u32 dim) {
         if (child->flags & flags::LineBreak) {
             max_child_size2 += max_child_size;
             max_child_size = 0;
+            ++num_lines;
         }
         auto const child_size = rect[dim] + rect[size_dim] + child->margins_ltrb[size_dim];
         max_child_size = Max(max_child_size, child_size);
         child_id = child->next_sibling;
     }
-    return max_child_size2 + max_child_size;
+    return max_child_size2 + max_child_size +
+           (num_lines > 1 ? (f32)(num_lines - 1) * item->contents_gap[dim] : 0);
 }
 
 static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id, u32 dim) {
@@ -262,8 +364,12 @@ static void CalcSize(Context& ctx, Id const id, u32 const dim) {
             increase[size_dim] =
                 child->next_sibling == k_invalid_id ? item->container_padding_ltrb[size_dim] : 0;
         } else {
-            increase[dim] = item->container_padding_ltrb[dim];
-            increase[size_dim] = item->container_padding_ltrb[size_dim];
+            // Cross-axis direction: for wrapping layouts, padding is added during arrangement instead
+            auto const is_wrapping = (item->flags & flags::Wrap) && (item->flags & flags::AutoLayout);
+            if (!is_wrapping) {
+                increase[dim] = item->container_padding_ltrb[dim];
+                increase[size_dim] = item->container_padding_ltrb[size_dim];
+            }
         }
         child->margins_ltrb += increase;
 
@@ -309,6 +415,14 @@ static void CalcSize(Context& ctx, Id const id, u32 const dim) {
             // NoLayout
             cal_size = MaxChildSize(ctx, id, dim);
             break;
+    }
+
+    // For wrapping layouts, cross-axis padding is not added to children's margins (it's applied during
+    // arrangement instead), so we need to include it in the container's calculated size.
+    {
+        auto const is_wrapping = (item->flags & flags::Wrap) && (item->flags & flags::AutoLayout);
+        if (is_wrapping && dim != item_layout_dim)
+            cal_size += item->container_padding_ltrb[dim] + item->container_padding_ltrb[size_dim];
     }
 
     // Set our output data size. Will be used by parent calc_size procedures., and by arrange procedures.
@@ -359,6 +473,40 @@ static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, u32 const dim, boo
                 child_id = child->next_sibling;
             }
             ++total;
+        }
+
+        // For wrapping layouts, adjust gaps and padding for line breaks
+        if (wrap) {
+            // Add start padding to first item of this line (if not the very first child overall)
+            if (start_child_id != item->first_child) {
+                auto* first_on_line = GetItem(ctx, start_child_id);
+                first_on_line->margins_ltrb[dim] += item->container_padding_ltrb[dim];
+                ctx.rects[ToInt(start_child_id)][dim] += item->container_padding_ltrb[dim];
+                used += item->container_padding_ltrb[dim];
+            }
+
+            // Find and handle last item on this line (if there's a next line)
+            if (end_child_id != k_invalid_id) {
+                auto scan_id = start_child_id;
+                Id last_on_line_id = k_invalid_id;
+                while (scan_id != end_child_id) {
+                    last_on_line_id = scan_id;
+                    auto* scan_child = GetItem(ctx, scan_id);
+                    scan_id = scan_child->next_sibling;
+                }
+
+                if (last_on_line_id != k_invalid_id) {
+                    auto* last_on_line = GetItem(ctx, last_on_line_id);
+
+                    // Remove the gap since next item is on a different line
+                    last_on_line->margins_ltrb[size_dim] -= item->contents_gap[dim];
+                    used -= item->contents_gap[dim];
+
+                    // Add end padding to last item of this line
+                    last_on_line->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
+                    used += item->container_padding_ltrb[size_dim];
+                }
+            }
         }
 
         auto extra_space = space - used;
@@ -505,6 +653,10 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
     auto const size_dim = dim + 2;
     auto* item = GetItem(ctx, id);
     auto offset = ctx.rects[ToInt(id)][dim];
+
+    // Add top/start padding for wrapping layouts in cross-axis
+    offset += item->container_padding_ltrb[dim];
+
     auto need_size = 0.0f;
     auto child_id = item->first_child;
     auto start_child_id = child_id;
@@ -512,7 +664,7 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
         Item* child = GetItem(ctx, child_id);
         if (child->flags & flags::LineBreak) {
             ArrangeOverlaySqueezedRange(ctx, dim, start_child_id, child_id, offset, need_size);
-            offset += need_size;
+            offset += need_size + item->contents_gap[dim];
             start_child_id = child_id;
             need_size = 0;
         }
@@ -523,6 +675,10 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
     }
     ArrangeOverlaySqueezedRange(ctx, dim, start_child_id, k_invalid_id, offset, need_size);
     offset += need_size;
+
+    // Add bottom/end padding for wrapping layouts in cross-axis
+    offset += item->container_padding_ltrb[size_dim];
+
     return offset;
 }
 
@@ -570,6 +726,45 @@ static void Arrange(Context& ctx, Id id, u32 dim) {
     }
 }
 
+Id CreateItem(Context& ctx, Allocator& a, ItemOptions const& options) {
+    auto const id = CreateItem(ctx, a);
+
+    if (ToInt(id) == 0) {
+        ASSERT(All(options.size != k_fill_parent));
+        ASSERT(All(options.size >= 0));
+        ASSERT(!options.parent);
+        ASSERT(options.anchor == Anchor::None);
+        ASSERT(!options.set_item_height_after_width_calculated);
+    }
+
+    if (auto const width = options.size.x; width > 0)
+        ASSERT(options.contents_padding.l + options.contents_padding.r < width);
+    if (auto const height = options.size.y; height > 0)
+        ASSERT(options.contents_padding.t + options.contents_padding.b < height);
+
+    auto& item = *GetItem(ctx, id);
+    item.container_padding_ltrb =
+        __builtin_shufflevector(options.contents_padding.lrtb, options.contents_padding.lrtb, 0, 2, 1, 3);
+    SetItemSize(item, options.size);
+    SetMargins(item, options.margins);
+    item.contents_gap = options.contents_gap;
+    item.flags |= ToInt(options.anchor) | (options.line_break ? flags::LineBreak : 0) |
+                  ToInt(options.contents_direction) | ToInt(options.contents_cross_axis_align) |
+                  ToInt(options.contents_align) | (options.contents_multiline ? flags::Wrap : flags::NoWrap) |
+                  (options.set_item_height_after_width_calculated ? flags::SetItemHeightAfterWidth : 0);
+    if (options.parent) {
+        Insert(ctx, *options.parent, id);
+        auto& parent = *GetItem(ctx, *options.parent);
+        // there's no harm in setting both Top | Left, even though only one will be valid depending on if the
+        // parent is a row or column.
+        if (parent.flags & flags::CrossAxisStart)
+            item.flags |= flags::AnchorTop | flags::AnchorLeft;
+        else if (parent.flags & flags::CrossAxisEnd)
+            item.flags |= flags::AnchorBottom | flags::AnchorRight;
+    }
+    return id;
+}
+
 } // namespace layout
 
 enum Colours : u32 {
@@ -614,6 +809,7 @@ static ErrorCodeOr<String> GenerateSvgContainerHugChildFill(ArenaAllocator& aren
                                          arena,
                                          {
                                              .size = layout::k_hug_contents,
+                                             .contents_gap = 3.0f,
                                              .contents_direction = layout::Direction::Column,
                                          });
 

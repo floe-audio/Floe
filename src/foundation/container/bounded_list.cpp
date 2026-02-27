@@ -12,7 +12,7 @@ TEST_CASE(TestBoundedList) {
     struct MallocedInt {
         NON_COPYABLE_AND_MOVEABLE(MallocedInt);
         MallocedInt(int i) {
-            data = (int*)GlobalAlloc({.size = sizeof(int)}).data;
+            data = (int*)GlobalAllocOversizeAllowed({.size = sizeof(int)}).data;
             *data = i;
         }
         ~MallocedInt() { GlobalFreeNoSize(data); }

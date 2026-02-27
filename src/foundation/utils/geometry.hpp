@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/container/optional.hpp"
 #include "foundation/utils/maths.hpp"
+#include "foundation/utils/simd.hpp"
 
 union UiSize {
     constexpr UiSize() : width(0), height(0) {}
@@ -45,6 +46,27 @@ PUBLIC constexpr UiSize ReduceClampedToZero(UiSize size, UiSize reduction) {
 PUBLIC constexpr UiSize ExpandChecked(UiSize size, UiSize expansion) {
     return {CheckedCast<u16>(size.width + expansion.width), CheckedCast<u16>(size.height + expansion.height)};
 }
+
+// Use with designated initialiser syntax. For example, set all: {.lrtb = 4.0f}, set lr: {.tb = 5.0f}.
+union Margins {
+    struct {
+        union {
+            struct {
+                f32 l;
+                f32 r;
+            };
+            f32x2 lr;
+        };
+        union {
+            struct {
+                f32 t;
+                f32 b;
+            };
+            f32x2 tb;
+        };
+    };
+    f32x4 lrtb {};
+};
 
 struct Rect {
     Rect Up(f32 offset) const { return {.xywh = {x, y - offset, w, h}}; }
@@ -97,6 +119,13 @@ struct Rect {
     }
     bool operator!=(Rect const& other) const { return !(*this == other); }
 
+    void Integerise() {
+        auto const min = Min();
+        auto const max = Max();
+        pos = Round(min);
+        size = Round(max - min);
+    }
+
     Rect Reduced(f32 val) const {
         Rect result = *this;
         result.pos += val;
@@ -123,6 +152,14 @@ struct Rect {
         result.pos -= val;
         result.size += val * 2;
         return result;
+    }
+
+    // Get a rectangle centered inside this one.
+    Rect CentredRect(f32x2 inner_rect_size) const {
+        return {
+            .pos = pos + ((size - inner_rect_size) / 2),
+            .size = inner_rect_size,
+        };
     }
 
     static bool Intersection(Rect& a, Rect b) {

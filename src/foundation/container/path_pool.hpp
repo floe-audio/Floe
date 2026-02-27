@@ -33,7 +33,7 @@ struct PathPool {
                     SinglyLinkedListRemove(free_list, free, prev_free);
                     SinglyLinkedListPrepend(used_list, free);
 
-                    // copy and return
+                    free->buffer_refs = 1;
                     CopyMemory(free->buffer.data, p.data, p.size);
                     return {free->buffer.data, p.size};
                 }

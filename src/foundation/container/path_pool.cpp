@@ -37,4 +37,26 @@ TEST_CASE(TestPathPool) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterPathPoolTests) { REGISTER_TEST(TestPathPool); }
+TEST_CASE(TestPathPoolFreeListReuseRefCounting) {
+    ArenaAllocator arena {PageAllocator::Instance()};
+    PathPool pool;
+
+    auto const s1 = pool.Clone("hello_world"_s, arena);
+    pool.Free(s1);
+
+    // Reuse from free_list, then clone again via StartsWithSpan match.
+    auto const s2 = pool.Clone("hello_world"_s, arena);
+    auto const s3 = pool.Clone("hello_world"_s, arena);
+    pool.Free(s3);
+
+    // s2 should still be valid; the entry must not have been moved back to the free_list.
+    pool.Clone("goodbye_wor"_s, arena);
+    CHECK_EQ(s2, "hello_world"_s);
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterPathPoolTests) {
+    REGISTER_TEST(TestPathPool);
+    REGISTER_TEST(TestPathPoolFreeListReuseRefCounting);
+}

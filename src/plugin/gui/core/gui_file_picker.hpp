@@ -1,0 +1,206 @@
+// Copyright 2026 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#pragma once
+#include "foundation/foundation.hpp"
+
+#include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/state/state_coding.hpp"
+
+#include "engine/engine.hpp"
+#include "engine/package_installation.hpp"
+#include "gui_framework/gui_frame.hpp"
+
+struct AddScanFolderFilePickerState {
+    ScanFolderType type {};
+    bool set_as_install_folder {};
+};
+
+enum class FilePickerStateType {
+    None,
+    AddScanFolder,
+    InstallPackage,
+    SavePreset,
+    LoadPreset,
+};
+
+using FilePickerUnion =
+    TaggedUnion<FilePickerStateType,
+                TypeAndTag<AddScanFolderFilePickerState, FilePickerStateType::AddScanFolder>>;
+
+struct FilePickerState {
+    FilePickerUnion data;
+};
+
+PUBLIC void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
+                                              prefs::Preferences const& prefs,
+                                              FloePaths const& paths,
+                                              AddScanFolderFilePickerState data) {
+    Optional<String> default_folder {};
+    if (auto const extra_paths = ExtraScanFolders(paths, prefs, data.type); extra_paths.size)
+        default_folder = extra_paths[0];
+
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::SelectFolder,
+            .title = ({
+                String s {};
+                switch (data.type) {
+                    case ScanFolderType::Libraries: s = "Select Libraries Folder"; break;
+                    case ScanFolderType::Presets: s = "Select Presets Folder"; break;
+                    case ScanFolderType::Count: PanicIfReached();
+                }
+                s;
+            }),
+            .default_folder = default_folder,
+            .filters = {},
+            .allow_multiple_selection = true,
+        }
+            .Clone(out.file_picker_options_arena);
+
+    state.data = data;
+}
+
+PUBLIC void OpenFilePickerInstallPackage(FilePickerState& state) {
+    static constexpr auto k_package_wildcards = Array {"*.floe-pkg"_s, "*.zip"_s};
+    static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
+        {
+            .description = "Floe Package"_s,
+            .wildcard_filters = k_package_wildcards,
+        },
+    });
+
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog = FilePickerDialogOptions {
+        .type = FilePickerDialogOptions::Type::OpenFile,
+        .title = "Select 1 or more Floe Package",
+        .default_folder =
+            KnownDirectory(out.file_picker_options_arena, KnownDirectoryType::Downloads, {.create = false}),
+        .filters = k_filters,
+        .allow_multiple_selection = true,
+    };
+
+    state.data = FilePickerStateType::InstallPackage;
+}
+
+static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode mode) {
+    String result = paths.always_scanned_folder[ToInt(ScanFolderType::Presets)];
+
+    if (auto const& last_path = paths.file_picker_last_path[ToInt(mode)]; last_path.size)
+        if (auto const dir = path::Directory(last_path)) result = *dir;
+
+    ASSERT(path::IsAbsolute(result));
+
+    return result;
+}
+
+PUBLIC void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths) {
+    static constexpr auto k_save_preset_wildcards = Array {String {"*" FLOE_PRESET_FILE_EXTENSION}};
+    static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
+        {
+            .description = "Floe Preset"_s,
+            .wildcard_filters = k_save_preset_wildcards,
+        },
+    });
+
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::SaveFile,
+            .title = "Save Floe Preset",
+            .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Save),
+            .default_filename = "untitled" FLOE_PRESET_FILE_EXTENSION,
+            .filters = k_filters,
+            .allow_multiple_selection = false,
+        }
+            .Clone(out.file_picker_options_arena);
+
+    state.data = FilePickerStateType::SavePreset;
+}
+
+PUBLIC void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths) {
+    static constexpr auto k_preset_wildcards = Array {"*.floe-*"_s, "*.mirage-*"_s};
+    static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
+        {
+            .description = "Floe Preset"_s,
+            .wildcard_filters = k_preset_wildcards,
+        },
+    });
+
+    auto& out = GuiIo().out;
+
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::OpenFile,
+            .title = "Load Floe Preset",
+            .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Load),
+            .filters = k_filters,
+            .allow_multiple_selection = false,
+        }
+            .Clone(out.file_picker_options_arena);
+
+    state.data = FilePickerStateType::LoadPreset;
+}
+
+// Ephemeral
+struct FilePickerContext {
+    prefs::Preferences& prefs;
+    FloePaths& paths;
+    package::InstallJobs& package_install_jobs;
+    ThreadPool& thread_pool;
+    ArenaAllocator& scratch_arena;
+    sample_lib_server::Server& sample_lib_server;
+    PresetServer& preset_server;
+    Engine& engine;
+};
+
+PUBLIC void CheckForFilePickerResults(GuiFrameInput const& frame_input,
+                                      FilePickerState& state,
+                                      FilePickerContext const& context) {
+    if (frame_input.file_picker_results.size == 0) return;
+    switch (state.data.tag) {
+        case FilePickerStateType::None: break;
+        case FilePickerStateType::AddScanFolder: {
+            auto const data = state.data.Get<AddScanFolderFilePickerState>();
+            for (auto const p : frame_input.file_picker_results) {
+                if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(p));
+                prefs::AddValue(context.prefs,
+                                ExtraScanFolderDescriptor(context.paths, data.type),
+                                (String)p);
+            }
+            if (data.set_as_install_folder)
+                prefs::SetValue(context.prefs,
+                                InstallLocationDescriptor(context.paths, context.prefs, data.type),
+                                (String)frame_input.file_picker_results.first->data);
+            break;
+        }
+        case FilePickerStateType::InstallPackage: {
+            for (auto const path : frame_input.file_picker_results) {
+                package::AddJob(context.package_install_jobs,
+                                path,
+                                context.prefs,
+                                context.paths,
+                                context.sample_lib_server,
+                                context.preset_server);
+            }
+            break;
+        }
+        case FilePickerStateType::SavePreset: {
+            dyn::Assign(context.paths.file_picker_last_path[ToInt(PresetFilePickerMode::Save)],
+                        frame_input.file_picker_results.first->data);
+            SaveCurrentStateToFile(context.engine, frame_input.file_picker_results.first->data);
+            break;
+        }
+        case FilePickerStateType::LoadPreset: {
+            dyn::Assign(context.paths.file_picker_last_path[ToInt(PresetFilePickerMode::Load)],
+                        frame_input.file_picker_results.first->data);
+            LoadPresetFromFile(context.engine, frame_input.file_picker_results.first->data);
+            break;
+        }
+    }
+    state.data = FilePickerStateType::None;
+}

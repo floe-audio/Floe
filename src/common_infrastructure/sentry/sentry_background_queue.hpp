@@ -40,7 +40,6 @@ Submit(ArenaAllocator& scratch_arena, Sentry& sentry, String envelope, EnvelopeW
         LogError(ModuleName::ErrorReporting, "Failed to send Sentry envelope: {}, {}", o.Error(), response);
         return k_nullopt;
     } else {
-        LogDebug(ModuleName::ErrorReporting, "Sentry response received: {}", response);
         return o.Value();
     }
 }

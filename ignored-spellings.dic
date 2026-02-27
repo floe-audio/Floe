@@ -183,6 +183,7 @@ allowfullscreen
 analog
 api
 aren
+args
 arm64
 arp
 arpeggiated
@@ -367,6 +368,7 @@ tooltips
 ub
 ul
 umami
+uncheck
 unchecking
 unintuitiveness
 unlink
@@ -397,6 +399,7 @@ xdg
 xmark
 xml
 xzf
+zb
 zenity
 zig
 zon

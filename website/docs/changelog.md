@@ -14,6 +14,24 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 1.2.0-beta.1
+Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.
+- GUI: improve crispness of all visuals
+- GUI: minor visual improvements throughout: even spacing, move layer menu labels to left, standardised colours, updated popup menus, legacy parameters and error panels to the new style
+- GUI: add instrument info strip with info about sample length, root key, number of samples
+- GUI: split loop controls into a new Engine tab, ready for new engine mode that need more space
+- GUI: notifications now appear on top of the window you have open and can be closed
+- Add 'Copy to Clipboard' for errors
+- Support installing packages with `.floe-pkg` as well as `.zip`
+- Help protect against rare edge-case crashes
+- Fix package installation errors due to a timeout
+- Fix rare memory bug
+- Fix possible memory leak related to background images
+- Fix possible rare crash when closing Floe
+- GUI: fix some strange behaviours when using the velocity curve map control
+- Dev-only: support a kind of hot-reload in the standalone version
+- File pickers: show both Mirage and Floe presets under the same file filter
+ 
 ## 1.1.2
 Bug-fixes and robustness. Includes all changes from 1.1.2-beta.1 and 1.1.2.beta.2, plus:
 - Fix Windows text input - no more duplicate letters, proper focusing and passing keyboard shortcuts back to DAW

@@ -25,7 +25,7 @@
 
 #include "engine/engine.hpp"
 #include "engine/shared_engine_systems.hpp"
-#include "gui/gui_prefs.hpp"
+#include "gui/core/gui_prefs.hpp"
 #include "gui_framework/app_window.hpp"
 #include "processing_utils/scoped_denormals.hpp"
 #include "processor/processor.hpp"
@@ -1339,6 +1339,8 @@ static bool ClapActivate(const struct clap_plugin* plugin,
 
         if (floe.active) return true;
 
+        ScopedNoDenormals const no_denormals;
+
         // The CLAP spec says neither min nor max can be 0. But we found this can be the case. It's easy
         // enough for us to handle this case so we do.
 
@@ -1687,7 +1689,7 @@ HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, pre
     auto const host_gui = (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI);
     if (!host_gui) return;
 
-    auto const& desc = SettingDescriptor(GuiSetting::WindowWidth);
+    auto const& desc = SettingDescriptor(GuiPreference::WindowWidth);
     if (key != desc.key) return;
 
     auto const new_width = ({

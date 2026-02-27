@@ -46,6 +46,8 @@ pub fn main() !u8 {
         return runCi(&context, .basic);
     } else if (std.mem.eql(u8, command, "website-promote-beta-to-stable")) {
         return runWebsitePromoteBetaToStable(&context);
+    } else if (std.mem.eql(u8, command, "remove-unused-gui-defs")) {
+        return runRemoveUnusedGuiDefs(&context);
     } else {
         std.log.err("Unknown command: {s}\n", .{command});
         return 1;
@@ -133,6 +135,145 @@ fn runFormat(context: *Context) !u8 {
         .Exited => |code| code,
         else => 1,
     };
+}
+
+fn runRemoveUnusedGuiDefs(context: *Context) !u8 {
+    const allocator = context.allocator;
+
+    // Find all C++ source files and read their contents.
+    const source_files = try std_extras.findSourceFiles(allocator, .{
+        .dir_path = "src",
+        .extensions = &.{ ".cpp", ".hpp", ".h", ".mm" },
+        .exclude_folders = &.{"shaders"},
+    });
+
+    var all_contents = std.ArrayList([]const u8).init(allocator);
+    for (source_files) |file| {
+        const full_path = try std.fs.path.join(allocator, &.{ "src", file });
+        const contents = std.fs.cwd().readFileAlloc(allocator, full_path, 1024 * 1024 * 4) catch continue;
+        try all_contents.append(contents);
+    }
+
+    const DefCheck = struct {
+        def_file: []const u8,
+        enum_name: []const u8,
+    };
+
+    const checks = [_]DefCheck{
+        .{
+            .def_file = "src/plugin/gui/live_edit_defs/gui_colour_map.def",
+            .enum_name = "UiColMap",
+        },
+    };
+
+    var total_removed: usize = 0;
+    const stdout = std.io.getStdOut().writer();
+
+    for (checks) |check| {
+        const removed = try removeUnusedDefEntries(allocator, all_contents.items, check.def_file, check.enum_name, stdout);
+        total_removed += removed;
+    }
+
+    if (total_removed == 0) {
+        try stdout.writeAll("No unused entries found.\n");
+    }
+
+    return 0;
+}
+
+fn removeUnusedDefEntries(
+    allocator: std.mem.Allocator,
+    all_contents: []const []const u8,
+    def_file: []const u8,
+    enum_name: []const u8,
+    stdout: anytype,
+) !usize {
+    const def_contents = std.fs.cwd().readFileAlloc(allocator, def_file, 1024 * 1024) catch |err| {
+        std.log.err("Failed to read {s}: {}\n", .{ def_file, err });
+        return error.ReadFailed;
+    };
+
+    const macro_prefix = "X(";
+
+    var kept_lines = std.ArrayList([]const u8).init(allocator);
+    var removed_count: usize = 0;
+    var total_entries: usize = 0;
+
+    var lines = std.mem.splitScalar(u8, def_contents, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+
+        if (!std.mem.startsWith(u8, trimmed, macro_prefix)) {
+            try kept_lines.append(line);
+            continue;
+        }
+
+        total_entries += 1;
+
+        // Parse enum name from the macro.
+        // New format: X("Category", EnumName, ...)
+        // Skip the first quoted category string and extract the enum name.
+        const after_prefix = trimmed[macro_prefix.len..];
+
+        // Find the end of the quoted category string
+        const quote1 = std.mem.indexOfScalar(u8, after_prefix, '"') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
+        const quote2 = std.mem.indexOfScalarPos(u8, after_prefix, quote1 + 1, '"') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
+
+        // Find the comma after the category
+        const comma1 = std.mem.indexOfScalarPos(u8, after_prefix, quote2 + 1, ',') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
+
+        const rest = after_prefix[comma1 + 1 ..];
+        const comma2 = std.mem.indexOfScalar(u8, rest, ',') orelse {
+            try kept_lines.append(line);
+            continue;
+        };
+        const combined = std.mem.trim(u8, rest[0..comma2], " ");
+
+        var found = false;
+        for (all_contents) |contents| {
+            if (std.mem.indexOf(u8, contents, combined) != null) {
+                found = true;
+                break;
+            }
+        }
+
+        if (found) {
+            try kept_lines.append(line);
+        } else {
+            try stdout.print("Removed: {s}::{s}\n", .{ enum_name, combined });
+            removed_count += 1;
+        }
+    }
+
+    if (removed_count > 0) {
+        // Write the filtered file back.
+        var file = try std.fs.cwd().createFile(def_file, .{});
+        defer file.close();
+        var buffered_writer = std.io.bufferedWriter(file.writer());
+        const writer = buffered_writer.writer();
+
+        for (kept_lines.items, 0..) |line, i| {
+            try writer.writeAll(line);
+            if (i < kept_lines.items.len - 1)
+                try writer.writeAll("\n");
+        }
+        try buffered_writer.flush();
+
+        try stdout.print("{d} unused {s} entries removed out of {d} total.\n\n", .{ removed_count, enum_name, total_entries });
+    } else {
+        try stdout.print("All {s} entries are used.\n", .{enum_name});
+    }
+
+    return removed_count;
 }
 
 fn runCreateGithubRelease(context: *Context) !u8 {
@@ -357,6 +498,7 @@ const CiReport = struct {
     mutex: std.Thread.Mutex,
     arena: std.heap.ArenaAllocator,
     tasks: std.ArrayListUnmanaged(CiTask),
+    any_timed_out: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
     pub fn returnCode(self: *const CiReport) u8 {
         for (self.tasks.items) |task| {
@@ -517,6 +659,11 @@ fn killProcess(child: *std.process.Child) !void {
 }
 
 fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
+    if (ci_report.any_timed_out.load(.acquire)) {
+        ciLog("Skipped", args, "a previous task timed out", .{});
+        return;
+    }
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer _ = arena.deinit();
     const allocator = arena.allocator();
@@ -562,6 +709,7 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     var timer = try std.time.Timer.start();
 
     try child.spawn();
+    ciLog("Spawned", args, "", .{});
     errdefer {
         _ = child.kill() catch {};
     }
@@ -603,22 +751,23 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
                 .allocator = allocator,
             },
             struct {
-                fn wait(process: *std.process.Child, done_inner: *std.atomic.Value(bool)) void {
+                fn wait(process: *std.process.Child, done_inner: *std.atomic.Value(bool), build_args: []const []const u8) void {
                     _ = process.wait() catch |err| {
-                        std.log.err("Failed to wait for process: {any}\n", .{err});
+                        ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
                     };
 
                     done_inner.store(true, .release);
                 }
             }.wait,
-            .{ &child, &done },
+            .{ &child, &done, args },
         );
 
         var timed_out = false;
         while (!done.load(.acquire)) {
             std.time.sleep(100 * std.time.ns_per_ms);
             if (timer.read() >= timeout_seconds * std.time.ns_per_s) {
-                std.log.warn("Process timed out after {d} seconds, killing...\n", .{timeout_seconds});
+                ciLog("Timeout", args, "timed out after {d} seconds, killing", .{timeout_seconds});
+                ci_report.any_timed_out.store(true, .release);
                 try killProcess(&child);
                 timed_out = true;
                 break;
@@ -656,12 +805,34 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     }
 }
 
+fn ciLog(prefix: []const u8, args: []const []const u8, comptime fmt: []const u8, fmt_args: anytype) void {
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+    const stderr = std.io.getStdErr().writer();
+    nosuspend {
+        stderr.print("[ci] {s}: zig build", .{prefix}) catch return;
+        for (args) |arg| {
+            stderr.print(" {s}", .{arg}) catch return;
+        }
+        if (fmt.len > 0) {
+            stderr.writeAll(" — ") catch return;
+            stderr.print(fmt, fmt_args) catch return;
+        }
+        stderr.writeAll("\n") catch return;
+    }
+}
+
 fn runZigBuild(ci_report: *CiReport, args: []const []const u8) void {
+    ciLog("Starting", args, "", .{});
+
     _ = tryRunZigBuild(ci_report, args) catch |err| {
-        std.log.err("runZigBuild failed: {any}\n", .{err});
+        ciLog("Error", args, "{any}", .{err});
         if (@errorReturnTrace()) |st|
             std.debug.dumpStackTrace(st.*);
+        return;
     };
+
+    ciLog("Finished", args, "", .{});
 }
 
 fn spawnZigBuild(pool: *std.Thread.Pool, wg: *std.Thread.WaitGroup, ci_report: *CiReport, args: []const []const u8) void {
@@ -679,6 +850,8 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         .arena = std.heap.ArenaAllocator.init(tsa.allocator()),
         .tasks = std.ArrayListUnmanaged(CiTask).empty,
     };
+
+    std.debug.print("[ci] CI started (level: {s})\n", .{@tagName(test_level)});
 
     // Start a simple HTTP server so that tests can use it.
     var http_server = TestHttpServer.start(tsa.allocator()) catch |err| {
@@ -807,7 +980,9 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         else => {},
     }
 
+    std.debug.print("[ci] Waiting for first batch of tasks...\n", .{});
     pool.waitAndWork(&wg);
+    std.debug.print("[ci] First batch complete.\n", .{});
 
     if (test_level == .full) {
         switch (builtin.os.tag) {
@@ -833,7 +1008,9 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
                     au_install_location,
                 });
 
+                std.debug.print("[ci] Waiting for second batch (macOS AU tests)...\n", .{});
                 pool.waitAndWork(&wg);
+                std.debug.print("[ci] Second batch complete.\n", .{});
             },
             else => {},
         }
@@ -866,10 +1043,13 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
         try stdout_buffered.flush();
     }
 
+    std.debug.print("[ci] Uploading error logs...\n", .{});
     // Upload logs
     _ = try runUploadErrors(context);
 
-    return ci_report.returnCode();
+    const ret = ci_report.returnCode();
+    std.debug.print("[ci] CI finished (return code: {d})\n", .{ret});
+    return ret;
 }
 
 fn auInstallLocation(context: *Context) ![]const u8 {

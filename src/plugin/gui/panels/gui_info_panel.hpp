@@ -1,0 +1,650 @@
+// Copyright 2025 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#pragma once
+#include "os/filesystem.hpp"
+#include "utils/error_notifications.hpp"
+
+#include "engine/check_for_update.hpp"
+#include "gui/core/gui_actions.hpp"
+#include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
+#include "gui/overlays/gui_confirmation_dialog_state.hpp"
+#include "gui/overlays/gui_notifications.hpp"
+#include "gui/panels/gui_info_panel_state.hpp"
+#include "gui_framework/gui_builder.hpp"
+#include "license_texts.h"
+#include "processor/voices.hpp"
+#include "sample_lib_server/sample_library_server.hpp"
+
+struct InfoPanelContext {
+    sample_lib_server::Server& server;
+    VoicePool& voice_pool;
+    ArenaAllocator& scratch_arena;
+    check_for_update::State& check_for_update_state;
+    prefs::Preferences& prefs;
+    Span<sample_lib_server::ResourcePointer<sample_lib::Library>> libraries;
+    ThreadsafeErrorNotifications& error_notifications;
+    Notifications& notifications;
+    ConfirmationDialogState& confirmation_dialog_state;
+};
+
+static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&) {
+    DynamicArrayBounded<char, 500> buffer {};
+
+    // sort libraries by name
+    Sort(context.libraries, [](auto a, auto b) { return a->name < b->name; });
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    // heading
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = fmt::Assign(buffer, "Installed Libraries ({})", context.libraries.size - 1),
+              .size_from_text = true,
+              .font = FontType::Heading1,
+          });
+
+    for (auto lib : context.libraries) {
+        if (lib->id == sample_lib::k_builtin_library_id) continue;
+
+        // create a 'card' container object
+        auto const card = DoBox(builder,
+                                {
+                                    .parent = root,
+                                    .id_extra = Hash(lib->id),
+                                    .border_colours = Col {.c = Col::Background2},
+                                    .round_background_corners = 0b1111,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_padding = {.lrtb = 8},
+                                        .contents_gap = 4,
+                                        .contents_direction = layout::Direction::Column,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                    },
+                                });
+        DoBox(builder,
+              {
+                  .parent = card,
+                  .text = fmt::JoinInline<128>(Array {lib->name, lib->author}, " - "),
+                  .size_from_text = true,
+                  .font = FontType::Heading2,
+              });
+        DoBox(builder,
+              {
+                  .parent = card,
+                  .text = lib->tagline,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+              });
+        if (lib->description) {
+            DoBox(builder,
+                  {
+                      .parent = card,
+                      .text = *lib->description,
+                      .wrap_width = k_wrap_to_parent,
+                      .size_from_text = true,
+                  });
+        }
+
+        auto do_text_line = [&](String text, u64 id_extra = SourceLocationHash()) {
+            DoBox(builder,
+                  {
+                      .parent = card,
+                      .id_extra = id_extra,
+                      .text = text,
+                      .size_from_text = true,
+                  });
+        };
+
+        do_text_line(fmt::Assign(buffer, "Version: {}", lib->minor_version));
+        if (auto const dir = path::Directory(lib->path)) do_text_line(fmt::Assign(buffer, "Folder: {}", dir));
+        do_text_line(fmt::Assign(buffer,
+                                 "Instruments: {} ({} samples, {} regions)",
+                                 lib->insts_by_id.size,
+                                 lib->num_instrument_samples,
+                                 lib->num_regions));
+        do_text_line(fmt::Assign(buffer, "Impulse responses: {}", lib->irs_by_id.size));
+        do_text_line(fmt::Assign(buffer, "Library format: {}", ({
+                                     String s {};
+                                     switch (lib->file_format_specifics.tag) {
+                                         case sample_lib::FileFormat::Mdata: s = "Mirage (MDATA)"; break;
+                                         case sample_lib::FileFormat::Lua: s = "Floe (Lua)"; break;
+                                     }
+                                     s;
+                                 })));
+
+        auto const button_row = DoBox(builder,
+                                      {
+                                          .parent = card,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_padding = {.t = 2},
+                                              .contents_gap = 10,
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::Start,
+                                          },
+                                      });
+        if (lib->library_url)
+            if (TextButton(builder, button_row, {.text = "Library Website", .tooltip = *lib->library_url}))
+                OpenUrlInBrowser(*lib->library_url);
+
+        if (lib->author_url)
+            if (TextButton(builder, button_row, {.text = "Author Website", .tooltip = *lib->author_url}))
+                OpenUrlInBrowser(*lib->author_url);
+
+        if (auto const dir = path::Directory(lib->path))
+            if (TextButton(
+                    builder,
+                    button_row,
+                    {
+                        .text = "Open Folder",
+                        .tooltip =
+                            (String)fmt::Assign(buffer, "Open {} in {}", *dir, GetFileBrowserAppName()),
+                    }))
+                OpenFolderInFileBrowser(*dir);
+
+        if (TextButton(
+                builder,
+                button_row,
+                {
+                    .text = "Uninstall",
+                    .tooltip = (String)fmt::Assign(buffer, "Send library '{}' to {}", lib->name, TRASH_NAME),
+                })) {
+            UninstallSampleLibrary(builder.imgui,
+                                   *lib,
+                                   context.confirmation_dialog_state,
+                                   context.error_notifications,
+                                   context.notifications);
+        }
+    }
+
+    // Make sure there's a gap at the end of the scroll region.
+    DoBox(builder,
+          {
+              .parent = root,
+              .layout {
+                  .size = {1, 1},
+              },
+          });
+}
+
+static void AboutInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&) {
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+    DoBox(
+        builder,
+        {
+            .parent = root,
+            .text =
+                "Floe v" FLOE_VERSION_STRING "\n\n"
+                "Floe is a free, open source audio plugin that lets you find, perform and transform sounds from sample libraries - from realistic instruments to synthesised tones.",
+            .wrap_width = k_wrap_to_parent,
+            .size_from_text = true,
+        });
+
+    {
+        auto const button_box = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_gap = k_default_spacing,
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::Start,
+                                          },
+                                      });
+
+        if (TextButton(builder,
+                       button_box,
+                       {.text = "Website & Documentation", .tooltip = (String)FLOE_HOMEPAGE_URL}))
+            OpenUrlInBrowser(FLOE_HOMEPAGE_URL);
+
+        if (TextButton(builder, button_box, {.text = "Source code", .tooltip = (String)FLOE_SOURCE_CODE_URL}))
+            OpenUrlInBrowser(FLOE_SOURCE_CODE_URL);
+    }
+
+    if (auto const new_version =
+            check_for_update::NewerVersionAvailable(context.check_for_update_state, context.prefs)) {
+        {
+            auto const text_row = DoBox(builder,
+                                        {
+                                            .parent = root,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = k_default_spacing / 4,
+                                                .contents_direction = layout::Direction::Row,
+                                                .contents_align = layout::Alignment::Start,
+                                            },
+                                        });
+            if (!new_version->is_ignored) {
+                DoBox(builder,
+                      {
+                          .parent = text_row,
+                          .background_fill_colours = Col {.c = Col::Red},
+                          .background_shape = BackgroundShape::Circle,
+                          .layout {
+                              .size = 5,
+                          },
+                      });
+            }
+            DoBox(builder,
+                  {
+                      .parent = text_row,
+                      .text = fmt::Format(builder.arena, "New version available: v{}", new_version->version),
+                      .size_from_text = true,
+                  });
+        }
+        {
+            auto const button_box = DoBox(builder,
+                                          {
+                                              .parent = root,
+                                              .layout {
+                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                  .contents_gap = k_default_spacing,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_align = layout::Alignment::Start,
+                                              },
+                                          });
+
+            if (!new_version->is_ignored) {
+                if (TextButton(
+                        builder,
+                        button_box,
+                        {.text = "Ignore", .tooltip = "Hide the red indicator dots for this version"_s}))
+                    check_for_update::IgnoreUpdatesUntilAfter(context.prefs, new_version->version);
+            }
+
+            if (TextButton(builder,
+                           button_box,
+                           {.text = "Download page", .tooltip = (String)FLOE_DOWNLOAD_URL}))
+                OpenUrlInBrowser(FLOE_DOWNLOAD_URL);
+
+            if (TextButton(builder, button_box, {.text = "Changelog", .tooltip = (String)FLOE_CHANGELOG_URL}))
+                OpenUrlInBrowser(FLOE_CHANGELOG_URL);
+        }
+    }
+}
+
+static void MetricsInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&) {
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    DynamicArrayBounded<char, 200> buffer {};
+
+    auto do_line = [&](String text, u64 id_extra = SourceLocationHash()) {
+        DoBox(builder,
+              {
+                  .parent = root,
+                  .id_extra = id_extra,
+                  .text = text,
+                  .layout =
+                      {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      },
+              });
+    };
+
+    do_line(fmt::Assign(buffer,
+                        "Active voices: {}",
+                        context.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)));
+
+    do_line(fmt::Assign(
+        buffer,
+        "Samples RAM usage (all instances): {}",
+        fmt::PrettyFileSize((f64)context.server.total_bytes_used_by_samples.Load(LoadMemoryOrder::Relaxed))));
+    do_line(fmt::Assign(buffer,
+                        "Num loaded instruments (all instances): {}",
+                        context.server.num_insts_loaded.Load(LoadMemoryOrder::Relaxed)));
+    do_line(fmt::Assign(buffer,
+                        "Num loaded samples (all instances): {}",
+                        context.server.num_samples_loaded.Load(LoadMemoryOrder::Relaxed)));
+}
+
+static void LegalInfoPanel(GuiBuilder& builder, InfoPanelContext&, InfoPanelState&) {
+    struct ThirdPartyLicence {
+        String name;
+        String copyright;
+        String licence;
+    };
+
+    static ThirdPartyLicence const k_third_party_licence_texts[] = {
+        {
+            .name = "pffft",
+            .copyright =
+                "Copyright (c) 2013  Julien Pommier ( pommier@modartt.com )\nCopyright (c) 2004 the University Corporation for Atmospheric Research (\"UCAR\")",
+            .licence = {fftpack_license, fftpack_license_size},
+        },
+        {
+            .name = "Roboto Font",
+            .copyright = "Copyright 2015 Google Inc. All Rights Reserved.",
+            .licence = {apache_2_0_license, apache_2_0_license_size},
+        },
+        {
+            .name = "LLVM",
+            .copyright = "Copyright (c) LLVM Project contributors",
+            .licence = {apache_2_0_license, apache_2_0_license_size},
+        },
+        {
+            .name = "Mada Font",
+            .copyright =
+                "Copyright 2015-2022 The Mada Project Authors (https://github.com/aliftype/mada), with Reserved Font Name \"Source\".",
+            .licence = {ofl_1_1_license, ofl_1_1_license_size},
+        },
+        {
+            .name = "Fira Sans Font",
+            .copyright = "Copyright (c) 2012-2015, The Mozilla Foundation and Telefonica S.A.",
+            .licence = {ofl_1_1_license, ofl_1_1_license_size},
+        },
+
+        {
+            .name = "Stillwell Major Tom Compressor",
+            .copyright = "Copyright 2006 Thomas Scott Stillwell",
+            .licence = {bsd_3_clause_license, bsd_3_clause_license_size},
+        },
+        {
+            .name = "Font Awesome Font",
+            .copyright = "Copyright (c) 2018, Font Awesome (https://fontawesome.com/)",
+            .licence = {ofl_1_1_license, ofl_1_1_license_size},
+        },
+        {
+            .name = "xxHash",
+            .copyright = "Copyright (C) 2012-2023 Yann Collet",
+            .licence = {bsd_2_clause_license, bsd_2_clause_license_size},
+        },
+        {
+            .name = "SerenityOS",
+            .copyright =
+                "Copyright (c) 2018-2021, Andreas Kling <kling@serenityos.org>\nCopyright (c) 2021, Ali Mohammad Pur <mpfard@serenityos.org>\nCopyright (c) 2021, Daniel Bertalan <dani@danielbertalan.dev>",
+            .licence = {bsd_2_clause_license, bsd_2_clause_license_size},
+        },
+        {
+            .name = "Vital",
+            .copyright = "Copyright 2013-2019 Matt Tytel",
+            .licence = {gpl_3_0_or_later_license, gpl_3_0_or_later_license_size},
+        },
+        {
+            .name = "JUCE core",
+            .copyright = "Copyright (c) 2022 - Raw Material Software Limited",
+            .licence = {isc_license, isc_license_size},
+        },
+        {
+            .name = "Pugl",
+            .copyright = "Copyright 2012-2023 David Robillard",
+            .licence = {isc_license, isc_license_size},
+        },
+        {
+            .name = "CLAP Wrapper",
+            .copyright = "Copyright (c) 2022 defiantnerd",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "CLAP",
+            .copyright = "Copyright (c) 2014...2022 Alexandre BIQUE",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "FFTConvolver",
+            .copyright = "Copyright (c) 2017 HiFi-LoFi",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "Sentry Native SDK",
+            .copyright = "Copyright (c) 2019 Sentry (https://sentry.io) and individual contributors",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "FLAC Codec",
+            .copyright =
+                "Copyright (C) 2000-2009  Josh Coalson\nCopyright (C) 2011-2023  Xiph.Org Foundation",
+            .licence = {bsd_3_clause_license, bsd_3_clause_license_size},
+        },
+        {
+            .name = "Layout",
+            .copyright =
+                "Copyright (c) 2016 Andrew Richards randrew@gmail.com\nCopyright (c) 2014 Leonard Ritter leonard.ritter@duangle.com",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "libbacktrace",
+            .copyright = "2012-2021 Free Software Foundation, Inc.\nWritten by Ian Lance Taylor, Google.",
+            .licence = {bsd_3_clause_license, bsd_3_clause_license_size},
+        },
+        {
+            .name = "Lua",
+            .copyright = "Copyright © 1994–2023 Lua.org, PUC-Rio.",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "miniz",
+            .copyright =
+                "Copyright 2013-2014 RAD Game Tools and Valve Software\nCopyright 2010-2014 Rich Geldreich and Tenacious Software LLC",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "VST3 base and VST3 public.sdk",
+            .copyright = "(c) 2023, Steinberg Media Technologies GmbH, All Rights Reserved",
+            .licence = {bsd_3_clause_license, bsd_3_clause_license_size},
+        },
+        {
+            .name = "VST3 SDK Interfaces",
+            .copyright = "(c) 2023, Steinberg Media Technologies GmbH, All Rights Reserved",
+            .licence = {gpl_3_0_or_later_license, gpl_3_0_or_later_license_size},
+        },
+        {
+            .name = "dear imgui",
+            .copyright = "Copyright (c) 2014-2024 Omar Cornut",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "VAStateVariableFilter",
+            .copyright = "Copyright (c) 2015 Jordan Harris",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "Zig",
+            .copyright = "Copyright (c) Zig contributors",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "Sane C++",
+            .copyright = "Copyright (c) 2022 Stefano Cristiano",
+            .licence = {mit_license, mit_license_size},
+        },
+        {
+            .name = "Folly",
+            .copyright = "Copyright (c) Meta Platforms, Inc. and affiliates.",
+            .licence = {apache_2_0_license, apache_2_0_license_size},
+        },
+    };
+
+    static bool open[ArraySize(k_third_party_licence_texts)];
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = 4,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    DoBox(
+        builder,
+        {
+            .parent = root,
+            .text =
+                "Floe is free and open source under the GPLv3 licence. We also use the following third-party code.",
+            .wrap_width = k_wrap_to_parent,
+            .size_from_text = true,
+        });
+
+    for (auto [i, txt] : Enumerate(k_third_party_licence_texts)) {
+        builder.imgui.PushId(i);
+        DEFER { builder.imgui.PopId(); };
+
+        auto const button = DoBox(builder,
+                                  {
+                                      .parent = root,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_gap = 4,
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                      .button_behaviour = imgui::ButtonConfig {},
+                                  });
+        DoBox(builder,
+              {
+                  .parent = button,
+                  .text = open[i] ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT,
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours =
+                      ColSet {
+                          .base {.c = Col::Text},
+                          .hot {.c = Col::Subtext0},
+                          .active {.c = Col::Text},
+                      },
+                  .parent_dictates_hot_and_active = true,
+              });
+        DoBox(builder,
+              {
+                  .parent = button,
+                  .text = txt.name,
+                  .size_from_text = true,
+              });
+
+        if (open[i]) {
+            DoBox(builder,
+                  {
+                      .parent = root,
+                      .text = txt.copyright,
+                      .wrap_width = k_wrap_to_parent,
+                      .size_from_text = true,
+                  });
+            DoBox(builder,
+                  {
+                      .parent = root,
+                      .text = txt.licence,
+                      .wrap_width = k_wrap_to_parent,
+                      .size_from_text = true,
+                  });
+        }
+
+        if (button.button_fired) {
+            auto new_state = !open[i];
+            for (auto& o : open)
+                o = false;
+            open[i] = new_state;
+        }
+    }
+}
+
+static void InfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState& state) {
+    constexpr auto k_tab_config = []() {
+        Array<ModalTabConfig, ToInt(InfoPanelState::Tab::Count)> tabs {};
+        for (auto const tab : EnumIterator<InfoPanelState::Tab>()) {
+            auto const index = ToInt(tab);
+            switch (tab) {
+                case InfoPanelState::Tab::Libraries:
+                    tabs[index] = {.icon = ICON_FA_BOOK_OPEN, .text = "Libraries"};
+                    break;
+                case InfoPanelState::Tab::About:
+                    tabs[index] = {.icon = ICON_FA_CIRCLE_INFO, .text = "About"};
+                    break;
+                case InfoPanelState::Tab::Legal:
+                    tabs[index] = {.icon = ICON_FA_GAVEL, .text = "Legal"};
+                    break;
+                case InfoPanelState::Tab::Metrics:
+                    tabs[index] = {.icon = ICON_FA_MICROCHIP, .text = "Metrics"};
+                    break;
+                case InfoPanelState::Tab::Count: PanicIfReached();
+            }
+            tabs[index].index = index;
+        }
+        return tabs;
+    }();
+
+    auto const root = DoModal(builder,
+                              {
+                                  .title = "Info"_s,
+                                  .tabs = k_tab_config,
+                                  .current_tab_index = ToIntRef(state.tab),
+                              });
+
+    using TabPanelFunction = void (*)(GuiBuilder&, InfoPanelContext&, InfoPanelState&);
+    DoBoxViewport(builder,
+                  {
+                      .run = ({
+                          TabPanelFunction f {};
+                          switch (state.tab) {
+                              case InfoPanelState::Tab::Libraries: f = LibrariesInfoPanel; break;
+                              case InfoPanelState::Tab::About: f = AboutInfoPanel; break;
+                              case InfoPanelState::Tab::Metrics: f = MetricsInfoPanel; break;
+                              case InfoPanelState::Tab::Legal: f = LegalInfoPanel; break;
+                              case InfoPanelState::Tab::Count: PanicIfReached();
+                          }
+                          [f, &context, &state](GuiBuilder& builder) { f(builder, context, state); };
+                      }),
+                      .bounds = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          },
+                                      }),
+                      .imgui_id = builder.imgui.MakeId((u64)state.tab + 999999),
+                      .viewport_config = k_default_modal_subviewport,
+                  });
+}
+
+PUBLIC void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState& state) {
+    if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
+    if (!state.opened_before) {
+        state.opened_before = true;
+        if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
+            state.tab = InfoPanelState::Tab::About;
+    }
+    DoBoxViewport(builder,
+                  {
+                      .run = [&context, &state](GuiBuilder& b) { InfoPanel(b, context, state); },
+                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                          WwToPixels(f32x2 {625, 443})),
+                      .imgui_id = state.k_panel_id,
+                      .viewport_config = k_default_modal_viewport,
+                  });
+}

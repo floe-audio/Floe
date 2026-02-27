@@ -140,7 +140,7 @@ static ErrorCodeOr<void> CheckNeededPackageCliArgs(Span<CommandLineArg const> ar
     }
 
     if (package_name_arg.was_provided) {
-        if (path::Equal(path::Extension(package_name_arg.values[0]), package::k_file_extension)) {
+        if (package::HasPackageExtension(package_name_arg.values[0])) {
             StdPrintF(StdStream::Err, "Error: don't include the file extension in the package name\n");
             return ErrorCode {CliError::InvalidArguments};
         }

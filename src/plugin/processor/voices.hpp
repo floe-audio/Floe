@@ -10,6 +10,7 @@
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 
+#include "granular.hpp"
 #include "processing_utils/adsr.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/filters.hpp"
@@ -20,7 +21,6 @@
 
 constexpr u32 k_max_num_active_voices = 256;
 constexpr u32 k_num_voices = 280;
-constexpr u32 k_max_num_voice_sound_sources = 4;
 constexpr f32 k_erroneous_sample_value = 1000.0f;
 
 struct VoiceProcessingController;
@@ -102,6 +102,8 @@ struct Voice {
     f32 aftertouch_multiplier = 1;
     bool disable_vol_env = false;
 
+    GrainPool grain_pool {};
+
     // Each voice has it's own buffer, allowing us to process voices in parallel.
     Array<f32x2, k_block_size_max> buffer {};
 };
@@ -116,9 +118,19 @@ struct VoiceEnvelopeMarkerForGui {
 };
 
 struct VoiceWaveformMarkerForGui {
-    u32 layer_index {};
     u16 position {};
     u16 intensity {};
+    u8 layer_index {};
+};
+
+struct GrainMarkerForGui {
+    u16 position {};
+};
+
+struct VoiceGrainMarkersForGui {
+    Array<GrainMarkerForGui, k_max_grains_per_voice> grains {};
+    u8 num_active {};
+    u8 layer_index {};
 };
 
 template <typename Type>
@@ -196,6 +208,7 @@ struct VoicePool {
     AtomicSwapBuffer<Array<VoiceWaveformMarkerForGui, k_num_voices>, true> voice_waveform_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_fil_env_markers_for_gui {};
+    AtomicSwapBuffer<Array<VoiceGrainMarkersForGui, k_num_voices>, true> grain_markers_for_gui {};
     Array<Atomic<s16>, 128> voices_per_midi_note_for_gui {};
     Array<Atomic<f32>, k_num_layers> last_velocity = {};
 
@@ -233,7 +246,6 @@ struct VoiceStartParams {
             f32 amp {};
         };
 
-        f32 initial_sample_offset_01 {};
         f32 initial_timbre_param_value_01 {};
         DynamicArrayBounded<Region, k_max_num_voice_sound_sources> voice_sample_params {};
     };

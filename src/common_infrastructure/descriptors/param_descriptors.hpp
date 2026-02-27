@@ -61,6 +61,16 @@ enum class LayerParamIndex : u16 {
     KeyRangeLowFade,
     KeyRangeHighFade,
 
+#if EXPERIMENTAL_GRANULAR
+    PlayMode,
+    GranularSpeed,
+    GranularPosition,
+    GranularGrains,
+    GranularLength,
+    GranularSpread,
+    GranularSmoothing,
+#endif
+
     Count,
 };
 
@@ -197,6 +207,7 @@ enum class ParameterModule : u8 {
     Loop,
     Filter,
     Playback,
+    Granular,
     Eq,
     VolEnv,
 
@@ -223,9 +234,9 @@ constexpr String k_parameter_module_strings[] = {
 
     "Effect",     "Master",     "Macro",
 
-    "LFO",        "Loop",       "Filter",  "Playback",    "EQ",     "Volume Envelope",
+    "LFO",        "Loop",       "Filter",  "Playback",    "Granular", "EQ",     "Volume Envelope",
 
-    "Distortion", "Reverb",     "Delay",   "StereoWiden", "Chorus", "Phaser",          "Convolution Reverb",
+    "Distortion", "Reverb",     "Delay",   "StereoWiden", "Chorus",   "Phaser", "Convolution Reverb",
     "Bitcrush",   "Compressor",
 
     "Band 1",     "Band 2",
@@ -499,6 +510,19 @@ constexpr auto k_monophonic_mode_strings = ArrayT<String>({
 });
 static_assert(k_monophonic_mode_strings.size == ToInt(MonophonicMode::Count));
 
+enum class PlayMode : u8 {
+    Standard,
+    GranularPlayback,
+    GranularFixed,
+    Count,
+};
+constexpr auto k_play_mode_strings = ArrayT<String>({
+    "Standard Playback",
+    "Granular Playback",
+    "Granular Fixed",
+});
+static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
+
 } // namespace param_values
 
 struct ParamDescriptor {
@@ -517,6 +541,7 @@ struct ParamDescriptor {
         DelayMode,
         VelocityMappingMode,
         MonophonicMode,
+        PlayMode,
         Count,
     };
 
@@ -724,6 +749,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::DelayMode: return k_delay_mode_strings;
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
         case ParamDescriptor::MenuType::MonophonicMode: return k_monophonic_mode_strings;
+        case ParamDescriptor::MenuType::PlayMode: return k_play_mode_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -1041,7 +1067,7 @@ consteval auto CreateParams() {
     };
 
     constexpr String k_macro_tooltip =
-        "A macro that can be assigned to any parameter in the instrument. The macro will affect all parameters that are assigned to it.";
+        "A macro that can be assigned to any parameter in the plugin. The macro will affect all parameters that are assigned to it.";
 
     mp(Macro1) = Args {
         .id = id(IdRegion::Master, 101), // never change
@@ -2194,6 +2220,70 @@ consteval auto CreateParams() {
             .gui_label = "Pitch Bend Range"_s,
             .tooltip = "The pitch range in semitones of the MIDI pitch wheel"_s,
         };
+#if EXPERIMENTAL_GRANULAR
+        lp(PlayMode) = Args {
+            .id = id(region, 56), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::PlayMode,
+                .default_val = (u32)param_values::PlayMode::Standard,
+            }),
+            .modules = {layer_module, ParameterModule::Playback},
+            .name = "Play Mode"_s,
+            .gui_label = "Mode"_s,
+            .tooltip = "How this layer plays its samples"_s,
+        };
+        lp(GranularSpeed) = Args {
+            .id = id(region, 58), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 100}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Speed"_s,
+            .gui_label = "Speed"_s,
+            .tooltip = "How fast the grain position moves through the sample"_s,
+        };
+        lp(GranularPosition) = Args {
+            .id = id(region, 59), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Position"_s,
+            .gui_label = "Position"_s,
+            .tooltip = "Where in the sample grains are sourced from"_s,
+        };
+        lp(GranularGrains) = Args {
+            .id = id(region, 60), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Grains"_s,
+            .gui_label = "Grains"_s,
+            .tooltip =
+                "Number of concurrent grains. Low values produce sparse textures, high values create dense clouds"_s,
+        };
+        lp(GranularLength) = Args {
+            .id = id(region, 57), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Length"_s,
+            .gui_label = "Length"_s,
+            .tooltip = "Duration of each grain snippet"_s,
+        };
+        lp(GranularSpread) = Args {
+            .id = id(region, 61), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Spread"_s,
+            .gui_label = "Spread"_s,
+            .tooltip =
+                "Region around the playhead where grains can start from. Small values focus grains near the playhead, large values spread them across a wider area"_s,
+        };
+        lp(GranularSmoothing) = Args {
+            .id = id(region, 62), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Smoothing"_s,
+            .gui_label = "Smoothing"_s,
+            .tooltip =
+                "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
+        };
+#endif
     }
 
     // =====================================================================================================

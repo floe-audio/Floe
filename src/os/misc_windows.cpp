@@ -112,14 +112,14 @@ bool IsRunningUnderWine() {
 
 void WindowsRaiseException(u32 code) { RaiseException(code, EXCEPTION_NONCONTINUABLE, 0, nullptr); }
 
-Memory GlobalAlloc(AllocOptions options) {
+Memory GlobalAllocOversizeAllowed(AllocOptions options) {
     ASSERT(IsPowerOfTwo(options.align));
     auto result = _aligned_malloc(options.size, options.align);
     TracyAlloc(result, options.size);
     return {result, options.size};
 }
 
-Memory GlobalRealloc(Memory allocation, ReallocOptions options) {
+Memory GlobalReallocOversizeAllowed(Memory allocation, ReallocOptions options) {
     TracyFree(allocation.data);
     auto result = _aligned_realloc(allocation.data, options.size, options.align);
     TracyAlloc(result, options.size);

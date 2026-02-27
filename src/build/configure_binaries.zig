@@ -25,19 +25,14 @@ pub fn maybeAddWindowsCodesign(
 
     const b = compile_step.step.owner;
 
-    const cert_pfx = std_extras.validEnvVar(
-        b,
-        "WINDOWS_CODESIGN_CERT_PFX",
-        .{
-            .decode_base64 = true,
-            .warn_desc = "skipping codesigning",
-            .step_to_put_warn = &compile_step.step,
-        },
-    ) orelse return binary_path;
+    // Windows codesigning requires signtool.exe with Azure Code Signing, which is only available on Windows.
+    if (builtin.os.tag != .windows) {
+        return binary_path;
+    }
 
-    const cert_password = std_extras.validEnvVar(
+    const azure_endpoint = std_extras.validEnvVar(
         b,
-        "WINDOWS_CODESIGN_CERT_PFX_PASSWORD",
+        "AZURE_ENDPOINT",
         .{
             .decode_base64 = false,
             .warn_desc = "skipping codesigning",
@@ -45,28 +40,67 @@ pub fn maybeAddWindowsCodesign(
         },
     ) orelse return binary_path;
 
-    const cert_lazy_path = b.addWriteFiles().add("cert.pfx", cert_pfx);
+    const azure_code_signing_name = std_extras.validEnvVar(
+        b,
+        "AZURE_CODE_SIGNING_NAME",
+        .{
+            .decode_base64 = false,
+            .warn_desc = "skipping codesigning",
+            .step_to_put_warn = &compile_step.step,
+        },
+    ) orelse return binary_path;
 
-    // We use osslsigncode instead of signtool.exe because it allows us to do this process cross-platform.
-    const cmd = b.addSystemCommand(&.{ "osslsigncode", "sign" });
+    const azure_cert_profile_name = std_extras.validEnvVar(
+        b,
+        "AZURE_CERT_PROFILE_NAME",
+        .{
+            .decode_base64 = false,
+            .warn_desc = "skipping codesigning",
+            .step_to_put_warn = &compile_step.step,
+        },
+    ) orelse return binary_path;
 
-    cmd.addArg("-pkcs12");
-    cmd.addFileArg(cert_lazy_path);
+    const azure_dlib_path = std_extras.validEnvVar(
+        b,
+        "AZURE_DLIB_PATH",
+        .{
+            .decode_base64 = false,
+            .warn_desc = "skipping codesigning",
+            .step_to_put_warn = &compile_step.step,
+        },
+    ) orelse return binary_path;
 
-    cmd.addArg("-pass");
-    cmd.addArg(cert_password);
+    const metadata_json = b.fmt(
+        \\{{
+        \\    "Endpoint": "{s}",
+        \\    "CodeSigningAccountName": "{s}",
+        \\    "CertificateProfileName": "{s}"
+        \\}}
+    , .{ azure_endpoint, azure_code_signing_name, azure_cert_profile_name });
 
-    cmd.addArgs(&.{ "-n", sign_info.description });
-    cmd.addArgs(&.{ "-i", constants.floe_homepage_url });
-    cmd.addArgs(&.{ "-t", "http://timestamp.sectigo.com" });
+    const metadata_path = b.addWriteFiles().add("metadata.json", metadata_json);
 
-    cmd.addArg("-in");
-    cmd.addFileArg(binary_path);
+    // Requires at least the .NET 6.0 runtime and signtool.exe version 10.0.2261.755 or later.
+    // signtool.exe modifies the file in-place, so we use InPlaceCmd to get proper input/output behaviour.
+    const cmd = std_extras.InPlaceCmd.create(b, .{
+        .name = "signtool-codesign",
+        .out_file_is_dir = false,
+        .out_file_name = compile_step.out_filename,
+    });
 
-    cmd.addArg("-out");
-    const signed_output_lazy_path = cmd.addOutputFileArg(compile_step.out_filename);
+    cmd.run.addArgs(&.{ "signtool.exe", "sign", "/v", "/debug", "/fd", "SHA256" });
+    // /td must be declared after /tr, otherwise the timestamp uses SHA1 instead of SHA256.
+    cmd.run.addArgs(&.{ "/tr", "http://timestamp.acs.microsoft.com", "/td", "SHA256" });
+    cmd.run.addArgs(&.{ "/d", sign_info.description, "/du", constants.floe_homepage_url });
+    cmd.run.addArg("/dlib");
+    cmd.run.addArg(azure_dlib_path);
+    cmd.run.addArg("/dmdf");
+    cmd.run.addFileArg(metadata_path);
+    cmd.addInputArg(binary_path, false);
 
-    return signed_output_lazy_path;
+    cmd.run.expectExitCode(0);
+
+    return cmd.output_file;
 }
 
 // These helpers are for dealing with Nix-related issues when we are building inside a Nix devshell, but the host is

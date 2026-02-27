@@ -230,13 +230,20 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
         PathArena temp_path_arena {Malloc::Instance()};
         DynamicArray<COMDLG_FILTERSPEC> win32_filters {temp_path_arena};
         win32_filters.Reserve(args.filters.size);
-        for (auto filter : args.filters) {
-            dyn::Append(
-                win32_filters,
-                COMDLG_FILTERSPEC {
-                    .pszName = WidenAllocNullTerm(temp_path_arena, filter.description).Value().data,
-                    .pszSpec = WidenAllocNullTerm(temp_path_arena, filter.wildcard_filter).Value().data,
-                });
+
+        // Windows expects semicolon-separated patterns: "*.ext1;*.ext2"
+        for (auto const& filter : args.filters) {
+            DynamicArray<char> combined_spec {temp_path_arena};
+            for (auto const [index, w] : Enumerate(filter.wildcard_filters)) {
+                if (index) dyn::AppendSpan(combined_spec, ";"_s);
+                dyn::AppendSpan(combined_spec, w);
+            }
+
+            dyn::Append(win32_filters,
+                        COMDLG_FILTERSPEC {
+                            .pszName = WidenAllocNullTerm(temp_path_arena, filter.description).Value().data,
+                            .pszSpec = WidenAllocNullTerm(temp_path_arena, combined_spec).Value().data,
+                        });
         }
         f->SetFileTypes((UINT)win32_filters.size, win32_filters.data);
     }

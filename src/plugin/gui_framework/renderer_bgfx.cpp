@@ -8,6 +8,8 @@
 #include <bgfx/bgfx.h>
 #include <bgfx/embedded_shader.h>
 
+#include "gui_framework/fonts.hpp"
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Weverything"
 #include <bx/math.h>
@@ -18,8 +20,9 @@
 #include "utils/debug/tracy_wrapped.hpp"
 #include "utils/logger/logger.hpp"
 
-#include "bgfx_init_window.hpp"
-#include "graphics.hpp"
+#include "draw_list.hpp"
+#include "renderer.hpp"
+#include "renderer_bgfx_init_window.hpp"
 #include "shaders/fs_draw_list.bin.h"
 #include "shaders/vs_draw_list.bin.h"
 
@@ -28,8 +31,6 @@ static bgfx::EmbeddedShader const g_embedded_shaders[] = {
     BGFX_EMBEDDED_SHADER(vs_draw_list),
     BGFX_EMBEDDED_SHADER_END(),
 };
-
-namespace graphics {
 
 static constexpr ErrorCodeCategory k_bgfx_error_category = {
     .category_id = "BGFX",
@@ -278,36 +279,36 @@ struct BgfxRenderer : public Renderer {
 
     void OnResize(UiSize size, void*) override { bgfx::reset(size.width, size.height, k_reset_flags); }
 
-    ErrorCodeOr<void> CreateFontTexture() override {
+    ErrorCodeOr<void> CreateFontTexture(FontAtlas& atlas) override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
-        ASSERT(!bgfx::isValid(font_texture));
-        ASSERT(fonts.fonts.size > 0);
+        ASSERT(font_texture != invalid_texture);
+        ASSERT(atlas.fonts.size > 0);
 
         // Build texture atlas
         unsigned char* pixels = nullptr;
         int width = 0;
         int height = 0;
         int bytes_per_pixel = 0;
-        fonts.GetTexDataAsRGBA32(&pixels, &width, &height, &bytes_per_pixel);
+        atlas.GetTexDataAsRGBA32(&pixels, &width, &height, &bytes_per_pixel);
         ASSERT(pixels != nullptr);
         ASSERT(bytes_per_pixel == 4);
 
         LogDebug(ModuleName::Bgfx, "Creating font texture: {}x{}", width, height);
 
-        font_texture = bgfx::createTexture2D((u16)width,
-                                             (u16)height,
-                                             false,
-                                             1,
-                                             bgfx::TextureFormat::RGBA8,
-                                             0,
-                                             bgfx::copy(pixels, (u32)(width * height * 4)));
+        auto const tex = bgfx::createTexture2D((u16)width,
+                                               (u16)height,
+                                               false,
+                                               1,
+                                               bgfx::TextureFormat::RGBA8,
+                                               0,
+                                               bgfx::copy(pixels, (u32)(width * height * 4)));
 
-        if (!bgfx::isValid(font_texture)) return Error("failed to create font texture");
+        if (!bgfx::isValid(tex)) return Error("failed to create font texture");
 
-        fonts.tex_id = (TextureHandle)font_texture.idx;
+        font_texture = (TextureHandle)tex.idx;
 
-        fonts.ClearTexData();
+        atlas.ClearTexData();
 
         LogDebug(ModuleName::Bgfx, "Font texture created successfully");
         return k_success;
@@ -317,14 +318,12 @@ struct BgfxRenderer : public Renderer {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
-        if (bgfx::isValid(font_texture)) {
-            bgfx::destroy(font_texture);
-            font_texture = BGFX_INVALID_HANDLE;
-            fonts.tex_id = BGFX_INVALID_HANDLE;
+        if (font_texture != invalid_texture) {
+            bgfx::TextureHandle const tex {CheckedCast<u16>(font_texture)};
+            bgfx::destroy(tex);
+            font_texture = invalid_texture;
             LogDebug(ModuleName::Bgfx, "Font texture destroyed");
         }
-
-        fonts.Clear();
     }
 
     ErrorCodeOr<TextureHandle> CreateTexture(u8 const* data, UiSize size, u16 bytes_per_pixel) override {
@@ -459,7 +458,7 @@ struct BgfxRenderer : public Renderer {
             for (auto const& cmd : draw_list->cmd_buffer) {
                 if (cmd.elem_count == 0) continue;
 
-                auto th = font_texture;
+                bgfx::TextureHandle th = {CheckedCast<u16>(font_texture)};
                 if (auto const cmd_tex = bgfx::TextureHandle {CheckedCast<u16>(cmd.texture_id)};
                     bgfx::isValid(cmd_tex))
                     th = {cmd_tex};
@@ -490,11 +489,8 @@ struct BgfxRenderer : public Renderer {
 
     static inline u16 const k_view_id = 200;
 
-    bgfx::TextureHandle font_texture = BGFX_INVALID_HANDLE;
     bgfx::FrameBufferHandle window_framebuffer = BGFX_INVALID_HANDLE;
     UiSize last_window_size {0, 0};
 };
 
 Renderer* CreateNewRendererBgfx() { return new BgfxRenderer(); }
-
-} // namespace graphics

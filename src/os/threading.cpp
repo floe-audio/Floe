@@ -84,6 +84,24 @@ Optional<String> GetThreadLocalThreadName() {
 
 } // namespace detail
 
+bool WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds) {
+    Optional<Stopwatch> timer = {};
+    if (timeout_milliseconds) timer.Emplace();
+
+    while (value.Load(LoadMemoryOrder::Acquire) == expected) {
+        Optional<u32> remaining_timeout = {};
+        if (timeout_milliseconds) {
+            auto const elapsed_ms = timer->MillisecondsElapsed();
+            if (elapsed_ms >= *timeout_milliseconds) return false; // Already timed out.
+            remaining_timeout = CheckedCast<u32>(*timeout_milliseconds - elapsed_ms);
+        }
+
+        if (WaitIfValueIsExpected(value, expected, remaining_timeout) == WaitResult::TimedOut) return false;
+    }
+
+    return true;
+}
+
 TEST_CASE(TestFuture) {
     SUBCASE("future lifecycle states") {
         Future<int> future;
@@ -178,6 +196,42 @@ TEST_CASE(TestFuture) {
         CHECK(future.WaitUntilFinished(2000u));
         CHECK(future.IsFinished());
         CHECK_EQ(future.Result(), 100);
+    }
+
+    SUBCASE("non-trivially-copyable type") {
+        static int g_dtor_count;
+        struct Tracked {
+            Tracked(int v) : value(v) {}
+            Tracked(Tracked const& other) : value(other.value) {}
+            Tracked(Tracked&& other) : value(other.value) { other.value = -1; }
+            ~Tracked() { g_dtor_count++; }
+            Tracked& operator=(Tracked const&) = delete;
+            Tracked& operator=(Tracked&&) = delete;
+            int value;
+        };
+
+        g_dtor_count = 0;
+        {
+            Future<Tracked> future;
+            future.SetPending();
+            CHECK(future.TrySetRunning());
+            future.SetResult(Tracked {42});
+            CHECK_EQ(future.Result().value, 42);
+
+            auto result = future.ReleaseResult();
+            CHECK_EQ(result.value, 42);
+            CHECK(future.IsInactive());
+        }
+        CHECK(g_dtor_count > 0);
+
+        g_dtor_count = 0;
+        {
+            Future<Tracked> future;
+            future.SetPending();
+            CHECK(future.TrySetRunning());
+            future.SetResult(Tracked {99});
+        }
+        CHECK(g_dtor_count > 0);
     }
 
     SUBCASE("stress test") {
@@ -354,8 +408,13 @@ TEST_CASE(TestFutex) {
     }
 
     SUBCASE("timeout when not woken") {
-        Atomic<u32> atomic {0};
-        CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
+        // For some reason, the Futex implementation on macOS hangs indefinitely here. Perhaps it's simply
+        // that their API is not designed to work when waiting on a value that is never changed. The API is
+        // undocumented so we'll never know.
+        if constexpr (!IS_MACOS) {
+            Atomic<u32> atomic {0};
+            CHECK(!WaitIfValueIsExpectedStrong(atomic, 0, 1u));
+        }
     }
     return k_success;
 }

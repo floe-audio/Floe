@@ -9,7 +9,10 @@
 
 //
 #define KeyCode XKeyCode
+#define Font    XFont
 #include <X11/Xlib.h>
+#undef KeyCode
+#undef Font
 
 struct NativeAppWindowState {
     bool picker;
@@ -55,8 +58,15 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
     if (args.default_folder)
         // Trailing backslash is necessary for Zenity to set the folder.
         fmt::Append(command, "--filename=\"{}/\" ", *args.default_folder);
-    for (auto f : args.filters)
-        fmt::Append(command, "--file-filter=\"{}|{}\" ", f.description, f.wildcard_filter);
+    // Zenity expects: --file-filter="Name|*.ext1 *.ext2"
+    for (auto const& f : args.filters) {
+        fmt::Append(command, "--file-filter=\"{}|", f.description);
+        for (auto const [index, w] : Enumerate(f.wildcard_filters)) {
+            if (index) dyn::AppendSpan(command, " "_s);
+            dyn::AppendSpan(command, w);
+        }
+        dyn::AppendSpan(command, "\" "_s);
+    }
 
     if (args.allow_multiple_selection) dyn::AppendSpan(command, "--multiple "_s);
 

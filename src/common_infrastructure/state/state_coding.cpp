@@ -499,12 +499,14 @@ enum class StateVersion : u16 {
     // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
     AddedMonophonicModeParameter,
 
+    AddedGranular,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == 228,
+    static_assert(k_num_parameters == (EXPERIMENTAL_GRANULAR ? 249 : 228),
                   "You have changed the number of parameters. You must now bump the "
                   "state version number and handle setting any new parameters to "
                   "backwards-compatible states. In other words, these new parameters "
@@ -662,6 +664,26 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             }
         }
     }
+
+#if EXPERIMENTAL_GRANULAR
+    if (version < StateVersion::AddedGranular) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode)) =
+                (f32)param_values::PlayMode::Standard;
+
+            auto const set = [&](LayerParamIndex param) {
+                state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, param)) =
+                    k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(0, param))].default_linear_value;
+            };
+            set(LayerParamIndex::GranularSpeed);
+            set(LayerParamIndex::GranularPosition);
+            set(LayerParamIndex::GranularGrains);
+            set(LayerParamIndex::GranularSpread);
+            set(LayerParamIndex::GranularSmoothing);
+            set(LayerParamIndex::GranularLength);
+        }
+    }
+#endif
 }
 
 static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,

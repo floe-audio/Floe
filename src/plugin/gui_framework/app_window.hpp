@@ -11,7 +11,7 @@
 
 #include "aspect_ratio.hpp"
 #include "engine/engine.hpp"
-#include "gui/gui.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui_frame.hpp"
 
 constexpr bool k_debug_app_window = false;
@@ -39,12 +39,12 @@ struct AppWindow {
     PuglWorld* world {};
     PuglView* view {};
     CursorType current_cursor {CursorType::Default};
-    graphics::RendererBackend renderer_backend {};
-    graphics::Renderer* renderer {};
+    RendererBackend renderer_backend {};
+    Renderer* renderer {};
     f64 double_click_time_ms {300.0};
     GuiFrameOutput last_result {};
     GuiFrameInput frame_state {};
-    Optional<Gui> gui {};
+    Optional<GuiState> gui {};
     Optional<clap_id> clap_timer_id {};
     Optional<int> clap_posix_fd {};
     bool pugl_timer_running {};

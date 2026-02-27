@@ -296,13 +296,8 @@ static Error ErrorAndNotify(LuaState& ctx,
                             ErrorCode error,
                             FunctionRef<void(DynamicArray<char>& message)> append_message) {
     DynamicArray<char> buf {ctx.result_arena};
-    if (append_message) {
-        append_message(buf);
-        dyn::Append(buf, '\n');
-    }
-    dyn::AppendSpan(buf, ctx.filepath);
-    auto const error_message = buf.ToOwnedSpan();
-    return {error, error_message};
+    if (append_message) append_message(buf);
+    return {error, buf.ToOwnedSpan()};
 }
 
 template <InterpretableType Type>
@@ -1688,7 +1683,7 @@ static int NewInstrument(lua_State* lua) {
         DynamicArrayBounded<char, k_max_instrument_id_size + 1> name {inst.id};
         luaL_error(
             lua,
-            "Instrument IDs must be unique within a library: %s was found twice. If the 'id' field is not specified, the instrument name is used as the ID. Resolve this by changing/setting the ID, or changing the name.",
+            "Instrument IDs must be unique within a library: %s was found twice. If you didn't specify the 'id' field, the instrument name is used as the ID. Resolve this by changing/setting the ID, or changing the name.",
             dyn::NullTerminated(name));
     }
 
@@ -2065,7 +2060,7 @@ LibraryPtrOrError ReadLua(Reader& reader,
     ctx.lua = lua_newstate(k_arena_alloc_fuction, &ctx);
     if (!ctx.lua) {
         return ErrorAndNotify(ctx, LuaErrorCode::Memory, [](DynamicArray<char>& message) {
-            dyn::AppendSpan(message, "Sorry, there's a bug. Please report this.");
+            dyn::AppendSpan(message, "There's a bug. Please report this.");
         });
     }
 

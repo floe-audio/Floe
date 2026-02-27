@@ -6,6 +6,7 @@
 #include <clap/events.h>
 #include <clap/ext/gui.h>
 #include <clap/ext/params.h>
+#include <clap/ext/state.h>
 #include <clap/ext/thread-check.h>
 #include <clap/factory/plugin-factory.h>
 #include <clap/host.h>
@@ -16,9 +17,12 @@
 #include <pugl/pugl.h>
 #include <pugl/stub.h>
 
+#include "os/filesystem.hpp"
 #include "os/misc.hpp"
+#include "utils/cli_arg_parse.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 #include "utils/logger/logger.hpp"
+#include "utils/reader.hpp"
 
 #include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/global.hpp"
@@ -26,46 +30,55 @@
 #include "plugin/plugin/plugin.hpp"
 
 // A very simple 'standalone' host for development purposes.
+// The wrapper (window, event loop, audio/MIDI devices) persists while the plugin (DSO, CLAP entry,
+// plugin instance, GUI) can be loaded and unloaded multiple times to support hot-reloading.
 
 constexpr UiSize32 k_invalid_ui_size = {0, 0};
 
-inline auto Factory() { return (clap_plugin_factory const*)clap_entry.get_factory(CLAP_PLUGIN_FACTORY_ID); }
+struct ClapEntrySource {
+    clap_plugin_entry const* entry; // always valid after construction
+    Optional<LibraryHandle> library_handle; // set only when loaded from DSO
+};
 
-struct Standalone {
-    Standalone() : plugin(*Factory()->create_plugin(Factory(), &host, g_plugin_info.id)) {
-        plugin_created = true;
+struct Standalone;
+
+struct PluginInstance {
+    PluginInstance(Standalone& s, bool is_external) : standalone(s), is_external_plugin(is_external) {
+        host.host_data = this;
     }
+
+    Standalone& standalone;
 
     clap_host_params const host_params {
         .rescan =
             [](clap_host_t const* h, clap_param_rescan_flags) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
             },
         .clear =
             [](clap_host_t const* h, clap_id, clap_param_clear_flags) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
             },
         .request_flush =
             [](clap_host_t const* h) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
             },
     };
 
     clap_host_gui const host_gui {
         .resize_hints_changed =
             [](clap_host_t const* h) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
-                standalone.resize_hints_changed.Store(true, StoreMemoryOrder::Relaxed);
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
+                inst.resize_hints_changed.Store(true, StoreMemoryOrder::Relaxed);
             },
         .request_resize =
             [](clap_host_t const* h, uint32_t width, uint32_t height) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
-                standalone.requested_resize.Exchange({width, height}, RmwMemoryOrder::AcquireRelease);
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
+                inst.requested_resize.Exchange({width, height}, RmwMemoryOrder::AcquireRelease);
                 return true;
             },
 
@@ -74,22 +87,9 @@ struct Standalone {
         .closed = [](clap_host_t const*, bool) { Panic("floating windows are not supported"); },
     };
 
-    clap_host_thread_check const host_thread_check {
-        .is_main_thread =
-            [](clap_host_t const* h) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
-                return CurrentThreadId() == standalone.main_thread_id;
-            },
-        .is_audio_thread =
-            [](clap_host_t const* h) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
-                return CurrentThreadId() == standalone.audio_thread_id.Load(LoadMemoryOrder::Relaxed);
-            },
-    };
+    clap_host_thread_check host_thread_check {};
 
-    clap_host_t const host {
+    clap_host_t host {
         .clap_version = CLAP_VERSION,
         .host_data = this,
         .name = k_floe_standalone_host_name,
@@ -98,40 +98,70 @@ struct Standalone {
         .version = "1",
 
         .get_extension = [](clap_host_t const* ch, char const* extension_id) -> void const* {
-            auto& standalone = *(Standalone*)ch->host_data;
-            ASSERT(standalone.plugin_created);
+            auto& inst = *(PluginInstance*)ch->host_data;
+            ASSERT(inst.plugin_created);
 
             if (NullTermStringsEqual(extension_id, CLAP_EXT_PARAMS))
-                return &standalone.host_params;
+                return &inst.host_params;
             else if (NullTermStringsEqual(extension_id, CLAP_EXT_GUI))
-                return &standalone.host_gui;
+                return &inst.host_gui;
             else if (NullTermStringsEqual(extension_id, CLAP_EXT_THREAD_CHECK))
-                return &standalone.host_thread_check;
+                return &inst.host_thread_check;
             else if (NullTermStringsEqual(extension_id, k_floe_clap_extension_id))
-                return &standalone.floe_host_ext;
+                return &inst.floe_host_ext;
 
             return nullptr;
         },
         .request_restart = [](clap_host_t const*) { PanicIfReached(); },
         .request_process =
             [](clap_host_t const* h) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
                 // Don't think we need to do anything here because we always call process() regardless
             },
         .request_callback =
             [](clap_host_t const* h) {
-                auto& standalone = *(Standalone*)h->host_data;
-                ASSERT(standalone.plugin_created);
-                standalone.callback_requested.Store(true, StoreMemoryOrder::Relaxed);
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
+                inst.callback_requested.Store(true, StoreMemoryOrder::Relaxed);
             },
     };
 
-    u64 main_thread_id {CurrentThreadId()};
-    Atomic<u64> audio_thread_id {};
+    bool is_external_plugin;
     Atomic<bool> callback_requested {false};
     FloeClapExtensionHost floe_host_ext {};
 
+    Atomic<UiSize32> requested_resize {k_invalid_ui_size};
+    Atomic<bool> resize_hints_changed {false};
+
+    bool plugin_created = false; // plugins are forbidden to call host APIs while creating
+    clap_plugin const* plugin {};
+    clap_plugin_gui const* gui {};
+
+    ClapEntrySource entry_source; // owns the library handle for this load cycle
+};
+
+// Controls audio thread access to the plugin instance. The main thread transitions through these
+// states to safely hand off and reclaim the plugin instance without races.
+enum class PluginInstanceState : u32 {
+    // No plugin loaded. Audio thread outputs silence.
+    Inactive,
+    // Plugin is loaded and active. Audio thread calls process().
+    Active,
+    // Main thread has requested the audio thread to stop using the plugin.
+    // Audio thread sees this, transitions to DeactivateAcknowledged.
+    DeactivateRequest,
+    // Audio thread has acknowledged it is no longer using the plugin.
+    // Main thread sees this and proceeds with teardown.
+    DeactivateAcknowledged,
+};
+
+// Persistent wrapper state that survives plugin reloads.
+struct Standalone {
+    u64 main_thread_id {CurrentThreadId()};
+    Atomic<u64> audio_thread_id {};
+
+    // Audio/MIDI devices persist across reloads
     Array<Span<f32>, 2> audio_buffers {};
     enum class AudioStreamState { Closed, Open, CloseRequested };
     Atomic<AudioStreamState> audio_stream_state {AudioStreamState::Closed};
@@ -140,12 +170,15 @@ struct Standalone {
 
     PuglWorld* gui_world {};
     PuglView* gui_view {};
-    Atomic<UiSize32> requested_resize {k_invalid_ui_size};
-    Atomic<bool> resize_hints_changed {false};
+    bool view_realized {};
 
     bool quit = false;
-    bool plugin_created = false; // plugins are forbidden to call host APIs while creating
-    clap_plugin const& plugin;
+
+    // Plugin instance access is controlled by plugin_instance_state. The pointer is only valid
+    // to read when the state protocol allows it (Active for audio thread, Active for main thread
+    // since main thread controls transitions).
+    Atomic<PluginInstanceState> plugin_instance_state {PluginInstanceState::Inactive};
+    PluginInstance* plugin_instance {};
 };
 
 static void
@@ -159,19 +192,33 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
         called_before = true;
         standalone->audio_thread_id.Store(CurrentThreadId(), StoreMemoryOrder::Relaxed);
         SetThreadName("audio", false);
-        standalone->plugin.start_processing(&standalone->plugin);
         standalone->audio_stream_state.Store(Standalone::AudioStreamState::Open, StoreMemoryOrder::Release);
     }
 
     if (standalone->audio_stream_state.Load(LoadMemoryOrder::Acquire) ==
         Standalone::AudioStreamState::CloseRequested) {
-        standalone->plugin.stop_processing(&standalone->plugin);
         standalone->audio_stream_state.Store(Standalone::AudioStreamState::Closed, StoreMemoryOrder::Release);
         return;
     }
 
     if (standalone->audio_stream_state.Load(LoadMemoryOrder::Acquire) != Standalone::AudioStreamState::Open)
         return;
+
+    {
+        auto const plugin_state = standalone->plugin_instance_state.Load(LoadMemoryOrder::Acquire);
+        if (plugin_state == PluginInstanceState::DeactivateRequest) {
+            standalone->plugin_instance_state.Store(PluginInstanceState::DeactivateAcknowledged,
+                                                    StoreMemoryOrder::Release);
+            ZeroMemory({(u8*)output_buffer, (usize)(num_buffer_frames * 2 * sizeof(f32))});
+            return;
+        }
+        if (plugin_state != PluginInstanceState::Active) {
+            ZeroMemory({(u8*)output_buffer, (usize)(num_buffer_frames * 2 * sizeof(f32))});
+            return;
+        }
+    }
+
+    auto* inst = standalone->plugin_instance;
 
     f32* channels[2];
     channels[0] = standalone->audio_buffers[0].data;
@@ -250,7 +297,7 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     process.in_events = &in_events;
     process.out_events = &out_events;
 
-    standalone->plugin.process(&standalone->plugin, &process);
+    inst->plugin->process(inst->plugin, &process);
 
     for (auto const chan : Range(2))
         for (auto const i : Range(num_buffer_frames)) {
@@ -292,9 +339,10 @@ static bool OpenMidi(Standalone& standalone) {
     // No MIDI input devices found (only output devices present)
     if (!id_to_use) return true;
 
+    // floe_host_ext is on PluginInstance, but MIDI errors need to be reported even when no plugin is loaded.
+    // We'll set the error on the plugin instance if one exists at the time.
     if (auto result = Pm_OpenInput(&standalone.midi_stream, *id_to_use, nullptr, 200, nullptr, nullptr);
         result != pmNoError) {
-        standalone.floe_host_ext.standalone_midi_device_error = true;
         LogError(ModuleName::Standalone, "Pm_OpenInput: {}", FromNullTerminated(Pm_GetErrorText(result)));
         return false;
     }
@@ -322,15 +370,7 @@ static bool OpenAudio(Standalone& standalone) {
     config.noClip = true;
     config.noPreSilencedOutputBuffer = true;
 
-    if (ma_device_init(nullptr, &config, &*standalone.audio_device) != MA_SUCCESS) {
-        standalone.floe_host_ext.standalone_audio_device_error = true;
-        return false;
-    }
-
-    standalone.plugin.activate(&standalone.plugin,
-                               standalone.audio_device->sampleRate,
-                               config.periodSizeInFrames / 2,
-                               config.periodSizeInFrames * 2);
+    if (ma_device_init(nullptr, &config, &*standalone.audio_device) != MA_SUCCESS) return false;
 
     constexpr usize k_max_frames = 2096;
     auto alloc = PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(k_max_frames * 2);
@@ -351,23 +391,26 @@ static void CloseAudio(Standalone& standalone) {
             SleepThisThread(2);
 
     ma_device_uninit(&*standalone.audio_device);
-
-    standalone.plugin.deactivate(&standalone.plugin);
 }
 
 static PuglStatus OnEvent(PuglView* view, PuglEvent const* event) {
     ZoneScoped;
     ZoneNameF("Standalone: %s", PuglEventString(event->type));
 
-    auto& p = *(Standalone*)puglGetHandle(view);
+    auto& standalone = *(Standalone*)puglGetHandle(view);
     if (PanicOccurred()) return PUGL_UNKNOWN_ERROR;
 
     switch (event->type) {
         case PUGL_CLOSE: {
-            p.quit = true;
+            standalone.quit = true;
             break;
         }
         case PUGL_CONFIGURE: {
+            if (standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) !=
+                PluginInstanceState::Active)
+                break;
+            auto* inst = standalone.plugin_instance;
+
             LogDebug(ModuleName::Standalone,
                      "Parent configure: {}x{}, {}x{}, mapped: {}, resizing: {}",
                      event->configure.x,
@@ -377,14 +420,14 @@ static PuglStatus OnEvent(PuglView* view, PuglEvent const* event) {
                      event->configure.style & PUGL_VIEW_STYLE_MAPPED,
                      event->configure.style & PUGL_VIEW_STYLE_RESIZING);
             if (event->configure.style & PUGL_VIEW_STYLE_MAPPED) {
-                auto gui = (clap_plugin_gui const*)p.plugin.get_extension(&p.plugin, CLAP_EXT_GUI);
-                ASSERT(gui);
-                if (gui->can_resize(&p.plugin)) {
+                ASSERT(inst->gui);
+                if (inst->gui->can_resize(inst->plugin)) {
                     // CLAP always wants window sizes in the OS's pixel units.
                     auto const scale_factor = puglGetScaleFactor(view);
                     auto width = (u32)(event->configure.width / scale_factor);
                     auto height = (u32)(event->configure.height / scale_factor);
-                    if (gui->adjust_size(&p.plugin, &width, &height)) gui->set_size(&p.plugin, width, height);
+                    if (inst->gui->adjust_size(inst->plugin, &width, &height))
+                        inst->gui->set_size(inst->plugin, width, height);
                 }
             }
             break;
@@ -473,28 +516,289 @@ inline ErrorCodeCategory const& ErrorCategoryForEnum(StandaloneError) { return s
 
 extern clap_plugin_entry const clap_entry;
 
-static ErrorCodeOr<void> Main() {
-    FixedSizeAllocator<Kb(1)> allocator {nullptr};
+static ErrorCodeOr<ClapEntrySource> LoadClapEntry(Optional<String> dso_path, ArenaAllocator& arena) {
+    if (!dso_path) {
+        return ClapEntrySource {
+            .entry = &clap_entry,
+            .library_handle = k_nullopt,
+        };
+    }
 
-    GlobalInit({
-        .init_error_reporting = true,
-        .set_main_thread = true,
-    });
-    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+    auto const handle = TRY(LoadLibrary(({
+        auto p = TRY(AbsolutePath(arena, *dso_path));
+        if constexpr (IS_MACOS)
+            p = path::JoinAppendResizeAllocation(arena, p, Array {"Contents/MacOS/Floe"_s});
+        p;
+    })));
 
-    clap_entry.init("");
-    DEFER { clap_entry.deinit(); };
+    auto const entry = (clap_plugin_entry const*)TRY(SymbolFromLibrary(handle, "clap_entry"));
+    ASSERT(entry);
 
+    return ClapEntrySource {
+        .entry = entry,
+        .library_handle = handle,
+    };
+}
+
+static ErrorCodeOr<void>
+LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAllocator& arena) {
+    ASSERT(standalone.plugin_instance_state.Load(LoadMemoryOrder::Relaxed) == PluginInstanceState::Inactive);
+
+    bool success = false;
+
+    auto entry_source = TRY(LoadClapEntry(dso_path, arena));
+    DEFER {
+        if (!success && entry_source.library_handle) UnloadLibrary(*entry_source.library_handle);
+    };
+
+    entry_source.entry->init(entry_source.library_handle.HasValue() ? k_clap_init_log_to_stderr_sentinel
+                                                                    : nullptr);
+    DEFER {
+        if (!success) entry_source.entry->deinit();
+    };
+
+    auto const factory = (clap_plugin_factory const*)entry_source.entry->get_factory(CLAP_PLUGIN_FACTORY_ID);
+    if (!factory) return ErrorCode {StandaloneError::PluginInterfaceError};
+
+    bool const is_external = entry_source.library_handle.HasValue();
+
+    // Allocate and construct PluginInstance first so we can pass its host to create_plugin.
+    // The plugin is set to null initially and assigned after create_plugin succeeds.
+    auto inst = arena.New<PluginInstance>(standalone, is_external);
+    inst->entry_source = entry_source;
+
+    // Set up thread check callbacks that reference the standalone
+    inst->host_thread_check = {
+        .is_main_thread =
+            [](clap_host_t const* h) {
+                auto& pi = *(PluginInstance*)h->host_data;
+                ASSERT(pi.plugin_created);
+                return CurrentThreadId() == pi.standalone.main_thread_id;
+            },
+        .is_audio_thread =
+            [](clap_host_t const* h) {
+                auto& pi = *(PluginInstance*)h->host_data;
+                ASSERT(pi.plugin_created);
+                return CurrentThreadId() == pi.standalone.audio_thread_id.Load(LoadMemoryOrder::Relaxed);
+            },
+    };
+
+    inst->floe_host_ext.pugl_world = standalone.gui_world;
+
+    inst->plugin = factory->create_plugin(factory, &inst->host, g_plugin_info.id);
+    if (!inst->plugin) return ErrorCode {StandaloneError::PluginInterfaceError};
+    inst->plugin_created = true;
+
+    inst->plugin->init(inst->plugin);
+
+    ASSERT(standalone.audio_device);
+    auto const period_size = standalone.audio_device->playback.internalPeriodSizeInFrames;
+    inst->plugin->activate(inst->plugin,
+                           standalone.audio_device->sampleRate,
+                           period_size / 2,
+                           period_size * 2);
+
+    inst->plugin->start_processing(inst->plugin);
+
+    // Set up GUI
+    inst->gui = (clap_plugin_gui const*)inst->plugin->get_extension(inst->plugin, CLAP_EXT_GUI);
+    TRY_CLAP(inst->gui);
+
+    TRY_CLAP(inst->gui->create(inst->plugin, k_supported_gui_api, false));
+
+    u32 clap_width;
+    u32 clap_height;
+    TRY_CLAP(inst->gui->get_size(inst->plugin, &clap_width, &clap_height));
+
+    {
+        auto const original_width = clap_width;
+        auto const original_height = clap_height;
+        TRY_CLAP(inst->gui->adjust_size(inst->plugin, &clap_width, &clap_height));
+
+        // We should have created a view that conforms to our own requirements.
+        ASSERT_EQ(original_width, clap_width);
+        ASSERT_EQ(original_height, clap_height);
+    }
+
+    if (!standalone.view_realized) {
+        auto const size = *ClapPixelsToPhysicalPixels(standalone.gui_view, clap_width, clap_height);
+        TRY_PUGL(puglSetSizeHint(standalone.gui_view,
+                                 PUGL_DEFAULT_SIZE,
+                                 (PuglSpan)size.width,
+                                 (PuglSpan)size.height));
+        puglSetSizeHint(standalone.gui_view, PUGL_CURRENT_SIZE, (PuglSpan)size.width, (PuglSpan)size.height);
+
+        {
+            clap_gui_resize_hints resize_hints;
+            TRY_CLAP(inst->gui->get_resize_hints(inst->plugin, &resize_hints));
+            if (resize_hints.can_resize_vertically && resize_hints.can_resize_horizontally) {
+                TRY_PUGL(puglSetViewHint(standalone.gui_view,
+                                         PUGL_RESIZABLE,
+                                         inst->gui->can_resize(inst->plugin)));
+                if (resize_hints.preserve_aspect_ratio)
+                    TRY_PUGL(puglSetSizeHint(standalone.gui_view,
+                                             PUGL_FIXED_ASPECT,
+                                             (PuglSpan)resize_hints.aspect_ratio_width,
+                                             (PuglSpan)resize_hints.aspect_ratio_height));
+            }
+        }
+
+        TRY_PUGL(puglRealize(standalone.gui_view));
+        standalone.view_realized = true;
+    }
+
+    clap_window const clap_window = {
+        .api = k_supported_gui_api,
+        .ptr = (void*)puglGetNativeView(standalone.gui_view),
+    };
+    TRY_CLAP(inst->gui->set_parent(inst->plugin, &clap_window));
+
+    TRY_PUGL(puglShow(standalone.gui_view, PUGL_SHOW_RAISE));
+    TRY_CLAP(inst->gui->show(inst->plugin));
+
+    // Make visible to audio thread last. The Release ensures the plugin_instance pointer write
+    // is visible before the state becomes Active.
+    standalone.plugin_instance = inst;
+    standalone.plugin_instance_state.Store(PluginInstanceState::Active, StoreMemoryOrder::Release);
+
+    success = true;
+    return k_success;
+}
+
+static void UnloadPluginInstance(Standalone& standalone) {
+    if (standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) != PluginInstanceState::Active)
+        return;
+
+    // Request the audio thread to stop using the plugin instance
+    standalone.plugin_instance_state.Store(PluginInstanceState::DeactivateRequest, StoreMemoryOrder::Release);
+
+    // Spin-wait for audio thread acknowledgement. The audio callback runs on a regular cadence
+    // (every ~1-23ms depending on buffer size), so acknowledgement happens quickly.
+    while (standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) !=
+           PluginInstanceState::DeactivateAcknowledged)
+        SleepThisThread(1);
+
+    // Now safe: audio thread has committed to not using the instance
+    standalone.plugin_instance_state.Store(PluginInstanceState::Inactive, StoreMemoryOrder::Release);
+
+    auto* inst = standalone.plugin_instance;
+    standalone.plugin_instance = nullptr;
+
+    inst->plugin->stop_processing(inst->plugin);
+
+    inst->gui->destroy(inst->plugin);
+
+    inst->plugin->deactivate(inst->plugin);
+    inst->plugin->destroy(inst->plugin);
+
+    inst->entry_source.entry->deinit();
+    if (inst->entry_source.library_handle) UnloadLibrary(*inst->entry_source.library_handle);
+}
+
+static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, ArenaAllocator& arena) {
+    ASSERT(standalone.plugin_instance_state.Load(LoadMemoryOrder::Relaxed) == PluginInstanceState::Active);
+    auto* inst = standalone.plugin_instance;
+
+    // Save the plugin state before unloading.
+    DynamicArray<u8> saved_state {PageAllocator::Instance()};
+    bool state_saved = false;
+    {
+        auto const state_ext =
+            (clap_plugin_state const*)inst->plugin->get_extension(inst->plugin, CLAP_EXT_STATE);
+        if (state_ext) {
+            clap_ostream const stream {
+                .ctx = (void*)&saved_state,
+                .write = [](clap_ostream const* stream, void const* buffer, uint64_t size) -> s64 {
+                    auto& buf = *(DynamicArray<u8>*)stream->ctx;
+                    dyn::AppendSpan(buf, Span {(u8 const*)buffer, (usize)size});
+                    return (s64)size;
+                },
+            };
+            state_saved = state_ext->save(inst->plugin, &stream);
+            if (state_saved)
+                LogInfo(ModuleName::Standalone,
+                        "Hot-reload: saved plugin state ({} bytes)",
+                        saved_state.size);
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to save plugin state");
+        }
+    }
+
+    UnloadPluginInstance(standalone);
+
+    auto const reload_outcome = LoadPluginInstance(standalone, dso_path, arena);
+    if (reload_outcome.HasError()) {
+        LogError(ModuleName::Standalone, "Hot-reload: failed to reload plugin: {}", reload_outcome.Error());
+        return;
+    }
+
+    // Restore the saved state into the new plugin instance.
+    if (state_saved) {
+        auto* new_inst = standalone.plugin_instance;
+        auto const state_ext =
+            (clap_plugin_state const*)new_inst->plugin->get_extension(new_inst->plugin, CLAP_EXT_STATE);
+        if (state_ext) {
+            auto reader = Reader::FromMemory(saved_state.Items());
+            clap_istream const stream {
+                .ctx = (void*)&reader,
+                .read = [](clap_istream const* stream, void* buffer, uint64_t size) -> s64 {
+                    auto& r = *(Reader*)stream->ctx;
+                    auto const read = r.Read(Span<u8>((u8*)buffer, size));
+                    if (read.HasError()) return -1;
+                    return CheckedCast<s64>(read.Value());
+                },
+            };
+            if (state_ext->load(new_inst->plugin, &stream))
+                LogInfo(ModuleName::Standalone, "Hot-reload: restored plugin state");
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to restore plugin state");
+        }
+    }
+
+    LogInfo(ModuleName::Standalone, "Hot-reload: plugin reloaded successfully");
+}
+
+static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
     Standalone standalone {};
 
-    standalone.plugin.init(&standalone.plugin);
-    DEFER { standalone.plugin.destroy(&standalone.plugin); };
+    // Modify detection if given a plugin path.
+    bool const is_external_plugin = dso_path.HasValue();
+    Optional<DirectoryWatcher> dir_watcher {};
+    DirectoryToWatch dso_dir_to_watch {};
+    if (is_external_plugin) {
+        auto outcome = CreateDirectoryWatcher(PageAllocator::Instance());
+        if (outcome.HasError()) {
+            LogWarning(ModuleName::Standalone,
+                       "Failed to create directory watcher for hot-reload: {}",
+                       outcome.Error());
+        } else {
+            dir_watcher.Emplace(outcome.ReleaseValue());
+        }
+
+        auto const dso_path_str = ({
+            auto p = AbsolutePath(arena, *dso_path);
+            p.HasValue() ? String(p.Value()) : *dso_path;
+        });
+        if constexpr (IS_MACOS) {
+            // The plugin_path points to the .clap bundle. Watch it recursively.
+            dso_dir_to_watch = {.path = dso_path_str, .recursive = true, .user_data = nullptr};
+        } else {
+            // Watch the directory containing the DSO file.
+            auto const dir = path::Directory(dso_path_str);
+            ASSERT(dir.HasValue()); // plugin_path should be an absolute path
+            dso_dir_to_watch = {.path = *dir, .recursive = false, .user_data = nullptr};
+        }
+    }
+    DEFER {
+        if (dir_watcher) DestoryDirectoryWatcher(*dir_watcher);
+    };
 
     if (!OpenMidi(standalone)) {
         LogError(ModuleName::Standalone, "Could not open Midi");
         return ErrorCode {StandaloneError::DeviceError};
     }
     DEFER { CloseMidi(standalone); };
+
     if (!OpenAudio(standalone)) {
         LogError(ModuleName::Standalone, "Could not open Audio");
         return ErrorCode {StandaloneError::DeviceError};
@@ -505,120 +809,145 @@ static ErrorCodeOr<void> Main() {
     DEFER { puglFreeWorld(standalone.gui_world); };
     TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, "Floe Standalone"));
 
-    standalone.floe_host_ext.pugl_world = standalone.gui_world;
-
     standalone.gui_view = puglNewView(standalone.gui_world);
-    DEFER { puglFreeView(standalone.gui_view); };
+    DEFER {
+        if (standalone.view_realized) puglUnrealize(standalone.gui_view);
+        puglFreeView(standalone.gui_view);
+    };
     TRY_PUGL(puglSetViewHint(standalone.gui_view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON));
     TRY_PUGL(puglSetBackend(standalone.gui_view, puglStubBackend()));
     puglSetHandle(standalone.gui_view, &standalone);
     TRY_PUGL(puglSetEventFunc(standalone.gui_view, OnEvent));
     TRY_PUGL(puglSetViewString(standalone.gui_view, PUGL_WINDOW_TITLE, "Floe"));
 
-    auto gui = (clap_plugin_gui const*)standalone.plugin.get_extension(&standalone.plugin, CLAP_EXT_GUI);
-    TRY_CLAP(gui);
+    // Load plugin (first time)
+    TRY(LoadPluginInstance(standalone, dso_path, arena));
+    DEFER { UnloadPluginInstance(standalone); };
 
-    TRY_CLAP(gui->create(&standalone.plugin, k_supported_gui_api, false));
-
-    u32 clap_width;
-    u32 clap_height;
-    TRY_CLAP(gui->get_size(&standalone.plugin, &clap_width, &clap_height));
-
-    {
-        auto const original_width = clap_width;
-        auto const original_height = clap_height;
-        TRY_CLAP(gui->adjust_size(&standalone.plugin, &clap_width, &clap_height));
-
-        // We should have created a view that conforms to our own requirements.
-        ASSERT_EQ(original_width, clap_width);
-        ASSERT_EQ(original_height, clap_height);
-    }
-
-    auto const size = *ClapPixelsToPhysicalPixels(standalone.gui_view, clap_width, clap_height);
-    TRY_PUGL(
-        puglSetSizeHint(standalone.gui_view, PUGL_DEFAULT_SIZE, (PuglSpan)size.width, (PuglSpan)size.height));
-    puglSetSizeHint(standalone.gui_view, PUGL_CURRENT_SIZE, (PuglSpan)size.width, (PuglSpan)size.height);
-
-    {
-        clap_gui_resize_hints resize_hints;
-        TRY_CLAP(gui->get_resize_hints(&standalone.plugin, &resize_hints));
-        if (resize_hints.can_resize_vertically && resize_hints.can_resize_horizontally) {
-            TRY_PUGL(
-                puglSetViewHint(standalone.gui_view, PUGL_RESIZABLE, gui->can_resize(&standalone.plugin)));
-            if (resize_hints.preserve_aspect_ratio)
-                TRY_PUGL(puglSetSizeHint(standalone.gui_view,
-                                         PUGL_FIXED_ASPECT,
-                                         (PuglSpan)resize_hints.aspect_ratio_width,
-                                         (PuglSpan)resize_hints.aspect_ratio_height));
-        }
-    }
-
-    TRY_PUGL(puglRealize(standalone.gui_view));
-    DEFER { puglUnrealize(standalone.gui_view); };
-
-    clap_window const clap_window = {
-        .api = k_supported_gui_api,
-        .ptr = (void*)puglGetNativeView(standalone.gui_view),
-    };
-    TRY_CLAP(gui->set_parent(&standalone.plugin, &clap_window));
-
-    TRY_PUGL(puglShow(standalone.gui_view, PUGL_SHOW_RAISE));
-    TRY_CLAP(gui->show(&standalone.plugin));
+    ArenaAllocator scratch_arena {PageAllocator::Instance()};
 
     while (!standalone.quit) {
-        if (standalone.callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
-            standalone.plugin.on_main_thread(&standalone.plugin);
+        auto const has_active_plugin =
+            standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) == PluginInstanceState::Active;
+        if (has_active_plugin) {
+            auto* inst = standalone.plugin_instance;
+            if (inst->callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
+                inst->plugin->on_main_thread(inst->plugin);
 
-        if (standalone.resize_hints_changed.Exchange(false, RmwMemoryOrder::Relaxed)) {
-            clap_gui_resize_hints resize_hints;
-            if (gui->get_resize_hints(&standalone.plugin, &resize_hints)) {
-                if (resize_hints.can_resize_vertically && resize_hints.can_resize_horizontally) {
-                    if (puglSetViewHint(standalone.gui_view,
-                                        PUGL_RESIZABLE,
-                                        gui->can_resize(&standalone.plugin)) != PUGL_SUCCESS) {
-                        PanicIfReached();
-                    };
-                    if (resize_hints.preserve_aspect_ratio)
-                        if (puglSetSizeHint(standalone.gui_view,
-                                            PUGL_FIXED_ASPECT,
-                                            (PuglSpan)resize_hints.aspect_ratio_width,
-                                            (PuglSpan)resize_hints.aspect_ratio_height) != PUGL_SUCCESS) {
+            if (inst->resize_hints_changed.Exchange(false, RmwMemoryOrder::Relaxed)) {
+                clap_gui_resize_hints resize_hints;
+                if (inst->gui->get_resize_hints(inst->plugin, &resize_hints)) {
+                    if (resize_hints.can_resize_vertically && resize_hints.can_resize_horizontally) {
+                        if (puglSetViewHint(standalone.gui_view,
+                                            PUGL_RESIZABLE,
+                                            inst->gui->can_resize(inst->plugin)) != PUGL_SUCCESS) {
                             PanicIfReached();
                         };
+                        if (resize_hints.preserve_aspect_ratio)
+                            if (puglSetSizeHint(standalone.gui_view,
+                                                PUGL_FIXED_ASPECT,
+                                                (PuglSpan)resize_hints.aspect_ratio_width,
+                                                (PuglSpan)resize_hints.aspect_ratio_height) != PUGL_SUCCESS) {
+                                PanicIfReached();
+                            };
+                    }
+                }
+            }
+
+            if (auto const requested_clap_size =
+                    inst->requested_resize.Exchange(k_invalid_ui_size, RmwMemoryOrder::AcquireRelease);
+                requested_clap_size != k_invalid_ui_size) {
+                auto const physical_pixels = *ClapPixelsToPhysicalPixels(standalone.gui_view,
+                                                                         requested_clap_size.width,
+                                                                         requested_clap_size.height);
+                LogDebug(ModuleName::Standalone,
+                         "Handling resize request, setting parent window to: {} x {}",
+                         physical_pixels.width,
+                         physical_pixels.height);
+                puglSetSizeHint(standalone.gui_view,
+                                PUGL_CURRENT_SIZE,
+                                physical_pixels.width,
+                                physical_pixels.height);
+            }
+        }
+
+        if (dir_watcher) {
+            auto const dirs_to_watch = Array {dso_dir_to_watch};
+            auto const outcome = PollDirectoryChanges(*dir_watcher,
+                                                      {
+                                                          .dirs_to_watch = dirs_to_watch,
+                                                          .result_arena = scratch_arena,
+                                                          .scratch_arena = scratch_arena,
+                                                      });
+            if (outcome.HasError()) {
+                LogWarning(ModuleName::Standalone, "Failed to poll directory changes: {}", outcome.Error());
+            } else {
+                for (auto const& dir_changes : outcome.Value()) {
+                    if (dir_changes.error) {
+                        LogWarning(ModuleName::Standalone, "Directory watcher error: {}", *dir_changes.error);
+                        continue;
+                    }
+                    if (dir_changes.subpath_changesets.size) {
+                        for (auto const& changeset : dir_changes.subpath_changesets) {
+                            LogInfo(ModuleName::Standalone,
+                                    "DSO file change detected: subpath='{}', changes={}",
+                                    changeset.subpath,
+                                    DirectoryWatcher::ChangeType::ToString(changeset.changes));
+                        }
+
+                        HotReloadPlugin(standalone, dso_path, arena);
+                    }
                 }
             }
         }
 
-        if (auto const requested_clap_size =
-                standalone.requested_resize.Exchange(k_invalid_ui_size, RmwMemoryOrder::AcquireRelease);
-            requested_clap_size != k_invalid_ui_size) {
-            auto const physical_pixels = *ClapPixelsToPhysicalPixels(standalone.gui_view,
-                                                                     requested_clap_size.width,
-                                                                     requested_clap_size.height);
-            LogDebug(ModuleName::Standalone,
-                     "Handling resize request, setting parent window to: {} x {}",
-                     physical_pixels.width,
-                     physical_pixels.height);
-            puglSetSizeHint(standalone.gui_view,
-                            PUGL_CURRENT_SIZE,
-                            physical_pixels.width,
-                            physical_pixels.height);
-        }
-
         auto const st = puglUpdate(standalone.gui_world, 1.0 / 60.0);
         if (st != PUGL_SUCCESS && st != PUGL_FAILURE) return ErrorCode {st};
+
+        scratch_arena.ResetCursorAndConsolidateRegions();
     }
 
-    gui->destroy(&standalone.plugin);
     return k_success;
 }
 
-int main(int, char**) {
-    auto _ = EnterLogicalMainThread();
-    auto const o = Main();
+static int Main(ArgsCstr args) {
+    enum class CommandLineArgId : u32 {
+        ClapPluginPath,
+        Count,
+    };
+
+    auto constexpr k_cli_arg_defs = MakeCommandLineArgDefs<CommandLineArgId>({
+        {
+            .id = (u32)CommandLineArgId::ClapPluginPath,
+            .key = "clap-plugin-path",
+            .description =
+                "Path to an external CLAP plugin to load instead of the built-in one - this file is watched and the plugin is hot-reloaded if it changes.",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
+    });
+
+    ArenaAllocator arena {PageAllocator::Instance()};
+    auto const cli_args_outcome = ParseCommandLineArgsStandard(arena, args, k_cli_arg_defs);
+    if (cli_args_outcome.HasError()) return cli_args_outcome.Error();
+    auto const cli_args = cli_args_outcome.ReleaseValue();
+
+    GlobalInit({
+        .init_error_reporting = true,
+        .set_main_thread = true,
+    });
+    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+
+    auto const o = Run(cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(), arena);
     if (o.HasError()) {
         LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());
         return 1;
     }
     return 0;
+}
+
+int main(int argc, char** argv) {
+    auto _ = EnterLogicalMainThread();
+    return Main({argc, argv});
 }

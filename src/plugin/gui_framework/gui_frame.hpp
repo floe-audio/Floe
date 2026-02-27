@@ -5,11 +5,12 @@
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
 
-#include "graphics.hpp"
+#include "draw_list.hpp"
+#include "renderer.hpp"
 
 static constexpr u8 k_gui_refresh_rate_hz = 60;
 
-enum class KeyCode : u32 {
+enum class KeyCode : u8 {
     Tab,
     LeftArrow,
     RightArrow,
@@ -51,11 +52,11 @@ constexpr auto k_navigation_keys = Array {
     KeyCode::Enter,
 };
 
-enum class ModifierKey : u32 {
+enum class ModifierKey : u8 {
     Shift,
     Ctrl,
     Alt, // 'Option' on macOS
-    Super, // 'Cmd' on macOS, else Super/Windows-key
+    Super, // 'Cmd' on macOS, else Super/Viewports-key
     Count,
 
     // alias
@@ -69,6 +70,11 @@ enum class ModifierKey : u32 {
 #endif
 
 struct ModifierFlags {
+    ModifierFlags() = default;
+    ModifierFlags(Span<ModifierKey const> flags) {
+        for (auto const f : flags)
+            Set(f);
+    }
     bool operator==(ModifierFlags const& other) const = default;
     bool Get(ModifierKey k) const { return flags & (1 << ToInt(k)); }
     void Set(ModifierKey k) { flags |= (1 << ToInt(k)); }
@@ -77,7 +83,8 @@ struct ModifierFlags {
     u8 flags {};
 };
 
-enum class MouseButton : u32 { Left, Right, Middle, Count };
+enum class MouseButton : u8 { Left, Right, Middle, Count };
+enum class MouseButtonEvent : u8 { Up, Down, DoubleClick, Count };
 
 // The framework gives the application this struct every frame.
 struct GuiFrameInput {
@@ -127,7 +134,7 @@ struct GuiFrameInput {
         dyn::Clear(input_utf32_chars);
     }
 
-    graphics::Renderer* renderer {};
+    Renderer* renderer {};
 
     f32x2 cursor_pos {};
     f32x2 cursor_pos_prev {};
@@ -144,6 +151,11 @@ struct GuiFrameInput {
     // If needed, you will need to have stored what these relate to - what GuiFrameResult::file_picker_dialog
     // was set to.
     ArenaStack<String> file_picker_results {};
+
+    // WW = Window Width.
+    // Similar to CSS vw units, we have a concept of 'window width' relative units. They allow us to make our
+    // GUI scale with the window size.
+    f32 pixels_per_ww {}; // 1 ww = 1/1000 of the current window width.
 
     TimePoint current_time {};
     TimePoint time_prev {};
@@ -180,11 +192,11 @@ struct FilePickerDialogOptions {
         FileFilter Clone(Allocator& a, CloneType t = CloneType::Deep) const {
             return {
                 .description = description.Clone(a, t),
-                .wildcard_filter = wildcard_filter.Clone(a, t),
+                .wildcard_filters = wildcard_filters.Clone(a, t),
             };
         }
         String description;
-        String wildcard_filter;
+        Span<String const> wildcard_filters;
     };
 
     FilePickerDialogOptions Clone(Allocator& a, CloneType t = CloneType::Deep) const {
@@ -248,8 +260,8 @@ struct GuiFrameOutput {
     ArenaAllocator file_picker_options_arena {Malloc::Instance()};
 
     // Add draw lists to render.
-    DynamicArray<graphics::DrawList*> draw_lists {Malloc::Instance()};
-    graphics::DrawListAllocator draw_list_allocator {};
+    DynamicArray<DrawList*> draw_lists {Malloc::Instance()};
+    DrawListAllocator draw_list_allocator {};
 
     // Simple impermanent state.
     struct Wants {
@@ -259,9 +271,6 @@ struct GuiFrameOutput {
         Bitset<ToInt(KeyCode::Count)> keyboard_keys {};
         bool mouse_capture = false;
         bool mouse_scroll = false;
-        bool all_left_clicks = false;
-        bool all_right_clicks = false;
-        bool all_middle_clicks = false;
 
         // Set this to the cursor that you want
         CursorType cursor_type = CursorType::Default;
@@ -291,6 +300,9 @@ struct GuiFrameIo {
 // it is invalid to use this data. A large percentage of GUI code needs access to the frame input and output.
 // Rather than pass it around everywhere which will be incredibly noisy, we use this global.
 GuiFrameIo GuiIo();
+// Because of the convenient auto, you may need to specify the type of the input arg.
+inline auto WwToPixels(auto ww) { return ww * GuiIo().in.pixels_per_ww; }
+inline auto PixelsToWw(auto pixels) { return pixels / GuiIo().in.pixels_per_ww; }
 
 // Set this at any time from any thread to request a GUI update at some point in the future.
 extern Atomic<bool> g_request_gui_update;

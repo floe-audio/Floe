@@ -24,7 +24,7 @@
 
 #include "time.h"
 
-Memory GlobalAlloc(AllocOptions options) {
+Memory GlobalAllocOversizeAllowed(AllocOptions options) {
     options.align = Max(options.align, k_max_alignment);
     // "The size parameter must be an integral multiple of alignment."
     options.size = AlignForward(options.size, options.align);
@@ -39,10 +39,10 @@ Memory GlobalAlloc(AllocOptions options) {
     return result;
 }
 
-Memory GlobalRealloc(Memory allocation, ReallocOptions options) {
+Memory GlobalReallocOversizeAllowed(Memory allocation, ReallocOptions options) {
     // IMPROVE: maybe there's a way to do this without freeing and reallocating but there doesn't appear to be
     // a simple solution.
-    auto new_mem = GlobalAlloc({.size = options.size, .align = options.align});
+    auto new_mem = GlobalAllocOversizeAllowed({.size = options.size, .align = options.align});
     CopyMemory(new_mem.data, allocation.data, Min(new_mem.size, allocation.size));
     GlobalFree(allocation);
     return new_mem;

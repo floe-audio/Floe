@@ -5,6 +5,8 @@
 #include "foundation/memory/allocators.hpp"
 #include "foundation/utils/linked_list.hpp"
 
+// If your type is not trivially destructible you MUST clear the arena list before it's destroyed.
+
 template <typename Type>
 struct ArenaList {
     ~ArenaList() requires(TriviallyDestructible<Type>)

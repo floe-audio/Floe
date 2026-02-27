@@ -70,14 +70,16 @@ struct Memory {
 struct AllocOptions {
     usize size;
     usize align = k_max_alignment;
-    bool zero;
+    bool zero = false;
 };
-Memory GlobalAlloc(AllocOptions options);
+// IMPORTANT: the returned Memory.size may be larger than the requested size.
+// If zero is false, the returned memory is uninitialised.
+Memory GlobalAllocOversizeAllowed(AllocOptions options);
 struct ReallocOptions {
     usize size;
     usize align = k_max_alignment;
 };
-Memory GlobalRealloc(Memory allocation, ReallocOptions options);
+Memory GlobalReallocOversizeAllowed(Memory allocation, ReallocOptions options);
 void GlobalFree(Memory allocation);
 void GlobalFreeNoSize(void* ptr);
 
@@ -118,9 +120,9 @@ class Malloc final : public Allocator {
         switch (command.tag) {
             case AllocatorCommand::Allocate: {
                 auto const& cmd = command.Get<AllocateCommand>();
-                auto mem = GlobalAlloc({.size = cmd.size, .align = cmd.alignment});
+                auto mem = GlobalAllocOversizeAllowed({.size = cmd.size, .align = cmd.alignment});
                 if (mem.data == nullptr) Panic("out of memory");
-                return mem;
+                return {(u8*)mem.data, cmd.allow_oversized_result ? mem.size : cmd.size};
             }
             case AllocatorCommand::Free: {
                 auto const& cmd = command.Get<FreeCommand>();
@@ -142,7 +144,8 @@ class Malloc final : public Allocator {
                             : k_max_alignment;
 
                     // fallback: new allocation and move memory
-                    auto new_allocation = GlobalAlloc({.size = cmd.new_size, .align = alignment});
+                    auto new_allocation =
+                        GlobalAllocOversizeAllowed({.size = cmd.new_size, .align = alignment});
                     if (cmd.move_memory_handler.function)
                         cmd.move_memory_handler.function({.context = cmd.move_memory_handler.context,
                                                           .destination = new_allocation.data,
@@ -150,7 +153,8 @@ class Malloc final : public Allocator {
                                                           .num_bytes = cmd.allocation.size});
                     GlobalFree(cmd.allocation);
 
-                    return new_allocation;
+                    return {(u8*)new_allocation.data,
+                            cmd.allow_oversize_result ? new_allocation.size : cmd.new_size};
                 } else if (cmd.new_size < cmd.allocation.size) {
                     // IMPROVE: use realloc
 

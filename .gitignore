@@ -10,6 +10,8 @@ nvim-project.ini
 zig-out/
 build_resources/external/
 .env
+.claude
+.harper-dictionary.txt
 website/node_modules/
 website/.docusaurus/
 website/build/

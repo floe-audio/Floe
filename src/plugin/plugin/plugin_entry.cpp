@@ -105,7 +105,7 @@ static Atomic<u32> g_inside_call {0};
 
 // init and deinit are never called at the same time as any other clap function, including itself.
 // Might be called more than once. See the clap docs for full details.
-static bool ClapEntryInit(char const*) {
+static bool ClapEntryInit(char const* plugin_path) {
     if (PanicOccurred()) return false;
 
     try {
@@ -115,9 +115,14 @@ static bool ClapEntryInit(char const*) {
 
         if (Exchange(g_init, true)) return true; // already initialised
 
+        bool const force_log_to_stderr =
+            !PRODUCTION_BUILD && plugin_path &&
+            NullTermStringsEqual(plugin_path, k_clap_init_log_to_stderr_sentinel);
+
         GlobalInit({
             .init_error_reporting = false,
             .set_main_thread = false,
+            .force_log_to_stderr = force_log_to_stderr,
         });
 
         LogInfo(ModuleName::Clap,
