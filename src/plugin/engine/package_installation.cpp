@@ -1747,29 +1747,30 @@ TEST_CASE(TestPackageInstallation) {
              }));
 
     // Try updating a library to a newer version.
-    TRY(Test(tester,
-             {
-                 .test_name = "Updating library to newer version",
-                 .destination_folder = destination_folder,
-                 .package_path = CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1-v2/floe.lua", true),
-                 .sample_lib_server = sample_lib_server,
-                 .preset_server = preset_server,
-                 .expected_state = InstallJob::State::DoneSuccess,
+    TRY(Test(
+        tester,
+        {
+            .test_name = "Updating library to newer version",
+            .destination_folder = destination_folder,
+            .package_path = CreatePackageZipFile(tester, LibFolder::Regular, "Test-Lib-1-v2/floe.lua", true),
+            .sample_lib_server = sample_lib_server,
+            .preset_server = preset_server,
+            .expected_state = InstallJob::State::DoneSuccess,
 
-                 .expected_library_status {
-                     .installed = true,
-                     .version_difference = VersionDifference::InstalledIsOlder,
-                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
-                 },
-                 .expected_library_action = "updated"_s,
+            .expected_library_status {
+                .installed = true,
+                .version_difference = VersionDifference::InstalledIsOlder,
+                .modified_since_installed = ModifiedSinceInstalled::Unmodified,
+            },
+            .expected_library_action = "updated"_s,
 
-                 .expected_presets_status {
-                     .installed = true,
-                     .version_difference = VersionDifference::Equal,
-                     .modified_since_installed = ModifiedSinceInstalled::Unmodified,
-                 },
-                 .expected_presets_action = "already installed"_s,
-             }));
+            .expected_presets_status {
+                .installed = true,
+                .version_difference = VersionDifference::Equal,
+                .modified_since_installed = ModifiedSinceInstalled::Unmodified,
+            },
+            .expected_presets_action = "already installed"_s,
+        }));
 
     // Do nothing if we now try to downgrade a library
     TRY(Test(tester,

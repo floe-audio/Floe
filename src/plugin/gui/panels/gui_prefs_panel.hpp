@@ -499,10 +499,10 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
         auto const rhs = PreferencesRhsColumn(builder, row, k_small_gap);
         PreferencesRhsText(builder, rhs, "Install libraries and presets from a package file");
         if (!context.package_install_jobs.Full() &&
-            TextButton(
-                builder,
-                rhs,
-                {.text = "Install package", .tooltip = "Install libraries and presets from a package file"_s})) {
+            TextButton(builder,
+                       rhs,
+                       {.text = "Install package",
+                        .tooltip = "Install libraries and presets from a package file"_s})) {
             OpenFilePickerInstallPackage(context.file_picker_state);
         }
     }
