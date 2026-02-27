@@ -230,7 +230,7 @@ void MidPanelCombinedContent(GuiBuilder& builder,
                                     .contents_padding =
                                         {
                                             .lr = k_subpanel_gap_x,
-                                            .tb = 6.08f,
+                                            .tb = EXPERIMENTAL_MID_PANEL_TABS ? 6.08f : 15,
                                         },
                                     .contents_gap = k_subpanel_gap_x,
                                     .contents_direction = layout::Direction::Row,

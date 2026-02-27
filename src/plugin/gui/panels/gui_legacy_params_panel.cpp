@@ -88,6 +88,22 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
               });
     }
 
+    DoBox(
+        builder,
+        {
+            .parent = root,
+            .text =
+                "These parameters are superseded by the main GUI but kept for backwards compatibility with existing DAW automation. Learn more on the documentation website.",
+            .wrap_width = k_wrap_to_parent,
+            .size_from_text = true,
+            .font = FontType::Body,
+            .text_colours = Col {.c = Col::White, .alpha = 120},
+            .layout =
+                {
+                    .margins = {.t = 5, .lr = k_default_spacing},
+                },
+        });
+
     // Parameter grid
     auto const grid = DoBox(builder,
                             {

@@ -112,6 +112,9 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
 }
 
 Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& options) {
+    auto on_colour = options.on_colour ? *options.on_colour : LiveColStruct(UiColMap::MidTextOn);
+    if (options.greyed_out) on_colour.alpha = 150;
+
     return DoBox(
         builder,
         {
@@ -119,9 +122,7 @@ Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& optio
             .text = options.state ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
             .font = FontType::Icons,
             .font_size = k_font_icons_size * 0.75f,
-            .text_colours = options.state ? Colours {options.on_colour ? *options.on_colour
-                                                                       : LiveColStruct(UiColMap::MidTextOn)}
-                                          : MidIconButtonColours(options.greyed_out),
+            .text_colours = options.state ? Colours {on_colour} : MidIconButtonColours(options.greyed_out),
             .text_justification = options.justify,
             .parent_dictates_hot_and_active = options.parent_dictates_hot_and_active,
             .layout {

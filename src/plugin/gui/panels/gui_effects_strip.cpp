@@ -712,15 +712,21 @@ static void DoEffectParams(GuiState& g,
                             param_container,
                             params.DescribedValue(ParamIndex::FilterResonance),
                             {.width = k_knob_w, .knob_highlight_col = highlight_col});
-            DoKnobParameter(g,
-                            param_container,
-                            params.DescribedValue(ParamIndex::FilterGain),
-                            {
-                                .width = k_knob_w,
-                                .knob_highlight_col = highlight_col,
-                                .greyed_out = !using_gain,
-                                .bidirectional = true,
-                            });
+            if (using_gain)
+                DoKnobParameter(g,
+                                param_container,
+                                params.DescribedValue(ParamIndex::FilterGain),
+                                {
+                                    .width = k_knob_w,
+                                    .knob_highlight_col = highlight_col,
+                                    .greyed_out = !using_gain,
+                                    .bidirectional = true,
+                                });
+            else
+                // We leave space for the gain knob even when it's not active so that the layout doesn't jump
+                // around while the user is interacting with it.
+                DoBox(g.builder, {.parent = param_container, .layout {.size = {k_knob_w, 1}}});
+
             break;
         }
 

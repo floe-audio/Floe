@@ -125,20 +125,20 @@ static void DoWhitespace(GuiBuilder& builder, Box parent, f32 height, u64 loc_ha
     DoBox(builder,
           {
               .parent = parent,
+              .id_extra = loc_hash,
               .layout {.size = {1, height}},
-          },
-          loc_hash);
+          });
 }
 
 static void DoDivider(GuiState& g, Box parent, u64 loc_hash = SourceLocationHash()) {
     auto const divider = DoBox(g.builder,
                                {
                                    .parent = parent,
+                                   .id_extra = loc_hash,
                                    .layout {
                                        .size = {layout::k_fill_parent, 1},
                                    },
-                               },
-                               loc_hash);
+                               });
     if (auto const r = BoxRect(g.builder, divider)) {
         auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
         g.imgui.draw_list->AddLine({window_r.x, window_r.Bottom()},
@@ -463,11 +463,11 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                 LayerParamIndex freq_param,
                                 LayerParamIndex reso_param,
                                 LayerParamIndex gain_param,
-                                u64 loc_hash = SourceLocationHash()) {
+                                u8 band_number) {
         auto const band = DoBox(g.builder,
                                 {
                                     .parent = bands_container,
-                                    .id_extra = loc_hash,
+                                    .id_extra = band_number,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
                                         .contents_gap = 6,
@@ -477,11 +477,32 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                 });
 
         // Type menu
+        auto const menu_row = DoBox(g.builder,
+                                    {
+                                        .parent = band,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_gap = 6,
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_align = layout::Alignment::Middle,
+                                        },
+                                    });
+
+        DoBox(g.builder,
+              {
+                  .parent = menu_row,
+                  .text = fmt::Format(g.scratch_arena, "Band {}", band_number),
+                  .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                  .text_justification = TextJustification::CentredRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+              });
         DoMenuParameter(g,
-                        band,
+                        menu_row,
                         params.DescribedValue(layer_index, type_param),
                         {
-                            .width = layout::k_fill_parent,
+                            .width = 130,
                             .greyed_out = greyed_out,
                             .label = false,
                         });
@@ -529,20 +550,22 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
     do_eq_band(LayerParamIndex::EqType1,
                LayerParamIndex::EqFreq1,
                LayerParamIndex::EqResonance1,
-               LayerParamIndex::EqGain1);
+               LayerParamIndex::EqGain1,
+               1);
 
     // Band 2
     do_eq_band(LayerParamIndex::EqType2,
                LayerParamIndex::EqFreq2,
                LayerParamIndex::EqResonance2,
-               LayerParamIndex::EqGain2);
+               LayerParamIndex::EqGain2,
+               2);
 }
 
 static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     auto& params = g.engine.processor.main_params;
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
 
-    constexpr f32 k_menu_width = 125;
+    constexpr f32 k_menu_width = 135;
 
     auto const page = DoBox(g.builder,
                             {
@@ -572,14 +595,25 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
         auto const row = DoBox(g.builder,
                                {
                                    .parent = page,
+                                   .id_extra = loc_hash,
                                    .layout {
                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
-                               },
-                               loc_hash);
+                               });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = param.info.gui_label,
+                  .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                  .text_justification = TextJustification::CentredRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+              });
 
         DoMenuParameter(g,
                         row,
@@ -589,18 +623,6 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                             .greyed_out = greyed_out,
                             .label = false,
                         });
-
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = param.info.gui_label,
-                  .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
-                  .layout {
-                      .size = {layout::k_fill_parent, k_font_body_size},
-                  },
-              },
-              loc_hash);
     };
 
     do_menu_label_row(LayerParamIndex::LfoDestination);
@@ -664,7 +686,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
         DoButtonParameter(g,
                           rate_col,
                           params.DescribedValue(layer_index, LayerParamIndex::LfoSyncSwitch),
-                          {.width = layout::k_hug_contents});
+                          {.width = layout::k_hug_contents, .greyed_out = greyed_out});
     }
 }
 
@@ -694,14 +716,26 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
         auto const row = DoBox(g.builder,
                                {
                                    .parent = page,
+                                   .id_extra = loc_hash,
                                    .layout {
                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
-                               },
-                               loc_hash);
+                               });
+
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = param.info.gui_label,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredRight,
+                  .layout {
+                      .size = layout::k_fill_parent,
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String { return param.info.tooltip; }},
+              });
 
         DoIntParameter(g,
                        row,
@@ -710,19 +744,6 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                            .width = k_control_width,
                            .label = false,
                        });
-
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = param.info.gui_label,
-                  .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
-                  .layout {
-                      .size = layout::k_fill_parent,
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String { return param.info.tooltip; }},
-              },
-              loc_hash);
     };
 
     // Transpose
@@ -752,14 +773,6 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    .button_behaviour = imgui::ButtonConfig {},
                                });
 
-        DoToggleIcon(g.builder,
-                     row,
-                     {
-                         .state = state,
-                         .width = k_control_width,
-                         .justify = TextJustification::CentredRight,
-                     });
-
         DoBox(g.builder,
               {
                   .parent = row,
@@ -770,12 +783,20 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                           .hot = LiveColStruct(UiColMap::MidTextHot),
                           .active = LiveColStruct(UiColMap::MidTextHot),
                       },
-                  .text_justification = TextJustification::CentredLeft,
+                  .text_justification = TextJustification::CentredRight,
                   .parent_dictates_hot_and_active = true,
                   .layout {
                       .size = layout::k_fill_parent,
                   },
               });
+
+        DoToggleIcon(g.builder,
+                     row,
+                     {
+                         .state = state,
+                         .width = k_control_width,
+                         .justify = TextJustification::CentredLeft,
+                     });
 
         if (row.button_fired)
             SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
@@ -798,18 +819,18 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    },
                                });
 
-        DoMenuParameter(g, row, param, {.width = k_control_width, .label = false});
-
         DoBox(g.builder,
               {
                   .parent = row,
                   .text = param.info.gui_label,
                   .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
+                  .text_justification = TextJustification::CentredRight,
                   .layout {
                       .size = layout::k_fill_parent,
                   },
               });
+
+        DoMenuParameter(g, row, param, {.width = k_control_width, .label = false});
     }
 
     // Key Range row
@@ -983,18 +1004,18 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                    },
                                });
 
-        DoMenuParameter(g, row, param, {.width = control_width, .label = false});
-
         DoBox(g.builder,
               {
                   .parent = row,
                   .text = param.info.gui_label,
                   .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
+                  .text_justification = TextJustification::CentredRight,
                   .layout {
                       .size = layout::k_fill_parent,
                   },
               });
+
+        DoMenuParameter(g, row, param, {.width = control_width, .label = false});
     }
 
     auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
@@ -1040,6 +1061,17 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                    },
                                });
 
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .text = "Loop"_s,
+                  .text_colours = LiveColStruct(UiColMap::MidText),
+                  .text_justification = TextJustification::CentredRight,
+                  .layout {
+                      .size = layout::k_fill_parent,
+                  },
+              });
+
         auto const loop_container = DoBox(g.builder,
                                           {
                                               .parent = row,
@@ -1049,17 +1081,6 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                           });
 
         DoLoopModeSelector(g, loop_container, layer);
-
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = "Loop"_s,
-                  .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
-                  .layout {
-                      .size = layout::k_fill_parent,
-                  },
-              });
     }
 
 #if EXPERIMENTAL_GRANULAR
