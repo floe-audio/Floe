@@ -44,7 +44,7 @@ struct Notifications : BoundedList<Notification, 10> {
 };
 
 PUBLIC void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
-    constexpr f64 k_dismiss_seconds = 6;
+    constexpr f64 k_dismiss_seconds = 10;
 
     auto const root = DoBox(builder,
                             {
