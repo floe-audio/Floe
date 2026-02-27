@@ -27,8 +27,6 @@ pub fn maybeAddWindowsCodesign(
 
     // Windows codesigning requires signtool.exe with Azure Code Signing, which is only available on Windows.
     if (builtin.os.tag != .windows) {
-        const warn = std_extras.addWarn(b, "building Windows release on a non-Windows host, codesigning will be skipped");
-        compile_step.step.dependOn(&warn.step);
         return binary_path;
     }
 

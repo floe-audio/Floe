@@ -639,6 +639,16 @@ pub fn build(b: *std.Build) void {
             });
         };
 
+        if (builtin.os.tag != .windows) {
+            for (targets.items) |target| {
+                if (target.result.os.tag == .windows) {
+                    const warn = std_extras.addWarn(b, "building Windows release on a non-Windows host, codesigning will be skipped");
+                    top_level_steps.build_release.dependOn(&warn.step);
+                    break;
+                }
+            }
+        }
+
         for (artifacts_list, 0..) |artifacts, i| {
             const install_steps = release_artifacts.makeRelease(
                 b,
