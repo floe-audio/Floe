@@ -177,14 +177,14 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
             ++next;
             DEFER { it = next; };
 
-            auto const package_install_error_id = HashMultiple(Array {"package-install"_s, job.job->path});
+            auto const job_id = HashMultiple(Array {"package-install"_s, job.job->path});
 
             auto const state = job.job->state.Load(LoadMemoryOrder::Acquire);
             switch (state) {
                 case package::InstallJob::State::Installing: break;
 
                 case package::InstallJob::State::DoneError: {
-                    if (auto err = error_notifs.BeginWriteError(package_install_error_id)) {
+                    if (auto err = error_notifs.BeginWriteError(job_id)) {
                         DEFER { error_notifs.EndWriteError(*err); };
                         fmt::Assign(err->title,
                                     "Failed to install {}",
@@ -196,7 +196,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                     break;
                 }
                 case package::InstallJob::State::DoneSuccess: {
-                    error_notifs.RemoveError(package_install_error_id);
+                    error_notifs.RemoveError(job_id);
 
                     DynamicArrayBounded<char, k_notification_buffer_size - 24> buffer {};
                     u8 num_truncated = 0;
@@ -229,7 +229,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                             }
                             return c;
                         },
-                        .id = HashFnv1a("package install success"),
+                        .id = job_id,
                     };
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
