@@ -270,7 +270,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                         auto cfg = k_default_modal_viewport;
                         cfg.mode = imgui::ViewportMode::Floating;
                         cfg.exclusive_focus = true;
-                        cfg.z_order = 100;
+                        cfg.z_order = 200;
                         cfg;
                     }),
                     .debug_name = "pkg-user-input-dialog",

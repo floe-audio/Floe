@@ -198,9 +198,11 @@ PUBLIC void DoNotifications(GuiBuilder& builder, Notifications& notifications) {
                               cfg.mode = imgui::ViewportMode::Floating;
                               cfg.auto_size = {false, true};
                               cfg.exclusive_focus = false;
+                              cfg.ignore_exclusive_focus = true;
                               cfg.close_on_click_outside = false;
                               cfg.close_on_escape = false;
                               cfg.draw_background = {};
+                              cfg.z_order = 120;
                               cfg;
                           }),
                           .debug_name = "notifications",
