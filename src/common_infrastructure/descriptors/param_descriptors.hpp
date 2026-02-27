@@ -60,6 +60,8 @@ enum class LayerParamIndex : u16 {
     KeyRangeHigh,
     KeyRangeLowFade,
     KeyRangeHighFade,
+
+#if EXPERIMENTAL_GRANULAR
     PlayMode,
     GranularSpeed,
     GranularPosition,
@@ -67,6 +69,7 @@ enum class LayerParamIndex : u16 {
     GranularLength,
     GranularSpread,
     GranularSmoothing,
+#endif
 
     Count,
 };
@@ -2217,6 +2220,7 @@ consteval auto CreateParams() {
             .gui_label = "Pitch Bend Range"_s,
             .tooltip = "The pitch range in semitones of the MIDI pitch wheel"_s,
         };
+#if EXPERIMENTAL_GRANULAR
         lp(PlayMode) = Args {
             .id = id(region, 56), // never change
             .value_config = val_config_helpers::Menu({
@@ -2279,6 +2283,7 @@ consteval auto CreateParams() {
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
         };
+#endif
     }
 
     // =====================================================================================================

@@ -6,7 +6,6 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
-#include "processor/granular.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
@@ -16,6 +15,7 @@
 #include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "processor/granular.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
 
@@ -967,6 +967,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
+#if EXPERIMENTAL_GRANULAR
     // Engine type menu
     {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
@@ -997,6 +998,9 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
     }
 
     auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
+#else
+    auto const play_mode = param_values::PlayMode::Standard;
+#endif
 
     // Waveform display
     if (auto const r = BoxRect(g.builder,
@@ -1058,6 +1062,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
               });
     }
 
+#if EXPERIMENTAL_GRANULAR
     // Granular controls
     if (IsGranular(play_mode)) {
         auto const knobs_row = DoBox(g.builder,
@@ -1103,6 +1108,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
             do_knob(LayerParamIndex::GranularSmoothing);
         }
     }
+#endif
 }
 
 static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {

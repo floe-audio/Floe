@@ -6,7 +6,6 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
-#include "processor/granular.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
@@ -18,6 +17,7 @@
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "processor/granular.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
 
@@ -171,10 +171,12 @@ static void DoEngineSection(GuiState& g, u8 layer_index, Box parent) {
                                },
                            });
 
+#if EXPERIMENTAL_GRANULAR
     // Play Mode selector
     DoMenuParameter(g, col, params.DescribedValue(layer_index, LayerParamIndex::PlayMode), {.width = 100});
 
     auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
+#endif
 
     bool const is_waveform_synth = layer_processor.instrument_id.tag == InstrumentType::WaveformSynth;
     DoButtonParameter(g,
@@ -182,6 +184,7 @@ static void DoEngineSection(GuiState& g, u8 layer_index, Box parent) {
                       params.DescribedValue(layer_index, LayerParamIndex::Reverse),
                       {.width = 60, .greyed_out = is_waveform_synth});
 
+#if EXPERIMENTAL_GRANULAR
     // Loop mode selector (hidden in granular position mode)
     if (play_mode != param_values::PlayMode::GranularFixed) DoLoopModeSelector(g, col, layer_processor);
 
@@ -231,6 +234,7 @@ static void DoEngineSection(GuiState& g, u8 layer_index, Box parent) {
             do_knob(LayerParamIndex::GranularSmoothing);
         }
     }
+#endif
 }
 
 static void DoMixerSection(GuiState& g, u8 layer_index, Box parent) {
@@ -885,9 +889,13 @@ void MidPanelSingleLayerContent(GuiBuilder& builder,
 
         if (auto const r = BoxRect(builder, waveform_box)) {
             if (has_instrument) {
+#if EXPERIMENTAL_GRANULAR
                 auto const play_mode = g.engine.processor.main_params.IntValue<param_values::PlayMode>(
                     layer_index,
                     LayerParamIndex::PlayMode);
+#else
+                auto const play_mode = param_values::PlayMode::Standard;
+#endif
                 DoWaveformElement(g, layer, *r, {.handles_follow_cursor = true, .play_mode = play_mode});
             }
         }

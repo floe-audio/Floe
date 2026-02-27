@@ -708,6 +708,7 @@ void DoWaveformElement(GuiState& g,
                                                     LiveCol(UiColMap::WaveformLoopWaveformOffset));
                     }
 
+#if EXPERIMENTAL_GRANULAR
                     // Granular position indicator: a thin vertical line at the grain position,
                     // flanked by subtle gradient edges showing the grain size region.
                     if (features.show_grain_position_indicator) {
@@ -732,6 +733,7 @@ void DoWaveformElement(GuiState& g,
                                                          f32x2 {region_right, window_r.Bottom()},
                                                          LiveCol(UiColMap::WaveformRegionOverlay));
                     }
+#endif
                 } else {
                     // Plain waveform with no overlays.
                     g.imgui.draw_list->AddImage(tex.Value(),

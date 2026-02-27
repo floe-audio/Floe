@@ -506,7 +506,7 @@ enum class StateVersion : u16 {
 };
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == 249,
+    static_assert(k_num_parameters == (EXPERIMENTAL_GRANULAR ? 249 : 228),
                   "You have changed the number of parameters. You must now bump the "
                   "state version number and handle setting any new parameters to "
                   "backwards-compatible states. In other words, these new parameters "
@@ -665,6 +665,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         }
     }
 
+#if EXPERIMENTAL_GRANULAR
     if (version < StateVersion::AddedGranular) {
         for (auto const layer_index : Range(k_num_layers)) {
             state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode)) =
@@ -682,6 +683,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             set(LayerParamIndex::GranularLength);
         }
     }
+#endif
 }
 
 static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,

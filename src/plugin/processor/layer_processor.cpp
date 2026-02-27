@@ -674,10 +674,11 @@ void ProcessLayerChanges(LayerProcessor& layer,
         if (update_loop_info) UpdateLoopPointsForVoices(layer, voice_pool);
     }
 
+#if EXPERIMENTAL_GRANULAR
     // Playback / Granular
     // =======================================================================================================
-    if (auto p = changes.changed_params.IntValue<param_values::PlayMode>(layer.index,
-                                                                         LayerParamIndex::PlayMode))
+    if (auto p =
+            changes.changed_params.IntValue<param_values::PlayMode>(layer.index, LayerParamIndex::PlayMode))
         vmst.play_mode = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSpeed))
         vmst.granular.speed = *p;
@@ -691,6 +692,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.spread = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSmoothing))
         vmst.granular.smoothing = *p;
+#endif
 
     // EQ
     // =======================================================================================================

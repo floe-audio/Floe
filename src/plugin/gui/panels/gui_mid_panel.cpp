@@ -175,7 +175,7 @@ static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
         imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
 }
 
-static void DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
+[[maybe_unused]] static void DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
     auto const tab_bar = DoBox(builder,
                                {
                                    .parent = parent,
@@ -328,7 +328,8 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                             });
 
                     auto const current_tab = g.mid_panel_state.tab;
-                    DoMidPanelTabBar(builder, g, root);
+
+                    if constexpr (EXPERIMENTAL_MID_PANEL_TABS) DoMidPanelTabBar(builder, g, root);
 
                     auto const content = DoBox(builder,
                                                {
