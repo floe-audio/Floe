@@ -746,10 +746,10 @@ struct VoiceProcessor {
                 if (new_grain) {
                     auto const spread_fraction = GrainSpreadParamToFraction(ctrl.granular.spread);
                     auto const rand_val =
-                        ((f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand) * 2.0f - 1.0f;
+                        (((f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand) * 2.0f) - 1.0f;
                     auto const spread_offset_norm = rand_val * spread_fraction * 0.5f;
 
-                    auto grain_pos = sampler.playhead.frame_pos + (f64)spread_offset_norm * (f64)num_frames;
+                    auto grain_pos = sampler.playhead.frame_pos + ((f64)spread_offset_norm * (f64)num_frames);
                     grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
 
                     auto& gph = new_grain->playhead;
