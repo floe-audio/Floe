@@ -23,6 +23,11 @@ constexpr f64 k_popup_open_and_close_delay_sec {0.2};
 static constexpr f64 k_text_cursor_blink_rate {0.5};
 static constexpr f64 k_button_repeat_rate {0.5};
 
+static bool IsBlockedByExclusiveFocus(Viewport const* exclusive_focus_viewport, Viewport const* v) {
+    return exclusive_focus_viewport && v->root_viewport != exclusive_focus_viewport &&
+           !v->root_viewport->cfg.ignore_exclusive_focus;
+}
+
 static bool WantsCloseOnEscape(ViewportConfig const& cfg) {
     switch (cfg.mode) {
         case ViewportMode::PopupMenu: return true;
@@ -781,7 +786,8 @@ void Context::EndFrame() {
         } else if (open_modals.size && modal_just_opened == k_null_id) {
             if (exclusive_focus_viewport && exclusive_focus_viewport->cfg.mode == ViewportMode::Modal &&
                 exclusive_focus_viewport->cfg.close_on_click_outside &&
-                (!hovered_viewport || exclusive_focus_viewport != hovered_viewport->root_viewport)) {
+                (!hovered_viewport ||
+                 IsBlockedByExclusiveFocus(exclusive_focus_viewport, hovered_viewport))) {
                 CloseTopModal();
             }
         }
@@ -935,7 +941,7 @@ Rect Context::RegisterAndConvertRect(Rect r) {
 }
 
 bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_intersection) {
-    if (exclusive_focus_viewport && curr_viewport->root_viewport != exclusive_focus_viewport) return false;
+    if (IsBlockedByExclusiveFocus(exclusive_focus_viewport, curr_viewport)) return false;
     if (check_intersection && !Rect::DoRectsIntersect(r_in_window_coords, GetCurrentClipRect())) return false;
 
     dyn::Append(GuiIo().out.mouse_tracked_rects,
@@ -950,7 +956,8 @@ bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_i
 }
 
 bool Context::RequestKeyboardFocus(Id id) {
-    auto const inside_exclusive_focus_viewport = curr_viewport->root_viewport == exclusive_focus_viewport;
+    auto const inside_exclusive_focus_viewport =
+        !IsBlockedByExclusiveFocus(exclusive_focus_viewport, curr_viewport);
 
     if (!inside_exclusive_focus_viewport && temp_keyboard_focus_item_is_popup) {
         // We can never have focus because there's a popup open and that always has priority.
@@ -988,7 +995,7 @@ static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
 void Context::SetHot(Rect r, Id id, bool32 is_not_viewport_content) {
     if (temp_hovered_item == id) return; // Already called SetHot this frame for this ID.
 
-    if (exclusive_focus_viewport && curr_viewport->root_viewport != exclusive_focus_viewport) return;
+    if (IsBlockedByExclusiveFocus(exclusive_focus_viewport, curr_viewport)) return;
 
     if (curr_viewport != (is_not_viewport_content ? hovered_viewport : hovered_viewport_content)) return;
 

@@ -248,6 +248,9 @@ struct ViewportConfig {
 
     u8 z_order {}; // [Floating or Modal]. Viewports with larger values sit on top of lower values.
     bool32 exclusive_focus : 1 = false; // [Floating or Modal]. Make all other viewports uninteractable.
+    bool32 ignore_exclusive_focus : 1 = false; // [Floating]. Allow interaction even when another viewport
+                                               // has exclusive focus. Clicks on this viewport won't
+                                               // trigger close_on_click_outside for modals.
     bool32 close_on_click_outside : 1 = false; // [Modal]. Close with clicks outside viewport.
     bool32 close_on_escape : 1 = false; // [Modal]. Close when escape key pressed.
 };
