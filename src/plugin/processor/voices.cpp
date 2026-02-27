@@ -265,7 +265,7 @@ static Optional<BoundsCheckedLoop> ConfigureLoop(param_values::LoopMode desired_
 
 static f64 EffectiveStartOffset(f32 sample_offset_01, u32 start_offset_frames, u32 num_frames) {
     return Max<f64>((f64)sample_offset_01 * (f64)(num_frames - 1),
-                     Min<f64>((f64)(num_frames - 1), (f64)start_offset_frames));
+                    Min<f64>((f64)(num_frames - 1), (f64)start_offset_frames));
 }
 
 static Optional<BoundsCheckedLoop> LoopForSource(VoiceProcessingController const& controller,
@@ -400,8 +400,8 @@ void StartVoice(VoicePool& pool,
                                   s_sampler.data->num_frames);
                 } else {
                     auto const offs = EffectiveStartOffset(voice_controller.sample_offset_01,
-                                                            s_params.region.audio_props.start_offset_frames,
-                                                            s_sampler.data->num_frames);
+                                                           s_params.region.audio_props.start_offset_frames,
+                                                           s_sampler.data->num_frames);
 
                     ResetPlayhead(s_sampler.playhead,
                                   offs,
@@ -588,8 +588,8 @@ struct VoiceProcessor {
                         auto const pos = grain.playhead.RealFramePos(ref_num_frames);
                         if (pos) {
                             grain_markers.grains[grain_markers.num_active++] = {
-                                .position =
-                                    (u16)((*pos / (f64)ref_num_frames) * (f64)LargestRepresentableValue<u16>()),
+                                .position = (u16)((*pos / (f64)ref_num_frames) *
+                                                  (f64)LargestRepresentableValue<u16>()),
                             };
                         }
                     }
@@ -724,16 +724,12 @@ struct VoiceProcessor {
             if (is_fixed) {
                 sampler.playhead.frame_pos = (f64)ctrl.granular.position * (f64)(num_frames - 1);
                 source_alive = true;
+            } else if (PlaybackEnded(sampler.playhead, num_frames)) {
+                source_alive = false;
             } else {
-                if (PlaybackEnded(sampler.playhead, num_frames)) {
-                    source_alive = false;
-                } else {
-                    auto const rate_ratio = (f64)sampler.data->sample_rate / (f64)context.sample_rate;
-                    IncrementPlaybackPos(sampler.playhead,
-                                         (f64)ctrl.granular.speed * rate_ratio,
-                                         num_frames);
-                    source_alive = true;
-                }
+                auto const rate_ratio = (f64)sampler.data->sample_rate / (f64)context.sample_rate;
+                IncrementPlaybackPos(sampler.playhead, (f64)ctrl.granular.speed * rate_ratio, num_frames);
+                source_alive = true;
             }
 
             // Spawn check for this source.
@@ -753,8 +749,7 @@ struct VoiceProcessor {
                         ((f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand) * 2.0f - 1.0f;
                     auto const spread_offset_norm = rand_val * spread_fraction * 0.5f;
 
-                    auto grain_pos =
-                        sampler.playhead.frame_pos + (f64)spread_offset_norm * (f64)num_frames;
+                    auto grain_pos = sampler.playhead.frame_pos + (f64)spread_offset_norm * (f64)num_frames;
                     grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
 
                     auto& gph = new_grain->playhead;
@@ -766,8 +761,10 @@ struct VoiceProcessor {
                                       sampler.playhead.inverse_data_lookup,
                                       num_frames);
                     } else {
-                        auto const min_pos = EffectiveStartOffset(
-                            ctrl.sample_offset_01, sampler.region->audio_props.start_offset_frames, num_frames);
+                        auto const min_pos =
+                            EffectiveStartOffset(ctrl.sample_offset_01,
+                                                 sampler.region->audio_props.start_offset_frames,
+                                                 num_frames);
                         if (grain_pos < min_pos) {
                             auto const undershoot = min_pos - grain_pos;
                             auto const playable_range = (f64)(num_frames - 1) - min_pos;
@@ -825,8 +822,9 @@ struct VoiceProcessor {
                 if (!PlaybackEnded(grain.playhead, num_frames)) {
                     auto const sample = GetSampleFrame(*sampler.data, grain.playhead);
 
-                    auto const xfade_vol = sampler.xfade_vol_smoother.LowPass(
-                        sampler.xfade_vol, context.one_pole_smoothing_cutoff_10ms);
+                    auto const xfade_vol =
+                        sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
+                                                           context.one_pole_smoothing_cutoff_10ms);
 
                     out_val += sample * envelope * s.amp * xfade_vol;
 
@@ -881,7 +879,12 @@ struct VoiceProcessor {
                 case InstrumentType::Sampler: {
                     bool ok;
                     if (is_granular)
-                        ok = AddGranularSampleDataOntoBuffer(voice, s, source_index, buffer, lfo_amounts, context);
+                        ok = AddGranularSampleDataOntoBuffer(voice,
+                                                             s,
+                                                             source_index,
+                                                             buffer,
+                                                             lfo_amounts,
+                                                             context);
                     else
                         ok = AddSampleDataOntoBuffer(voice, s, buffer, lfo_amounts, context);
                     if (!ok) {
