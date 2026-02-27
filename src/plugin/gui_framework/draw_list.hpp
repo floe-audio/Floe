@@ -177,7 +177,10 @@ struct DrawList {
         bool in_path = false;
         for (int i = 0; i < 4; i++) {
             if (edges & edge_bits[i]) {
-                if (!in_path) { PathLineTo(corners[i]); in_path = true; }
+                if (!in_path) {
+                    PathLineTo(corners[i]);
+                    in_path = true;
+                }
                 PathLineTo(corners[(i + 1) % 4]);
             } else if (in_path) {
                 PathStroke(colour, false, thickness);
