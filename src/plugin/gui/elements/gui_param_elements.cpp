@@ -246,10 +246,12 @@ Box DoMenuParameter(GuiState& g,
     Optional<f32> new_val {};
 
     // We want a special behaviour when doing hug-contents.
-    auto const menu_btn_width =
-        options.width == layout::k_hug_contents
-            ? g.imgui.draw_list->fonts.Current()->LargestStringWidth(0, ParameterMenuItems(param.info.index))
-            : layout::k_fill_parent;
+    auto const menu_btn_width = options.width == layout::k_hug_contents
+                                    ? (PixelsToWw(g.imgui.draw_list->fonts.Current()->LargestStringWidth(
+                                           0,
+                                           ParameterMenuItems(param.info.index))) +
+                                       2)
+                                    : layout::k_fill_parent;
 
     // Menu text button that opens a popup.
     auto const menu_btn =
