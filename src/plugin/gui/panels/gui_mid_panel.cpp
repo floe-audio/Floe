@@ -16,7 +16,7 @@ void DrawMidBlurredBackground(GuiState& g,
                               Rect r,
                               Rect clipped_to,
                               sample_lib::LibraryIdRef library_id,
-                              f32 opacity) {
+                              MidBlurredBackgroundOptions const& options) {
     auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui))) {
@@ -44,7 +44,7 @@ void DrawMidBlurredBackground(GuiState& g,
                 DEFER { g.imgui.draw_list->PopClipRect(); };
 
                 auto const image_draw_colour = ToU32({
-                    .a = (u8)(opacity * 255),
+                    .a = (u8)(options.opacity * 255),
                     .b = 255,
                     .g = 255,
                     .r = 255,
@@ -56,66 +56,26 @@ void DrawMidBlurredBackground(GuiState& g,
                                                    min_uv,
                                                    max_uv,
                                                    image_draw_colour,
-                                                   panel_rounding);
+                                                   panel_rounding,
+                                                   options.rounding_corners);
                 return;
             }
         }
     }
 
-    g.imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
-}
-
-void DoMidOverlayGradient(imgui::Context const& imgui, Rect r) {
-    auto const panel_rounding = WwToPixels(k_panel_rounding);
-
-    auto const vtx_idx_0 = imgui.draw_list->vtx_buffer.size;
-    auto const pos = r.Min() + f32x2 {1, 1};
-    auto const size = f32x2 {r.w, r.h / 2} - f32x2 {2, 2};
-    imgui.draw_list->AddRectFilled(pos, pos + size, 0xffffffff, panel_rounding);
-    auto const vtx_idx_1 = imgui.draw_list->vtx_buffer.size;
-    imgui.draw_list->AddRectFilled(pos, pos + size, 0xffffffff, panel_rounding);
-    auto const vtx_idx_2 = imgui.draw_list->vtx_buffer.size;
-
-    constexpr f32 k_overlay_gradient_colour = 0.0f;
-    constexpr f32 k_overlay_gradient_opacity = 0.0f;
-    auto const col_value = (u8)(Clamp01(k_overlay_gradient_colour / 100.0f) * 255);
-    auto const col = ToU32({
-        .a = (u8)(Clamp01(k_overlay_gradient_opacity / 100.0f) * 255),
-        .b = col_value,
-        .g = col_value,
-        .r = col_value,
-    });
-
-    DrawList::ShadeVertsLinearColorGradientSetAlpha(imgui.draw_list,
-                                                    vtx_idx_0,
-                                                    vtx_idx_1,
-                                                    pos,
-                                                    pos + f32x2 {0, size.y},
-                                                    col,
-                                                    0);
-    DrawList::ShadeVertsLinearColorGradientSetAlpha(imgui.draw_list,
-                                                    vtx_idx_1,
-                                                    vtx_idx_2,
-                                                    pos + f32x2 {size.x, 0},
-                                                    pos + f32x2 {size.x, size.y},
-                                                    col,
-                                                    0);
+    g.imgui.draw_list->AddRectFilled(r,
+                                     LiveCol(UiColMap::MidViewportSurface),
+                                     panel_rounding,
+                                     options.rounding_corners);
 }
 
 void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id) {
     auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     if (lib_id)
-        DrawMidBlurredBackground(g,
-                                 window_r,
-                                 window_r,
-                                 *lib_id,
-                                 Clamp01(k_background_blurring_opacity / 100.0f));
+        DrawMidBlurredBackground(g, window_r, window_r, *lib_id, {});
     else
         g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
-
-    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
-        DoMidOverlayGradient(g.imgui, window_r);
 
     g.imgui.draw_list->AddRect(window_r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
 }

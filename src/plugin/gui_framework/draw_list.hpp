@@ -44,6 +44,13 @@ struct Fonts;
 // 0b0001 = bottom-left
 using Corners = u4;
 
+// 4 bits, clockwise from left: left, top, right, bottom.
+// 0b1000 = left
+// 0b0100 = top
+// 0b0010 = right
+// 0b0001 = bottom
+using Edges = u4;
+
 struct AddTextOptions {
     // Wrap to a new line if the text exceeds this width. Works the same as Font's text size calculation
     // wrap_width argument.
@@ -157,6 +164,28 @@ struct DrawList {
     }
 
     void AddLine(f32x2 a, f32x2 b, u32 colour, f32 thickness = 1.0f);
+
+    // Draws inside the rect.
+    void AddBorderEdges(Rect r, u32 colour, Edges edges, f32 thickness = 1.0f) {
+        f32 const l = r.x + 0.5f;
+        f32 const t = r.y + 0.5f;
+        f32 const ri = r.x + r.w - thickness + 0.5f;
+        f32 const b = r.y + r.h - thickness + 0.5f;
+        // Clockwise corners: TL, TR, BR, BL. Each edge connects corner[i] to corner[i+1].
+        f32x2 const corners[] = {{l, t}, {ri, t}, {ri, b}, {l, b}};
+        Edges const edge_bits[] = {0b0100, 0b0010, 0b0001, 0b1000};
+        bool in_path = false;
+        for (int i = 0; i < 4; i++) {
+            if (edges & edge_bits[i]) {
+                if (!in_path) { PathLineTo(corners[i]); in_path = true; }
+                PathLineTo(corners[(i + 1) % 4]);
+            } else if (in_path) {
+                PathStroke(colour, false, thickness);
+                in_path = false;
+            }
+        }
+        if (in_path) PathStroke(colour, false, thickness);
+    }
 
     void AddPolyline(Span<f32x2 const> points, u32 col, bool closed, f32 thickness, bool anti_aliased);
 

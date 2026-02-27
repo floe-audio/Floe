@@ -530,7 +530,6 @@ Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
                       ButtonParameterComponentOptions const& options) {
-    auto const height = k_mid_button_height;
     bool const state = param.BoolValue();
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
@@ -540,7 +539,7 @@ Box DoButtonParameter(GuiState& g,
                                      .parent = parent,
                                      .id_extra = (u64)param.info.id,
                                      .layout {
-                                         .size = {options.width, height},
+                                         .size = {options.width, options.height},
                                          .margins = options.margins,
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Start,
@@ -579,7 +578,7 @@ Box DoButtonParameter(GuiState& g,
                   .size = {options.width == layout::k_hug_contents
                                ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x
                                : layout::k_fill_parent,
-                           height},
+                           options.height},
               },
           });
 

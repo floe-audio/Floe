@@ -333,7 +333,7 @@ static ScrollbarResult Scrollbar(Context& im,
             *scroll_y = viewport_y + scrollbar_rel_y;
 
             f32 const y_scroll_percent = Map(scrollbar_rel_y, 0, scrollbar_range, 0, 1);
-            y_scroll_value = (f32)(int)(y_scroll_percent * y_scroll_max);
+            y_scroll_value = Round(y_scroll_percent * y_scroll_max);
         }
     }
 
@@ -1802,7 +1802,7 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
         f32 const scrollbar_size =
             !scrollbar_inside_padding ? viewport->cfg.scrollbar_width + viewport->cfg.scrollbar_padding : 0;
         Rect bounds_for_scrollbar = viewport->bounds;
-        f32 const epsilon = 0.01f;
+        f32 const epsilon = 1.0f;
 
         for (auto const i : Range(2uz)) {
             viewport->has_scrollbar[i] =

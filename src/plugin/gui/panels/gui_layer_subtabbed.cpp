@@ -130,23 +130,6 @@ static void DoWhitespace(GuiBuilder& builder, Box parent, f32 height, u64 loc_ha
           });
 }
 
-static void DoDivider(GuiState& g, Box parent, u64 loc_hash = SourceLocationHash()) {
-    auto const divider = DoBox(g.builder,
-                               {
-                                   .parent = parent,
-                                   .id_extra = loc_hash,
-                                   .layout {
-                                       .size = {layout::k_fill_parent, 1},
-                                   },
-                               });
-    if (auto const r = BoxRect(g.builder, divider)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        g.imgui.draw_list->AddLine({window_r.x, window_r.Bottom()},
-                                   {window_r.Right(), window_r.Bottom()},
-                                   LiveCol(UiColMap::MidViewportDivider));
-    }
-}
-
 static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
     auto& params = g.engine.processor.main_params;
     auto& layer_state = g.layer_panel_states[layer_index];
@@ -154,6 +137,8 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
     auto const tabs_row = DoBox(g.builder,
                                 {
                                     .parent = parent,
+                                    .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                                    .border_edges = 0b0101,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
                                         .contents_direction = layout::Direction::Row,
@@ -337,6 +322,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                            .parent = page,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .margins = {.b = 15},
                                                .contents_gap = 12,
                                                .contents_direction = layout::Direction::Row,
                                            },
@@ -353,8 +339,6 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                         {.width = layout::k_fill_parent, .greyed_out = greyed_out, .label = false});
     }
 
-    DoWhitespace(g.builder, page, 15);
-
     // Knobs row: Cutoff, Resonance, EnvAmount
     {
         auto const knobs_row = DoBox(g.builder,
@@ -362,6 +346,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                          .parent = page,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .margins = {.b = 20},
                                              .contents_gap = 22.6f,
                                              .contents_direction = layout::Direction::Row,
                                              .contents_align = layout::Alignment::Middle,
@@ -394,8 +379,6 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                             .bidirectional = true,
                         });
     }
-
-    DoWhitespace(g.builder, page, 20);
 
     // Filter envelope
     {
@@ -1239,9 +1222,7 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
 
     DoWhitespace(g.builder, top_controls, 10);
 
-    DoDivider(g, root);
     DoPageTabs(g, layer_index, root);
-    DoDivider(g, root);
 
     auto const page_container = DoBox(g.builder,
                                       {

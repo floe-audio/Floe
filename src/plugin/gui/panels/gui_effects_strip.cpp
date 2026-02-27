@@ -63,42 +63,6 @@ static FXColours GetFxColMap(EffectType type) {
     return {};
 }
 
-static void DoWhitespace(GuiBuilder& builder, Box parent, f32 height, u64 loc_hash = SourceLocationHash()) {
-    DoBox(builder,
-          {
-              .parent = parent,
-              .layout {.size = {1, height}},
-          },
-          loc_hash);
-}
-
-static Box DoDivider(GuiState& g, Box parent, u64 loc_hash = SourceLocationHash()) {
-    auto const divider = DoBox(g.builder,
-                               {
-                                   .parent = parent,
-                                   .layout {
-                                       .size = {layout::k_fill_parent, 1},
-                                   },
-                               },
-                               loc_hash);
-    if (auto const r = BoxRect(g.builder, divider)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        g.imgui.draw_list->AddLine({window_r.x, window_r.Bottom()},
-                                   {window_r.Right(), window_r.Bottom()},
-                                   LiveCol(UiColMap::MidViewportDivider));
-    }
-    return divider;
-}
-
-static void DoDividerColoured(GuiState& g, Box divider, u32 col) {
-    if (auto const r = BoxRect(g.builder, divider)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        g.imgui.draw_list->AddLine({window_r.x, window_r.Bottom()},
-                                   {window_r.Right(), window_r.Bottom()},
-                                   col);
-    }
-}
-
 static void DoKnobJoiningLine(GuiState& g, Box knob1, Box knob2) {
     if (auto const r1 = BoxRect(g.builder, knob1)) {
         if (auto const r2 = BoxRect(g.builder, knob2)) {
@@ -132,8 +96,10 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
                                       .id_extra = ToInt(fx.type),
                                       .layout {
                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_gap = 2,
                                           .contents_direction = layout::Direction::Row,
                                           .contents_align = layout::Alignment::Start,
+                                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                       },
                                   });
 
@@ -374,11 +340,11 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
 
 struct EffectSectionInfo {
     Effect* fx;
-    Box divider;
+    Box container;
 };
 
 // Switchboard: effect toggle buttons arranged in two columns.
-static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
+static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
 
     auto& params = g.engine.processor.main_params;
 
@@ -389,9 +355,11 @@ static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) 
     auto const switches_container = DoBox(g.builder,
                                           {
                                               .parent = root,
+                                              .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                                              .border_edges = 0b0001,
                                               .layout {
                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_padding = {.l = 8, .t = 4, .r = 2, .b = 4},
+                                                  .contents_padding = {.l = 8, .t = 4, .r = 2, .b = 6},
                                                   .contents_gap = 2,
                                                   .contents_direction = layout::Direction::Row,
                                               },
@@ -608,6 +576,8 @@ static void DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) 
             g.dragging_fx_switch.Clear();
         }
     }
+
+    return switches_container;
 }
 
 // Per-effect-type parameter controls.
@@ -677,10 +647,11 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::Compressor: {
-            DoButtonParameter(g,
-                              extras_container,
-                              params.DescribedValue(ParamIndex::CompressorAutoGain),
-                              {.width = 80.0f, .on_colour = highlight_col});
+            DoButtonParameter(
+                g,
+                extras_container,
+                params.DescribedValue(ParamIndex::CompressorAutoGain),
+                {.width = layout::k_hug_contents, .height = k_fx_heading_h, .on_colour = highlight_col});
 
             DoKnobParameter(g,
                             param_container,
@@ -861,24 +832,33 @@ static void DoEffectParams(GuiState& g,
             bool const synced = params.BoolValue(ParamIndex::DelayTimeSyncSwitch);
 
             // Sync toggle in heading extras
-            DoButtonParameter(g,
-                              extras_container,
-                              params.DescribedValue(ParamIndex::DelayTimeSyncSwitch),
-                              {.width = 98.f, .on_colour = highlight_col});
+            DoButtonParameter(
+                g,
+                extras_container,
+                params.DescribedValue(ParamIndex::DelayTimeSyncSwitch),
+                {.width = layout::k_hug_contents, .height = k_fx_heading_h, .on_colour = highlight_col});
 
+            auto const time_box = DoBox(g.builder,
+                                        {
+                                            .parent = param_container,
+                                            .layout {
+                                                .size = {150, layout::k_hug_contents},
+                                                .contents_gap = synced ? 4 : k_fx_controls_gap_x,
+                                            },
+                                        });
             // Time params (conditional)
             if (synced) {
-                DoMenuParameter(g, param_container, params.DescribedValue(ParamIndex::DelayTimeSyncedL), {});
-                DoMenuParameter(g, param_container, params.DescribedValue(ParamIndex::DelayTimeSyncedR), {});
+                DoMenuParameter(g, time_box, params.DescribedValue(ParamIndex::DelayTimeSyncedL), {});
+                DoMenuParameter(g, time_box, params.DescribedValue(ParamIndex::DelayTimeSyncedR), {});
             } else {
                 auto const left_knob =
                     DoKnobParameter(g,
-                                    param_container,
+                                    time_box,
                                     params.DescribedValue(ParamIndex::DelayTimeLMs),
                                     {.width = k_knob_w, .knob_highlight_col = highlight_col});
                 auto const right_knob =
                     DoKnobParameter(g,
-                                    param_container,
+                                    time_box,
                                     params.DescribedValue(ParamIndex::DelayTimeRMs),
                                     {.width = k_knob_w, .knob_highlight_col = highlight_col});
                 DoKnobJoiningLine(g, left_knob, right_knob);
@@ -973,7 +953,20 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
         auto const cols = GetFxColMap(fx->type);
         auto const highlight_col = LiveColStruct(cols.highlight);
 
-        auto const [heading_btn, extras_container, close_fired] = DoEffectHeading(g, *fx, root);
+        auto const section = DoBox(g.builder,
+                                   {
+                                       .parent = root,
+                                       .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                                       .border_edges = 0b0001,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                           .contents_padding = {.b = 8},
+                                           .contents_direction = layout::Direction::Column,
+                                           .contents_align = layout::Alignment::Start,
+                                       },
+                                   });
+
+        auto const [heading_btn, extras_container, close_fired] = DoEffectHeading(g, *fx, section);
 
         if (!is_being_dragged) {
             // Drag start on heading
@@ -988,7 +981,7 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
 
         auto const contents = DoBox(g.builder,
                                     {
-                                        .parent = root,
+                                        .parent = section,
                                         .layout {
                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
                                             .contents_padding =
@@ -1001,13 +994,9 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
 
         auto const param_container = DoEffectParamContainer(g.builder, contents);
 
-        DoEffectParams(g, frame_context, *fx, param_container, extras_container, highlight_col, root);
+        DoEffectParams(g, frame_context, *fx, param_container, extras_container, highlight_col, section);
 
-        // Divider after effect section
-        DoWhitespace(g.builder, root, 7.4f);
-        auto const div = DoDivider(g, root);
-
-        dyn::Append(effect_sections, EffectSectionInfo {fx, div});
+        dyn::Append(effect_sections, EffectSectionInfo {fx, section});
     }
 
     return effect_sections;
@@ -1015,7 +1004,7 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
 
 // Drag-and-drop for both effect unit reordering and switchboard reordering.
 static void DoEffectDragAndDrop(GuiState& g,
-                                Box switches_bottom_divider,
+                                Box switchboard_box,
                                 Span<EffectSectionInfo const> effect_sections,
                                 EffectsArray& ordered_effects) {
     if (!g.builder.IsInputAndRenderPass()) return;
@@ -1023,7 +1012,7 @@ static void DoEffectDragAndDrop(GuiState& g,
 
     // Effect unit drag (heading drag to reorder sections)
     if (g.dragging_fx_unit && g.imgui.IsViewportHovered(g.imgui.curr_viewport)) {
-        // Find closest divider
+        // Find closest section boundary
 
         EffectSectionInfo zeroth_section {};
 
@@ -1033,8 +1022,8 @@ static void DoEffectDragAndDrop(GuiState& g,
 
             f32 distance = FLT_MAX;
 
-            if (auto const r = BoxRect(g.builder, switches_bottom_divider)) {
-                distance = Abs(r->y - rel_y_pos);
+            if (auto const r = BoxRect(g.builder, switchboard_box)) {
+                distance = Abs(r->Bottom() - rel_y_pos);
                 zeroth_section = {
                     .fx = ({
                         Effect* first_fx = nullptr;
@@ -1045,14 +1034,14 @@ static void DoEffectDragAndDrop(GuiState& g,
                             }
                         first_fx;
                     }),
-                    .divider = switches_bottom_divider,
+                    .container = switchboard_box,
                 };
                 closest_section = &zeroth_section;
             }
 
             for (auto const& section : effect_sections) {
-                if (auto const r = BoxRect(g.builder, section.divider)) {
-                    if (f32 const d = Abs(r->y - rel_y_pos); d < distance) {
+                if (auto const r = BoxRect(g.builder, section.container)) {
+                    if (f32 const d = Abs(r->Bottom() - rel_y_pos); d < distance) {
                         distance = d;
                         closest_section = &section;
                     }
@@ -1070,8 +1059,11 @@ static void DoEffectDragAndDrop(GuiState& g,
             dest;
         });
 
-        // Highlight closest divider
-        DoDividerColoured(g, closest_section->divider, LiveCol(UiColMap::FXDividerLineDropZone));
+        // Highlight closest section boundary
+        if (auto const r = BoxRect(g.builder, closest_section->container)) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+            g.imgui.draw_list->AddBorderEdges(window_r, LiveCol(UiColMap::FXDividerLineDropZone), 0b0001);
+        }
 
         if (g.dragging_fx_unit->drop_slot != closest_slot)
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
@@ -1083,11 +1075,7 @@ static void DoEffectDragAndDrop(GuiState& g,
         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
         auto const drag_cols = GetFxColMap(g.dragging_fx_unit->fx->type);
-        auto const text = fmt::Format(g.scratch_arena,
-                                      "{} dst: {} src: {}",
-                                      k_effect_info[ToInt(g.dragging_fx_unit->fx->type)].name,
-                                      g.dragging_fx_unit->drop_slot,
-                                      FindSlotInEffects(ordered_effects, g.dragging_fx_unit->fx));
+        auto const text = k_effect_info[ToInt(g.dragging_fx_unit->fx->type)].name;
 
         auto const cursor_pos = GuiIo().in.cursor_pos;
         auto const heading_h = WwToPixels(k_fx_heading_h);
@@ -1122,7 +1110,7 @@ static void DoEffectDragAndDrop(GuiState& g,
             auto wnd = g.imgui.curr_viewport;
             if (!Rect::DoRectsIntersect(spacer_r, wnd->clipping_rect.ReducedVertically(spacer_r.h))) {
                 bool const going_up = GuiIo().in.cursor_pos.y < wnd->clipping_rect.CentreY();
-                auto const d = 100.0f * GuiIo().in.delta_time;
+                auto const d = WwToPixels(210.0f) * GuiIo().in.delta_time;
                 GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.016);
                 g.imgui.SetYScroll(
                     wnd,
@@ -1155,43 +1143,43 @@ static void DoEffectDragAndDrop(GuiState& g,
 }
 
 void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box parent) {
-    DoBoxViewport(
-        g.builder,
-        {
-            .run =
-                [&](GuiBuilder&) {
-                    auto ordered_effects = DecodeEffectsArray(
-                        g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
-                        g.engine.processor.effects_ordered_by_type);
+    DoBoxViewport(g.builder,
+                  {
+                      .run =
+                          [&](GuiBuilder&) {
+                              auto ordered_effects = DecodeEffectsArray(
+                                  g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
+                                  g.engine.processor.effects_ordered_by_type);
 
-                    auto const root = DoBox(g.builder,
-                                            {
-                                                .layout {
-                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                    .contents_direction = layout::Direction::Column,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
+                              auto const root =
+                                  DoBox(g.builder,
+                                        {
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                            },
+                                        });
 
-                    DoSwitchboard(g, root, ordered_effects);
-                    auto const switches_bottom_divider = DoDivider(g, root);
-                    auto const effect_sections = DoEffectSections(g, frame_context, root, ordered_effects);
-                    DoEffectDragAndDrop(g, switches_bottom_divider, effect_sections, ordered_effects);
+                              auto const switchboard_box = DoSwitchboard(g, root, ordered_effects);
+                              auto const effect_sections =
+                                  DoEffectSections(g, frame_context, root, ordered_effects);
+                              DoEffectDragAndDrop(g, switchboard_box, effect_sections, ordered_effects);
 
-                    // Add gap at bottom so you can see the last divider.
-                    DoBox(g.builder, {.parent = root, .layout {.size = {1, 9}}});
-                },
-            .bounds = parent,
-            .imgui_id = SourceLocationHash(),
-            .viewport_config =
-                {
-                    .draw_scrollbars = DrawMidPanelScrollbars,
-                    .padding = {.r = k_scrollbar_width},
-                    .scrollbar_padding = k_scrollbar_rhs_space,
-                    .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
-                                             imgui::ViewportScrollbarVisibility::Auto},
-                    .scrollbar_inside_padding = true,
-                },
-            .debug_name = "EffectsStrip",
-        });
+                              // Add gap at bottom so you can see the last border.
+                              DoBox(g.builder, {.parent = root, .layout {.size = {1, 9}}});
+                          },
+                      .bounds = parent,
+                      .imgui_id = SourceLocationHash(),
+                      .viewport_config =
+                          {
+                              .draw_scrollbars = DrawMidPanelScrollbars,
+                              .padding = {.r = k_scrollbar_width},
+                              .scrollbar_padding = k_scrollbar_rhs_space,
+                              .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
+                                                       imgui::ViewportScrollbarVisibility::Auto},
+                              .scrollbar_inside_padding = true,
+                          },
+                      .debug_name = "EffectsStrip",
+                  });
 }

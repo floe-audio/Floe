@@ -125,13 +125,15 @@ void DoBoxViewport(GuiBuilder& builder, BoxViewportConfig const& config) {
                 } else
                     builder.state->first_child = s;
             } else {
+                if (auto r = s->cfg.bounds.TryGetMut<Rect>()) r->Integerise();
                 Run(builder, s);
             }
         }
     } else {
-        Run(builder,
-            builder.arena.New<GuiBuilder::CurrentViewportState>(
-                GuiBuilder::CurrentViewportState {.cfg = config}));
+        auto s = builder.arena.New<GuiBuilder::CurrentViewportState>(
+            GuiBuilder::CurrentViewportState {.cfg = config});
+        if (auto r = s->cfg.bounds.TryGetMut<Rect>()) r->Integerise();
+        Run(builder, s);
     }
 }
 
@@ -261,7 +263,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                                                           });
                                                    ASSERT(layout.size[1] > 0);
                                                    if (config.size_from_text_preserve_height)
-                                                       layout.size.y = config.layout.size.y;
+                                                       layout.size.y = WwToPixels(config.layout.size.y);
                                                } else {
                                                    // We can't know the text size until we know the
                                                    // parent width.
@@ -468,34 +470,10 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                                      config.round_background_corners,
                                                      config.border_width_pixels);
                 } else {
-                    if (config.border_edges & 0b1000) {
-                        // Left edge
-                        builder.imgui.draw_list->AddLine(r.Min(),
-                                                         {r.x, r.y + r.h},
-                                                         col_u32,
-                                                         config.border_width_pixels);
-                    }
-                    if (config.border_edges & 0b0100) {
-                        // Top edge
-                        builder.imgui.draw_list->AddLine(r.Min(),
-                                                         {r.x + r.w, r.y},
-                                                         col_u32,
-                                                         config.border_width_pixels);
-                    }
-                    if (config.border_edges & 0b0010) {
-                        // Right edge
-                        builder.imgui.draw_list->AddLine({r.x + r.w, r.y},
-                                                         {r.x + r.w, r.y + r.h},
-                                                         col_u32,
-                                                         config.border_width_pixels);
-                    }
-                    if (config.border_edges & 0b0001) {
-                        // Bottom edge
-                        builder.imgui.draw_list->AddLine({r.x, r.y + r.h},
-                                                         {r.x + r.w, r.y + r.h},
-                                                         col_u32,
-                                                         config.border_width_pixels);
-                    }
+                    builder.imgui.draw_list->AddBorderEdges(r,
+                                                            col_u32,
+                                                            config.border_edges,
+                                                            config.border_width_pixels);
                 }
             }
 

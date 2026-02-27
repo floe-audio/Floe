@@ -621,11 +621,11 @@ struct Context {
     Viewport* FindViewport(Id id) const;
 
     static void SetYScroll(Viewport* viewport, f32 val) {
-        viewport->scroll_offset.y = val;
+        viewport->scroll_offset.y = Round(val);
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     static void SetXScroll(Viewport* viewport, f32 val) {
-        viewport->scroll_offset.x = val;
+        viewport->scroll_offset.x = Round(val);
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     bool ScrollViewportToShowRectangle(Rect r);

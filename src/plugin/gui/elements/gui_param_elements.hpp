@@ -7,6 +7,7 @@
 
 #include "gui/core/gui_fwd.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui_common_elements.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 struct AudioProcessor;
@@ -47,6 +48,7 @@ Box DoMenuParameter(GuiState& g,
 
 struct ButtonParameterComponentOptions {
     f32 width = layout::k_hug_contents;
+    f32 height = k_mid_button_height;
     Margins margins {};
     bool greyed_out = false;
     Optional<Col> on_colour {}; // Custom colour for the toggle icon "on" state.

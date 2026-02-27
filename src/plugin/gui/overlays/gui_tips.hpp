@@ -10,10 +10,9 @@
 static constexpr u64 k_tips_persistent_store_id = 3209482352034;
 
 // IMPORTANT: tip must be a string literal.
-PUBLIC void ShowTipIfNeeded(Notifications& notifications, persistent_store::Store& store, String tip) {
+PUBLIC void
+ShowTipIfNeeded(Notifications& notifications, persistent_store::Store& store, u64 tip_id, String tip) {
     auto const r = persistent_store::Get(store, k_tips_persistent_store_id);
-
-    auto const tip_hash = HashFnv1a(tip);
 
     switch (r.tag) {
         case persistent_store::GetResult::StoreInaccessible: return;
@@ -22,7 +21,7 @@ PUBLIC void ShowTipIfNeeded(Notifications& notifications, persistent_store::Stor
         }
         case persistent_store::GetResult::Found: {
             auto const& values = r.Get<persistent_store::Value const*>();
-            if (values->Contains(tip_hash)) {
+            if (values->Contains(tip_id)) {
                 // Already shown.
                 return;
             }
@@ -41,8 +40,8 @@ PUBLIC void ShowTipIfNeeded(Notifications& notifications, persistent_store::Stor
                 .icon = NotificationDisplayInfo::IconType::Info,
             };
         },
-        .id = tip_hash,
+        .id = tip_id,
     };
 
-    persistent_store::AddValue(store, k_tips_persistent_store_id, tip_hash);
+    persistent_store::AddValue(store, k_tips_persistent_store_id, tip_id);
 }

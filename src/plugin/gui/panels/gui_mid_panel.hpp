@@ -8,8 +8,6 @@
 
 #include "gui/core/gui_fwd.hpp"
 
-constexpr f32 k_background_blurring_opacity = 100.0f;
-
 enum class MidPanelTab : u8 {
     All,
     Layer1,
@@ -37,11 +35,15 @@ namespace imgui {
 struct Context;
 }
 
+struct MidBlurredBackgroundOptions {
+    f32 opacity = 1;
+    u4 rounding_corners = 0b1111;
+};
+
 void DrawMidBlurredBackground(GuiState& g,
                               Rect r,
                               Rect clipped_to,
                               sample_lib::LibraryIdRef library_id,
-                              f32 opacity);
-void DoMidOverlayGradient(imgui::Context const& imgui, Rect r);
+                              MidBlurredBackgroundOptions const& options);
 void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_id);
 void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id);

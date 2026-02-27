@@ -244,9 +244,8 @@ struct BoxConfig {
     Corners round_background_corners = 0b0000;
     f32 corner_rounding = 3.0f;
 
-    // For drawing borders, which sides to draw.
-    // 4 bits, clockwise from left: left, top, right, bottom, set using 0b0001 etc.
-    u4 border_edges = 0b1111;
+    // For drawing borders, which sides to draw. See Edges type in draw_list.hpp.
+    Edges border_edges = 0b1111;
 
     layout::ItemOptions layout {}; // Don't set parent here, use BoxConfig::parent instead.
 

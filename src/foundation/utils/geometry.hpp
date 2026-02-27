@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/container/optional.hpp"
 #include "foundation/utils/maths.hpp"
+#include "foundation/utils/simd.hpp"
 
 union UiSize {
     constexpr UiSize() : width(0), height(0) {}
@@ -117,6 +118,13 @@ struct Rect {
         return other.x == x && other.y == y && other.w == w && other.h == h;
     }
     bool operator!=(Rect const& other) const { return !(*this == other); }
+
+    void Integerise() {
+        auto const min = Min();
+        auto const max = Max();
+        pos = Round(min);
+        size = Round(max - min);
+    }
 
     Rect Reduced(f32 val) const {
         Rect result = *this;

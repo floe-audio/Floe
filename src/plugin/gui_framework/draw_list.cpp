@@ -1148,13 +1148,13 @@ static f32x2 CalcTextPosition(Font* font,
 
 String OverflowText(OverflowTextArgs const& args) {
     String constexpr k_dots {".."};
-    auto const epsilon = 0.01f;
+    auto constexpr k_epsilon = 1.0f;
 
     if (args.overflow_type != TextOverflowType::AllowOverflow) {
         auto const text_width = args.text_size
                                     ? args.text_size->x
                                     : args.font->CalcTextSize(args.str, {.font_size = args.font_size}).x;
-        if (text_width > (args.r.w + epsilon)) {
+        if (text_width > (args.r.w + k_epsilon)) {
             f32 const dots_size = args.font->CalcTextSize(k_dots, {.font_size = args.font_size}).x;
             f32 line_width = 0;
 

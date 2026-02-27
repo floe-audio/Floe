@@ -19,47 +19,30 @@ static f32 RoundUpToNearestMultiple(f32 value, f32 multiple) { return multiple *
 constexpr f32 k_mid_panel_title_height = 25.81f;
 constexpr f32 k_mid_panel_title_margin_left = 10.32f;
 
-static void DrawLayersContainerBackground(GuiState& g, Rect r) {
-    auto const mid_panel_title_height = WwToPixels(k_mid_panel_title_height);
-    auto const panel_rounding = WwToPixels(k_panel_rounding);
-
-    auto const layer_width_without_pad = RoundUpToNearestMultiple(r.w, k_num_layers) / k_num_layers;
-
+static void DrawLayerBackground(GuiState& g, Rect r, u8 layer_index) {
     auto const overall_lib = LibraryForOverallBackground(g.engine);
-    if (overall_lib)
-        DrawMidBlurredBackground(g, r, r, *overall_lib, Clamp01(k_background_blurring_opacity / 100.0f));
 
-    auto const layer_opacity = Clamp01(33.09f / 100.0f);
-    for (auto const layer_index : Range(k_num_layers)) {
-        if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
-            if (*lib_id == overall_lib) continue;
-            auto const layer_r = Rect {.x = r.x + ((f32)layer_index * layer_width_without_pad),
-                                       .y = r.y,
-                                       .w = layer_width_without_pad,
-                                       .h = r.h}
-                                     .CutTop(mid_panel_title_height);
-            DrawMidBlurredBackground(g, r, layer_r, *lib_id, layer_opacity);
-        }
+    if (auto const lib_id = g.engine.Layer(layer_index).LibId(); lib_id) {
+        if (*lib_id != overall_lib)
+            DrawMidBlurredBackground(g,
+                                     r,
+                                     r,
+                                     *lib_id,
+                                     {
+                                         .opacity = 0.33f,
+                                         .rounding_corners = ({
+                                             u4 f = 0;
+                                             if (layer_index == 0)
+                                                 f = 0b0001;
+                                             else if (layer_index == (k_num_layers - 1))
+                                                 f = 0b0010;
+                                             f;
+                                         }),
+                                     });
     }
 
-    if (!prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::HighContrastGui)))
-        DoMidOverlayGradient(g.imgui, r);
-
-    g.imgui.draw_list->AddRect(r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
-
-    g.imgui.draw_list->AddLine({r.x, r.y + mid_panel_title_height},
-                               {r.Right(), r.y + mid_panel_title_height},
-                               LiveCol(UiColMap::MidViewportDivider));
-    for (u32 i = 1; i < k_num_layers; ++i) {
-        auto const x_pos = r.x + ((f32)i * layer_width_without_pad) - 1;
-        g.imgui.draw_list->AddLine({x_pos, r.y + mid_panel_title_height},
-                                   {x_pos, r.Bottom()},
-                                   LiveCol(UiColMap::MidViewportDivider));
-    }
-}
-
-static void DrawEffectsContainerBackground(GuiState& g, Rect r) {
-    DrawMidBlurredPanelSurface(g, r, LibraryForOverallBackground(g.engine));
+    if (layer_index != (k_num_layers - 1))
+        g.imgui.draw_list->AddBorderEdges(r, LiveCol(UiColMap::MidViewportDivider), 0b0010);
 }
 
 static void
@@ -78,12 +61,16 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
                             });
 
     if (auto const r = BoxRect(builder, root))
-        DrawLayersContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
+        DrawMidBlurredPanelSurface(g,
+                                   builder.imgui.ViewportRectToWindowRect(*r),
+                                   LibraryForOverallBackground(g.engine));
 
     // Title row
     auto const title_row = DoBox(builder,
                                  {
                                      .parent = root,
+                                     .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                                     .border_edges = 0b0001,
                                      .layout {
                                          .size = {layout::k_fill_parent, k_mid_panel_title_height},
                                          .contents_padding = {.lr = k_mid_panel_title_margin_left},
@@ -142,6 +129,8 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
                                              .size = {layout::k_fill_parent, layout::k_fill_parent},
                                          },
                                      });
+        if (auto const r = BoxRect(builder, layer_box))
+            DrawLayerBackground(g, g.imgui.ViewportRectToWindowRect(*r), layer_index);
 
         DoLayerPanel(g, frame_context, layer_index, layer_box);
     }
@@ -160,7 +149,9 @@ DoEffectsContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& fram
                             });
 
     if (auto const r = BoxRect(builder, root))
-        DrawEffectsContainerBackground(g, builder.imgui.ViewportRectToWindowRect(*r));
+        DrawMidBlurredPanelSurface(g,
+                                   builder.imgui.ViewportRectToWindowRect(*r),
+                                   LibraryForOverallBackground(g.engine));
 
     // Title row
     auto const title_row = DoBox(builder,

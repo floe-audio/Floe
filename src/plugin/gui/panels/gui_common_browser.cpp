@@ -384,7 +384,8 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
     if (item.button_fired) {
         ShowTipIfNeeded(options.notifications,
                         options.store,
-                        "You can double-click on items on browsers to load the item and close the panel."_s);
+                        0xe9bdfea0aae12dce,
+                        "Double-click to load and close; single-click to load only."_s);
     }
 
     auto const favourite_toggled =

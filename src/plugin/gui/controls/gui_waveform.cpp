@@ -20,7 +20,7 @@
 struct PlayModeFeatures {
     bool has_play_mode;
     bool show_sample_offset;
-    bool show_loop_controls; // Loop handles, offset handle, crossfade handle
+    bool show_loop_controls;
     bool show_crossfade;
     bool show_grain_position_indicator;
     bool show_macro_destinations;
@@ -663,7 +663,6 @@ void DoWaveformElement(GuiState& g,
                     auto const loop_mode =
                         params.IntValue<param_values::LoopMode>(layer.index, LayerParamIndex::LoopMode);
                     bool const loop_points_editable =
-                        features.show_loop_controls &&
                         ActualLoopBehaviour(layer.instrument, loop_mode, layer.VolumeEnvelopeIsOn(params))
                             .value.editable;
 
@@ -678,8 +677,7 @@ void DoWaveformElement(GuiState& g,
 
                     // Loop region highlight (shown in standard and granular speed, but only
                     // editable/draggable in standard).
-                    if ((loop_end - loop_start) != 0 &&
-                        (loop_points_editable || features.show_loop_controls)) {
+                    if ((loop_end - loop_start) != 0 && loop_points_editable) {
                         Range const loop_section_uv {
                             .lo = {loop_start, 0},
                             .hi = {loop_start + (loop_end - loop_start), 1},
