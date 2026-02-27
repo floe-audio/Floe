@@ -102,7 +102,7 @@ static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav) {
     nav.panel_state.item_history.SetBarrier();
     nav.input = {};
 
-    if (imgui.IsKeyboardFocus(imgui.curr_viewport->id)) {
+    if (imgui.exclusive_focus_viewport && imgui.IsKeyboardFocus(imgui.exclusive_focus_viewport->id)) {
         auto const& frame_input = GuiIo().in;
         auto& frame_output = GuiIo().out;
 
@@ -153,7 +153,7 @@ static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav) {
 }
 
 static void EndFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav) {
-    if (imgui.IsKeyboardFocus(imgui.curr_viewport->id)) {
+    if (imgui.exclusive_focus_viewport && imgui.IsKeyboardFocus(imgui.exclusive_focus_viewport->id)) {
         auto const& frame_input = GuiIo().in;
         auto& frame_output = GuiIo().out;
 
