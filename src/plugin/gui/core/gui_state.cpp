@@ -34,6 +34,7 @@
 #include "gui/panels/gui_package_install.hpp"
 #include "gui/panels/gui_prefs_panel.hpp"
 #include "gui/panels/gui_top_panel.hpp"
+#include "gui_framework/app_window.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/image.hpp"
 #include "gui_framework/renderer.hpp"

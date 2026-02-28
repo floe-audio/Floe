@@ -3,7 +3,10 @@
 
 #include "gui/panels/gui_macros.hpp"
 
+#include <IconsFontAwesome6.h>
+
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_builder.hpp"

@@ -9,7 +9,7 @@
 #include "common_infrastructure/preferences.hpp"
 
 #include "gui/core/gui_library_images.hpp"
-#include "gui/overlays/gui_confirmation_dialog_state.hpp"
+#include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
