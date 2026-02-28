@@ -48,6 +48,8 @@ pub fn main() !u8 {
         return runWebsitePromoteBetaToStable(&context);
     } else if (std.mem.eql(u8, command, "remove-unused-gui-defs")) {
         return runRemoveUnusedGuiDefs(&context);
+    } else if (std.mem.eql(u8, command, "update-copyright-years")) {
+        return runUpdateCopyrightYears(&context);
     } else {
         std.log.err("Unknown command: {s}\n", .{command});
         return 1;
@@ -274,6 +276,88 @@ fn removeUnusedDefEntries(
     }
 
     return removed_count;
+}
+
+fn runUpdateCopyrightYears(context: *Context) !u8 {
+    const allocator = context.allocator;
+    const stdout = std.io.getStdOut().writer();
+
+    const source_files = try std_extras.findSourceFiles(allocator, .{
+        .dir_path = "src",
+        .extensions = &.{ ".cpp", ".hpp", ".h", ".mm", ".zig" },
+        .exclude_folders = &.{},
+    });
+
+    var updated_count: usize = 0;
+
+    for (source_files) |file| {
+        const full_path = try std.fs.path.join(allocator, &.{ "src", file });
+
+        // Get git years for this file.
+        const git_result = std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = &.{ "git", "log", "--format=%ad", "--date=format:%Y", "--follow", "--", full_path },
+        }) catch continue;
+
+        if (git_result.term != .Exited or git_result.term.Exited != 0) continue;
+        if (git_result.stdout.len == 0) continue;
+
+        var git_min_year: u16 = std.math.maxInt(u16);
+        var git_max_year: u16 = 0;
+        var year_lines = std.mem.splitScalar(u8, std.mem.trim(u8, git_result.stdout, " \n\r\t"), '\n');
+        while (year_lines.next()) |line| {
+            const year = std.fmt.parseInt(u16, std.mem.trim(u8, line, " \r\t"), 10) catch continue;
+            git_min_year = @min(git_min_year, year);
+            git_max_year = @max(git_max_year, year);
+        }
+        if (git_max_year == 0) continue;
+
+        // Read file and find copyright line.
+        const contents = std.fs.cwd().readFileAlloc(allocator, full_path, 1024 * 1024 * 4) catch continue;
+
+        const marker = "// Copyright ";
+        const suffix = " Sam Windell";
+        const marker_pos = std.mem.indexOf(u8, contents, marker) orelse continue;
+        const after_marker = contents[marker_pos + marker.len ..];
+        const suffix_pos = std.mem.indexOf(u8, after_marker, suffix) orelse continue;
+        const year_part = after_marker[0..suffix_pos];
+
+        // Parse existing years.
+        var existing_first: u16 = 0;
+        var existing_last: u16 = 0;
+        if (std.mem.indexOf(u8, year_part, "-")) |dash| {
+            existing_first = std.fmt.parseInt(u16, year_part[0..dash], 10) catch continue;
+            existing_last = std.fmt.parseInt(u16, year_part[dash + 1 ..], 10) catch continue;
+        } else {
+            existing_first = std.fmt.parseInt(u16, year_part, 10) catch continue;
+            existing_last = existing_first;
+        }
+
+        // Only ever increase dates.
+        const new_first = @min(existing_first, git_min_year);
+        const new_last = @max(existing_last, git_max_year);
+
+        if (new_first == existing_first and new_last == existing_last) continue;
+
+        // Build new year string and splice into file contents.
+        const new_year_part = if (new_first == new_last)
+            try std.fmt.allocPrint(allocator, "{d}", .{new_first})
+        else
+            try std.fmt.allocPrint(allocator, "{d}-{d}", .{ new_first, new_last });
+
+        const new_contents = try std.mem.concat(allocator, u8, &.{
+            contents[0 .. marker_pos + marker.len],
+            new_year_part,
+            contents[marker_pos + marker.len + suffix_pos ..],
+        });
+
+        try std.fs.cwd().writeFile(.{ .sub_path = full_path, .data = new_contents });
+        try stdout.print("{s}: {s} -> {s}\n", .{ full_path, year_part, new_year_part });
+        updated_count += 1;
+    }
+
+    try stdout.print("\n{d} files updated.\n", .{updated_count});
+    return 0;
 }
 
 fn runCreateGithubRelease(context: *Context) !u8 {
