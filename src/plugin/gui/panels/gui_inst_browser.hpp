@@ -7,9 +7,14 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/panels/gui_common_browser.hpp"
-#include "gui/panels/gui_inst_browser_state.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "processor/layer_processor.hpp"
+
+struct InstBrowserState {
+    imgui::Id const id;
+    CommonBrowserState common_state {};
+    bool scroll_to_show_selected = false;
+};
 
 // Ephemeral
 struct InstBrowserContext {
