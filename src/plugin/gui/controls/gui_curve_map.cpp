@@ -1,4 +1,4 @@
-// Copyright 2026 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/controls/gui_curve_map.hpp"

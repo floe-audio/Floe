@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Based on https://github.com/pkeir/ctfft/tree/master by Paul Keir but with modifications:

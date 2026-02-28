@@ -1,4 +1,4 @@
-// Copyright 2026 Sam Windell
+// Copyright 2024-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app_window.hpp"

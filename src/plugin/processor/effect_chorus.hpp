@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // This effect will be replaced by something much better sounding. We will keep this around though so old

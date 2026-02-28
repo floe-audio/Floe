@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // This code is based on htab (https://github.com/rofl0r/htab/), itself based on musl's hsearch.

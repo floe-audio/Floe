@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Contains a section of code from the LLVM project that is licenced differently, see below for full details.

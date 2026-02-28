@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Rather than bash scripts, we use Zig for our scripting needs because:

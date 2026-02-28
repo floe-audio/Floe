@@ -1,4 +1,4 @@
-// Copyright 2024 Sam Windell
+// Copyright 2024-2026 Sam Windell
 // Copyright (c) 2016 Andrew Richards randrew@gmail.com
 // Blendish - Blender 2.5 UI based theming functions for NanoVG
 // Copyright (c) 2014 Leonard Ritter leonard.ritter@duangle.com
