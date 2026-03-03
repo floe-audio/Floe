@@ -1098,6 +1098,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
         do_knob(LayerParamIndex::GranularGrains);
         do_knob(LayerParamIndex::GranularLength);
         do_knob(LayerParamIndex::GranularSmoothing);
+        do_knob(LayerParamIndex::GranularRandomPan);
     }
 #endif
 }

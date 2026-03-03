@@ -154,6 +154,7 @@ struct Grain {
     u32 samples_elapsed {};
     u8 source_index {};
     bool active {};
+    f32 pan_pos {}; // -1 (left) to +1 (right), assigned randomly at grain spawn
 };
 
 struct GrainPool {

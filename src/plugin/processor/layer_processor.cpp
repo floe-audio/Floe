@@ -692,6 +692,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.spread = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSmoothing))
         vmst.granular.smoothing = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomPan))
+        vmst.granular.random_pan = *p;
 #endif
 
     // EQ

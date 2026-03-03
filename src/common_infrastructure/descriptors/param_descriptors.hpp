@@ -69,6 +69,7 @@ enum class LayerParamIndex : u16 {
     GranularLength,
     GranularSpread,
     GranularSmoothing,
+    GranularRandomPan,
 #endif
 
     Count,
@@ -2282,6 +2283,15 @@ consteval auto CreateParams() {
             .gui_label = "Smooth"_s,
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
+        };
+        lp(GranularRandomPan) = Args {
+            .id = id(region, 63), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Random Pan"_s,
+            .gui_label = "Rnd Pan"_s,
+            .tooltip =
+                "Randomise the stereo position of each grain. At 0% all grains play centred, at 100% grains can be panned anywhere from fully left to fully right"_s,
         };
 #endif
     }

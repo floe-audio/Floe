@@ -833,6 +833,12 @@ struct VoiceProcessor {
                         new_grain->samples_elapsed = 0;
                         new_grain->active = true;
                         grain_start_frame[new_grain_index] = (u32)frame_index;
+
+                        // Assign a random pan position scaled by the random_pan parameter.
+                        // At 0% all grains are centred, at 100% grains span fully left to right.
+                        auto const pan_rand =
+                            (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
+                        new_grain->pan_pos = (pan_rand * 2.0f - 1.0f) * ctrl.granular.random_pan;
                     }
                 }
 
@@ -861,6 +867,11 @@ struct VoiceProcessor {
             auto const smoothing = ctrl.granular.smoothing;
             auto const amp = s.amp;
 
+            // Pre-compute per-grain pan gains using the constant-power pan law.
+            // EqualPanGains2 processes 2 pan positions at once; we duplicate ours.
+            auto const pan_gains_vec = EqualPanGains2(f32x2 {grain.pan_pos, grain.pan_pos});
+            auto const grain_pan_gains = pan_gains_vec.xy; // {left, right}
+
             for (auto frame_index = start; frame_index < buffer.size; ++frame_index) {
                 auto const phase = (f32)grain.samples_elapsed / (f32)Max(1u, grain.duration_samples);
                 auto const envelope = GrainEnvelope(phase, smoothing);
@@ -868,7 +879,8 @@ struct VoiceProcessor {
                 if (!PlaybackEnded(grain.playhead, num_frames)) {
                     auto const sample = GetSampleFrame(*sampler.data, grain.playhead);
 
-                    buffer[frame_index] += sample * envelope * amp * xfade_vols[frame_index];
+                    buffer[frame_index] +=
+                        sample * grain_pan_gains * envelope * amp * xfade_vols[frame_index];
 
                     IncrementPlaybackPos(grain.playhead, pitch_ratios[frame_index], num_frames);
                 }

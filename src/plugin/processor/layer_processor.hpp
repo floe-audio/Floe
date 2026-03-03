@@ -165,6 +165,7 @@ struct VoiceProcessingController {
         f32 length {};
         f32 spread {};
         f32 smoothing {};
+        f32 random_pan {};
     } granular {};
 
     bool no_key_tracking = false;
