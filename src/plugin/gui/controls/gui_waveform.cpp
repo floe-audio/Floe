@@ -60,6 +60,74 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
     PanicIfReached();
 }
 
+struct SpreadRegion01 {
+    f32 start; // audio-data 0-1 space
+    f32 end; // audio-data 0-1 space
+};
+
+// Collect spread regions from all active voice markers for a given layer, merge overlapping
+// regions, and return the merged set. This avoids drawing multiple translucent overlapping
+// rectangles which would produce uneven opacity. The returned span is allocated from the arena.
+static Span<SpreadRegion01>
+MergedSpreadRegions(ArenaAllocator& arena,
+                    Array<VoiceWaveformMarkerForGui, k_num_voices> const& voice_waveform_markers,
+                    u8 layer_index) {
+
+    DynamicArray<SpreadRegion01> regions {arena};
+
+    for (auto const voice_index : Range(k_num_voices)) {
+        auto const& marker = voice_waveform_markers[voice_index];
+        if (!marker.intensity || marker.layer_index != layer_index) continue;
+
+        auto const r1_start = (f32)marker.spread_region_1.start / (f32)UINT16_MAX;
+        auto const r1_end = (f32)marker.spread_region_1.end / (f32)UINT16_MAX;
+        if (r1_start < r1_end) dyn::Append(regions, SpreadRegion01 {r1_start, r1_end});
+
+        auto const r2_start = (f32)marker.spread_region_2.start / (f32)UINT16_MAX;
+        auto const r2_end = (f32)marker.spread_region_2.end / (f32)UINT16_MAX;
+        if (r2_start < r2_end) dyn::Append(regions, SpreadRegion01 {r2_start, r2_end});
+    }
+
+    if (regions.size <= 1) return regions.ToOwnedSpan();
+
+    // Sort by start position.
+    Sort(regions, [](SpreadRegion01 const& a, SpreadRegion01 const& b) { return a.start < b.start; });
+
+    // Merge overlapping/adjacent regions in-place.
+    usize write = 0;
+    for (usize read = 1; read < regions.size; ++read) {
+        if (regions[read].start <= regions[write].end) {
+            regions[write].end = Max(regions[write].end, regions[read].end);
+        } else {
+            ++write;
+            regions[write] = regions[read];
+        }
+    }
+    regions.ResizeWithoutCtorDtor(write + 1);
+
+    return regions.ToOwnedSpan();
+}
+
+static void DrawSpreadRegionRect(DrawList& draw_list,
+                                 Rect window_r,
+                                 f32 viewport_w,
+                                 f32 start_01, // audio-data 0-1 space
+                                 f32 end_01, // audio-data 0-1 space
+                                 bool reverse,
+                                 u32 col) {
+    if (start_01 >= end_01) return;
+
+    // Convert from audio-data space to visual space.
+    f32 const visual_start = reverse ? (1.0f - end_01) : start_01;
+    f32 const visual_end = reverse ? (1.0f - start_01) : end_01;
+
+    f32 const left = Max(window_r.x + (visual_start * viewport_w), window_r.x);
+    f32 const right = Min(window_r.x + (visual_end * viewport_w), window_r.Right());
+    if (left >= right) return;
+
+    draw_list.AddRectFilled(f32x2 {left, window_r.y}, f32x2 {right, window_r.Bottom()}, col);
+}
+
 static void DoWaveformControls(GuiState& g,
                                LayerProcessor& layer,
                                Rect r,
@@ -743,8 +811,14 @@ void DoWaveformElement(GuiState& g,
             }
         }
 
+        // Consume voice waveform markers once for use by both spread regions and voice cursors.
+        auto const has_active_voices =
+            g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) > 0;
+        auto& voice_waveform_markers =
+            g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
+
         // Grain markers (drawn below controls and voice cursors).
-        if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
+        if (has_active_voices) {
             auto& grain_markers_arr = g.engine.processor.voice_pool.grain_markers_for_gui.Consume().data;
             bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
             for (auto const voice_index : Range(k_num_voices)) {
@@ -775,36 +849,47 @@ void DoWaveformElement(GuiState& g,
             }
         }
 
+        // Spread regions from voice markers (for all granular modes when voices are active).
+        // Regions from all voices are merged so overlapping areas are drawn once rather than
+        // stacking translucent rectangles.
+        if (has_active_voices && options.play_mode.HasValue() && IsGranular(*options.play_mode)) {
+            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
+            auto const merged = MergedSpreadRegions(g.scratch_arena, voice_waveform_markers, layer.index);
+
+            for (auto const& region : merged)
+                DrawSpreadRegionRect(*g.imgui.draw_list,
+                                     window_r,
+                                     viewport_r.w,
+                                     region.start,
+                                     region.end,
+                                     reverse,
+                                     col);
+
+            if (merged.size) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+        }
+
         // Waveform controls: loop handles, offset handle, crossfade handle.
         if (features.show_loop_controls)
             DoWaveformControls(g, layer, viewport_r, features, options.handles_follow_cursor);
 
 #if EXPERIMENTAL_GRANULAR
-        // Granular position indicator: a thin vertical line at the grain position,
-        // with a translucent region showing the spread area extending onwards from
-        // the position.
+        // GranularFixed spread indicator from params (visible even with no notes playing).
         if (features.show_grain_position_indicator) {
             auto const grain_pos = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
-            auto const grain_size = params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
+            auto const grain_spread = params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
+            auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
 
-            // Position line.
-            f32 const pos_x = window_r.x + (viewport_r.w * grain_pos);
-
-            // Spread extends from the position onwards (in frame_pos direction,
-            // which always maps left-to-right in visual space).
-            f32 const spread_size = GrainSpreadParamToFraction(grain_size) * viewport_r.w;
-            f32 const region_left = pos_x;
-            f32 const region_right = Min(pos_x + spread_size, window_r.Right());
-            g.imgui.draw_list->AddRectFilled(f32x2 {region_left, window_r.y},
-                                             f32x2 {region_right, window_r.Bottom()},
-                                             LiveCol(UiColMap::WaveformRegionOverlay));
+            f32 const spread_size = GrainSpreadParamToFraction(grain_spread);
+            f32 const start = grain_pos;
+            f32 const end = Min(grain_pos + spread_size, 1.0f);
+            DrawSpreadRegionRect(*g.imgui.draw_list, window_r, viewport_r.w, start, end, reverse, col);
         }
 #endif
 
         // Voice cursors (shown in both modes).
-        if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
-            auto& voice_waveform_markers =
-                g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
+        if (has_active_voices) {
             for (auto const voice_index : Range(k_num_voices)) {
                 auto const marker = voice_waveform_markers[voice_index];
                 if (!marker.intensity || marker.layer_index != layer.index) continue;

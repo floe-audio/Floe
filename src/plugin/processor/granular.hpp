@@ -74,6 +74,80 @@ inline f32 GrainEnvelope(f32 phase_01, f32 smoothing) {
     return 1.0f;
 }
 
+// Computes the bounds of the region where grains can spawn, in frame_pos space.
+// Two regions are needed because loop wrapping can create two disjoint segments.
+struct GrainSpreadBounds {
+    struct Region {
+        f64 start; // frame_pos space
+        f64 end; // frame_pos space
+    };
+    Region region_1 {};
+    Region region_2 {};
+    bool has_region_2 = false;
+};
+
+inline GrainSpreadBounds ComputeGrainSpreadBounds(f64 playhead_frame_pos,
+                                                  f32 spread_param,
+                                                  Optional<PlayHead::Loop> const& loop,
+                                                  u32 num_frames,
+                                                  bool is_fixed) {
+    auto const spread_size = (f64)GrainSpreadParamToFraction(spread_param) * (f64)num_frames;
+
+    GrainSpreadBounds bounds {};
+
+    if (is_fixed) {
+        // GranularFixed: no loops, clamp to sample bounds.
+        bounds.region_1.start = playhead_frame_pos;
+        bounds.region_1.end = Min(playhead_frame_pos + spread_size, (f64)(num_frames - 1));
+        return bounds;
+    }
+
+    auto const region_end_fp = playhead_frame_pos + spread_size;
+
+    if (loop && loop->only_use_frames_within_loop) {
+        auto const loop_start = (f64)loop->start;
+        auto const loop_end = (f64)loop->end;
+        auto const loop_size = loop_end - loop_start;
+
+        if (loop_size <= 0) {
+            bounds.region_1.start = playhead_frame_pos;
+            bounds.region_1.end = playhead_frame_pos;
+            return bounds;
+        }
+
+        if (spread_size >= loop_size) {
+            // Spread covers the entire loop.
+            bounds.region_1.start = loop_start;
+            bounds.region_1.end = loop_end;
+            return bounds;
+        }
+
+        if (region_end_fp <= loop_end) {
+            // No wrapping needed - spread fits within loop.
+            bounds.region_1.start = playhead_frame_pos;
+            bounds.region_1.end = region_end_fp;
+        } else {
+            // Spread wraps around loop end -> two disjoint regions.
+            auto const wrapped_end = loop_start + (region_end_fp - loop_end);
+
+            bounds.region_1.start = playhead_frame_pos;
+            bounds.region_1.end = loop_end;
+            bounds.region_2.start = loop_start;
+            bounds.region_2.end = wrapped_end;
+            bounds.has_region_2 = true;
+        }
+    } else {
+        // Pre-loop or no loop: clamp to sample bounds. When a loop exists but the playhead
+        // hasn't entered it yet, also clamp to the loop end so the visual region doesn't
+        // extend past where grains will be constrained once looping begins.
+        auto const clamp_end = (loop ? (f64)loop->end : (f64)(num_frames - 1));
+        bounds.region_1.start = playhead_frame_pos;
+        bounds.region_1.end = Min(region_end_fp, clamp_end);
+    }
+
+    return bounds;
+}
+
 struct Grain {
     PlayHead playhead {};
     u32 duration_samples {};
@@ -93,3 +167,39 @@ struct GrainPool {
             c = 0;
     }
 };
+
+// Initialise a grain's playhead based on the given position. Returns false if the grain
+// should not be spawned (position is past the sample end in non-looping modes).
+inline bool
+InitGrainPlayhead(Grain& grain, f64 grain_pos, PlayHead const& main_playhead, u32 num_frames, bool is_fixed) {
+    auto& gph = grain.playhead;
+    if (is_fixed) {
+        if (grain_pos >= (f64)num_frames) return false;
+
+        ResetPlayhead(gph, grain_pos, k_nullopt, main_playhead.inverse_data_lookup, num_frames);
+        return true;
+    }
+
+    // When the main playhead is inside the loop, wrap the grain position into the loop range.
+    auto const& main_loop = main_playhead.loop;
+    if (main_loop && main_loop->only_use_frames_within_loop) {
+        auto const loop_start = (f64)main_loop->start;
+        auto const loop_size = (f64)(main_loop->end - main_loop->start);
+        if (loop_size > 0) {
+            auto const overshoot = grain_pos - loop_start;
+            grain_pos = loop_start + Fmod(overshoot, loop_size);
+        }
+    } else if (grain_pos >= (f64)num_frames) {
+        return false;
+    }
+
+    // The main playhead's loop is already in frame_pos space (inverted if reversed).
+    // Pass is_reversed=false to avoid double-inverting, then copy inverse_data_lookup manually.
+    ResetPlayhead(gph,
+                  grain_pos,
+                  main_loop ? Optional<BoundsCheckedLoop>(*main_loop) : k_nullopt,
+                  false,
+                  num_frames);
+    gph.inverse_data_lookup = main_playhead.inverse_data_lookup;
+    return true;
+}

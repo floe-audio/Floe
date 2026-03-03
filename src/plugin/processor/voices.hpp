@@ -121,6 +121,17 @@ struct VoiceWaveformMarkerForGui {
     u16 position {};
     u16 intensity {};
     u8 layer_index {};
+
+    // Grain spread region(s) in audio-data 0-1 space (using RealFramePos convention).
+    // region_1 is the primary region. region_2 is only used when the spread wraps
+    // around a loop boundary, creating a second disjoint segment.
+    // Both start and end are 0 when inactive.
+    struct SpreadRegion {
+        u16 start {};
+        u16 end {};
+    };
+    SpreadRegion spread_region_1 {};
+    SpreadRegion spread_region_2 {};
 };
 
 struct GrainMarkerForGui {

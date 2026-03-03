@@ -1075,44 +1075,29 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                          .parent = page,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = {37, 2},
+                                             .contents_gap = {35, 2},
                                              .contents_direction = layout::Direction::Row,
                                              .contents_multiline = true,
-                                             .contents_align = layout::Alignment::Start,
+                                             .contents_align = layout::Alignment::Middle,
                                          },
                                      });
 
-        // Speed knob (in GranularSpeed mode) or Position knob (in GranularPosition mode)
-        {
-            auto const contextual_param = (play_mode == param_values::PlayMode::GranularPlayback)
-                                              ? LayerParamIndex::GranularSpeed
-                                              : LayerParamIndex::GranularPosition;
+        auto const do_knob = [&](LayerParamIndex param) {
             DoKnobParameter(g,
                             knobs_row,
-                            params.DescribedValue(layer_index, contextual_param),
+                            params.DescribedValue(layer_index, param),
                             {
                                 .width = 20,
                                 .style_system = GuiStyleSystem::MidPanel,
                             });
-        }
+        };
 
-        // Grain knobs row
-        {
-            auto const do_knob = [&](LayerParamIndex param) {
-                DoKnobParameter(g,
-                                knobs_row,
-                                params.DescribedValue(layer_index, param),
-                                {
-                                    .width = 20,
-                                    .style_system = GuiStyleSystem::MidPanel,
-                                });
-            };
-
-            do_knob(LayerParamIndex::GranularGrains);
-            do_knob(LayerParamIndex::GranularLength);
-            do_knob(LayerParamIndex::GranularSpread);
-            do_knob(LayerParamIndex::GranularSmoothing);
-        }
+        do_knob((play_mode == param_values::PlayMode::GranularPlayback) ? LayerParamIndex::GranularSpeed
+                                                                        : LayerParamIndex::GranularPosition);
+        do_knob(LayerParamIndex::GranularSpread);
+        do_knob(LayerParamIndex::GranularGrains);
+        do_knob(LayerParamIndex::GranularLength);
+        do_knob(LayerParamIndex::GranularSmoothing);
     }
 #endif
 }

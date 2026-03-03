@@ -546,10 +546,54 @@ struct VoiceProcessor {
             }
 
             constexpr f32 k_max_u16 = LargestRepresentableValue<u16>();
+
+            // Compute spread bounds for granular modes.
+            VoiceWaveformMarkerForGui::SpreadRegion spread_1 {};
+            VoiceWaveformMarkerForGui::SpreadRegion spread_2 {};
+
+            if (IsGranular(voice.controller->play_mode)) {
+                for (auto const& s : voice.sound_sources) {
+                    if (!s.is_active || s.source_data.tag != InstrumentType::Sampler) continue;
+                    auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
+                    if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
+
+                    auto const nf = sampler.data->num_frames;
+                    auto const is_fixed =
+                        voice.controller->play_mode == param_values::PlayMode::GranularFixed;
+                    auto const bounds = ComputeGrainSpreadBounds(sampler.playhead.frame_pos,
+                                                                 voice.controller->granular.spread,
+                                                                 sampler.playhead.loop,
+                                                                 nf,
+                                                                 is_fixed);
+
+                    // Convert from frame_pos space to audio-data 0-1 space.
+                    auto to_audio_01 = [&](f64 fp) -> f64 {
+                        auto const fi = (u32)Clamp(fp, 0.0, (f64)(nf - 1));
+                        auto const real = sampler.playhead.inverse_data_lookup ? ((nf - 1) - fi) : fi;
+                        return (f64)real / (f64)nf;
+                    };
+
+                    auto const s1 = to_audio_01(bounds.region_1.start);
+                    auto const e1 = to_audio_01(bounds.region_1.end);
+                    spread_1.start = (u16)(Min(s1, e1) * (f64)k_max_u16);
+                    spread_1.end = (u16)(Max(s1, e1) * (f64)k_max_u16);
+
+                    if (bounds.has_region_2) {
+                        auto const s2 = to_audio_01(bounds.region_2.start);
+                        auto const e2 = to_audio_01(bounds.region_2.end);
+                        spread_2.start = (u16)(Min(s2, e2) * (f64)k_max_u16);
+                        spread_2.end = (u16)(Max(s2, e2) * (f64)k_max_u16);
+                    }
+                    break; // Use the first active sampler source.
+                }
+            }
+
             voice.pool.voice_waveform_markers_for_gui.Write()[voice.index] = {
                 .position = (u16)(Clamp01(position_for_gui) * (f64)k_max_u16),
                 .intensity = (u16)(Clamp01(voice.current_gain) * k_max_u16),
                 .layer_index = voice.controller->layer_index,
+                .spread_region_1 = spread_1,
+                .spread_region_2 = spread_2,
             };
             voice.pool.voice_vol_env_markers_for_gui.Write()[voice.index] = {
                 .on = voice.controller->vol_env_on && !voice.disable_vol_env && !voice.vol_env.IsIdle(),
@@ -780,49 +824,16 @@ struct VoiceProcessor {
                     auto const rand_01 = (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand;
                     auto const spread_offset = (f64)(rand_01 * spread_fraction) * (f64)num_frames;
 
-                    auto grain_pos = sampler.playhead.frame_pos + spread_offset;
+                    auto const grain_pos = sampler.playhead.frame_pos + spread_offset;
 
-                    auto& gph = new_grain->playhead;
-                    if (is_fixed) {
-                        // GranularFixed ignores loops entirely. Clamp to valid range.
-                        grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
-                        ResetPlayhead(gph,
-                                      grain_pos,
-                                      k_nullopt,
-                                      sampler.playhead.inverse_data_lookup,
-                                      num_frames);
-                    } else {
-                        // When the main playhead is inside the loop, wrap the grain
-                        // position into the loop range.
-                        auto const& main_loop = sampler.playhead.loop;
-                        if (main_loop && main_loop->only_use_frames_within_loop) {
-                            auto const loop_start = (f64)main_loop->start;
-                            auto const loop_size = (f64)(main_loop->end - main_loop->start);
-                            if (loop_size > 0) {
-                                auto const overshoot = grain_pos - loop_start;
-                                grain_pos = loop_start + Fmod(overshoot, loop_size);
-                            }
-                        } else {
-                            grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
-                        }
-
-                        // The main playhead's loop is already in frame_pos space
-                        // (inverted if reversed). Pass is_reversed=false to avoid
-                        // double-inverting, then copy inverse_data_lookup manually.
-                        ResetPlayhead(gph,
-                                      grain_pos,
-                                      main_loop ? Optional<BoundsCheckedLoop>(*main_loop) : k_nullopt,
-                                      false,
-                                      num_frames);
-                        gph.inverse_data_lookup = sampler.playhead.inverse_data_lookup;
+                    if (InitGrainPlayhead(*new_grain, grain_pos, sampler.playhead, num_frames, is_fixed)) {
+                        new_grain->source_index = source_index;
+                        new_grain->duration_samples =
+                            GrainLengthParamToSamples(ctrl.granular.length, context.sample_rate);
+                        new_grain->samples_elapsed = 0;
+                        new_grain->active = true;
+                        grain_start_frame[new_grain_index] = (u32)frame_index;
                     }
-
-                    new_grain->source_index = source_index;
-                    new_grain->duration_samples =
-                        GrainLengthParamToSamples(ctrl.granular.length, context.sample_rate);
-                    new_grain->samples_elapsed = 0;
-                    new_grain->active = true;
-                    grain_start_frame[new_grain_index] = (u32)frame_index;
                 }
 
                 {
@@ -894,7 +905,7 @@ struct VoiceProcessor {
     }
 
     static int FastRand(unsigned int& seed) {
-        seed = (214013 * seed + 2531011);
+        seed = ((214013 * seed) + 2531011);
         return (seed >> 16) & k_max_fast_rand;
     }
 
@@ -1008,7 +1019,7 @@ struct VoiceProcessor {
             f32 vol_lfo1 = 1.0f;
             f32 vol_lfo2 = 1.0f;
             if (has_volume_lfo) {
-                vol_lfo1 = lfo_base + lfo_amounts[frame] * lfo_half_amp;
+                vol_lfo1 = lfo_base + (lfo_amounts[frame] * lfo_half_amp);
                 vol_lfo2 = (frame_p1_is_valid) ? lfo_base + (lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
             }
 
@@ -1048,10 +1059,9 @@ struct VoiceProcessor {
 
             // Apply gains to the buffer
             buffer[frame + 0] *= voice.gain_smoother.LowPass(gain_1, context.one_pole_smoothing_cutoff_0_2ms);
-            if (frame_p1_is_valid) {
+            if (frame_p1_is_valid)
                 buffer[frame + 1] *=
                     voice.gain_smoother.LowPass(gain_2, context.one_pole_smoothing_cutoff_0_2ms);
-            }
 
             // Check for early termination conditions
             if ((env_on && voice.vol_env.IsIdle()) || voice.volume_fade.IsSilent()) {
@@ -1106,7 +1116,7 @@ struct VoiceProcessor {
                 sv_filter::Process(val, wet_buf, voice.filters, filter_type, voice.filter_coeffs);
 
                 if (filter_mix < 0.999f)
-                    val = val + filter_mix * (wet_buf - val);
+                    val = val + (filter_mix * (wet_buf - val));
                 else
                     val = wet_buf;
             } else {
