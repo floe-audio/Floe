@@ -573,6 +573,7 @@ struct VoiceProcessor {
             grain_markers.num_active = 0;
             if (IsGranular(voice.controller->play_mode)) {
                 grain_markers.layer_index = voice.controller->layer_index;
+                grain_markers.intensity = (u16)(Clamp01(voice.current_gain) * k_max_u16);
 
                 // Find first active sampler source for position normalization.
                 u32 ref_num_frames = 0;
@@ -706,6 +707,11 @@ struct VoiceProcessor {
 
     // Process granular synthesis for a single sound source.
     // Returns false if playback has ended (no loop, past end, no active grains for this source).
+    //
+    // Structured as grain-first rather than sample-first: we first handle the main playhead and grain
+    // spawning (pass 1), then process each grain across its full range of the buffer (pass 2). This
+    // gives much better data locality because each grain reads sequential audio data rather than
+    // interleaving random accesses from different grains.
     static bool AddGranularSampleDataOntoBuffer(Voice& voice,
                                                 VoiceSoundSource& s,
                                                 u8 source_index,
@@ -718,8 +724,27 @@ struct VoiceProcessor {
         auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
         auto const num_frames = sampler.data->num_frames;
 
-        for (auto [frame_index, out_val] : Enumerate(buffer)) {
-            // Advance main playhead for this source.
+        // Track which frame each grain should start processing from in this block. Grains that
+        // were already active before this block start from frame 0. Grains spawned mid-block
+        // start from their spawn frame. We use the grain index as the key.
+        Array<u32, k_max_grains_per_voice> grain_start_frame {};
+
+        // Pre-compute per-sample pitch ratios and xfade volumes. These use stateful smoothers
+        // that must be advanced once per sample.
+        Array<f64, k_block_size_max> pitch_ratios;
+        Array<f32, k_block_size_max> xfade_vols;
+        for (auto const frame_index : Range(buffer.size)) {
+            pitch_ratios[frame_index] = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+            xfade_vols[frame_index] =
+                sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol, context.one_pole_smoothing_cutoff_10ms);
+        }
+
+        // The frame at which the source becomes dead (past-end without a loop). If the source
+        // stays alive for the entire block this remains == buffer.size.
+        auto source_dead_frame = (u32)buffer.size;
+
+        // --- Pass 1: advance main playhead and spawn grains. ---
+        for (auto const frame_index : Range(buffer.size)) {
             bool source_alive;
             if (is_fixed) {
                 sampler.playhead.frame_pos = (f64)ctrl.granular.position * (f64)(num_frames - 1);
@@ -732,60 +757,53 @@ struct VoiceProcessor {
                 source_alive = true;
             }
 
+            if (!source_alive && source_dead_frame == buffer.size) source_dead_frame = (u32)frame_index;
+
             // Spawn check for this source.
             if (pool.spawn_counters[source_index] == 0 && source_alive) {
                 // Find first inactive grain slot.
                 Grain* new_grain = nullptr;
-                for (auto& g : pool.grains) {
+                usize new_grain_index = 0;
+                for (auto [gi, g] : Enumerate(pool.grains)) {
                     if (!g.active) {
                         new_grain = &g;
+                        new_grain_index = gi;
                         break;
                     }
                 }
 
                 if (new_grain) {
+                    // Spread goes from the playhead position onwards (in the frame_pos
+                    // direction, which always increases). A random 0-1 value selects where
+                    // within the spread region the grain spawns.
                     auto const spread_fraction = GrainSpreadParamToFraction(ctrl.granular.spread);
-                    auto const rand_val =
-                        (((f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand) * 2.0f) - 1.0f;
-                    auto const spread_offset_norm = rand_val * spread_fraction * 0.5f;
+                    auto const rand_01 = (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand;
+                    auto const spread_offset = (f64)(rand_01 * spread_fraction) * (f64)num_frames;
 
-                    auto grain_pos = sampler.playhead.frame_pos + ((f64)spread_offset_norm * (f64)num_frames);
-                    grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
+                    auto grain_pos = sampler.playhead.frame_pos + spread_offset;
 
                     auto& gph = new_grain->playhead;
                     if (is_fixed) {
-                        // GranularFixed ignores loops entirely.
+                        // GranularFixed ignores loops entirely. Clamp to valid range.
+                        grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
                         ResetPlayhead(gph,
                                       grain_pos,
                                       k_nullopt,
                                       sampler.playhead.inverse_data_lookup,
                                       num_frames);
                     } else {
-                        auto const min_pos =
-                            EffectiveStartOffset(ctrl.sample_offset_01,
-                                                 sampler.region->audio_props.start_offset_frames,
-                                                 num_frames);
-                        if (grain_pos < min_pos) {
-                            auto const undershoot = min_pos - grain_pos;
-                            auto const playable_range = (f64)(num_frames - 1) - min_pos;
-                            if (playable_range > 0) {
-                                auto const bounded = Fmod(undershoot, playable_range);
-                                grain_pos = min_pos + bounded;
-                            } else {
-                                grain_pos = min_pos;
-                            }
-                        }
-
                         // When the main playhead is inside the loop, wrap the grain
-                        // position into the loop range so that spread doesn't collapse
-                        // all grains onto loop->start.
+                        // position into the loop range.
                         auto const& main_loop = sampler.playhead.loop;
                         if (main_loop && main_loop->only_use_frames_within_loop) {
                             auto const loop_start = (f64)main_loop->start;
                             auto const loop_size = (f64)(main_loop->end - main_loop->start);
-                            auto offset = Fmod(grain_pos - loop_start, loop_size);
-                            if (offset < 0) offset += loop_size;
-                            grain_pos = loop_start + offset;
+                            if (loop_size > 0) {
+                                auto const overshoot = grain_pos - loop_start;
+                                grain_pos = loop_start + Fmod(overshoot, loop_size);
+                            }
+                        } else {
+                            grain_pos = Clamp(grain_pos, 0.0, (f64)(num_frames - 1));
                         }
 
                         // The main playhead's loop is already in frame_pos space
@@ -804,49 +822,64 @@ struct VoiceProcessor {
                         GrainLengthParamToSamples(ctrl.granular.length, context.sample_rate);
                     new_grain->samples_elapsed = 0;
                     new_grain->active = true;
+                    grain_start_frame[new_grain_index] = (u32)frame_index;
                 }
 
-                pool.spawn_counters[source_index] =
-                    GrainsParamToSpawnInterval(ctrl.granular.grains, context.sample_rate);
+                {
+                    auto const base_interval =
+                        GrainsParamToSpawnInterval(ctrl.granular.grains, context.sample_rate);
+                    // Add slight randomness to avoid a machine-gun effect.
+                    constexpr f32 k_jitter_amount = 0.25f; // ± this fraction of the base interval.
+                    auto const jitter_01 = (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
+                    auto const scale =
+                        1.0f + ((jitter_01 * 2.0f - 1.0f) * k_jitter_amount); // 1 ± k_jitter_amount
+                    pool.spawn_counters[source_index] = Max(1u, (u32)(scale * (f32)base_interval));
+                }
             } else if (source_alive) {
                 pool.spawn_counters[source_index]--;
             }
+        }
 
-            // Process active grains belonging to this source.
-            for (auto& grain : pool.grains) {
-                if (!grain.active || grain.source_index != source_index) continue;
+        // --- Pass 2: process each grain across its full range of the buffer. ---
+        // This is the core improvement: each grain reads its audio data sequentially,
+        // giving much better cache/memory access patterns than the previous per-sample approach.
+        for (auto [grain_index, grain] : Enumerate(pool.grains)) {
+            if (!grain.active || grain.source_index != source_index) continue;
 
+            auto const start = grain_start_frame[grain_index];
+            auto const smoothing = ctrl.granular.smoothing;
+            auto const amp = s.amp;
+
+            for (auto frame_index = start; frame_index < buffer.size; ++frame_index) {
                 auto const phase = (f32)grain.samples_elapsed / (f32)Max(1u, grain.duration_samples);
-                auto const envelope = GrainEnvelope(phase, ctrl.granular.smoothing);
+                auto const envelope = GrainEnvelope(phase, smoothing);
 
                 if (!PlaybackEnded(grain.playhead, num_frames)) {
                     auto const sample = GetSampleFrame(*sampler.data, grain.playhead);
 
-                    auto const xfade_vol =
-                        sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
-                                                           context.one_pole_smoothing_cutoff_10ms);
+                    buffer[frame_index] += sample * envelope * amp * xfade_vols[frame_index];
 
-                    out_val += sample * envelope * s.amp * xfade_vol;
-
-                    auto const pitch_ratio = PitchRatio(voice, s, lfo_amounts[frame_index], context);
-                    IncrementPlaybackPos(grain.playhead, pitch_ratio, num_frames);
+                    IncrementPlaybackPos(grain.playhead, pitch_ratios[frame_index], num_frames);
                 }
 
                 grain.samples_elapsed++;
-                if (grain.samples_elapsed >= grain.duration_samples) grain.active = false;
-            }
-
-            // Check if we should end.
-            if (!is_fixed && !source_alive) {
-                bool any_grain_active = false;
-                for (auto const& g : pool.grains) {
-                    if (g.active && g.source_index == source_index) {
-                        any_grain_active = true;
-                        break;
-                    }
+                if (grain.samples_elapsed >= grain.duration_samples) {
+                    grain.active = false;
+                    break;
                 }
-                if (!any_grain_active) return false;
             }
+        }
+
+        // --- Pass 3: check if the source should end. ---
+        if (source_dead_frame < buffer.size) {
+            bool any_grain_active = false;
+            for (auto const& g : pool.grains) {
+                if (g.active && g.source_index == source_index) {
+                    any_grain_active = true;
+                    break;
+                }
+            }
+            if (!any_grain_active) return false;
         }
 
         return true;

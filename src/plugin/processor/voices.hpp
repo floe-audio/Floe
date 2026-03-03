@@ -129,6 +129,7 @@ struct GrainMarkerForGui {
 
 struct VoiceGrainMarkersForGui {
     Array<GrainMarkerForGui, k_max_grains_per_voice> grains {};
+    u16 intensity {}; // Voice gain packed into u16, same as VoiceWaveformMarkerForGui::intensity.
     u8 num_active {};
     u8 layer_index {};
 };

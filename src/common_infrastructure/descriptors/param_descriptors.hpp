@@ -2279,7 +2279,7 @@ consteval auto CreateParams() {
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Smoothing"_s,
-            .gui_label = "Smoothing"_s,
+            .gui_label = "Smooth"_s,
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
         };

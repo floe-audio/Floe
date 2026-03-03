@@ -23,17 +23,17 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
                          f32 height,
                          f32 left_min,
                          Optional<Line> upper_line_opt,
-                         f32 opacity) {
+                         VoiceMarkerLineOptions const& options) {
     {
-
-        constexpr f32 k_tail_size_max = 10;
-        f32 const tail_size = Min(pos.x - left_min, k_tail_size_max);
+        f32 const tail_size = Min(pos.x - left_min, WwToPixels(8.0f));
 
         if (tail_size > 1) {
-            auto const aa = imgui.draw_list->renderer.fill_anti_alias;
-            imgui.draw_list->renderer.fill_anti_alias = false;
-            auto const darkened_col = ChangeBrightness(LiveCol(UiColMap::WaveformLoopVoiceMarkers), 0.7f);
-            auto const col = WithAlphaU8(darkened_col, (u8)MapFrom01(opacity, 10, 40));
+            auto const aa = imgui.draw_list->renderer.anti_aliased_lines;
+            DEFER { imgui.draw_list->renderer.anti_aliased_lines = aa; };
+            imgui.draw_list->renderer.anti_aliased_lines = false;
+
+            auto const darkened_col = ChangeBrightness(options.col, 0.7f);
+            auto const col = ChangeAlpha(darkened_col, options.opacity * 0.25f);
             auto const transparent_col = WithAlphaU8(darkened_col, 0);
 
             if (upper_line_opt) {
@@ -55,18 +55,16 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
                                                          col,
                                                          transparent_col);
             }
-
-            imgui.draw_list->renderer.fill_anti_alias = aa;
         }
     }
 
     {
         auto const aa = imgui.draw_list->renderer.anti_aliased_lines;
+        DEFER { imgui.draw_list->renderer.anti_aliased_lines = aa; };
         imgui.draw_list->renderer.anti_aliased_lines = false;
-        auto const col = WithAlphaU8(LiveCol(UiColMap::WaveformLoopVoiceMarkers), (u8)(opacity * 255.0f));
 
+        auto const col = ChangeAlpha(options.col, options.opacity);
         imgui.draw_list->AddLine(pos, pos + f32x2 {0, height}, col);
-        imgui.draw_list->renderer.anti_aliased_lines = aa;
     }
 }
 

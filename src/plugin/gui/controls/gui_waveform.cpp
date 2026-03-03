@@ -656,7 +656,7 @@ void DoWaveformElement(GuiState& g,
                                      *GuiIo().in.renderer,
                                      g.shared_engine_systems.thread_pool,
                                      viewport_r.size))) {
-                if (features.has_play_mode) {
+                if (features.has_play_mode && features.show_loop_controls) {
                     auto const loop_start = params.LinearValue(layer.index, LayerParamIndex::LoopStart);
                     auto const loop_end =
                         Max(params.LinearValue(layer.index, LayerParamIndex::LoopEnd), loop_start);
@@ -706,47 +706,100 @@ void DoWaveformElement(GuiState& g,
                                                     LiveCol(UiColMap::WaveformLoopWaveformOffset));
                     }
 
-#if EXPERIMENTAL_GRANULAR
-                    // Granular position indicator: a thin vertical line at the grain position,
-                    // flanked by subtle gradient edges showing the grain size region.
-                    if (features.show_grain_position_indicator) {
-                        auto const grain_pos =
-                            params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
-                        auto const grain_size =
-                            params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
-
-                        // Centre line position.
-                        f32 const centre_x = window_r.x + (viewport_r.w * grain_pos);
-
-                        // Thin vertical line at the grain position.
-                        g.imgui.draw_list->AddRectFilled(f32x2 {Round(centre_x) - 0.5f, window_r.y},
-                                                         f32x2 {Round(centre_x) + 0.5f, window_r.Bottom()},
-                                                         LiveCol(UiColMap::WaveformLoopHandle));
-
-                        // Translucent rectangle showing grain size region.
-                        f32 const half_region = GrainSpreadParamToFraction(grain_size) * 0.5f * viewport_r.w;
-                        f32 const region_left = Max(centre_x - half_region, window_r.x);
-                        f32 const region_right = Min(centre_x + half_region, window_r.Right());
-                        g.imgui.draw_list->AddRectFilled(f32x2 {region_left, window_r.y},
-                                                         f32x2 {region_right, window_r.Bottom()},
-                                                         LiveCol(UiColMap::WaveformRegionOverlay));
-                    }
-#endif
-                } else {
-                    // Plain waveform with no overlays.
+                } else if (features.has_play_mode) {
+                    // Play mode without loop controls (e.g. GranularFixed): draw
+                    // the waveform plainly, with the sample offset overlay if applicable.
                     g.imgui.draw_list->AddImage(tex.Value(),
-                                                window_r.Min(),
+                                                window_r.Min() + f32x2 {offset * viewport_r.w, 0},
                                                 window_r.Max(),
                                                 whole_section_uv.lo,
                                                 whole_section_uv.hi,
                                                 LiveCol(UiColMap::WaveformLoopWaveformLoop));
+
+                    if (offset != 0) {
+                        Range const offset_section_uv {
+                            .lo = {reverse ? 1.0f : 0.0f, 0},
+                            .hi = {reverse ? 1.0f - offset : offset, 1},
+                        };
+                        g.imgui.draw_list->AddImage(tex.Value(),
+                                                    window_r.Min(),
+                                                    window_r.Max() -
+                                                        f32x2 {viewport_r.w * (1.0f - offset), 0},
+                                                    offset_section_uv.lo,
+                                                    offset_section_uv.hi,
+                                                    LiveCol(UiColMap::WaveformLoopWaveformOffset));
+                    }
+
+                } else {
+                    // No play mode: plain waveform with no overlays or offset colouring,
+                    // but still respecting the reverse flag.
+                    g.imgui.draw_list->AddImage(tex.Value(),
+                                                window_r.Min(),
+                                                window_r.Max(),
+                                                {reverse ? 1.0f : 0.0f, 0},
+                                                {reverse ? 0.0f : 1.0f, 1},
+                                                LiveCol(UiColMap::WaveformLoopWaveformLoop));
                 }
+            }
+        }
+
+        // Grain markers (drawn below controls and voice cursors).
+        if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
+            auto& grain_markers_arr = g.engine.processor.voice_pool.grain_markers_for_gui.Consume().data;
+            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            for (auto const voice_index : Range(k_num_voices)) {
+                auto const& vm = grain_markers_arr[voice_index];
+                if (!vm.num_active || vm.layer_index != layer.index) continue;
+
+                f32 const voice_intensity = (f32)vm.intensity / (f32)UINT16_MAX;
+
+                for (auto const i : Range(vm.num_active)) {
+                    f32 pos = (f32)vm.grains[i].position / (f32)UINT16_MAX;
+                    if (reverse) pos = 1.0f - pos;
+
+                    f32x2 marker_pos {Round(viewport_r.x + (pos * viewport_r.w)), viewport_r.y};
+                    marker_pos = g.imgui.ViewportPosToWindowPos(marker_pos);
+
+                    // Draw grain markers as thin lines, fading with the voice's amplitude.
+                    DrawVoiceMarkerLine(g.imgui,
+                                        marker_pos,
+                                        viewport_r.h,
+                                        g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
+                                        {},
+                                        {
+                                            .opacity = voice_intensity,
+                                            .col = LiveCol(UiColMap::WaveformLoopGrainMarkers),
+                                        });
+                }
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
             }
         }
 
         // Waveform controls: loop handles, offset handle, crossfade handle.
         if (features.show_loop_controls)
             DoWaveformControls(g, layer, viewport_r, features, options.handles_follow_cursor);
+
+#if EXPERIMENTAL_GRANULAR
+        // Granular position indicator: a thin vertical line at the grain position,
+        // with a translucent region showing the spread area extending onwards from
+        // the position.
+        if (features.show_grain_position_indicator) {
+            auto const grain_pos = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
+            auto const grain_size = params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
+
+            // Position line.
+            f32 const pos_x = window_r.x + (viewport_r.w * grain_pos);
+
+            // Spread extends from the position onwards (in frame_pos direction,
+            // which always maps left-to-right in visual space).
+            f32 const spread_size = GrainSpreadParamToFraction(grain_size) * viewport_r.w;
+            f32 const region_left = pos_x;
+            f32 const region_right = Min(pos_x + spread_size, window_r.Right());
+            g.imgui.draw_list->AddRectFilled(f32x2 {region_left, window_r.y},
+                                             f32x2 {region_right, window_r.Bottom()},
+                                             LiveCol(UiColMap::WaveformRegionOverlay));
+        }
+#endif
 
         // Voice cursors (shown in both modes).
         if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
@@ -767,34 +820,7 @@ void DoWaveformElement(GuiState& g,
                                     viewport_r.h,
                                     g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
                                     {},
-                                    intensity);
-                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
-            }
-        }
-
-        // Grain markers.
-        if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
-            auto& grain_markers_arr = g.engine.processor.voice_pool.grain_markers_for_gui.Consume().data;
-            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
-            for (auto const voice_index : Range(k_num_voices)) {
-                auto const& vm = grain_markers_arr[voice_index];
-                if (!vm.num_active || vm.layer_index != layer.index) continue;
-
-                for (auto const i : Range(vm.num_active)) {
-                    f32 pos = (f32)vm.grains[i].position / (f32)UINT16_MAX;
-                    if (reverse) pos = 1.0f - pos;
-
-                    f32x2 marker_pos {Round(viewport_r.x + (pos * viewport_r.w)), viewport_r.y};
-                    marker_pos = g.imgui.ViewportPosToWindowPos(marker_pos);
-
-                    // Draw grain markers as thin semi-transparent lines.
-                    DrawVoiceMarkerLine(g.imgui,
-                                        marker_pos,
-                                        viewport_r.h,
-                                        g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
-                                        {},
-                                        0.3f);
-                }
+                                    {.opacity = intensity});
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
             }
         }

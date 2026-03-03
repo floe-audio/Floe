@@ -21,7 +21,8 @@ inline bool IsGranular(param_values::PlayMode mode) {
 }
 
 // The grain spread parameter (0 to 1) maps to this fraction of the total sample length.
-// At 1.0, the region covers the entire sample.
+// The spread region extends from the current playhead position onwards.
+// At 1.0, the spread covers the entire remaining sample length.
 constexpr f32 k_max_grain_spread_fraction = 1.0f;
 constexpr f32 k_min_grain_spread_fraction = 0.005f;
 
@@ -37,16 +38,18 @@ constexpr f32 k_min_grain_spawn_interval_seconds = 0.001f;
 constexpr f32 k_max_grain_spawn_interval_seconds = 0.5f;
 
 inline u32 GrainLengthParamToSamples(f32 param_01, f32 sample_rate) {
-    auto const seconds =
-        k_min_grain_length_seconds + (param_01 * (k_max_grain_length_seconds - k_min_grain_length_seconds));
+    // Exponential mapping so that equal knob rotation gives equal perceptual change.
+    auto const seconds = k_min_grain_length_seconds *
+                         Exp2(param_01 * Log2(k_max_grain_length_seconds / k_min_grain_length_seconds));
     return Max(1u, (u32)(seconds * sample_rate));
 }
 
 inline u32 GrainsParamToSpawnInterval(f32 param_01, f32 sample_rate) {
-    // High param = short interval = more grains.
+    // High param = short interval = more grains. Exponential mapping so that the
+    // density change feels even across the knob's range.
     auto const seconds =
-        k_max_grain_spawn_interval_seconds -
-        (param_01 * (k_max_grain_spawn_interval_seconds - k_min_grain_spawn_interval_seconds));
+        k_max_grain_spawn_interval_seconds *
+        Exp2(param_01 * Log2(k_min_grain_spawn_interval_seconds / k_max_grain_spawn_interval_seconds));
     return Max(1u, (u32)(seconds * sample_rate));
 }
 

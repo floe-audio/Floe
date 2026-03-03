@@ -8,18 +8,23 @@
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_imgui.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/peak_meter.hpp"
 
 // Drawing functions always need window coordinates, not viewport coordinates.
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {});
 
+struct VoiceMarkerLineOptions {
+    f32 opacity = 1;
+    u32 col = LiveCol(UiColMap::WaveformLoopVoiceMarkers);
+};
 void DrawVoiceMarkerLine(imgui::Context const& imgui,
                          f32x2 pos,
                          f32 height,
                          f32 left_min,
                          Optional<Line> upper_line,
-                         f32 opacity = 1);
+                         VoiceMarkerLineOptions const& options);
 
 void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInputResult const& result);
 

@@ -1075,9 +1075,10 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                          .parent = page,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = 10,
+                                             .contents_gap = {37, 2},
                                              .contents_direction = layout::Direction::Row,
-                                             .contents_align = layout::Alignment::Middle,
+                                             .contents_multiline = true,
+                                             .contents_align = layout::Alignment::Start,
                                          },
                                      });
 
@@ -1090,7 +1091,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                             knobs_row,
                             params.DescribedValue(layer_index, contextual_param),
                             {
-                                .width = 32,
+                                .width = 20,
                                 .style_system = GuiStyleSystem::MidPanel,
                             });
         }
@@ -1102,7 +1103,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                 knobs_row,
                                 params.DescribedValue(layer_index, param),
                                 {
-                                    .width = 32,
+                                    .width = 20,
                                     .style_system = GuiStyleSystem::MidPanel,
                                 });
             };
