@@ -175,15 +175,18 @@ static void DoWaveformControls(GuiState& g,
             }
         }
 
-        g.imgui.draw_list
-            ->AddRectFilled(r, g.imgui.IsHotOrActive(id, MouseButton::Left) ? back_hover_col : back_col, 6, ({
-                                u4 rc = 0;
-                                switch (handle_direction) {
-                                    case HandleDirection::Left: rc = 0b1001; break;
-                                    case HandleDirection::Right: rc = 0b0110; break;
-                                }
-                                rc;
-                            }));
+        g.imgui.draw_list->AddRectFilled(r,
+                                         g.imgui.IsHotOrActive(id, MouseButton::Left) ? back_hover_col
+                                                                                      : back_col,
+                                         WwToPixels(4.0f),
+                                         ({
+                                             u4 rc = 0;
+                                             switch (handle_direction) {
+                                                 case HandleDirection::Left: rc = 0b1001; break;
+                                                 case HandleDirection::Right: rc = 0b0110; break;
+                                             }
+                                             rc;
+                                         }));
         g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
         DEFER { g.fonts.Pop(); };
         g.imgui.draw_list->AddTextInRect(r,
