@@ -12,6 +12,7 @@ build_resources/external/
 .env
 .claude
 .harper-dictionary.txt
+opencode.jsonc
 website/node_modules/
 website/.docusaurus/
 website/build/
