@@ -105,6 +105,7 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
     auto e = table.table.FindOrInsertGrowIfNeeded(table.arena, key, {});
     auto& waveform = e.element.data;
     waveform.source_hash = source_hash;
+    waveform.last_requested = TimePoint::Now();
 
     if (!renderer.ImageIdIsValid(waveform.image_id)) {
         bool need_start_loading = false;
@@ -135,7 +136,8 @@ void StartFrame(WaveformImagesTable& table,
         }
     }
 
-    // Remove entries that don't correspond to any current instrument.
+    // Remove entries that don't correspond to any current instrument or haven't been requested recently.
+    constexpr f64 k_unrequested_timeout_secs = 20.0;
     table.table.RemoveIf([&](u64 const&, WaveformImage& waveform) {
         bool still_needed = false;
         for (auto const inst : possible_instruments) {
@@ -145,7 +147,10 @@ void StartFrame(WaveformImagesTable& table,
             }
         }
 
-        if (!still_needed) {
+        bool const timed_out =
+            waveform.last_requested && waveform.last_requested.SecondsFromNow() > k_unrequested_timeout_secs;
+
+        if (!still_needed || timed_out) {
             if (waveform.image_id) {
                 renderer.DestroyImageID(*waveform.image_id);
                 waveform.image_id = k_nullopt;
