@@ -202,4 +202,6 @@ constexpr double Sin(double x) {
 
 constexpr double Cos(double const x) { return Sin(k_pi_2 - x); }
 
+constexpr double Tan(double const x) { return Sin(x) / Cos(x); }
+
 } // namespace constexpr_math
