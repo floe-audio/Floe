@@ -367,15 +367,18 @@ static bool OpenAudio(Standalone& standalone) {
     config.pUserData = &standalone;
     config.periodSizeInFrames = 1024; // only a hint
     config.performanceProfile = ma_performance_profile_low_latency;
+    config.noFixedSizedCallback =
+        false; // ensure the callback always receives exactly internalPeriodSizeInFrames
     config.noClip = true;
     config.noPreSilencedOutputBuffer = true;
 
     if (ma_device_init(nullptr, &config, &*standalone.audio_device) != MA_SUCCESS) return false;
 
-    constexpr usize k_max_frames = 2096;
-    auto alloc = PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(k_max_frames * 2);
-    standalone.audio_buffers[0] = alloc.SubSpan(0, k_max_frames);
-    standalone.audio_buffers[1] = alloc.SubSpan(k_max_frames, k_max_frames);
+    // Guaranteed by noFixedSizedCallback=false above.
+    auto const frames = (usize)standalone.audio_device->playback.internalPeriodSizeInFrames;
+    auto alloc = PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(frames * 2);
+    standalone.audio_buffers[0] = alloc.SubSpan(0, frames);
+    standalone.audio_buffers[1] = alloc.SubSpan(frames, frames);
 
     ma_device_start(&*standalone.audio_device);
 
@@ -593,10 +596,7 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
 
     ASSERT(standalone.audio_device);
     auto const period_size = standalone.audio_device->playback.internalPeriodSizeInFrames;
-    inst->plugin->activate(inst->plugin,
-                           standalone.audio_device->sampleRate,
-                           period_size / 2,
-                           period_size * 2);
+    inst->plugin->activate(inst->plugin, standalone.audio_device->sampleRate, period_size, period_size);
 
     inst->plugin->start_processing(inst->plugin);
 
