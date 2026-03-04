@@ -5,6 +5,8 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "foundation/utils/maths_constexpr.hpp"
+
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/loop_modes.hpp"
@@ -20,7 +22,7 @@
 // Prevents the waveform image flickering during fast melodic passages. The first change always goes through
 // instantly; if a second arrives shortly after, the display locks until things calm down.
 static u64 DebouncedWaveformHash(WaveformHashDebounce& state, u64 raw_hash) {
-    constexpr f64 k_detection_window_secs = 0.15;
+    constexpr f64 k_detection_window_secs = 0.10;
     constexpr f64 k_calm_threshold_secs = 1.3;
 
     auto const now = TimePoint::Now();
@@ -43,10 +45,34 @@ static u64 DebouncedWaveformHash(WaveformHashDebounce& state, u64 raw_hash) {
 }
 
 static bool IsMultisampledInstrument(LayerProcessor const& layer) {
-    if (layer.instrument_id.tag != InstrumentType::Sampler) return false;
+    if (layer.instrument.tag != InstrumentType::Sampler) return false;
     if (auto i = layer.instrument.TryGetFromTag<InstrumentType::Sampler>())
         return (*i)->instrument.regions.size > 1;
     return false;
+}
+
+// Sweep diagonal lines across the rect.
+static void DrawHatchPattern(DrawList& draw_list, Rect r, u32 col, f32 spacing, f32 thickness) {
+    if ((col & k_alpha_mask) == 0) return;
+
+    draw_list.PushClipRect(r.Min(), r.Max(), true);
+
+    constexpr auto k_angle_degrees = 55.0;
+    constexpr auto k_angle_tan = (f32)constexpr_math::Tan(k_angle_degrees * constexpr_math::k_pi / 180.0);
+    auto const step = spacing;
+    auto const diagonal_extent = r.h / k_angle_tan;
+
+    // Start far enough left that lines entering from the top-right still cover the rect.
+    auto const start = -diagonal_extent;
+    auto const end = r.w + (r.h / k_angle_tan);
+
+    for (f32 offset = start; offset < end; offset += step) {
+        f32x2 const a {r.x + offset, r.y};
+        f32x2 const b {r.x + offset - diagonal_extent, r.Bottom()};
+        draw_list.AddLine(a, b, col, thickness);
+    }
+
+    draw_list.PopClipRect();
 }
 
 struct PlayModeFeatures {
@@ -734,7 +760,6 @@ void DoWaveformElement(GuiState& g,
 
         // Waveform image.
         if (layer.instrument_id.tag != InstrumentType::None) {
-
             auto const offset =
                 (features.show_sample_offset && layer.instrument_id.tag == InstrumentType::Sampler)
                     ? params.LinearValue(layer.index, LayerParamIndex::SampleOffset)
@@ -746,7 +771,8 @@ void DoWaveformElement(GuiState& g,
                     LoadMemoryOrder::Relaxed);
 
             auto& debounce = g.waveform_hash_debounce[layer.index];
-            auto const last_activated_hash = DebouncedWaveformHash(debounce, raw_hash);
+            auto const last_activated_hash =
+                is_multisample ? DebouncedWaveformHash(debounce, raw_hash) : raw_hash;
 
             struct Range {
                 f32x2 lo;
@@ -852,13 +878,20 @@ void DoWaveformElement(GuiState& g,
                 }
             }
 
+            if (is_multisample && debounce.locked) {
+                DrawHatchPattern(*g.imgui.draw_list,
+                                 window_r,
+                                 LiveCol(UiColMap::WaveformMultisampleHatch),
+                                 WwToPixels(5.5f),
+                                 WwToPixels(1.0f));
+            }
+
             // Multisample badge.
             if (is_multisample) {
                 // Badge in the top-right corner.
                 auto const badge_pad = WwToPixels(4.5f);
                 auto const badge_font_scaling = 0.72f;
-                String const badge_text =
-                    (last_activated_hash && !debounce.locked) ? "Last Played"_s : "Representative"_s;
+                String const badge_text = (last_activated_hash) ? "Last Played"_s : "Representative"_s;
 
                 // Measure text to size the badge.
                 auto const font = g.fonts.Current();
