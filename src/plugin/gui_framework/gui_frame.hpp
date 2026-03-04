@@ -240,14 +240,21 @@ struct GuiFrameOutput {
         if (ToInt(r) > ToInt(wants.update_interval)) wants.update_interval = r;
     }
 
-    void AddTimedWakeup(TimePoint time, char const* timer_name) {
-        (void)timer_name;
-        dyn::AppendIfNotAlreadyThere(timed_wakeups, time);
+    // Set or update a timed wakeup. If this ID already has a wakeup, its time is replaced. The caller
+    // is responsible for creating a unique ID by whatever means they want: SourceLocationHash(),
+    // Hash("my name"), or an existing ID they have.
+    void SetTimedWakeup(u64 id, TimePoint time) {
+        if (auto* existing = timed_wakeups.Find(id))
+            *existing = time;
+        else
+            timed_wakeups.Insert(id, time);
     }
 
-    // Set this if you want to be woken up at certain times in the future. Out-of-date wakeups will be removed
-    // for you.
-    DynamicArray<TimePoint> timed_wakeups {Malloc::Instance()};
+    // Remove a timed wakeup by ID. No-op if the ID doesn't exist.
+    void RemoveTimedWakeup(u64 id) { timed_wakeups.Delete(id); }
+
+    // Wakeups keyed by caller-chosen ID. Out-of-date wakeups will be removed for you.
+    DynamicHashTable<u64, TimePoint> timed_wakeups {Malloc::Instance()};
 
     // Rectangles that will wake up the GUI when the mouse enters/leaves it.
     DynamicArray<MouseTrackedRect> mouse_tracked_rects {Malloc::Instance()};
@@ -284,13 +291,13 @@ struct GuiFrameOutput {
 
 struct GuiFrameIo {
     // Returns true when it ticks
-    bool WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds) {
+    bool WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds, u64 id) {
         bool triggered = false;
         if (in.current_time >= counter) {
             counter = in.current_time + interval_seconds;
             triggered = true;
         }
-        out.AddTimedWakeup(counter, __FUNCTION__);
+        out.SetTimedWakeup(id, counter);
         return triggered;
     }
 

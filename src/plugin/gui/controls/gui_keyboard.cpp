@@ -659,8 +659,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
     constexpr auto k_seconds_delay_before_enlarge = 0.1;
 
     if (imgui.WasJustMadeHot(id))
-        GuiIo().out.AddTimedWakeup(TimePoint::Now() + k_seconds_delay_before_enlarge,
-                                   "enlarged-keyboard-display");
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), TimePoint::Now() + k_seconds_delay_before_enlarge);
 
     if (imgui.IsHot(id) && !imgui.IsPopupMenuOpen(popup_id) &&
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)

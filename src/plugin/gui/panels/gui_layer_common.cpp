@@ -299,7 +299,7 @@ void DoInstSelector(GuiState& g,
             auto const min = window_r.Min();
             auto const max = f32x2 {window_r.x + Max(4.0f, window_r.w * load_percent), window_r.Bottom()};
             g.imgui.draw_list->AddRectFilled(min, max, LiveCol(UiColMap::InstSelectorMenuLoading), rounding);
-            GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.1);
+            GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.1, SourceLocationHash());
         }
     }
 

@@ -421,9 +421,11 @@ void StartVoice(VoicePool& pool,
             if (IsGranular(voice_controller.play_mode)) voice.grain_pool.Reset();
 
             if (sampler.voice_sample_params.size) {
-                pool.last_activated_audio_data_hash[voice_controller.layer_index].Store(
-                    sampler.voice_sample_params[0].audio_data.hash,
-                    StoreMemoryOrder::Relaxed);
+                if (sampler.voice_sample_params[0].region.trigger.trigger_event ==
+                    sample_lib::TriggerEvent::NoteOn)
+                    pool.last_activated_audio_data_hash[voice_controller.layer_index].Store(
+                        sampler.voice_sample_params[0].audio_data.hash,
+                        StoreMemoryOrder::Relaxed);
             }
 
             if (g_final_binary_type == FinalBinaryType::Standalone) {

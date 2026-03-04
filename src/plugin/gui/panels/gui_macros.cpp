@@ -215,7 +215,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 }
 
                 if (builder.imgui.WasJustMadeHot(imgui_id))
-                    GuiIo().out.AddTimedWakeup(TimePoint::Now() + 0.5, "macros_destination_knob_hot");
+                    GuiIo().out.SetTimedWakeup(SourceLocationHash(), TimePoint::Now() + 0.5);
 
                 if (builder.imgui.IsActive(imgui_id, MouseButton::Left) ||
                     (builder.imgui.IsHot(imgui_id) && builder.imgui.SecondsSpentHot() > 0.5)) {

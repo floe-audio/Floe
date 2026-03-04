@@ -543,8 +543,8 @@ static void DoImGuiInspector(DeveloperPanel& g, Rect r) {
         DevGuiIncrementPos(g, k_item_h);
 
         DevGuiText(g, "Timers:");
-        for (auto& t : GuiIo().out.timed_wakeups)
-            DevGuiText(g, "Time: {}", t.Raw());
+        for (auto [id, time, hash] : GuiIo().out.timed_wakeups)
+            DevGuiText(g, "ID: {x}, Time: {}", id, time.Raw());
     }
 
     if (DevGuiButton(g, debug_ids ? "Hide IDs" : "Show IDs", "IDs")) debug_ids = !debug_ids;

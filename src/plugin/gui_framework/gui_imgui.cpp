@@ -984,8 +984,8 @@ static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
 
         if (id != creator_of_next) {
             if (imgui.WasJustMadeHot(id))
-                GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
-                                           "popup close");
+                GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                           GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
             if (imgui.SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
                 imgui.ClosePopupToLevel(imgui.current_popup_stack.size);
         }
@@ -1350,7 +1350,9 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     if (!result.HasSelection()) {
         if (starting_cursor != stb_state.cursor || reset_cursor)
             ResetTextInputCursorAnim();
-        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
+        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter,
+                                               k_text_cursor_blink_rate,
+                                               SourceLocationHash()))
             text_cursor_is_shown = !text_cursor_is_shown;
     }
 
@@ -1477,8 +1479,8 @@ Context::PopupMenuButtonBehaviour(Rect r, Id button_id, Id popup_id, ButtonConfi
         // We're already in a popup viewport. We support auto-opening child popups when hovering. This is
         // common behaviour for quickly navigating through nested menus.
         if (WasJustMadeHot(button_id))
-            GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
-                                       "Popup open");
+            GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                       GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
         if ((button_fired || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
             !IsPopupMenuOpen(popup_id)) {
             ClosePopupToLevel(current_popup_stack.size);
@@ -1554,7 +1556,9 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
         if (WasJustActivated(id, cfg.mouse_button))
             button_repeat_counter = GuiIo().in.current_time + k_button_repeat_rate;
         else if (is_active) {
-            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate))
+            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter,
+                                              k_button_repeat_rate,
+                                              SourceLocationHash()))
                 button_fired = true;
         }
     }
@@ -2233,7 +2237,8 @@ bool Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
 
     constexpr auto k_delay_secs = 0.5;
 
-    if (WasJustMadeHot(id)) GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_delay_secs, "Tooltip");
+    if (WasJustMadeHot(id))
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_delay_secs);
 
     return IsHot(id) && SecondsSpentHot() >= k_delay_secs;
 }

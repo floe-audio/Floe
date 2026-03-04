@@ -1111,7 +1111,7 @@ static void DoEffectDragAndDrop(GuiState& g,
             if (!Rect::DoRectsIntersect(spacer_r, wnd->clipping_rect.ReducedVertically(spacer_r.h))) {
                 bool const going_up = GuiIo().in.cursor_pos.y < wnd->clipping_rect.CentreY();
                 auto const d = WwToPixels(210.0f) * GuiIo().in.delta_time;
-                GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.016);
+                GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.016, SourceLocationHash());
                 g.imgui.SetYScroll(
                     wnd,
                     Clamp(wnd->scroll_offset.y + (going_up ? -d : d), 0.0f, wnd->scroll_max.y));

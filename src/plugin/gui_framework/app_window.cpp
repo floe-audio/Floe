@@ -206,15 +206,13 @@ static bool IsUpdateNeeded(AppWindow& window) {
     if (window.last_result.wants.update_interval > GuiFrameOutput::UpdateInterval::Sleep)
         update_needed = true;
 
-    for (usize i = 0; i < window.last_result.timed_wakeups.size;) {
-        auto& t = window.last_result.timed_wakeups[i];
+    window.last_result.timed_wakeups.RemoveIf([&](u64 const&, TimePoint const& t) {
         if (TimePoint::Now() >= t) {
             update_needed = true;
-            dyn::Remove(window.last_result.timed_wakeups, i);
-        } else {
-            ++i;
+            return true;
         }
-    }
+        return false;
+    });
 
     return update_needed;
 }
