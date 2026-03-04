@@ -1,0 +1,26 @@
+{
+    "mcp": {
+        "zig-docs": {
+            "type": "local",
+            "command": [
+                "npx",
+                "-y",
+                "zig-mcp@latest"
+            ],
+            "enabled": true
+        }
+    },
+    "permission": {
+        "read": {
+            "*": "allow",
+            "*.env": "deny",
+            "*.env.*": "deny",
+            "*.env.example": "allow",
+            "git *": "deny",
+            "git status": "allow",
+            "git log": "allow",
+            "git add": "allow",
+        }
+    },
+    "$schema": "https://opencode.ai/config.json"
+}
