@@ -17,6 +17,40 @@
 #include "processor/layer_processor.hpp"
 #include "processor/sample_processing.hpp"
 
+static bool IsMultisampledInstrument(LayerProcessor const& layer) {
+    if (layer.instrument_id.tag != InstrumentType::Sampler) return false;
+    if (auto i = layer.instrument.TryGetFromTag<InstrumentType::Sampler>())
+        return (*i)->instrument.regions.size > 1;
+    return false;
+}
+
+// Draws a diagonal hatch pattern of lines over a given rectangle, clipped to its bounds. The lines
+// run at approximately -55 degrees (top-right to bottom-left). spacing is the distance between line
+// centres in pixels; thickness is each line's width.
+static void DrawHatchPattern(DrawList& draw_list, Rect r, u32 col, f32 spacing, f32 thickness) {
+    if ((col & k_alpha_mask) == 0) return;
+
+    draw_list.PushClipRect(r.Min(), r.Max(), true);
+
+    // -55 degrees: for each step of `spacing` horizontally, the line moves down by
+    // spacing * tan(55deg). We sweep a vertical strip of lines across the rect.
+    constexpr f32 k_angle_tan = 1.4281f; // tan(55 deg)
+    f32 const step = spacing;
+    f32 const diagonal_extent = r.h / k_angle_tan;
+
+    // Start far enough left that lines entering from the top-right still cover the rect.
+    f32 const start = -diagonal_extent;
+    f32 const end = r.w + (r.h / k_angle_tan);
+
+    for (f32 offset = start; offset < end; offset += step) {
+        f32x2 const a {r.x + offset, r.y};
+        f32x2 const b {r.x + offset - diagonal_extent, r.Bottom()};
+        draw_list.AddLine(a, b, col, thickness);
+    }
+
+    draw_list.PopClipRect();
+}
+
 struct PlayModeFeatures {
     bool has_play_mode;
     bool show_sample_offset;
@@ -699,6 +733,16 @@ void DoWaveformElement(GuiState& g,
         auto const features =
             options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
 
+        auto const is_multisample = IsMultisampledInstrument(layer);
+
+        // For multisampled instruments we reduce the waveform opacity to visually indicate
+        // that the displayed waveform is just a representative sample, not a literal view.
+        constexpr f32 k_multisample_waveform_alpha_scale = 0.57f;
+        auto const waveform_tint = [&](UiColMap col_id) -> u32 {
+            auto const col = LiveCol(col_id);
+            return is_multisample ? ChangeAlpha(col, k_multisample_waveform_alpha_scale) : col;
+        };
+
         // Waveform image.
         if (layer.instrument_id.tag != InstrumentType::None) {
 
@@ -740,8 +784,8 @@ void DoWaveformElement(GuiState& g,
                                                 whole_section_uv.lo,
                                                 whole_section_uv.hi,
                                                 (!loop_points_editable)
-                                                    ? LiveCol(UiColMap::WaveformLoopWaveformLoop)
-                                                    : LiveCol(UiColMap::WaveformLoopWaveform));
+                                                    ? waveform_tint(UiColMap::WaveformLoopWaveformLoop)
+                                                    : waveform_tint(UiColMap::WaveformLoopWaveform));
 
                     // Loop region highlight (shown in standard and granular speed, but only
                     // editable/draggable in standard).
@@ -757,7 +801,7 @@ void DoWaveformElement(GuiState& g,
                             window_r.Max() - f32x2 {window_r.w * (reverse ? loop_end : (1.0f - loop_end)), 0},
                             loop_section_uv.lo,
                             loop_section_uv.hi,
-                            LiveCol(UiColMap::WaveformLoopWaveformLoop));
+                            waveform_tint(UiColMap::WaveformLoopWaveformLoop));
                     }
 
                     if (offset != 0) {
@@ -771,7 +815,7 @@ void DoWaveformElement(GuiState& g,
                                                         f32x2 {viewport_r.w * (1.0f - offset), 0},
                                                     offset_section_uv.lo,
                                                     offset_section_uv.hi,
-                                                    LiveCol(UiColMap::WaveformLoopWaveformOffset));
+                                                    waveform_tint(UiColMap::WaveformLoopWaveformOffset));
                     }
 
                 } else if (features.has_play_mode) {
@@ -782,7 +826,7 @@ void DoWaveformElement(GuiState& g,
                                                 window_r.Max(),
                                                 whole_section_uv.lo,
                                                 whole_section_uv.hi,
-                                                LiveCol(UiColMap::WaveformLoopWaveformLoop));
+                                                waveform_tint(UiColMap::WaveformLoopWaveformLoop));
 
                     if (offset != 0) {
                         Range const offset_section_uv {
@@ -795,7 +839,7 @@ void DoWaveformElement(GuiState& g,
                                                         f32x2 {viewport_r.w * (1.0f - offset), 0},
                                                     offset_section_uv.lo,
                                                     offset_section_uv.hi,
-                                                    LiveCol(UiColMap::WaveformLoopWaveformOffset));
+                                                    waveform_tint(UiColMap::WaveformLoopWaveformOffset));
                     }
 
                 } else {
@@ -806,8 +850,47 @@ void DoWaveformElement(GuiState& g,
                                                 window_r.Max(),
                                                 {reverse ? 1.0f : 0.0f, 0},
                                                 {reverse ? 0.0f : 1.0f, 1},
-                                                LiveCol(UiColMap::WaveformLoopWaveformLoop));
+                                                waveform_tint(UiColMap::WaveformLoopWaveformLoop));
                 }
+            }
+
+            // Multisample overlay: diagonal hatch pattern and "Representative" badge.
+            if (is_multisample) {
+                DrawHatchPattern(*g.imgui.draw_list,
+                                 window_r,
+                                 LiveCol(UiColMap::WaveformMultisampleHatch),
+                                 WwToPixels(5.5f),
+                                 WwToPixels(1.0f));
+
+                // Badge in the top-right corner.
+                auto const badge_pad = WwToPixels(4.5f);
+                auto const badge_font_scaling = 0.72f;
+                String const badge_text = "Representative";
+
+                // Measure text to size the badge.
+                auto const font = g.fonts.Current();
+                auto const font_size = font->font_size * badge_font_scaling;
+                auto const text_size = font->CalcTextSize(badge_text, {.font_size = font_size});
+                auto const badge_h = text_size.y + WwToPixels(3.0f);
+                auto const badge_w = text_size.x + WwToPixels(10.0f);
+                Rect const badge_r = {
+                    .xywh {window_r.Right() - badge_w - badge_pad, window_r.y + badge_pad, badge_w, badge_h}};
+
+                auto const badge_rounding = WwToPixels(2.0f);
+                g.imgui.draw_list->AddRectFilled(badge_r,
+                                                 LiveCol(UiColMap::WaveformMultisampleBadgeBack),
+                                                 badge_rounding);
+                g.imgui.draw_list->AddRect(badge_r,
+                                           LiveCol(UiColMap::WaveformMultisampleBadgeBorder),
+                                           badge_rounding);
+                g.imgui.draw_list->AddTextInRect(badge_r,
+                                                 LiveCol(UiColMap::WaveformMultisampleBadgeText),
+                                                 badge_text,
+                                                 {
+                                                     .justification = TextJustification::Centred,
+                                                     .overflow_type = TextOverflowType::AllowOverflow,
+                                                     .font_scaling = badge_font_scaling,
+                                                 });
             }
         }
 
