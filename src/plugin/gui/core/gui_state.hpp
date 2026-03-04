@@ -8,6 +8,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/controls/gui_envelope.hpp"
+#include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_waveform_images.hpp"
@@ -41,10 +42,12 @@ struct DraggingFX {
     f32x2 relative_grab_point {};
 };
 
-struct GuiState {
+struct GuiState : EngineListener {
     NON_COPYABLE(GuiState);
     GuiState(Engine& engine);
     ~GuiState();
+
+    void OnEngineChange() override;
 
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator, Kb(512)};
@@ -88,6 +91,7 @@ struct GuiState {
     Array<LayerPanelState, k_num_layers> layer_panel_states;
 
     WaveformImagesTable waveform_images {};
+    Array<WaveformHashDebounce, k_num_layers> waveform_hash_debounce {};
     Optional<ImageID> floe_logo_image {};
 
     LibraryImagesTable library_images {};

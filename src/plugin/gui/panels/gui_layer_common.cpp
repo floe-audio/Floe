@@ -311,6 +311,7 @@ void DoInstSelector(GuiState& g,
                                      g.imgui,
                                      sample_inst_id.library,
                                      g.shared_engine_systems.sample_library_server,
+                                     g.engine.instance_index,
                                      LibraryImagesTypes::Icon);
         if (imgs.icon) icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon);
     }

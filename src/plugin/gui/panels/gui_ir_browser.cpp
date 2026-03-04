@@ -280,6 +280,7 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
                                                                              builder.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
+                                                                             context.engine.instance_index,
                                                                              LibraryImagesTypes::Icon);
                                                         if (imgs.icon)
                                                             lib_icon = *imgs.icon;
@@ -395,6 +396,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
+            .instance_index = context.engine.instance_index,
         },
         BrowserPopupOptions {
             .title = "Impulse Response",
@@ -435,6 +437,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
                 LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
                     .library_images = context.library_images,
+                    .instance_index = context.engine.instance_index,
                     .libraries = libraries,
                     .library_authors = library_authors,
                     .card_view = true,

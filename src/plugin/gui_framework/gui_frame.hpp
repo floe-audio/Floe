@@ -5,6 +5,8 @@
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
 
+#include "common_infrastructure/constants.hpp"
+
 #include "draw_list.hpp"
 #include "renderer.hpp"
 
@@ -304,8 +306,11 @@ GuiFrameIo GuiIo();
 inline auto WwToPixels(auto ww) { return ww * GuiIo().in.pixels_per_ww; }
 inline auto PixelsToWw(auto pixels) { return pixels / GuiIo().in.pixels_per_ww; }
 
-// Set this at any time from any thread to request a GUI update at some point in the future.
-extern Atomic<bool> g_request_gui_update;
+// These are totally safe with regards to threads and lifetimes since they just work with global atomic bools.
+// The GUI doesn't even have to exist.
+// [threadsafe]
+void RequestGuiUpdate(FloeInstanceIndex index);
+bool ConsumeGuiUpdateRequest(FloeInstanceIndex index);
 
 // Internal.
 void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out);

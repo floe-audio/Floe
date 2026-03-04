@@ -26,6 +26,7 @@ void DrawMidBlurredBackground(GuiState& g,
                                      g.imgui,
                                      library_id,
                                      g.shared_engine_systems.sample_library_server,
+                                     g.engine.instance_index,
                                      LibraryImagesTypes::Backgrounds);
 
         if (imgs.blurred_background) {
@@ -92,6 +93,7 @@ void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_i
                                      g.imgui,
                                      library_id,
                                      g.shared_engine_systems.sample_library_server,
+                                     g.engine.instance_index,
                                      LibraryImagesTypes::Backgrounds);
         if (imgs.background) {
             auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
@@ -211,6 +213,7 @@ static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
                                              g.imgui,
                                              sample_inst_id.library,
                                              g.shared_engine_systems.sample_library_server,
+                                             g.engine.instance_index,
                                              LibraryImagesTypes::Icon);
                 if (imgs.icon) {
                     if (auto icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon)) {

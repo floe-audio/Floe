@@ -6,6 +6,7 @@
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui_framework/gui_frame.hpp"
 #include "gui_framework/image.hpp"
 
 enum class LibraryImageType { Icon, Background };
@@ -84,14 +85,16 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
                           imgui::Context const&,
                           Future<Optional<ImageBytes>>& result,
                           sample_lib_server::Server& server,
-                          ThreadPool& thread_pool) {
+                          ThreadPool& thread_pool,
+                          FloeInstanceIndex instance_index) {
     thread_pool.Async(
         result,
         [lib_id = sample_lib::LibraryId(lib_id_ref),
          &server,
+         instance_index,
          desired_icon_size =
              CheckedCast<u16>(Ceil(WwToPixels(k_library_icon_standard_size)) * 2)]() -> Optional<ImageBytes> {
-            DEFER { g_request_gui_update.Store(true, StoreMemoryOrder::Release); };
+            DEFER { RequestGuiUpdate(instance_index); };
 
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
             auto pixels =
@@ -113,7 +116,8 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
                                  bool reload_background,
                                  bool reload_blurred_background,
                                  sample_lib_server::Server& server,
-                                 ThreadPool& thread_pool) {
+                                 ThreadPool& thread_pool,
+                                 FloeInstanceIndex instance_index) {
     BlurredImageBackgroundOptions const blur_options {
         .downscale_factor = Clamp01(29.13f / 100.0f),
         .brightness_scaling_exponent = 62.0f / 100.0f,
@@ -131,8 +135,9 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
          reload_blurred_background,
          blur_options,
          &server,
+         instance_index,
          window_width = GuiIo().in.window_size.width]() -> Optional<LibraryImages::LoadingBackgrounds> {
-            DEFER { g_request_gui_update.Store(true, StoreMemoryOrder::Release); };
+            DEFER { RequestGuiUpdate(instance_index); };
 
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
 
@@ -186,6 +191,7 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                imgui::Context& imgui,
                                sample_lib::LibraryIdRef const& lib_id,
                                sample_lib_server::Server& server,
+                               FloeInstanceIndex instance_index,
                                LibraryImagesTypes needed_types) {
     ASSERT(g_is_logical_main_thread);
 
@@ -204,7 +210,8 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
             load = true;
         }
 
-        if (load) AsyncLoadIcon(lib_id, imgui, *images.loading_icon, server, server.thread_pool);
+        if (load)
+            AsyncLoadIcon(lib_id, imgui, *images.loading_icon, server, server.thread_pool, instance_index);
 
         images.needs_reload.Clear(ToInt(LibraryImages::ImageType::Icon));
     }
@@ -226,7 +233,8 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                  images.needs_reload.Get(ToInt(LibraryImages::ImageType::Background)),
                                  images.needs_reload.Get(ToInt(LibraryImages::ImageType::BlurredBackground)),
                                  server,
-                                 server.thread_pool);
+                                 server.thread_pool,
+                                 instance_index);
 
         images.needs_reload.ClearBits(k_background_type_bits);
     }

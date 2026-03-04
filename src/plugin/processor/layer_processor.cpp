@@ -408,6 +408,7 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_po
         EndVoiceInstantly(v);
 
     layer.peak_meter.Zero();
+    voice_pool.last_activated_audio_data_hash[layer.index].Store(0, StoreMemoryOrder::Relaxed);
 
     // Swap instrument
     layer.audio_thread_inst = *desired_inst;

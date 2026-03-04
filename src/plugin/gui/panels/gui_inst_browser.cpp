@@ -412,6 +412,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
                                                                              builder.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
+                                                                             context.engine.instance_index,
                                                                              LibraryImagesTypes::Icon);
                                                         if (imgs.icon)
                                                             lib_icon = *imgs.icon;
@@ -527,6 +528,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         .library_id = k_waveform_library_id,
         .library_images = context.library_images,
         .sample_library_server = context.sample_library_server,
+        .instance_index = context.engine.instance_index,
         .subtext = "Basic waveforms built into Floe",
     };
 
@@ -545,6 +547,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
+            .instance_index = context.engine.instance_index,
         },
         BrowserPopupOptions {
             .title = fmt::Format(builder.arena, "Layer {} Instrument", context.layer.index + 1),
@@ -589,6 +592,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 Optional<LibraryFilters> f = LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
                     .library_images = context.library_images,
+                    .instance_index = context.engine.instance_index,
                     .libraries = libraries,
                     .library_authors = library_authors,
                     .card_view = true,

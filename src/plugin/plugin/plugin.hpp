@@ -101,11 +101,6 @@ struct PluginCallbacks {
     };
 };
 
-struct PluginInstanceMessages {
-    virtual void UpdateGui() = 0;
-    virtual ~PluginInstanceMessages() = default;
-};
-
 constexpr char const* k_supported_gui_api =
     IS_WINDOWS ? CLAP_WINDOW_API_WIN32 : (IS_MACOS ? CLAP_WINDOW_API_COCOA : CLAP_WINDOW_API_X11);
 

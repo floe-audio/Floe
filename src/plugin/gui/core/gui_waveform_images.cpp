@@ -5,6 +5,7 @@
 
 #include "common_infrastructure/state/instrument.hpp"
 
+#include "gui_framework/gui_frame.hpp"
 #include "gui_framework/image.hpp"
 #include "processor/sample_processing.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
@@ -15,7 +16,8 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
                                      WaveformAudioSource source,
                                      Instrument const& inst,
                                      UiSize size,
-                                     ThreadPool& thread_pool) {
+                                     ThreadPool& thread_pool,
+                                     FloeInstanceIndex instance_index) {
     // We use ValueOr, because we need to have a RefCounted handle, not a _pointer_ to a RefCounted handle
     // since we need to pass the whole handle to the cleanup function.
     auto inst_ref =
@@ -29,8 +31,9 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
             auto const bytes = CreateWaveformImage(source, size, PixelsAllocator(), scratch_arena);
             return {.rgba = bytes.data, .size = size};
         },
-        [inst_ref]() mutable { // Capture by value the RefCounted handle.
+        [inst_ref, instance_index]() mutable { // Capture by value the RefCounted handle.
             if (inst_ref) inst_ref.Release();
+            RequestGuiUpdate(instance_index);
         },
         JobPriority::High);
 }
@@ -43,7 +46,7 @@ static u64 TableKey(u64 source_hash, UiSize size) {
     return hash;
 }
 
-static Optional<u64> SourceHashForInstrument(Instrument const& inst) {
+static Optional<u64> SourceHashForInstrument(Instrument const& inst, u64 audio_data_hash_override = 0) {
     switch (inst.tag) {
         case InstrumentType::None: return k_nullopt;
 
@@ -59,6 +62,7 @@ static Optional<u64> SourceHashForInstrument(Instrument const& inst) {
         }
 
         case InstrumentType::Sampler: {
+            if (audio_data_hash_override) return audio_data_hash_override;
             auto sampled_inst = inst.GetFromTag<InstrumentType::Sampler>();
             auto audio_data = sampled_inst->file_for_gui_waveform;
             if (!audio_data) return k_nullopt;
@@ -69,14 +73,26 @@ static Optional<u64> SourceHashForInstrument(Instrument const& inst) {
     return k_nullopt;
 }
 
+// Look up an AudioData by hash from the instrument's loaded audio_datas.
+// Returns nullptr if not found.
+static AudioData const* FindAudioDataByHash(Instrument const& inst, u64 hash) {
+    if (inst.tag != InstrumentType::Sampler) return nullptr;
+    auto sampled_inst = inst.GetFromTag<InstrumentType::Sampler>();
+    for (auto const audio_data : sampled_inst->audio_datas)
+        if (audio_data && audio_data->hash == hash) return audio_data;
+    return nullptr;
+}
+
 Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
                                    Instrument const& inst,
                                    Renderer& renderer,
                                    ThreadPool& thread_pool,
-                                   f32x2 f32_size) {
+                                   f32x2 f32_size,
+                                   FloeInstanceIndex instance_index,
+                                   u64 audio_data_hash_override) {
     auto const size = UiSize::FromFloat2(f32_size);
 
-    auto const opt_source_hash = SourceHashForInstrument(inst);
+    auto const opt_source_hash = SourceHashForInstrument(inst, audio_data_hash_override);
     if (!opt_source_hash) return k_nullopt;
     auto const source_hash = *opt_source_hash;
 
@@ -95,8 +111,13 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
         }
 
         case InstrumentType::Sampler: {
-            auto sampled_inst = inst.GetFromTag<InstrumentType::Sampler>();
-            source = sampled_inst->file_for_gui_waveform;
+            AudioData const* audio_data = nullptr;
+            if (audio_data_hash_override) audio_data = FindAudioDataByHash(inst, audio_data_hash_override);
+            if (!audio_data) {
+                auto sampled_inst = inst.GetFromTag<InstrumentType::Sampler>();
+                audio_data = sampled_inst->file_for_gui_waveform;
+            }
+            source = audio_data;
             break;
         }
     }
@@ -117,15 +138,18 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
         }
 
         if (need_start_loading)
-            CreateWaveformImageAsync(*waveform.loading_pixels, source, inst, size, thread_pool);
+            CreateWaveformImageAsync(*waveform.loading_pixels,
+                                     source,
+                                     inst,
+                                     size,
+                                     thread_pool,
+                                     instance_index);
     }
 
     return waveform.image_id;
 }
 
-void StartFrame(WaveformImagesTable& table,
-                Renderer& renderer,
-                Span<Instrument const*> possible_instruments) {
+void StartFrame(WaveformImagesTable& table, Renderer& renderer) {
     for (auto [_, waveform, _] : table.table) {
         // Consume any finished loading operations.
         if (waveform.loading_pixels) {
@@ -135,9 +159,26 @@ void StartFrame(WaveformImagesTable& table,
             }
         }
     }
+}
 
-    // Remove entries that don't correspond to any current instrument or haven't been requested recently.
-    constexpr f64 k_unrequested_timeout_secs = 20.0;
+void EndFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument const*> possible_instruments) {
+    // Clean up orphaned loading futures (cancelled in StartFrame but not yet finished at that time).
+    table.loading_pixels.RemoveIf([](WaveformImage::FuturePixels& future) {
+        auto const status = future.AcquireStatus();
+        if (!future.IsInProgress(status) && future.IsCancelled(status)) {
+            if (auto const result = future.TryReleaseResult()) result->Free(PixelsAllocator());
+            return true;
+        }
+        return false;
+    });
+
+    // Remove entries that are no longer needed. An entry is kept if it matches a currently loaded
+    // instrument's static waveform, OR if it was recently requested (which covers dynamically-selected
+    // samples via audio_data_hash_override - these won't match any instrument's static waveform but
+    // remain alive while actively displayed). The timeout ensures that waveform images for samples
+    // that are no longer being played get cleaned up, bounding memory usage even after large
+    // polyphonic passages.
+    constexpr f64 k_unrequested_timeout_secs = 15.0;
     table.table.RemoveIf([&](u64 const&, WaveformImage& waveform) {
         bool still_needed = false;
         for (auto const inst : possible_instruments) {
@@ -150,7 +191,7 @@ void StartFrame(WaveformImagesTable& table,
         bool const timed_out =
             waveform.last_requested && waveform.last_requested.SecondsFromNow() > k_unrequested_timeout_secs;
 
-        if (!still_needed || timed_out) {
+        if (!still_needed && timed_out) {
             if (waveform.image_id) {
                 renderer.DestroyImageID(*waveform.image_id);
                 waveform.image_id = k_nullopt;
@@ -163,18 +204,6 @@ void StartFrame(WaveformImagesTable& table,
                     waveform.loading_pixels->Cancel();
                 }
             }
-            return true;
-        }
-        return false;
-    });
-}
-
-void EndFrame(WaveformImagesTable& table) {
-    // Clean up orphaned loading futures (cancelled in StartFrame but not yet finished at that time).
-    table.loading_pixels.RemoveIf([](WaveformImage::FuturePixels& future) {
-        auto const status = future.AcquireStatus();
-        if (!future.IsInProgress(status) && future.IsCancelled(status)) {
-            if (auto const result = future.TryReleaseResult()) result->Free(PixelsAllocator());
             return true;
         }
         return false;

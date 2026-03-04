@@ -224,6 +224,8 @@ struct VoicePool {
     Array<Atomic<s16>, 128> voices_per_midi_note_for_gui {};
     Array<Atomic<f32>, k_num_layers> last_velocity = {};
 
+    Array<Atomic<u64>, k_num_layers> last_activated_audio_data_hash {};
+
     AtomicQueue<SampleLogItem, 32> sample_log_queue {};
 
     struct {

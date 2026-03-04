@@ -23,6 +23,10 @@
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
 
+static void NotifyListener(Engine& engine) {
+    if (engine.listener) engine.listener->OnEngineChange();
+}
+
 Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine) {
     ASSERT(g_is_logical_main_thread);
 
@@ -77,7 +81,7 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
 
 static void SetLastSnapshot(Engine& engine, StateSnapshotWithName const& state) {
     engine.last_snapshot.Set(state);
-    engine.update_gui.Store(true, StoreMemoryOrder::Relaxed);
+    NotifyListener(engine);
     engine.host.request_callback(&engine.host);
     // do this at the end because the pending state could be the arg of this function
     engine.pending_state_change.Clear();
@@ -125,7 +129,6 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
         engine.macro_names = state.state.macro_names;
         ApplyNewState(engine.processor, state.state, source);
         SetLastSnapshot(engine, state);
-        if (engine.stated_changed_callback) engine.stated_changed_callback();
 
         MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
         engine.host.request_callback(&engine.host);
@@ -228,8 +231,6 @@ static void ApplyNewStateFromPending(Engine& engine) {
 
     ApplyNewState(engine.processor, snapshot, source);
     SetLastSnapshot(engine, {snapshot, name});
-
-    if (engine.stated_changed_callback) engine.stated_changed_callback();
 }
 
 static void SampleLibraryChanged(Engine& engine, sample_lib::LibraryIdRef library_id) {
@@ -316,7 +317,7 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
         case Source::Count: PanicIfReached(); break;
     }
 
-    engine.update_gui.Store(true, StoreMemoryOrder::Relaxed);
+    NotifyListener(engine);
     engine.host.request_callback(&engine.host);
 }
 
@@ -481,25 +482,22 @@ static void OnMainThread(Engine& engine) {
             engine.request_main_thread_callback_at.Store(TimePoint::Now() + 2.0, StoreMemoryOrder::Release);
     }
 
-    if (engine.update_gui.Exchange(false, RmwMemoryOrder::Relaxed))
-        engine.plugin_instance_messages.UpdateGui();
-
     if (AutosaveNeeded(engine.autosave_state, engine.shared_engine_systems.prefs))
         QueueAutosave(engine.autosave_state, CurrentStateSnapshot(engine));
 }
 
 void Engine::OnProcessorChange(ChangeFlags flags) {
     if (flags & ProcessorListener::IrChanged) MarkNeedsAttributionTextUpdate(attribution_requirements);
-    update_gui.Store(true, StoreMemoryOrder::Relaxed);
+    NotifyListener(*this);
     if (!g_is_logical_main_thread) host.request_callback(&host);
 }
 
 Engine::Engine(clap_host const& host,
                SharedEngineSystems& shared_engine_systems,
-               PluginInstanceMessages& plugin_instance_messages)
+               FloeInstanceIndex instance_index)
     : host(host)
     , shared_engine_systems(shared_engine_systems)
-    , plugin_instance_messages(plugin_instance_messages)
+    , instance_index(instance_index)
     , sample_lib_server_async_channel {sample_lib_server::OpenAsyncCommsChannel(
           shared_engine_systems.sample_library_server,
           {
@@ -607,7 +605,6 @@ void SetToDefaultState(Engine& engine) {
                         .state = snapshot,
                         .name = {.name_or_path = "Default"},
                     });
-    if (engine.stated_changed_callback) engine.stated_changed_callback();
 }
 
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {

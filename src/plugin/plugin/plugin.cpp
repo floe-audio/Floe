@@ -62,7 +62,7 @@ inline void* PluginDataFromIndex(FloeInstanceIndex index) {
     return (void*)(k_clap_plugin_data_magic + index);
 }
 
-struct FloePluginInstance : PluginInstanceMessages {
+struct FloePluginInstance {
     FloePluginInstance(clap_host const& host,
                        FloeInstanceIndex index,
                        clap_plugin const& plugin_interface_template)
@@ -93,12 +93,6 @@ struct FloePluginInstance : PluginInstanceMessages {
         .colour = 0xa88e39,
         .object_id = index,
     };
-
-    void UpdateGui() override {
-        ASSERT(g_is_logical_main_thread);
-        if (app_window)
-            app_window->last_result.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
-    }
 
     ArenaAllocator arena {PageAllocator::Instance()};
 
@@ -1300,7 +1294,7 @@ static bool ClapInit(const struct clap_plugin* plugin) {
             if constexpr (!PRODUCTION_BUILD) ReportError(ErrorLevel::Info, k_nullopt, "Floe plugin loaded"_s);
         }
 
-        floe.engine.Emplace(floe.host, *g_shared_engine_systems, floe);
+        floe.engine.Emplace(floe.host, *g_shared_engine_systems, floe.index);
 
         // IMPORTANT: engine is initialised first
         g_shared_engine_systems->RegisterFloeInstance(floe.index);

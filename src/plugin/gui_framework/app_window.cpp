@@ -201,7 +201,7 @@ static bool IsUpdateNeeded(AppWindow& window) {
     // not.
     if (!window.first_update_made) update_needed = true;
 
-    if (g_request_gui_update.Exchange(false, RmwMemoryOrder::Relaxed)) update_needed = true;
+    if (window.gui && ConsumeGuiUpdateRequest(window.gui->engine.instance_index)) update_needed = true;
 
     if (window.last_result.wants.update_interval > GuiFrameOutput::UpdateInterval::Sleep)
         update_needed = true;
