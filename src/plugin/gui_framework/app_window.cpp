@@ -907,6 +907,17 @@ void Deinit(AppWindow& window) {
 
     native::DeinitNativeState(window);
 
+    // puglUnrealize can synchronously dispatch events, so it must happen before clearing GUI state.
+    if (window.view) {
+        if (window.pugl_timer_running) {
+            puglStopTimer(window.view, window.k_pugl_timer_id);
+            window.pugl_timer_running = false;
+        }
+        puglUnrealize(window.view);
+    }
+
+    SetTimers(window, SetTimerType::Stop);
+
     if (window.gui) {
         window.gui.Clear();
 
@@ -914,12 +925,7 @@ void Deinit(AppWindow& window) {
         window.last_result.draw_list_allocator.Clear();
     }
 
-    SetTimers(window, SetTimerType::Stop);
-
     if (window.view) {
-        // We don't need to check if the view is realized, because puglUnrealize will do nothing if it is not.
-        puglUnrealize(window.view);
-
         puglFreeView(window.view);
         window.view = nullptr;
     }
