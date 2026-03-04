@@ -2251,7 +2251,7 @@ consteval auto CreateParams() {
         };
         lp(GranularGrains) = Args {
             .id = id(region, 60), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Grains"_s,
             .gui_label = "Grains"_s,
@@ -2260,7 +2260,7 @@ consteval auto CreateParams() {
         };
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .value_config = val_config_helpers::Percent({.default_percent = 60}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Length"_s,
             .gui_label = "Length"_s,
@@ -2268,7 +2268,7 @@ consteval auto CreateParams() {
         };
         lp(GranularSpread) = Args {
             .id = id(region, 61), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .value_config = val_config_helpers::Percent({.default_percent = 6}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Spread"_s,
             .gui_label = "Spread"_s,
@@ -2286,7 +2286,7 @@ consteval auto CreateParams() {
         };
         lp(GranularRandomPan) = Args {
             .id = id(region, 63), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Random Pan"_s,
             .gui_label = "Rnd Pan"_s,
