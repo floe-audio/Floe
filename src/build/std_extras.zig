@@ -320,6 +320,13 @@ pub fn loadEnvFile(dir: std.fs.Dir, env_map: *std.process.EnvMap) !void {
     }
 }
 
+pub fn envAsBool(b: *std.Build, key: []const u8) ?bool {
+    const val = b.graph.env_map.get(key) orelse return null;
+    if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) return true;
+    if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) return false;
+    return null;
+}
+
 pub fn pathExists(path: []const u8) bool {
     std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
         error.FileNotFound => return false,

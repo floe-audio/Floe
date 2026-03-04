@@ -426,8 +426,10 @@ pub fn build(b: *std.Build) void {
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
 
-        .granular = b.option(bool, "granular", "Experimental granular") orelse false,
-        .mid_panel_tabs = b.option(bool, "mid-panel-tabs", "Experimental mid-panel tabs") orelse false,
+        .granular = b.option(bool, "granular", "Experimental granular") orelse
+            std_extras.envAsBool(b, "GRANULAR") orelse false,
+        .mid_panel_tabs = b.option(bool, "mid-panel-tabs", "Experimental mid-panel tabs") orelse
+            std_extras.envAsBool(b, "MID_PANEL_TABS") orelse false,
 
         // Installing plugins to global plugin folders requires admin rights but it's often easier to debug
         // things without requiring admin. For production builds it's always enabled.
