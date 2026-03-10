@@ -189,6 +189,8 @@ enum class ParamValueType : u8 {
 struct ParamFlags {
     u8 not_automatable : 1;
     u8 hidden : 1;
+    u8 experimental : 1; // Experimental params may be removed in future versions. They don't require a
+                         // StateVersion bump and are defaulted on load if not present in the file.
 };
 
 enum class ParameterModule : u8 {
@@ -2229,6 +2231,7 @@ consteval auto CreateParams() {
             .name = "Play Mode"_s,
             .gui_label = "Mode"_s,
             .tooltip = "How this layer plays its samples"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularSpeed) = Args {
             .id = id(region, 58), // never change
@@ -2237,6 +2240,7 @@ consteval auto CreateParams() {
             .name = "Granular Speed"_s,
             .gui_label = "Speed"_s,
             .tooltip = "How fast the grain position moves through the sample"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularPosition) = Args {
             .id = id(region, 59), // never change
@@ -2245,6 +2249,7 @@ consteval auto CreateParams() {
             .name = "Granular Position"_s,
             .gui_label = "Position"_s,
             .tooltip = "Where in the sample grains are sourced from"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularGrains) = Args {
             .id = id(region, 60), // never change
@@ -2254,6 +2259,7 @@ consteval auto CreateParams() {
             .gui_label = "Grains"_s,
             .tooltip =
                 "Number of concurrent grains. Low values produce sparse textures, high values create dense clouds"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
@@ -2262,6 +2268,7 @@ consteval auto CreateParams() {
             .name = "Granular Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Duration of each grain snippet"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularSpread) = Args {
             .id = id(region, 61), // never change
@@ -2271,6 +2278,7 @@ consteval auto CreateParams() {
             .gui_label = "Spread"_s,
             .tooltip =
                 "Region around the playhead where grains can start from. Small values focus grains near the playhead, large values spread them across a wider area"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularSmoothing) = Args {
             .id = id(region, 62), // never change
@@ -2280,6 +2288,7 @@ consteval auto CreateParams() {
             .gui_label = "Smooth"_s,
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularRandomPan) = Args {
             .id = id(region, 63), // never change
@@ -2289,6 +2298,7 @@ consteval auto CreateParams() {
             .gui_label = "Rnd Pan"_s,
             .tooltip =
                 "Randomise the stereo position of each grain. At 0% all grains play centred, at 100% grains can be panned anywhere from fully left to fully right"_s,
+            .flags = {.experimental = true},
         };
     }
 
@@ -2320,6 +2330,15 @@ constexpr auto k_create_params_result = CreateParams();
 
 constexpr auto k_param_descriptors = k_create_params_result.params;
 constexpr auto k_id_map = k_create_params_result.id_map;
+
+constexpr usize k_num_experimental_parameters = []() {
+    usize n = 0;
+    for (auto& p : k_param_descriptors)
+        if (p.flags.experimental) ++n;
+    return n;
+}();
+
+constexpr usize k_num_non_experimental_parameters = k_num_parameters - k_num_experimental_parameters;
 
 struct ComptimeParamSearchOptions {
     ParamModules modules {};

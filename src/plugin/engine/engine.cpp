@@ -17,6 +17,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "clap/ext/timer-support.h"
+#include "engine/engine_prefs.hpp"
 #include "engine/favourite_items.hpp"
 #include "plugin/plugin.hpp"
 #include "processor/layer_processor.hpp"
@@ -433,8 +434,28 @@ void LoadPresetFromFile(Engine& engine, String path) {
     }
 }
 
+static void ScrubExperimentalParamsIfNeeded(StateSnapshot& state, prefs::Preferences const& prefs) {
+    if (prefs::GetBool(prefs, ExperimentalFeaturesPreferenceDescriptor())) return;
+
+    for (auto const i : Range(k_num_parameters)) {
+        if (!k_param_descriptors[i].flags.experimental) continue;
+
+        state.param_values[i] = k_param_descriptors[i].default_linear_value;
+        state.param_learned_ccs[i] = {};
+
+        for (auto& dest_list : state.macro_destinations) {
+            for (usize d = 0; d < dest_list.Size();)
+                if (dest_list.items[d].param_index == ParamIndex(i))
+                    dest_list.RemoveAt(d);
+                else
+                    ++d;
+        }
+    }
+}
+
 void SaveCurrentStateToFile(Engine& engine, String path) {
-    auto const current_state = CurrentStateSnapshot(engine);
+    auto current_state = CurrentStateSnapshot(engine);
+    ScrubExperimentalParamsIfNeeded(current_state, engine.shared_engine_systems.prefs);
     auto const error_id = HashMultiple(Array {"preset-save"_s, path});
     if (auto const outcome = SavePresetFile(path, current_state); outcome.Succeeded()) {
         SetLastSnapshot(engine, {.state = current_state, .name = {.name_or_path = path}});
@@ -610,6 +631,7 @@ void SetToDefaultState(Engine& engine) {
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
     auto state = CurrentStateSnapshot(engine);
     ASSERT(state.instance_id.size);
+    ScrubExperimentalParamsIfNeeded(state, engine.shared_engine_systems.prefs);
     auto outcome = CodeState(state,
                              CodeStateArguments {
                                  .mode = CodeStateArguments::Mode::Encode,

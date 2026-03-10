@@ -499,20 +499,19 @@ enum class StateVersion : u16 {
     // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
     AddedMonophonicModeParameter,
 
-    AddedGranular,
-
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == 252,
-                  "You have changed the number of parameters. You must now bump the "
-                  "state version number and handle setting any new parameters to "
-                  "backwards-compatible states. In other words, these new parameters "
-                  "should be deactivated when loading an old preset so that the old "
-                  "preset does not sound different. After that's done, change this "
-                  "static_assert to match the new number of parameters.");
+    // Experimental params don't need a state version bump or adaptation code here. They
+    // are automatically defaulted on load if not present in the file (see CodeState).
+    // Non-experimental params DO require a version bump and adaptation code.
+    static_assert(k_num_non_experimental_parameters == 228,
+                  "You have changed the number of non-experimental parameters. You "
+                  "must bump the state version number and handle setting the new "
+                  "parameters to backwards-compatible states so old presets don't "
+                  "sound different. Then update this static_assert.");
 
     // We don't need to adapt parameters if the state is already aware of the new change.
     if (version < StateVersion::AddedLayerVelocityCurves) {
@@ -662,33 +661,6 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                 mode_val = was_monophonic ? (f32)param_values::MonophonicMode::Retrigger
                                           : (f32)param_values::MonophonicMode::Off;
             }
-        }
-    }
-
-    if (version < StateVersion::AddedGranular) {
-        for (auto const layer_index : Range(k_num_layers)) {
-            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode)) =
-                (f32)param_values::PlayMode::Standard;
-
-            auto const set = [&](LayerParamIndex param) {
-                state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, param)) =
-                    k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(0, param))].default_linear_value;
-            };
-            set(LayerParamIndex::GranularSpeed);
-            set(LayerParamIndex::GranularPosition);
-            set(LayerParamIndex::GranularGrains);
-            set(LayerParamIndex::GranularSpread);
-            set(LayerParamIndex::GranularSmoothing);
-            set(LayerParamIndex::GranularLength);
-            set(LayerParamIndex::GranularRandomPan);
-        }
-
-        for (auto const layer_index : Range(k_num_layers)) {
-            state.LinearParam(
-                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::GranularRandomPan)) =
-                k_param_descriptors[ToInt(
-                                        ParamIndexFromLayerParamIndex(0, LayerParamIndex::GranularRandomPan))]
-                    .default_linear_value;
         }
     }
 }
@@ -1410,6 +1382,14 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         if (coder.IsWriting()) num_params = CheckedCast<u16>(k_num_parameters);
         TRY(coder.CodeNumber(num_params, StateVersion::Initial));
 
+        // Pre-fill experimental params with defaults. They may not be present in the file if
+        // they were removed in a newer version. If they are present, they'll be overwritten below.
+        if (coder.IsReading()) {
+            for (auto const i : Range(k_num_parameters))
+                if (k_param_descriptors[i].flags.experimental)
+                    state.param_values[i] = k_param_descriptors[i].default_linear_value;
+        }
+
         for (auto const i : Range(num_params)) {
             u32 id {};
             f32 linear_value {};
@@ -1424,13 +1404,14 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
             if (coder.IsReading()) {
                 auto const param_index = ParamIdToIndex(id);
-                if (!param_index) continue; // Experimental params may be removed
+                if (!param_index) continue; // Unknown params are skipped (e.g. removed experimental params)
 
                 state.param_values[(usize)*param_index] = linear_value;
             }
         }
 
         if (coder.IsReading()) {
+
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
 
             // In commit e0b15326e9528ca33de7d3c8f905a3449a36d31a we introduced a bug where the LFO amount was

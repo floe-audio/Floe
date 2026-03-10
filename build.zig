@@ -1558,6 +1558,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
         .files = &(.{
             "engine/check_for_update.cpp",
             "engine/engine.cpp",
+            "engine/engine_prefs.cpp",
             "engine/favourite_items.cpp",
             "engine/package_installation.cpp",
             "engine/shared_engine_systems.cpp",
