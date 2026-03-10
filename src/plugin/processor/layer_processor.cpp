@@ -675,7 +675,6 @@ void ProcessLayerChanges(LayerProcessor& layer,
         if (update_loop_info) UpdateLoopPointsForVoices(layer, voice_pool);
     }
 
-#if EXPERIMENTAL_GRANULAR
     // Playback / Granular
     // =======================================================================================================
     if (auto p =
@@ -695,7 +694,6 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.smoothing = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomPan))
         vmst.granular.random_pan = *p;
-#endif
 
     // EQ
     // =======================================================================================================

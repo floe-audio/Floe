@@ -9,6 +9,7 @@
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
+#include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -972,9 +973,11 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-#if EXPERIMENTAL_GRANULAR
+    auto const experimental_features =
+        prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ExperimentalFeatures));
+
     // Engine type menu
-    {
+    if (experimental_features) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
         auto const row = DoBox(g.builder,
@@ -1002,10 +1005,10 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
         DoMenuParameter(g, row, param, {.width = control_width, .label = false});
     }
 
-    auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
-#else
-    auto const play_mode = param_values::PlayMode::Standard;
-#endif
+    auto const play_mode =
+        experimental_features
+            ? params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode)
+            : param_values::PlayMode::Standard;
 
     // Waveform display
     if (auto const r = BoxRect(g.builder,
@@ -1067,7 +1070,6 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
         DoLoopModeSelector(g, loop_container, layer);
     }
 
-#if EXPERIMENTAL_GRANULAR
     // Granular controls
     if (IsGranular(play_mode)) {
         auto const knobs_row = DoBox(g.builder,
@@ -1100,7 +1102,6 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
         do_knob(LayerParamIndex::GranularSmoothing);
         do_knob(LayerParamIndex::GranularRandomPan);
     }
-#endif
 }
 
 static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {

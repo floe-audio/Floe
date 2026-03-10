@@ -982,7 +982,6 @@ void DoWaveformElement(GuiState& g,
         if (features.show_loop_controls)
             DoWaveformControls(g, layer, viewport_r, features, options.handles_follow_cursor);
 
-#if EXPERIMENTAL_GRANULAR
         // GranularFixed spread indicator from params (visible even with no notes playing).
         if (features.show_grain_position_indicator) {
             auto const grain_pos = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
@@ -995,7 +994,6 @@ void DoWaveformElement(GuiState& g,
             f32 const end = Min(grain_pos + spread_size, 1.0f);
             DrawSpreadRegionRect(*g.imgui.draw_list, window_r, viewport_r.w, start, end, reverse, col);
         }
-#endif
 
         // Voice cursors (shown in both modes).
         if (has_active_voices) {

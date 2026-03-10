@@ -48,6 +48,15 @@ prefs::Descriptor SettingDescriptor(GuiPreference setting) {
                 .gui_label = "Window width",
                 .long_description = "The size and scaling of Floe's window.",
             };
+        case GuiPreference::ExperimentalFeatures:
+            return {
+                .key = "experimental-features"_s,
+                .value_requirements = prefs::ValueType::Bool,
+                .default_value = false,
+                .gui_label = "Experimental features",
+                .long_description =
+                    "Enable experimental features. These features are not yet finalised and may change or be removed in future versions. Presets or DAW projects that use experimental features may not be compatible with future versions of Floe.",
+            };
         case GuiPreference::Count: PanicIfReached();
     }
 }

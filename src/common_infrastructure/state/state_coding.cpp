@@ -506,7 +506,7 @@ enum class StateVersion : u16 {
 };
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == (EXPERIMENTAL_GRANULAR ? 252 : 228),
+    static_assert(k_num_parameters == 252,
                   "You have changed the number of parameters. You must now bump the "
                   "state version number and handle setting any new parameters to "
                   "backwards-compatible states. In other words, these new parameters "
@@ -665,7 +665,6 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         }
     }
 
-#if EXPERIMENTAL_GRANULAR
     if (version < StateVersion::AddedGranular) {
         for (auto const layer_index : Range(k_num_layers)) {
             state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode)) =
@@ -692,7 +691,6 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                     .default_linear_value;
         }
     }
-#endif
 }
 
 static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
@@ -1426,7 +1424,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
             if (coder.IsReading()) {
                 auto const param_index = ParamIdToIndex(id);
-                if (!param_index) return ErrorCode(CommonError::InvalidFileFormat);
+                if (!param_index) continue; // Experimental params may be removed
 
                 state.param_values[(usize)*param_index] = linear_value;
             }
@@ -1465,19 +1463,30 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             TRY(coder.CodeNumber(num_macro_destinations, k_added));
             if (coder.IsReading()) dests = {};
 
+            usize read_dest_index = 0;
             for (auto const dest_index : Range(num_macro_destinations)) {
-                auto& dest = dests.items[dest_index];
-
                 u32 param_id {};
-                if (coder.IsWriting()) param_id = ParamIndexToId(*dest.param_index);
-                TRY(coder.CodeNumber(param_id, k_added));
-                if (coder.IsReading()) {
-                    auto const param_index = ParamIdToIndex(param_id);
-                    if (!param_index) return ErrorCode(CommonError::InvalidFileFormat);
-                    dest.param_index = *param_index;
+                f32 dest_value {};
+
+                if (coder.IsWriting()) {
+                    auto& dest = dests.items[dest_index];
+                    param_id = ParamIndexToId(*dest.param_index);
+                    dest_value = dest.value;
                 }
 
-                TRY(coder.CodeNumber(dest.value, k_added));
+                TRY(coder.CodeNumber(param_id, k_added));
+                TRY(coder.CodeNumber(dest_value, k_added));
+
+                if (coder.IsReading()) {
+                    auto const param_index = ParamIdToIndex(param_id);
+                    if (!param_index) continue; // Experimental params may be removed
+
+                    if (read_dest_index < k_max_macro_destinations) {
+                        dests.items[read_dest_index].param_index = *param_index;
+                        dests.items[read_dest_index].value = dest_value;
+                        ++read_dest_index;
+                    }
+                }
             }
         }
 
@@ -1580,7 +1589,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             TRY(coder.CodeNumber(m.param_id, StateVersion::Initial));
             if (coder.IsReading() && args.source == StateSource::Daw) {
                 auto const index = ParamIdToIndex(m.param_id);
-                if (!index) return ErrorCode(CommonError::InvalidFileFormat);
+                if (!index) continue; // Experimental params may be removed
                 state.param_learned_ccs[(usize)*index].Set(m.cc_num);
             }
         }

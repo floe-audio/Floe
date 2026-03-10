@@ -426,8 +426,6 @@ pub fn build(b: *std.Build) void {
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
 
-        .granular = b.option(bool, "granular", "Experimental granular") orelse
-            std_extras.envAsBool(b, "GRANULAR") orelse false,
         .mid_panel_tabs = b.option(bool, "mid-panel-tabs", "Experimental mid-panel tabs") orelse
             std_extras.envAsBool(b, "MID_PANEL_TABS") orelse false,
 
