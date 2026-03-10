@@ -9,6 +9,7 @@
 #include "engine/engine.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -418,6 +419,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                                       .size = layout::k_hug_contents,
                                                   },
                                               });
+    DoExperimentalModeIndicatorIfNeeded(builder, right_icon_buttons_container, g.prefs);
+
     // preferences
     {
         auto const prefs_button =

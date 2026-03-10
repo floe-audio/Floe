@@ -7,6 +7,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 
@@ -329,6 +330,8 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                       .contents_align = layout::Alignment::End,
                                   },
                               });
+
+                    DoExperimentalModeIndicatorIfNeeded(builder, button_container, context.prefs);
 
                     if (TextButton(builder,
                                    button_container,

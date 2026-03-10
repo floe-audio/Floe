@@ -111,6 +111,33 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
     return false;
 }
 
+void DoExperimentalModeIndicatorIfNeeded(GuiBuilder& builder,
+                                         Box parent,
+                                         prefs::Preferences const& preferences) {
+    if (!prefs::GetBool(preferences, SettingDescriptor(GuiPreference::ExperimentalFeatures))) return;
+
+    auto const flask = DoBox(
+        builder,
+        {
+            .parent = parent,
+            .layout {
+                .size = layout::k_hug_contents,
+                .contents_padding = {.lr = 5, .tb = 3},
+            },
+            .tooltip =
+                "Experimental mode is enabled. Features may change or be removed. Presets and DAW projects that use experimental features may not be compatible with future versions of Floe. Disable in preferences."_s,
+        });
+    DoBox(builder,
+          {
+              .parent = flask,
+              .text = ICON_FA_FLASK,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .font_size = k_font_icons_size * 0.9f,
+              .text_colours = Col {.c = Col::SkyBlue},
+          });
+}
+
 Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& options) {
     auto on_colour = options.on_colour ? *options.on_colour : LiveColStruct(UiColMap::MidTextOn);
     if (options.greyed_out) on_colour.alpha = 150;
