@@ -213,21 +213,24 @@ void MidPanelCombinedContent(GuiBuilder& builder,
                              Box parent) {
     constexpr f32 k_subpanel_gap_x = 8.08f;
 
-    auto const root = DoBox(builder,
-                            {
-                                .parent = parent,
-                                .layout {
-                                    .size = layout::k_fill_parent,
-                                    .contents_padding =
-                                        {
-                                            .lr = k_subpanel_gap_x,
-                                            .tb = EXPERIMENTAL_MID_PANEL_TABS ? 6.08f : 15,
-                                        },
-                                    .contents_gap = k_subpanel_gap_x,
-                                    .contents_direction = layout::Direction::Row,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
+    auto const root = DoBox(
+        builder,
+        {
+            .parent = parent,
+            .layout {
+                .size = layout::k_fill_parent,
+                .contents_padding =
+                    {
+                        .lr = k_subpanel_gap_x,
+                        .tb = prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ExperimentalFeatures))
+                                  ? 6.08f
+                                  : 15,
+                    },
+                .contents_gap = k_subpanel_gap_x,
+                .contents_direction = layout::Direction::Row,
+                .contents_align = layout::Alignment::Start,
+            },
+        });
 
     DoLayersContainer(builder, g, frame_context, root);
     DoEffectsContainer(builder, g, frame_context, root);

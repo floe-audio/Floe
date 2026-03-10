@@ -294,7 +294,8 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
 
                     auto const current_tab = g.mid_panel_state.tab;
 
-                    if constexpr (EXPERIMENTAL_MID_PANEL_TABS) DoMidPanelTabBar(builder, g, root);
+                    if (prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ExperimentalFeatures)))
+                        DoMidPanelTabBar(builder, g, root);
 
                     auto const content = DoBox(builder,
                                                {
