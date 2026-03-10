@@ -501,8 +501,6 @@ enum class StateVersion : u16 {
 
     AddedGranular,
 
-    AddedGranularRandomPan,
-
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -685,9 +683,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             set(LayerParamIndex::GranularLength);
             set(LayerParamIndex::GranularRandomPan);
         }
-    }
 
-    if (version < StateVersion::AddedGranularRandomPan) {
         for (auto const layer_index : Range(k_num_layers)) {
             state.LinearParam(
                 ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::GranularRandomPan)) =
