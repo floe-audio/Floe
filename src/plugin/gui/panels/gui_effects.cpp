@@ -1,10 +1,9 @@
-// Copyright 2018-2026 Sam Windell
+// Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/panels/gui_effects_strip.hpp"
+#include "gui_effects.hpp"
 
 #include <IconsFontAwesome6.h>
-#include <float.h>
 
 #include "os/threading.hpp"
 
@@ -18,7 +17,9 @@
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
 #include "gui/panels/gui_macros.hpp"
+#include "gui/panels/gui_mid_panel.hpp"
 #include "gui_framework/colours.hpp"
+#include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/effect.hpp"
@@ -343,82 +344,35 @@ struct EffectSectionInfo {
     Box container;
 };
 
-// Switchboard: effect toggle buttons arranged in two columns.
+// Switchboard: effect toggle buttons arranged in a single column.
 static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
-
     auto& params = g.engine.processor.main_params;
 
-    int const switches_left_col_size = (k_num_effect_types / 2) + (k_num_effect_types % 2);
-
-    // === Layout: pure structural grid ===
+    // === Layout: single column ===
 
     auto const switches_container = DoBox(g.builder,
                                           {
                                               .parent = root,
-                                              .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
-                                              .border_edges = 0b0001,
                                               .layout {
-                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_padding = {.l = 8, .t = 4, .r = 2, .b = 6},
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_padding = {.l = 8, .t = 4, .r = 8, .b = 6},
                                                   .contents_gap = 2,
-                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_direction = layout::Direction::Column,
+                                                  .contents_align = layout::Alignment::Start,
                                               },
                                           });
 
-    auto const left_col = DoBox(g.builder,
-                                {
-                                    .parent = switches_container,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_direction = layout::Direction::Column,
-                                    },
-                                });
-    auto const right_col = DoBox(g.builder,
-                                 {
-                                     .parent = switches_container,
-                                     .layout {
-                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_direction = layout::Direction::Column,
-                                     },
-                                 });
-
-    struct SlotBoxes {
-        Box switch_row;
-        Box number_box;
-        Box slot_box;
-    };
-    Array<SlotBoxes, k_num_effect_types> slots {};
+    Array<Box, k_num_effect_types> slots {};
 
     for (auto const slot : Range(k_num_effect_types)) {
-        auto const col_parent = ((int)slot < switches_left_col_size) ? left_col : right_col;
-
-        auto const switch_row = DoBox(g.builder,
-                                      {
-                                          .parent = col_parent,
-                                          .id_extra = (u64)slot,
-                                          .layout {
-                                              .size = {layout::k_fill_parent, 18.0f},
-                                              .contents_direction = layout::Direction::Row,
-                                          },
-                                      });
-
-        auto const number_box = DoBox(g.builder,
-                                      {
-                                          .parent = switch_row,
-                                          .layout {
-                                              .size = {18.0f, layout::k_fill_parent},
-                                          },
-                                      });
-
-        auto const slot_box = DoBox(g.builder,
-                                    {
-                                        .parent = switch_row,
-                                        .layout {
-                                            .size = layout::k_fill_parent,
-                                        },
-                                    });
-
-        slots[slot] = {switch_row, number_box, slot_box};
+        slots[slot] = DoBox(g.builder,
+                            {
+                                .parent = switches_container,
+                                .id_extra = (u64)slot,
+                                .layout {
+                                    .size = {120.0f, 18.0f},
+                                },
+                            });
     }
 
     // === Input + render: drawing and interaction ===
@@ -429,16 +383,8 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
 
         usize fx_index = 0;
         for (auto const slot : Range(k_num_effect_types)) {
-            auto const window_number_r =
-                g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot].number_box).Value());
             auto const window_slot_r =
-                g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot].slot_box).Value());
-
-            // Number label
-            draw_list.AddTextInRect(window_number_r,
-                                    LiveCol(UiColMap::MidText),
-                                    fmt::Format(g.scratch_arena, "{}", slot + 1),
-                                    {.justification = TextJustification::CentredLeft});
+                g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot]).Value());
 
             // Drop zone: if dragging and cursor is over this slot (or it's the current drop slot)
             if (g.dragging_fx_switch &&
@@ -535,7 +481,7 @@ static Box DoSwitchboard(GuiState& g, Box root, EffectsArray& ordered_effects) {
             auto const fx_cols = GetFxColMap(g.dragging_fx_switch->fx->type);
             bool const is_on_drag = EffectIsOn(params, g.dragging_fx_switch->fx);
 
-            Rect btn_r = g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0].slot_box).Value());
+            Rect btn_r = g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0]).Value());
             btn_r.pos = GuiIo().in.cursor_pos - g.dragging_fx_switch->relative_grab_point;
 
             // Toggle icon
@@ -1004,7 +950,6 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
 
 // Drag-and-drop for both effect unit reordering and switchboard reordering.
 static void DoEffectDragAndDrop(GuiState& g,
-                                Box switchboard_box,
                                 Span<EffectSectionInfo const> effect_sections,
                                 EffectsArray& ordered_effects) {
     if (!g.builder.IsInputAndRenderPass()) return;
@@ -1022,21 +967,16 @@ static void DoEffectDragAndDrop(GuiState& g,
 
             f32 distance = FLT_MAX;
 
-            if (auto const r = BoxRect(g.builder, switchboard_box)) {
-                distance = Abs(r->Bottom() - rel_y_pos);
-                zeroth_section = {
-                    .fx = ({
-                        Effect* first_fx = nullptr;
-                        for (auto f : ordered_effects)
-                            if (EffectIsOn(g.engine.processor.main_params, f)) {
-                                first_fx = f;
-                                break;
-                            }
-                        first_fx;
-                    }),
-                    .container = switchboard_box,
-                };
-                closest_section = &zeroth_section;
+            // Use the top of the first visible effect section as the zeroth boundary
+            if (effect_sections.size) {
+                if (auto const r = BoxRect(g.builder, effect_sections[0].container)) {
+                    distance = Abs(r->y - rel_y_pos);
+                    zeroth_section = {
+                        .fx = effect_sections[0].fx,
+                        .container = effect_sections[0].container,
+                    };
+                    closest_section = &zeroth_section;
+                }
             }
 
             for (auto const& section : effect_sections) {
@@ -1062,7 +1002,9 @@ static void DoEffectDragAndDrop(GuiState& g,
         // Highlight closest section boundary
         if (auto const r = BoxRect(g.builder, closest_section->container)) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-            g.imgui.draw_list->AddBorderEdges(window_r, LiveCol(UiColMap::FXDividerLineDropZone), 0b0001);
+            // Zeroth section: highlight top edge (above first section); others: highlight bottom edge
+            Edges const edge = (closest_section == &zeroth_section) ? Edges {0b0100} : Edges {0b0001};
+            g.imgui.draw_list->AddBorderEdges(window_r, LiveCol(UiColMap::FXDividerLineDropZone), edge);
         }
 
         if (g.dragging_fx_unit->drop_slot != closest_slot)
@@ -1142,7 +1084,17 @@ static void DoEffectDragAndDrop(GuiState& g,
     }
 }
 
-void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box parent) {
+static void DoEffectsStripPanel(GuiState& g,
+                                GuiFrameContext const& frame_context,
+                                Box switchboard_parent,
+                                Box strip_parent) {
+    {
+        auto ordered_effects =
+            DecodeEffectsArray(g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
+                               g.engine.processor.effects_ordered_by_type);
+        DoSwitchboard(g, switchboard_parent, ordered_effects);
+    }
+
     DoBoxViewport(g.builder,
                   {
                       .run =
@@ -1151,7 +1103,7 @@ void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box 
                                   g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
                                   g.engine.processor.effects_ordered_by_type);
 
-                              auto const root =
+                              auto const effects_col =
                                   DoBox(g.builder,
                                         {
                                             .layout {
@@ -1161,15 +1113,14 @@ void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box 
                                             },
                                         });
 
-                              auto const switchboard_box = DoSwitchboard(g, root, ordered_effects);
                               auto const effect_sections =
-                                  DoEffectSections(g, frame_context, root, ordered_effects);
-                              DoEffectDragAndDrop(g, switchboard_box, effect_sections, ordered_effects);
+                                  DoEffectSections(g, frame_context, effects_col, ordered_effects);
+                              DoEffectDragAndDrop(g, effect_sections, ordered_effects);
 
                               // Add gap at bottom so you can see the last border.
-                              DoBox(g.builder, {.parent = root, .layout {.size = {1, 9}}});
+                              DoBox(g.builder, {.parent = effects_col, .layout {.size = {1, 9}}});
                           },
-                      .bounds = parent,
+                      .bounds = strip_parent,
                       .imgui_id = SourceLocationHash(),
                       .viewport_config =
                           {
@@ -1182,4 +1133,86 @@ void DoEffectsStripPanel(GuiState& g, GuiFrameContext const& frame_context, Box 
                           },
                       .debug_name = "EffectsStrip",
                   });
+}
+
+void MidPanelEffectsContent(GuiBuilder& builder,
+                            GuiState& g,
+                            GuiFrameContext const& frame_context,
+                            Box parent,
+                            Optional<Box> tab_extra_buttons_box) {
+    constexpr f32 k_subpanel_gap_x = 8.08f;
+
+    // Place randomise button in the tab bar extras area if available
+    if (tab_extra_buttons_box) {
+        auto const rand_btn = DoMidPanelShuffleButton(builder,
+                                                      *tab_extra_buttons_box,
+                                                      {.tooltip = "Randomise all of the effects"_s});
+
+        if (rand_btn.button_fired) {
+            RandomiseAllEffectParameterValues(g.engine.processor);
+            IrBrowserContext ir_context {
+                .sample_library_server = g.shared_engine_systems.sample_library_server,
+                .library_images = g.library_images,
+                .engine = g.engine,
+                .prefs = g.prefs,
+                .notifications = g.notifications,
+                .persistent_store = g.shared_engine_systems.persistent_store,
+                .confirmation_dialog_state = g.confirmation_dialog_state,
+                .frame_context = frame_context,
+            };
+            LoadRandomIr(ir_context, g.ir_browser_state);
+        }
+    }
+
+    auto const outer = DoBox(builder,
+                             {
+                                 .parent = parent,
+                                 .layout {
+                                     .size = layout::k_fill_parent,
+                                     .contents_padding = {.lr = k_subpanel_gap_x, .tb = 6.08f},
+                                     .contents_direction = layout::Direction::Row,
+                                     .contents_align = layout::Alignment::Start,
+                                 },
+                             });
+
+    auto const root = DoBox(builder,
+                            {
+                                .parent = outer,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_gap = 8,
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    // Switchboard panel (its own rounded background)
+    auto const switchboard_box = DoBox(builder,
+                                       {
+                                           .parent = root,
+                                           .layout {
+                                               .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                           },
+                                       });
+
+    if (auto const r = BoxRect(builder, switchboard_box))
+        DrawMidBlurredPanelSurface(g,
+                                   builder.imgui.ViewportRectToWindowRect(*r),
+                                   LibraryForOverallBackground(g.engine));
+
+    // Effects strip panel (its own rounded background)
+    auto const strip_box = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = layout::k_fill_parent,
+                                     },
+                                 });
+
+    if (auto const r = BoxRect(builder, strip_box))
+        DrawMidBlurredPanelSurface(g,
+                                   builder.imgui.ViewportRectToWindowRect(*r),
+                                   LibraryForOverallBackground(g.engine));
+
+    DoEffectsStripPanel(g, frame_context, switchboard_box, strip_box);
 }

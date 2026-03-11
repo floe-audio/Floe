@@ -57,6 +57,21 @@ struct DrawPeakMeterOptions {
     f32 gap = 0; // 0 means use default
 };
 
+struct DrawVerticalSliderOptions {
+    u32 highlight_col;
+    u32 line_col;
+    Optional<f32> modulation_percent; // If set, draws a line at this position showing the modulated value.
+    GuiStyleSystem style_system;
+    bool greyed_out;
+    bool is_fake;
+};
+
+void DrawVerticalSlider(imgui::Context& imgui,
+                        imgui::Id id,
+                        Rect r,
+                        f32 percent,
+                        DrawVerticalSliderOptions const& options);
+
 void DrawPeakMeter(imgui::Context& imgui,
                    Rect r,
                    StereoPeakMeter const& level,

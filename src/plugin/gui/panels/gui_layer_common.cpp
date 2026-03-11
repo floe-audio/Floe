@@ -19,7 +19,10 @@
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
 
-void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
+void DoLoopModeSelector(GuiState& g,
+                        Box parent,
+                        LayerProcessor& layer,
+                        LoopModeSelectorOptions const& options) {
     auto& params = g.engine.processor.main_params;
     auto const param = params.DescribedValue(layer.index, LayerParamIndex::LoopMode);
     auto const desired_loop_mode = param.IntValue<param_values::LoopMode>();
@@ -39,7 +42,8 @@ void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     auto const menu_btn = DoBox(g.builder,
                                 {
                                     .parent = row,
-                                    .text = actual_loop_behaviour.value.short_name,
+                                    .text = options.use_long_name ? actual_loop_behaviour.value.name
+                                                                  : actual_loop_behaviour.value.short_name,
                                     .text_colours =
                                         ColSet {
                                             .base = LiveColStruct(UiColMap::MidText),

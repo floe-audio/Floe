@@ -13,7 +13,13 @@ struct GuiState;
 struct GuiFrameContext;
 struct LayerProcessor;
 
-void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer);
+struct LoopModeSelectorOptions {
+    bool use_long_name {};
+};
+void DoLoopModeSelector(GuiState& g,
+                        Box parent,
+                        LayerProcessor& layer,
+                        LoopModeSelectorOptions const& options = {});
 
 // Called to draw the background of the selector row. Receives the window-space rect.
 // If not set, draws the default coloured background with timbre-layer highlight.

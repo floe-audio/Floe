@@ -984,9 +984,10 @@ void DoWaveformElement(GuiState& g,
 
         // GranularFixed spread indicator from params (visible even with no notes playing).
         if (features.show_grain_position_indicator) {
-            auto const grain_pos = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
-            auto const grain_spread = params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
+            auto const grain_pos_raw = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            auto const grain_pos = reverse ? 1.0f - grain_pos_raw : grain_pos_raw;
+            auto const grain_spread = params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
             auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
 
             f32 const spread_size = GrainSpreadParamToFraction(grain_spread);

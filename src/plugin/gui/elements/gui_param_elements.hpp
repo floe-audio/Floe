@@ -23,6 +23,7 @@ struct ParameterComponentOptions {
     bool bidirectional = false;
     bool is_fake = false;
     bool label = true;
+    bool vertical_slider = false; // Draw as a vertical fader instead of a knob. Incompatible with peak_meter.
     String override_tooltip {};
     String override_label {};
     StereoPeakMeter const* peak_meter = nullptr; // If set, draws a peak meter inside the knob.

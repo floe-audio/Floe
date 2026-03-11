@@ -229,21 +229,125 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
     }
 }
 
+void DrawVerticalSlider(imgui::Context& imgui,
+                        imgui::Id id,
+                        Rect r,
+                        f32 percent,
+                        DrawVerticalSliderOptions const& options) {
+    ASSERT(percent >= 0 && percent <= 1);
+
+    auto const mid_panel_colours = options.style_system == GuiStyleSystem::MidPanel;
+    auto const rounding = WwToPixels(k_corner_rounding);
+    auto const is_interacting =
+        !options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id, MouseButton::Left));
+
+    // Thin channel background (centred within the full rect)
+    auto const channel_col = LiveCol(mid_panel_colours ? UiColMap::SliderMidChannel : UiColMap::KnobInnerArc);
+    auto const channel_width = WwToPixels(4.0f);
+    auto const channel_x = r.x + ((r.w - channel_width) / 2);
+    Rect const channel_r {.x = channel_x, .y = r.y, .w = channel_width, .h = r.h};
+    imgui.draw_list->AddRectFilled(channel_r, channel_col, rounding);
+
+    // Handle dimensions
+    auto const handle_height = WwToPixels(8.0f);
+    auto const handle_pad = WwToPixels(1.0f);
+    auto const usable_height = r.h - handle_height;
+    auto const handle_y = r.y + ((1 - percent) * usable_height);
+
+    // Highlight fill inside the channel showing the modulated value
+    if (!options.is_fake) {
+        auto const handle_centre_y = handle_y + (handle_height / 2);
+        auto highlight_col = options.highlight_col;
+        if (options.greyed_out) highlight_col = WithAlphaU8(highlight_col, 105);
+
+        if (options.modulation_percent) {
+            // Modulation: fill from modulated position to bottom of channel
+            auto const mod_percent = Clamp(*options.modulation_percent, 0.0f, 1.0f);
+            auto const mod_y = r.y + ((1 - mod_percent) * usable_height) + (handle_height / 2);
+            auto const fill_top = mod_y;
+            auto const fill_bottom = channel_r.Bottom();
+            if (fill_bottom > fill_top) {
+                Corners const corners = fill_top <= channel_r.y ? 0b1111 : 0b0011;
+                imgui.draw_list->AddRectFilled(f32x2 {channel_r.x, Max(fill_top, channel_r.y)},
+                                               f32x2 {channel_r.Right(), fill_bottom},
+                                               highlight_col,
+                                               rounding,
+                                               corners);
+            }
+        } else {
+            // No modulation: fill from handle to bottom of channel
+            auto const fill_top = handle_centre_y;
+            auto const fill_bottom = channel_r.Bottom();
+            if (fill_bottom > fill_top) {
+                imgui.draw_list->AddRectFilled(f32x2 {channel_r.x, fill_top},
+                                               f32x2 {channel_r.Right(), fill_bottom},
+                                               highlight_col,
+                                               rounding,
+                                               0b0011);
+            }
+        }
+    }
+
+    // Handle (wider than the channel)
+    if (!options.is_fake) {
+        Rect const handle_r {
+            .x = r.x + handle_pad,
+            .y = handle_y,
+            .w = r.w - (handle_pad * 2),
+            .h = handle_height,
+        };
+
+        auto handle_col = options.line_col;
+        if (is_interacting)
+            handle_col = LiveCol(mid_panel_colours ? UiColMap::KnobMidLineHover : UiColMap::KnobLineHover);
+
+        // Handle drop shadow
+        auto const handle_rounding = WwToPixels(1.0f);
+        auto const shadow_offset = WwToPixels(1.0f);
+        auto const shadow_col = LiveCol(UiColMap::SliderMidHandleShadow);
+        Rect const shadow_r {
+            .x = handle_r.x,
+            .y = handle_r.y + shadow_offset,
+            .w = handle_r.w,
+            .h = handle_r.h,
+        };
+        imgui.draw_list->AddRectFilled(shadow_r, shadow_col, handle_rounding);
+
+        // Handle body
+        imgui.draw_list->AddRectFilled(handle_r, handle_col, handle_rounding);
+
+        // Centre groove line on the handle
+        auto const groove_y = handle_r.y + (handle_r.h / 2);
+        auto const groove_inset = WwToPixels(1.5f);
+        auto const groove_col = WithAlphaU8(channel_col, 120);
+        imgui.draw_list->AddLine({handle_r.x + groove_inset, groove_y},
+                                 {handle_r.Right() - groove_inset, groove_y},
+                                 groove_col,
+                                 WwToPixels(1.0f));
+    }
+}
+
 void DrawPeakMeter(imgui::Context& imgui,
                    Rect r,
                    StereoPeakMeter const& level,
                    DrawPeakMeterOptions const& options) {
+    // Snap the input rect to pixel boundaries.
+    r.x = Round(r.x);
+    r.y = Round(r.y);
+    r.w = Round(r.w);
+    r.h = Round(r.h);
+
     auto const snapshot = level.GetSnapshot();
     auto const v = snapshot.levels;
     auto const did_clip = options.flash_when_clipping && level.DidClipRecently();
 
-    auto const gap = options.gap != 0 ? options.gap : WwToPixels(2.6f);
-    auto const marker_w = WwToPixels(5.7f);
-    auto const marker_pad = WwToPixels(1.8f);
+    auto const gap = Round(options.gap != 0 ? options.gap : WwToPixels(2.6f));
+    auto const marker_w = Round(WwToPixels(5.7f));
+    auto const marker_pad = Round(WwToPixels(1.8f));
     auto padded_r = options.show_db_markers
                         ? Rect {.x = r.x + marker_w, .y = r.y, .w = r.w - (marker_w * 2), .h = r.h}
                         : r;
-    auto w = (padded_r.w / 2) - (gap / 2);
+    auto w = Round((padded_r.w - gap) / 2);
 
     constexpr f32 k_max_db = 10;
     constexpr f32 k_min_db = -60;
@@ -252,7 +356,6 @@ void DrawPeakMeter(imgui::Context& imgui,
     auto const rounding = WwToPixels(k_corner_rounding);
 
     {
-        // constexpr auto k_channel_col = WithAlphaF(ToU32(ColType::Background0), 0.2f);
         {
             auto l_channel = padded_r;
             l_channel.w = w;
@@ -268,7 +371,7 @@ void DrawPeakMeter(imgui::Context& imgui,
         if (options.show_db_markers) {
             auto draw_marker = [&](f32 db, bool bold) {
                 f32 const pos = MapTo01(db, k_min_db, k_max_db);
-                auto const line_y = padded_r.y + ((1 - pos) * padded_r.h);
+                auto const line_y = Round(padded_r.y + ((1 - pos) * padded_r.h));
                 imgui.draw_list->AddLine({r.x, line_y},
                                          {r.x + (marker_w - marker_pad), line_y},
                                          bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
@@ -290,7 +393,7 @@ void DrawPeakMeter(imgui::Context& imgui,
     auto const clamped_v = Max(v, f32x2(k_min_amp)); // Ensure we don't Log10 zero.
     auto const v_db = 20 * Log10(clamped_v);
     auto const v_percieved = Clamp<f32x2>(MapTo01Unchecked<f32x2>(v_db, k_min_db, k_max_db), 0, 1);
-    auto const pixels = v_percieved * padded_r.h;
+    auto const pixels = Round(v_percieved * padded_r.h);
     auto const level_y_pos = padded_r.y + (padded_r.h - pixels);
 
     auto l_r = padded_r;
@@ -306,28 +409,39 @@ void DrawPeakMeter(imgui::Context& imgui,
 
     Array<Rect, 2> const channel_rs = {l_r, r_r};
 
-    auto const top_segment_line = padded_r.y + ((1 - MapTo01(0.0f, k_min_db, k_max_db)) * padded_r.h);
-    auto const mid_segment_line = padded_r.y + ((1 - MapTo01(-12.0f, k_min_db, k_max_db)) * padded_r.h);
+    auto const top_segment_line = Round(padded_r.y + ((1 - MapTo01(0.0f, k_min_db, k_max_db)) * padded_r.h));
+    auto const mid_segment_line =
+        Round(padded_r.y + ((1 - MapTo01(-12.0f, k_min_db, k_max_db)) * padded_r.h));
     for (auto& chan_r : channel_rs) {
         if (chan_r.h < 1) continue;
 
+        // Draw each colour segment clipped to its own vertical band to avoid overlapping draws
+        // which cause anti-aliased top edges to accumulate and flicker.
+
+        // Top segment: from chan_r.y to top_segment_line
         if (chan_r.y < top_segment_line) {
             auto col = LiveCol(UiColMap::PeakMeterHighlightTop);
             if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
-            imgui.draw_list->AddRectFilled(chan_r, col);
+            auto const bottom = Min(chan_r.Bottom(), top_segment_line);
+            imgui.draw_list->AddRectFilled(f32x2 {chan_r.x, chan_r.y}, f32x2 {chan_r.Right(), bottom}, col);
         }
 
-        if (chan_r.y < mid_segment_line) {
+        // Middle segment: from top_segment_line to mid_segment_line
+        if (chan_r.y < mid_segment_line && chan_r.Bottom() > top_segment_line) {
             auto col = LiveCol(UiColMap::PeakMeterHighlightMiddle);
             if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
             auto const top = Max(chan_r.y, top_segment_line);
-            imgui.draw_list->AddRectFilled(f32x2 {chan_r.x, top}, chan_r.Max(), col);
+            auto const bottom = Min(chan_r.Bottom(), mid_segment_line);
+            imgui.draw_list->AddRectFilled(f32x2 {chan_r.x, top}, f32x2 {chan_r.Right(), bottom}, col);
         }
 
-        auto col = LiveCol(UiColMap::PeakMeterHighlightBottom);
-        if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
-        auto const top = Max(chan_r.y, mid_segment_line);
-        imgui.draw_list->AddRectFilled(f32x2 {chan_r.x, top}, chan_r.Max(), col, rounding, 0b0011);
+        // Bottom segment: from mid_segment_line to chan_r.Bottom()
+        if (chan_r.Bottom() > mid_segment_line) {
+            auto col = LiveCol(UiColMap::PeakMeterHighlightBottom);
+            if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
+            auto const top = Max(chan_r.y, mid_segment_line);
+            imgui.draw_list->AddRectFilled(f32x2 {chan_r.x, top}, chan_r.Max(), col, rounding, 0b0011);
+        }
     }
 }
 
