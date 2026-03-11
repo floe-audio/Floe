@@ -6,6 +6,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
+#include "engine/engine_prefs.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
@@ -1053,8 +1054,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-    auto const experimental_features =
-        prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ExperimentalFeatures));
+    auto const experimental_features = prefs::GetBool(g.prefs, ExperimentalFeaturesPreferenceDescriptor());
 
     // Engine type menu
     if (experimental_features) {

@@ -176,11 +176,7 @@ static void DoPerformMacroKnobs(GuiBuilder& builder, GuiState& g, Box parent) {
     }
 }
 
-void MidPanelPerformContent(GuiBuilder& builder,
-                            GuiState& g,
-                            [[maybe_unused]] GuiFrameContext const& frame_context,
-                            Box parent,
-                            [[maybe_unused]] Optional<Box> tab_extra_buttons_box) {
+void MidPanelPerformContent(GuiBuilder& builder, GuiState& g, GuiFrameContext const&, Box parent, Box) {
     // The perform panel fills the entire content area. The background image is drawn by the
     // mid panel's viewport background callback, so we just overlay our content on top.
     auto const root = DoBox(builder,

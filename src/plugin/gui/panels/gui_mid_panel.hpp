@@ -25,7 +25,7 @@ void MidPanelLayersContent(GuiBuilder& builder,
                            GuiState& g,
                            GuiFrameContext const& frame_context,
                            Box parent,
-                           Optional<Box> tab_extra_buttons_box);
+                           Box tab_extra_buttons_box);
 
 struct MidBlurredBackgroundOptions {
     f32 opacity = 1;

@@ -1139,13 +1139,12 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             GuiState& g,
                             GuiFrameContext const& frame_context,
                             Box parent,
-                            Optional<Box> tab_extra_buttons_box) {
+                            Box tab_extra_buttons_box) {
     constexpr f32 k_subpanel_gap_x = 8.08f;
 
-    // Place randomise button in the tab bar extras area if available
-    if (tab_extra_buttons_box) {
+    {
         auto const rand_btn = DoMidPanelShuffleButton(builder,
-                                                      *tab_extra_buttons_box,
+                                                      tab_extra_buttons_box,
                                                       {.tooltip = "Randomise all of the effects"_s});
 
         if (rand_btn.button_fired) {

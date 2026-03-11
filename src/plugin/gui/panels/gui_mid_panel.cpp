@@ -3,6 +3,7 @@
 
 #include "gui_mid_panel.hpp"
 
+#include "engine/engine_prefs.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
@@ -140,7 +141,7 @@ struct MidPanelTabBarResult {
     Box tab_extra_buttons_box;
 };
 
-[[maybe_unused]] static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
+static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
     // Full-width row: [left spacer] [centred tabs] [right extras area]
     auto const tab_row = DoBox(builder,
                                {
@@ -264,11 +265,8 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
 
                     auto const current_tab = g.mid_panel_state.tab;
 
-                    Optional<Box> tab_extra_buttons_box {};
-                    if (prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ExperimentalFeatures))) {
-                        auto const tab_bar_result = DoMidPanelTabBar(builder, g, root);
-                        tab_extra_buttons_box = tab_bar_result.tab_extra_buttons_box;
-                    }
+                    auto const tab_extra_buttons_box =
+                        DoMidPanelTabBar(builder, g, root).tab_extra_buttons_box;
 
                     auto const content = DoBox(builder,
                                                {

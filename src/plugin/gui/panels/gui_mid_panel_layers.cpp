@@ -1,6 +1,7 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "engine/engine_prefs.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -50,14 +51,13 @@ void MidPanelLayersContent(GuiBuilder& builder,
                            GuiState& g,
                            GuiFrameContext const& frame_context,
                            Box parent,
-                           Optional<Box> tab_extra_buttons_box) {
+                           Box tab_extra_buttons_box) {
     constexpr f32 k_subpanel_gap_x = 8.08f;
 
-    // Place randomise button in the tab bar extras area if available
-    if (tab_extra_buttons_box) {
+    {
         auto const rand_btn =
             DoMidPanelShuffleButton(builder,
-                                    *tab_extra_buttons_box,
+                                    tab_extra_buttons_box,
                                     {.tooltip = "Load random instruments for all 3 layers"_s});
 
         if (rand_btn.button_fired) {
@@ -78,24 +78,21 @@ void MidPanelLayersContent(GuiBuilder& builder,
         }
     }
 
-    auto const root = DoBox(
-        builder,
-        {
-            .parent = parent,
-            .layout {
-                .size = layout::k_fill_parent,
-                .contents_padding =
-                    {
-                        .lr = k_subpanel_gap_x,
-                        .tb = prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ExperimentalFeatures))
-                                  ? 6.08f
-                                  : 15,
-                    },
-                .contents_gap = k_subpanel_gap_x,
-                .contents_direction = layout::Direction::Row,
-                .contents_align = layout::Alignment::Start,
-            },
-        });
+    auto const root = DoBox(builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding =
+                                        {
+                                            .lr = k_subpanel_gap_x,
+                                            .tb = 6.08f,
+                                        },
+                                    .contents_gap = k_subpanel_gap_x,
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
 
     DoLayersContainer(builder, g, frame_context, root);
 }

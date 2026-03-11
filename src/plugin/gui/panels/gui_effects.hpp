@@ -9,4 +9,4 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             GuiState& g,
                             GuiFrameContext const& frame_context,
                             Box parent,
-                            Optional<Box> tab_extra_buttons_box);
+                            Box tab_extra_buttons_box);

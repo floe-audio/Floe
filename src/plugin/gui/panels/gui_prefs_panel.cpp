@@ -9,6 +9,7 @@
 #include "common_infrastructure/error_reporting.hpp"
 
 #include "engine/check_for_update.hpp"
+#include "engine/engine_prefs.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
@@ -567,7 +568,6 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         auto const options_rhs_column = PreferencesRhsColumn(builder, style_row, k_small_gap);
 
         for (auto const gui_setting : EnumIterator<GuiPreference>()) {
-            if (gui_setting == GuiPreference::ExperimentalFeatures) continue;
             auto const desc = SettingDescriptor(gui_setting);
             if (gui_setting == GuiPreference::WindowWidth) {
                 auto const& int_info = desc.value_requirements.Get<prefs::Descriptor::IntRequirements>();
@@ -612,7 +612,7 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
 
         Setting(builder, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
         Setting(builder, context, options_rhs_column, check_for_update::CheckBetaPrefDescriptor());
-        Setting(builder, context, options_rhs_column, SettingDescriptor(GuiPreference::ExperimentalFeatures));
+        Setting(builder, context, options_rhs_column, ExperimentalFeaturesPreferenceDescriptor());
     }
 }
 

@@ -49,7 +49,6 @@ prefs::Descriptor SettingDescriptor(GuiPreference setting) {
                 .gui_label = "Window width",
                 .long_description = "The size and scaling of Floe's window.",
             };
-        case GuiPreference::ExperimentalFeatures: return ExperimentalFeaturesPreferenceDescriptor();
         case GuiPreference::Count: PanicIfReached();
     }
 }

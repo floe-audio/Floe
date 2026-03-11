@@ -5,6 +5,7 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "engine/engine_prefs.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -114,7 +115,7 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
 void DoExperimentalModeIndicatorIfNeeded(GuiBuilder& builder,
                                          Box parent,
                                          prefs::Preferences const& preferences) {
-    if (!prefs::GetBool(preferences, SettingDescriptor(GuiPreference::ExperimentalFeatures))) return;
+    if (!prefs::GetBool(preferences, ExperimentalFeaturesPreferenceDescriptor())) return;
 
     auto const flask = DoBox(
         builder,

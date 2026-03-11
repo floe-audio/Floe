@@ -10,7 +10,6 @@ enum class GuiPreference : u8 {
     ShowTooltips,
     HighContrastGui,
     ShowInstanceName,
-    ExperimentalFeatures,
     Count,
 };
 
