@@ -60,7 +60,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $signDir
           Invoke-WebRequest -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -OutFile "$signDir\nuget.exe"
           & "$signDir\nuget.exe" install Microsoft.Windows.SDK.BuildTools -OutputDirectory $signDir -NonInteractive
-          & "$signDir\nuget.exe" install Microsoft.Trusted.Signing.Client -OutputDirectory $signDir -NonInteractive
+          & "$signDir\nuget.exe" install Microsoft.ArtifactSigning.Client -OutputDirectory $signDir -NonInteractive
 
           $signtool = Get-ChildItem -Recurse -Filter "signtool.exe" "$signDir" | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
           if (-not $signtool) { throw "Unable to find signtool.exe in NuGet packages" }
