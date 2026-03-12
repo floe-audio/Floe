@@ -6,7 +6,18 @@
 #include "gui/core/gui_fwd.hpp"
 #include "gui_framework/gui_builder.hpp"
 
-struct GuiState;
-struct GuiFrameContext;
+enum class LayerPageType : u8 {
+    Engine,
+    Envelope,
+    Filter,
+    Lfo,
+    Eq,
+    Play,
+    Count,
+};
+
+struct LayerPanelState {
+    LayerPageType selected_page {};
+};
 
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent);

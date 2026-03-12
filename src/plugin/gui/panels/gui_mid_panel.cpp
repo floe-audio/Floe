@@ -263,6 +263,26 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                                 },
                                             });
 
+                    // Auto-switch mid-panel tab when a macro destination knob is being
+                    // interacted with
+                    if (g.macros_gui_state.active_destination_knob) {
+                        auto const param_index = g.macros_gui_state.active_destination_knob->dest.param_index;
+                        if (param_index) {
+                            auto const& k_desc = ParamDescriptorAt(*param_index);
+                            Optional<MidPanelTab> new_tab {};
+                            if (k_desc.IsEffectParam())
+                                new_tab = MidPanelTab::Effects;
+                            else if (k_desc.IsLayerParam())
+                                new_tab = MidPanelTab::Layers;
+
+                            if (new_tab && *new_tab != g.mid_panel_state.tab) {
+                                g.mid_panel_state.tab = *new_tab;
+                                GuiIo().out.IncreaseUpdateInterval(
+                                    GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+                            }
+                        }
+                    }
+
                     auto const current_tab = g.mid_panel_state.tab;
 
                     auto const tab_extra_buttons_box =

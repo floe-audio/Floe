@@ -1690,7 +1690,7 @@ consteval auto CreateParams() {
         .name = "Mix"_s,
         .gui_label = "Mix"_s,
         .tooltip = "Processed signal volume"_s,
-        .related_params_group = 0,
+        .related_params_group = 8,
     };
 
     mp(ReverbOn) = Args {
@@ -2376,6 +2376,7 @@ constexpr auto ComptimeParamSearch() {
     Sort(result, [](ParamIndex a, ParamIndex b) {
         auto const& a_desc = k_param_descriptors[ToInt(a)];
         auto const& b_desc = k_param_descriptors[ToInt(b)];
+        if (a_desc.grouping_within_module == b_desc.grouping_within_module) return a < b;
         return a_desc.grouping_within_module < b_desc.grouping_within_module;
     });
 

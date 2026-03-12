@@ -1,21 +1,17 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "engine/engine_prefs.hpp"
-#include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_layer_subtabbed.hpp"
 #include "gui_framework/gui_builder.hpp"
-#include "gui_framework/gui_live_edit.hpp"
 #include "gui_mid_panel.hpp"
 
 static void
 DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto const overall_lib = LibraryForOverallBackground(g.engine);
 
-    // Layer panels laid out as a row with gaps between each layer
     auto const layers_row = DoBox(builder,
                                   {
                                       .parent = parent,
@@ -36,7 +32,6 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
                                          },
                                      });
 
-        // Each layer gets its own rounded, blurred background
         if (auto const r = BoxRect(builder, layer_box)) {
             auto const window_r = builder.imgui.ViewportRectToWindowRect(*r);
             auto const layer_lib = g.engine.Layer(layer_index).LibId();

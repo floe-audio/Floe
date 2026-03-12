@@ -741,7 +741,8 @@ void DoWaveformElement(GuiState& g,
                                      LiveCol(UiColMap::WaveformLoopBack),
                                      WwToPixels(k_corner_rounding));
 
-    if (g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
+    if (!options.waveform_only &&
+        g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
             LoadMemoryOrder::Relaxed) != -1) {
         g.imgui.draw_list->AddTextInRect(window_r,
                                          LiveCol(UiColMap::WaveformLoadingText),
@@ -877,6 +878,8 @@ void DoWaveformElement(GuiState& g,
                                                 LiveCol(UiColMap::WaveformLoopWaveformLoop));
                 }
             }
+
+            if (options.waveform_only) return;
 
             if (is_multisample && debounce.locked) {
                 DrawHatchPattern(*g.imgui.draw_list,

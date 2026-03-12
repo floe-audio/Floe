@@ -1594,7 +1594,6 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/panels/gui_save_preset_panel.cpp",
             "gui/panels/gui_top_panel.cpp",
             "gui/panels/gui_effects.cpp",
-            "gui/panels/gui_layer_common.cpp",
             "gui/panels/gui_layer_subtabbed.cpp",
             "gui/panels/gui_mid_panel.cpp",
             "gui/panels/gui_mid_panel_layers.cpp",

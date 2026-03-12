@@ -20,7 +20,7 @@
 #include "gui/panels/gui_info_panel.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
-#include "gui/panels/gui_layer_common.hpp"
+#include "gui/panels/gui_layer_subtabbed.hpp"
 #include "gui/panels/gui_library_dev_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
