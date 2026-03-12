@@ -16,7 +16,7 @@ enum class MidPanelTab : u8 {
 };
 
 struct MidPanelState {
-    MidPanelTab tab = MidPanelTab::Perform;
+    MidPanelTab tab = MidPanelTab::Layers;
 };
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);

@@ -757,13 +757,7 @@ struct VoiceProcessor {
         return true;
     }
 
-    // Process granular synthesis for a single sound source.
-    // Returns false if playback has ended (no loop, past end, no active grains for this source).
-    //
-    // Structured as grain-first rather than sample-first: we first handle the main playhead and grain
-    // spawning (pass 1), then process each grain across its full range of the buffer (pass 2). This
-    // gives much better data locality because each grain reads sequential audio data rather than
-    // interleaving random accesses from different grains.
+    // Returns false if playback has ended.
     static bool AddGranularSampleDataOntoBuffer(Voice& voice,
                                                 VoiceSoundSource& s,
                                                 u8 source_index,

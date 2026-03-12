@@ -522,44 +522,6 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
     }
 }
 
-static void DoMuteSoloButton(GuiState& g, Box parent, DescribedParamValue const& param, bool is_solo) {
-    auto const state = param.BoolValue();
-    auto const on_back_col =
-        is_solo ? LiveColStruct(UiColMap::SoloButtonBackOn) : LiveColStruct(UiColMap::MuteButtonBackOn);
-
-    auto const btn = DoBox(
-        g.builder,
-        {
-            .parent = parent,
-            .id_extra = is_solo,
-            .text = is_solo ? "S"_s : "M"_s,
-            .text_colours = state ? Colours {ColSet {
-                                        .base = LiveColStruct(UiColMap::MuteSoloButtonTextOn),
-                                        .hot = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
-                                        .active = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
-                                    }}
-                                  : Colours {ColSet {
-                                        .base = LiveColStruct(UiColMap::MidText),
-                                        .hot = LiveColStruct(UiColMap::MidTextHot),
-                                        .active = LiveColStruct(UiColMap::MidTextHot),
-                                    }},
-            .text_justification = TextJustification::Centred,
-            .background_fill_colours = state ? Colours {on_back_col} : Colours {Col {.c = Col::None}},
-            .round_background_corners = is_solo ? (Corners)0b0110 : (Corners)0b1001,
-            .corner_rounding = k_corner_rounding,
-            .layout {
-                .size = layout::k_fill_parent,
-            },
-            .tooltip =
-                FunctionRef<String()> {[&]() -> String { return ParamTooltipText(param, g.builder.arena); }},
-            .button_behaviour = imgui::ButtonConfig {},
-        });
-
-    if (btn.button_fired) SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
-
-    AddParamContextMenuBehaviour(g, btn, param);
-}
-
 static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
     auto& params = g.engine.processor.main_params;
 
@@ -577,7 +539,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                      },
                                  });
 
-    // Volume: peak meter + vertical slider (no label)
+    // Volume: peak meter + vertical slider
     {
         auto const vol_col = DoBox(g.builder,
                                    {
@@ -646,36 +608,10 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                         });
 
         // Mute/Solo buttons (horizontal)
-        {
-            auto const mute_solo_container =
-                DoBox(g.builder,
-                      {
-                          .parent = mid_col,
-                          .layout {
-                              .size = {k_mid_button_height * 2, k_mid_button_height},
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Start,
-                          },
-                      });
-
-            if (auto const r = BoxRect(g.builder, mute_solo_container)) {
-                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-                auto const rounding = WwToPixels(k_corner_rounding);
-                g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidDarkSurface), rounding);
-                g.imgui.draw_list->AddLine({window_r.Centre().x, window_r.y},
-                                           {window_r.Centre().x, window_r.Bottom()},
-                                           LiveCol(UiColMap::MuteSoloButtonDivider));
-            }
-
-            DoMuteSoloButton(g,
-                             mute_solo_container,
-                             params.DescribedValue(layer_index, LayerParamIndex::Mute),
-                             false);
-            DoMuteSoloButton(g,
-                             mute_solo_container,
-                             params.DescribedValue(layer_index, LayerParamIndex::Solo),
-                             true);
-        }
+        DoMuteSoloButtons(g,
+                          mid_col,
+                          params.DescribedValue(layer_index, LayerParamIndex::Mute),
+                          params.DescribedValue(layer_index, LayerParamIndex::Solo));
     }
 
     // Right column: Pitch + Detune
@@ -688,7 +624,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                              .contents_gap = 4,
                                              .contents_direction = layout::Direction::Column,
                                              .contents_align = layout::Alignment::Middle,
-                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                          },
                                      });
 
@@ -1580,7 +1516,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                          {
                                              .parent = waveform_group,
                                              .layout {
-                                                 .size = {layout::k_fill_parent, 70},
+                                                 .size = {layout::k_fill_parent, 78},
                                              },
                                          })))
             DoWaveformElement(g, layer, *r, {.play_mode = play_mode});
@@ -1653,7 +1589,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                              .id_extra = loc_hash,
                              .layout {
                                  .size = {width, layout::k_hug_contents},
-                                 .contents_padding = {.l = 2},
+                                 .contents_padding = {.l = 4},
                                  .contents_gap = {24, 8},
                                  .contents_direction = layout::Direction::Row,
                                  .contents_multiline = true,
@@ -1687,7 +1623,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
         {
             auto const section = do_section();
             do_heading(section, "GRAINS"_s);
-            auto const knob_box = do_knob_container(section, 106);
+            auto const knob_box = do_knob_container(section, 110);
             do_knob(knob_box, LayerParamIndex::GranularDensity);
             do_knob(knob_box, LayerParamIndex::GranularLength);
             do_knob(knob_box, LayerParamIndex::GranularSmoothing);
@@ -1780,35 +1716,7 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
                                         },
                                     });
 
-    {
-        auto const inst_row = DoBox(g.builder,
-                                    {
-                                        .parent = top_controls,
-                                        .layout {
-                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                            .contents_gap = 4,
-                                            .contents_direction = layout::Direction::Row,
-                                            .contents_align = layout::Alignment::Start,
-                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                        },
-                                    });
-
-        DoInstSelector(g, frame_context, layer_index, inst_row);
-
-        // Small waveform preview next to the instrument selector
-        if (g.engine.Layer(layer_index).instrument.tag != InstrumentType::None) {
-            auto& layer = g.engine.Layer(layer_index);
-            auto const waveform_box = DoBox(g.builder,
-                                            {
-                                                .parent = inst_row,
-                                                .layout {
-                                                    .size = {50, k_mid_button_height},
-                                                },
-                                            });
-            if (auto const r = BoxRect(g.builder, waveform_box))
-                DoWaveformElement(g, layer, *r, {.waveform_only = true});
-        }
-    }
+    DoInstSelector(g, frame_context, layer_index, top_controls);
 
     if (g.engine.Layer(layer_index).instrument.tag == InstrumentType::None) return;
 

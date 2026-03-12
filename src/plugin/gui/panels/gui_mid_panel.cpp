@@ -183,8 +183,10 @@ static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, B
 
     Optional<MidPanelTab> new_tab {};
 
-    for (auto const i : Range(ToInt(MidPanelTab::Count))) {
-        auto const tab = (MidPanelTab)i;
+    for (auto const tab : EnumIterator<MidPanelTab>()) {
+        if (tab == MidPanelTab::Perform &&
+            !prefs::GetBool(g.prefs, ExperimentalFeaturesPreferenceDescriptor()))
+            continue;
 
         bool const is_selected = tab == g.mid_panel_state.tab;
 

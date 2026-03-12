@@ -737,9 +737,10 @@ void DoWaveformElement(GuiState& g,
         r;
     });
 
-    g.imgui.draw_list->AddRectFilled(window_r,
-                                     LiveCol(UiColMap::WaveformLoopBack),
-                                     WwToPixels(k_corner_rounding));
+    if (!options.waveform_only)
+        g.imgui.draw_list->AddRectFilled(window_r,
+                                         LiveCol(UiColMap::WaveformLoopBack),
+                                         WwToPixels(k_corner_rounding));
 
     if (!options.waveform_only &&
         g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(

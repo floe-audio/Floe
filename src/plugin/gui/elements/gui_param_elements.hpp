@@ -77,6 +77,16 @@ Box DoIntParameter(GuiState& g,
                    DescribedParamValue const& param,
                    IntParameterComponentOptions const& options);
 
+struct MuteSoloButtonsOptions {
+    bool vertical = false; // If true, buttons stack vertically (M on top, S on bottom).
+};
+
+void DoMuteSoloButtons(GuiState& g,
+                       Box parent,
+                       DescribedParamValue const& mute_param,
+                       DescribedParamValue const& solo_param,
+                       MuteSoloButtonsOptions const& options = {});
+
 String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena);
 
 void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);

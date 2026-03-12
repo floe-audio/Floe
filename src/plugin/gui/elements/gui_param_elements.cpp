@@ -611,6 +611,89 @@ Box DoButtonParameter(GuiState& g,
     return container;
 }
 
+static void
+DoMuteSoloButton(GuiState& g, Box parent, DescribedParamValue const& param, bool is_solo, bool vertical) {
+    auto const state = param.BoolValue();
+    auto const on_back_col =
+        is_solo ? LiveColStruct(UiColMap::SoloButtonBackOn) : LiveColStruct(UiColMap::MuteButtonBackOn);
+
+    Corners const corners = vertical ? (is_solo ? (Corners)0b0011 : (Corners)0b1100)
+                                     : (is_solo ? (Corners)0b0110 : (Corners)0b1001);
+
+    auto const btn = DoBox(
+        g.builder,
+        {
+            .parent = parent,
+            .id_extra = is_solo,
+            .text = is_solo ? "S"_s : "M"_s,
+            .text_colours = state ? Colours {ColSet {
+                                        .base = LiveColStruct(UiColMap::MuteSoloButtonTextOn),
+                                        .hot = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
+                                        .active = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
+                                    }}
+                                  : Colours {ColSet {
+                                        .base = LiveColStruct(UiColMap::MidText),
+                                        .hot = LiveColStruct(UiColMap::MidTextHot),
+                                        .active = LiveColStruct(UiColMap::MidTextHot),
+                                    }},
+            .text_justification = TextJustification::Centred,
+            .background_fill_colours = state ? Colours {on_back_col} : Colours {Col {.c = Col::None}},
+            .round_background_corners = corners,
+            .corner_rounding = k_corner_rounding,
+            .layout {
+                .size = layout::k_fill_parent,
+            },
+            .tooltip =
+                FunctionRef<String()> {[&]() -> String { return ParamTooltipText(param, g.builder.arena); }},
+            .button_behaviour = imgui::ButtonConfig {},
+        });
+
+    if (btn.button_fired) SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
+
+    AddParamContextMenuBehaviour(g, btn, param);
+}
+
+void DoMuteSoloButtons(GuiState& g,
+                       Box parent,
+                       DescribedParamValue const& mute_param,
+                       DescribedParamValue const& solo_param,
+                       MuteSoloButtonsOptions const& options) {
+    auto const vertical = options.vertical;
+
+    f32 const w = vertical ? k_mid_button_height : k_mid_button_height * 2;
+    f32 const h = vertical ? k_mid_button_height * 2 : k_mid_button_height;
+    auto const direction = vertical ? layout::Direction::Column : layout::Direction::Row;
+
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .layout {
+                                         .size = {w, h},
+                                         .contents_direction = direction,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
+
+    if (auto const r = BoxRect(g.builder, container)) {
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+        auto const rounding = WwToPixels(k_corner_rounding);
+        g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidDarkSurface), rounding);
+
+        // Divider line between the two buttons
+        if (vertical)
+            g.imgui.draw_list->AddLine({window_r.x, window_r.Centre().y},
+                                       {window_r.Right(), window_r.Centre().y},
+                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+        else
+            g.imgui.draw_list->AddLine({window_r.Centre().x, window_r.y},
+                                       {window_r.Centre().x, window_r.Bottom()},
+                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+    }
+
+    DoMuteSoloButton(g, container, mute_param, false, vertical);
+    DoMuteSoloButton(g, container, solo_param, true, vertical);
+}
+
 Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
