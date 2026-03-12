@@ -9,6 +9,12 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+*"
 
+permissions:
+  id-token: write
+  contents: write
+  actions: write
+  issues: write
+
 jobs:
   build:
     uses: ./.github/workflows/production-build.yml
@@ -17,11 +23,6 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-22.04
-    permissions:
-      id-token: write
-      contents: write # Allow creating releases
-      actions: write # Allow workflow dispatch for website deployment
-      issues: write # Allow commenting, labeling, and closing issues
     env:
       ZIG_GLOBAL_CACHE_DIR: .zig-cache-global
       ZIG_RELEASE_FOLDER: zig-out/release
