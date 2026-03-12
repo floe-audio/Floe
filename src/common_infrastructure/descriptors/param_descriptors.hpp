@@ -64,11 +64,12 @@ enum class LayerParamIndex : u16 {
     PlayMode,
     GranularSpeed,
     GranularPosition,
-    GranularGrains,
+    GranularDensity,
     GranularLength,
     GranularSpread,
     GranularSmoothing,
     GranularRandomPan,
+    GranularRandomDetune,
 
     Count,
 };
@@ -2251,12 +2252,12 @@ consteval auto CreateParams() {
             .tooltip = "Where in the sample grains are sourced from"_s,
             .flags = {.experimental = true},
         };
-        lp(GranularGrains) = Args {
+        lp(GranularDensity) = Args {
             .id = id(region, 60), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Granular},
-            .name = "Granular Grains"_s,
-            .gui_label = "Grains"_s,
+            .name = "Granular Density"_s,
+            .gui_label = "Density"_s,
             .tooltip =
                 "Number of concurrent grains. Low values produce sparse textures, high values create dense clouds"_s,
             .flags = {.experimental = true},
@@ -2295,9 +2296,19 @@ consteval auto CreateParams() {
             .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Random Pan"_s,
-            .gui_label = "Rnd Pan"_s,
+            .gui_label = "Pan"_s,
             .tooltip =
                 "Randomise the stereo position of each grain. At 0% all grains play centred, at 100% grains can be panned anywhere from fully left to fully right"_s,
+            .flags = {.experimental = true},
+        };
+        lp(GranularRandomDetune) = Args {
+            .id = id(region, 64), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Random Detune"_s,
+            .gui_label = "Detune"_s,
+            .tooltip =
+                "Randomise the pitch of each grain. At 0% all grains play at the original pitch, at 100% grains can be detuned up to a semitone up or down"_s,
             .flags = {.experimental = true},
         };
     }

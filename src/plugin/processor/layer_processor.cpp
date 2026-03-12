@@ -684,8 +684,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.speed = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularPosition))
         vmst.granular.position = *p;
-    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularGrains))
-        vmst.granular.grains = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularDensity))
+        vmst.granular.density = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularLength))
         vmst.granular.length = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread))
@@ -694,6 +694,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.smoothing = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomPan))
         vmst.granular.random_pan = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDetune))
+        vmst.granular.random_detune = *p;
 
     // EQ
     // =======================================================================================================

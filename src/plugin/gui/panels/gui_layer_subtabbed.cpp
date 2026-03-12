@@ -688,7 +688,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                              .contents_gap = 4,
                                              .contents_direction = layout::Direction::Column,
                                              .contents_align = layout::Alignment::Middle,
-                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                          },
                                      });
 
@@ -1602,40 +1602,104 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                           });
     }
 
-    // Loop mode selector (hidden in granular position mode)
     if (play_mode != param_values::PlayMode::GranularFixed) DoLoopModeSelector(g, page, layer);
 
-    // Granular controls
-    if (IsGranular(play_mode)) {
-        auto const knobs_row = DoBox(g.builder,
-                                     {
-                                         .parent = page,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = {35, 2},
-                                             .contents_direction = layout::Direction::Row,
-                                             .contents_multiline = true,
-                                             .contents_align = layout::Alignment::Middle,
-                                         },
-                                     });
+    DoWhitespace(g.builder, page, 2);
 
-        auto const do_knob = [&](LayerParamIndex param) {
+    if (IsGranular(play_mode)) {
+        auto const sections_row = DoBox(g.builder,
+                                        {
+                                            .parent = page,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = 16,
+                                                .contents_direction = layout::Direction::Row,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+
+        auto const do_section = [&](u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = sections_row,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = layout::k_hug_contents,
+                                 .contents_gap = 8,
+                                 .contents_direction = layout::Direction::Column,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        auto const do_heading = [&g](Box parent, String text) {
+            DoBox(g.builder,
+                  {
+                      .parent = parent,
+                      .text = text,
+                      .size_from_text = true,
+                      .font = FontType::Heading3,
+                      .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                      .text_justification = TextJustification::CentredLeft,
+                  });
+        };
+
+        auto const do_knob_container = [&g](Box parent, f32 width, u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = parent,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = {width, layout::k_hug_contents},
+                                 .contents_padding = {.l = 2},
+                                 .contents_gap = {24, 8},
+                                 .contents_direction = layout::Direction::Row,
+                                 .contents_multiline = true,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        auto const do_knob = [&](Box parent, LayerParamIndex param) {
             DoKnobParameter(g,
-                            knobs_row,
+                            parent,
                             params.DescribedValue(layer_index, param),
                             {
-                                .width = 20,
+                                .width = 28,
                                 .style_system = GuiStyleSystem::MidPanel,
                             });
         };
 
-        do_knob((play_mode == param_values::PlayMode::GranularPlayback) ? LayerParamIndex::GranularSpeed
-                                                                        : LayerParamIndex::GranularPosition);
-        do_knob(LayerParamIndex::GranularSpread);
-        do_knob(LayerParamIndex::GranularGrains);
-        do_knob(LayerParamIndex::GranularLength);
-        do_knob(LayerParamIndex::GranularSmoothing);
-        do_knob(LayerParamIndex::GranularRandomPan);
+        {
+            auto const section = do_section();
+            do_heading(section, "PLAYHEAD"_s);
+            auto const knob_box = do_knob_container(section, 38);
+            do_knob(knob_box,
+                    (play_mode == param_values::PlayMode::GranularPlayback)
+                        ? LayerParamIndex::GranularSpeed
+                        : LayerParamIndex::GranularPosition);
+            do_knob(knob_box, LayerParamIndex::GranularSpread);
+        }
+
+        {
+            auto const section = do_section();
+            do_heading(section, "GRAINS"_s);
+            auto const knob_box = do_knob_container(section, 106);
+            do_knob(knob_box, LayerParamIndex::GranularDensity);
+            do_knob(knob_box, LayerParamIndex::GranularLength);
+            do_knob(knob_box, LayerParamIndex::GranularSmoothing);
+        }
+
+        {
+            auto const section = do_section();
+            do_heading(section, "RANDOM"_s);
+            auto const knob_box = do_knob_container(section, 106);
+            do_knob(knob_box, LayerParamIndex::GranularRandomPan);
+            do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
+        }
     }
 }
 

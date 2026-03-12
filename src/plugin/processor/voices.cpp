@@ -847,12 +847,25 @@ struct VoiceProcessor {
                         auto const pan_rand =
                             (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
                         new_grain->pan_pos = (pan_rand * 2.0f - 1.0f) * ctrl.granular.random_pan;
+
+                        // Assign a random detune ratio scaled by the random_detune parameter.
+                        // At 0% all grains play at original pitch, at 100% grains can be
+                        // detuned up to 1 semitone up or down.
+                        if (ctrl.granular.random_detune > 0.0001f) {
+                            auto const detune_rand =
+                                (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
+                            auto const detune_semitones =
+                                (f64)((detune_rand * 2.0f) - 1.0f) * (f64)ctrl.granular.random_detune;
+                            new_grain->detune_ratio = Exp2(detune_semitones / 12.0);
+                        } else {
+                            new_grain->detune_ratio = 1.0;
+                        }
                     }
                 }
 
                 {
                     auto const base_interval =
-                        GrainsParamToSpawnInterval(ctrl.granular.grains, context.sample_rate);
+                        GrainsParamToSpawnInterval(ctrl.granular.density, context.sample_rate);
                     // Add slight randomness to avoid a machine-gun effect.
                     constexpr f32 k_jitter_amount = 0.25f; // ± this fraction of the base interval.
                     auto const jitter_01 = (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
@@ -890,7 +903,9 @@ struct VoiceProcessor {
                     buffer[frame_index] +=
                         sample * grain_pan_gains * envelope * amp * xfade_vols[frame_index];
 
-                    IncrementPlaybackPos(grain.playhead, pitch_ratios[frame_index], num_frames);
+                    IncrementPlaybackPos(grain.playhead,
+                                         pitch_ratios[frame_index] * grain.detune_ratio,
+                                         num_frames);
                 }
 
                 grain.samples_elapsed++;
