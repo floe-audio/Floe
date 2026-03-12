@@ -9,6 +9,10 @@ name: Internal Build
 on:
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   build:
     uses: ./.github/workflows/production-build.yml
