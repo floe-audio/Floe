@@ -1,0 +1,15 @@
+# Copyright 2026 Sam Windell
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Trigger a full production build without creating any public release.
+# Artifacts are available for download from the workflow run page.
+
+name: Internal Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/production-build.yml
+    secrets: inherit
