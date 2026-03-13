@@ -154,4 +154,22 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
         for (auto const& tag : new_state.metadata.tags)
             fmt::Append(diff_desc, "  + {}\n"_s, tag);
     }
+
+    if (old_state.instance_id != new_state.instance_id) dyn::AppendSpan(diff_desc, "instance ID changes");
+
+    for (auto layer_index : Range(k_num_layers))
+        if (old_state.velocity_curve_points[layer_index] != new_state.velocity_curve_points[layer_index])
+            fmt::Append(diff_desc, "Velocity curve points changed for layer {}\n"_s, layer_index);
+
+    for (auto macro_index : Range(k_num_macros))
+        if (old_state.macro_names[macro_index] != new_state.macro_names[macro_index])
+            fmt::Append(diff_desc,
+                        "Macro {} name changed: {} vs {}\n"_s,
+                        macro_index,
+                        old_state.macro_names[macro_index],
+                        new_state.macro_names[macro_index]);
+
+    for (auto macro_index : Range(k_num_macros))
+        if (old_state.macro_destinations[macro_index] != new_state.macro_destinations[macro_index])
+            fmt::Append(diff_desc, "Macro {} destinations changed\n"_s, macro_index);
 }

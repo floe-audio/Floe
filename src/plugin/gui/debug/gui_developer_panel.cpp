@@ -36,14 +36,12 @@ bool DoBasicTextButton(imgui::Context& imgui, imgui::ButtonConfig cfg, Rect r, i
     return clicked;
 }
 
-void DoBasicWhiteText(imgui::Context& imgui, Rect r, String str) {
+f32 DoBasicWhiteText(imgui::Context& imgui, Rect r, String str) {
     r = imgui.RegisterAndConvertRect(r);
-    auto const font_size = imgui.draw_list->fonts.Current()->font_size;
-    f32x2 pos;
-    pos.x = (f32)(int)r.x;
-    pos.y = r.y + ((r.h / 2) - (font_size / 2));
-    pos.y = (f32)(int)pos.y;
-    imgui.draw_list->AddText(pos, 0xffffffff, str);
+    auto const vp_w = imgui.CurrentVpWidth();
+    auto const size = imgui.draw_list->fonts.CalcTextSize(str, {.wrap_width = vp_w});
+    imgui.draw_list->AddTextInRect(r, 0xffffffff, str, {.wrap_width = vp_w});
+    return size.y;
 }
 
 using DevGuiTextInputBuffer = DynamicArrayBounded<char, 128>;
@@ -103,8 +101,8 @@ static void DevGuiIncrementPos(DeveloperPanel& g, f32 size = 0) { g.y_pos += (si
 
 template <typename... Args>
 static void DevGuiText(DeveloperPanel& g, String format, Args const&... args) {
-    DoBasicWhiteText(g.imgui, DevGuiGetFullR(g), fmt::Format(g.imgui.scratch_arena, format, args...));
-    DevGuiIncrementPos(g);
+    g.y_pos +=
+        DoBasicWhiteText(g.imgui, DevGuiGetFullR(g), fmt::Format(g.imgui.scratch_arena, format, args...));
 }
 
 static void DevGuiHeading(DeveloperPanel& g, String text) {
