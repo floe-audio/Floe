@@ -66,8 +66,8 @@ static void DoSectionLabel(GuiBuilder& builder, Box parent, String text) {
               .parent = parent,
               .text = text,
               .size_from_text = true,
-              .font = FontType::Body,
-              .text_colours = Col {.c = Col::White, .alpha = 90},
+              .font = FontType::Heading3,
+              .text_colours = Col {.c = Col::White, .alpha = 120},
           });
 }
 
@@ -153,6 +153,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, Box parent) {
                       .text = tag,
                       .size_from_text = true,
                       .font = FontType::Body,
+                      .font_size = k_font_body_size * 0.9f,
                       .text_colours = Col {.c = Col::White, .alpha = 180},
                   });
         }
@@ -205,7 +206,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
         // Label row
         {
             auto const inst_name = layer.InstName();
-            auto const label_text = fmt::Format(g.scratch_arena, "Layer {}", layer_index + 1);
+            auto const label_text = fmt::Format(g.scratch_arena, "LAYER {}", layer_index + 1);
 
             auto const label_row = DoBox(builder,
                                          {
@@ -333,7 +334,7 @@ static void DoEffectsColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                   },
                               });
 
-    DoSectionLabel(builder, column, "Effects"_s);
+    DoSectionLabel(builder, column, "EFFECTS"_s);
 
     auto const& params = g.engine.processor.main_params;
     auto const ordered_effects =
@@ -409,7 +410,7 @@ static void DoMacrosRow(GuiBuilder& builder, GuiState& g, Box parent) {
                         row,
                         g.engine.processor.main_params.DescribedValue(param_index),
                         {
-                            .width = 34,
+                            .width = 42,
                             .override_label = g.engine.macro_names[macro_index],
                         });
     }
@@ -447,6 +448,7 @@ DoActionButton(GuiBuilder& builder, Box parent, String icon, String label, Strin
               .text = icon,
               .size_from_text = true,
               .font = FontType::Icons,
+              .font_size = k_font_icons_size * 0.9f,
               .text_colours = MidIconButtonColours(false),
               .parent_dictates_hot_and_active = true,
           });
@@ -479,7 +481,7 @@ DoActionsColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_c
                                   },
                               });
 
-    DoSectionLabel(builder, column, "Randomise"_s);
+    DoSectionLabel(builder, column, "RANDOMISE"_s);
 
     // Shuffle instruments (same folder)
     {

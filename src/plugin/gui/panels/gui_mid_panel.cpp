@@ -7,6 +7,7 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/panels/gui_effects.hpp"
@@ -111,9 +112,9 @@ void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_i
 
 static String MidPanelTabLabel(MidPanelTab tab) {
     switch (tab) {
-        case MidPanelTab::Perform: return "Perform"_s;
-        case MidPanelTab::Layers: return "Layers"_s;
-        case MidPanelTab::Effects: return "Effects"_s;
+        case MidPanelTab::Perform: return "PERFORM"_s;
+        case MidPanelTab::Layers: return "LAYERS"_s;
+        case MidPanelTab::Effects: return "EFFECTS"_s;
         case MidPanelTab::Count: PanicIfReached();
     }
 }
@@ -147,7 +148,7 @@ static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, B
                                {
                                    .parent = parent,
                                    .layout {
-                                       .size = {layout::k_fill_parent, 28.0f},
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
                                        .margins = {.t = 5},
                                        .contents_direction = layout::Direction::Row,
                                        .contents_align = layout::Alignment::Middle,
@@ -169,7 +170,7 @@ static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, B
                                {
                                    .parent = tab_row,
                                    .layout {
-                                       .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                       .size = layout::k_hug_contents,
                                        .contents_padding = {.lr = 3, .tb = 3},
                                        .contents_gap = 2,
                                        .contents_direction = layout::Direction::Row,
@@ -184,47 +185,11 @@ static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, B
     Optional<MidPanelTab> new_tab {};
 
     for (auto const tab : EnumIterator<MidPanelTab>()) {
-        bool const is_selected = tab == g.mid_panel_state.tab;
-
-        auto const btn =
-            DoBox(builder,
-                  {
-                      .parent = tab_bar,
-                      .id_extra = (u64)tab,
-                      .background_fill_colours =
-                          is_selected ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
-                                      : Colours {ColSet {
-                                            .base = Col {.c = Col::None},
-                                            .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
-                                            .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
-                                        }},
-                      .round_background_corners = 0b1111,
-                      .corner_rounding = 4.0f,
-                      .layout {
-                          .size = {layout::k_hug_contents, layout::k_fill_parent},
-                          .contents_padding = {.lr = 8},
-                          .contents_direction = layout::Direction::Row,
-                          .contents_align = layout::Alignment::Middle,
-                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                      },
-                      .button_behaviour = imgui::ButtonConfig {},
-                  });
-
-        DoBox(builder,
-              {
-                  .parent = btn,
-                  .text = MidPanelTabLabel(tab),
-                  .size_from_text = true,
-                  .font = FontType::Heading3,
-                  .text_colours = is_selected ? Colours {LiveColStruct(UiColMap::MidTabTextActive)}
-                                              : Colours {ColSet {
-                                                    .base = LiveColStruct(UiColMap::MidTabText),
-                                                    .hot = LiveColStruct(UiColMap::MidTabTextHot),
-                                                    .active = LiveColStruct(UiColMap::MidTabTextActive),
-                                                }},
-                  .text_justification = TextJustification::Centred,
-                  .parent_dictates_hot_and_active = true,
-              });
+        auto const btn = DoTabButton(builder,
+                                     tab_bar,
+                                     MidPanelTabLabel(tab),
+                                     {.is_selected = tab == g.mid_panel_state.tab},
+                                     (u64)tab);
 
         if (btn.button_fired) new_tab = tab;
     }

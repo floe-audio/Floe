@@ -6,6 +6,7 @@
 #include "engine/engine.hpp"
 #include "gui/controls/gui_keyboard.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -146,68 +147,34 @@ static void DoBotPanel(GuiState& g) {
                                     .parent = root,
                                     .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
                                     .layout {
-                                        .size = {53, layout::k_fill_parent},
+                                        .size = {55, layout::k_fill_parent},
                                         .contents_padding = {.lr = 3, .tb = 6},
                                         .contents_gap = 2,
                                         .contents_direction = layout::Direction::Column,
-                                        .contents_align = layout::Alignment::Start,
+                                        .contents_align = layout::Alignment::Middle,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                     },
                                 });
 
-        auto const tab_button = [&](BottomPanelType type,
-                                    TooltipString tooltip,
-                                    u64 id_extra = SourceLocationHash()) {
-            bool const is_selected = type == g.bottom_panel_state.type;
-
-            auto const btn =
-                DoBox(builder,
-                      {
-                          .parent = tabs,
-                          .id_extra = id_extra,
-                          .background_fill_colours =
-                              is_selected ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
-                                          : Colours {ColSet {
-                                                .base = Col {.c = Col::None},
-                                                .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
-                                                .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
-                                            }},
-                          .round_background_corners = 0b1111,
-                          .corner_rounding = 4.0f,
-                          .layout {
-                              .size = {layout::k_fill_parent, 24},
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Middle,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                          .tooltip = tooltip,
-                          .button_behaviour = imgui::ButtonConfig {},
-                      });
-
-            DoBox(builder,
-                  {
-                      .parent = btn,
-                      .text =
-                          [type]() {
-                              switch (type) {
-                                  case BottomPanelType::Play: return "PLAY"_s;
-                                  case BottomPanelType::EditMacros: return "MACROS"_s;
-                                  case BottomPanelType::Count: PanicIfReached();
-                              }
-                          }(),
-                      .size_from_text = true,
-                      .font = FontType::Heading3,
-                      .text_colours = is_selected ? Colours {LiveColStruct(UiColMap::MidTabTextActive)}
-                                                  : Colours {ColSet {
-                                                        .base = LiveColStruct(UiColMap::MidTabText),
-                                                        .hot = LiveColStruct(UiColMap::MidTabTextHot),
-                                                        .active = LiveColStruct(UiColMap::MidTabTextActive),
-                                                    }},
-                      .text_justification = TextJustification::Centred,
-                      .parent_dictates_hot_and_active = true,
-                  });
-            return btn;
-        };
+        auto const tab_button =
+            [&](BottomPanelType type, TooltipString tooltip, u64 id_extra = SourceLocationHash()) {
+                auto const name = [type]() -> String {
+                    switch (type) {
+                        case BottomPanelType::Play: return "PLAY"_s;
+                        case BottomPanelType::EditMacros: return "MACROS"_s;
+                        case BottomPanelType::Count: PanicIfReached();
+                    }
+                }();
+                return DoTabButton(builder,
+                                   tabs,
+                                   name,
+                                   {
+                                       .is_selected = type == g.bottom_panel_state.type,
+                                       .width = layout::k_fill_parent,
+                                       .tooltip = tooltip,
+                                   },
+                                   id_extra);
+            };
 
         Optional<BottomPanelType> new_panel {};
 

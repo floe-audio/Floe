@@ -663,16 +663,17 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
     auto const tabs_row = DoBox(g.builder,
                                 {
                                     .parent = parent,
-                                    .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
-                                    .border_edges = 0b0100,
+                                    .background_fill_colours = Col {.c = Col::Black, .alpha = 20},
+                                    .corner_rounding = k_panel_rounding,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_padding = {.lr = 3, .tb = 3},
+                                        .contents_gap = 2,
                                         .contents_direction = layout::Direction::Row,
                                         .contents_align = layout::Alignment::Middle,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                     },
                                 });
-
-    Optional<Box> selected_tab_box {};
 
     for (auto const i : Range(ToInt(LayerPageType::Count))) {
         auto const page_type = (LayerPageType)i;
@@ -697,96 +698,30 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
 
         auto const name = [&]() -> String {
             switch (page_type) {
-                case LayerPageType::Envelope: return "Envelope"_s;
-                case LayerPageType::Engine: return "Engine"_s;
+                case LayerPageType::Envelope: return "ENVELOPE"_s;
+                case LayerPageType::Engine: return "ENGINE"_s;
                 case LayerPageType::Eq: return "EQ"_s;
-                case LayerPageType::Play: return "Play"_s;
+                case LayerPageType::Play: return "PLAY"_s;
                 case LayerPageType::Lfo: return "LFO"_s;
-                case LayerPageType::Filter: return "Filter"_s;
+                case LayerPageType::Filter: return "FILTER"_s;
                 case LayerPageType::Count: PanicIfReached();
             }
             return {};
         }();
 
-        auto const tab_btn =
-            DoBox(g.builder,
-                  {
-                      .parent = tabs_row,
-                      .id_extra = (u64)i,
-                      .border_colours = is_selected ? Colours {LiveColStruct(UiColMap::MidViewportDivider)}
-                                                    : Colours {Col {.c = Col::None}},
-                      .border_edges = 0b1010,
-                      .layout {
-                          .size = layout::k_hug_contents,
-                      },
-                      .tooltip = FunctionRef<String()> {[&]() -> String {
-                          return fmt::Format(g.scratch_arena, "Open {} tab", name);
-                      }},
-                      .button_behaviour = imgui::ButtonConfig {},
-                  });
-
-        if (is_selected) selected_tab_box = tab_btn;
-
-        DoBox(g.builder,
-              {
-                  .parent = tab_btn,
-                  .text = name,
-                  .size_from_text = true,
-                  .text_colours = is_selected ? Colours {ColSet {
-                                                    .base = LiveColStruct(UiColMap::MidTextOn),
-                                                    .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                    .active = LiveColStruct(UiColMap::MidTextHot),
-                                                }}
-                                              : Colours {ColSet {
-                                                    .base = LiveColStruct(UiColMap::MidText),
-                                                    .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                    .active = LiveColStruct(UiColMap::MidTextHot),
-                                                }},
-                  .text_justification = TextJustification::Centred,
-                  .parent_dictates_hot_and_active = true,
-                  .layout {
-                      .margins {.lr = 8.0f, .tb = 10.0f},
-                  },
-              });
+        auto const tab_btn = DoTabButton(g.builder,
+                                         tabs_row,
+                                         name,
+                                         {
+                                             .is_selected = is_selected,
+                                             .show_dot_indicator = tab_has_active_content,
+                                             .tooltip = FunctionRef<String()> {[&]() -> String {
+                                                 return fmt::Format(g.scratch_arena, "Open {} tab", name);
+                                             }},
+                                         },
+                                         (u64)i);
 
         if (tab_btn.button_fired) layer_state.selected_page = page_type;
-
-        // Draw active-content dot indicator
-        if (tab_has_active_content) {
-            if (auto const r = BoxRect(g.builder, tab_btn)) {
-                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-                auto const dot_centre = f32x2 {window_r.CentreX(), window_r.CentreY() + WwToPixels(10.0f)};
-                auto const col =
-                    is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidTextDimmed);
-                g.imgui.draw_list->AddCircleFilled(dot_centre, WwToPixels(2.0f), col);
-            }
-        }
-    }
-
-    // Draw the bottom border of the tab row, with a gap under the selected tab so it
-    // visually integrates into the content area below.
-    if (auto const row_r = BoxRect(g.builder, tabs_row)) {
-        auto const border_col = LiveCol(UiColMap::MidViewportDivider);
-        auto const window_row_r = g.imgui.ViewportRectToWindowRect(*row_r);
-        auto const bottom_y = window_row_r.Bottom();
-
-        if (selected_tab_box) {
-            if (auto const tab_r = BoxRect(g.builder, *selected_tab_box)) {
-                auto const window_tab_r = g.imgui.ViewportRectToWindowRect(*tab_r);
-
-                // Line from row left edge to selected tab left edge
-                if (window_tab_r.x > window_row_r.x)
-                    g.imgui.draw_list->AddLine({window_row_r.x, bottom_y},
-                                               {window_tab_r.x, bottom_y},
-                                               border_col);
-
-                // Line from selected tab right edge to row right edge
-                if (window_tab_r.Right() < window_row_r.Right())
-                    g.imgui.draw_list->AddLine({window_tab_r.Right(), bottom_y},
-                                               {window_row_r.Right(), bottom_y},
-                                               border_col);
-            }
-        }
     }
 
     // Auto-switch tab when a macro destination knob is being interacted
@@ -952,7 +887,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                            .parent = page,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_gap = 14,
+                                               .contents_gap = 26,
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                            },
@@ -970,7 +905,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                     .id_extra = band_number,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_gap = 6,
+                                        .contents_gap = 10,
                                         .contents_direction = layout::Direction::Column,
 
                                     },
@@ -981,7 +916,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                     {
                                         .parent = band,
                                         .layout {
-                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .size = layout::k_hug_contents,
                                             .contents_gap = 6,
                                             .contents_direction = layout::Direction::Row,
                                             .contents_align = layout::Alignment::Middle,
@@ -995,7 +930,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = {layout::k_fill_parent, k_font_body_size},
+                      .size = {50, k_font_body_size},
                   },
               });
         DoMenuParameter(g,
@@ -1013,7 +948,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                          .parent = band,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = 15,
+                                             .contents_gap = 24,
                                              .contents_direction = layout::Direction::Row,
                                              .contents_align = layout::Alignment::Middle,
                                          },
@@ -1066,6 +1001,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
 
     constexpr f32 k_menu_width = 135;
+    constexpr f32 k_menu_label_width = 50;
 
     auto const page = DoBox(g.builder,
                             {
@@ -1075,6 +1011,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                     .contents_gap = k_page_row_gap_y,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                 },
                             });
 
@@ -1097,7 +1034,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .id_extra = loc_hash,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1111,7 +1048,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = {layout::k_fill_parent, k_font_body_size},
+                      .size = {k_menu_label_width, k_font_body_size},
                   },
               });
 
@@ -1194,6 +1131,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
+    constexpr auto k_play_label_width = 105;
     constexpr auto k_control_width = 76;
     constexpr auto k_narrow_control_width = 63;
     constexpr auto k_narrow_control_gap_x = 3;
@@ -1203,9 +1141,10 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_gap = 4,
+                                    .contents_gap = 6,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                 },
                             });
 
@@ -1218,7 +1157,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .id_extra = loc_hash,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1232,7 +1171,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String { return param.info.tooltip; }},
               });
@@ -1246,10 +1185,8 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                        });
     };
 
-    // Transpose
     do_int_label_row(LayerParamIndex::MidiTranspose);
 
-    // PitchBend
     do_int_label_row(LayerParamIndex::PitchBendRange);
 
     // Keytrack
@@ -1262,7 +1199,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .id_extra = (u64)param.info.id,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1286,7 +1223,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_justification = TextJustification::CentredRight,
                   .parent_dictates_hot_and_active = true,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
                   },
               });
 
@@ -1312,7 +1249,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1326,7 +1263,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
                   },
               });
 
@@ -1339,7 +1276,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_narrow_control_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1351,9 +1288,10 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .parent = row,
                   .text = "Range"_s,
                   .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
+                  .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
+                      .margins {.r = k_page_row_gap_x - k_narrow_control_gap_x},
                   },
               });
 
@@ -1382,7 +1320,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_narrow_control_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1394,9 +1332,10 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .parent = row,
                   .text = "Key Fade"_s,
                   .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
+                  .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
+                      .margins {.r = k_page_row_gap_x - k_narrow_control_gap_x},
                   },
               });
 
@@ -1424,6 +1363,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .layout {
                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .margins = {.t = 4},
                                        .contents_gap = 2,
                                        .contents_direction = layout::Direction::Column,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -1449,7 +1389,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                     {
                                         .parent = col,
                                         .layout {
-                                            .size = {layout::k_fill_parent, 53},
+                                            .size = {layout::k_fill_parent, 80},
                                         },
                                     });
 
@@ -1732,7 +1672,7 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
                                           .parent = root,
                                           .layout {
                                               .size = layout::k_fill_parent,
-                                              .contents_padding = {.lr = 15, .tb = 8},
+                                              .contents_padding = {.lr = 15, .tb = 12},
                                           },
                                       });
 

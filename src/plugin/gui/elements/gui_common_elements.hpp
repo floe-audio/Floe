@@ -43,6 +43,15 @@ Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonO
 
 void DoExperimentalModeIndicatorIfNeeded(GuiBuilder& builder, Box parent, prefs::Preferences const& prefs);
 
+// Reusable tab button used in tab bars across the GUI.
+struct TabButtonOptions {
+    bool is_selected;
+    bool show_dot_indicator = false;
+    f32 width = layout::k_hug_contents;
+    TooltipString tooltip = k_nullopt;
+};
+Box DoTabButton(GuiBuilder& builder, Box parent, String text, TabButtonOptions const& options, u64 id_extra);
+
 // Toggle icon for use inside a parent container with button_behaviour.
 struct ToggleIconOptions {
     bool state;

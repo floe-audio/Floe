@@ -27,6 +27,7 @@ PUBLIC void DoLoadingOverlay(GuiBuilder& builder, bool is_loading) {
     if (!is_loading) return;
 
     auto viewport_config = k_default_modal_viewport;
+    viewport_config.draw_background = DrawOverlayViewportBackground;
     viewport_config.mode = imgui::ViewportMode::Floating;
     viewport_config.close_on_click_outside = false;
     viewport_config.close_on_escape = false;
