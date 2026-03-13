@@ -4,4 +4,13 @@
 #pragma once
 #include "common_infrastructure/preferences.hpp"
 
-prefs::Descriptor ExperimentalParamsPreferenceDescriptor();
+PUBLIC prefs::Descriptor ExperimentalParamsPreferenceDescriptor() {
+    return {
+        .key = "experimental-params"_s,
+        .value_requirements = prefs::ValueType::Bool,
+        .default_value = false,
+        .gui_label = "Experimental parameters",
+        .long_description =
+            "Enable experimental parameters. These are not yet finalised and may change or be removed. It is not recommended saving presets when in this mode.",
+    };
+}
