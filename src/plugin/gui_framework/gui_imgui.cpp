@@ -1623,6 +1623,7 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
     auto const auto_width = cfg.auto_size.x;
     auto auto_height = cfg.auto_size.y;
     auto const auto_pos = cfg.positioning == ViewportPositioning::AutoPosition;
+    auto const window_centred = cfg.positioning == ViewportPositioning::WindowCentred;
     auto const no_scroll_x = cfg.scrollbar_visibility.x == ViewportScrollbarVisibility::Never;
     auto const no_scroll_y = cfg.scrollbar_visibility.y == ViewportScrollbarVisibility::Never;
     auto const scrollbar_inside_padding = cfg.scrollbar_inside_padding;
@@ -1634,8 +1635,10 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
     // have window-relative coords. Contained+ParentRelative remains viewport-relative.
     auto const is_window_coordinates = is_floating || cfg.positioning != ViewportPositioning::ParentRelative;
 
-    ASSERT(r.x >= 0);
-    ASSERT(r.y >= 0);
+    if (!window_centred) {
+        ASSERT(r.x >= 0);
+        ASSERT(r.y >= 0);
+    }
 
     dyn::Assign(viewport->debug_name, debug_name);
     viewport->active = true;
@@ -1710,6 +1713,11 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
                                  has_parent_popup ? PopupJustification::LeftOrRight
                                                   : PopupJustification::AboveOrBelow);
             r.pos = Trunc(r.pos);
+        }
+        if (window_centred) {
+            auto const window_size = GuiIo().in.window_size.ToFloat2();
+            r.size = Min(r.size, window_size);
+            r.pos = Max((window_size - r.size) / 2, f32x2 {0, 0});
         }
     }
 

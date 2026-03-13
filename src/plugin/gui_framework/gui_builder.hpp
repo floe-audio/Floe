@@ -92,8 +92,8 @@ struct BoxViewportConfig {
     RunFunction run;
 
     // The rectangle for this viewport. Just like IMGUI BeginViewport, the interpretation of this value is
-    // dependent on the config's positioning field. You can provide either a Box if you are already in a
-    // box-viewport, or a Rect in *pixels*.
+    // dependent on the config's positioning field. For WindowCentred, only size matters (pos is ignored).
+    // You can provide either a Box if you are already in a box-viewport, or a Rect in *pixels*.
     Bounds bounds;
 
     // Box-viewports must be provided with a unique ID.

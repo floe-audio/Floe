@@ -29,27 +29,19 @@ PUBLIC void DoLoadingOverlay(GuiBuilder& builder, bool is_loading) {
     auto viewport_config = k_default_modal_viewport;
     viewport_config.draw_background = DrawOverlayViewportBackground;
     viewport_config.mode = imgui::ViewportMode::Floating;
+    viewport_config.positioning = imgui::ViewportPositioning::WindowCentred;
     viewport_config.close_on_click_outside = false;
     viewport_config.close_on_escape = false;
     viewport_config.exclusive_focus = false;
     viewport_config.auto_size = true;
     viewport_config.scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never;
 
-    auto const window_size = GuiIo().in.window_size.ToFloat2();
     constexpr imgui::Id k_loading_overlay_id = HashFnv1a("loading-overlay");
-
-    // Use the viewport's previous content size for centering. On the first frame, this is zero
-    // so the overlay will briefly appear at the center before auto-sizing adjusts.
-    f32x2 content_size {1, 1};
-    if (auto const* vp = builder.imgui.FindViewport(k_loading_overlay_id))
-        if (All(vp->prev_content_size > 0)) content_size = vp->prev_content_size;
-
-    auto const bounds = Rect {.pos = 0, .size = window_size}.CentredRect(content_size);
 
     DoBoxViewport(builder,
                   {
                       .run = [](GuiBuilder& b) { LoadingOverlayPanel(b); },
-                      .bounds = bounds,
+                      .bounds = Rect {},
                       .imgui_id = k_loading_overlay_id,
                       .viewport_config = viewport_config,
                       .debug_name = "loading-overlay",

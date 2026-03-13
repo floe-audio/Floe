@@ -598,6 +598,9 @@ static void DoImGuiInspector(DeveloperPanel& g, Rect r) {
                     dyn::AppendSpan(buf, "window_absolute ");
                     break;
                 case imgui::ViewportPositioning::AutoPosition: dyn::AppendSpan(buf, "auto_position "); break;
+                case imgui::ViewportPositioning::WindowCentred:
+                    dyn::AppendSpan(buf, "window_centred ");
+                    break;
             }
             if (f.auto_size[0]) dyn::AppendSpan(buf, "auto_width ");
             if (f.auto_size[1]) dyn::AppendSpan(buf, "auto_height ");

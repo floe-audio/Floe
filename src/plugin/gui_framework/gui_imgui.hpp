@@ -183,6 +183,7 @@ enum class ViewportPositioning : u8 {
     ParentRelative, // rect is viewport-relative (default)
     WindowAbsolute, // rect is already in window coordinates
     AutoPosition, // rect is avoid-rect in window coords; actual position is calculated
+    WindowCentred, // centre in window; rect pos is ignored; size is clamped to window; works with auto_size
 };
 
 enum class ViewportScrollbarVisibility : u8 {
@@ -597,9 +598,9 @@ struct Context {
     // Any Begin* call must be paired with an EndViewport. Use DEFER { imgui.EndViewport(); };. There's 2 core
     // overloads: either pass a unique name that will be converted to an ID, or make an ID first.
     //
-    // IMPORTANT: what the rectangle argument menas depends on the config's positioning. See
-    // ViewportPositioning. Additionally, for auto_width/auto_height viewports, the corresponding dimension in
-    // the rectangle is ignored.
+    // IMPORTANT: what the rectangle argument means depends on the config's positioning. See
+    // ViewportPositioning. For auto_width/auto_height viewports, the corresponding size dimension is ignored.
+    // For WindowCentred, the position is ignored (it's computed automatically).
     void BeginViewport(ViewportConfig const& config, Rect r, String unique_name);
     void BeginViewport(ViewportConfig const& config, Id id, Rect r, String debug_name = {});
 
