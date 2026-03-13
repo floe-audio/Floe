@@ -13,6 +13,7 @@ struct AutosaveState {
     enum class State { Idle, SaveRequested, Saved };
     Atomic<u16> max_autosaves_per_instance {};
     Atomic<u16> autosave_delete_after_days {};
+    Atomic<bool> write_experimental_params {};
     Mutex instance_id_mutex {};
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
     TimePoint last_save_time {};

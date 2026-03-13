@@ -612,7 +612,8 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
 
         Setting(builder, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
         Setting(builder, context, options_rhs_column, check_for_update::CheckBetaPrefDescriptor());
-        Setting(builder, context, options_rhs_column, ExperimentalFeaturesPreferenceDescriptor());
+        if (k_num_experimental_parameters)
+            Setting(builder, context, options_rhs_column, ExperimentalParamsPreferenceDescriptor());
     }
 }
 

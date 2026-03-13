@@ -1486,19 +1486,18 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-    auto const experimental_features = prefs::GetBool(g.prefs, ExperimentalFeaturesPreferenceDescriptor());
+    auto const experimental_params = prefs::GetBool(g.prefs, ExperimentalParamsPreferenceDescriptor());
 
     // Engine type menu
-    if (experimental_features) {
+    if (experimental_params) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
         DoMenuParameter(g, page, param, {.width = layout::k_fill_parent, .label = false});
     }
 
     auto const play_mode =
-        experimental_features
-            ? params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode)
-            : param_values::PlayMode::Standard;
+        experimental_params ? params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode)
+                            : param_values::PlayMode::Standard;
 
     // Waveform display + info strip
     {

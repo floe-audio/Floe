@@ -4,4 +4,4 @@
 #pragma once
 #include "common_infrastructure/preferences.hpp"
 
-prefs::Descriptor ExperimentalFeaturesPreferenceDescriptor();
+prefs::Descriptor ExperimentalParamsPreferenceDescriptor();

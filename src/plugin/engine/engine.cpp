@@ -434,30 +434,14 @@ void LoadPresetFromFile(Engine& engine, String path) {
     }
 }
 
-static void ScrubExperimentalParamsIfNeeded(StateSnapshot& state, prefs::Preferences const& prefs) {
-    if (prefs::GetBool(prefs, ExperimentalFeaturesPreferenceDescriptor())) return;
-
-    for (auto const i : Range(k_num_parameters)) {
-        if (!k_param_descriptors[i].flags.experimental) continue;
-
-        state.param_values[i] = k_param_descriptors[i].default_linear_value;
-        state.param_learned_ccs[i] = {};
-
-        for (auto& dest_list : state.macro_destinations) {
-            for (usize d = 0; d < dest_list.Size();)
-                if (dest_list.items[d].param_index == ParamIndex(i))
-                    dest_list.RemoveAt(d);
-                else
-                    ++d;
-        }
-    }
-}
-
 void SaveCurrentStateToFile(Engine& engine, String path) {
     auto current_state = CurrentStateSnapshot(engine);
-    ScrubExperimentalParamsIfNeeded(current_state, engine.shared_engine_systems.prefs);
     auto const error_id = HashMultiple(Array {"preset-save"_s, path});
-    if (auto const outcome = SavePresetFile(path, current_state); outcome.Succeeded()) {
+    if (auto const outcome = SavePresetFile(
+            path,
+            current_state,
+            prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()));
+        outcome.Succeeded()) {
         SetLastSnapshot(engine, {.state = current_state, .name = {.name_or_path = path}});
         engine.error_notifications.RemoveError(error_id);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
@@ -599,6 +583,21 @@ static void PluginOnPollThread(Engine& engine) {
 static void PluginOnPreferenceChanged(Engine& engine, prefs::Key key, prefs::Value const* value) {
     ASSERT(g_is_logical_main_thread);
     OnPreferenceChanged(engine.autosave_state, key, value);
+
+    if (prefs::Match(key, value, ExperimentalParamsPreferenceDescriptor())) {
+        if (!value->Get<bool>()) {
+            // Default-out all experimental params.
+            for (auto const i : Range(k_num_parameters)) {
+                auto const& desc = k_param_descriptors[i];
+                if (desc.flags.experimental) {
+                    SetParameterValue(engine.processor,
+                                      (ParamIndex)i,
+                                      desc.default_linear_value,
+                                      {.host_should_not_record = true});
+                }
+            }
+        }
+    }
 }
 
 usize MegabytesUsedBySamples(Engine const& engine) {
@@ -631,25 +630,26 @@ void SetToDefaultState(Engine& engine) {
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
     auto state = CurrentStateSnapshot(engine);
     ASSERT(state.instance_id.size);
-    ScrubExperimentalParamsIfNeeded(state, engine.shared_engine_systems.prefs);
-    auto outcome = CodeState(state,
-                             CodeStateArguments {
-                                 .mode = CodeStateArguments::Mode::Encode,
-                                 .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
-                                     u64 bytes_written = 0;
-                                     while (bytes_written != bytes) {
-                                         ASSERT(bytes_written < bytes);
-                                         auto const n = stream.write(&stream,
-                                                                     (u8 const*)data + bytes_written,
-                                                                     bytes - bytes_written);
-                                         if (n < 0) return ErrorCode(CommonError::PluginHostError);
-                                         bytes_written += (u64)n;
-                                     }
-                                     return k_success;
-                                 },
-                                 .source = StateSource::Daw,
-                                 .abbreviated_read = false,
-                             });
+    auto outcome = CodeState(
+        state,
+        CodeStateArguments {
+            .mode = CodeStateArguments::Mode::Encode,
+            .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                u64 bytes_written = 0;
+                while (bytes_written != bytes) {
+                    ASSERT(bytes_written < bytes);
+                    auto const n =
+                        stream.write(&stream, (u8 const*)data + bytes_written, bytes - bytes_written);
+                    if (n < 0) return ErrorCode(CommonError::PluginHostError);
+                    bytes_written += (u64)n;
+                }
+                return k_success;
+            },
+            .source = StateSource::Daw,
+            .abbreviated_read = false,
+            .write_experimental_params =
+                prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()),
+        });
 
     auto const error_id = SourceLocationHash();
 

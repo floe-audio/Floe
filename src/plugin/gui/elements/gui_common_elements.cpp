@@ -115,7 +115,7 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
 void DoExperimentalModeIndicatorIfNeeded(GuiBuilder& builder,
                                          Box parent,
                                          prefs::Preferences const& preferences) {
-    if (!prefs::GetBool(preferences, ExperimentalFeaturesPreferenceDescriptor())) return;
+    if (!prefs::GetBool(preferences, ExperimentalParamsPreferenceDescriptor())) return;
 
     auto const flask = DoBox(
         builder,

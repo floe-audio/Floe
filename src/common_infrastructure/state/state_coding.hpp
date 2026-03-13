@@ -15,6 +15,7 @@ struct CodeStateArguments {
     FunctionRef<ErrorCodeOr<void>(void* data, usize bytes)> read_or_write_data;
     StateSource source;
     bool abbreviated_read;
+    bool write_experimental_params;
 };
 
 // "Code" as in decode/encode
@@ -35,4 +36,4 @@ LoadPresetFile(String filepath, ArenaAllocator& scratch_arena, bool abbreviated_
 ErrorCodeOr<StateSnapshot>
 LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_arena, bool abbreviated_read);
 
-ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state);
+ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experimental_params);

@@ -592,7 +592,7 @@ DoActionsColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_c
         auto const btn = DoActionButton(builder,
                                         column,
                                         ICON_FA_SHUFFLE ""_s,
-                                        "Effects (Chaos)"_s,
+                                        "Chaos Effects"_s,
                                         "Randomise all effects"_s,
                                         2);
         if (btn.button_fired) {
@@ -679,10 +679,8 @@ void MidPanelPerformContent(GuiBuilder& builder,
 
         DoActionsColumn(builder, g, frame_context, central_panel);
 
-        // Layers (waveforms)
         DoLayersColumn(builder, g, central_panel);
 
-        // Effects
         DoEffectsColumn(builder, g, central_panel);
     }
 }

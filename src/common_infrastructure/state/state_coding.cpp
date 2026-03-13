@@ -1384,7 +1384,9 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     // =======================================================================================================
     {
         u16 num_params {};
-        if (coder.IsWriting()) num_params = CheckedCast<u16>(k_num_parameters);
+        if (coder.IsWriting())
+            num_params = CheckedCast<u16>(args.write_experimental_params ? k_num_parameters
+                                                                         : k_num_non_experimental_parameters);
         TRY(coder.CodeNumber(num_params, StateVersion::Initial));
 
         // Pre-fill experimental params with defaults. They may not be present in the file if
@@ -1395,7 +1397,11 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                     state.param_values[i] = k_param_descriptors[i].default_linear_value;
         }
 
-        for (auto const i : Range(num_params)) {
+        for (auto const i : Range(coder.IsReading() ? num_params : k_num_parameters)) {
+            if (coder.IsWriting() && !args.write_experimental_params &&
+                k_param_descriptors[i].flags.experimental)
+                continue;
+
             u32 id {};
             f32 linear_value {};
 
@@ -1416,7 +1422,6 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         }
 
         if (coder.IsReading()) {
-
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
 
             // In commit e0b15326e9528ca33de7d3c8f905a3449a36d31a we introduced a bug where the LFO amount was
@@ -1636,7 +1641,7 @@ LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool abbrev
                           abbreviated_read);
 }
 
-ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
+ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
     ArenaAllocatorWithInlineStorage<4000> scratch_arena {Malloc::Instance()};
     if (auto const ext = path::Extension(path); ext != FLOE_PRESET_FILE_EXTENSION) {
         path = fmt::Join(scratch_arena,
@@ -1653,6 +1658,7 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
                       },
                       .source = StateSource::PresetFile,
                       .abbreviated_read = false,
+                      .write_experimental_params = write_experiment_params,
                   }));
     return k_success;
 }
