@@ -1023,12 +1023,13 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
+            auto const vel = Clamp((f32)note.velocity, 0.0f, 1.0f); // MuLab 10 VST3 sent invalid values
 
-            processor.audio_processing_context.midi_note_state.NoteOn(chan_note, (f32)note.velocity);
+            processor.audio_processing_context.midi_note_state.NoteOn(chan_note, vel);
 
             dyn::Append(changes.note_events,
                         {
-                            .velocity = (f32)note.velocity,
+                            .velocity = vel,
                             .offset = event.time - block_start_frame,
                             .note = chan_note,
                             .type = NoteEvent::Type::On,
@@ -1042,12 +1043,13 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
+            auto const vel = Clamp((f32)note.velocity, 0.0f, 1.0f);
 
             processor.audio_processing_context.midi_note_state.NoteOff(chan_note);
 
             dyn::Append(changes.note_events,
                         {
-                            .velocity = (f32)note.velocity,
+                            .velocity = vel,
                             .offset = event.time - block_start_frame,
                             .note = chan_note,
                             .type = NoteEvent::Type::Off,
