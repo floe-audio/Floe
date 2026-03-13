@@ -499,6 +499,11 @@ enum class StateVersion : u16 {
     // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
     AddedMonophonicModeParameter,
 
+    // We accidentally added a new version that did nothing when a #define was off. At the time it was called
+    // AddedGranularRandomPan (later AddedGranular) in 0b10f9488c6a334cd46a5eb606d2ba48acb7c794. Presets made
+    // using 1.2.0-beta.1 may have this version. It's harmless but we still need to track it.
+    Unused1,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
