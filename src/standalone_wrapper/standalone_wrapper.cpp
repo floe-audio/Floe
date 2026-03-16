@@ -911,6 +911,12 @@ static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
 }
 
 static int Main(ArgsCstr args) {
+    GlobalInit({
+        .init_error_reporting = true,
+        .set_main_thread = true,
+    });
+    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+
     enum class CommandLineArgId : u32 {
         ClapPluginPath,
         Count,
@@ -932,12 +938,6 @@ static int Main(ArgsCstr args) {
     auto const cli_args_outcome = ParseCommandLineArgsStandard(arena, args, k_cli_arg_defs);
     if (cli_args_outcome.HasError()) return cli_args_outcome.Error();
     auto const cli_args = cli_args_outcome.ReleaseValue();
-
-    GlobalInit({
-        .init_error_reporting = true,
-        .set_main_thread = true,
-    });
-    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
 
     auto const o = Run(cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(), arena);
     if (o.HasError()) {
