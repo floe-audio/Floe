@@ -47,9 +47,9 @@ inline u32 GrainLengthParamToSamples(f32 param_01, f32 sample_rate) {
 inline u32 GrainsParamToSpawnInterval(f32 param_01, f32 sample_rate) {
     // High param = short interval = more grains. Exponential mapping so that the
     // density change feels even across the knob's range.
-    auto const seconds =
-        k_max_grain_spawn_interval_seconds *
-        Exp2(param_01 * Log2(k_min_grain_spawn_interval_seconds / k_max_grain_spawn_interval_seconds));
+    auto const seconds = k_max_grain_spawn_interval_seconds *
+                         Exp2(param_01 * (f32)constexpr_math::Log2((f64)k_min_grain_spawn_interval_seconds /
+                                                                   (f64)k_max_grain_spawn_interval_seconds));
     return Max(1u, (u32)(seconds * sample_rate));
 }
 
@@ -159,15 +159,15 @@ struct Grain {
 };
 
 struct GrainPool {
-    Array<Grain, k_max_grains_per_voice> grains {};
-    Array<u32, k_max_num_voice_sound_sources> spawn_counters {};
-
     void Reset() {
         for (auto& g : grains)
             g.active = false;
         for (auto& c : spawn_counters)
             c = 0;
     }
+
+    Array<Grain, k_max_grains_per_voice> grains {};
+    Array<u32, k_max_num_voice_sound_sources> spawn_counters {};
 };
 
 // Initialise a grain's playhead based on the given position. Returns false if the grain

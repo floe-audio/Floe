@@ -149,6 +149,10 @@ constexpr double Log(double const x) {
                    : (2.0 * LogHelper(Sqrt(Mantissa(x)))) + (2.3025851 * Exponent(x));
 }
 
+constexpr double k_ln2 = 0.6931471805599453;
+
+constexpr double Log2(double const x) { return Log(x) / k_ln2; }
+
 constexpr double Pow(double base, double exponent) {
     constexpr double k_quiet_nan = __builtin_nan("");
     if (base < 0) return k_quiet_nan;
