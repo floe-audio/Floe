@@ -192,53 +192,6 @@ TEST_CASE(TestAllocatorTypes) {
             if (alloc.data.data) a.Free(alloc.data);
     }
 
-    SUBCASE("speed benchmark") {
-        constexpr usize k_alignment = 8;
-        usize const sizes[] = {1,   16,  16,  16, 16,   32,  32, 32, 32, 32, 40034, 64, 128, 50, 239,
-                               500, 500, 500, 99, 1000, 100, 20, 16, 16, 16, 64,    64, 64,  64, 64,
-                               64,  64,  64,  64, 64,   64,  64, 64, 64, 64, 64,    64, 64};
-
-        constexpr usize k_num_cycles = 10;
-        Span<u8> allocations[ArraySize(sizes) * k_num_cycles];
-
-        Stopwatch const stopwatch;
-
-        for (auto const cycle : Range(k_num_cycles))
-            for (auto const i : Range(ArraySize(sizes)))
-                allocations[(cycle * ArraySize(sizes)) + i] = a.Allocate({sizes[i], k_alignment, true});
-
-        if constexpr (!Same<ArenaAllocator, AllocatorType>)
-            for (auto& alloc : allocations)
-                a.Free(alloc);
-
-        String type_name {};
-        if constexpr (Same<AllocatorType, FixedSizeAllocatorTiny>)
-            type_name = "FixedSizeAllocatorTiny";
-        else if constexpr (Same<AllocatorType, FixedSizeAllocatorSmall>)
-            type_name = "FixedSizeAllocatorSmall";
-        else if constexpr (Same<AllocatorType, FixedSizeAllocatorLarge>)
-            type_name = "FixedSizeAllocatorLarge";
-        else if constexpr (Same<AllocatorType, Malloc>)
-            type_name = "Malloc";
-        else if constexpr (Same<AllocatorType, PageAllocator>)
-            type_name = "PageAllocator";
-        else if constexpr (Same<AllocatorType, ArenaAllocatorMalloc>)
-            type_name = "ArenaAllocatorMalloc";
-        else if constexpr (Same<AllocatorType, ArenaAllocatorPage>)
-            type_name = "ArenaAllocatorPage";
-        else if constexpr (Same<AllocatorType, ArenaAllocatorBigBuf>)
-            type_name = "ArenaAllocatorBigBuf";
-        else if constexpr (Same<AllocatorType, LeakDetectingAllocator>)
-            type_name = "LeakDetectingAllocator";
-        else if constexpr (Same<AllocatorType, LeakDetectingAllocator>)
-            type_name = "LeakDetectingAllocator";
-        else if constexpr (Same<AllocatorType, ArenaAllocatorWithInlineStorage100>)
-            type_name = "ArenaAllocatorWithInlineStorage100";
-        else
-            PanicIfReached();
-
-        tester.log.Debug("Speed benchmark: {} for {}", stopwatch, type_name);
-    }
     return k_success;
 }
 
@@ -368,13 +321,42 @@ TEST_REGISTRATION(RegisterAllocatorTests) {
     REGISTER_TEST(TestArenaAllocatorInlineStorage);
 }
 
-static void BenchmarkArenaAllocator() {
-    ArenaAllocator a {PageAllocator::Instance()};
+template <typename AllocatorType>
+static void BenchmarkAllocatorSpeed() {
+    AllocatorType a;
     constexpr usize k_alignment = 8;
-    usize const sizes[] = {1, 16, 32, 64, 128, 500, 1000};
-    for (auto const _ : Range(10000u))
+    usize const sizes[] = {1,   16,  16,  16, 16,   32,  32, 32, 32, 32, 40034, 64, 128, 50, 239,
+                           500, 500, 500, 99, 1000, 100, 20, 16, 16, 16, 64,    64, 64,  64, 64,
+                           64,  64,  64,  64, 64,   64,  64, 64, 64, 64, 64,    64, 64};
+
+    constexpr usize k_num_cycles = 10000;
+    Span<u8> allocations[ArraySize(sizes) * k_num_cycles];
+
+    for (auto const cycle : Range(k_num_cycles))
         for (auto const i : Range(ArraySize(sizes)))
-            a.Allocate({sizes[i], k_alignment, true});
+            allocations[(cycle * ArraySize(sizes)) + i] = a.Allocate({sizes[i], k_alignment, true});
+
+    if constexpr (!Same<ArenaAllocator, AllocatorType>)
+        for (auto& alloc : allocations)
+            a.Free(alloc);
 }
 
-BENCHMARK_REGISTRATION(RegisterAllocatorBenchmarks) { REGISTER_BENCHMARK(BenchmarkArenaAllocator); }
+BENCHMARK_REGISTRATION(RegisterAllocatorBenchmarks) {
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<Malloc>(); }, "AllocatorSpeed/Malloc");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<PageAllocator>(); },
+                             "AllocatorSpeed/PageAllocator");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<ArenaAllocatorMalloc>(); },
+                             "AllocatorSpeed/ArenaAllocatorMalloc");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<ArenaAllocatorPage>(); },
+                             "AllocatorSpeed/ArenaAllocatorPage");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<ArenaAllocatorBigBuf>(); },
+                             "AllocatorSpeed/ArenaAllocatorBigBuf");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<ArenaAllocatorWithInlineStorage100>(); },
+                             "AllocatorSpeed/ArenaAllocatorWithInlineStorage100");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<FixedSizeAllocatorTiny>(); },
+                             "AllocatorSpeed/FixedSizeAllocatorTiny");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<FixedSizeAllocatorSmall>(); },
+                             "AllocatorSpeed/FixedSizeAllocatorSmall");
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkAllocatorSpeed<FixedSizeAllocatorLarge>(); },
+                             "AllocatorSpeed/FixedSizeAllocatorLarge");
+}
