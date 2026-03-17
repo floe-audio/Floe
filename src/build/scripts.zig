@@ -293,10 +293,16 @@ fn runUpdateCopyrightYears(context: *Context) !u8 {
     for (source_files) |file| {
         const full_path = try std.fs.path.join(allocator, &.{ "src", file });
 
-        // Get git years for this file.
+        // Get git years for this file, excluding commits that only updated copyright years.
         const git_result = std.process.Child.run(.{
             .allocator = allocator,
-            .argv = &.{ "git", "log", "--format=%ad", "--date=format:%Y", "--follow", "--", full_path },
+            .argv = &.{
+                "git",                                      "log",
+                "--format=%ad",                             "--date=format:%Y",
+                "--follow",                                 "--invert-grep",
+                "--grep=run script:update-copyright-years", "--fixed-strings",
+                "--",                                       full_path,
+            },
         }) catch continue;
 
         if (git_result.term != .Exited or git_result.term.Exited != 0) continue;
