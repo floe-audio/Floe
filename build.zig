@@ -255,11 +255,9 @@ const FlagsBuilder = struct {
             try self.flags.append("-DTRACY_MANUAL_LIFETIME");
             try self.flags.append("-DTRACY_DELAYED_INIT");
             try self.flags.append("-DTRACY_ONLY_LOCALHOST");
-            if (cfg.target.os.tag == .linux) {
-                // Couldn't get these working well so just disabling them
-                try self.flags.append("-DTRACY_NO_CALLSTACK");
-                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
-            }
+            // On Linux, sampling and system tracing require:
+            //   echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+            // Or on NixOS, set: boot.kernel.sysctl."kernel.perf_event_paranoid" = -1;
         }
     }
 };
