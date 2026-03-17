@@ -4,6 +4,8 @@
 #include "tests/framework.hpp"
 #include "utils/leak_detecting_allocator.hpp"
 
+#include "benchmarks/framework.hpp"
+
 struct ArenaAllocatorMalloc : ArenaAllocator {
     ArenaAllocatorMalloc() : ArenaAllocator(Malloc::Instance()) {}
 };
@@ -365,3 +367,14 @@ TEST_REGISTRATION(RegisterAllocatorTests) {
     REGISTER_TEST(TestArenaAllocatorCursor);
     REGISTER_TEST(TestArenaAllocatorInlineStorage);
 }
+
+static void BenchmarkArenaAllocator() {
+    ArenaAllocator a {PageAllocator::Instance()};
+    constexpr usize k_alignment = 8;
+    usize const sizes[] = {1, 16, 32, 64, 128, 500, 1000};
+    for (auto const _ : Range(10000u))
+        for (auto const i : Range(ArraySize(sizes)))
+            a.Allocate({sizes[i], k_alignment, true});
+}
+
+BENCHMARK_REGISTRATION(RegisterAllocatorBenchmarks) { REGISTER_BENCHMARK(BenchmarkArenaAllocator); }

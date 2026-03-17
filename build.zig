@@ -519,6 +519,7 @@ pub fn build(b: *std.Build) void {
         .pluginval = b.step("test:pluginval", "Test using pluginval"),
         .valgrind = b.step("test:valgrind", "Test using Valgrind"),
         .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
+        .benchmark = b.step("benchmark", "Run benchmarks"),
         .ci = b.step("script:ci", "Run CI checks"),
         .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
 
@@ -942,6 +943,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
         "src/utils/leak_detecting_allocator.cpp",
         "src/utils/no_hash.cpp",
         "src/tests/framework.cpp",
+        "src/benchmarks/framework.cpp",
         "src/utils/logger/logger.cpp",
         "src/foundation/utils/string.cpp",
         "src/os/filesystem.cpp",
@@ -2713,6 +2715,34 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     return exe;
 }
 
+fn buildBenchmarks(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "benchmarks",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/common_infrastructure/final_binary_type.cpp",
+            "src/benchmarks/benchmarks_main.cpp",
+            "src/foundation/memory/allocators.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Benchmarks");
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.linkLibrary(deps.plugin);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
 fn doTarget(
     ctx: *BuildContext,
     cfg: *const TargetConfig,
@@ -3111,6 +3141,28 @@ fn doTarget(
             top_level_steps.valgrind.dependOn(
                 &ctx.b.addFail("valgrind not allowed for this build configuration").step,
             );
+        }
+    }
+
+    // Benchmarks (not needed in production builds).
+    if (ctx.build_mode != .production) {
+        const exe = buildBenchmarks(ctx, cfg, .{ .plugin = plugin });
+
+        const benchmark_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
+
+        const install = ctx.b.addInstallBinFile(benchmark_binary, exe.out_filename);
+        top_level_steps.install_all.dependOn(&install.step);
+
+        // Run benchmarks
+        {
+            const run_benchmarks = std.Build.Step.Run.create(ctx.b, "run benchmarks");
+            run_benchmarks.addFileArg(benchmark_binary);
+
+            // Forward user args passed after "--" to zig build.
+            if (ctx.b.args) |args|
+                run_benchmarks.addArgs(args);
+
+            top_level_steps.benchmark.dependOn(&run_benchmarks.step);
         }
     }
 

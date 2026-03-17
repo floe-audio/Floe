@@ -124,7 +124,8 @@ void GlobalInit(GlobalInitOptions options) {
                             case FinalBinaryType::WindowsInstaller:
                             case FinalBinaryType::WindowsUninstaller:
                             case FinalBinaryType::DocsGenerator:
-                            case FinalBinaryType::Tests: d = LogConfig::Destination::Stderr; break;
+                            case FinalBinaryType::Tests:
+                            case FinalBinaryType::Benchmarks: d = LogConfig::Destination::Stderr; break;
                         }
                     }
                     d;

@@ -77,6 +77,7 @@ pub const TopLevelSteps = struct {
     pluginval: *std.Build.Step,
     valgrind: *std.Build.Step,
     test_windows_install: *std.Build.Step,
+    benchmark: *std.Build.Step,
     ci: *std.Build.Step,
     ci_basic: *std.Build.Step,
 
