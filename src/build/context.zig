@@ -18,6 +18,7 @@ pub const Options = struct {
     enable_tracy: bool,
     sanitize_thread: bool,
     fetch_floe_logos: bool,
+    no_runtime_safety_checks: bool,
     targets: ?[]const u8,
 };
 
@@ -113,6 +114,7 @@ pub const TargetConfig = struct {
             hasher.update(std.mem.asBytes(&options.enable_tracy));
             hasher.update(std.mem.asBytes(&options.sanitize_thread));
             hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
+            hasher.update(std.mem.asBytes(&options.no_runtime_safety_checks));
             break :blk hasher.final();
         };
 

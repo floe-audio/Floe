@@ -191,8 +191,8 @@ const FlagsBuilder = struct {
         // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
         try self.flags.append("-gdwarf-4");
 
-        if (options.ubsan) {
-            if (ctx.optimise != .ReleaseFast) {
+        if (ctx.optimise != .ReleaseFast) {
+            if (options.ubsan) {
                 // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch
                 // undefined behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a
                 // mode where undefined behaviour will instead call various functions. This is called the UBSan
@@ -205,9 +205,9 @@ const FlagsBuilder = struct {
                 if (minimal_runtime_mode) {
                     try self.flags.append("-fsanitize-runtime"); // set it to 'minimal' mode
                 }
+            } else {
+                try self.flags.append("-fno-sanitize=all");
             }
-        } else {
-            try self.flags.append("-fno-sanitize=all");
         }
 
         if (options.cpp) {
@@ -442,6 +442,11 @@ pub fn build(b: *std.Build) void {
             "fetch-floe-logos",
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
         ) orelse false,
+        .no_runtime_safety_checks = b.option(
+            bool,
+            "no-runtime-safety-checks",
+            "In optimised builds, don't include UBSAN or other runtime safety checks",
+        ) orelse false,
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 
@@ -471,7 +476,7 @@ pub fn build(b: *std.Build) void {
         .build_mode = options.build_mode,
         .optimise = switch (options.build_mode) {
             .development => std.builtin.OptimizeMode.Debug,
-            .performance_profiling, .production => std.builtin.OptimizeMode.ReleaseSafe,
+            .performance_profiling, .production => if (options.no_runtime_safety_checks) std.builtin.OptimizeMode.ReleaseFast else std.builtin.OptimizeMode.ReleaseSafe,
         },
         .windows_installer_require_admin = options.windows_installer_require_admin,
 
