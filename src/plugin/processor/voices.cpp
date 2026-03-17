@@ -6,6 +6,7 @@
 #include <clap/ext/thread-pool.h>
 
 #include "foundation/foundation.hpp"
+#include "tests/framework.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 
 #include "common_infrastructure/constants.hpp"
@@ -189,8 +190,8 @@ void UpdateXfade(Voice& v, f32 knob_pos_01, bool hard_set) {
         auto const overlap_size = overlap_high - overlap_low;
         auto const pos = (knob_pos - overlap_low) / (f32)overlap_size;
         ASSERT(pos >= 0 && pos <= 1);
-        set_xfade_smoother(*voice_sample_1, trig_table_lookup::SinTurns((1 - pos) * 0.25f));
-        set_xfade_smoother(*voice_sample_2, trig_table_lookup::SinTurns(pos * 0.25f));
+        set_xfade_smoother(*voice_sample_1, QuarterSineFade(1 - pos));
+        set_xfade_smoother(*voice_sample_2, QuarterSineFade(pos));
     }
 }
 
@@ -292,43 +293,14 @@ void UpdateLoopInfo(Voice& v) {
     }
 }
 
-// These functions are from JUCE.
-//
-// Copyright (c) Raw Material Software Limited
-// SPDX-License-Identifier: AGPL-3.0-only
-//
-// JUCE Pade approximation of sin valid from -PI to PI with max error of 1e-5 and average error of
-// 5e-7
-inline auto FastSin(ScalarOrVectorFloat auto x) {
-    using T = Conditional<Vector<decltype(x)>, UnderlyingTypeOfVec<decltype(x)>, decltype(x)>;
-    auto const x2 = x * x;
-    auto const numerator =
-        -x * (-T(11511339840) + x2 * (T(1640635920) + x2 * (-T(52785432) + x2 * T(479249))));
-    auto const denominator = T(11511339840) + (x2 * (T(277920720) + x2 * (T(3177720) + x2 * T(18361))));
-    return numerator / denominator;
-}
-
-// JUCE Pade approximation of cos valid from -PI to PI with max error of 1e-5 and average error of
-// 5e-7
-inline auto FastCos(ScalarOrVectorFloat auto x) {
-    using T = Conditional<Vector<decltype(x)>, UnderlyingTypeOfVec<decltype(x)>, decltype(x)>;
-    auto const x2 = x * x;
-    auto const numerator = -(-T(39251520) + (x2 * (T(18471600) + x2 * (-1075032 + 14615 * x2))));
-    auto const denominator = T(39251520) + (x2 * (1154160 + x2 * (16632 + x2 * 127)));
-    return numerator / denominator;
-}
-
 // SIMD version where 2 pan positions are processed at once.
 // The result is a vector of 4 floats: {left 1, right 1, left 2, right 2}.
 // Constant power pan law (AKA -3dB centre).
+// pan_pos is in [-1, 1] where -1 is hard left and 1 is hard right.
 inline f32x4 EqualPanGains2(f32x2 pan_pos) {
-    auto const angle = pan_pos * (k_pi<f32> * 0.25f);
-    auto const sinx = FastSin(angle);
-    auto const cosx = FastCos(angle);
-
-    constexpr auto k_root_2_over_2 = k_sqrt_two<> / 2;
-    auto const left = k_root_2_over_2 * (cosx - sinx);
-    auto const right = k_root_2_over_2 * (cosx + sinx);
+    auto const half_pos = pan_pos * 0.5f;
+    auto const right = QuarterSineFade(half_pos + 0.5f);
+    auto const left = QuarterSineFade(0.5f - half_pos);
     ASSERT_HOT(All(left >= -0.00001f) && All(right >= -0.00001f));
 
     return __builtin_shufflevector(left, right, 0, 2, 1, 3);
@@ -418,7 +390,7 @@ void StartVoice(VoicePool& pool,
 
             UpdateXfade(voice, sampler.initial_timbre_param_value_01, true);
 
-            if (IsGranular(voice_controller.play_mode)) voice.grain_pool.Reset();
+            if (IsGranular(voice_controller.play_mode)) voice.grain_pool.Reset(sample_rate);
 
             if (sampler.voice_sample_params.size) {
                 if (sampler.voice_sample_params[0].region.trigger.trigger_event ==
@@ -704,7 +676,7 @@ struct VoiceProcessor {
                     pos >= 0 && pos < sampler.region->audio_props.fade_in_frames) {
                     auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
                     // Quarter-sine fade in.
-                    auto const amount = trig_table_lookup::SinTurnsPositive((f32)percent * 0.25f);
+                    auto const amount = QuarterSineFade((f32)percent);
                     out *= amount;
                 }
             }
@@ -764,148 +736,287 @@ struct VoiceProcessor {
                                                 Span<f32x2> buffer,
                                                 Span<f32 const> lfo_amounts,
                                                 AudioProcessingContext const& context) {
+        ZoneNamedN(granular_zone, "Granular Synthesis", true);
         auto const& ctrl = *voice.controller;
         auto const is_fixed = ctrl.play_mode == param_values::PlayMode::GranularFixed;
         auto& pool = voice.grain_pool;
         auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
         auto const num_frames = sampler.data->num_frames;
 
-        // Track which frame each grain should start processing from in this block. Grains that
-        // were already active before this block start from frame 0. Grains spawned mid-block
-        // start from their spawn frame. We use the grain index as the key.
-        Array<u32, k_max_grains_per_voice> grain_start_frame {};
+#ifdef TRACY_ENABLE
+        {
+            u32 num_active = 0;
+            for (auto const& g : pool.grains)
+                if (g.active) num_active++;
+            ZoneTextVF(granular_zone,
+                       "%u active grains, %u frames, %u ch",
+                       num_active,
+                       num_frames,
+                       sampler.data->channels);
+            TracyPlot("Active Grains", (s64)num_active);
+        }
+#endif
 
-        // Pre-compute per-sample pitch ratios and xfade volumes. These use stateful smoothers
-        // that must be advanced once per sample.
+        // Running grains start at frame 0, but for newly spawned grains there might be an offset.
+        Array<u8, k_max_grains_per_voice> grain_start_frame {};
+        static_assert(LargestRepresentableValue<decltype(grain_start_frame)::ValueType>() >=
+                      k_block_size_max);
+
+        // Pre-compute source-wide values - all grains will refer to these.
         Array<f64, k_block_size_max> pitch_ratios;
-        Array<f32, k_block_size_max> xfade_vols;
-        for (auto const frame_index : Range(buffer.size)) {
-            pitch_ratios[frame_index] = PitchRatio(voice, s, lfo_amounts[frame_index], context);
-            xfade_vols[frame_index] =
-                sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol, context.one_pole_smoothing_cutoff_10ms);
+        alignas(alignof(f32x4)) Array<f32x2, k_block_size_max> xfade_vols;
+        {
+            ZoneNamedN(precompute, "Granular: Precompute", true);
+
+            for (auto const frame_index : Range(buffer.size))
+                pitch_ratios[frame_index] = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+
+            for (auto const frame_index : Range(buffer.size)) {
+                xfade_vols[frame_index] =
+                    sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
+                                                       context.one_pole_smoothing_cutoff_10ms);
+            }
+            for (auto const frame_index : Range<usize>(buffer.size, k_block_size_max))
+                xfade_vols[frame_index] = 0;
         }
 
         // The frame at which the source becomes dead (past-end without a loop). If the source
         // stays alive for the entire block this remains == buffer.size.
-        auto source_dead_frame = (u32)buffer.size;
+        auto source_dead_frame = buffer.size;
 
         // --- Pass 1: advance main playhead and spawn grains. ---
-        for (auto const frame_index : Range(buffer.size)) {
-            bool source_alive;
-            if (is_fixed) {
-                sampler.playhead.frame_pos = (f64)ctrl.granular.position * (f64)(num_frames - 1);
-                source_alive = true;
-            } else if (PlaybackEnded(sampler.playhead, num_frames)) {
-                source_alive = false;
-            } else {
-                auto const rate_ratio = (f64)sampler.data->sample_rate / (f64)context.sample_rate;
-                IncrementPlaybackPos(sampler.playhead, (f64)ctrl.granular.speed * rate_ratio, num_frames);
-                source_alive = true;
-            }
+        {
+            ZoneNamedN(granular_pass1, "Granular: Spawn Grains", true);
 
-            if (!source_alive && source_dead_frame == buffer.size) source_dead_frame = (u32)frame_index;
+            if (is_fixed) sampler.playhead.frame_pos = (f64)ctrl.granular.position * (f64)(num_frames - 1);
+            auto const rate_ratio = (f64)sampler.data->sample_rate / (f64)context.sample_rate;
 
-            // Spawn check for this source.
-            if (pool.spawn_counters[source_index] == 0 && source_alive) {
-                // Find first inactive grain slot.
-                Grain* new_grain = nullptr;
-                usize new_grain_index = 0;
-                for (auto [gi, g] : Enumerate(pool.grains)) {
-                    if (!g.active) {
-                        new_grain = &g;
-                        new_grain_index = gi;
-                        break;
-                    }
+            for (auto const frame_index : Range(buffer.size)) {
+                if (is_fixed) {
+                    // Fixed mode: source never dies.
+                } else if (!PlaybackEnded(sampler.playhead, num_frames)) {
+                    IncrementPlaybackPos(sampler.playhead, (f64)ctrl.granular.speed * rate_ratio, num_frames);
+                } else {
+                    source_dead_frame = frame_index;
+                    break;
                 }
 
-                if (new_grain) {
-                    // Spread goes from the playhead position onwards (in the frame_pos
-                    // direction, which always increases). A random 0-1 value selects where
-                    // within the spread region the grain spawns.
+                // Spawn check for this source.
+                if (pool.spawn_counters[source_index] == 0) {
+                    // Find first inactive grain slot.
+                    Grain* new_grain = nullptr;
+                    usize new_grain_index = 0;
+                    for (auto [gi, g] : Enumerate(pool.grains)) {
+                        if (!g.active) {
+                            new_grain = &g;
+                            new_grain_index = gi;
+                            break;
+                        }
+                    }
+
+                    // It's unlikely we couldn't find an inactive grain since we have a stealing process that
+                    // should have already run. However, if it got to this state then we just don't spawn and
+                    // try again next block.
+                    if (!new_grain) {
+                        // Push the spawn counter to the next block since it's wasteful to keep checking for
+                        // inactive grains every frame - activeness only changes at the end of this block.
+                        pool.spawn_counters[source_index] = (u32)(buffer.size - frame_index);
+                        continue;
+                    }
+
+                    // We need some random floats in a few places, we already have SIMD support for
+                    // generating 4 randoms at once, so we can save a few instructions.
+                    auto const r1 = FastRand01(voice.random_seed);
+                    auto const r2 = FastRand01(voice.random_seed);
+                    auto const spread_rand = r1[0];
+                    auto const length_jitter_rand = r1[1];
+                    auto const pan_rand = r1[2];
+                    auto const detune_rand = r1[3];
+                    auto const density_jitter_rand = r2[0];
+
                     auto const spread_fraction = GrainSpreadParamToFraction(ctrl.granular.spread);
-                    auto const rand_01 = (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand;
-                    auto const spread_offset = (f64)(rand_01 * spread_fraction) * (f64)num_frames;
+                    auto const spread_offset = (f64)(spread_rand * spread_fraction) * (f64)num_frames;
 
                     auto const grain_pos = sampler.playhead.frame_pos + spread_offset;
 
                     if (InitGrainPlayhead(*new_grain, grain_pos, sampler.playhead, num_frames, is_fixed)) {
                         new_grain->source_index = source_index;
-                        new_grain->duration_samples =
-                            GrainLengthParamToSamples(ctrl.granular.length, context.sample_rate);
-                        new_grain->samples_elapsed = 0;
+                        new_grain->env_phase_inc = ({
+                            auto const base =
+                                GrainLengthParamToSamples(ctrl.granular.length, context.sample_rate);
+                            constexpr f32 k_jitter_amount = 0.15f;
+                            auto const scale = 1.0f + ((length_jitter_rand * 2.0f - 1.0f) * k_jitter_amount);
+                            1.0f / (f32)Max(1u, (u32)(scale * (f32)base));
+                        });
+                        new_grain->env_phase = 0;
                         new_grain->active = true;
-                        grain_start_frame[new_grain_index] = (u32)frame_index;
+                        new_grain->steal_fade = 1.0f;
+                        new_grain->steal_fade_dec = 0;
+                        pool.num_active_non_stealing++;
+                        grain_start_frame[new_grain_index] = (u8)frame_index;
 
-                        // Assign a random pan position scaled by the random_pan parameter.
-                        // At 0% all grains are centred, at 100% grains span fully left to right.
-                        auto const pan_rand =
-                            (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
-                        new_grain->pan_pos = (pan_rand * 2.0f - 1.0f) * ctrl.granular.random_pan;
+                        // Random pan.
+                        {
+                            new_grain->pan_pos = (pan_rand * 2.0f - 1.0f) * ctrl.granular.random_pan;
+                        }
 
-                        // Assign a random detune ratio scaled by the random_detune parameter.
-                        // At 0% all grains play at original pitch, at 100% grains can be
-                        // detuned up to 1 semitone up or down.
+                        // Random detune.
                         if (ctrl.granular.random_detune > 0.0001f) {
-                            auto const detune_rand =
-                                (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
                             auto const detune_semitones =
                                 (f64)((detune_rand * 2.0f) - 1.0f) * (f64)ctrl.granular.random_detune;
                             new_grain->detune_ratio = Exp2(detune_semitones / 12.0);
                         } else {
                             new_grain->detune_ratio = 1.0;
                         }
-                    }
-                }
 
-                {
-                    auto const base_interval =
-                        GrainsParamToSpawnInterval(ctrl.granular.density, context.sample_rate);
-                    // Add slight randomness to avoid a machine-gun effect.
-                    constexpr f32 k_jitter_amount = 0.25f; // ± this fraction of the base interval.
-                    auto const jitter_01 = (f32)FastRand(voice.random_seed) / (f32)k_max_fast_rand; // 0 to 1
-                    auto const scale =
-                        1.0f + ((jitter_01 * 2.0f - 1.0f) * k_jitter_amount); // 1 ± k_jitter_amount
-                    pool.spawn_counters[source_index] = Max(1u, (u32)(scale * (f32)base_interval));
+                        // If the grain pool is nearing full, we initiate quick fade-outs for grains to that
+                        // hopefully by the time we next want to spawn a grain, we have inactive ones to pick
+                        // from.
+                        if (pool.num_active_non_stealing > k_grain_steal_threshold) {
+                            // We pick one randomly to avoid any unpleasant-sounding regularity.
+                            auto const pick = FastRand(voice.random_seed).x % pool.num_active_non_stealing;
+                            u32 index = 0;
+                            for (auto& g : pool.grains) {
+                                if (!g.active || g.IsStealing() || &g == new_grain) continue;
+                                if (index == pick) {
+                                    g.steal_fade_dec = pool.steal_fade_dec_value;
+                                    pool.num_active_non_stealing--;
+                                    break;
+                                }
+                                index++;
+                            }
+                        }
+                    }
+
+                    // Set the new spawn point.
+                    {
+                        // 'Density' controls how often grains are spawned, but we add a little random
+                        // jitter too to avoid the machine-gun affect that could occur in some particular
+                        // situations.
+                        auto const base_interval =
+                            GrainsParamToSpawnInterval(ctrl.granular.density, context.sample_rate);
+                        constexpr f32 k_jitter_amount = 0.25f;
+                        auto const scale = 1.0f + ((density_jitter_rand * 2.0f - 1.0f) * k_jitter_amount);
+                        pool.spawn_counters[source_index] = Max(1u, (u32)(scale * (f32)base_interval));
+                    }
+                } else {
+                    pool.spawn_counters[source_index]--;
                 }
-            } else if (source_alive) {
-                pool.spawn_counters[source_index]--;
             }
         }
 
         // --- Pass 2: process each grain across its full range of the buffer. ---
-        // This is the core improvement: each grain reads its audio data sequentially,
-        // giving much better cache/memory access patterns than the previous per-sample approach.
-        for (auto [grain_index, grain] : Enumerate(pool.grains)) {
-            if (!grain.active || grain.source_index != source_index) continue;
+        {
+            ZoneNamedN(granular_pass2, "Granular: Process Grains", true);
 
-            auto const start = grain_start_frame[grain_index];
-            auto const smoothing = ctrl.granular.smoothing;
-            auto const amp = s.amp;
+            // Grain envelope shape constant: smoothing controls how much of the
+            // grain's duration is used for fade-in/fade-out. Hoisted here because
+            // it's the same for every grain in this voice.
+            auto const env_inv_fade = 1.0f / Max(ctrl.granular.smoothing * 0.5f, 0.001f);
 
-            // Pre-compute per-grain pan gains using the constant-power pan law.
-            // EqualPanGains2 processes 2 pan positions at once; we duplicate ours.
-            auto const pan_gains_vec = EqualPanGains2(f32x2 {grain.pan_pos, grain.pan_pos});
-            auto const grain_pan_gains = pan_gains_vec.xy; // {left, right}
+            for (auto [grain_index, grain] : Enumerate(pool.grains)) {
+                if (!grain.active || grain.source_index != source_index) continue;
 
-            for (auto frame_index = start; frame_index < buffer.size; ++frame_index) {
-                auto const phase = (f32)grain.samples_elapsed / (f32)Max(1u, grain.duration_samples);
-                auto const envelope = GrainEnvelope(phase, smoothing);
+                auto const start = grain_start_frame[grain_index];
+                auto end = buffer.size;
 
-                if (!PlaybackEnded(grain.playhead, num_frames)) {
-                    auto const sample = GetSampleFrame(*sampler.data, grain.playhead);
+                // --- Fetch samples and advance playhead ---
+                alignas(alignof(f32x4)) Array<f32x2, k_block_size_max> grain_samples {};
+                {
+                    ZoneNamedN(fetch_zone, "Grain: GetSampleFrame", true);
 
-                    buffer[frame_index] +=
-                        sample * grain_pan_gains * envelope * amp * xfade_vols[frame_index];
-
-                    IncrementPlaybackPos(grain.playhead,
-                                         pitch_ratios[frame_index] * grain.detune_ratio,
-                                         num_frames);
+                    for (auto const i : Range<usize>(start, buffer.size)) {
+                        if (!PlaybackEnded(grain.playhead, num_frames)) {
+                            grain_samples[i] = GetSampleFrame(*sampler.data, grain.playhead);
+                            IncrementPlaybackPos(grain.playhead,
+                                                 pitch_ratios[i] * grain.detune_ratio,
+                                                 num_frames);
+                        } else {
+                            end = i;
+                            break;
+                        }
+                    }
                 }
 
-                grain.samples_elapsed++;
-                if (grain.samples_elapsed >= grain.duration_samples) {
-                    grain.active = false;
-                    break;
+                alignas(alignof(f32x4)) Array<f32x2, k_block_size_max> grain_gains {};
+
+                // --- Calculate gains ---
+                {
+                    ZoneNamedN(mix_zone, "Grain: Gain calc", true);
+
+                    auto const amp = s.amp;
+                    auto const grain_pan_gains = EqualPanGains2(f32x2(grain.pan_pos)).xy;
+
+                    // Constants.
+                    auto const amp4 =
+                        __builtin_shufflevector(grain_pan_gains, grain_pan_gains, 0, 1, 0, 1) * amp;
+                    for (u32 i = 0; i < k_block_size_max; i += 2)
+                        *(f32x4*)(void*)(&grain_gains[i]) = amp4;
+
+                    // Xfade.
+                    for (u32 i = 0; i < k_block_size_max; i += 2)
+                        *(f32x4*)(void*)(&grain_gains[i]) *= *(f32x4*)(void*)(&xfade_vols[i]);
+
+                    // Envelopes.
+                    {
+                        static_assert(k_block_size_max % 4 == 0);
+                        alignas(alignof(f32x4)) Array<f32, k_block_size_max> env_scalars;
+                        {
+                            auto const phase_inc = grain.env_phase_inc;
+                            auto const steal_dec = grain.steal_fade_dec;
+                            f32x4 phases = grain.env_phase + (phase_inc * f32x4 {0, 1, 2, 3});
+                            f32x4 steals = grain.steal_fade - (steal_dec * f32x4 {0, 1, 2, 3});
+                            auto const phase_inc4 = phase_inc * 4;
+                            auto const steal_dec4 = steal_dec * 4;
+
+                            for (u32 i = 0; i < k_block_size_max; i += 4) {
+                                auto const rise = Clamp01(phases * env_inv_fade);
+                                auto const fall = Clamp01((f32x4 {1, 1, 1, 1} - phases) * env_inv_fade);
+                                auto const env = QuarterSineFade(rise) * QuarterSineFade(fall);
+                                auto const fade = Max(steals, f32x4 {0, 0, 0, 0});
+                                *(f32x4*)(void*)(&env_scalars[i]) = env * fade;
+                                phases += phase_inc4;
+                                steals -= steal_dec4;
+                            }
+                        }
+
+                        // Zero out-of-range entries (before start and after end).
+                        for (u32 i = 0; i < start; ++i)
+                            env_scalars[i] = 0;
+                        for (auto i = end; i < k_block_size_max; ++i)
+                            env_scalars[i] = 0;
+
+                        for (u32 i = 0; i < k_block_size_max; i += 2) {
+                            auto const env_pair = *(f32x2*)(void*)(&env_scalars[i]);
+                            auto const expanded = __builtin_shufflevector(env_pair, env_pair, 0, 0, 1, 1);
+                            *(f32x4*)(void*)(&grain_gains[i]) *= expanded;
+                        }
+                    }
+
+                    // Advance phases.
+                    {
+                        auto const frames_processed = (f32)(end - start);
+                        grain.env_phase += grain.env_phase_inc * frames_processed;
+                        grain.steal_fade -= grain.steal_fade_dec * frames_processed;
+                        if (grain.env_phase >= 1.0f || grain.steal_fade <= 0.0f) {
+                            grain.active = false;
+                            if (grain.steal_fade > 0.0f) pool.num_active_non_stealing--;
+                        }
+                    }
+                }
+
+                // --- Mix into buffer ---
+                {
+                    ZoneNamedN(mix_zone, "Grain: Mix", true);
+
+                    for (usize i = 0; i < buffer.size; i += 2) {
+                        auto const samples = *(f32x4*)(void*)(&grain_samples[i]);
+                        auto const gains = *(f32x4*)(void*)(&grain_gains[i]);
+                        f32x4 buf;
+                        __builtin_memcpy_inline(&buf, &buffer[i], sizeof(f32x4));
+                        buf = Fma<f32x4>(samples, gains, buf);
+                        __builtin_memcpy_inline(&buffer[i], &buf, sizeof(f32x4));
+                    }
                 }
             }
         }
@@ -925,17 +1036,20 @@ struct VoiceProcessor {
         return true;
     }
 
-    static constexpr unsigned int k_max_fast_rand = 0x7FFF;
+    static constexpr u32 k_max_fast_rand = 0x7FFF;
 
-    static void ScaleDownRandom(f32x2& val) {
-        f32x2 constexpr k_random_num_to_01_scale = 1.0f / (f32)k_max_fast_rand;
-        f32x2 constexpr k_scale = 0.5f * 0.2f;
-        val = ((val * k_random_num_to_01_scale) * 2 - 1) * k_scale;
-    }
-
-    static int FastRand(unsigned int& seed) {
+    static u32x4 FastRand(u32x4& seed) {
         seed = ((214013 * seed) + 2531011);
         return (seed >> 16) & k_max_fast_rand;
+    }
+
+    static f32x4 FastRand01(u32x4& seed) {
+        return ConvertVector(FastRand(seed), f32x4) / (f32)k_max_fast_rand;
+    }
+
+    static f32x4 RandomWhiteNoiseSample(u32x4& seed) {
+        auto constexpr k_scale = 0.5f * 0.2f;
+        return ((FastRand01(seed) * 2.0f) - 1.0f) * k_scale;
     }
 
     static void FillBufferWithSampleData(Voice& voice,
@@ -990,17 +1104,13 @@ struct VoiceProcessor {
                             break;
                         }
                         case WaveformType::WhiteNoiseMono: {
-                            for (auto& val : buffer) {
-                                val = (f32)FastRand(voice.random_seed);
-                                ScaleDownRandom(val);
-                            }
+                            for (auto& val : buffer)
+                                val = RandomWhiteNoiseSample(voice.random_seed).x;
                             break;
                         }
                         case WaveformType::WhiteNoiseStereo: {
-                            for (auto& val : buffer) {
-                                val = {(f32)FastRand(voice.random_seed), (f32)FastRand(voice.random_seed)};
-                                ScaleDownRandom(val);
-                            }
+                            for (auto& val : buffer)
+                                val = RandomWhiteNoiseSample(voice.random_seed).xy;
 
                             for (auto& val : buffer) {
                                 alignas(16) f32 samples[2];
@@ -1245,3 +1355,54 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
     pool.voice_fil_env_markers_for_gui.Publish();
     pool.grain_markers_for_gui.Publish();
 }
+
+TEST_CASE(TestEqualPanGains) {
+    constexpr f32 k_epsilon = 1e-3f;
+    constexpr auto k_root_2_over_2 = k_sqrt_two<> / 2;
+
+    SUBCASE("centre") {
+        auto const gains = EqualPanGains2(f32x2 {0, 0});
+        // {left1, right1, left2, right2}
+        REQUIRE(ApproxEqual(gains[0], k_root_2_over_2, k_epsilon));
+        REQUIRE(ApproxEqual(gains[1], k_root_2_over_2, k_epsilon));
+        REQUIRE(ApproxEqual(gains[2], k_root_2_over_2, k_epsilon));
+        REQUIRE(ApproxEqual(gains[3], k_root_2_over_2, k_epsilon));
+    }
+
+    SUBCASE("hard left") {
+        auto const gains = EqualPanGains2(f32x2 {-1, -1});
+        REQUIRE(ApproxEqual(gains[0], 1.0f, k_epsilon));
+        REQUIRE(ApproxEqual(gains[1], 0.0f, k_epsilon));
+    }
+
+    SUBCASE("hard right") {
+        auto const gains = EqualPanGains2(f32x2 {1, 1});
+        REQUIRE(ApproxEqual(gains[0], 0.0f, k_epsilon));
+        REQUIRE(ApproxEqual(gains[1], 1.0f, k_epsilon));
+    }
+
+    SUBCASE("constant power: left^2 + right^2 == 1") {
+        for (int i = -10; i <= 10; i++) {
+            auto const pan = (f32)i / 10.0f;
+            auto const gains = EqualPanGains2(f32x2 {pan, pan});
+            auto const left = gains[0];
+            auto const right = gains[1];
+            auto const power = (left * left) + (right * right);
+            REQUIRE(ApproxEqual(power, 1.0f, k_epsilon));
+        }
+    }
+
+    SUBCASE("symmetry: pan left == mirror of pan right") {
+        for (int i = 0; i <= 10; i++) {
+            auto const pan = (f32)i / 10.0f;
+            auto const gains = EqualPanGains2(f32x2 {pan, -pan});
+            // left of +pan should equal right of -pan
+            REQUIRE(ApproxEqual(gains[0], gains[3], k_epsilon));
+            REQUIRE(ApproxEqual(gains[1], gains[2], k_epsilon));
+        }
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterVoiceTests) { REGISTER_TEST(TestEqualPanGains); }

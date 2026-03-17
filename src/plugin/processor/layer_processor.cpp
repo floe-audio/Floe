@@ -265,8 +265,8 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                 auto const overlap_size = overlap_high - overlap_low;
                 auto const pos = (note_vel - overlap_low) / (f32)overlap_size;
                 ASSERT(pos >= 0 && pos <= 1);
-                auto const amp1 = trig_table_lookup::SinTurnsPositive((1 - pos) * 0.25f);
-                auto const amp2 = trig_table_lookup::SinTurnsPositive(pos * 0.25f);
+                auto const amp1 = QuarterSineFade(1 - pos);
+                auto const amp2 = QuarterSineFade(pos);
                 feather_region_1->amp *= amp1;
                 feather_region_2->amp *= amp2;
             }

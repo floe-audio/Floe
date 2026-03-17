@@ -74,7 +74,22 @@ TEST_CASE(TestMathsTrigTurns) {
     return k_success;
 }
 
+TEST_CASE(TestQuarterSineFade) {
+    REQUIRE(QuarterSineFade(0.0f) == 0);
+    REQUIRE(ApproxEqual(QuarterSineFade(1.0f), 1.0f, 1e-4f));
+
+    REQUIRE(ApproxEqual(QuarterSineFade(0.5f), 0.7071068f, 1e-4f));
+
+    for (int i = 0; i <= 100; i++) {
+        auto const x = (f32)i / 100.0f;
+        auto const expected = Sin(x * (k_pi<> / 2.0f));
+        REQUIRE(ApproxEqual(QuarterSineFade(x), expected, 1e-3f));
+    }
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterMathsTests) {
     REGISTER_TEST(TestTrigLookupTable);
     REGISTER_TEST(TestMathsTrigTurns);
+    REGISTER_TEST(TestQuarterSineFade);
 }

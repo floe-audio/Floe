@@ -31,9 +31,9 @@ inline f32 GrainSpreadParamToFraction(f32 param_value) {
            (param_value * (k_max_grain_spread_fraction - k_min_grain_spread_fraction));
 }
 
-constexpr u32 k_max_grains_per_voice = 64;
+constexpr u32 k_max_grains_per_voice = 150;
 constexpr f32 k_min_grain_length_seconds = 0.005f;
-constexpr f32 k_max_grain_length_seconds = 1.0f;
+constexpr f32 k_max_grain_length_seconds = 2.0f;
 constexpr f32 k_min_grain_spawn_interval_seconds = 0.001f;
 constexpr f32 k_max_grain_spawn_interval_seconds = 0.5f;
 
@@ -51,27 +51,6 @@ inline u32 GrainsParamToSpawnInterval(f32 param_01, f32 sample_rate) {
                          Exp2(param_01 * (f32)constexpr_math::Log2((f64)k_min_grain_spawn_interval_seconds /
                                                                    (f64)k_max_grain_spawn_interval_seconds));
     return Max(1u, (u32)(seconds * sample_rate));
-}
-
-// Trapezoidal envelope with quarter-sine curves.
-// smoothing=0 -> rectangular, smoothing=1 -> full raised-cosine (Hann-like).
-inline f32 GrainEnvelope(f32 phase_01, f32 smoothing) {
-    if (smoothing < 0.001f) return 1.0f;
-
-    // The fade region is smoothing/2 at each end.
-    auto const fade = smoothing * 0.5f;
-
-    if (phase_01 < fade) {
-        // Fade in: quarter-sine from 0 to 1.
-        auto const t = phase_01 / fade;
-        return trig_table_lookup::SinTurnsPositive(t * 0.25f);
-    }
-    if (phase_01 > (1.0f - fade)) {
-        // Fade out: quarter-sine from 1 to 0.
-        auto const t = (1.0f - phase_01) / fade;
-        return trig_table_lookup::SinTurnsPositive(t * 0.25f);
-    }
-    return 1.0f;
 }
 
 // Computes the bounds of the region where grains can spawn, in frame_pos space.
@@ -148,26 +127,57 @@ inline GrainSpreadBounds ComputeGrainSpreadBounds(f64 playhead_frame_pos,
     return bounds;
 }
 
+// When the number of active grains exceeds this threshold, the oldest grains that
+// aren't already fading out will be faded out to make room for new ones. This is
+// analogous to voice stealing with a fade-out threshold.
+constexpr u32 k_grain_steal_threshold = k_max_grains_per_voice * 3 / 4;
+
+// Duration of the fade-out applied to stolen grains. This is independent of the
+// grain's own envelope smoothing parameter - it's a fixed, short fade to prevent pops.
+constexpr f32 k_grain_steal_fadeout_ms = 5.0f;
+
 struct Grain {
     PlayHead playhead {};
-    u32 duration_samples {};
-    u32 samples_elapsed {};
+    f64 detune_ratio {1}; // pitch multiplier, assigned randomly at grain spawn
+
+    // Envelope phase: advances from 0→1 over the grain's lifetime. Using f32 avoids
+    // per-sample u32→f32 casts in the hot loop and enables branchless processing.
+    f32 env_phase {};
+    f32 env_phase_inc {}; // = 1.0f / duration_samples, pre-computed at spawn
+
+    f32 pan_pos {}; // -1 (left) to +1 (right), assigned randomly at grain spawn
     u8 source_index {};
     bool active {};
-    f32 pan_pos {}; // -1 (left) to +1 (right), assigned randomly at grain spawn
-    f64 detune_ratio {1}; // pitch multiplier, assigned randomly at grain spawn
+
+    // Steal fade: starts at 1.0 and decreases towards 0 when the grain is being stolen.
+    // steal_fade_dec is 0 for non-stealing grains, making the subtraction a branchless no-op.
+    // When steal_fade reaches 0 the grain is deactivated.
+    f32 steal_fade {1.0f};
+    f32 steal_fade_dec {};
+
+    bool IsStealing() const { return steal_fade_dec > 0.0f; }
 };
 
 struct GrainPool {
-    void Reset() {
+    void Reset(f32 sample_rate) {
         for (auto& g : grains)
             g.active = false;
         for (auto& c : spawn_counters)
             c = 0;
+        steal_fade_dec_value = 1.0f / Max(1.0f, k_grain_steal_fadeout_ms * 0.001f * sample_rate);
+        num_active_non_stealing = 0;
     }
 
     Array<Grain, k_max_grains_per_voice> grains {};
     Array<u32, k_max_num_voice_sound_sources> spawn_counters {};
+
+    // Per-sample decrement applied to Grain::steal_fade when a grain is being stolen.
+    // Pre-computed from k_grain_steal_fadeout_ms and the sample rate.
+    f32 steal_fade_dec_value {};
+
+    // Cached count of grains that are active and not being stolen. Maintained
+    // incrementally to avoid scanning all grain slots every sample.
+    u32 num_active_non_stealing {};
 };
 
 // Initialise a grain's playhead based on the given position. Returns false if the grain

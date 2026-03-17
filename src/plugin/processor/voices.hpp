@@ -80,7 +80,12 @@ struct Voice {
 
     u16 index = 0;
 
-    unsigned random_seed = (unsigned)RandomSeed();
+    u32x4 random_seed = {
+        (u32)RandomSeed(),
+        (u32)RandomSeed(),
+        (u32)RandomSeed(),
+        (u32)RandomSeed(),
+    };
 
     sv_filter::CachedHelpers filter_coeffs = {};
     sv_filter::Data<f32x2> filters = {};

@@ -68,6 +68,7 @@
     X(RegisterThreadPoolTests)                                                                               \
     X(RegisterThreadingTests)                                                                                \
     X(RegisterVersionTests)                                                                                  \
+    X(RegisterVoiceTests)                                                                                    \
     X(RegisterVolumeFadeTests)                                                                               \
     X(RegisterWebTests)                                                                                      \
     X(RegisterWriterTests)

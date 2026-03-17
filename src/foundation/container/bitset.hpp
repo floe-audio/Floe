@@ -72,8 +72,8 @@ struct Bitset {
         elements[bit / k_bits_per_element] ^= ElementType(1) << bit % k_bits_per_element;
     }
 
-    constexpr Bool Get(usize bit) const {
-        ASSERT(bit < k_bits);
+    ALWAYS_INLINE constexpr Bool Get(usize bit) const {
+        ASSERT_HOT(bit < k_bits);
         return elements[bit / k_bits_per_element] & (ElementType(1) << bit % k_bits_per_element);
     }
 

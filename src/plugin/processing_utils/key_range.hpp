@@ -5,7 +5,7 @@
 
 #include "foundation/foundation.hpp"
 
-PUBLIC f32 FadeAmpCurve(f32 pos_01) { return trig_table_lookup::SinTurnsPositive(pos_01 * 0.25f); }
+PUBLIC f32 FadeAmpCurve(f32 pos_01) { return QuarterSineFade(pos_01); }
 
 PUBLIC f32 KeyRangeFadeIn(s32 note, s32 key_range_low, s32 fade_size) {
     auto const silent_note = key_range_low - 1;
