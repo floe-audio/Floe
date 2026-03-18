@@ -141,6 +141,11 @@ struct PluginInstance {
     ClapEntrySource entry_source; // owns the library handle for this load cycle
 };
 
+// Some backends (notably JACK) can change their buffer size at runtime or deliver sizes different
+// from what was reported at init time, despite miniaudio's noFixedSizedCallback=false. We use a
+// generous max buffer size to handle this.
+constexpr usize k_max_audio_buffer_frames = 8192;
+
 // Controls audio thread access to the plugin instance. The main thread transitions through these
 // states to safely hand off and reclaim the plugin instance without races.
 enum class PluginInstanceState : u32 {
@@ -374,8 +379,8 @@ static bool OpenAudio(Standalone& standalone) {
 
     if (ma_device_init(nullptr, &config, &*standalone.audio_device) != MA_SUCCESS) return false;
 
-    // Guaranteed by noFixedSizedCallback=false above.
-    auto const frames = (usize)standalone.audio_device->playback.internalPeriodSizeInFrames;
+    auto const frames =
+        Max((usize)standalone.audio_device->playback.internalPeriodSizeInFrames, k_max_audio_buffer_frames);
     auto alloc = PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(frames * 2);
     standalone.audio_buffers[0] = alloc.SubSpan(0, frames);
     standalone.audio_buffers[1] = alloc.SubSpan(frames, frames);
@@ -596,7 +601,8 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
 
     ASSERT(standalone.audio_device);
     auto const period_size = standalone.audio_device->playback.internalPeriodSizeInFrames;
-    inst->plugin->activate(inst->plugin, standalone.audio_device->sampleRate, period_size, period_size);
+    auto const max_block_size = Max(period_size, (ma_uint32)k_max_audio_buffer_frames);
+    inst->plugin->activate(inst->plugin, standalone.audio_device->sampleRate, period_size, max_block_size);
 
     inst->plugin->start_processing(inst->plugin);
 
