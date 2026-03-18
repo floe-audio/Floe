@@ -860,7 +860,7 @@ struct VoiceProcessor {
                         new_grain->source_index = source_index;
                         new_grain->env_phase_inc = ({
                             auto const base =
-                                GrainLengthParamToSamples(ctrl.granular.length, context.sample_rate);
+                                GrainLengthParamToSamples(ctrl.granular.length_ms, context.sample_rate);
                             constexpr f32 k_jitter_amount = 0.15f;
                             auto const scale = 1.0f + ((length_jitter_rand * 2.0f - 1.0f) * k_jitter_amount);
                             1.0f / (f32)Max(1u, (u32)(scale * (f32)base));

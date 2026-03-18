@@ -687,7 +687,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularDensity))
         vmst.granular.density = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularLength))
-        vmst.granular.length = *p;
+        vmst.granular.length_ms = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread))
         vmst.granular.spread = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSmoothing))

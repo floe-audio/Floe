@@ -162,7 +162,7 @@ struct VoiceProcessingController {
         f32 speed {};
         f32 position {};
         f32 density {};
-        f32 length {};
+        f32 length_ms {};
         f32 spread {};
         f32 smoothing {};
         f32 random_pan {};

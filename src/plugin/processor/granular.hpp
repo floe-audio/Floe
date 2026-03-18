@@ -32,16 +32,11 @@ inline f32 GrainSpreadParamToFraction(f32 param_value) {
 }
 
 constexpr u32 k_max_grains_per_voice = 150;
-constexpr f32 k_min_grain_length_seconds = 0.005f;
-constexpr f32 k_max_grain_length_seconds = 2.0f;
 constexpr f32 k_min_grain_spawn_interval_seconds = 0.001f;
 constexpr f32 k_max_grain_spawn_interval_seconds = 0.5f;
 
-inline u32 GrainLengthParamToSamples(f32 param_01, f32 sample_rate) {
-    // Exponential mapping so that equal knob rotation gives equal perceptual change.
-    auto const seconds = k_min_grain_length_seconds *
-                         Exp2(param_01 * Log2(k_max_grain_length_seconds / k_min_grain_length_seconds));
-    return Max(1u, (u32)(seconds * sample_rate));
+inline u32 GrainLengthParamToSamples(f32 length_ms, f32 sample_rate) {
+    return Max(1u, (u32)(length_ms * 0.001f * sample_rate));
 }
 
 inline u32 GrainsParamToSpawnInterval(f32 param_01, f32 sample_rate) {

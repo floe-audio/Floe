@@ -2264,7 +2264,7 @@ consteval auto CreateParams() {
         };
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 60}),
+            .value_config = val_config_helpers::Ms({.projection = {{5, 1000}, 1.5f}, .default_ms = 80}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Length"_s,
             .gui_label = "Length"_s,
