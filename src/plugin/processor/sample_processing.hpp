@@ -183,7 +183,7 @@ inline bool PlaybackEnded(PlayHead const& playhead, u32 num_frames) {
     return playhead.frame_pos >= num_frames;
 }
 
-inline void IncrementPlaybackPos(PlayHead& playhead, f64 increment, u32 num_frames) {
+NO_UBSAN inline void IncrementPlaybackPos(PlayHead& playhead, f64 increment, u32 num_frames) {
     ASSERT_HOT(!PlaybackEnded(playhead, num_frames));
     ASSERT_HOT(playhead.frame_pos < num_frames);
     ASSERT_HOT(increment >= 0);
@@ -191,43 +191,43 @@ inline void IncrementPlaybackPos(PlayHead& playhead, f64 increment, u32 num_fram
 
     playhead.frame_pos += increment;
 
-    if (playhead.loop) {
+    if (auto loop = playhead.loop.NullableValue()) {
         // Handle passing the loop end.
-        if (playhead.frame_pos >= playhead.loop->end) {
-            ASSERT_HOT(playhead.loop->end > playhead.loop->start);
+        if (playhead.frame_pos >= loop->end) {
+            ASSERT_HOT(loop->end > loop->start);
 
-            auto const loop_size = playhead.loop->end - playhead.loop->start;
-            auto const overshoot = playhead.frame_pos - playhead.loop->end;
+            auto const loop_size = loop->end - loop->start;
+            auto const overshoot = playhead.frame_pos - loop->end;
             auto const bounded_overshoot = Fmod(overshoot, (f64)loop_size);
 
-            switch (playhead.loop->mode) {
+            switch (loop->mode) {
                 case sample_lib::LoopMode::Standard: {
                     // Wrap around to the start.
-                    playhead.frame_pos = playhead.loop->start + bounded_overshoot;
+                    playhead.frame_pos = loop->start + bounded_overshoot;
                     break;
                 }
                 case sample_lib::LoopMode::PingPong: {
                     // Bounce the position off the end.
-                    playhead.frame_pos = playhead.loop->end - bounded_overshoot;
+                    playhead.frame_pos = loop->end - bounded_overshoot;
 
                     if ((u32)(overshoot / loop_size) % 2 == 0) {
                         playhead.Invert(num_frames);
-                        playhead.loop = InvertLoop(*playhead.loop, num_frames);
+                        (BoundsCheckedLoop&)* loop = InvertLoop(*loop, num_frames);
                     }
                     break;
                 }
-                case sample_lib::LoopMode::Count: PanicIfReached(); break;
+                case sample_lib::LoopMode::Count: PanicIfReached();
             }
 
-            ASSERT_HOT(playhead.frame_pos >= playhead.loop->start);
-            ASSERT_HOT(playhead.frame_pos < playhead.loop->end);
+            ASSERT_HOT(playhead.frame_pos >= loop->start);
+            ASSERT_HOT(playhead.frame_pos < loop->end);
 
-            playhead.loop->only_use_frames_within_loop = true;
+            loop->only_use_frames_within_loop = true;
         }
 
         // The start point might have been moved to before the playhead.
-        if (playhead.loop->only_use_frames_within_loop && playhead.frame_pos < playhead.loop->start)
-            playhead.loop->only_use_frames_within_loop = false;
+        if (loop->only_use_frames_within_loop && playhead.frame_pos < loop->start)
+            loop->only_use_frames_within_loop = false;
     }
 }
 
@@ -289,11 +289,11 @@ inline void UpdatePlayhead(PlayHead& playhead,
     }
 }
 
-ALWAYS_INLINE constexpr u32 DataIndexAtOffset(signed _BitInt(3) steps,
-                                              u32 frame_index,
-                                              PlayHead::Loop const* loop,
-                                              u32 num_frames,
-                                              u32 last_frame) {
+ALWAYS_INLINE NO_UBSAN constexpr u32 DataIndexAtOffset(signed _BitInt(3) steps,
+                                                       u32 frame_index,
+                                                       PlayHead::Loop const* loop,
+                                                       u32 num_frames,
+                                                       u32 last_frame) {
     ASSERT_HOT(steps != 0);
     using namespace sample_lib;
 
@@ -376,12 +376,14 @@ ALWAYS_INLINE constexpr u32 DataIndexAtOffset(signed _BitInt(3) steps,
     return (u32)v;
 }
 
-inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
+NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
     auto const loop = playhead.loop.NullableValue();
 
     ASSERT_HOT(s.num_frames != 0);
     ASSERT_HOT(playhead.frame_pos >= 0);
     ASSERT_HOT(playhead.frame_pos < s.num_frames);
+    ASSERT_HOT(s.channels > 0);
+    ASSERT_HOT(s.channels <= 2);
 
     if (loop) {
         ASSERT_HOT(loop->end <= s.num_frames);
@@ -481,7 +483,7 @@ inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
         }
 
         if (is_crossfading) {
-            ASSERT(crossfade_pos >= 0 && crossfade_pos <= 1);
+            ASSERT_HOT(crossfade_pos >= 0 && crossfade_pos <= 1);
             f32x4 t {1 - crossfade_pos, crossfade_pos, 1, 1};
             t = Sqrt(t);
 

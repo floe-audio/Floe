@@ -67,15 +67,9 @@ class [[nodiscard]] Optional<Type> {
         return false;
     }
 
-    constexpr Type* NullableValue() {
-        if (has_value) return &value;
-        return nullptr;
-    }
+    ALWAYS_INLINE constexpr Type* NullableValue() { return has_value ? &value : nullptr; }
+    ALWAYS_INLINE constexpr Type const* NullableValue() const { return has_value ? &value : nullptr; }
 
-    constexpr Type const* NullableValue() const {
-        if (has_value) return &value;
-        return nullptr;
-    }
     constexpr void Clear() { has_value = false; }
 
     constexpr bool HasValue() const { return has_value; }
@@ -87,7 +81,7 @@ class [[nodiscard]] Optional<Type> {
         ASSERT(has_value);
         return value;
     }
-    constexpr explicit operator bool() const { return has_value; }
+    ALWAYS_INLINE constexpr explicit operator bool() const { return has_value; }
     constexpr Type* operator->() { return &Value(); }
     constexpr Type& operator*() { return Value(); }
     constexpr Type const* operator->() const { return &Value(); }

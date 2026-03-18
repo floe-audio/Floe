@@ -358,7 +358,12 @@ using IndexSequenceFor = MakeIndexSequence<sizeof...(Types)>;
 
 // ==========================================================================================================
 #define ALWAYS_INLINE __attribute__((always_inline))
-#define NO_UBSAN      __attribute__((no_sanitize("undefined")))
+
+#if OPTIMISED_BUILD
+#define NO_UBSAN __attribute__((no_sanitize("undefined")))
+#else
+#define NO_UBSAN
+#endif
 
 #define STRINGIFY_HELPER(x) #x
 #define STRINGIFY(x)        STRINGIFY_HELPER(x)
@@ -401,7 +406,7 @@ extern thread_local bool g_in_crash_handler;
 // IMPORTANT: The expression may be discarded so it mustn't have side effects.
 #define ASSERT_HOT(expression, ...)                                                                          \
     do {                                                                                                     \
-        if constexpr (RUNTIME_SAFETY_CHECKS_ON) {                                                            \
+        if constexpr (RUNTIME_SAFETY_CHECKS_ON && !OPTIMISED_BUILD) {                                        \
             if (!(expression) && !PanicOccurred()) Panic("assertion failed: " #expression " " __VA_ARGS__);  \
         } else                                                                                               \
             ASSUME(expression);                                                                              \
