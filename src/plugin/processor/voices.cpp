@@ -675,7 +675,6 @@ struct VoiceProcessor {
                 if (auto const pos = *real_pos - sampler.region->audio_props.start_offset_frames;
                     pos >= 0 && pos < sampler.region->audio_props.fade_in_frames) {
                     auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
-                    // Quarter-sine fade in.
                     auto const amount = QuarterSineFade((f32)percent);
                     out *= amount;
                 }
