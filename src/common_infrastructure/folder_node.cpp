@@ -174,10 +174,13 @@ FolderNode* FirstCommonAncestor(Span<FolderNode*> nodes, ArenaAllocator& scratch
         DynamicArray<FolderNode*> path(scratch_arena);
 
         // Build path from node to root
-        for (auto* current = node; current; current = current->parent)
-            ASSERT(dyn::Append(path, current));
+        for (auto* current = node; current; current = current->parent) {
+            auto const appended = dyn::Append(path, current);
+            ASSERT(appended);
+        }
 
-        ASSERT(dyn::Append(ancestor_paths, Move(path)));
+        auto const appended = dyn::Append(ancestor_paths, Move(path));
+        ASSERT(appended);
     }
 
     // Find the shortest path length to avoid going out of bounds

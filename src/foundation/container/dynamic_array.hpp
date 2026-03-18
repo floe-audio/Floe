@@ -546,13 +546,15 @@ struct DynamicArrayBounded {
     constexpr DynamicArrayBounded() = default;
 
     constexpr DynamicArrayBounded(Span<Type const> data) {
-        ASSERT(dyn::AssignAssumingAlreadyEmpty(*this, data));
+        auto const result = dyn::AssignAssumingAlreadyEmpty(*this, data);
+        ASSERT(result);
     }
 
     template <usize k_array_capacity>
     requires(k_array_capacity <= k_capacity)
     constexpr DynamicArrayBounded(Array<Type, k_array_capacity> const& array) {
-        ASSERT(dyn::AssignAssumingAlreadyEmpty(*this, array.Items()));
+        auto const result = dyn::AssignAssumingAlreadyEmpty(*this, array.Items());
+        ASSERT(result);
     }
 
     constexpr DynamicArrayBounded(DynamicArrayBounded const& other) {
@@ -565,12 +567,14 @@ struct DynamicArrayBounded {
     }
 
     constexpr DynamicArrayBounded& operator=(DynamicArrayBounded const& other) {
-        ASSERT(dyn::Assign(*this, other.Items()));
+        auto const result = dyn::Assign(*this, other.Items());
+        ASSERT(result);
         return *this;
     }
 
     constexpr DynamicArrayBounded& operator=(DynamicArrayBounded&& other) {
-        ASSERT(dyn::MoveAssign(*this, other.Items()));
+        auto const result = dyn::MoveAssign(*this, other.Items());
+        ASSERT(result);
         dyn::Clear(other);
         return *this;
     }

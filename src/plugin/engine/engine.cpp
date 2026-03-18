@@ -152,7 +152,8 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
                                                             .id = i.Get<sample_lib::InstrumentId>(),
                                                             .layer_index = layer_index,
                                                         });
-            ASSERT(dyn::Append(pending.requests, async_id));
+            auto const appended1 = dyn::Append(pending.requests, async_id);
+            ASSERT(appended1);
         }
 
         engine.processor.convo.ir_id = state.state.ir_id;
@@ -161,7 +162,8 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
                 sample_lib_server::SendAsyncLoadRequest(engine.shared_engine_systems.sample_library_server,
                                                         engine.sample_lib_server_async_channel,
                                                         *state.state.ir_id);
-            ASSERT(dyn::Append(pending.requests, async_id));
+            auto const appended2 = dyn::Append(pending.requests, async_id);
+            ASSERT(appended2);
         }
     }
 }
@@ -306,12 +308,14 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
         }
         case Source::PartOfPendingStateChange: {
             result.Retain();
-            ASSERT(dyn::Append(engine.pending_state_change->retained_results, result));
+            auto const appended = dyn::Append(engine.pending_state_change->retained_results, result);
+            ASSERT(appended);
             break;
         }
         case Source::LastInPendingStateChange: {
             result.Retain();
-            ASSERT(dyn::Append(engine.pending_state_change->retained_results, result));
+            auto const appended = dyn::Append(engine.pending_state_change->retained_results, result);
+            ASSERT(appended);
             ApplyNewStateFromPending(engine);
             break;
         }
