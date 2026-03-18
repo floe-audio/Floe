@@ -358,6 +358,7 @@ using IndexSequenceFor = MakeIndexSequence<sizeof...(Types)>;
 
 // ==========================================================================================================
 #define ALWAYS_INLINE __attribute__((always_inline))
+#define NO_UBSAN      __attribute__((no_sanitize("undefined")))
 
 #define STRINGIFY_HELPER(x) #x
 #define STRINGIFY(x)        STRINGIFY_HELPER(x)

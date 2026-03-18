@@ -703,10 +703,11 @@ struct VoiceProcessor {
                             sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
                                                                context.one_pole_smoothing_cutoff_10ms);
                         v > 0.0001f) {
-                        f = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
+                        f = NextSampleFrame(voice, s, lfo_amounts.data[frame_index], context);
                         f *= v;
                     } else {
-                        auto const pitch_ratio1 = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+                        auto const pitch_ratio1 =
+                            PitchRatio(voice, s, lfo_amounts.data[frame_index], context);
                         f = 0.0f;
                         IncrementPlaybackPos(sampler.playhead, pitch_ratio1, sampler.data->num_frames);
                     }
@@ -729,12 +730,13 @@ struct VoiceProcessor {
     }
 
     // Returns false if playback has ended.
-    static bool AddGranularSampleDataOntoBuffer(Voice& voice,
-                                                VoiceSoundSource& s,
-                                                u8 source_index,
-                                                Span<f32x2> buffer,
-                                                Span<f32 const> lfo_amounts,
-                                                AudioProcessingContext const& context) {
+    NO_UBSAN static bool AddGranularSampleDataOntoBuffer(Voice& voice,
+                                                         VoiceSoundSource& s,
+                                                         u8 source_index,
+                                                         Span<f32x2> buffer,
+                                                         Span<f32 const> lfo_amounts,
+                                                         AudioProcessingContext const& context) {
+        ASSERT_HOT(buffer.size <= k_block_size_max);
         ZoneNamedN(granular_zone, "Granular Synthesis", true);
         auto const& ctrl = *voice.controller;
         auto const is_fixed = ctrl.play_mode == param_values::PlayMode::GranularFixed;
@@ -757,18 +759,18 @@ struct VoiceProcessor {
 #endif
 
         // Running grains start at frame 0, but for newly spawned grains there might be an offset.
-        Array<u8, k_max_grains_per_voice> grain_start_frame {};
-        static_assert(LargestRepresentableValue<decltype(grain_start_frame)::ValueType>() >=
+        u8 grain_start_frame[k_max_grains_per_voice] {};
+        static_assert(LargestRepresentableValue<RemoveReference<decltype(grain_start_frame[0])>>() >=
                       k_block_size_max);
 
         // Pre-compute source-wide values - all grains will refer to these.
-        Array<f64, k_block_size_max> pitch_ratios;
-        alignas(alignof(f32x4)) Array<f32x2, k_block_size_max> xfade_vols;
+        f64 pitch_ratios[k_block_size_max];
+        alignas(alignof(f32x4)) f32x2 xfade_vols[k_block_size_max];
         {
             ZoneNamedN(precompute, "Granular: Precompute", true);
 
             for (auto const frame_index : Range(buffer.size))
-                pitch_ratios[frame_index] = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+                pitch_ratios[frame_index] = PitchRatio(voice, s, lfo_amounts.data[frame_index], context);
 
             for (auto const frame_index : Range(buffer.size)) {
                 xfade_vols[frame_index] =
@@ -918,14 +920,15 @@ struct VoiceProcessor {
 
                 auto const start = grain_start_frame[grain_index];
                 auto end = buffer.size;
+                ASSERT_HOT(start < end);
 
                 // --- Fetch samples and advance playhead ---
-                alignas(alignof(f32x4)) Array<f32x2, k_block_size_max> grain_samples {};
+                alignas(alignof(f32x4)) f32x2 grain_samples[k_block_size_max] {};
                 {
                     ZoneNamedN(fetch_zone, "Grain: GetSampleFrame", true);
 
                     for (auto const i : Range<usize>(start, buffer.size)) {
-                        if (!PlaybackEnded(grain.playhead, num_frames)) {
+                        if (!PlaybackEnded(grain.playhead, num_frames)) [[likely]] {
                             grain_samples[i] = GetSampleFrame(*sampler.data, grain.playhead);
                             IncrementPlaybackPos(grain.playhead,
                                                  pitch_ratios[i] * grain.detune_ratio,
@@ -937,7 +940,7 @@ struct VoiceProcessor {
                     }
                 }
 
-                alignas(alignof(f32x4)) Array<f32x2, k_block_size_max> grain_gains {};
+                alignas(alignof(f32x4)) f32x2 grain_gains[k_block_size_max] {};
 
                 // --- Calculate gains ---
                 {
@@ -959,7 +962,7 @@ struct VoiceProcessor {
                     // Envelopes.
                     {
                         static_assert(k_block_size_max % 4 == 0);
-                        alignas(alignof(f32x4)) Array<f32, k_block_size_max> env_scalars;
+                        alignas(alignof(f32x4)) f32 env_scalars[k_block_size_max];
                         {
                             auto const phase_inc = grain.env_phase_inc;
                             auto const steal_dec = grain.steal_fade_dec;
@@ -970,9 +973,9 @@ struct VoiceProcessor {
 
                             for (u32 i = 0; i < k_block_size_max; i += 4) {
                                 auto const rise = Clamp01(phases * env_inv_fade);
-                                auto const fall = Clamp01((f32x4 {1, 1, 1, 1} - phases) * env_inv_fade);
+                                auto const fall = Clamp01((f32x4(1) - phases) * env_inv_fade);
                                 auto const env = QuarterSineFade(rise) * QuarterSineFade(fall);
-                                auto const fade = Max(steals, f32x4 {0, 0, 0, 0});
+                                auto const fade = Max(steals, f32x4(0));
                                 *(f32x4*)(void*)(&env_scalars[i]) = env * fade;
                                 phases += phase_inc4;
                                 steals -= steal_dec4;
@@ -1012,9 +1015,9 @@ struct VoiceProcessor {
                         auto const samples = *(f32x4*)(void*)(&grain_samples[i]);
                         auto const gains = *(f32x4*)(void*)(&grain_gains[i]);
                         f32x4 buf;
-                        __builtin_memcpy_inline(&buf, &buffer[i], sizeof(f32x4));
+                        __builtin_memcpy_inline(&buf, &buffer.data[i], sizeof(f32x4));
                         buf = Fma<f32x4>(samples, gains, buf);
-                        __builtin_memcpy_inline(&buffer[i], &buf, sizeof(f32x4));
+                        __builtin_memcpy_inline(&buffer.data[i], &buf, sizeof(f32x4));
                     }
                 }
             }
