@@ -1016,7 +1016,7 @@ struct VoiceProcessor {
                         auto const gains = *(f32x4*)(void*)(&grain_gains[i]);
                         f32x4 buf;
                         __builtin_memcpy_inline(&buf, &buffer.data[i], sizeof(f32x4));
-                        buf = Fma<f32x4>(samples, gains, buf);
+                        buf += samples * gains;
                         __builtin_memcpy_inline(&buffer.data[i], &buf, sizeof(f32x4));
                     }
                 }
