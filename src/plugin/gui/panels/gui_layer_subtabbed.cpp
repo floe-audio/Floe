@@ -463,6 +463,7 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
             } else if (num_regions == 1) {
                 dyn::Append(segments, "Single sample"_s);
                 auto const& smpl = *inst->audio_datas[0];
+                if (smpl.channels == 1) dyn::Append(segments, "Mono"_s);
                 dyn::Append(
                     segments,
                     fmt::Format(g.scratch_arena, "{.2} s", (f64)smpl.num_frames / (f64)smpl.sample_rate));
