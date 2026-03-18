@@ -379,8 +379,10 @@ void StartVoice(VoicePool& pool,
                 s.pitch_ratio = CalculatePitchRatio(RootKey(voice, s), s, params.initial_pitch, sample_rate);
                 s.pitch_ratio_smoother.Reset();
 
-                if (voice_controller.play_mode == param_values::PlayMode::GranularFixed) {
+                if (voice_controller.play_mode == param_values::PlayMode::GranularFixed &&
+                    s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff) {
                     // GranularFixed ignores loops and sample offset; position is user-controlled.
+                    // Note-off triggered samples use the standard playback path instead.
                     ResetPlayhead(s_sampler.playhead,
                                   0,
                                   k_nullopt,
@@ -1090,7 +1092,10 @@ struct VoiceProcessor {
             switch (s.source_data.tag) {
                 case InstrumentType::Sampler: {
                     bool ok;
-                    if (is_granular)
+                    auto const is_note_off_trigger =
+                        s.source_data.Get<VoiceSoundSource::SampleSource>().region->trigger.trigger_event ==
+                        sample_lib::TriggerEvent::NoteOff;
+                    if (is_granular && !is_note_off_trigger)
                         ok = AddGranularSampleDataOntoBuffer(voice,
                                                              s,
                                                              source_index,
