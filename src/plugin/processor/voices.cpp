@@ -826,8 +826,8 @@ struct VoiceProcessor {
 
                     // We need some random floats in a few places, we already have SIMD support for
                     // generating 4 randoms at once, so we can save a few instructions.
-                    auto const r1 = FastRand01(voice.random_seed);
-                    auto const r2 = FastRand01(voice.random_seed);
+                    auto const r1 = Rand01(voice.random_seed);
+                    auto const r2 = Rand01(voice.random_seed);
                     auto const spread_rand = r1[0];
                     auto const length_jitter_rand = r1[1];
                     auto const pan_rand = r1[2];
@@ -874,7 +874,7 @@ struct VoiceProcessor {
                         // from.
                         if (pool.num_active_non_stealing > k_grain_steal_threshold) {
                             // We pick one randomly to avoid any unpleasant-sounding regularity.
-                            auto const pick = FastRand(voice.random_seed).x % pool.num_active_non_stealing;
+                            auto const pick = Rand(voice.random_seed).x % pool.num_active_non_stealing;
                             u32 index = 0;
                             for (auto& g : pool.grains) {
                                 if (!g.active || g.IsStealing() || &g == new_grain) continue;
@@ -1036,20 +1036,27 @@ struct VoiceProcessor {
         return true;
     }
 
-    static constexpr u32 k_max_fast_rand = 0x7FFF;
-
-    static u32x4 FastRand(u32x4& seed) {
-        seed = ((214013 * seed) + 2531011);
-        return (seed >> 16) & k_max_fast_rand;
+    // Xorshift32 PRNG (Marsaglia 2003), vectorised across 4 independent lanes. Each lane must be seeded with
+    // a different non-zero value.
+    static u32x4 Rand(u32x4& seed) {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        return seed;
     }
 
-    static f32x4 FastRand01(u32x4& seed) {
-        return ConvertVector(FastRand(seed), f32x4) / (f32)k_max_fast_rand;
+    // Returns 4 floats in [0, 1).
+    // Float trick: set the exponent bits to 127 (0x3F800000 == 1.0f in IEEE 754), fill the mantissa with the
+    // upper 23 bits of the random value, then subtract 1.0. This gives [1.0, 2.0) - 1.0 = [0.0, 1.0) with no
+    // division.
+    static f32x4 Rand01(u32x4& seed) {
+        auto r = Rand(seed);
+        return (f32x4)((r >> 9) | 0x3F800000u) - 1.0f;
     }
 
     static f32x4 RandomWhiteNoiseSample(u32x4& seed) {
-        auto constexpr k_scale = 0.5f * 0.2f;
-        return ((FastRand01(seed) * 2.0f) - 1.0f) * k_scale;
+        auto constexpr k_scale = 0.1f;
+        return ((Rand01(seed) * 2.0f) - 1.0f) * k_scale;
     }
 
     static void FillBufferWithSampleData(Voice& voice,
