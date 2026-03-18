@@ -25,39 +25,15 @@ union InterpolationPoints<T> {
     };
 };
 
-inline f32 DoMonoCubicInterp(InterpolationPoints<f32 const*> const& points, f32 const x) {
-    return points.x0[0] + ((((points.x2[0] - points.xm1[0] - 3 * points.x1[0] + 3 * points.x0[0]) * x +
-                             3 * (points.x1[0] + points.xm1[0] - 2 * points.x0[0])) *
-                                x -
-                            (points.x2[0] + 2 * points.xm1[0] - 6 * points.x1[0] + 3 * points.x0[0])) *
-                           x / 6.0f);
-}
+// 4-point, 3rd-order Hermite interpolation (Laurent de Soras' form).
+inline f32x2 DoHermiteInterp(InterpolationPoints<f32x2> const& p, f32 const x) {
+    f32x2 const c = (p.x1 - p.xm1) * 0.5f;
+    f32x2 const v = p.x0 - p.x1;
+    f32x2 const w = c + v;
+    f32x2 const a = w + v + ((p.x2 - p.x0) * 0.5f);
+    f32x2 const b_neg = w + a;
 
-inline f32x2 DoStereoLagrangeInterp(InterpolationPoints<f32 const*> const& points, f32 const x) {
-    // x is given in the range 0 to 1 but we want the value between f0 and f1, therefore we add 1.
-    auto const xf = x + 1;
-    auto const xfm1 = x;
-    auto const xfm2 = xf - 2;
-    auto const xfm3 = xf - 3;
-
-    f32x4 const v0 {xfm1, xf, xf, xf};
-    f32x4 const v2 {xfm2, xfm2, xfm1, xfm1};
-    f32x4 const v4 {xfm3, xfm3, xfm3, xfm2};
-
-    f32x4 constexpr k_v1 {-1, 1, 2, 3};
-    f32x4 constexpr k_v3 {-2, -1, 1, 2};
-    f32x4 constexpr k_v5 {-3, -2, -1, 1};
-
-    f32x4 const vd0 = v0 / k_v1;
-    f32x4 const vd1 = v2 / k_v3;
-    f32x4 const vd2 = v4 / k_v5;
-
-    auto const vt = vd0 * vd1 * vd2;
-
-    return {
-        (points.xm1[0] * vt[0]) + (points.x0[0] * vt[1]) + (points.x1[0] * vt[2]) + (points.x2[0] * vt[3]),
-        (points.xm1[1] * vt[0]) + (points.x0[1] * vt[1]) + (points.x1[1] * vt[2]) + (points.x2[1] * vt[3]),
-    };
+    return (((((a * x) - b_neg) * x) + c) * x) + p.x0;
 }
 
 struct BoundsCheckedLoop {
@@ -444,16 +420,25 @@ inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
         p;
     });
 
-    auto result = ({
-        f32x2 r;
-        if (s.channels == 1)
-            r = DoMonoCubicInterp(data_vals, x);
-        else if (s.channels == 2)
-            r = DoStereoLagrangeInterp(data_vals, x);
-        else
-            PanicIfReached();
-        r;
-    });
+    auto result = DoHermiteInterp(({
+                                      InterpolationPoints<f32x2> l;
+                                      if (s.channels == 1)
+                                          l = {
+                                              .xm1 = {data_vals.xm1[0], data_vals.xm1[0]},
+                                              .x0 = {data_vals.x0[0], data_vals.x0[0]},
+                                              .x1 = {data_vals.x1[0], data_vals.x1[0]},
+                                              .x2 = {data_vals.x2[0], data_vals.x2[0]},
+                                          };
+                                      else
+                                          l = {
+                                              .xm1 = {data_vals.xm1[0], data_vals.xm1[1]},
+                                              .x0 = {data_vals.x0[0], data_vals.x0[1]},
+                                              .x1 = {data_vals.x1[0], data_vals.x1[1]},
+                                              .x2 = {data_vals.x2[0], data_vals.x2[1]},
+                                          };
+                                      l;
+                                  }),
+                                  x);
 
     if (loop && loop->crossfade) {
         f32 crossfade_pos = 0;

@@ -154,27 +154,17 @@ Span<u8> CreateWaveformImage(WaveformAudioSource source,
 
 TEST_CASE(TestInterpolation) {
     {
-        f32 fm1[2] = {0, 0};
-        f32 f0[2] = {1, 1};
-        f32 f1[2] = {2, 2};
-        f32 f2[2] = {3, 3};
-        f32 x = 0;
-        InterpolationPoints<f32 const*> points {
-            .xm1 = fm1,
-            .x0 = f0,
-            .x1 = f1,
-            .x2 = f2,
+        InterpolationPoints<f32x2> const points {
+            .xm1 = {0, 0},
+            .x0 = {1, 1},
+            .x1 = {2, 2},
+            .x2 = {3, 3},
         };
+        f32 const x = 0;
 
-        {
-            auto const result = DoMonoCubicInterp(points, x);
-            CHECK_APPROX_EQ(result, 1.0f, 0.0001f);
-        }
-
-        {
-            auto const result = DoStereoLagrangeInterp(points, x);
-            CHECK_APPROX_EQ(result.x, 1.0f, 0.0001f);
-        }
+        auto const result = DoHermiteInterp(points, x);
+        CHECK_APPROX_EQ(result[0], 1.0f, 0.0001f);
+        CHECK_APPROX_EQ(result[1], 1.0f, 0.0001f);
     }
 
     return k_success;
