@@ -287,7 +287,7 @@ PUBLIC constexpr f32 TanTurns(f32 turns) { return SinTurns(turns) / CosTurns(tur
 // with constant term adjusted to pin f(1) = 1.
 // Estimated max error: ~2.5e-5.
 // Works with f32, f32x2, f32x4, etc.
-inline auto QuarterSineFade(ScalarOrVectorFloat auto x) {
+ALWAYS_INLINE auto QuarterSineFade(ScalarOrVectorFloat auto x) {
     using T = UnderlyingTypeOfVecOrScalar<decltype(x)>;
     auto u = x * T(0.061268378f);
     u = (u + T(0.021428667f)) * x;
