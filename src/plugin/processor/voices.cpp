@@ -951,6 +951,7 @@ struct VoiceProcessor {
                     auto const pan_rand = r1[2];
                     auto const detune_rand = r1[3];
                     auto const density_jitter_rand = r2[0];
+                    auto const direction_rand = r2[1];
 
                     auto const spread_fraction = ctrl.granular.spread;
                     auto const spread_offset = (f64)(spread_rand * spread_fraction) * (f64)num_frames;
@@ -991,6 +992,7 @@ struct VoiceProcessor {
                                           false,
                                           num_frames);
                             new_grain->playhead.inverse_data_lookup = sampler.playhead.inverse_data_lookup;
+
                             new_grain->source_index = source_index;
                             new_grain->env_phase_inc = ({
                                 // Extend grain so fade-out aligns with the next grain's spawn point.
@@ -1021,6 +1023,13 @@ struct VoiceProcessor {
                                 }
                                 r;
                             });
+
+                            if (ctrl.granular.random_direction > 0.0001f &&
+                                direction_rand < ctrl.granular.random_direction * 0.5f) {
+                                new_grain->playhead.Invert(num_frames);
+                                if (auto loop = new_grain->playhead.loop.NullableValue())
+                                    (BoundsCheckedLoop&)* loop = InvertLoop(*loop, num_frames);
+                            }
                         }
 
                         pool.num_active_non_stealing++;

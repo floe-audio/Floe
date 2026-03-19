@@ -696,6 +696,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.random_pan = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDetune))
         vmst.granular.random_detune = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDirection))
+        vmst.granular.random_direction = *p;
 
     // EQ
     // =======================================================================================================

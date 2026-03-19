@@ -70,6 +70,7 @@ enum class LayerParamIndex : u16 {
     GranularSmoothing,
     GranularRandomPan,
     GranularRandomDetune,
+    GranularRandomDirection,
 
     Count,
 };
@@ -2321,6 +2322,16 @@ consteval auto CreateParams() {
             .gui_label = "Detune"_s,
             .tooltip =
                 "Randomise the pitch of each grain. At 0% all grains play at the original pitch, at 100% grains can be detuned up to a semitone up or down"_s,
+            .flags = {.experimental = true},
+        };
+        lp(GranularRandomDirection) = Args {
+            .id = id(region, 65), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Random Direction"_s,
+            .gui_label = "Direction"_s,
+            .tooltip =
+                "Chance that grains spawn playing in the opposite direction to the main playhead. At 0% all grains play in the main direction, at 100% there's a 50/50 chance of each grain playing forwards or backwards"_s,
             .flags = {.experimental = true},
         };
     }

@@ -1576,6 +1576,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
             auto const knob_box = do_knob_container(section, 106);
             do_knob(knob_box, LayerParamIndex::GranularRandomPan);
             do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
+            do_knob(knob_box, LayerParamIndex::GranularRandomDirection);
         }
     }
 }
