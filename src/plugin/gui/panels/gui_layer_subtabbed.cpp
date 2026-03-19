@@ -1546,6 +1546,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                             {
                                 .width = 28,
                                 .style_system = GuiStyleSystem::MidPanel,
+                                .bidirectional = param == LayerParamIndex::GranularSpeed,
                             });
         };
 

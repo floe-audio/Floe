@@ -991,12 +991,11 @@ void DoWaveformElement(GuiState& g,
             auto const grain_pos_raw = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
             auto const grain_pos = reverse ? 1.0f - grain_pos_raw : grain_pos_raw;
-            auto const grain_spread = params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
+            auto const grain_spread = params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread);
             auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
 
-            f32 const spread_size = GrainSpreadParamToFraction(grain_spread);
             f32 const start = grain_pos;
-            f32 const end = Min(grain_pos + spread_size, 1.0f);
+            f32 const end = Min(grain_pos + grain_spread, 1.0f);
             DrawSpreadRegionRect(*g.imgui.draw_list, window_r, viewport_r.w, start, end, reverse, col);
         }
 
