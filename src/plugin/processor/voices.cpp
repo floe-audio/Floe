@@ -573,42 +573,6 @@ inline GrainSpreadBounds ComputeGrainSpreadBounds(f64 playhead_frame_pos,
     return bounds;
 }
 
-// Initialise a grain's playhead based on the given position. Returns false if the grain
-// should not be spawned (position is past the sample end in non-looping modes).
-inline bool
-InitGrainPlayhead(Grain& grain, f64 grain_pos, PlayHead const& main_playhead, u32 num_frames, bool is_fixed) {
-    auto& gph = grain.playhead;
-    if (is_fixed) {
-        if (grain_pos >= (f64)num_frames) return false;
-
-        ResetPlayhead(gph, grain_pos, k_nullopt, main_playhead.inverse_data_lookup, num_frames);
-        return true;
-    }
-
-    // When the main playhead is inside the loop, wrap the grain position into the loop range.
-    auto const& main_loop = main_playhead.loop;
-    if (main_loop && main_loop->only_use_frames_within_loop) {
-        auto const loop_start = (f64)main_loop->start;
-        auto const loop_size = (f64)(main_loop->end - main_loop->start);
-        if (loop_size > 0) {
-            auto const overshoot = grain_pos - loop_start;
-            grain_pos = loop_start + Fmod(overshoot, loop_size);
-        }
-    } else if (grain_pos >= (f64)num_frames) {
-        return false;
-    }
-
-    // The main playhead's loop is already in frame_pos space (inverted if reversed).
-    // Pass is_reversed=false to avoid double-inverting, then copy inverse_data_lookup manually.
-    ResetPlayhead(gph,
-                  grain_pos,
-                  main_loop ? Optional<BoundsCheckedLoop>(*main_loop) : k_nullopt,
-                  false,
-                  num_frames);
-    gph.inverse_data_lookup = main_playhead.inverse_data_lookup;
-    return true;
-}
-
 } // namespace granular
 
 struct VoiceProcessor {
@@ -956,7 +920,6 @@ struct VoiceProcessor {
                     break;
                 }
 
-                // Spawn check for this source.
                 if (pool.spawn_counters[source_index] == 0) {
                     // Find first inactive grain slot.
                     Grain* new_grain = nullptr;
@@ -992,50 +955,82 @@ struct VoiceProcessor {
                     auto const spread_fraction = ctrl.granular.spread;
                     auto const spread_offset = (f64)(spread_rand * spread_fraction) * (f64)num_frames;
 
-                    auto const grain_pos = sampler.playhead.frame_pos + spread_offset;
+                    auto const valid_spawn_pos = ({
+                        auto const pos = sampler.playhead.frame_pos + spread_offset;
+                        Optional<f64> result {};
 
-                    if (granular::InitGrainPlayhead(*new_grain,
-                                                    grain_pos,
-                                                    sampler.playhead,
-                                                    num_frames,
-                                                    is_fixed)) {
-                        new_grain->source_index = source_index;
-                        new_grain->env_phase_inc = ({
-                            // Extend grain so fade-out aligns with the next grain's spawn point.
-                            auto const fade_divisor = Max(0.05f, 1.0f - (smoothing[frame_index] * 0.5f));
-                            constexpr f32 k_length_jitter_amount = 0.0f;
-                            auto const jitter_scale =
-                                1.0f + ((length_jitter_rand * 2.0f - 1.0f) * k_length_jitter_amount);
-                            auto const effective_length =
-                                Max(1u, (u32)(jitter_scale * (f32)grain_length_samples / fade_divisor));
-                            1.0f / (f32)effective_length;
-                        });
-                        new_grain->env_phase = 0;
-                        new_grain->active = true;
-                        new_grain->steal_fade = 1.0f;
-                        new_grain->steal_fade_dec = 0;
+                        if (!is_fixed)
+                            if (auto const main_loop = sampler.playhead.loop.NullableValue();
+                                main_loop && main_loop->only_use_frames_within_loop) {
+                                auto const loop_start = (f64)main_loop->start;
+                                auto const loop_size = (f64)(main_loop->end - main_loop->start);
+                                if (loop_size > 0) {
+                                    auto const overshoot = pos - loop_start;
+                                    result = loop_start + Fmod(overshoot, loop_size);
+                                } else {
+                                    result = pos;
+                                }
+                            }
+
+                        if (!result && pos < (f64)num_frames) result = pos;
+
+                        result;
+                    });
+
+                    if (valid_spawn_pos) {
+                        // Init new grain.
+                        {
+                            // The main playhead's loop is already in frame_pos space (inverted if reversed).
+                            // Pass is_reversed=false to avoid double-inverting, then copy inverse_data_lookup
+                            // manually.
+                            auto const& main_loop = sampler.playhead.loop;
+                            ResetPlayhead(new_grain->playhead,
+                                          *valid_spawn_pos,
+                                          (!is_fixed && main_loop) ? Optional<BoundsCheckedLoop>(*main_loop)
+                                                                   : k_nullopt,
+                                          false,
+                                          num_frames);
+                            new_grain->playhead.inverse_data_lookup = sampler.playhead.inverse_data_lookup;
+                            new_grain->source_index = source_index;
+                            new_grain->env_phase_inc = ({
+                                // Extend grain so fade-out aligns with the next grain's spawn point.
+                                auto const fade_divisor = Max(0.05f, 1.0f - (smoothing[frame_index] * 0.5f));
+                                constexpr f32 k_length_jitter_amount = 0.0f;
+                                auto const jitter_scale =
+                                    1.0f + ((length_jitter_rand * 2.0f - 1.0f) * k_length_jitter_amount);
+                                auto const effective_length =
+                                    Max(1u, (u32)(jitter_scale * (f32)grain_length_samples / fade_divisor));
+
+                                1.0f / (f32)effective_length;
+                            });
+                            new_grain->env_phase = 0;
+                            new_grain->active = true;
+                            new_grain->steal_fade = 1.0f;
+                            new_grain->steal_fade_dec = 0;
+
+                            new_grain->pan_pos = (pan_rand * 2.0f - 1.0f) * ctrl.granular.random_pan;
+
+                            new_grain->detune_ratio = ({
+                                f64 r;
+                                if (ctrl.granular.random_detune > 0.0001f) {
+                                    auto const detune_semitones =
+                                        (f64)((detune_rand * 2.0f) - 1.0f) * (f64)ctrl.granular.random_detune;
+                                    r = Exp2(detune_semitones / 12.0);
+                                } else {
+                                    r = 1.0;
+                                }
+                                r;
+                            });
+                        }
+
                         pool.num_active_non_stealing++;
                         grain_start_frame[new_grain_index] = (u8)frame_index;
 
-                        // Random pan.
-                        {
-                            new_grain->pan_pos = (pan_rand * 2.0f - 1.0f) * ctrl.granular.random_pan;
-                        }
-
-                        // Random detune.
-                        if (ctrl.granular.random_detune > 0.0001f) {
-                            auto const detune_semitones =
-                                (f64)((detune_rand * 2.0f) - 1.0f) * (f64)ctrl.granular.random_detune;
-                            new_grain->detune_ratio = Exp2(detune_semitones / 12.0);
-                        } else {
-                            new_grain->detune_ratio = 1.0;
-                        }
-
-                        // If the grain pool is nearing full, we initiate quick fade-outs for grains to that
-                        // hopefully by the time we next want to spawn a grain, we have inactive ones to pick
-                        // from.
+                        // Initiate grain steal fading-out if nearing full.
                         if (pool.num_active_non_stealing > k_grain_steal_threshold) {
-                            // We pick one randomly to avoid any unpleasant-sounding regularity.
+                            // If the grain pool is nearing full, we initiate quick fade-outs for grains to
+                            // that hopefully by the time we next want to spawn a grain, we have inactive ones
+                            // to pick from. We pick one randomly to avoid any unpleasant-sounding regularity.
                             auto const pick = Rand(voice.random_seed).x % pool.num_active_non_stealing;
                             u32 index = 0;
                             for (auto& g : pool.grains) {
@@ -1050,10 +1045,10 @@ struct VoiceProcessor {
                         }
                     }
 
-                    {
-                        // Spawn interval is relative to grain length:
-                        // density 0 = end-to-end, density 1 = lots of overlap.
-                        // Lower k_density_curve_exponent = faster ramp to dense.
+                    // Update spawn counter.
+                    pool.spawn_counters[source_index] = ({
+                        // Spawn interval is relative to grain length: density 0 = end-to-end, density 1 =
+                        // lots of overlap.
                         constexpr f32 k_max_density_ratio = 1.0f;
                         constexpr f32 k_min_density_ratio = 0.05f;
                         constexpr f32 k_density_curve_exponent = 0.15f;
@@ -1063,9 +1058,9 @@ struct VoiceProcessor {
                         constexpr f32 k_density_jitter_amount = 0.0f;
                         auto const jitter_scale =
                             1.0f + ((density_jitter_rand * 2.0f - 1.0f) * k_density_jitter_amount);
-                        pool.spawn_counters[source_index] =
-                            Max(1u, (u32)(jitter_scale * (f32)grain_length_samples * ratio));
-                    }
+
+                        Max(1u, (u32)(jitter_scale * (f32)grain_length_samples * ratio));
+                    });
                 } else {
                     pool.spawn_counters[source_index]--;
                 }
@@ -1078,6 +1073,9 @@ struct VoiceProcessor {
 
             for (auto [grain_index, grain] : Enumerate(pool.grains)) {
                 if (!grain.active || grain.source_index != source_index) continue;
+
+                // IMPORTANT: this is a very hot code path:
+                // num-active-voices * num-active-grains * num-frames.
 
                 auto const start = grain_start_frame[grain_index];
                 auto end = buffer.size;
