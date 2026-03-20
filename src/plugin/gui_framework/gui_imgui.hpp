@@ -182,7 +182,9 @@ enum class ViewportMode : u8 {
 enum class ViewportPositioning : u8 {
     ParentRelative, // rect is viewport-relative (default)
     WindowAbsolute, // rect is already in window coordinates
-    AutoPosition, // rect is avoid-rect in window coords; actual position is calculated
+    AutoPosition, // rect is avoid-rect in window coords; actual position is calculated. Alternatively, you
+                  // can positions you own rectangle (perhaps using BestPopupPos) and then place it using
+                  // WindowAbsolute.
     WindowCentred, // centre in window; rect pos is ignored; size is clamped to window; works with auto_size
 };
 

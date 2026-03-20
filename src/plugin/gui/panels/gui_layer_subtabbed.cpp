@@ -1629,7 +1629,20 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer_index);
                     if (intervals_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
 
-                    if (g.imgui.IsPopupMenuOpen(popup_id))
+                    if (g.imgui.IsPopupMenuOpen(popup_id) && g.builder.IsInputAndRenderPass()) {
+                        auto const popup_r = ({
+                            auto const popup_size = WwToPixels(f32x2 {200, 450});
+                            Rect r {.size = popup_size};
+                            if (auto const btn_r = BoxRect(g.builder, intervals_btn)) {
+                                auto const avoid_r = g.imgui.ViewportRectToWindowRect(*btn_r);
+                                r.pos = imgui::BestPopupPos(Rect {.pos = avoid_r.pos, .size = popup_size},
+                                                            avoid_r,
+                                                            GuiIo().in.window_size.ToFloat2(),
+                                                            imgui::PopupJustification::LeftOrRight);
+                            }
+                            r;
+                        });
+
                         DoBoxViewport(
                             g.builder,
                             {
@@ -1639,7 +1652,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                             DoBox(g.builder,
                                                   {
                                                       .layout {
-                                                          .size = {150, 450},
+                                                          .size = layout::k_fill_parent,
                                                           .contents_direction = layout::Direction::Column,
                                                           .contents_align = layout::Alignment::Start,
                                                       },
@@ -1677,14 +1690,18 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                             }
                                         }
                                     },
-                                .bounds = intervals_btn,
+                                .bounds = popup_r,
                                 .imgui_id = popup_id,
                                 .viewport_config = ({
                                     auto cfg = k_default_popup_menu_viewport;
-                                    cfg.auto_size = true;
+                                    cfg.positioning = imgui::ViewportPositioning::WindowAbsolute;
+                                    cfg.auto_size = false;
+                                    cfg.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
+                                                                imgui::ViewportScrollbarVisibility::Auto};
                                     cfg;
                                 }),
                             });
+                    }
                 }
             }
         }
