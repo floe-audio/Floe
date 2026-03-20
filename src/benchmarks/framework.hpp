@@ -38,6 +38,9 @@ inline void DoNotOptimise(T& val) {
 
 } // namespace benchmarks
 
+// Use this to avoid 'unused function' warnings in production builds.
+#define BENCHMARK_FN [[maybe_unused]] static
+
 #if !PRODUCTION_BUILD
 
 // Benchmark functions are void(*)() - they just run the code; no timing is done here (use hyperfine).

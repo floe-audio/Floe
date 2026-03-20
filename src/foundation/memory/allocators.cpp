@@ -322,7 +322,7 @@ TEST_REGISTRATION(RegisterAllocatorTests) {
 }
 
 template <typename AllocatorType>
-static void BenchmarkAllocatorSpeed() {
+BENCHMARK_FN void BenchmarkAllocatorSpeed() {
     AllocatorType a;
     constexpr usize k_alignment = 8;
     usize const sizes[] = {1,   16,  16,  16, 16,   32,  32, 32, 32, 32, 40034, 64, 128, 50, 239,

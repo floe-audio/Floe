@@ -519,7 +519,7 @@ TEST_REGISTRATION(RegisterSamplePlayheadTests) {
 // ======================================================================================
 // Benchmarks
 
-static void BenchmarkGetSampleFrameMono() {
+BENCHMARK_FN void BenchmarkGetSampleFrameMono() {
     constexpr u32 k_num_frames = 44100; // 1 second at 44.1kHz
     alignas(16) f32 data[k_num_frames];
     for (u32 i = 0; i < k_num_frames; ++i)
@@ -551,7 +551,7 @@ static void BenchmarkGetSampleFrameMono() {
     }
 }
 
-static void BenchmarkGetSampleFrameStereo() {
+BENCHMARK_FN void BenchmarkGetSampleFrameStereo() {
     constexpr u32 k_num_frames = 44100;
     alignas(16) f32 data[k_num_frames * 2];
     for (u32 i = 0; i < k_num_frames; ++i) {
@@ -585,7 +585,7 @@ static void BenchmarkGetSampleFrameStereo() {
     }
 }
 
-static void BenchmarkGetSampleFrameMonoLooped() {
+BENCHMARK_FN void BenchmarkGetSampleFrameMonoLooped() {
     constexpr u32 k_num_frames = 44100;
     alignas(16) f32 data[k_num_frames];
     for (u32 i = 0; i < k_num_frames; ++i)
@@ -625,7 +625,7 @@ static void BenchmarkGetSampleFrameMonoLooped() {
     }
 }
 
-static void BenchmarkGetSampleFrameFractionalIncrement() {
+BENCHMARK_FN void BenchmarkGetSampleFrameFractionalIncrement() {
     constexpr u32 k_num_frames = 44100;
     alignas(16) f32 data[k_num_frames * 2];
     for (u32 i = 0; i < k_num_frames; ++i) {
