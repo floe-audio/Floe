@@ -2240,13 +2240,16 @@ consteval auto CreateParams() {
         };
         lp(GranularSpeed) = Args {
             .id = id(region, 58), // never change
-            .value_config =
+            .value_config = ({
+                ParamDescriptor::Range const linear_range = {0, 8};
+                ParamDescriptor::Projection const projection {linear_range, 3.0f};
                 val_config_helpers::ValConfig {
-                    .linear_range = {0, 8},
-                    .projection = ParamDescriptor::Projection {.range = {0, 8}, .exponent = 3.0f},
-                    .default_linear_value = 1,
+                    .linear_range = linear_range,
+                    .projection = projection,
+                    .default_linear_value = projection.LineariseValue<constexpr_math::Powf>(linear_range, 1),
                     .display_format = ParamDisplayFormat::Percent,
-                },
+                };
+            }),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Speed"_s,
             .gui_label = "Speed"_s,
@@ -2283,13 +2286,17 @@ consteval auto CreateParams() {
         };
         lp(GranularSpread) = Args {
             .id = id(region, 61), // never change
-            .value_config =
+            .value_config = ({
+                ParamDescriptor::Range const linear_range {0.005f, 1};
+                ParamDescriptor::Projection const projection {linear_range, 2.0f};
                 val_config_helpers::ValConfig {
-                    .linear_range = {0.005f, 1},
-                    .projection = ParamDescriptor::Projection {.range = {0.005f, 1}, .exponent = 2.0f},
-                    .default_linear_value = 0.06f,
+                    .linear_range = linear_range,
+                    .projection = projection,
+                    .default_linear_value =
+                        projection.LineariseValue<constexpr_math::Powf>(linear_range, 0.05f),
                     .display_format = ParamDisplayFormat::Percent,
-                },
+                };
+            }),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Spread"_s,
             .gui_label = "Spread"_s,
