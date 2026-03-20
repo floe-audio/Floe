@@ -1480,63 +1480,29 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
 
     if (play_mode != param_values::PlayMode::GranularFixed) DoLoopModeSelector(g, page, layer);
 
-    DoWhitespace(g.builder, page, 2);
-
     if (IsGranular(play_mode)) {
-        auto const sections_row = DoBox(g.builder,
-                                        {
-                                            .parent = page,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                .contents_gap = 16,
-                                                .contents_direction = layout::Direction::Row,
-                                                .contents_align = layout::Alignment::Start,
-                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                            },
-                                        });
+        auto const granular_container = DoBox(g.builder,
+                                              {
+                                                  .parent = page,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                      .margins = {.t = 2},
+                                                      .contents_gap = 12,
+                                                      .contents_direction = layout::Direction::Column,
+                                                  },
+                                              });
 
-        auto const do_section = [&](u64 loc_hash = SourceLocationHash()) {
-            return DoBox(g.builder,
-                         {
-                             .parent = sections_row,
-                             .id_extra = loc_hash,
-                             .layout {
-                                 .size = layout::k_hug_contents,
-                                 .contents_gap = 8,
-                                 .contents_direction = layout::Direction::Column,
-                                 .contents_align = layout::Alignment::Start,
-                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                             },
-                         });
-        };
-
-        auto const do_heading = [&g](Box parent, String text) {
+        auto const do_heading = [&g](Box parent, String text, u64 loc_hash = SourceLocationHash()) {
             DoBox(g.builder,
                   {
                       .parent = parent,
+                      .id_extra = loc_hash,
                       .text = text,
                       .size_from_text = true,
                       .font = FontType::Heading3,
                       .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
                       .text_justification = TextJustification::CentredLeft,
                   });
-        };
-
-        auto const do_knob_container = [&g](Box parent, f32 width, u64 loc_hash = SourceLocationHash()) {
-            return DoBox(g.builder,
-                         {
-                             .parent = parent,
-                             .id_extra = loc_hash,
-                             .layout {
-                                 .size = {width, layout::k_hug_contents},
-                                 .contents_padding = {.l = 4},
-                                 .contents_gap = {24, 8},
-                                 .contents_direction = layout::Direction::Row,
-                                 .contents_multiline = true,
-                                 .contents_align = layout::Alignment::Start,
-                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                             },
-                         });
         };
 
         auto const do_knob = [&](Box parent, LayerParamIndex param) {
@@ -1550,33 +1516,89 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                             });
         };
 
+        auto const do_row = [&g](Box parent, u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = parent,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                 .contents_gap = 42,
+                                 .contents_direction = layout::Direction::Row,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        auto const do_section = [&g](Box parent, u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = parent,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = layout::k_hug_contents,
+                                 .contents_gap = 4,
+                                 .contents_direction = layout::Direction::Column,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        auto const do_knob_container = [&g](Box parent, u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = parent,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = layout::k_hug_contents,
+                                 .margins = {.l = 2},
+                                 .contents_gap = 26,
+                                 .contents_direction = layout::Direction::Row,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        // Row 1: PLAYHEAD + GRAINS
         {
-            auto const section = do_section();
-            do_heading(section, "PLAYHEAD"_s);
-            auto const knob_box = do_knob_container(section, 38);
-            do_knob(knob_box,
-                    (play_mode == param_values::PlayMode::GranularPlayback)
-                        ? LayerParamIndex::GranularSpeed
-                        : LayerParamIndex::GranularPosition);
-            do_knob(knob_box, LayerParamIndex::GranularSpread);
+            auto const row = do_row(granular_container);
+
+            {
+                auto const section = do_section(row);
+                do_heading(section, "PLAYHEAD"_s);
+                auto const knob_box = do_knob_container(section);
+                do_knob(knob_box,
+                        (play_mode == param_values::PlayMode::GranularPlayback)
+                            ? LayerParamIndex::GranularSpeed
+                            : LayerParamIndex::GranularPosition);
+                do_knob(knob_box, LayerParamIndex::GranularSpread);
+            }
+
+            {
+                auto const section = do_section(row);
+                do_heading(section, "GRAINS"_s);
+                auto const knob_box = do_knob_container(section);
+                do_knob(knob_box, LayerParamIndex::GranularDensity);
+                do_knob(knob_box, LayerParamIndex::GranularLength);
+                do_knob(knob_box, LayerParamIndex::GranularSmoothing);
+            }
         }
 
+        // Row 2: RANDOM
         {
-            auto const section = do_section();
-            do_heading(section, "GRAINS"_s);
-            auto const knob_box = do_knob_container(section, 110);
-            do_knob(knob_box, LayerParamIndex::GranularDensity);
-            do_knob(knob_box, LayerParamIndex::GranularLength);
-            do_knob(knob_box, LayerParamIndex::GranularSmoothing);
-        }
+            auto const row = do_row(granular_container);
 
-        {
-            auto const section = do_section();
-            do_heading(section, "RANDOM"_s);
-            auto const knob_box = do_knob_container(section, 110);
-            do_knob(knob_box, LayerParamIndex::GranularRandomPan);
-            do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
-            do_knob(knob_box, LayerParamIndex::GranularRandomDirection);
+            {
+                auto const section = do_section(row);
+                do_heading(section, "RANDOM"_s);
+                auto const knob_box = do_knob_container(section);
+                do_knob(knob_box, LayerParamIndex::GranularRandomPan);
+                do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
+                do_knob(knob_box, LayerParamIndex::GranularRandomDirection);
+            }
         }
     }
 }
