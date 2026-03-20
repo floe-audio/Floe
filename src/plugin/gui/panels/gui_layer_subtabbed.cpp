@@ -1573,7 +1573,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
         {
             auto const section = do_section();
             do_heading(section, "RANDOM"_s);
-            auto const knob_box = do_knob_container(section, 106);
+            auto const knob_box = do_knob_container(section, 110);
             do_knob(knob_box, LayerParamIndex::GranularRandomPan);
             do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
             do_knob(knob_box, LayerParamIndex::GranularRandomDirection);
