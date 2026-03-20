@@ -1950,6 +1950,16 @@ void Context::EndViewport() {
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
+    switch (viewport->size_resolution) {
+        case Viewport::SizeResolutionState::PendingSizeResolution:
+            viewport->size_resolution = Viewport::SizeResolutionState::Ready;
+            break;
+        case Viewport::SizeResolutionState::Ready:
+            viewport->size_resolution = Viewport::SizeResolutionState::NotPending;
+            break;
+        case Viewport::SizeResolutionState::NotPending: break;
+    }
+
     PopRectFromCurrentScissorStack();
     PopId();
     if (!viewport->parent_viewport) PopScissorStack();
@@ -1967,8 +1977,8 @@ void Context::EndViewport() {
 }
 
 bool Context::ScrollViewportToShowRectangle(Rect r) {
-    if (!Rect::DoRectsIntersect(RegisterAndConvertRect(r),
-                                curr_viewport->clipping_rect.ReducedVertically(r.h))) {
+    auto const window_r = RegisterAndConvertRect(r);
+    if (!Rect::DoRectsIntersect(window_r, curr_viewport->clipping_rect.ReducedVertically(r.h))) {
         SetYScroll(curr_viewport,
                    Clamp(r.CentreY() - (CurrentVpHeight() / 2), 0.0f, curr_viewport->scroll_max.y));
         return true;
@@ -2109,6 +2119,7 @@ void Context::OpenPopupMenu(Id id, Id creator_of_this_popup) {
     auto popup = FindOrCreateViewport(id);
     popup->cfg.mode = ViewportMode::PopupMenu;
     popup->prev_content_size = f32x2 {0, 0};
+    popup->size_resolution = Viewport::SizeResolutionState::PendingSizeResolution;
     popup->creator_of_this_popup_menu = is_first_popup ? k_null_id : creator_of_this_popup;
 
     popup_menu_just_opened = id;
@@ -2155,6 +2166,7 @@ void Context::OpenModalViewport(Id id) {
     auto viewport = FindOrCreateViewport(id);
     viewport->cfg.mode = ViewportMode::Modal;
     viewport->prev_content_size = f32x2 {0, 0};
+    viewport->size_resolution = Viewport::SizeResolutionState::PendingSizeResolution;
     modal_just_opened = id;
     dyn::Append(open_modals, viewport);
     UpdateExclusiveFocusViewport();

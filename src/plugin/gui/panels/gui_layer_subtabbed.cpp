@@ -1670,6 +1670,11 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                                          (u64)bit);
                                             if (item.button_fired && !is_root)
                                                 layer.harmony_intervals.Flip(bit);
+
+                                            if (is_root && g.imgui.IsViewportFirstSizedFrame()) {
+                                                if (auto const item_r = BoxRect(g.builder, item))
+                                                    g.imgui.ScrollViewportToShowRectangle(*item_r);
+                                            }
                                         }
                                     },
                                 .bounds = intervals_btn,

@@ -307,6 +307,9 @@ struct Viewport {
     f32x2 scroll_offset = {}; // The pixel offset from scrollbars.
     f32x2 scroll_max = {};
     b8x2 has_scrollbar = false;
+
+    enum class SizeResolutionState : u8 { NotPending, PendingSizeResolution, Ready };
+    SizeResolutionState size_resolution = SizeResolutionState::NotPending;
 };
 
 // Data about interactions with a text input, and data required to draw a text input.
@@ -630,6 +633,10 @@ struct Context {
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     bool ScrollViewportToShowRectangle(Rect r);
+
+    bool IsViewportFirstSizedFrame() const {
+        return curr_viewport->size_resolution == Viewport::SizeResolutionState::Ready;
+    }
 
     // Handy shortcuts.
     f32 CurrentVpWidth() const { return curr_viewport->bounds.w; }
