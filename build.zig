@@ -528,6 +528,7 @@ pub fn build(b: *std.Build) void {
         .ci = b.step("script:ci", "Run CI checks"),
         .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
 
+        .benchmark_ci = b.step("script:benchmark-ci", "Run benchmarks with hyperfine and track with Bencher"),
         .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
         .format_step = b.step("script:format", "Format code with clang-format"),
         .create_gh_release = b.step("script:create-gh-release", "Create a GitHub release"),
@@ -601,6 +602,7 @@ pub fn build(b: *std.Build) void {
         });
         if (b.graph.host.result.os.tag == .windows) exe.linkLibC(); // GetTempPath2W
 
+        addRunScript(exe, top_level_steps.benchmark_ci, "benchmark-ci");
         addRunScript(exe, top_level_steps.format_step, "format");
         addRunScript(exe, top_level_steps.create_gh_release, "create-gh-release");
         addRunScript(exe, top_level_steps.upload_errors, "upload-errors");

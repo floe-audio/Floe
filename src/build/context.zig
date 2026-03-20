@@ -83,6 +83,7 @@ pub const TopLevelSteps = struct {
     ci_basic: *std.Build.Step,
 
     // Scripts.
+    benchmark_ci: *std.Build.Step,
     clang_tidy: *std.Build.Step,
     format_step: *std.Build.Step,
     create_gh_release: *std.Build.Step,
