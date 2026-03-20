@@ -191,8 +191,11 @@ enum class ParamValueType : u8 {
 struct ParamFlags {
     u8 not_automatable : 1;
     u8 hidden : 1;
-    u8 experimental : 1; // Experimental params may be removed in future versions. They don't require a
-                         // StateVersion bump and are defaulted on load if not present in the file.
+    // Experimental params may be removed or changed in future versions without breaking compatibility, they
+    // don't require a StateVersion bump, and are defaulted on load if not present in the file. We store
+    // params as {id, value} pairs - unknown IDs are skipped on load, so removed experimental params are
+    // harmlessly ignored.
+    u8 experimental : 1;
 };
 
 enum class ParameterModule : u8 {
