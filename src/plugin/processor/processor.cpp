@@ -861,6 +861,11 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
             state.velocity_curve_points[layer_index]);
     }
 
+    // Harmony intervals.
+    for (auto const layer_index : Range(k_num_layers))
+        processor.layer_processors[layer_index].harmony_intervals.AssignBlockwise(
+            state.harmony_intervals[layer_index]);
+
     // Macro destinations.
     {
         processor.main_macro_destinations = state.macro_destinations;
@@ -910,6 +915,7 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
     for (auto const i : Range(k_num_layers)) {
         result.inst_ids[i] = processor.layer_processors[i].instrument_id;
         result.velocity_curve_points[i] = processor.layer_processors[i].velocity_curve_map.points;
+        result.harmony_intervals[i] = processor.layer_processors[i].harmony_intervals.GetBlockwise();
     }
 
     result.ir_id = processor.convo.ir_id;
@@ -1663,6 +1669,10 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     }
 
     ProcessorHandleChanges(processor, changes);
+
+    // Harmony intervals are not a parameter - always sync from the AtomicBitset to the voice controller.
+    for (auto& l : processor.layer_processors)
+        l.voice_controller.granular.harmony_intervals = l.harmony_intervals.GetBlockwise();
 
     // Voices and layers
     // ======================================================================================================

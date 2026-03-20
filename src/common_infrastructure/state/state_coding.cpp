@@ -504,6 +504,9 @@ enum class StateVersion : u16 {
     // using 1.2.0-beta.1 may have this version. It's harmless but we still need to track it.
     Unused1,
 
+    // Added per-layer harmony interval bitsets for the granular engine.
+    AddedGranularHarmonyIntervals,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -1330,6 +1333,16 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             }
 
             if (coder.IsReading()) state.velocity_curve_points[i] = points;
+
+            // Harmony intervals.
+            {
+                // Serialise the bitset as raw u64 elements.
+                auto intervals = state.harmony_intervals[i];
+                constexpr auto k_num_elements = decltype(intervals)::k_num_elements;
+                for (usize e = 0; e < k_num_elements; ++e)
+                    TRY(coder.CodeNumber(intervals.elements[e], StateVersion::AddedGranularHarmonyIntervals));
+                if (coder.IsReading()) state.harmony_intervals[i] = intervals;
+            }
         }
     }
 
@@ -1428,6 +1441,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (coder.IsReading()) {
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
+            if (coder.version < StateVersion::AddedGranularHarmonyIntervals) state.harmony_intervals = {};
 
             // In commit e0b15326e9528ca33de7d3c8f905a3449a36d31a we introduced a bug where the LFO amount was
             // inverted prior to all previous versions. We have now fixed this, however, for presets that were

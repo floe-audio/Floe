@@ -1554,7 +1554,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                              .layout {
                                  .size = layout::k_hug_contents,
                                  .margins = {.l = 2},
-                                 .contents_gap = 26,
+                                 .contents_gap = 30,
                                  .contents_direction = layout::Direction::Row,
                                  .contents_align = layout::Alignment::Start,
                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -1598,6 +1598,89 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                 do_knob(knob_box, LayerParamIndex::GranularRandomPan);
                 do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
                 do_knob(knob_box, LayerParamIndex::GranularRandomDirection);
+
+                // Harmony: knob + intervals button
+                {
+                    auto const intervals = layer.harmony_intervals.GetBlockwise();
+                    auto non_unison = intervals;
+                    non_unison.Clear(k_harmony_interval_centre_bit);
+                    bool const has_intervals = non_unison.AnyValuesSet();
+
+                    DoKnobParameter(g,
+                                    knob_box,
+                                    params.DescribedValue(layer_index, LayerParamIndex::GranularHarmony),
+                                    {
+                                        .width = 28,
+                                        .style_system = GuiStyleSystem::MidPanel,
+                                        .greyed_out = !has_intervals,
+                                    });
+
+                    auto const label = HarmonyIntervalsLabel(intervals, g.scratch_arena);
+                    auto const intervals_btn =
+                        MenuOpenButton(g.builder,
+                                       knob_box,
+                                       {
+                                           .text = label,
+                                           .tooltip = "Select which harmony intervals grains can spawn at"_s,
+                                           .width = 80,
+                                           .style_system = GuiStyleSystem::MidPanel,
+                                       });
+
+                    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer_index);
+                    if (intervals_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
+
+                    if (g.imgui.IsPopupMenuOpen(popup_id))
+                        DoBoxViewport(
+                            g.builder,
+                            {
+                                .run =
+                                    [&g, &layer](GuiBuilder&) {
+                                        auto const popup_root =
+                                            DoBox(g.builder,
+                                                  {
+                                                      .layout {
+                                                          .size = {150, 450},
+                                                          .contents_direction = layout::Direction::Column,
+                                                          .contents_align = layout::Alignment::Start,
+                                                      },
+                                                  });
+
+                                        // Top to bottom: +48 down to +1, root, -1 down to -48
+                                        for (int semitones = k_harmony_interval_max_semitone;
+                                             semitones >= k_harmony_interval_min_semitone;
+                                             --semitones) {
+                                            auto const bit = HarmonyIntervalBitIndex(semitones);
+                                            bool const is_root = (semitones == 0);
+                                            bool const is_selected =
+                                                is_root || layer.harmony_intervals.Get(bit);
+                                            auto const name =
+                                                is_root ? String("Root"_s)
+                                                        : HarmonyIntervalName(semitones, g.scratch_arena);
+
+                                            auto const item =
+                                                MenuItem(g.builder,
+                                                         popup_root,
+                                                         {
+                                                             .text = name,
+                                                             .is_selected = is_selected,
+                                                             .close_on_click = false,
+                                                             .mode = is_root ? MenuItemOptions::Mode::Dimmed
+                                                                             : MenuItemOptions::Mode::Active,
+                                                         },
+                                                         (u64)bit);
+                                            if (item.button_fired && !is_root)
+                                                layer.harmony_intervals.Flip(bit);
+                                        }
+                                    },
+                                .bounds = intervals_btn,
+                                .imgui_id = popup_id,
+                                .viewport_config = ({
+                                    auto cfg = k_default_popup_menu_viewport;
+                                    cfg.auto_size = true;
+                                    cfg;
+                                }),
+                            });
+                }
             }
         }
     }

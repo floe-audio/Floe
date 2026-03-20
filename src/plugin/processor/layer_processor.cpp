@@ -698,6 +698,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.random_detune = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDirection))
         vmst.granular.random_direction = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularHarmony))
+        vmst.granular.harmony = *p;
 
     // EQ
     // =======================================================================================================

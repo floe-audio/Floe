@@ -1021,6 +1021,34 @@ struct VoiceProcessor {
                                 } else {
                                     r = 1.0;
                                 }
+
+                                // Harmony: optionally shift grain pitch to one of the selected
+                                // intervals.
+                                if (ctrl.granular.harmony > 0.0001f) {
+                                    auto const harmony_rand = r2[2];
+                                    if (harmony_rand < ctrl.granular.harmony) {
+                                        auto const& intervals = ctrl.granular.harmony_intervals;
+                                        auto const num_set = intervals.NumSet();
+                                        if (num_set > 0) {
+                                            auto const pick_rand = r2[3];
+                                            auto chosen = Min((usize)(pick_rand * (f32)num_set), num_set - 1);
+
+                                            // Walk to the chosen set bit.
+                                            usize count = 0;
+                                            for (usize bit = 0; bit < k_num_harmony_interval_bits; ++bit) {
+                                                if (intervals.Get(bit)) {
+                                                    if (count == chosen) {
+                                                        auto const semitones = HarmonyIntervalSemitones(bit);
+                                                        if (semitones != 0) r *= Exp2((f64)semitones / 12.0);
+                                                        break;
+                                                    }
+                                                    ++count;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 r;
                             });
 
@@ -1059,7 +1087,7 @@ struct VoiceProcessor {
                         // Spawn interval is relative to grain length: density 0 = end-to-end, density 1 =
                         // lots of overlap.
                         constexpr f32 k_max_density_ratio = 1.0f;
-                        constexpr f32 k_min_density_ratio = 0.05f;
+                        constexpr f32 k_min_density_ratio = 0.02f;
                         constexpr f32 k_density_curve_exponent = 0.15f;
                         auto const t = Pow(ctrl.granular.density, k_density_curve_exponent);
                         auto const ratio =

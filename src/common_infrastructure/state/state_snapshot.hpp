@@ -40,6 +40,7 @@ struct StateSnapshot {
     StateMetadata metadata {};
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
     Array<CurveMap::Points, k_num_layers> velocity_curve_points {};
+    Array<HarmonyIntervalsBitset, k_num_layers> harmony_intervals {};
     MacroNames macro_names {};
     MacroDestinations macro_destinations {};
 };
@@ -160,6 +161,10 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
     for (auto layer_index : Range(k_num_layers))
         if (old_state.velocity_curve_points[layer_index] != new_state.velocity_curve_points[layer_index])
             fmt::Append(diff_desc, "Velocity curve points changed for layer {}\n"_s, layer_index);
+
+    for (auto layer_index : Range(k_num_layers))
+        if (old_state.harmony_intervals[layer_index] != new_state.harmony_intervals[layer_index])
+            fmt::Append(diff_desc, "Harmony intervals changed for layer {}\n"_s, layer_index);
 
     for (auto macro_index : Range(k_num_macros))
         if (old_state.macro_names[macro_index] != new_state.macro_names[macro_index])

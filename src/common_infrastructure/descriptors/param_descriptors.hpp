@@ -71,6 +71,7 @@ enum class LayerParamIndex : u16 {
     GranularRandomPan,
     GranularRandomDetune,
     GranularRandomDirection,
+    GranularHarmony,
 
     Count,
 };
@@ -2342,6 +2343,16 @@ consteval auto CreateParams() {
             .gui_label = "Direction"_s,
             .tooltip =
                 "Chance that grains spawn playing in the opposite direction to the main playhead. At 0% all grains play in the main direction, at 100% there's a 50/50 chance of each grain playing forwards or backwards"_s,
+            .flags = {.experimental = true},
+        };
+        lp(GranularHarmony) = Args {
+            .id = id(region, 66), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Harmony"_s,
+            .gui_label = "Harmony"_s,
+            .tooltip =
+                "Chance that grains spawn at one of the selected harmony intervals instead of the root pitch. Configure which intervals are active using the Intervals button"_s,
             .flags = {.experimental = true},
         };
     }
