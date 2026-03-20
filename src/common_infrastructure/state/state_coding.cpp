@@ -1854,134 +1854,153 @@ TEST_CASE(TestNewSerialisation) {
     auto& scratch_arena = tester.scratch_arena;
 
     for (auto const source : Array {StateSource::PresetFile, StateSource::Daw}) {
-        CAPTURE(source);
+        for (auto const write_experimental_params : Array {false, true}) {
+            CAPTURE(source);
+            CAPTURE(write_experimental_params);
 
-        StateSnapshot state {};
-        auto random_seed = RandomSeed();
-        for (auto [index, param] : Enumerate(state.param_values)) {
-            auto const& info = k_param_descriptors[index];
-            param = RandomFloatInRange(random_seed, info.linear_range.min, info.linear_range.max);
-        }
-
-        for (auto [i, type] : Enumerate(state.fx_order))
-            type = (EffectType)i;
-        Shuffle(state.fx_order, random_seed);
-
-        state.ir_id = sample_lib::IrId {
-            .library = "irlibname.irlib"_s,
-            .ir_id = "irfile"_s,
-        };
-        for (auto [index, inst] : Enumerate(state.inst_ids)) {
-            inst = sample_lib::InstrumentId {
-                .library = (String)fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index),
-                .inst_id = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
-            };
-        }
-
-        for (auto const _ : Range(RandomIntInRange<usize>(random_seed, 0, k_max_num_tags - 1))) {
-            DynamicArrayBounded<char, k_max_tag_size> tag;
-            dyn::Resize(tag, RandomIntInRange<usize>(random_seed, 1, k_max_tag_size));
-            FillRandomAsciiChars(random_seed, tag);
-            dyn::Append(state.metadata.tags, tag);
-        }
-
-        {
-            DynamicArrayBounded<char, k_max_preset_description_size> description;
-            dyn::Resize(description, RandomIntInRange<usize>(random_seed, 1, k_max_preset_description_size));
-            FillRandomAsciiChars(random_seed, description);
-            state.metadata.description = description;
-        }
-
-        {
-            DynamicArrayBounded<char, k_max_preset_author_size> author;
-            dyn::Resize(author, RandomIntInRange<usize>(random_seed, 1, k_max_preset_author_size));
-            FillRandomAsciiChars(random_seed, author);
-            state.metadata.author = author;
-        }
-
-        {
-            dyn::Assign(state.velocity_curve_points[0],
-                        Array {
-                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                            CurveMap::Point {0.5f, 0.5f, 0.0f},
-                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                        });
-            dyn::Assign(state.velocity_curve_points[1],
-                        Array {
-                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                            CurveMap::Point {0.5f, 0.5f, 0.0f},
-                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                        });
-        }
-
-        {
-            state.macro_names = DefaultMacroNames();
-            dyn::Assign(state.macro_names[0], "First Macro"_s);
-            dyn::Assign(state.macro_names[1], "Second"_s);
-
-            state.macro_destinations = {};
-            state.macro_destinations[0].items[0] = {
-                .param_index = ParamIndex::ChorusDepth,
-                .value = 0.4f,
-            };
-            state.macro_destinations[0].items[1] = {
-                .param_index = ParamIndex::ReverbSize,
-                .value = -1.0f,
-            };
-
-            state.macro_destinations[3].items[0] = {
-                .param_index = ParamIndexFromLayerParamIndex(0, LayerParamIndex::EqFreq1),
-                .value = 0.5f,
-            };
-        }
-
-        if (source == StateSource::Daw) {
-            for (auto const param : Range(k_num_parameters)) {
-                if (param % 4 == 0) {
-                    Bitset<128> bits {};
-                    bits.Set(20);
-                    bits.Set(10);
-                    bits.Set(1);
-                    state.param_learned_ccs[param] = bits;
-                }
+            StateSnapshot state {};
+            auto random_seed = RandomSeed();
+            for (auto [index, param] : Enumerate(state.param_values)) {
+                auto const& info = k_param_descriptors[index];
+                param = RandomFloatInRange(random_seed, info.linear_range.min, info.linear_range.max);
             }
-        } else {
-            state.param_learned_ccs = {};
+
+            for (auto [i, type] : Enumerate(state.fx_order))
+                type = (EffectType)i;
+            Shuffle(state.fx_order, random_seed);
+
+            state.ir_id = sample_lib::IrId {
+                .library = "irlibname.irlib"_s,
+                .ir_id = "irfile"_s,
+            };
+            for (auto [index, inst] : Enumerate(state.inst_ids)) {
+                inst = sample_lib::InstrumentId {
+                    .library = (String)fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index),
+                    .inst_id = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
+                };
+            }
+
+            for (auto const _ : Range(RandomIntInRange<usize>(random_seed, 0, k_max_num_tags - 1))) {
+                DynamicArrayBounded<char, k_max_tag_size> tag;
+                dyn::Resize(tag, RandomIntInRange<usize>(random_seed, 1, k_max_tag_size));
+                FillRandomAsciiChars(random_seed, tag);
+                dyn::Append(state.metadata.tags, tag);
+            }
+
+            {
+                DynamicArrayBounded<char, k_max_preset_description_size> description;
+                dyn::Resize(description,
+                            RandomIntInRange<usize>(random_seed, 1, k_max_preset_description_size));
+                FillRandomAsciiChars(random_seed, description);
+                state.metadata.description = description;
+            }
+
+            {
+                DynamicArrayBounded<char, k_max_preset_author_size> author;
+                dyn::Resize(author, RandomIntInRange<usize>(random_seed, 1, k_max_preset_author_size));
+                FillRandomAsciiChars(random_seed, author);
+                state.metadata.author = author;
+            }
+
+            {
+                dyn::Assign(state.velocity_curve_points[0],
+                            Array {
+                                CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                CurveMap::Point {0.5f, 0.5f, 0.0f},
+                                CurveMap::Point {1.0f, 1.0f, 0.0f},
+                            });
+                dyn::Assign(state.velocity_curve_points[1],
+                            Array {
+                                CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                CurveMap::Point {0.5f, 0.5f, 0.0f},
+                                CurveMap::Point {1.0f, 1.0f, 0.0f},
+                            });
+            }
+
+            {
+                state.macro_names = DefaultMacroNames();
+                dyn::Assign(state.macro_names[0], "First Macro"_s);
+                dyn::Assign(state.macro_names[1], "Second"_s);
+
+                state.macro_destinations = {};
+                state.macro_destinations[0].items[0] = {
+                    .param_index = ParamIndex::ChorusDepth,
+                    .value = 0.4f,
+                };
+                state.macro_destinations[0].items[1] = {
+                    .param_index = ParamIndex::ReverbSize,
+                    .value = -1.0f,
+                };
+
+                state.macro_destinations[3].items[0] = {
+                    .param_index = ParamIndexFromLayerParamIndex(0, LayerParamIndex::EqFreq1),
+                    .value = 0.5f,
+                };
+            }
+
+            if (source == StateSource::Daw) {
+                for (auto const param : Range(k_num_parameters)) {
+                    if (param % 4 == 0) {
+                        Bitset<128> bits {};
+                        bits.Set(20);
+                        bits.Set(10);
+                        bits.Set(1);
+                        state.param_learned_ccs[param] = bits;
+                    }
+                }
+            } else {
+                state.param_learned_ccs = {};
+            }
+
+            CheckStateIsValid(tester, state);
+
+            DynamicArray<u8> serialised_data {scratch_arena};
+            REQUIRE(CodeState(state,
+                              CodeStateArguments {
+                                  .mode = CodeStateArguments::Mode::Encode,
+                                  .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                                      dyn::AppendSpan(serialised_data,
+                                                      Span<u8 const> {(u8 const*)data, bytes});
+                                      return k_success;
+                                  },
+                                  .source = source,
+                                  .write_experimental_params = write_experimental_params,
+                              })
+                        .Succeeded());
+
+            // When experimental params are not written, the reader will fill them with defaults.
+            // Update our expected state to match.
+            if (!write_experimental_params) {
+                for (auto const i : Range(k_num_parameters))
+                    if (k_param_descriptors[i].flags.experimental)
+                        state.param_values[i] = k_param_descriptors[i].default_linear_value;
+            }
+
+            StateSnapshot out_state {};
+            usize read_pos = 0;
+            REQUIRE(CodeState(out_state,
+                              CodeStateArguments {
+                                  .mode = CodeStateArguments::Mode::Decode,
+                                  .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                                      CHECK(read_pos + bytes <= serialised_data.size);
+                                      CopyMemory(data, serialised_data.data + read_pos, bytes);
+                                      read_pos += bytes;
+                                      return k_success;
+                                  },
+                                  .source = source,
+                              })
+                        .Succeeded());
+            CHECK_OP(read_pos, ==, serialised_data.size);
+            CheckStateIsValid(tester, out_state);
+
+            if (!(state == out_state)) {
+                DynamicArray<char> diff {tester.scratch_arena};
+                AssignDiffDescription(diff, state, out_state);
+                tester.log.Error("{}", diff);
+            }
+            CHECK(state == out_state);
+            if (source == StateSource::Daw) CHECK(state.param_learned_ccs == out_state.param_learned_ccs);
         }
-
-        CheckStateIsValid(tester, state);
-
-        DynamicArray<u8> serialised_data {scratch_arena};
-        REQUIRE(CodeState(state,
-                          CodeStateArguments {
-                              .mode = CodeStateArguments::Mode::Encode,
-                              .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
-                                  dyn::AppendSpan(serialised_data, Span<u8 const> {(u8 const*)data, bytes});
-                                  return k_success;
-                              },
-                              .source = source,
-                          })
-                    .Succeeded());
-
-        StateSnapshot out_state {};
-        usize read_pos = 0;
-        REQUIRE(CodeState(out_state,
-                          CodeStateArguments {
-                              .mode = CodeStateArguments::Mode::Decode,
-                              .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
-                                  CHECK(read_pos + bytes <= serialised_data.size);
-                                  CopyMemory(data, serialised_data.data + read_pos, bytes);
-                                  read_pos += bytes;
-                                  return k_success;
-                              },
-                              .source = source,
-                          })
-                    .Succeeded());
-        CHECK_OP(read_pos, ==, serialised_data.size);
-        CheckStateIsValid(tester, out_state);
-
-        CHECK(state == out_state);
-        if (source == StateSource::Daw) CHECK(state.param_learned_ccs == out_state.param_learned_ccs);
     }
 
     return k_success;
