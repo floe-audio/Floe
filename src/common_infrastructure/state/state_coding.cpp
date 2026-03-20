@@ -1383,10 +1383,15 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
     // =======================================================================================================
     {
+        // DAW state must always include experimental params: the DAW exposes all parameters via CLAP and
+        // often expects them to round-trip through state save/load.
+        bool const actually_write_experimental =
+            args.write_experimental_params || args.source == StateSource::Daw;
+
         u16 num_params {};
         if (coder.IsWriting())
-            num_params = CheckedCast<u16>(args.write_experimental_params ? k_num_parameters
-                                                                         : k_num_non_experimental_parameters);
+            num_params = CheckedCast<u16>(actually_write_experimental ? k_num_parameters
+                                                                      : k_num_non_experimental_parameters);
         TRY(coder.CodeNumber(num_params, StateVersion::Initial));
 
         // Pre-fill experimental params with defaults. They may not be present in the file if
@@ -1398,7 +1403,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         }
 
         for (auto const i : Range(coder.IsReading() ? num_params : k_num_parameters)) {
-            if (coder.IsWriting() && !args.write_experimental_params &&
+            if (coder.IsWriting() && !actually_write_experimental &&
                 k_param_descriptors[i].flags.experimental)
                 continue;
 
@@ -1968,9 +1973,8 @@ TEST_CASE(TestNewSerialisation) {
                               })
                         .Succeeded());
 
-            // When experimental params are not written, the reader will fill them with defaults.
-            // Update our expected state to match.
-            if (!write_experimental_params) {
+            bool const actually_wrote_experimental = write_experimental_params || source == StateSource::Daw;
+            if (!actually_wrote_experimental) {
                 for (auto const i : Range(k_num_parameters))
                     if (k_param_descriptors[i].flags.experimental)
                         state.param_values[i] = k_param_descriptors[i].default_linear_value;
