@@ -38,6 +38,9 @@ constexpr UiSize32 k_invalid_ui_size = {0, 0};
 struct ClapEntrySource {
     clap_plugin_entry const* entry; // always valid after construction
     Optional<LibraryHandle> library_handle; // set only when loaded from DSO
+    // On Windows, we can't delete a loaded DLL, so we store the temp path and delete after unload.
+    // On Unix, we unlink immediately after dlopen (the OS keeps the mapped data alive), so this is empty.
+    Optional<MutableString> temp_copy_path;
 };
 
 struct Standalone;
@@ -527,12 +530,46 @@ static ErrorCodeOr<ClapEntrySource> LoadClapEntry(Optional<String> dso_path, Are
         };
     }
 
-    auto const handle = TRY(LoadLibrary(({
-        auto p = TRY(AbsolutePath(arena, *dso_path));
-        if constexpr (IS_MACOS)
-            p = path::JoinAppendResizeAllocation(arena, p, Array {"Contents/MacOS/Floe"_s});
-        p;
-    })));
+    // Resolve the path to the actual binary inside the DSO.
+    auto binary_path = TRY(AbsolutePath(arena, *dso_path));
+    if constexpr (IS_MACOS)
+        binary_path = path::JoinAppendResizeAllocation(arena, binary_path, Array {"Contents/MacOS/Floe"_s});
+
+    // Copy the binary to a unique temp file before loading. This is critical for hot-reload:
+    // macOS's dyld caches loaded images by path, so dlclose + dlopen on the same path returns the
+    // stale cached image. By loading from a fresh unique path each time, dyld is forced to read the
+    // new binary from disk. We do this on all platforms for consistency.
+    // We place the copy in the system temp directory to avoid triggering the directory watcher on the
+    // original DSO location (which would cause an infinite reload loop).
+    auto const temp_dir = KnownDirectory(arena, KnownDirectoryType::Temporary, {.create = true});
+    ASSERT(temp_dir.size);
+
+    u64 seed = RandomSeed();
+    auto const temp_filename = UniqueFilename("floe-hotreload-"_s, ""_s, seed);
+    auto const temp_path = path::Join(arena, Array {String(temp_dir), String(temp_filename)});
+
+    TRY(CopyFile(binary_path, temp_path, ExistingDestinationHandling::Overwrite));
+
+    auto const handle = ({
+        auto load_result = LoadLibrary(temp_path);
+        if (load_result.HasError()) {
+            auto _ = Delete(temp_path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
+            (void)_;
+            return load_result.Error();
+        }
+        load_result.ReleaseValue();
+    });
+
+    // On Unix we can unlink immediately: the OS keeps the mapped pages alive until dlclose.
+    // This means no temp files linger even if the process crashes.
+    Optional<MutableString> stored_temp_path = k_nullopt;
+    if constexpr (IS_WINDOWS) {
+        // Windows locks loaded DLLs, so we must defer deletion until after FreeLibrary.
+        stored_temp_path = temp_path;
+    } else {
+        auto _ = Delete(temp_path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
+        (void)_;
+    }
 
     auto const entry = (clap_plugin_entry const*)TRY(SymbolFromLibrary(handle, "clap_entry"));
     ASSERT(entry);
@@ -540,6 +577,7 @@ static ErrorCodeOr<ClapEntrySource> LoadClapEntry(Optional<String> dso_path, Are
     return ClapEntrySource {
         .entry = entry,
         .library_handle = handle,
+        .temp_copy_path = stored_temp_path,
     };
 }
 
@@ -551,7 +589,14 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
 
     auto entry_source = TRY(LoadClapEntry(dso_path, arena));
     DEFER {
-        if (!success && entry_source.library_handle) UnloadLibrary(*entry_source.library_handle);
+        if (!success && entry_source.library_handle) {
+            UnloadLibrary(*entry_source.library_handle);
+            if (entry_source.temp_copy_path) {
+                auto _ = Delete(*entry_source.temp_copy_path,
+                                {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
+                (void)_;
+            }
+        }
     };
 
     entry_source.entry->init(entry_source.library_handle.HasValue() ? k_clap_init_log_to_stderr_sentinel
@@ -692,7 +737,17 @@ static void UnloadPluginInstance(Standalone& standalone) {
     inst->plugin->destroy(inst->plugin);
 
     inst->entry_source.entry->deinit();
-    if (inst->entry_source.library_handle) UnloadLibrary(*inst->entry_source.library_handle);
+    if (inst->entry_source.library_handle) {
+        UnloadLibrary(*inst->entry_source.library_handle);
+
+        // On Windows, the DLL is locked while loaded so we must delete the temp copy after unloading.
+        // On Unix, the temp copy was already unlinked immediately after dlopen.
+        if (inst->entry_source.temp_copy_path) {
+            auto _ = Delete(*inst->entry_source.temp_copy_path,
+                            {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
+            (void)_;
+        }
+    }
 }
 
 static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, ArenaAllocator& arena) {
