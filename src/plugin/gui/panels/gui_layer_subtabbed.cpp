@@ -1413,6 +1413,185 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
     }
 }
 
+static void
+HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyIntervalsBitset intervals) {
+    auto const label = HarmonyIntervalsLabel(intervals, g.scratch_arena);
+    auto const intervals_btn =
+        MenuOpenButton(g.builder,
+                       parent,
+                       {
+                           .text = label,
+                           .tooltip = "Select which harmony intervals grains can spawn at"_s,
+                           .width = 70,
+                           .style_system = GuiStyleSystem::MidPanel,
+                       });
+
+    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer.index);
+    if (intervals_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
+
+    if (g.imgui.IsPopupMenuOpen(popup_id) && g.builder.IsInputAndRenderPass()) {
+        auto const popup_r = ({
+            auto const popup_size = WwToPixels(f32x2 {340, 450});
+            Rect r {.size = popup_size};
+            if (auto const btn_r = BoxRect(g.builder, intervals_btn)) {
+                auto const avoid_r = g.imgui.ViewportRectToWindowRect(*btn_r);
+                r.pos = imgui::BestPopupPos(Rect {.pos = avoid_r.pos, .size = popup_size},
+                                            avoid_r,
+                                            GuiIo().in.window_size.ToFloat2(),
+                                            imgui::PopupJustification::LeftOrRight);
+            }
+            r;
+        });
+
+        DoBoxViewport(
+            g.builder,
+            {
+                .run =
+                    [&g, &layer](GuiBuilder&) {
+                        auto const is_first_frame = g.imgui.IsViewportFirstSizedFrame();
+                        auto const popup_root = DoBox(g.builder,
+                                                      {
+                                                          .layout {
+                                                              .size = layout::k_fill_parent,
+                                                              .contents_direction = layout::Direction::Row,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+
+                        // Left column: presets
+                        {
+                            auto const presets_col =
+                                DoBox(g.builder,
+                                      {
+                                          .parent = popup_root,
+                                          .layout {
+                                              .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                              .contents_direction = layout::Direction::Column,
+                                              .contents_align = layout::Alignment::Start,
+                                          },
+                                      });
+
+                            DoBox(g.builder,
+                                  {
+                                      .parent = presets_col,
+                                      .text = "Presets"_s,
+                                      .font = FontType::Heading3,
+                                      .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                                      .text_justification = TextJustification::CentredLeft,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, 20},
+                                          .margins = {.l = 8, .t = 2, .b = 2},
+                                      },
+                                  });
+
+                            auto const current_intervals = layer.harmony_intervals.GetBlockwise();
+                            for (auto const i : Range(k_harmony_presets.size)) {
+                                auto const& preset = k_harmony_presets[i];
+                                bool const is_selected = current_intervals == preset.intervals;
+                                auto const item = MenuItem(g.builder,
+                                                           presets_col,
+                                                           {
+                                                               .text = preset.name,
+                                                               .tooltip = preset.tooltip,
+                                                               .is_selected = is_selected,
+                                                               .close_on_click = false,
+                                                           },
+                                                           (u64)i);
+                                if (item.button_fired)
+                                    layer.harmony_intervals.AssignBlockwise(preset.intervals);
+                            }
+                        }
+
+                        // Divider
+                        DoBox(g.builder,
+                              {
+                                  .parent = popup_root,
+                                  .background_fill_colours = Col {.c = Col::Surface2},
+                                  .layout {
+                                      .size = {1, layout::k_fill_parent},
+                                  },
+                              });
+
+                        // Right column: individual intervals (nested
+                        // scrollable viewport)
+                        auto const intervals_box = DoBox(g.builder,
+                                                         {
+                                                             .parent = popup_root,
+                                                             .layout {
+                                                                 .size = layout::k_fill_parent,
+                                                             },
+                                                         });
+
+                        DoBoxViewport(
+                            g.builder,
+                            {
+                                .run =
+                                    [&g, &layer, is_first_frame](GuiBuilder&) {
+                                        auto const intervals_root = DoBox(
+                                            g.builder,
+                                            {
+                                                .layout {
+                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
+
+                                        // Top to bottom: +48 down to +1, root, -1 down
+                                        // to -48
+                                        for (int semitones = k_harmony_interval_max_semitone;
+                                             semitones >= k_harmony_interval_min_semitone;
+                                             --semitones) {
+                                            auto const bit = HarmonyIntervalBitIndex(semitones);
+                                            bool const is_root = (semitones == 0);
+                                            bool const is_selected =
+                                                is_root || layer.harmony_intervals.Get(bit);
+                                            auto const name =
+                                                is_root ? String("Root"_s)
+                                                        : HarmonyIntervalName(semitones, g.scratch_arena);
+
+                                            auto const item =
+                                                MenuItem(g.builder,
+                                                         intervals_root,
+                                                         {
+                                                             .text = name,
+                                                             .is_selected = is_selected,
+                                                             .close_on_click = false,
+                                                             .mode = is_root ? MenuItemOptions::Mode::Dimmed
+                                                                             : MenuItemOptions::Mode::Active,
+                                                         },
+                                                         (u64)bit);
+                                            if (item.button_fired && !is_root)
+                                                layer.harmony_intervals.Flip(bit);
+
+                                            if (is_root && is_first_frame) {
+                                                if (auto const item_r = BoxRect(g.builder, item))
+                                                    g.imgui.ScrollViewportToShowRectangle(*item_r);
+                                            }
+                                        }
+                                    },
+                                .bounds = intervals_box,
+                                .imgui_id = g.builder.imgui.MakeId("intervals"),
+                                .viewport_config = ({
+                                    auto cfg = k_default_modal_subviewport;
+                                    cfg.padding = {.lr = 1, .tb = 0};
+                                    cfg;
+                                }),
+                            });
+                    },
+                .bounds = popup_r,
+                .imgui_id = popup_id,
+                .viewport_config = ({
+                    auto cfg = k_default_popup_menu_viewport;
+                    cfg.positioning = imgui::ViewportPositioning::WindowAbsolute;
+                    cfg.auto_size = false;
+                    cfg.scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never;
+                    cfg;
+                }),
+            });
+    }
+}
+
 static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
@@ -1594,8 +1773,21 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
 
             {
                 auto const section = do_section(row);
+
                 do_heading(section, "RANDOM"_s);
-                auto const knob_box = do_knob_container(section);
+
+                // Inner box to allow the harmony menu to sit closer to the knob box.
+                auto const row_inner = DoBox(g.builder,
+                                             {
+                                                 .parent = section,
+                                                 .layout {
+                                                     .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                     .contents_gap = 20, // Gap before harmony menu.
+                                                     .contents_direction = layout::Direction::Row,
+                                                 },
+                                             });
+
+                auto const knob_box = do_knob_container(row_inner);
                 do_knob(knob_box, LayerParamIndex::GranularRandomPan);
                 do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
                 do_knob(knob_box, LayerParamIndex::GranularRandomDirection);
@@ -1616,196 +1808,7 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                         .greyed_out = !has_intervals,
                                     });
 
-                    auto const label = HarmonyIntervalsLabel(intervals, g.scratch_arena);
-                    auto const intervals_btn =
-                        MenuOpenButton(g.builder,
-                                       knob_box,
-                                       {
-                                           .text = label,
-                                           .tooltip = "Select which harmony intervals grains can spawn at"_s,
-                                           .width = 80,
-                                           .style_system = GuiStyleSystem::MidPanel,
-                                       });
-
-                    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer_index);
-                    if (intervals_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
-
-                    if (g.imgui.IsPopupMenuOpen(popup_id) && g.builder.IsInputAndRenderPass()) {
-                        auto const popup_r = ({
-                            auto const popup_size = WwToPixels(f32x2 {340, 450});
-                            Rect r {.size = popup_size};
-                            if (auto const btn_r = BoxRect(g.builder, intervals_btn)) {
-                                auto const avoid_r = g.imgui.ViewportRectToWindowRect(*btn_r);
-                                r.pos = imgui::BestPopupPos(Rect {.pos = avoid_r.pos, .size = popup_size},
-                                                            avoid_r,
-                                                            GuiIo().in.window_size.ToFloat2(),
-                                                            imgui::PopupJustification::LeftOrRight);
-                            }
-                            r;
-                        });
-
-                        DoBoxViewport(
-                            g.builder,
-                            {
-                                .run =
-                                    [&g, &layer](GuiBuilder&) {
-                                        auto const is_first_frame = g.imgui.IsViewportFirstSizedFrame();
-                                        auto const popup_root =
-                                            DoBox(g.builder,
-                                                  {
-                                                      .layout {
-                                                          .size = layout::k_fill_parent,
-                                                          .contents_direction = layout::Direction::Row,
-                                                          .contents_align = layout::Alignment::Start,
-                                                      },
-                                                  });
-
-                                        // Left column: presets
-                                        {
-                                            auto const presets_col =
-                                                DoBox(g.builder,
-                                                      {
-                                                          .parent = popup_root,
-                                                          .layout {
-                                                              .size = {layout::k_hug_contents,
-                                                                       layout::k_fill_parent},
-                                                              .contents_direction = layout::Direction::Column,
-                                                              .contents_align = layout::Alignment::Start,
-                                                          },
-                                                      });
-
-                                            DoBox(g.builder,
-                                                  {
-                                                      .parent = presets_col,
-                                                      .text = "Presets"_s,
-                                                      .font = FontType::Heading3,
-                                                      .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
-                                                      .text_justification = TextJustification::CentredLeft,
-                                                      .layout {
-                                                          .size = {layout::k_fill_parent, 20},
-                                                          .margins = {.l = 8, .t = 2, .b = 2},
-                                                      },
-                                                  });
-
-                                            auto const current_intervals =
-                                                layer.harmony_intervals.GetBlockwise();
-                                            for (auto const i : Range(k_harmony_presets.size)) {
-                                                auto const& preset = k_harmony_presets[i];
-                                                bool const is_selected =
-                                                    current_intervals == preset.intervals;
-                                                auto const item = MenuItem(g.builder,
-                                                                           presets_col,
-                                                                           {
-                                                                               .text = preset.name,
-                                                                               .tooltip = preset.tooltip,
-                                                                               .is_selected = is_selected,
-                                                                               .close_on_click = false,
-                                                                           },
-                                                                           (u64)i);
-                                                if (item.button_fired)
-                                                    layer.harmony_intervals.AssignBlockwise(preset.intervals);
-                                            }
-                                        }
-
-                                        // Divider
-                                        DoBox(g.builder,
-                                              {
-                                                  .parent = popup_root,
-                                                  .background_fill_colours = Col {.c = Col::Surface2},
-                                                  .layout {
-                                                      .size = {1, layout::k_fill_parent},
-                                                  },
-                                              });
-
-                                        // Right column: individual intervals (nested
-                                        // scrollable viewport)
-                                        auto const intervals_box =
-                                            DoBox(g.builder,
-                                                  {
-                                                      .parent = popup_root,
-                                                      .layout {
-                                                          .size = layout::k_fill_parent,
-                                                      },
-                                                  });
-
-                                        DoBoxViewport(
-                                            g.builder,
-                                            {
-                                                .run =
-                                                    [&g, &layer, is_first_frame](GuiBuilder&) {
-                                                        auto const intervals_root =
-                                                            DoBox(g.builder,
-                                                                  {
-                                                                      .layout {
-                                                                          .size = {layout::k_fill_parent,
-                                                                                   layout::k_hug_contents},
-                                                                          .contents_direction =
-                                                                              layout::Direction::Column,
-                                                                          .contents_align =
-                                                                              layout::Alignment::Start,
-                                                                      },
-                                                                  });
-
-                                                        // Top to bottom: +48 down to +1, root, -1 down
-                                                        // to -48
-                                                        for (int semitones = k_harmony_interval_max_semitone;
-                                                             semitones >= k_harmony_interval_min_semitone;
-                                                             --semitones) {
-                                                            auto const bit =
-                                                                HarmonyIntervalBitIndex(semitones);
-                                                            bool const is_root = (semitones == 0);
-                                                            bool const is_selected =
-                                                                is_root || layer.harmony_intervals.Get(bit);
-                                                            auto const name =
-                                                                is_root
-                                                                    ? String("Root"_s)
-                                                                    : HarmonyIntervalName(semitones,
-                                                                                          g.scratch_arena);
-
-                                                            auto const item = MenuItem(
-                                                                g.builder,
-                                                                intervals_root,
-                                                                {
-                                                                    .text = name,
-                                                                    .is_selected = is_selected,
-                                                                    .close_on_click = false,
-                                                                    .mode =
-                                                                        is_root
-                                                                            ? MenuItemOptions::Mode::Dimmed
-                                                                            : MenuItemOptions::Mode::Active,
-                                                                },
-                                                                (u64)bit);
-                                                            if (item.button_fired && !is_root)
-                                                                layer.harmony_intervals.Flip(bit);
-
-                                                            if (is_root && is_first_frame) {
-                                                                if (auto const item_r =
-                                                                        BoxRect(g.builder, item))
-                                                                    g.imgui.ScrollViewportToShowRectangle(
-                                                                        *item_r);
-                                                            }
-                                                        }
-                                                    },
-                                                .bounds = intervals_box,
-                                                .imgui_id = g.builder.imgui.MakeId("intervals"),
-                                                .viewport_config = ({
-                                                    auto cfg = k_default_modal_subviewport;
-                                                    cfg.padding = {.lr = 1, .tb = 0};
-                                                    cfg;
-                                                }),
-                                            });
-                                    },
-                                .bounds = popup_r,
-                                .imgui_id = popup_id,
-                                .viewport_config = ({
-                                    auto cfg = k_default_popup_menu_viewport;
-                                    cfg.positioning = imgui::ViewportPositioning::WindowAbsolute;
-                                    cfg.auto_size = false;
-                                    cfg.scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never;
-                                    cfg;
-                                }),
-                            });
-                    }
+                    HarmonySelectionMenu(g, layer, row_inner, intervals);
                 }
             }
         }
