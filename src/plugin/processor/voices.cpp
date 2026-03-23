@@ -1199,7 +1199,7 @@ struct VoiceProcessor {
                         grain.steal_fade -= grain.steal_fade_dec * frames_processed;
                         if (grain.env_phase >= 1.0f || grain.steal_fade <= 0.0f) {
                             grain.active = false;
-                            if (grain.steal_fade > 0.0f) pool.num_active_non_stealing--;
+                            if (!grain.IsStealing()) pool.num_active_non_stealing--;
                         }
                     }
                 }
