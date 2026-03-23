@@ -160,6 +160,10 @@ struct PlayHead {
         frame_pos = num_frames - frame_pos;
     }
 
+    void InvertLoop(u32 num_frames) {
+        if (loop) (BoundsCheckedLoop&)* loop = ::InvertLoop(*loop, num_frames);
+    }
+
     // The frame position in the audio data regardless of playback direction. It only ever goes forwards. So
     // even when in reverse playback mode, it starts at 0 and goes to num_frames.
     f64 frame_pos = {};
@@ -192,8 +196,15 @@ NO_UBSAN inline void IncrementPlaybackPos(PlayHead& playhead, f64 increment, u32
     playhead.frame_pos += increment;
 
     if (auto loop = playhead.loop.NullableValue()) {
-        // Handle passing the loop end.
-        if (playhead.frame_pos >= loop->end) {
+        // Handle passing the loop end. We only wrap if either:
+        // - The playhead was already committed to the loop region (only_use_frames_within_loop), or
+        // - The increment genuinely moved the playhead past the loop end (the position before the increment
+        //   was still within/before the end).
+        // This distinction matters after a reverse toggle: the inverted frame_pos can land past the inverted
+        // loop's end even though the playhead hasn't entered the loop yet. Without this check, it would
+        // incorrectly clamp into the loop.
+        if (playhead.frame_pos >= loop->end &&
+            (loop->only_use_frames_within_loop || (playhead.frame_pos - increment) < loop->end)) {
             ASSERT_HOT(loop->end > loop->start);
 
             auto const loop_size = loop->end - loop->start;
@@ -263,7 +274,6 @@ inline void UpdatePlayhead(PlayHead& playhead,
                 // since it's constantly changing.
                 v = true;
             else
-                // Otherwise, we
                 v = playhead.inverse_data_lookup != is_reversed;
             v;
         });
@@ -280,12 +290,27 @@ inline void UpdatePlayhead(PlayHead& playhead,
             playhead.Invert(num_frames);
         }
 
-        playhead.loop = playhead.inverse_data_lookup ? InvertLoop(*loop, num_frames) : *loop;
+        // Remember whether the playhead was already committed to the loop region. If it wasn't (e.g. the
+        // playhead is still in the pre-loop portion of the audio), we must not clamp the position into the
+        // loop. This matters when the reverse direction changes: the inverted frame_pos can end up past the
+        // inverted loop's end even though the playhead hasn't entered the loop yet.
+        auto const was_within_loop = playhead.loop && playhead.loop->only_use_frames_within_loop;
 
-        if (!PlaybackEnded(playhead, num_frames))
-            // Use the increment function to handle loop clamping that we may need to do if the loop changed
-            // (using 0 as the step increment).
-            IncrementPlaybackPos(playhead, 0, num_frames);
+        if (!playhead.loop) playhead.loop.Emplace();
+        (BoundsCheckedLoop&)* playhead.loop =
+            playhead.inverse_data_lookup ? InvertLoop(*loop, num_frames) : *loop;
+
+        if (!PlaybackEnded(playhead, num_frames)) {
+            if (was_within_loop) {
+                // Use the increment function to handle loop clamping that we may need to do if the loop
+                // changed (using 0 as the step increment).
+                IncrementPlaybackPos(playhead, 0, num_frames);
+            } else if (playhead.frame_pos >= playhead.loop->start &&
+                       playhead.frame_pos < playhead.loop->end) {
+                // The playhead has naturally entered the loop region.
+                playhead.loop->only_use_frames_within_loop = true;
+            }
+        }
     }
 }
 
@@ -341,7 +366,7 @@ ALWAYS_INLINE NO_UBSAN constexpr u32 DataIndexAtOffset(signed _BitInt(3) steps,
         }
     } else {
         //
-        if (loop && v >= loop->end) {
+        if (loop && loop->only_use_frames_within_loop && v >= loop->end) {
             ASSERT_HOT(loop->start < loop->end);
             ASSERT_HOT(loop->end != 0);
 

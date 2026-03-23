@@ -16,6 +16,7 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 1.2.0-beta.2
 - GUI: add MIDI CC Assignments panel for viewing and managing all CC-to-parameter mappings, accessible from the top-panel menu
+- Fix voices from jumping into the loop region if you toggle the 'reversed' mode of a playing voice.
 
 ## 1.2.0-beta.1
 Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.
