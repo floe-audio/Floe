@@ -49,31 +49,6 @@ inline String HarmonyIntervalName(int semitones, ArenaAllocator& arena) {
     return fmt::Format(arena, "{}{}", sign, semitones);
 }
 
-inline String HarmonyIntervalsLabel(HarmonyIntervalsBitset const& intervals, ArenaAllocator& arena) {
-    // Count set bits excluding the unison bit
-    auto non_unison = intervals;
-    non_unison.Clear(k_harmony_interval_centre_bit);
-    auto const num_set = non_unison.NumSet();
-
-    if (num_set == 0) return "None"_s;
-
-    if (num_set >= 5) return fmt::Format(arena, "{} intervals", num_set);
-
-    // 1-4 intervals: list them
-    DynamicArrayBounded<char, 64> buf {};
-    usize count = 0;
-    non_unison.ForEachSetBit([&](usize bit) {
-        auto const semitones = HarmonyIntervalSemitones(bit);
-        if (count > 0) fmt::Append(buf, ", "_s);
-        if (semitones > 0)
-            fmt::Append(buf, "+{}"_s, semitones);
-        else
-            fmt::Append(buf, "{}"_s, semitones);
-        ++count;
-    });
-    return arena.Clone(String(buf));
-}
-
 constexpr HarmonyIntervalsBitset MakeHarmonyPreset(Span<int const> semitones_from_root = {}) {
     HarmonyIntervalsBitset result {};
     result.Set(k_harmony_interval_centre_bit);
@@ -110,6 +85,35 @@ constexpr Array k_harmony_presets = {
     HarmonyPreset {"Cosmic"_s,          "Wide intervals spanning multiple octaves"_s,                 MakeHarmonyPreset(Array {-24, -7, 7, 12, 19, 24, 36})},
 };
 // clang-format on
+
+inline String HarmonyIntervalsLabel(HarmonyIntervalsBitset const& intervals, ArenaAllocator& arena) {
+    // Check if the intervals match a named preset
+    for (auto const& preset : k_harmony_presets)
+        if (intervals == preset.intervals) return preset.name;
+
+    // Count set bits excluding the unison bit
+    auto non_unison = intervals;
+    non_unison.Clear(k_harmony_interval_centre_bit);
+    auto const num_set = non_unison.NumSet();
+
+    if (num_set == 0) return "None"_s;
+
+    if (num_set >= 5) return fmt::Format(arena, "{} intervals", num_set);
+
+    // 1-4 intervals: list them
+    DynamicArrayBounded<char, 64> buf {};
+    usize count = 0;
+    non_unison.ForEachSetBit([&](usize bit) {
+        auto const semitones = HarmonyIntervalSemitones(bit);
+        if (count > 0) fmt::Append(buf, ", "_s);
+        if (semitones > 0)
+            fmt::Append(buf, "+{}"_s, semitones);
+        else
+            fmt::Append(buf, "{}"_s, semitones);
+        ++count;
+    });
+    return arena.Clone(String(buf));
+}
 
 struct Grain {
     PlayHead playhead {};

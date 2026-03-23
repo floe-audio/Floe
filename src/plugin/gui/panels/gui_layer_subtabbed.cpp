@@ -1474,9 +1474,9 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                             DoBox(g.builder,
                                   {
                                       .parent = presets_col,
-                                      .text = "Presets"_s,
+                                      .text = "PRESETS"_s,
                                       .font = FontType::Heading3,
-                                      .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                                      .text_colours = Col {.c = Col::Subtext0},
                                       .text_justification = TextJustification::CentredLeft,
                                       .layout {
                                           .size = {layout::k_fill_parent, 20},
@@ -1514,9 +1514,33 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
 
                         // Right column: individual intervals (nested
                         // scrollable viewport)
+                        auto const intervals_col =
+                            DoBox(g.builder,
+                                  {
+                                      .parent = popup_root,
+                                      .layout {
+                                          .size = layout::k_fill_parent,
+                                          .contents_direction = layout::Direction::Column,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                  });
+
+                        DoBox(g.builder,
+                              {
+                                  .parent = intervals_col,
+                                  .text = "INTERVALS"_s,
+                                  .font = FontType::Heading3,
+                                  .text_colours = Col {.c = Col::Subtext0},
+                                  .text_justification = TextJustification::CentredLeft,
+                                  .layout {
+                                      .size = {layout::k_fill_parent, 20},
+                                      .margins = {.l = 8, .t = 2, .b = 2},
+                                  },
+                              });
+
                         auto const intervals_box = DoBox(g.builder,
                                                          {
-                                                             .parent = popup_root,
+                                                             .parent = intervals_col,
                                                              .layout {
                                                                  .size = layout::k_fill_parent,
                                                              },
