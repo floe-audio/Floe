@@ -88,6 +88,7 @@ static void Run(GuiBuilder& builder, GuiBuilder::CurrentViewportState* state) {
                         case imgui::ViewportPositioning::ParentRelative: break;
                         case imgui::ViewportPositioning::WindowAbsolute:
                         case imgui::ViewportPositioning::AutoPosition:
+                        case imgui::ViewportPositioning::WindowCentred:
                             r.pos = builder.imgui.ViewportPosToWindowPos(r.pos);
                             break;
                     }
@@ -95,7 +96,8 @@ static void Run(GuiBuilder& builder, GuiBuilder::CurrentViewportState* state) {
                 }
                 case BoxViewportConfig::BoundsType::Rect: r = p->cfg.bounds.Get<Rect>(); break;
             }
-            ASSERT(All(r.size > 0));
+            if (p->cfg.viewport_config.positioning != imgui::ViewportPositioning::WindowCentred)
+                ASSERT(All(r.size > 0));
             r;
         });
     }

@@ -182,7 +182,10 @@ enum class ViewportMode : u8 {
 enum class ViewportPositioning : u8 {
     ParentRelative, // rect is viewport-relative (default)
     WindowAbsolute, // rect is already in window coordinates
-    AutoPosition, // rect is avoid-rect in window coords; actual position is calculated
+    AutoPosition, // rect is avoid-rect in window coords; actual position is calculated. Alternatively, you
+                  // can positions you own rectangle (perhaps using BestPopupPos) and then place it using
+                  // WindowAbsolute.
+    WindowCentred, // centre in window; rect pos is ignored; size is clamped to window; works with auto_size
 };
 
 enum class ViewportScrollbarVisibility : u8 {
@@ -306,6 +309,9 @@ struct Viewport {
     f32x2 scroll_offset = {}; // The pixel offset from scrollbars.
     f32x2 scroll_max = {};
     b8x2 has_scrollbar = false;
+
+    enum class SizeResolutionState : u8 { NotPending, PendingSizeResolution, Ready };
+    SizeResolutionState size_resolution = SizeResolutionState::NotPending;
 };
 
 // Data about interactions with a text input, and data required to draw a text input.
@@ -597,9 +603,9 @@ struct Context {
     // Any Begin* call must be paired with an EndViewport. Use DEFER { imgui.EndViewport(); };. There's 2 core
     // overloads: either pass a unique name that will be converted to an ID, or make an ID first.
     //
-    // IMPORTANT: what the rectangle argument menas depends on the config's positioning. See
-    // ViewportPositioning. Additionally, for auto_width/auto_height viewports, the corresponding dimension in
-    // the rectangle is ignored.
+    // IMPORTANT: what the rectangle argument means depends on the config's positioning. See
+    // ViewportPositioning. For auto_width/auto_height viewports, the corresponding size dimension is ignored.
+    // For WindowCentred, the position is ignored (it's computed automatically).
     void BeginViewport(ViewportConfig const& config, Rect r, String unique_name);
     void BeginViewport(ViewportConfig const& config, Id id, Rect r, String debug_name = {});
 
@@ -629,6 +635,10 @@ struct Context {
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
     bool ScrollViewportToShowRectangle(Rect r);
+
+    bool IsViewportFirstSizedFrame() const {
+        return curr_viewport->size_resolution == Viewport::SizeResolutionState::Ready;
+    }
 
     // Handy shortcuts.
     f32 CurrentVpWidth() const { return curr_viewport->bounds.w; }

@@ -7,6 +7,7 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 
 constexpr imgui::ViewportConfig k_default_popup_menu_viewport {
     .mode = imgui::ViewportMode::PopupMenu,
@@ -23,6 +24,7 @@ struct MenuOpenButtonOptions {
     String text;
     TooltipString tooltip = k_nullopt;
     f32 width = layout::k_hug_contents;
+    GuiStyleSystem style_system = GuiStyleSystem::Overlay;
 };
 
 Box MenuOpenButton(GuiBuilder& builder,

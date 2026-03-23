@@ -841,6 +841,7 @@ Box DoFilterCard(GuiBuilder& builder,
                                      builder.imgui,
                                      *options.library_id,
                                      options.sample_library_server,
+                                     options.instance_index,
                                      LibraryImagesTypes::All);
         has_icon = imgs.icon.HasValue() && *imgs.icon != k_invalid_image_id;
         if (builder.IsInputAndRenderPass()) {
@@ -1381,6 +1382,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                           .library_id = lib_id,
                                           .library_images = library_filters.library_images,
                                           .sample_library_server = context.sample_library_server,
+                                          .instance_index = library_filters.instance_index,
                                           .subtext = ({
                                               String s;
                                               if (lib) s = builder.arena.Clone(lib->tagline);
@@ -1396,6 +1398,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                                    builder.imgui,
                                                    lib_id,
                                                    context.sample_library_server,
+                                                   library_filters.instance_index,
                                                    LibraryImagesTypes::Icon);
 
                 button = DoFilterButton(

@@ -17,7 +17,6 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
-#include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/overlays/gui_loading_overlay.hpp"
@@ -35,8 +34,8 @@
 #include "gui/panels/gui_prefs_panel.hpp"
 #include "gui/panels/gui_top_panel.hpp"
 #include "gui_framework/app_window.hpp"
+#include "gui_framework/gui_frame.hpp"
 #include "gui_framework/gui_imgui.hpp"
-#include "gui_framework/image.hpp"
 #include "gui_framework/renderer.hpp"
 #include "plugin/plugin.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
@@ -100,13 +99,13 @@ GuiState::GuiState(Engine& engine)
                   [&gui = *this](sample_lib::LibraryIdRef library_id_ref) {
                       sample_lib::LibraryId lib_id {library_id_ref};
                       gui.main_thread_callbacks.Push([&gui, lib_id]() { SampleLibraryChanged(gui, lib_id); });
-                      g_request_gui_update.Store(true, StoreMemoryOrder::Relaxed);
+                      RequestGuiUpdate(gui.engine.instance_index);
                   },
           })) {
     Trace(ModuleName::Gui);
 
-    ASSERT(!engine.stated_changed_callback);
-    engine.stated_changed_callback = [this]() { OnEngineStateChange(save_preset_panel_state, this->engine); };
+    ASSERT(!engine.listener);
+    engine.listener = this;
 
     // The GUI has opened, we can check for updates if needed. We don't want to do this before because it has
     // no use until the GUI is open.
@@ -118,7 +117,7 @@ GuiState::~GuiState() {
     Shutdown(library_images);
     Shutdown(waveform_images);
 
-    engine.stated_changed_callback = {};
+    engine.listener = nullptr;
 
     sample_lib_server::CloseAsyncCommsChannel(engine.shared_engine_systems.sample_library_server,
                                               sample_lib_server_async_channel);
@@ -127,6 +126,11 @@ GuiState::~GuiState() {
         engine.processor.gui_note_click_state.Store({.is_held = false}, StoreMemoryOrder::Release);
         engine.host.request_process(&engine.host);
     }
+}
+
+void GuiState::OnEngineChange() {
+    RequestGuiUpdate(engine.instance_index);
+    OnEngineStateChange(save_preset_panel_state, engine);
 }
 
 bool Tooltip(GuiState& g, imgui::Id id, Rect r, char const* fmt, ...);
@@ -302,8 +306,8 @@ void GuiUpdate(GuiState& g) {
         dyn::Append(available_instruments, &l.instrument);
     }
 
-    StartFrame(g.waveform_images, *frame_input.renderer, available_instruments);
-    DEFER { EndFrame(g.waveform_images); };
+    StartFrame(g.waveform_images, *frame_input.renderer);
+    DEFER { EndFrame(g.waveform_images, *frame_input.renderer, available_instruments); };
 
     imgui.BeginFrame(
         {

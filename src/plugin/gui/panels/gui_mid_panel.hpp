@@ -9,31 +9,23 @@
 #include "gui/core/gui_fwd.hpp"
 
 enum class MidPanelTab : u8 {
-    All,
-    Layer1,
-    Layer2,
-    Layer3,
+    Perform,
+    Layers,
     Effects,
     Count,
 };
 
 struct MidPanelState {
-    MidPanelTab tab = MidPanelTab::All;
+    MidPanelTab tab = MidPanelTab::Perform;
 };
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);
 
-// Internal: called from MidPanel, accepting a parent box instead of creating their own viewport
-struct GuiBuilder;
-struct Box;
-void MidPanelCombinedContent(GuiBuilder& builder,
-                             GuiState& g,
-                             GuiFrameContext const& frame_context,
-                             Box parent);
-
-namespace imgui {
-struct Context;
-}
+void MidPanelLayersContent(GuiBuilder& builder,
+                           GuiState& g,
+                           GuiFrameContext const& frame_context,
+                           Box parent,
+                           Box tab_extra_buttons_box);
 
 struct MidBlurredBackgroundOptions {
     f32 opacity = 1;

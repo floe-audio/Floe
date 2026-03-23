@@ -1,4 +1,4 @@
-// Copyright 2018-2025 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -40,6 +40,7 @@ struct StateSnapshot {
     StateMetadata metadata {};
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
     Array<CurveMap::Points, k_num_layers> velocity_curve_points {};
+    Array<HarmonyIntervalsBitset, k_num_layers> harmony_intervals {};
     MacroNames macro_names {};
     MacroDestinations macro_destinations {};
 };
@@ -154,4 +155,26 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
         for (auto const& tag : new_state.metadata.tags)
             fmt::Append(diff_desc, "  + {}\n"_s, tag);
     }
+
+    if (old_state.instance_id != new_state.instance_id) dyn::AppendSpan(diff_desc, "instance ID changes");
+
+    for (auto layer_index : Range(k_num_layers))
+        if (old_state.velocity_curve_points[layer_index] != new_state.velocity_curve_points[layer_index])
+            fmt::Append(diff_desc, "Velocity curve points changed for layer {}\n"_s, layer_index);
+
+    for (auto layer_index : Range(k_num_layers))
+        if (old_state.harmony_intervals[layer_index] != new_state.harmony_intervals[layer_index])
+            fmt::Append(diff_desc, "Harmony intervals changed for layer {}\n"_s, layer_index);
+
+    for (auto macro_index : Range(k_num_macros))
+        if (old_state.macro_names[macro_index] != new_state.macro_names[macro_index])
+            fmt::Append(diff_desc,
+                        "Macro {} name changed: {} vs {}\n"_s,
+                        macro_index,
+                        old_state.macro_names[macro_index],
+                        new_state.macro_names[macro_index]);
+
+    for (auto macro_index : Range(k_num_macros))
+        if (old_state.macro_destinations[macro_index] != new_state.macro_destinations[macro_index])
+            fmt::Append(diff_desc, "Macro {} destinations changed\n"_s, macro_index);
 }

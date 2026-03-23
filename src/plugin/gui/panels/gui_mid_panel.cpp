@@ -3,12 +3,15 @@
 
 #include "gui_mid_panel.hpp"
 
+#include "engine/engine_prefs.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
-#include "gui/panels/gui_layer_maximised.hpp"
+#include "gui/panels/gui_effects.hpp"
+#include "gui/panels/gui_perform.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -26,6 +29,7 @@ void DrawMidBlurredBackground(GuiState& g,
                                      g.imgui,
                                      library_id,
                                      g.shared_engine_systems.sample_library_server,
+                                     g.engine.instance_index,
                                      LibraryImagesTypes::Backgrounds);
 
         if (imgs.blurred_background) {
@@ -92,6 +96,7 @@ void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_i
                                      g.imgui,
                                      library_id,
                                      g.shared_engine_systems.sample_library_server,
+                                     g.engine.instance_index,
                                      LibraryImagesTypes::Backgrounds);
         if (imgs.background) {
             auto tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.background);
@@ -107,22 +112,18 @@ void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_i
 
 static String MidPanelTabLabel(MidPanelTab tab) {
     switch (tab) {
-        case MidPanelTab::All: return "All"_s;
-        case MidPanelTab::Layer1: return "L1"_s;
-        case MidPanelTab::Layer2: return "L2"_s;
-        case MidPanelTab::Layer3: return "L3"_s;
-        case MidPanelTab::Effects: return "FX"_s;
+        case MidPanelTab::Perform: return "PERFORM"_s;
+        case MidPanelTab::Layers: return "LAYERS"_s;
+        case MidPanelTab::Effects: return "EFFECTS"_s;
         case MidPanelTab::Count: PanicIfReached();
     }
 }
 
 static Optional<sample_lib::LibraryIdRef> LibIdForCurrentTab(GuiState& g) {
     switch (g.mid_panel_state.tab) {
-        case MidPanelTab::All: return LibraryForOverallBackground(g.engine);
-        case MidPanelTab::Layer1: return g.engine.Layer(0).LibId();
-        case MidPanelTab::Layer2: return g.engine.Layer(1).LibId();
-        case MidPanelTab::Layer3: return g.engine.Layer(2).LibId();
-        case MidPanelTab::Effects:
+        case MidPanelTab::Perform: return LibraryForOverallBackground(g.engine);
+        case MidPanelTab::Layers: return LibraryForOverallBackground(g.engine);
+        case MidPanelTab::Effects: return LibraryForOverallBackground(g.engine);
         case MidPanelTab::Count: return {};
     }
 }
@@ -137,13 +138,39 @@ static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
         imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
 }
 
-[[maybe_unused]] static void DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
-    auto const tab_bar = DoBox(builder,
+struct MidPanelTabBarResult {
+    Box tab_extra_buttons_box;
+};
+
+static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
+    // Full-width row: [left spacer] [centred tabs] [right extras area]
+    auto const tab_row = DoBox(builder,
                                {
                                    .parent = parent,
                                    .layout {
-                                       .size = {layout::k_hug_contents, 28.0f},
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
                                        .margins = {.t = 5},
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_align = layout::Alignment::Middle,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
+
+    // Left spacer to balance the right extras area, keeping tabs centred
+    DoBox(builder,
+          {
+              .parent = tab_row,
+              .layout {
+                  .size = {layout::k_fill_parent, 1},
+              },
+          });
+
+    // Centred tab buttons container
+    auto const tab_bar = DoBox(builder,
+                               {
+                                   .parent = tab_row,
+                                   .layout {
+                                       .size = layout::k_hug_contents,
                                        .contents_padding = {.lr = 3, .tb = 3},
                                        .contents_gap = 2,
                                        .contents_direction = layout::Direction::Row,
@@ -157,122 +184,32 @@ static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
 
     Optional<MidPanelTab> new_tab {};
 
-    auto const divider = [&](u64 id_extra) {
-        DoBox(builder,
-              {
-                  .parent = tab_bar,
-                  .id_extra = id_extra,
-                  .background_fill_colours = LiveColStruct(UiColMap::MidViewportDivider),
-                  .layout {
-                      .size = {1, layout::k_fill_parent},
-                      .margins = {.lr = 3},
-                  },
-              });
-    };
-
-    for (auto const i : Range(ToInt(MidPanelTab::Count))) {
-        auto const tab = (MidPanelTab)i;
-        bool const is_layer_tab = tab >= MidPanelTab::Layer1 && tab <= MidPanelTab::Layer3;
-
-        if (tab == MidPanelTab::Layer1 || tab == MidPanelTab::Effects) divider((u64)tab);
-
-        bool const is_selected = tab == g.mid_panel_state.tab;
-
-        auto const btn =
-            DoBox(builder,
-                  {
-                      .parent = tab_bar,
-                      .id_extra = (u64)tab,
-                      .background_fill_colours =
-                          is_selected ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
-                                      : Colours {ColSet {
-                                            .base = Col {.c = Col::None},
-                                            .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
-                                            .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
-                                        }},
-                      .round_background_corners = 0b1111,
-                      .corner_rounding = 4.0f,
-                      .layout {
-                          .size = {layout::k_hug_contents, layout::k_fill_parent},
-                          .contents_padding = {.lr = 8},
-                          .contents_direction = layout::Direction::Row,
-                          .contents_align = layout::Alignment::Middle,
-                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                      },
-                      .button_behaviour = imgui::ButtonConfig {},
-                  });
-
-        if (is_layer_tab) {
-            auto const layer_index = (u32)(ToInt(tab) - ToInt(MidPanelTab::Layer1));
-            auto& layer_obj = g.engine.Layer(layer_index);
-            if (layer_obj.instrument_id.tag == InstrumentType::Sampler) {
-                auto sample_inst_id = layer_obj.instrument_id.Get<sample_lib::InstrumentId>();
-                auto imgs = GetLibraryImages(g.library_images,
-                                             g.imgui,
-                                             sample_inst_id.library,
-                                             g.shared_engine_systems.sample_library_server,
-                                             LibraryImagesTypes::Icon);
-                if (imgs.icon) {
-                    if (auto icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon)) {
-                        auto const icon_box = DoBox(builder,
-                                                    {
-                                                        .parent = btn,
-                                                        .parent_dictates_hot_and_active = true,
-                                                        .layout {
-                                                            .size = {12, 12},
-                                                            .margins = {.r = 2},
-                                                        },
-                                                    });
-                        if (auto const r = BoxRect(builder, icon_box)) {
-                            g.imgui.draw_list->AddImageRect(*icon_tex,
-                                                            builder.imgui.ViewportRectToWindowRect(*r));
-                        }
-                    }
-                }
-            }
-        }
-
-        DoBox(builder,
-              {
-                  .parent = btn,
-                  .text = MidPanelTabLabel(tab),
-                  .size_from_text = true,
-                  .font = FontType::Heading3,
-                  .text_colours = is_selected ? Colours {LiveColStruct(UiColMap::MidTabTextActive)}
-                                              : Colours {ColSet {
-                                                    .base = LiveColStruct(UiColMap::MidTabText),
-                                                    .hot = LiveColStruct(UiColMap::MidTabTextHot),
-                                                    .active = LiveColStruct(UiColMap::MidTabTextActive),
-                                                }},
-                  .text_justification = TextJustification::Centred,
-                  .parent_dictates_hot_and_active = true,
-              });
-
-        if (is_layer_tab) {
-            auto const layer_index = (u32)(ToInt(tab) - ToInt(MidPanelTab::Layer1));
-            auto const meter_box = DoBox(builder,
-                                         {
-                                             .parent = btn,
-                                             .layout {
-                                                 .size = {4, 12},
-                                                 .margins = {.l = 3},
-                                             },
-                                         });
-            if (auto const meter_r = BoxRect(builder, meter_box))
-                DrawPeakMeter(g.imgui,
-                              builder.imgui.RegisterAndConvertRect(*meter_r),
-                              g.engine.processor.layer_processors[layer_index].peak_meter,
-                              {
-                                  .flash_when_clipping = false,
-                                  .show_db_markers = false,
-                                  .gap = 1,
-                              });
-        }
+    for (auto const tab : EnumIterator<MidPanelTab>()) {
+        auto const btn = DoTabButton(builder,
+                                     tab_bar,
+                                     MidPanelTabLabel(tab),
+                                     {.is_selected = tab == g.mid_panel_state.tab},
+                                     (u64)tab);
 
         if (btn.button_fired) new_tab = tab;
     }
 
     if (new_tab) g.mid_panel_state.tab = *new_tab;
+
+    // Right extras area for page-specific buttons (e.g. randomise)
+    auto const extras = DoBox(builder,
+                              {
+                                  .parent = tab_row,
+                                  .layout {
+                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                      .contents_padding = {.r = 8},
+                                      .contents_direction = layout::Direction::Row,
+                                      .contents_align = layout::Alignment::End,
+                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                  },
+                              });
+
+    return {extras};
 }
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
@@ -289,9 +226,30 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                                 },
                                             });
 
+                    // Auto-switch mid-panel tab when a macro destination knob is being
+                    // interacted with
+                    if (g.macros_gui_state.active_destination_knob) {
+                        auto const param_index = g.macros_gui_state.active_destination_knob->dest.param_index;
+                        if (param_index) {
+                            auto const& k_desc = ParamDescriptorAt(*param_index);
+                            Optional<MidPanelTab> new_tab {};
+                            if (k_desc.IsEffectParam())
+                                new_tab = MidPanelTab::Effects;
+                            else if (k_desc.IsLayerParam())
+                                new_tab = MidPanelTab::Layers;
+
+                            if (new_tab && *new_tab != g.mid_panel_state.tab) {
+                                g.mid_panel_state.tab = *new_tab;
+                                GuiIo().out.IncreaseUpdateInterval(
+                                    GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+                            }
+                        }
+                    }
+
                     auto const current_tab = g.mid_panel_state.tab;
 
-                    if constexpr (EXPERIMENTAL_MID_PANEL_TABS) DoMidPanelTabBar(builder, g, root);
+                    auto const tab_extra_buttons_box =
+                        DoMidPanelTabBar(builder, g, root).tab_extra_buttons_box;
 
                     auto const content = DoBox(builder,
                                                {
@@ -302,19 +260,15 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                                });
 
                     switch (current_tab) {
-                        case MidPanelTab::All:
-                            MidPanelCombinedContent(builder, g, frame_context, content);
+                        case MidPanelTab::Perform:
+                            MidPanelPerformContent(builder, g, frame_context, content, tab_extra_buttons_box);
                             break;
-                        case MidPanelTab::Layer1:
-                            MidPanelSingleLayerContent(builder, g, frame_context, 0, content);
-                            break;
-                        case MidPanelTab::Layer2:
-                            MidPanelSingleLayerContent(builder, g, frame_context, 1, content);
-                            break;
-                        case MidPanelTab::Layer3:
-                            MidPanelSingleLayerContent(builder, g, frame_context, 2, content);
+                        case MidPanelTab::Layers:
+                            MidPanelLayersContent(builder, g, frame_context, content, tab_extra_buttons_box);
                             break;
                         case MidPanelTab::Effects:
+                            MidPanelEffectsContent(builder, g, frame_context, content, tab_extra_buttons_box);
+                            break;
                         case MidPanelTab::Count: break;
                     }
                 },

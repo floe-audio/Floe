@@ -23,6 +23,7 @@ struct ParameterComponentOptions {
     bool bidirectional = false;
     bool is_fake = false;
     bool label = true;
+    bool vertical_slider = false; // Draw as a vertical fader instead of a knob. Incompatible with peak_meter.
     String override_tooltip {};
     String override_label {};
     StereoPeakMeter const* peak_meter = nullptr; // If set, draws a peak meter inside the knob.
@@ -75,6 +76,16 @@ Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
                    IntParameterComponentOptions const& options);
+
+struct MuteSoloButtonsOptions {
+    bool vertical = false; // If true, buttons stack vertically (M on top, S on bottom).
+};
+
+void DoMuteSoloButtons(GuiState& g,
+                       Box parent,
+                       DescribedParamValue const& mute_param,
+                       DescribedParamValue const& solo_param,
+                       MuteSoloButtonsOptions const& options = {});
 
 String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena);
 

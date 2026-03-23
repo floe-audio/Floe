@@ -5,6 +5,7 @@
 
 #include "tests/framework.hpp"
 
+#include "benchmarks/framework.hpp"
 #include "processing_utils/filters.hpp"
 
 struct IntRange {
@@ -153,27 +154,17 @@ Span<u8> CreateWaveformImage(WaveformAudioSource source,
 
 TEST_CASE(TestInterpolation) {
     {
-        f32 fm1[2] = {0, 0};
-        f32 f0[2] = {1, 1};
-        f32 f1[2] = {2, 2};
-        f32 f2[2] = {3, 3};
-        f32 x = 0;
-        InterpolationPoints<f32 const*> points {
-            .xm1 = fm1,
-            .x0 = f0,
-            .x1 = f1,
-            .x2 = f2,
+        InterpolationPoints<f32x2> const points {
+            .xm1 = {0, 0},
+            .x0 = {1, 1},
+            .x1 = {2, 2},
+            .x2 = {3, 3},
         };
+        f32 const x = 0;
 
-        {
-            auto const result = DoMonoCubicInterp(points, x);
-            CHECK_APPROX_EQ(result, 1.0f, 0.0001f);
-        }
-
-        {
-            auto const result = DoStereoLagrangeInterp(points, x);
-            CHECK_APPROX_EQ(result.x, 1.0f, 0.0001f);
-        }
+        auto const result = DoHermiteInterp(points, x);
+        CHECK_APPROX_EQ(result[0], 1.0f, 0.0001f);
+        CHECK_APPROX_EQ(result[1], 1.0f, 0.0001f);
     }
 
     return k_success;
@@ -523,4 +514,155 @@ TEST_REGISTRATION(RegisterSamplePlayheadTests) {
     REGISTER_TEST(TestInterpolation);
     REGISTER_TEST(TestStandardLoopSmoothness);
     REGISTER_TEST(TestPlayheadSetupCases);
+}
+
+// ======================================================================================
+// Benchmarks
+
+BENCHMARK_FN void BenchmarkGetSampleFrameMono() {
+    constexpr u32 k_num_frames = 44100; // 1 second at 44.1kHz
+    alignas(16) f32 data[k_num_frames];
+    for (u32 i = 0; i < k_num_frames; ++i)
+        data[i] = Sin(k_two_pi<f32> * (f32)i / (f32)k_num_frames);
+
+    AudioData const audio {
+        .hash = 0,
+        .channels = 1,
+        .sample_rate = 44100,
+        .num_frames = k_num_frames,
+        .interleaved_samples = {data, k_num_frames},
+    };
+
+    constexpr int k_num_iterations = 750;
+    constexpr f64 k_increment = 1.0;
+
+    for (int iter = 0; iter < k_num_iterations; ++iter) {
+        PlayHead playhead {};
+        ResetPlayhead(playhead, 0.0, k_nullopt, false, audio.num_frames);
+
+        f32x2 sum = 0;
+        while (!PlaybackEnded(playhead, audio.num_frames)) {
+            auto frame = GetSampleFrame(audio, playhead);
+            benchmarks::DoNotOptimise(frame);
+            sum += frame;
+            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
+        }
+        benchmarks::DoNotOptimise(sum);
+    }
+}
+
+BENCHMARK_FN void BenchmarkGetSampleFrameStereo() {
+    constexpr u32 k_num_frames = 44100;
+    alignas(16) f32 data[k_num_frames * 2];
+    for (u32 i = 0; i < k_num_frames; ++i) {
+        data[i * 2] = Sin((k_two_pi<f32> * (f32)i) / (f32)k_num_frames);
+        data[(i * 2) + 1] = Sin(((k_two_pi<f32> * (f32)i) / (f32)k_num_frames) + 0.5f);
+    }
+
+    AudioData const audio {
+        .hash = 0,
+        .channels = 2,
+        .sample_rate = 44100,
+        .num_frames = k_num_frames,
+        .interleaved_samples = {data, k_num_frames * 2},
+    };
+
+    constexpr int k_num_iterations = 750;
+    constexpr f64 k_increment = 1.0;
+
+    for (int iter = 0; iter < k_num_iterations; ++iter) {
+        PlayHead playhead {};
+        ResetPlayhead(playhead, 0.0, k_nullopt, false, audio.num_frames);
+
+        f32x2 sum = 0;
+        while (!PlaybackEnded(playhead, audio.num_frames)) {
+            auto frame = GetSampleFrame(audio, playhead);
+            benchmarks::DoNotOptimise(frame);
+            sum += frame;
+            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
+        }
+        benchmarks::DoNotOptimise(sum);
+    }
+}
+
+BENCHMARK_FN void BenchmarkGetSampleFrameMonoLooped() {
+    constexpr u32 k_num_frames = 44100;
+    alignas(16) f32 data[k_num_frames];
+    for (u32 i = 0; i < k_num_frames; ++i)
+        data[i] = Sin(k_two_pi<f32> * (f32)i / (f32)k_num_frames);
+
+    AudioData const audio {
+        .hash = 0,
+        .channels = 1,
+        .sample_rate = 44100,
+        .num_frames = k_num_frames,
+        .interleaved_samples = {data, k_num_frames},
+    };
+
+    BoundsCheckedLoop const loop {
+        .start = 1000,
+        .end = 40000,
+        .crossfade = 500,
+        .mode = sample_lib::LoopMode::Standard,
+    };
+
+    constexpr int k_num_iterations = 750;
+    constexpr f64 k_increment = 1.0;
+    constexpr u32 k_frames_per_iter = 44100;
+
+    for (int iter = 0; iter < k_num_iterations; ++iter) {
+        PlayHead playhead {};
+        ResetPlayhead(playhead, 0.0, loop, false, audio.num_frames);
+
+        f32x2 sum = 0;
+        for (u32 f = 0; f < k_frames_per_iter; ++f) {
+            auto frame = GetSampleFrame(audio, playhead);
+            benchmarks::DoNotOptimise(frame);
+            sum += frame;
+            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
+        }
+        benchmarks::DoNotOptimise(sum);
+    }
+}
+
+BENCHMARK_FN void BenchmarkGetSampleFrameFractionalIncrement() {
+    constexpr u32 k_num_frames = 44100;
+    alignas(16) f32 data[k_num_frames * 2];
+    for (u32 i = 0; i < k_num_frames; ++i) {
+        data[i * 2] = Sin((k_two_pi<f32> * (f32)i) / (f32)k_num_frames);
+        data[(i * 2) + 1] = Sin(((k_two_pi<f32> * (f32)i) / (f32)k_num_frames) + 0.5f);
+    }
+
+    AudioData const audio {
+        .hash = 0,
+        .channels = 2,
+        .sample_rate = 44100,
+        .num_frames = k_num_frames,
+        .interleaved_samples = {data, k_num_frames * 2},
+    };
+
+    // Simulate pitch-shifted playback (e.g. 1.5x speed).
+    constexpr int k_num_iterations = 750;
+    constexpr f64 k_increment = 1.5;
+
+    for (int iter = 0; iter < k_num_iterations; ++iter) {
+        PlayHead playhead {};
+        ResetPlayhead(playhead, 0.0, k_nullopt, false, audio.num_frames);
+
+        f32x2 sum = 0;
+        while (!PlaybackEnded(playhead, audio.num_frames)) {
+            auto frame = GetSampleFrame(audio, playhead);
+            benchmarks::DoNotOptimise(frame);
+            sum += frame;
+            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
+        }
+        benchmarks::DoNotOptimise(sum);
+    }
+}
+
+BENCHMARK_REGISTRATION(RegisterSampleProcessingBenchmarks) {
+    REGISTER_BENCHMARK(BenchmarkGetSampleFrameMono);
+    REGISTER_BENCHMARK(BenchmarkGetSampleFrameStereo);
+    REGISTER_BENCHMARK(BenchmarkGetSampleFrameMonoLooped);
+    REGISTER_BENCHMARK(BenchmarkGetSampleFrameFractionalIncrement);
 }

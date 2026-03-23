@@ -123,7 +123,12 @@ static void DrawEnvelopeVoiceMarkers(GuiState& g,
             y;
         });
 
-        DrawVoiceMarkerLine(imgui, f32x2 {cursor_x, cursor_y}, bottom_left.y - cursor_y, bottom_left.x, line);
+        DrawVoiceMarkerLine(imgui,
+                            f32x2 {cursor_x, cursor_y},
+                            bottom_left.y - cursor_y,
+                            bottom_left.x,
+                            line,
+                            {});
     }
 }
 

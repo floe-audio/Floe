@@ -201,20 +201,18 @@ static bool IsUpdateNeeded(AppWindow& window) {
     // not.
     if (!window.first_update_made) update_needed = true;
 
-    if (g_request_gui_update.Exchange(false, RmwMemoryOrder::Relaxed)) update_needed = true;
+    if (window.gui && ConsumeGuiUpdateRequest(window.gui->engine.instance_index)) update_needed = true;
 
     if (window.last_result.wants.update_interval > GuiFrameOutput::UpdateInterval::Sleep)
         update_needed = true;
 
-    for (usize i = 0; i < window.last_result.timed_wakeups.size;) {
-        auto& t = window.last_result.timed_wakeups[i];
+    window.last_result.timed_wakeups.RemoveIf([&](u64 const&, TimePoint const& t) {
         if (TimePoint::Now() >= t) {
             update_needed = true;
-            dyn::Remove(window.last_result.timed_wakeups, i);
-        } else {
-            ++i;
+            return true;
         }
-    }
+        return false;
+    });
 
     return update_needed;
 }
@@ -907,6 +905,17 @@ void Deinit(AppWindow& window) {
 
     native::DeinitNativeState(window);
 
+    // puglUnrealize can synchronously dispatch events, so it must happen before clearing GUI state.
+    if (window.view) {
+        if (window.pugl_timer_running) {
+            puglStopTimer(window.view, window.k_pugl_timer_id);
+            window.pugl_timer_running = false;
+        }
+        puglUnrealize(window.view);
+    }
+
+    SetTimers(window, SetTimerType::Stop);
+
     if (window.gui) {
         window.gui.Clear();
 
@@ -914,12 +923,7 @@ void Deinit(AppWindow& window) {
         window.last_result.draw_list_allocator.Clear();
     }
 
-    SetTimers(window, SetTimerType::Stop);
-
     if (window.view) {
-        // We don't need to check if the view is realized, because puglUnrealize will do nothing if it is not.
-        puglUnrealize(window.view);
-
         puglFreeView(window.view);
         window.view = nullptr;
     }

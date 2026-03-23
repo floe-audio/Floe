@@ -68,6 +68,7 @@
     X(RegisterThreadPoolTests)                                                                               \
     X(RegisterThreadingTests)                                                                                \
     X(RegisterVersionTests)                                                                                  \
+    X(RegisterVoiceTests)                                                                                    \
     X(RegisterVolumeFadeTests)                                                                               \
     X(RegisterWebTests)                                                                                      \
     X(RegisterWriterTests)
@@ -111,6 +112,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
 
     enum class CommandLineArgId : u32 {
         Filter,
+        List,
         LogLevel,
         Repeats,
         JUnitXmlOutputPath,
@@ -128,6 +130,14 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .value_type = "pattern",
             .required = false,
             .num_values = -1,
+        },
+        {
+            .id = (u32)CommandLineArgId::List,
+            .key = "list",
+            .description = "List available tests and exit",
+            .value_type = "flag",
+            .required = false,
+            .num_values = 0,
         },
         {
             .id = (u32)CommandLineArgId::LogLevel,
@@ -207,6 +217,23 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
     WINDOWS_FP_TEST_REGISTER_FUNCTIONS
 #endif
 #undef X
+
+    if (cli_args[ToInt(CommandLineArgId::List)].was_provided) {
+        auto const filter_patterns = cli_args[ToInt(CommandLineArgId::Filter)].values;
+        for (auto const& test_case : tester.test_cases) {
+            if (filter_patterns.size) {
+                bool matches_any_pattern = false;
+                for (auto const& pattern : filter_patterns)
+                    if (MatchWildcard(pattern, test_case.title)) {
+                        matches_any_pattern = true;
+                        break;
+                    }
+                if (!matches_any_pattern) continue;
+            }
+            StdPrintF(StdStream::Out, "{}\n", test_case.title);
+        }
+        return 0;
+    }
 
     return RunAllTests(
         tester,

@@ -6,18 +6,42 @@
 #include "gui/elements/gui_constants.hpp"
 
 Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const& options, u64 id_extra) {
+    auto const background_colours = [&]() -> Colours {
+        switch (options.style_system) {
+            case GuiStyleSystem::MidPanel: return LiveColStruct(UiColMap::MidDarkSurface);
+            case GuiStyleSystem::Overlay:
+            case GuiStyleSystem::TopBottomPanels: return Col {.c = Col::Background2};
+        }
+        return Col {.c = Col::Background2};
+    }();
+
+    auto const text_colours = [&]() -> Colours {
+        switch (options.style_system) {
+            case GuiStyleSystem::MidPanel:
+                return ColSet {
+                    .base = LiveColStruct(UiColMap::MidText),
+                    .hot = LiveColStruct(UiColMap::MidTextHot),
+                    .active = LiveColStruct(UiColMap::MidTextHot),
+                };
+            case GuiStyleSystem::Overlay:
+            case GuiStyleSystem::TopBottomPanels: return Col {.c = Col::Text};
+        }
+        return Col {.c = Col::Text};
+    }();
+
     auto const button =
         DoBox(builder,
               {
                   .parent = parent,
                   .id_extra = id_extra,
-                  .background_fill_colours = Col {.c = Col::Background2},
+                  .background_fill_colours = background_colours,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
+                  .corner_rounding = k_corner_rounding,
                   .layout {
                       .size = {options.width, layout::k_hug_contents},
                       .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
-                      .contents_gap = k_menu_item_padding_x,
+                      .contents_gap = 4,
                       .contents_align = layout::Alignment::Justify,
                   },
                   .tooltip = options.tooltip,
@@ -28,8 +52,13 @@ Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const&
           {
               .parent = button,
               .text = options.text,
-              .size_from_text = true,
               .font = FontType::Body,
+              .text_colours = text_colours,
+              .text_overflow = TextOverflowType::ShowDotsOnRight,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {layout::k_fill_parent, k_font_body_size},
+              },
           });
 
     DoBox(builder,
@@ -38,6 +67,8 @@ Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const&
               .text = ICON_FA_CARET_DOWN,
               .size_from_text = true,
               .font = FontType::Icons,
+              .text_colours = text_colours,
+              .parent_dictates_hot_and_active = true,
           });
 
     return button;

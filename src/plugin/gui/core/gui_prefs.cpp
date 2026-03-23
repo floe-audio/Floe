@@ -3,6 +3,7 @@
 
 #include "gui/core/gui_prefs.hpp"
 
+#include "engine/engine_prefs.hpp"
 #include "gui_framework/app_window.hpp"
 
 prefs::Descriptor SettingDescriptor(GuiPreference setting) {

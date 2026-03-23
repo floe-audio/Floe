@@ -8,7 +8,10 @@
 
 struct CurveMap {
     struct Point {
-        bool operator==(Point const& other) const = default;
+        // unique_id is excluded: it's a GUI-only identifier, not part of semantic state.
+        bool operator==(Point const& other) const {
+            return x == other.x && y == other.y && curve == other.curve;
+        }
 
         // Normalised 0.0-1.0.
         f32 x, y;

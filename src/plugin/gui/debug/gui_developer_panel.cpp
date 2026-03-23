@@ -36,14 +36,12 @@ bool DoBasicTextButton(imgui::Context& imgui, imgui::ButtonConfig cfg, Rect r, i
     return clicked;
 }
 
-void DoBasicWhiteText(imgui::Context& imgui, Rect r, String str) {
+f32 DoBasicWhiteText(imgui::Context& imgui, Rect r, String str) {
     r = imgui.RegisterAndConvertRect(r);
-    auto const font_size = imgui.draw_list->fonts.Current()->font_size;
-    f32x2 pos;
-    pos.x = (f32)(int)r.x;
-    pos.y = r.y + ((r.h / 2) - (font_size / 2));
-    pos.y = (f32)(int)pos.y;
-    imgui.draw_list->AddText(pos, 0xffffffff, str);
+    auto const vp_w = imgui.CurrentVpWidth();
+    auto const size = imgui.draw_list->fonts.CalcTextSize(str, {.wrap_width = vp_w});
+    imgui.draw_list->AddTextInRect(r, 0xffffffff, str, {.wrap_width = vp_w});
+    return size.y;
 }
 
 using DevGuiTextInputBuffer = DynamicArrayBounded<char, 128>;
@@ -103,8 +101,8 @@ static void DevGuiIncrementPos(DeveloperPanel& g, f32 size = 0) { g.y_pos += (si
 
 template <typename... Args>
 static void DevGuiText(DeveloperPanel& g, String format, Args const&... args) {
-    DoBasicWhiteText(g.imgui, DevGuiGetFullR(g), fmt::Format(g.imgui.scratch_arena, format, args...));
-    DevGuiIncrementPos(g);
+    g.y_pos +=
+        DoBasicWhiteText(g.imgui, DevGuiGetFullR(g), fmt::Format(g.imgui.scratch_arena, format, args...));
 }
 
 static void DevGuiHeading(DeveloperPanel& g, String text) {
@@ -543,8 +541,8 @@ static void DoImGuiInspector(DeveloperPanel& g, Rect r) {
         DevGuiIncrementPos(g, k_item_h);
 
         DevGuiText(g, "Timers:");
-        for (auto& t : GuiIo().out.timed_wakeups)
-            DevGuiText(g, "Time: {}", t.Raw());
+        for (auto [id, time, hash] : GuiIo().out.timed_wakeups)
+            DevGuiText(g, "ID: {x}, Time: {}", id, time.Raw());
     }
 
     if (DevGuiButton(g, debug_ids ? "Hide IDs" : "Show IDs", "IDs")) debug_ids = !debug_ids;
@@ -600,6 +598,9 @@ static void DoImGuiInspector(DeveloperPanel& g, Rect r) {
                     dyn::AppendSpan(buf, "window_absolute ");
                     break;
                 case imgui::ViewportPositioning::AutoPosition: dyn::AppendSpan(buf, "auto_position "); break;
+                case imgui::ViewportPositioning::WindowCentred:
+                    dyn::AppendSpan(buf, "window_centred ");
+                    break;
             }
             if (f.auto_size[0]) dyn::AppendSpan(buf, "auto_width ");
             if (f.auto_size[1]) dyn::AppendSpan(buf, "auto_height ");

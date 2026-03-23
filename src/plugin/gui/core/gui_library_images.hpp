@@ -55,6 +55,7 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                imgui::Context& imgui,
                                sample_lib::LibraryIdRef const& library_id,
                                sample_lib_server::Server& server,
+                               FloeInstanceIndex instance_index,
                                LibraryImagesTypes needed_types = LibraryImagesTypes::All);
 
 void BeginFrame(LibraryImagesTable& table);

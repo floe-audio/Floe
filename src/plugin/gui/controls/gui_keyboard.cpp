@@ -18,6 +18,7 @@ struct TopDisplayOptions {
     f32x2 start_pos;
     f32 width;
     s32 starting_octave;
+    s8 num_octaves;
     DisplayType display_type;
     f32 strip_height;
     f32 strip_gap;
@@ -36,14 +37,16 @@ struct KeyboardLayout {
     f32 keyboard_x;
     f32 keyboard_width;
     u7 lowest_key_shown;
+    s8 num_octaves;
 
-    static KeyboardLayout Create(f32 keyboard_x, f32 keyboard_w, s32 starting_octave) {
+    static KeyboardLayout Create(f32 keyboard_x, f32 keyboard_w, s32 starting_octave, s8 num_octaves) {
         KeyboardLayout layout = {};
         layout.keyboard_x = keyboard_x;
         layout.keyboard_width = keyboard_w;
         layout.lowest_key_shown = CheckedCast<u7>((starting_octave + k_octave_default_offset) * 12);
+        layout.num_octaves = num_octaves;
 
-        constexpr auto k_white_key_width_factor = 1.0f / (k_num_octaves_shown * 7.0f);
+        auto const k_white_key_width_factor = 1.0f / (num_octaves * 7.0f);
         layout.white_key_width = keyboard_w * k_white_key_width_factor;
         layout.black_key_width = (layout.white_key_width * (0.5f * 118.52f / 100.0f));
 
@@ -147,7 +150,8 @@ struct KeyboardLayout {
     }
 };
 
-static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave) {
+static Optional<KeyboardGuiKeyPressed>
+InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     auto& imgui = g.imgui;
 
     auto const keyboard = g.engine.processor.notes_currently_held.GetBlockwise();
@@ -161,7 +165,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
     auto const col_white_key_hover = ToU32(Col {.c = Col::Subtext1, .dark_mode = true});
     auto const col_white_key_down = ToU32({.c = Col::Highlight});
 
-    auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave);
+    auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave, num_octaves);
 
     f32 const white_height = r.h;
     auto const black_height = (f32)RoundPositiveFloat(r.h * 0.65f);
@@ -185,7 +189,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
                                                  .event = MouseButtonEvent::Down};
 
     imgui.PushId("white");
-    for (auto const i : Range(k_num_octaves_shown * 7)) {
+    for (auto const i : Range(num_octaves * 7)) {
         s32 const this_white_key = i % 7;
         s32 const this_octave = i / 7;
         constexpr s32 k_white_key_nums[] = {0, 2, 4, 5, 7, 9, 11};
@@ -239,7 +243,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
     imgui.PopId();
 
     imgui.PushId("black");
-    for (auto const i : Range(k_num_octaves_shown * 5)) {
+    for (auto const i : Range(num_octaves * 5)) {
         s32 const this_black_key = i % 5;
         s32 const this_octave = i / 5;
         constexpr s32 k_black_key_nums[] = {1, 3, 6, 8, 10};
@@ -298,9 +302,10 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 
     auto const layout = KeyboardLayout::Create(imgui.ViewportPosToWindowPos(options.start_pos.x).x,
                                                options.width,
-                                               options.starting_octave);
+                                               options.starting_octave,
+                                               options.num_octaves);
     auto const highest_key_shown =
-        CheckedCast<u7>(Min(layout.lowest_key_shown + (k_num_octaves_shown * 12) - 1, 127));
+        CheckedCast<u7>(Min(layout.lowest_key_shown + (layout.num_octaves * 12) - 1, 127));
 
     constexpr auto k_line_width = 2.0f;
     constexpr auto k_stopper_width = k_line_width;
@@ -646,7 +651,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 constexpr auto k_minimal_strip_height_ww = 6.0f; // Ww units
 constexpr auto k_minimal_strip_gap_px = 1.0f; // pixels
 
-static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_rect) {
+static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves, Rect keyboard_rect) {
     auto& imgui = g.imgui;
 
     auto const abs_r = imgui.RegisterAndConvertRect(r);
@@ -659,8 +664,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
     constexpr auto k_seconds_delay_before_enlarge = 0.1;
 
     if (imgui.WasJustMadeHot(id))
-        GuiIo().out.AddTimedWakeup(TimePoint::Now() + k_seconds_delay_before_enlarge,
-                                   "enlarged-keyboard-display");
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), TimePoint::Now() + k_seconds_delay_before_enlarge);
 
     if (imgui.IsHot(id) && !imgui.IsPopupMenuOpen(popup_id) &&
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
@@ -693,6 +697,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                                     .start_pos = 0,
                                     .width = keyboard_rect.w,
                                     .starting_octave = starting_octave,
+                                    .num_octaves = num_octaves,
                                     .display_type = DisplayType::Full,
                                     .strip_height = 18, // Ww units
                                     .strip_gap = 8, // Ww units
@@ -710,6 +715,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                                     .start_pos = r.pos,
                                     .width = r.w,
                                     .starting_octave = starting_octave,
+                                    .num_octaves = num_octaves,
                                     .display_type = DisplayType::Minimal,
                                     .strip_height = k_minimal_strip_height_ww,
                                     .strip_gap = PixelsToWw(k_minimal_strip_gap_px),
@@ -718,7 +724,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
     }
 }
 
-Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_octave) {
+Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     if (auto const num_active_layers = ({
             u8 n = 0;
             for (auto const& layer : g.engine.processor.layer_processors)
@@ -751,11 +757,11 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_oc
                                  WwToPixels(num_active_layers * k_minimal_strip_height_ww) +
                                      ((num_active_layers - 1) * k_minimal_strip_gap_px));
 
-            TopDisplay(g, top_display_r, starting_octave, r);
+            TopDisplay(g, top_display_r, starting_octave, num_octaves, r);
         }
     }
 
     rect_cut::CutTop(r, WwToPixels(4.0f));
 
-    return InternalKeyboardGui(g, r, starting_octave);
+    return InternalKeyboardGui(g, r, starting_octave, num_octaves);
 }

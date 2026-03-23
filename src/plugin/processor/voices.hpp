@@ -80,7 +80,12 @@ struct Voice {
 
     u16 index = 0;
 
-    unsigned random_seed = (unsigned)RandomSeed();
+    u32x4 random_seed = {
+        (u32)RandomSeed(),
+        (u32)RandomSeed(),
+        (u32)RandomSeed(),
+        (u32)RandomSeed(),
+    };
 
     sv_filter::CachedHelpers filter_coeffs = {};
     sv_filter::Data<f32x2> filters = {};
@@ -121,6 +126,14 @@ struct VoiceWaveformMarkerForGui {
     u16 position {};
     u16 intensity {};
     u8 layer_index {};
+
+    // Granular grain spread region in audio-data 0-1 space. 0 when not used.
+    struct SpreadRegion {
+        u16 start {};
+        u16 end {};
+    };
+    SpreadRegion spread_region_1 {};
+    SpreadRegion spread_region_2 {};
 };
 
 struct GrainMarkerForGui {
@@ -129,6 +142,7 @@ struct GrainMarkerForGui {
 
 struct VoiceGrainMarkersForGui {
     Array<GrainMarkerForGui, k_max_grains_per_voice> grains {};
+    u16 intensity {}; // Voice gain packed into u16, same as VoiceWaveformMarkerForGui::intensity.
     u8 num_active {};
     u8 layer_index {};
 };
@@ -211,6 +225,8 @@ struct VoicePool {
     AtomicSwapBuffer<Array<VoiceGrainMarkersForGui, k_num_voices>, true> grain_markers_for_gui {};
     Array<Atomic<s16>, 128> voices_per_midi_note_for_gui {};
     Array<Atomic<f32>, k_num_layers> last_velocity = {};
+
+    Array<Atomic<u64>, k_num_layers> last_activated_audio_data_hash {};
 
     AtomicQueue<SampleLogItem, 32> sample_log_queue {};
 

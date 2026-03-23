@@ -1,4 +1,4 @@
-// Copyright 2018-2025 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -15,6 +15,11 @@
 #include "processor/processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
+
+struct EngineListener {
+    virtual void OnEngineChange() = 0; // Called from the main thread.
+    virtual ~EngineListener() = default;
+};
 
 struct Engine : ProcessorListener {
     struct PendingStateChange {
@@ -50,7 +55,7 @@ struct Engine : ProcessorListener {
 
     Engine(clap_host const& host,
            SharedEngineSystems& shared_engine_systems,
-           PluginInstanceMessages& plugin_instance_messages);
+           FloeInstanceIndex instance_index);
     ~Engine();
 
     auto& Layer(u32 index) { return processor.layer_processors[index]; }
@@ -59,14 +64,13 @@ struct Engine : ProcessorListener {
 
     clap_host const& host;
     SharedEngineSystems& shared_engine_systems;
+    FloeInstanceIndex const instance_index;
     ArenaAllocator error_arena {PageAllocator::Instance()};
     ThreadsafeErrorNotifications error_notifications {};
     AudioProcessor processor {host, *this, shared_engine_systems.prefs};
-    PluginInstanceMessages& plugin_instance_messages;
 
     u64 random_seed = RandomSeed();
 
-    Atomic<bool> update_gui = false;
     AutosaveState autosave_state {};
 
     package::InstallJobs package_install_jobs {};
@@ -90,8 +94,8 @@ struct Engine : ProcessorListener {
 
     MacroNames macro_names = DefaultMacroNames();
 
-    // GUI can set this to get notified when the state changes.
-    TrivialFixedSizeFunction<8, void()> stated_changed_callback {};
+    // Optional listener for engine changes. The GUI sets this when it's active.
+    EngineListener* listener {};
 
     sample_lib_server::AsyncCommsChannel& sample_lib_server_async_channel;
 };

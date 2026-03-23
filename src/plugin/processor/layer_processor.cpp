@@ -265,8 +265,8 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                 auto const overlap_size = overlap_high - overlap_low;
                 auto const pos = (note_vel - overlap_low) / (f32)overlap_size;
                 ASSERT(pos >= 0 && pos <= 1);
-                auto const amp1 = trig_table_lookup::SinTurnsPositive((1 - pos) * 0.25f);
-                auto const amp2 = trig_table_lookup::SinTurnsPositive(pos * 0.25f);
+                auto const amp1 = QuarterSineFade(1 - pos);
+                auto const amp2 = QuarterSineFade(pos);
                 feather_region_1->amp *= amp1;
                 feather_region_2->amp *= amp2;
             }
@@ -408,6 +408,7 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_po
         EndVoiceInstantly(v);
 
     layer.peak_meter.Zero();
+    voice_pool.last_activated_audio_data_hash[layer.index].Store(0, StoreMemoryOrder::Relaxed);
 
     // Swap instrument
     layer.audio_thread_inst = *desired_inst;
@@ -674,7 +675,6 @@ void ProcessLayerChanges(LayerProcessor& layer,
         if (update_loop_info) UpdateLoopPointsForVoices(layer, voice_pool);
     }
 
-#if EXPERIMENTAL_GRANULAR
     // Playback / Granular
     // =======================================================================================================
     if (auto p =
@@ -684,15 +684,22 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.speed = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularPosition))
         vmst.granular.position = *p;
-    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularGrains))
-        vmst.granular.grains = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularDensity))
+        vmst.granular.density = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularLength))
-        vmst.granular.length = *p;
+        vmst.granular.length_ms = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread))
         vmst.granular.spread = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSmoothing))
         vmst.granular.smoothing = *p;
-#endif
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomPan))
+        vmst.granular.random_pan = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDetune))
+        vmst.granular.random_detune = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDirection))
+        vmst.granular.random_direction = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularHarmony))
+        vmst.granular.harmony = *p;
 
     // EQ
     // =======================================================================================================

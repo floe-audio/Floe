@@ -984,8 +984,8 @@ static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
 
         if (id != creator_of_next) {
             if (imgui.WasJustMadeHot(id))
-                GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
-                                           "popup close");
+                GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                           GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
             if (imgui.SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
                 imgui.ClosePopupToLevel(imgui.current_popup_stack.size);
         }
@@ -1350,7 +1350,9 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     if (!result.HasSelection()) {
         if (starting_cursor != stb_state.cursor || reset_cursor)
             ResetTextInputCursorAnim();
-        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
+        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter,
+                                               k_text_cursor_blink_rate,
+                                               SourceLocationHash()))
             text_cursor_is_shown = !text_cursor_is_shown;
     }
 
@@ -1477,8 +1479,8 @@ Context::PopupMenuButtonBehaviour(Rect r, Id button_id, Id popup_id, ButtonConfi
         // We're already in a popup viewport. We support auto-opening child popups when hovering. This is
         // common behaviour for quickly navigating through nested menus.
         if (WasJustMadeHot(button_id))
-            GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
-                                       "Popup open");
+            GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                       GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
         if ((button_fired || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
             !IsPopupMenuOpen(popup_id)) {
             ClosePopupToLevel(current_popup_stack.size);
@@ -1554,7 +1556,9 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
         if (WasJustActivated(id, cfg.mouse_button))
             button_repeat_counter = GuiIo().in.current_time + k_button_repeat_rate;
         else if (is_active) {
-            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate))
+            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter,
+                                              k_button_repeat_rate,
+                                              SourceLocationHash()))
                 button_fired = true;
         }
     }
@@ -1619,6 +1623,7 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
     auto const auto_width = cfg.auto_size.x;
     auto auto_height = cfg.auto_size.y;
     auto const auto_pos = cfg.positioning == ViewportPositioning::AutoPosition;
+    auto const window_centred = cfg.positioning == ViewportPositioning::WindowCentred;
     auto const no_scroll_x = cfg.scrollbar_visibility.x == ViewportScrollbarVisibility::Never;
     auto const no_scroll_y = cfg.scrollbar_visibility.y == ViewportScrollbarVisibility::Never;
     auto const scrollbar_inside_padding = cfg.scrollbar_inside_padding;
@@ -1630,8 +1635,10 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
     // have window-relative coords. Contained+ParentRelative remains viewport-relative.
     auto const is_window_coordinates = is_floating || cfg.positioning != ViewportPositioning::ParentRelative;
 
-    ASSERT(r.x >= 0);
-    ASSERT(r.y >= 0);
+    if (!window_centred) {
+        ASSERT(r.x >= 0);
+        ASSERT(r.y >= 0);
+    }
 
     dyn::Assign(viewport->debug_name, debug_name);
     viewport->active = true;
@@ -1706,6 +1713,11 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
                                  has_parent_popup ? PopupJustification::LeftOrRight
                                                   : PopupJustification::AboveOrBelow);
             r.pos = Trunc(r.pos);
+        }
+        if (window_centred) {
+            auto const window_size = GuiIo().in.window_size.ToFloat2();
+            r.size = Min(r.size, window_size);
+            r.pos = Max((window_size - r.size) / 2, f32x2 {0, 0});
         }
     }
 
@@ -1938,6 +1950,16 @@ void Context::EndViewport() {
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
+    switch (viewport->size_resolution) {
+        case Viewport::SizeResolutionState::PendingSizeResolution:
+            viewport->size_resolution = Viewport::SizeResolutionState::Ready;
+            break;
+        case Viewport::SizeResolutionState::Ready:
+            viewport->size_resolution = Viewport::SizeResolutionState::NotPending;
+            break;
+        case Viewport::SizeResolutionState::NotPending: break;
+    }
+
     PopRectFromCurrentScissorStack();
     PopId();
     if (!viewport->parent_viewport) PopScissorStack();
@@ -1955,8 +1977,8 @@ void Context::EndViewport() {
 }
 
 bool Context::ScrollViewportToShowRectangle(Rect r) {
-    if (!Rect::DoRectsIntersect(RegisterAndConvertRect(r),
-                                curr_viewport->clipping_rect.ReducedVertically(r.h))) {
+    auto const window_r = RegisterAndConvertRect(r);
+    if (!Rect::DoRectsIntersect(window_r, curr_viewport->clipping_rect.ReducedVertically(r.h))) {
         SetYScroll(curr_viewport,
                    Clamp(r.CentreY() - (CurrentVpHeight() / 2), 0.0f, curr_viewport->scroll_max.y));
         return true;
@@ -2097,6 +2119,7 @@ void Context::OpenPopupMenu(Id id, Id creator_of_this_popup) {
     auto popup = FindOrCreateViewport(id);
     popup->cfg.mode = ViewportMode::PopupMenu;
     popup->prev_content_size = f32x2 {0, 0};
+    popup->size_resolution = Viewport::SizeResolutionState::PendingSizeResolution;
     popup->creator_of_this_popup_menu = is_first_popup ? k_null_id : creator_of_this_popup;
 
     popup_menu_just_opened = id;
@@ -2143,6 +2166,7 @@ void Context::OpenModalViewport(Id id) {
     auto viewport = FindOrCreateViewport(id);
     viewport->cfg.mode = ViewportMode::Modal;
     viewport->prev_content_size = f32x2 {0, 0};
+    viewport->size_resolution = Viewport::SizeResolutionState::PendingSizeResolution;
     modal_just_opened = id;
     dyn::Append(open_modals, viewport);
     UpdateExclusiveFocusViewport();
@@ -2233,7 +2257,8 @@ bool Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
 
     constexpr auto k_delay_secs = 0.5;
 
-    if (WasJustMadeHot(id)) GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_delay_secs, "Tooltip");
+    if (WasJustMadeHot(id))
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_delay_secs);
 
     return IsHot(id) && SecondsSpentHot() >= k_delay_secs;
 }

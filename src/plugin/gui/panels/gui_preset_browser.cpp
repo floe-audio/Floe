@@ -560,6 +560,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                                                                builder.imgui,
                                                                lib_id,
                                                                context.sample_library_server,
+                                                               context.engine.instance_index,
                                                                LibraryImagesTypes::All);
                             if (!imgs.icon)
                                 ++num_unknown;
@@ -814,6 +815,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
+            .instance_index = context.engine.instance_index,
         },
         BrowserPopupOptions {
             .title = "Presets",
@@ -837,6 +839,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                 LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
                     .library_images = context.library_images,
+                    .instance_index = context.engine.instance_index,
                     .libraries = libraries,
                     .library_authors = library_authors,
                     .error_notifications = context.engine.error_notifications,
@@ -894,6 +897,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                 .library_id = AllPresetsSingleLibrary(*folder),
                                 .library_images = context.library_images,
                                 .sample_library_server = context.sample_library_server,
+                                .instance_index = context.engine.instance_index,
                                 .subtext = ({
                                     String s {};
                                     if (auto const m = PresetBankAtNode(*folder))

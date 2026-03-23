@@ -23,15 +23,9 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
 
     auto viewport_config = k_default_modal_viewport;
     viewport_config.mode = imgui::ViewportMode::Floating;
-    viewport_config.positioning = imgui::ViewportPositioning::WindowAbsolute;
+    viewport_config.positioning = imgui::ViewportPositioning::WindowCentred;
     viewport_config.z_order = 100;
-    viewport_config.auto_size = {false, true};
-
-    auto const viewport = builder.imgui.FindViewport(k_errors_panel_id);
-
-    auto const window_size = GuiIo().in.window_size.ToFloat2();
-    auto const panel_size = f32x2 {WwToPixels(400.0f), viewport ? viewport->prev_content_size.y : 0};
-    auto const bounds = Rect {.pos = 0, .size = window_size}.CentredRect(panel_size);
+    viewport_config.auto_size = true;
 
     DoBoxViewport(
         builder,
@@ -42,7 +36,7 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
                         DoBox(builder,
                               {
                                   .layout {
-                                      .size = layout::k_fill_parent,
+                                      .size = {400, layout::k_hug_contents},
                                       .contents_padding = {.lrtb = k_default_spacing},
                                       .contents_gap = k_default_spacing,
                                       .contents_direction = layout::Direction::Column,
@@ -134,7 +128,7 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
                         });
                     }
                 },
-            .bounds = bounds,
+            .bounds = Rect {},
             .imgui_id = k_errors_panel_id,
             .viewport_config = viewport_config,
             .debug_name = "errors-panel",

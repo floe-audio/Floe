@@ -61,15 +61,17 @@ enum class LayerParamIndex : u16 {
     KeyRangeLowFade,
     KeyRangeHighFade,
 
-#if EXPERIMENTAL_GRANULAR
     PlayMode,
     GranularSpeed,
     GranularPosition,
-    GranularGrains,
+    GranularDensity,
     GranularLength,
     GranularSpread,
     GranularSmoothing,
-#endif
+    GranularRandomPan,
+    GranularRandomDetune,
+    GranularRandomDirection,
+    GranularHarmony,
 
     Count,
 };
@@ -190,6 +192,11 @@ enum class ParamValueType : u8 {
 struct ParamFlags {
     u8 not_automatable : 1;
     u8 hidden : 1;
+    // Experimental params may be removed or changed in future versions without breaking compatibility, they
+    // don't require a StateVersion bump, and are defaulted on load if not present in the file. We store
+    // params as {id, value} pairs - unknown IDs are skipped on load, so removed experimental params are
+    // harmlessly ignored.
+    u8 experimental : 1;
 };
 
 enum class ParameterModule : u8 {
@@ -1689,7 +1696,7 @@ consteval auto CreateParams() {
         .name = "Mix"_s,
         .gui_label = "Mix"_s,
         .tooltip = "Processed signal volume"_s,
-        .related_params_group = 0,
+        .related_params_group = 8,
     };
 
     mp(ReverbOn) = Args {
@@ -2220,7 +2227,6 @@ consteval auto CreateParams() {
             .gui_label = "Pitch Bend Range"_s,
             .tooltip = "The pitch range in semitones of the MIDI pitch wheel"_s,
         };
-#if EXPERIMENTAL_GRANULAR
         lp(PlayMode) = Args {
             .id = id(region, 56), // never change
             .value_config = val_config_helpers::Menu({
@@ -2231,14 +2237,25 @@ consteval auto CreateParams() {
             .name = "Play Mode"_s,
             .gui_label = "Mode"_s,
             .tooltip = "How this layer plays its samples"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularSpeed) = Args {
             .id = id(region, 58), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 100}),
+            .value_config = ({
+                ParamDescriptor::Range const linear_range = {0, 8};
+                ParamDescriptor::Projection const projection {linear_range, 3.0f};
+                val_config_helpers::ValConfig {
+                    .linear_range = linear_range,
+                    .projection = projection,
+                    .default_linear_value = projection.LineariseValue<constexpr_math::Powf>(linear_range, 1),
+                    .display_format = ParamDisplayFormat::Percent,
+                };
+            }),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Speed"_s,
             .gui_label = "Speed"_s,
             .tooltip = "How fast the grain position moves through the sample"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularPosition) = Args {
             .id = id(region, 59), // never change
@@ -2247,43 +2264,97 @@ consteval auto CreateParams() {
             .name = "Granular Position"_s,
             .gui_label = "Position"_s,
             .tooltip = "Where in the sample grains are sourced from"_s,
+            .flags = {.experimental = true},
         };
-        lp(GranularGrains) = Args {
+        lp(GranularDensity) = Args {
             .id = id(region, 60), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Granular},
-            .name = "Granular Grains"_s,
-            .gui_label = "Grains"_s,
+            .name = "Granular Density"_s,
+            .gui_label = "Density"_s,
             .tooltip =
-                "Number of concurrent grains. Low values produce sparse textures, high values create dense clouds"_s,
+                "Controls how densely grains overlap, relative to the grain length. At the midpoint, grains play end-to-end. Lower values add gaps between grains for a sparse texture; higher values make grains overlap for a denser, richer sound"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .value_config = val_config_helpers::Ms({.projection = {{5, 1000}, 1.5f}, .default_ms = 200}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Duration of each grain snippet"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularSpread) = Args {
             .id = id(region, 61), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .value_config = ({
+                ParamDescriptor::Range const linear_range {0.005f, 1};
+                ParamDescriptor::Projection const projection {linear_range, 2.0f};
+                val_config_helpers::ValConfig {
+                    .linear_range = linear_range,
+                    .projection = projection,
+                    .default_linear_value =
+                        projection.LineariseValue<constexpr_math::Powf>(linear_range, 0.05f),
+                    .display_format = ParamDisplayFormat::Percent,
+                };
+            }),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Spread"_s,
             .gui_label = "Spread"_s,
             .tooltip =
                 "Region around the playhead where grains can start from. Small values focus grains near the playhead, large values spread them across a wider area"_s,
+            .flags = {.experimental = true},
         };
         lp(GranularSmoothing) = Args {
             .id = id(region, 62), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Granular},
             .name = "Granular Smoothing"_s,
-            .gui_label = "Smoothing"_s,
+            .gui_label = "Smooth"_s,
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
+            .flags = {.experimental = true},
         };
-#endif
+        lp(GranularRandomPan) = Args {
+            .id = id(region, 63), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 20}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Random Pan"_s,
+            .gui_label = "Pan"_s,
+            .tooltip =
+                "Randomise the stereo position of each grain. At 0% all grains play centred, at 100% grains can be panned anywhere from fully left to fully right"_s,
+            .flags = {.experimental = true},
+        };
+        lp(GranularRandomDetune) = Args {
+            .id = id(region, 64), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Random Detune"_s,
+            .gui_label = "Detune"_s,
+            .tooltip =
+                "Randomise the pitch of each grain. At 0% all grains play at the original pitch, at 100% grains can be detuned up to a semitone up or down"_s,
+            .flags = {.experimental = true},
+        };
+        lp(GranularRandomDirection) = Args {
+            .id = id(region, 65), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Random Direction"_s,
+            .gui_label = "Direction"_s,
+            .tooltip =
+                "Chance that grains spawn playing in the opposite direction to the main playhead. At 0% all grains play in the main direction, at 100% there's a 50/50 chance of each grain playing forwards or backwards"_s,
+            .flags = {.experimental = true},
+        };
+        lp(GranularHarmony) = Args {
+            .id = id(region, 66), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Granular},
+            .name = "Granular Harmony"_s,
+            .gui_label = "Harmony"_s,
+            .tooltip =
+                "Chance that grains spawn at one of the selected harmony intervals instead of the root pitch. Configure which intervals are active using the Intervals button"_s,
+            .flags = {.experimental = true},
+        };
     }
 
     // =====================================================================================================
@@ -2314,6 +2385,15 @@ constexpr auto k_create_params_result = CreateParams();
 
 constexpr auto k_param_descriptors = k_create_params_result.params;
 constexpr auto k_id_map = k_create_params_result.id_map;
+
+constexpr usize k_num_experimental_parameters = []() {
+    usize n = 0;
+    for (auto& p : k_param_descriptors)
+        if (p.flags.experimental) ++n;
+    return n;
+}();
+
+constexpr usize k_num_non_experimental_parameters = k_num_parameters - k_num_experimental_parameters;
 
 struct ComptimeParamSearchOptions {
     ParamModules modules {};
@@ -2351,6 +2431,7 @@ constexpr auto ComptimeParamSearch() {
     Sort(result, [](ParamIndex a, ParamIndex b) {
         auto const& a_desc = k_param_descriptors[ToInt(a)];
         auto const& b_desc = k_param_descriptors[ToInt(b)];
+        if (a_desc.grouping_within_module == b_desc.grouping_within_module) return a < b;
         return a_desc.grouping_within_module < b_desc.grouping_within_module;
     });
 

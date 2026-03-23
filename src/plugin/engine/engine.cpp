@@ -17,11 +17,16 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "clap/ext/timer-support.h"
+#include "engine/engine_prefs.hpp"
 #include "engine/favourite_items.hpp"
 #include "plugin/plugin.hpp"
 #include "processor/layer_processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
+
+static void NotifyListener(Engine& engine) {
+    if (engine.listener) engine.listener->OnEngineChange();
+}
 
 Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine) {
     ASSERT(g_is_logical_main_thread);
@@ -77,7 +82,7 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
 
 static void SetLastSnapshot(Engine& engine, StateSnapshotWithName const& state) {
     engine.last_snapshot.Set(state);
-    engine.update_gui.Store(true, StoreMemoryOrder::Relaxed);
+    NotifyListener(engine);
     engine.host.request_callback(&engine.host);
     // do this at the end because the pending state could be the arg of this function
     engine.pending_state_change.Clear();
@@ -125,7 +130,6 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
         engine.macro_names = state.state.macro_names;
         ApplyNewState(engine.processor, state.state, source);
         SetLastSnapshot(engine, state);
-        if (engine.stated_changed_callback) engine.stated_changed_callback();
 
         MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
         engine.host.request_callback(&engine.host);
@@ -148,7 +152,8 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
                                                             .id = i.Get<sample_lib::InstrumentId>(),
                                                             .layer_index = layer_index,
                                                         });
-            ASSERT(dyn::Append(pending.requests, async_id));
+            auto const appended1 = dyn::Append(pending.requests, async_id);
+            ASSERT(appended1);
         }
 
         engine.processor.convo.ir_id = state.state.ir_id;
@@ -157,7 +162,8 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
                 sample_lib_server::SendAsyncLoadRequest(engine.shared_engine_systems.sample_library_server,
                                                         engine.sample_lib_server_async_channel,
                                                         *state.state.ir_id);
-            ASSERT(dyn::Append(pending.requests, async_id));
+            auto const appended2 = dyn::Append(pending.requests, async_id);
+            ASSERT(appended2);
         }
     }
 }
@@ -228,8 +234,6 @@ static void ApplyNewStateFromPending(Engine& engine) {
 
     ApplyNewState(engine.processor, snapshot, source);
     SetLastSnapshot(engine, {snapshot, name});
-
-    if (engine.stated_changed_callback) engine.stated_changed_callback();
 }
 
 static void SampleLibraryChanged(Engine& engine, sample_lib::LibraryIdRef library_id) {
@@ -304,19 +308,21 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
         }
         case Source::PartOfPendingStateChange: {
             result.Retain();
-            ASSERT(dyn::Append(engine.pending_state_change->retained_results, result));
+            auto const appended = dyn::Append(engine.pending_state_change->retained_results, result);
+            ASSERT(appended);
             break;
         }
         case Source::LastInPendingStateChange: {
             result.Retain();
-            ASSERT(dyn::Append(engine.pending_state_change->retained_results, result));
+            auto const appended = dyn::Append(engine.pending_state_change->retained_results, result);
+            ASSERT(appended);
             ApplyNewStateFromPending(engine);
             break;
         }
         case Source::Count: PanicIfReached(); break;
     }
 
-    engine.update_gui.Store(true, StoreMemoryOrder::Relaxed);
+    NotifyListener(engine);
     engine.host.request_callback(&engine.host);
 }
 
@@ -433,9 +439,13 @@ void LoadPresetFromFile(Engine& engine, String path) {
 }
 
 void SaveCurrentStateToFile(Engine& engine, String path) {
-    auto const current_state = CurrentStateSnapshot(engine);
+    auto current_state = CurrentStateSnapshot(engine);
     auto const error_id = HashMultiple(Array {"preset-save"_s, path});
-    if (auto const outcome = SavePresetFile(path, current_state); outcome.Succeeded()) {
+    if (auto const outcome = SavePresetFile(
+            path,
+            current_state,
+            prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()));
+        outcome.Succeeded()) {
         SetLastSnapshot(engine, {.state = current_state, .name = {.name_or_path = path}});
         engine.error_notifications.RemoveError(error_id);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
@@ -481,25 +491,22 @@ static void OnMainThread(Engine& engine) {
             engine.request_main_thread_callback_at.Store(TimePoint::Now() + 2.0, StoreMemoryOrder::Release);
     }
 
-    if (engine.update_gui.Exchange(false, RmwMemoryOrder::Relaxed))
-        engine.plugin_instance_messages.UpdateGui();
-
     if (AutosaveNeeded(engine.autosave_state, engine.shared_engine_systems.prefs))
         QueueAutosave(engine.autosave_state, CurrentStateSnapshot(engine));
 }
 
 void Engine::OnProcessorChange(ChangeFlags flags) {
     if (flags & ProcessorListener::IrChanged) MarkNeedsAttributionTextUpdate(attribution_requirements);
-    update_gui.Store(true, StoreMemoryOrder::Relaxed);
+    NotifyListener(*this);
     if (!g_is_logical_main_thread) host.request_callback(&host);
 }
 
 Engine::Engine(clap_host const& host,
                SharedEngineSystems& shared_engine_systems,
-               PluginInstanceMessages& plugin_instance_messages)
+               FloeInstanceIndex instance_index)
     : host(host)
     , shared_engine_systems(shared_engine_systems)
-    , plugin_instance_messages(plugin_instance_messages)
+    , instance_index(instance_index)
     , sample_lib_server_async_channel {sample_lib_server::OpenAsyncCommsChannel(
           shared_engine_systems.sample_library_server,
           {
@@ -580,6 +587,21 @@ static void PluginOnPollThread(Engine& engine) {
 static void PluginOnPreferenceChanged(Engine& engine, prefs::Key key, prefs::Value const* value) {
     ASSERT(g_is_logical_main_thread);
     OnPreferenceChanged(engine.autosave_state, key, value);
+
+    if (prefs::Match(key, value, ExperimentalParamsPreferenceDescriptor())) {
+        if (!value->Get<bool>()) {
+            // Default-out all experimental params.
+            for (auto const i : Range(k_num_parameters)) {
+                auto const& desc = k_param_descriptors[i];
+                if (desc.flags.experimental) {
+                    SetParameterValue(engine.processor,
+                                      (ParamIndex)i,
+                                      desc.default_linear_value,
+                                      {.host_should_not_record = true});
+                }
+            }
+        }
+    }
 }
 
 usize MegabytesUsedBySamples(Engine const& engine) {
@@ -607,30 +629,31 @@ void SetToDefaultState(Engine& engine) {
                         .state = snapshot,
                         .name = {.name_or_path = "Default"},
                     });
-    if (engine.stated_changed_callback) engine.stated_changed_callback();
 }
 
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
     auto state = CurrentStateSnapshot(engine);
     ASSERT(state.instance_id.size);
-    auto outcome = CodeState(state,
-                             CodeStateArguments {
-                                 .mode = CodeStateArguments::Mode::Encode,
-                                 .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
-                                     u64 bytes_written = 0;
-                                     while (bytes_written != bytes) {
-                                         ASSERT(bytes_written < bytes);
-                                         auto const n = stream.write(&stream,
-                                                                     (u8 const*)data + bytes_written,
-                                                                     bytes - bytes_written);
-                                         if (n < 0) return ErrorCode(CommonError::PluginHostError);
-                                         bytes_written += (u64)n;
-                                     }
-                                     return k_success;
-                                 },
-                                 .source = StateSource::Daw,
-                                 .abbreviated_read = false,
-                             });
+    auto outcome = CodeState(
+        state,
+        CodeStateArguments {
+            .mode = CodeStateArguments::Mode::Encode,
+            .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                u64 bytes_written = 0;
+                while (bytes_written != bytes) {
+                    ASSERT(bytes_written < bytes);
+                    auto const n =
+                        stream.write(&stream, (u8 const*)data + bytes_written, bytes - bytes_written);
+                    if (n < 0) return ErrorCode(CommonError::PluginHostError);
+                    bytes_written += (u64)n;
+                }
+                return k_success;
+            },
+            .source = StateSource::Daw,
+            .abbreviated_read = false,
+            .write_experimental_params =
+                prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()),
+        });
 
     auto const error_id = SourceLocationHash();
 

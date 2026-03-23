@@ -5,6 +5,8 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "foundation/utils/maths_constexpr.hpp"
+
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/loop_modes.hpp"
@@ -16,6 +18,62 @@
 #include "processor/granular.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/sample_processing.hpp"
+
+// Prevents the waveform image flickering during fast melodic passages. The first change always goes through
+// instantly; if a second arrives shortly after, the display locks until things calm down.
+static u64 DebouncedWaveformHash(WaveformHashDebounce& state, u64 raw_hash) {
+    constexpr f64 k_detection_window_secs = 0.10;
+    constexpr f64 k_calm_threshold_secs = 1.3;
+
+    auto const now = TimePoint::Now();
+    auto const secs_since_last_change =
+        state.last_change_time ? (now - state.last_change_time) : k_calm_threshold_secs;
+
+    if (raw_hash != state.last_raw_hash) {
+        if (!state.locked && secs_since_last_change < k_detection_window_secs)
+            state.locked = true;
+        else if (!state.locked)
+            state.displayed_hash = raw_hash;
+        state.last_raw_hash = raw_hash;
+        state.last_change_time = now;
+    } else if (state.locked && secs_since_last_change >= k_calm_threshold_secs) {
+        state.locked = false;
+        state.displayed_hash = raw_hash;
+    }
+
+    return state.displayed_hash;
+}
+
+static bool IsMultisampledInstrument(LayerProcessor const& layer) {
+    if (layer.instrument.tag != InstrumentType::Sampler) return false;
+    if (auto i = layer.instrument.TryGetFromTag<InstrumentType::Sampler>())
+        return (*i)->instrument.regions.size > 1;
+    return false;
+}
+
+// Sweep diagonal lines across the rect.
+static void DrawHatchPattern(DrawList& draw_list, Rect r, u32 col, f32 spacing, f32 thickness) {
+    if ((col & k_alpha_mask) == 0) return;
+
+    draw_list.PushClipRect(r.Min(), r.Max(), true);
+
+    constexpr auto k_angle_degrees = 55.0;
+    constexpr auto k_angle_tan = (f32)constexpr_math::Tan(k_angle_degrees * constexpr_math::k_pi / 180.0);
+    auto const step = spacing;
+    auto const diagonal_extent = r.h / k_angle_tan;
+
+    // Start far enough left that lines entering from the top-right still cover the rect.
+    auto const start = -diagonal_extent;
+    auto const end = r.w + (r.h / k_angle_tan);
+
+    for (f32 offset = start; offset < end; offset += step) {
+        f32x2 const a {r.x + offset, r.y};
+        f32x2 const b {r.x + offset - diagonal_extent, r.Bottom()};
+        draw_list.AddLine(a, b, col, thickness);
+    }
+
+    draw_list.PopClipRect();
+}
 
 struct PlayModeFeatures {
     bool has_play_mode;
@@ -58,6 +116,73 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
         case param_values::PlayMode::Count: PanicIfReached();
     }
     PanicIfReached();
+}
+
+struct SpreadRegion01 {
+    f32 start; // audio-data 0-1 space
+    f32 end; // audio-data 0-1 space
+};
+
+// Collect spread regions from all active voice markers for a given layer, merge overlapping regions, and
+// return the merged set. This avoids drawing visually confusing multiple translucent overlapping rectangles.
+static Span<SpreadRegion01>
+MergedSpreadRegions(ArenaAllocator& arena,
+                    Array<VoiceWaveformMarkerForGui, k_num_voices> const& voice_waveform_markers,
+                    u8 layer_index) {
+
+    DynamicArray<SpreadRegion01> regions {arena};
+
+    for (auto const voice_index : Range(k_num_voices)) {
+        auto const& marker = voice_waveform_markers[voice_index];
+        if (!marker.intensity || marker.layer_index != layer_index) continue;
+
+        auto const r1_start = (f32)marker.spread_region_1.start / (f32)UINT16_MAX;
+        auto const r1_end = (f32)marker.spread_region_1.end / (f32)UINT16_MAX;
+        if (r1_start < r1_end) dyn::Append(regions, SpreadRegion01 {r1_start, r1_end});
+
+        auto const r2_start = (f32)marker.spread_region_2.start / (f32)UINT16_MAX;
+        auto const r2_end = (f32)marker.spread_region_2.end / (f32)UINT16_MAX;
+        if (r2_start < r2_end) dyn::Append(regions, SpreadRegion01 {r2_start, r2_end});
+    }
+
+    if (regions.size <= 1) return regions.ToOwnedSpan();
+
+    // Sort by start position.
+    Sort(regions, [](SpreadRegion01 const& a, SpreadRegion01 const& b) { return a.start < b.start; });
+
+    // Merge overlapping/adjacent regions in-place.
+    usize write = 0;
+    for (usize read = 1; read < regions.size; ++read) {
+        if (regions[read].start <= regions[write].end) {
+            regions[write].end = Max(regions[write].end, regions[read].end);
+        } else {
+            ++write;
+            regions[write] = regions[read];
+        }
+    }
+    regions.ResizeWithoutCtorDtor(write + 1);
+
+    return regions.ToOwnedSpan();
+}
+
+static void DrawSpreadRegionRect(DrawList& draw_list,
+                                 Rect window_r,
+                                 f32 viewport_w,
+                                 f32 start_01, // audio-data 0-1 space
+                                 f32 end_01, // audio-data 0-1 space
+                                 bool reverse,
+                                 u32 col) {
+    if (start_01 >= end_01) return;
+
+    // Convert from audio-data space to visual space.
+    f32 const visual_start = reverse ? (1.0f - end_01) : start_01;
+    f32 const visual_end = reverse ? (1.0f - start_01) : end_01;
+
+    f32 const left = Max(window_r.x + (visual_start * viewport_w), window_r.x);
+    f32 const right = Min(window_r.x + (visual_end * viewport_w), window_r.Right());
+    if (left >= right) return;
+
+    draw_list.AddRectFilled(f32x2 {left, window_r.y}, f32x2 {right, window_r.Bottom()}, col);
 }
 
 static void DoWaveformControls(GuiState& g,
@@ -615,11 +740,13 @@ void DoWaveformElement(GuiState& g,
         r;
     });
 
-    g.imgui.draw_list->AddRectFilled(window_r,
-                                     LiveCol(UiColMap::WaveformLoopBack),
-                                     WwToPixels(k_corner_rounding));
+    if (!options.waveform_only)
+        g.imgui.draw_list->AddRectFilled(window_r,
+                                         LiveCol(UiColMap::WaveformLoopBack),
+                                         WwToPixels(k_corner_rounding));
 
-    if (g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
+    if (!options.waveform_only &&
+        g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
             LoadMemoryOrder::Relaxed) != -1) {
         g.imgui.draw_list->AddTextInRect(window_r,
                                          LiveCol(UiColMap::WaveformLoadingText),
@@ -634,14 +761,23 @@ void DoWaveformElement(GuiState& g,
         auto const features =
             options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
 
+        auto const is_multisample = IsMultisampledInstrument(layer);
+
         // Waveform image.
         if (layer.instrument_id.tag != InstrumentType::None) {
-
             auto const offset =
                 (features.show_sample_offset && layer.instrument_id.tag == InstrumentType::Sampler)
                     ? params.LinearValue(layer.index, LayerParamIndex::SampleOffset)
                     : 0;
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+
+            auto const raw_hash =
+                g.engine.processor.voice_pool.last_activated_audio_data_hash[layer.index].Load(
+                    LoadMemoryOrder::Relaxed);
+
+            auto& debounce = g.waveform_hash_debounce[layer.index];
+            auto const last_activated_hash =
+                is_multisample ? DebouncedWaveformHash(debounce, raw_hash) : raw_hash;
 
             struct Range {
                 f32x2 lo;
@@ -658,8 +794,10 @@ void DoWaveformElement(GuiState& g,
                                      layer.instrument,
                                      *GuiIo().in.renderer,
                                      g.shared_engine_systems.thread_pool,
-                                     viewport_r.size))) {
-                if (features.has_play_mode) {
+                                     viewport_r.size,
+                                     g.engine.instance_index,
+                                     last_activated_hash))) {
+                if (features.has_play_mode && features.show_loop_controls) {
                     auto const loop_start = params.LinearValue(layer.index, LayerParamIndex::LoopStart);
                     auto const loop_end =
                         Max(params.LinearValue(layer.index, LayerParamIndex::LoopEnd), loop_start);
@@ -709,52 +847,163 @@ void DoWaveformElement(GuiState& g,
                                                     LiveCol(UiColMap::WaveformLoopWaveformOffset));
                     }
 
-#if EXPERIMENTAL_GRANULAR
-                    // Granular position indicator: a thin vertical line at the grain position,
-                    // flanked by subtle gradient edges showing the grain size region.
-                    if (features.show_grain_position_indicator) {
-                        auto const grain_pos =
-                            params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
-                        auto const grain_size =
-                            params.LinearValue(layer.index, LayerParamIndex::GranularSpread);
-
-                        // Centre line position.
-                        f32 const centre_x = window_r.x + (viewport_r.w * grain_pos);
-
-                        // Thin vertical line at the grain position.
-                        g.imgui.draw_list->AddRectFilled(f32x2 {Round(centre_x) - 0.5f, window_r.y},
-                                                         f32x2 {Round(centre_x) + 0.5f, window_r.Bottom()},
-                                                         LiveCol(UiColMap::WaveformLoopHandle));
-
-                        // Translucent rectangle showing grain size region.
-                        f32 const half_region = GrainSpreadParamToFraction(grain_size) * 0.5f * viewport_r.w;
-                        f32 const region_left = Max(centre_x - half_region, window_r.x);
-                        f32 const region_right = Min(centre_x + half_region, window_r.Right());
-                        g.imgui.draw_list->AddRectFilled(f32x2 {region_left, window_r.y},
-                                                         f32x2 {region_right, window_r.Bottom()},
-                                                         LiveCol(UiColMap::WaveformRegionOverlay));
-                    }
-#endif
-                } else {
-                    // Plain waveform with no overlays.
+                } else if (features.has_play_mode) {
+                    // Play mode without loop controls (e.g. GranularFixed): draw
+                    // the waveform plainly, with the sample offset overlay if applicable.
                     g.imgui.draw_list->AddImage(tex.Value(),
-                                                window_r.Min(),
+                                                window_r.Min() + f32x2 {offset * viewport_r.w, 0},
                                                 window_r.Max(),
                                                 whole_section_uv.lo,
                                                 whole_section_uv.hi,
                                                 LiveCol(UiColMap::WaveformLoopWaveformLoop));
+
+                    if (offset != 0) {
+                        Range const offset_section_uv {
+                            .lo = {reverse ? 1.0f : 0.0f, 0},
+                            .hi = {reverse ? 1.0f - offset : offset, 1},
+                        };
+                        g.imgui.draw_list->AddImage(tex.Value(),
+                                                    window_r.Min(),
+                                                    window_r.Max() -
+                                                        f32x2 {viewport_r.w * (1.0f - offset), 0},
+                                                    offset_section_uv.lo,
+                                                    offset_section_uv.hi,
+                                                    LiveCol(UiColMap::WaveformLoopWaveformOffset));
+                    }
+
+                } else {
+                    // No play mode: plain waveform with no overlays or offset colouring,
+                    // but still respecting the reverse flag.
+                    g.imgui.draw_list->AddImage(tex.Value(),
+                                                window_r.Min(),
+                                                window_r.Max(),
+                                                {reverse ? 1.0f : 0.0f, 0},
+                                                {reverse ? 0.0f : 1.0f, 1},
+                                                LiveCol(UiColMap::WaveformLoopWaveformLoop));
                 }
             }
+
+            if (options.waveform_only) return;
+
+            if (is_multisample && debounce.locked) {
+                DrawHatchPattern(*g.imgui.draw_list,
+                                 window_r,
+                                 LiveCol(UiColMap::WaveformMultisampleHatch),
+                                 WwToPixels(5.5f),
+                                 WwToPixels(1.0f));
+            }
+
+            // Multisample badge.
+            if (is_multisample) {
+                // Badge in the top-right corner.
+                auto const badge_pad = WwToPixels(4.5f);
+                auto const badge_font_scaling = 0.72f;
+                String const badge_text = (last_activated_hash) ? "Last Played"_s : "Representative"_s;
+
+                // Measure text to size the badge.
+                auto const font = g.fonts.Current();
+                auto const font_size = font->font_size * badge_font_scaling;
+                auto const text_size = font->CalcTextSize(badge_text, {.font_size = font_size});
+                auto const badge_h = text_size.y + WwToPixels(3.0f);
+                auto const badge_w = text_size.x + WwToPixels(10.0f);
+                Rect const badge_r = {
+                    .xywh {window_r.Right() - badge_w - badge_pad, window_r.y + badge_pad, badge_w, badge_h}};
+
+                auto const badge_rounding = WwToPixels(2.0f);
+                g.imgui.draw_list->AddRectFilled(badge_r,
+                                                 LiveCol(UiColMap::WaveformMultisampleBadgeBack),
+                                                 badge_rounding);
+                g.imgui.draw_list->AddRect(badge_r,
+                                           LiveCol(UiColMap::WaveformMultisampleBadgeBorder),
+                                           badge_rounding);
+                g.imgui.draw_list->AddTextInRect(badge_r,
+                                                 LiveCol(UiColMap::WaveformMultisampleBadgeText),
+                                                 badge_text,
+                                                 {
+                                                     .justification = TextJustification::Centred,
+                                                     .overflow_type = TextOverflowType::AllowOverflow,
+                                                     .font_scaling = badge_font_scaling,
+                                                 });
+            }
+        }
+
+        // Consume voice waveform markers once for use by both spread regions and voice cursors.
+        auto const has_active_voices =
+            g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) > 0;
+        auto& voice_waveform_markers =
+            g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
+
+        // Grain markers (drawn below controls and voice cursors).
+        if (has_active_voices) {
+            auto& grain_markers_arr = g.engine.processor.voice_pool.grain_markers_for_gui.Consume().data;
+            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            for (auto const voice_index : Range(k_num_voices)) {
+                auto const& vm = grain_markers_arr[voice_index];
+                if (!vm.num_active || vm.layer_index != layer.index) continue;
+
+                f32 const voice_intensity = (f32)vm.intensity / (f32)UINT16_MAX;
+
+                for (auto const i : Range(vm.num_active)) {
+                    f32 pos = (f32)vm.grains[i].position / (f32)UINT16_MAX;
+                    if (reverse) pos = 1.0f - pos;
+
+                    f32x2 marker_pos {Round(viewport_r.x + (pos * viewport_r.w)), viewport_r.y};
+                    marker_pos = g.imgui.ViewportPosToWindowPos(marker_pos);
+
+                    // Draw grain markers as thin lines, fading with the voice's amplitude.
+                    DrawVoiceMarkerLine(g.imgui,
+                                        marker_pos,
+                                        viewport_r.h,
+                                        g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
+                                        {},
+                                        {
+                                            .opacity = voice_intensity,
+                                            .col = LiveCol(UiColMap::WaveformLoopGrainMarkers),
+                                        });
+                }
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+            }
+        }
+
+        // Spread regions from voice markers (for all granular modes when voices are active).
+        // Regions from all voices are merged so overlapping areas are drawn once rather than
+        // stacking translucent rectangles.
+        if (has_active_voices && options.play_mode.HasValue() && IsGranular(*options.play_mode)) {
+            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
+            auto const merged = MergedSpreadRegions(g.scratch_arena, voice_waveform_markers, layer.index);
+
+            for (auto const& region : merged)
+                DrawSpreadRegionRect(*g.imgui.draw_list,
+                                     window_r,
+                                     viewport_r.w,
+                                     region.start,
+                                     region.end,
+                                     reverse,
+                                     col);
+
+            if (merged.size) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
         }
 
         // Waveform controls: loop handles, offset handle, crossfade handle.
         if (features.show_loop_controls)
             DoWaveformControls(g, layer, viewport_r, features, options.handles_follow_cursor);
 
+        // GranularFixed spread indicator from params (visible even with no notes playing).
+        if (features.show_grain_position_indicator) {
+            auto const grain_pos_raw = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
+            auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
+            auto const grain_pos = reverse ? 1.0f - grain_pos_raw : grain_pos_raw;
+            auto const grain_spread = params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread);
+            auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
+
+            f32 const start = grain_pos;
+            f32 const end = Min(grain_pos + grain_spread, 1.0f);
+            DrawSpreadRegionRect(*g.imgui.draw_list, window_r, viewport_r.w, start, end, reverse, col);
+        }
+
         // Voice cursors (shown in both modes).
-        if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
-            auto& voice_waveform_markers =
-                g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
+        if (has_active_voices) {
             for (auto const voice_index : Range(k_num_voices)) {
                 auto const marker = voice_waveform_markers[voice_index];
                 if (!marker.intensity || marker.layer_index != layer.index) continue;
@@ -770,34 +1019,7 @@ void DoWaveformElement(GuiState& g,
                                     viewport_r.h,
                                     g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
                                     {},
-                                    intensity);
-                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
-            }
-        }
-
-        // Grain markers.
-        if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed)) {
-            auto& grain_markers_arr = g.engine.processor.voice_pool.grain_markers_for_gui.Consume().data;
-            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
-            for (auto const voice_index : Range(k_num_voices)) {
-                auto const& vm = grain_markers_arr[voice_index];
-                if (!vm.num_active || vm.layer_index != layer.index) continue;
-
-                for (auto const i : Range(vm.num_active)) {
-                    f32 pos = (f32)vm.grains[i].position / (f32)UINT16_MAX;
-                    if (reverse) pos = 1.0f - pos;
-
-                    f32x2 marker_pos {Round(viewport_r.x + (pos * viewport_r.w)), viewport_r.y};
-                    marker_pos = g.imgui.ViewportPosToWindowPos(marker_pos);
-
-                    // Draw grain markers as thin semi-transparent lines.
-                    DrawVoiceMarkerLine(g.imgui,
-                                        marker_pos,
-                                        viewport_r.h,
-                                        g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
-                                        {},
-                                        0.3f);
-                }
+                                    {.opacity = intensity});
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
             }
         }

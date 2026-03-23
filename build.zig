@@ -191,8 +191,8 @@ const FlagsBuilder = struct {
         // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
         try self.flags.append("-gdwarf-4");
 
-        if (options.ubsan) {
-            if (ctx.optimise != .ReleaseFast) {
+        if (ctx.optimise != .ReleaseFast) {
+            if (options.ubsan) {
                 // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch
                 // undefined behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a
                 // mode where undefined behaviour will instead call various functions. This is called the UBSan
@@ -205,9 +205,9 @@ const FlagsBuilder = struct {
                 if (minimal_runtime_mode) {
                     try self.flags.append("-fsanitize-runtime"); // set it to 'minimal' mode
                 }
+            } else {
+                try self.flags.append("-fno-sanitize=all");
             }
-        } else {
-            try self.flags.append("-fno-sanitize=all");
         }
 
         if (options.cpp) {
@@ -255,11 +255,9 @@ const FlagsBuilder = struct {
             try self.flags.append("-DTRACY_MANUAL_LIFETIME");
             try self.flags.append("-DTRACY_DELAYED_INIT");
             try self.flags.append("-DTRACY_ONLY_LOCALHOST");
-            if (cfg.target.os.tag == .linux) {
-                // Couldn't get these working well so just disabling them
-                try self.flags.append("-DTRACY_NO_CALLSTACK");
-                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
-            }
+            // On Linux, sampling and system tracing require:
+            //   echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+            // Or on NixOS, set: boot.kernel.sysctl."kernel.perf_event_paranoid" = -1;
         }
     }
 };
@@ -426,9 +424,6 @@ pub fn build(b: *std.Build) void {
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
 
-        .granular = b.option(bool, "granular", "Experimental granular") orelse false,
-        .mid_panel_tabs = b.option(bool, "mid-panel-tabs", "Experimental mid-panel tabs") orelse false,
-
         // Installing plugins to global plugin folders requires admin rights but it's often easier to debug
         // things without requiring admin. For production builds it's always enabled.
         .windows_installer_require_admin = b.option(
@@ -446,6 +441,11 @@ pub fn build(b: *std.Build) void {
             bool,
             "fetch-floe-logos",
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
+        ) orelse false,
+        .no_runtime_safety_checks = b.option(
+            bool,
+            "no-runtime-safety-checks",
+            "In optimised builds, don't include UBSAN or other runtime safety checks",
         ) orelse false,
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
@@ -476,7 +476,7 @@ pub fn build(b: *std.Build) void {
         .build_mode = options.build_mode,
         .optimise = switch (options.build_mode) {
             .development => std.builtin.OptimizeMode.Debug,
-            .performance_profiling, .production => std.builtin.OptimizeMode.ReleaseSafe,
+            .performance_profiling, .production => if (options.no_runtime_safety_checks) std.builtin.OptimizeMode.ReleaseFast else std.builtin.OptimizeMode.ReleaseSafe,
         },
         .windows_installer_require_admin = options.windows_installer_require_admin,
 
@@ -524,9 +524,11 @@ pub fn build(b: *std.Build) void {
         .pluginval = b.step("test:pluginval", "Test using pluginval"),
         .valgrind = b.step("test:valgrind", "Test using Valgrind"),
         .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
+        .benchmark = b.step("benchmark", "Run benchmarks"),
         .ci = b.step("script:ci", "Run CI checks"),
         .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
 
+        .benchmark_ci = b.step("script:benchmark-ci", "Run benchmarks with hyperfine and track with Bencher"),
         .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
         .format_step = b.step("script:format", "Format code with clang-format"),
         .create_gh_release = b.step("script:create-gh-release", "Create a GitHub release"),
@@ -600,6 +602,7 @@ pub fn build(b: *std.Build) void {
         });
         if (b.graph.host.result.os.tag == .windows) exe.linkLibC(); // GetTempPath2W
 
+        addRunScript(exe, top_level_steps.benchmark_ci, "benchmark-ci");
         addRunScript(exe, top_level_steps.format_step, "format");
         addRunScript(exe, top_level_steps.create_gh_release, "create-gh-release");
         addRunScript(exe, top_level_steps.upload_errors, "upload-errors");
@@ -947,6 +950,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
         "src/utils/leak_detecting_allocator.cpp",
         "src/utils/no_hash.cpp",
         "src/tests/framework.cpp",
+        "src/benchmarks/framework.cpp",
         "src/utils/logger/logger.cpp",
         "src/foundation/utils/string.cpp",
         "src/os/filesystem.cpp",
@@ -1595,12 +1599,11 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/panels/gui_preset_browser.cpp",
             "gui/panels/gui_save_preset_panel.cpp",
             "gui/panels/gui_top_panel.cpp",
-            "gui/panels/gui_effects_strip.cpp",
-            "gui/panels/gui_layer_common.cpp",
+            "gui/panels/gui_effects.cpp",
             "gui/panels/gui_layer_subtabbed.cpp",
             "gui/panels/gui_mid_panel.cpp",
-            "gui/panels/gui_mid_panel_combined.cpp",
-            "gui/panels/gui_layer_maximised.cpp",
+            "gui/panels/gui_mid_panel_layers.cpp",
+            "gui/panels/gui_perform.cpp",
             "gui_framework/app_window.cpp",
             "gui_framework/draw_list.cpp",
             "gui_framework/fonts.cpp",
@@ -2719,6 +2722,34 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     return exe;
 }
 
+fn buildBenchmarks(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "benchmarks",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/common_infrastructure/final_binary_type.cpp",
+            "src/benchmarks/benchmarks_main.cpp",
+            "src/foundation/memory/allocators.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Benchmarks");
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.linkLibrary(deps.plugin);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
 fn doTarget(
     ctx: *BuildContext,
     cfg: *const TargetConfig,
@@ -3117,6 +3148,28 @@ fn doTarget(
             top_level_steps.valgrind.dependOn(
                 &ctx.b.addFail("valgrind not allowed for this build configuration").step,
             );
+        }
+    }
+
+    // Benchmarks (not needed in production builds).
+    if (ctx.build_mode != .production) {
+        const exe = buildBenchmarks(ctx, cfg, .{ .plugin = plugin });
+
+        const benchmark_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
+
+        const install = ctx.b.addInstallBinFile(benchmark_binary, exe.out_filename);
+        top_level_steps.install_all.dependOn(&install.step);
+
+        // Run benchmarks
+        {
+            const run_benchmarks = std.Build.Step.Run.create(ctx.b, "run benchmarks");
+            run_benchmarks.addFileArg(benchmark_binary);
+
+            // Forward user args passed after "--" to zig build.
+            if (ctx.b.args) |args|
+                run_benchmarks.addArgs(args);
+
+            top_level_steps.benchmark.dependOn(&run_benchmarks.step);
         }
     }
 

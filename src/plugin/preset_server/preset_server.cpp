@@ -1015,6 +1015,7 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
     PresetFolder* preset_folder {};
 
     for (auto const& entry : entries) {
+
         if (entry.type != FileType::File) continue;
 
         if (path::Equal(entry.subpath, k_preset_bank_filename)) {
@@ -1035,7 +1036,10 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
 
         auto const file_data = TRY_OR(
             ReadEntireFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}), scratch_arena),
-            continue);
+            {
+                LogDebug(ModuleName::PresetServer, "filesystem: failed to read {}, {}", entry.subpath, error);
+                continue;
+            });
         DEFER {
             if (file_data.size) scratch_arena.Free(file_data.ToByteSpan());
         };
@@ -1048,7 +1052,10 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         }
 
         auto reader = Reader::FromMemory(file_data);
-        auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena, true), continue);
+        auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena, true), {
+            LogDebug(ModuleName::PresetServer, "preset: failed to read {}, {}", entry.subpath, error);
+            continue;
+        });
 
         if (!preset_folder)
             preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);

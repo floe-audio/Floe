@@ -9,6 +9,7 @@
 #include "common_infrastructure/error_reporting.hpp"
 
 #include "engine/check_for_update.hpp"
+#include "engine/engine_prefs.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
@@ -611,6 +612,8 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
 
         Setting(builder, context, options_rhs_column, check_for_update::CheckAllowedPrefDescriptor());
         Setting(builder, context, options_rhs_column, check_for_update::CheckBetaPrefDescriptor());
+        if (k_num_experimental_parameters)
+            Setting(builder, context, options_rhs_column, ExperimentalParamsPreferenceDescriptor());
     }
 }
 

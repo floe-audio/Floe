@@ -433,6 +433,7 @@ void DoCurveMap(GuiState& g,
                             f32x2 {rect.x + (*velocity_marker * rect.w), rect.y + (rect.h * (1.0f - value))},
                             rect.h * value,
                             rect.x,
-                            k_nullopt);
+                            k_nullopt,
+                            {});
     }
 }

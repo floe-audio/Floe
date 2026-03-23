@@ -6,13 +6,17 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine.hpp"
+#include "engine/engine_prefs.hpp"
+#include "engine/loop_modes.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
-#include "gui/panels/gui_layer_common.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/granular.hpp"
@@ -23,101 +27,625 @@ constexpr f32 k_page_row_gap_y = 7;
 constexpr f32 k_page_row_gap_x = 7;
 constexpr f32 k_knob_width = 36;
 
-static void DoMuteSoloButton(GuiState& g, Box parent, DescribedParamValue const& param, bool is_solo) {
-    auto const state = param.BoolValue();
-    auto const on_back_col =
-        is_solo ? LiveColStruct(UiColMap::SoloButtonBackOn) : LiveColStruct(UiColMap::MuteButtonBackOn);
+static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
+    auto& params = g.engine.processor.main_params;
+    auto const param = params.DescribedValue(layer.index, LayerParamIndex::LoopMode);
+    auto const desired_loop_mode = param.IntValue<param_values::LoopMode>();
+    auto const vol_env_on = layer.VolumeEnvelopeIsOn(params);
+    auto const actual_loop_behaviour = ActualLoopBehaviour(layer.instrument, desired_loop_mode, vol_env_on);
+    auto const default_loop_behaviour =
+        ActualLoopBehaviour(layer.instrument, param_values::LoopMode::InstrumentDefault, vol_env_on);
 
-    auto const btn = DoBox(
+    auto const default_mode_str =
+        (String)fmt::Format(g.scratch_arena, "Default: {}", default_loop_behaviour.value.name);
+
+    auto const row = DoMidPanelPrevNextRow(g.builder, parent, layout::k_fill_parent);
+
+    Optional<f32> new_val {};
+
+    // Text button showing current mode
+    auto const menu_btn = DoBox(g.builder,
+                                {
+                                    .parent = row,
+                                    .text = actual_loop_behaviour.value.name,
+                                    .text_colours =
+                                        ColSet {
+                                            .base = LiveColStruct(UiColMap::MidText),
+                                            .hot = LiveColStruct(UiColMap::MidTextHot),
+                                            .active = LiveColStruct(UiColMap::MidTextHot),
+                                        },
+                                    .text_justification = TextJustification::CentredLeft,
+                                    .text_overflow = TextOverflowType::ShowDotsOnRight,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, k_mid_button_height},
+                                    },
+                                    .tooltip = FunctionRef<String()> {[&]() -> String {
+                                        return fmt::Format(g.scratch_arena,
+                                                           "{}: {}\n\n{} {}",
+                                                           param.info.name,
+                                                           actual_loop_behaviour.value.name,
+                                                           actual_loop_behaviour.value.description,
+                                                           actual_loop_behaviour.reason);
+                                    }},
+                                    .button_behaviour = imgui::ButtonConfig {},
+                                });
+
+    // Popup menu
+    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
+    if (menu_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
+
+    // NOTE: bounds is a Box so the run lambda is deferred - capture by value, not by reference.
+    if (g.imgui.IsPopupMenuOpen(popup_id))
+        DoBoxViewport(
+            g.builder,
+            {
+                // This is a bit weird: it seems using a [=] capture-by-value here for the lambda results in
+                // the lambda not being a trivially copyable type for some reason. To work around this, we add
+                // this verbose lambda capture list.
+                .run =
+                    [desired_loop_mode = desired_loop_mode,
+                     vol_env_on = vol_env_on,
+                     default_mode_str = default_mode_str,
+                     &g,
+                     &layer](GuiBuilder&) {
+                        auto const popup_root = DoBox(g.builder,
+                                                      {
+                                                          .layout {
+                                                              .size = layout::k_hug_contents,
+                                                              .contents_direction = layout::Direction::Column,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+
+                        auto const default_loop_behaviour =
+                            ActualLoopBehaviour(layer.instrument,
+                                                param_values::LoopMode::InstrumentDefault,
+                                                vol_env_on);
+
+                        auto const param_index =
+                            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopMode);
+
+                        for (auto const i : Range(ToInt(param_values::LoopMode::Count))) {
+                            auto const mode = (param_values::LoopMode)i;
+                            bool const is_selected = mode == desired_loop_mode;
+                            auto const behaviour = ActualLoopBehaviour(layer.instrument, mode, vol_env_on);
+                            auto const valid = behaviour.is_desired;
+
+                            auto const item_text = (mode == param_values::LoopMode::InstrumentDefault)
+                                                       ? default_mode_str
+                                                       : param_values::k_loop_mode_strings[i];
+
+                            DynamicArray<char> tooltip_text {g.scratch_arena};
+                            if (!valid)
+                                fmt::Append(tooltip_text,
+                                            ICON_FA_REPEAT " Not available: {}\n\n",
+                                            behaviour.reason);
+                            dyn::AppendSpan(tooltip_text, LoopModeDescription(mode));
+                            if (mode == param_values::LoopMode::InstrumentDefault) {
+                                fmt::Append(tooltip_text, "\n\n{}'s default behaviour: \n", layer.InstName());
+                                dyn::AppendSpan(tooltip_text, default_loop_behaviour.value.description);
+                                if (auto const reason = default_loop_behaviour.reason; reason.size) {
+                                    dyn::Append(tooltip_text, ' ');
+                                    dyn::AppendSpan(tooltip_text, reason);
+                                }
+                            }
+
+                            auto const item = MenuItem(g.builder,
+                                                       popup_root,
+                                                       {
+                                                           .text = item_text,
+                                                           .tooltip = String(tooltip_text),
+                                                           .is_selected = is_selected,
+                                                           .mode = valid ? MenuItemOptions::Mode::Active
+                                                                         : MenuItemOptions::Mode::Dimmed,
+                                                       },
+                                                       (u64)i);
+                            if (item.button_fired && mode != desired_loop_mode)
+                                SetParameterValue(g.engine.processor, param_index, (f32)i, {});
+                        }
+                    },
+                .bounds = menu_btn,
+                .imgui_id = popup_id,
+                .viewport_config = k_default_popup_menu_viewport,
+            });
+
+    // Prev/next arrows (skip invalid modes)
+    auto const arrows = DoMidPanelPrevNextButtons(g.builder,
+                                                  row,
+                                                  {
+                                                      .prev_tooltip = "Previous loop mode"_s,
+                                                      .next_tooltip = "Next loop mode"_s,
+                                                  });
+
+    if (arrows.prev_fired || arrows.next_fired) {
+        f32 const step = arrows.prev_fired ? -1.0f : 1.0f;
+        auto check_val = (f32)param.IntValue<int>() + step;
+        for (auto _ : Range(ToInt(param_values::LoopMode::Count))) {
+            if (check_val < param.info.linear_range.min) check_val = param.info.linear_range.max;
+            if (check_val > param.info.linear_range.max) check_val = param.info.linear_range.min;
+
+            auto const mode = (param_values::LoopMode)(int)check_val;
+            if (mode != param_values::LoopMode::InstrumentDefault) {
+                if (auto const other = ActualLoopBehaviour(layer.instrument, mode, vol_env_on);
+                    other.is_desired && other.value.id != actual_loop_behaviour.value.id) {
+                    new_val = check_val;
+                    break;
+                }
+            }
+            check_val += step;
+        }
+    }
+
+    // Slider behaviour and parameter lifecycle
+    if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
+        auto const window_r = g.imgui.RegisterAndConvertRect(*viewport_r);
+
+        auto current = param.LinearValue();
+        if (g.imgui.SliderBehaviourRange({
+                .rect_in_window_coords = window_r,
+                .id = menu_btn.imgui_id,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = current,
+                .default_value = param.info.default_linear_value,
+                .cfg = {.sensitivity = 20},
+            })) {
+            new_val = current;
+        }
+
+        if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left))
+            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+        if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
+            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+        AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
+    }
+}
+
+static void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_index) {
+    auto const& layer_obj = g.engine.Layer(layer_index);
+    auto const right_click_id = SourceLocationHash() + layer_index;
+
+    if (auto const r = BoxRect(g.builder, selector_button)) {
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+        if (g.imgui.ButtonBehaviour(window_r,
+                                    selector_button.imgui_id,
+                                    {
+                                        .mouse_button = MouseButton::Right,
+                                        .event = MouseButtonEvent::Up,
+                                    })) {
+            g.imgui.OpenPopupMenu(right_click_id, selector_button.imgui_id);
+        }
+
+        if (g.imgui.IsPopupMenuOpen(right_click_id))
+            DoBoxViewport(
+                g.builder,
+                {
+                    .run =
+                        [&](GuiBuilder&) {
+                            auto const root = DoBox(g.builder,
+                                                    {
+                                                        .layout {
+                                                            .size = layout::k_hug_contents,
+                                                            .contents_direction = layout::Direction::Column,
+                                                            .contents_align = layout::Alignment::Start,
+                                                        },
+                                                    });
+                            if (MenuItem(g.builder,
+                                         root,
+                                         {
+                                             .text = "Unload instrument"_s,
+                                             .mode = layer_obj.instrument_id.tag == InstrumentType::None
+                                                         ? MenuItemOptions::Mode::Disabled
+                                                         : MenuItemOptions::Mode::Active,
+                                             .no_icon_gap = true,
+                                         })
+                                    .button_fired) {
+                                LoadInstrument(g.engine, layer_index, InstrumentType::None);
+                            }
+                        },
+                    .bounds = window_r,
+                    .imgui_id = right_click_id,
+                    .viewport_config = k_default_popup_menu_viewport,
+                });
+    }
+}
+
+void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box root) {
+    auto& layer_obj = g.engine.Layer(layer_index);
+    auto const inst_name = layer_obj.InstName();
+
+    // Selector row container
+    auto const selector_box = DoBox(g.builder,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_padding {.r = 3.44f},
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                    });
+
+    // Background drawing
+    if (auto const r = BoxRect(g.builder, selector_box)) {
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+        auto const rounding = WwToPixels(k_corner_rounding);
+
+        {
+            auto const col = LiveCol(UiColMap::MidDarkSurface);
+            g.imgui.draw_list->AddRectFilled(window_r, col, rounding);
+        }
+
+        // Timbre layer highlight
+        if (layer_obj.UsesTimbreLayering() &&
+            (g.timbre_slider_is_held ||
+             CcControllerMovedParamRecently(g.engine.processor, ParamIndex::MasterTimbre))) {
+            g.imgui.draw_list->AddRectFilled(window_r,
+                                             LiveCol(UiColMap::InstSelectorMenuBackHighlight),
+                                             rounding);
+        }
+
+        // Loading progress bar
+        if (auto percent =
+                g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer_index].Load(
+                    LoadMemoryOrder::Relaxed);
+            percent != -1) {
+            f32 const load_percent = (f32)percent / 100.0f;
+            auto const min = window_r.Min();
+            auto const max = f32x2 {window_r.x + Max(4.0f, window_r.w * load_percent), window_r.Bottom()};
+            g.imgui.draw_list->AddRectFilled(min, max, LiveCol(UiColMap::InstSelectorMenuLoading), rounding);
+            GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.1, SourceLocationHash());
+        }
+    }
+
+    // Instrument name button (icon + text)
+    Optional<TextureHandle> icon_tex {};
+    if (layer_obj.instrument_id.tag == InstrumentType::Sampler) {
+        auto const sample_inst_id = layer_obj.instrument_id.Get<sample_lib::InstrumentId>();
+        auto const imgs = GetLibraryImages(g.library_images,
+                                           g.imgui,
+                                           sample_inst_id.library,
+                                           g.shared_engine_systems.sample_library_server,
+                                           g.engine.instance_index,
+                                           LibraryImagesTypes::Icon);
+        if (imgs.icon) icon_tex = GuiIo().in.renderer->GetTextureFromImage(*imgs.icon);
+    }
+
+    auto const inst_button = DoBox(
         g.builder,
         {
-            .parent = parent,
-            .id_extra = is_solo,
-            .text = is_solo ? "S"_s : "M"_s,
-            .text_colours = state ? Colours {ColSet {
-                                        .base = LiveColStruct(UiColMap::MuteSoloButtonTextOn),
-                                        .hot = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
-                                        .active = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
-                                    }}
-                                  : Colours {ColSet {
-                                        .base = LiveColStruct(UiColMap::MidText),
-                                        .hot = LiveColStruct(UiColMap::MidTextHot),
-                                        .active = LiveColStruct(UiColMap::MidTextHot),
-                                    }},
-            .text_justification = TextJustification::Centred,
-            .background_fill_colours = state ? Colours {on_back_col} : Colours {Col {.c = Col::None}},
-            .round_background_corners = is_solo ? (Corners)0b0110 : (Corners)0b1001,
-            .corner_rounding = k_corner_rounding,
+            .parent = selector_box,
+            .parent_dictates_hot_and_active = true,
             .layout {
-                .size = layout::k_fill_parent,
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_direction = layout::Direction::Row,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
             },
-            .tooltip =
-                FunctionRef<String()> {[&]() -> String { return ParamTooltipText(param, g.builder.arena); }},
+            .tooltip = FunctionRef<String()> {[&]() -> String {
+                switch (layer_obj.instrument.tag) {
+                    case InstrumentType::None: return "Select the instrument for this layer"_s;
+                    case InstrumentType::WaveformSynth:
+                        return fmt::Format(
+                            g.scratch_arena,
+                            "Current instrument: {}\nChange or remove the instrument for this layer",
+                            inst_name);
+                    case InstrumentType::Sampler: {
+                        auto const& sample = layer_obj.instrument.GetFromTag<InstrumentType::Sampler>();
+                        return fmt::Format(
+                            g.scratch_arena,
+                            "Change or remove the instrument for this layer\n\nCurrent instrument: {} from {} by {}.{}{}",
+                            inst_name,
+                            sample->instrument.library.name,
+                            sample->instrument.library.author,
+                            sample->instrument.description ? "\n\n" : "",
+                            sample->instrument.description ? sample->instrument.description : "");
+                    }
+                }
+                return {};
+            }},
             .button_behaviour = imgui::ButtonConfig {},
         });
 
-    if (btn.button_fired) SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
+    // Icon box
+    if (icon_tex) {
+        auto const icon_box = DoBox(g.builder,
+                                    {
+                                        .parent = inst_button,
+                                        .parent_dictates_hot_and_active = true,
+                                        .layout {
+                                            .size = {22.54f, layout::k_fill_parent},
+                                        },
+                                    });
+        if (auto const r = BoxRect(g.builder, icon_box)) {
+            auto const icon_r = r->Reduced(r->h / 10);
+            g.imgui.draw_list->AddImageRect(*icon_tex, g.imgui.ViewportRectToWindowRect(icon_r));
+        }
+    }
 
-    AddParamContextMenuBehaviour(g, btn, param);
+    // Text box
+    DoBox(g.builder,
+          {
+              .parent = inst_button,
+              .text = inst_name,
+              .text_colours =
+                  ColSet {
+                      .base = LiveColStruct(UiColMap::MidText),
+                      .hot = LiveColStruct(UiColMap::MidTextHot),
+                      .active = LiveColStruct(UiColMap::MidTextOn),
+                  },
+              .text_justification = TextJustification::CentredLeft,
+              .text_overflow = TextOverflowType::ShowDotsOnRight,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {layout::k_fill_parent, k_mid_button_height},
+                  .margins {.l = icon_tex ? 0.0f : 7.54f},
+              },
+          });
+
+    if (inst_button.button_fired) {
+        g.imgui.OpenModalViewport(g.inst_browser_state[layer_index].id);
+        if (auto const r = BoxRect(g.builder, inst_button))
+            g.inst_browser_state[layer_index].common_state.absolute_button_rect =
+                g.imgui.ViewportRectToWindowRect(*r);
+    }
+
+    // Right-click menu
+    DoInstSelectorRightClickMenu(g, inst_button, layer_index);
+
+    // Prev/next buttons
+    auto const prev_next = DoMidPanelPrevNextButtons(
+        g.builder,
+        selector_box,
+        {
+            .prev_tooltip =
+                "Load the previous instrument\n\nThis is based on the currently selected filters."_s,
+            .next_tooltip = "Load the next instrument\n\nThis is based on the currently selected filters."_s,
+        });
+
+    auto const make_browser_context = [&]() -> InstBrowserContext {
+        return {
+            .layer = layer_obj,
+            .sample_library_server = g.shared_engine_systems.sample_library_server,
+            .library_images = g.library_images,
+            .engine = g.engine,
+            .prefs = g.prefs,
+            .notifications = g.notifications,
+            .persistent_store = g.shared_engine_systems.persistent_store,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
+            .frame_context = frame_context,
+        };
+    };
+
+    if (prev_next.prev_fired) {
+        auto context = make_browser_context();
+        LoadAdjacentInstrument(context, g.inst_browser_state[layer_index], SearchDirection::Backward);
+    }
+    if (prev_next.next_fired) {
+        auto context = make_browser_context();
+        LoadAdjacentInstrument(context, g.inst_browser_state[layer_index], SearchDirection::Forward);
+    }
+
+    // Shuffle button
+    auto const shuffle_btn = DoMidPanelShuffleButton(
+        g.builder,
+        selector_box,
+        {.tooltip = "Load a random instrument.\n\nThis is based on the currently selected filters."_s});
+    if (shuffle_btn.button_fired) {
+        auto context = make_browser_context();
+        LoadRandomInstrument(context, g.inst_browser_state[layer_index]);
+    }
 }
 
-static void DoMixerContainer1(GuiState& g, u8 layer_index, Box root) {
+void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
+    auto& layer_processor = g.engine.processor.layer_processors[layer_index];
+
+    if (layer_processor.instrument.tag == InstrumentType::None) return;
+
+    // Collect info segments to display, separated by dot dividers
+    DynamicArrayBounded<String, 6> segments {};
+
+    switch (layer_processor.instrument.tag) {
+        case InstrumentType::WaveformSynth: {
+            dyn::Append(segments, "Oscillator waveform"_s);
+            break;
+        }
+        case InstrumentType::Sampler: {
+            auto const& inst = layer_processor.instrument
+                                   .Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
+            auto const num_regions = inst->instrument.regions.size;
+            if (num_regions == 0) {
+                dyn::Append(segments, "Empty instrument"_s);
+            } else if (num_regions == 1) {
+                dyn::Append(segments, "Single sample"_s);
+                auto const& smpl = *inst->audio_datas[0];
+                if (smpl.channels == 1) dyn::Append(segments, "Mono"_s);
+                dyn::Append(
+                    segments,
+                    fmt::Format(g.scratch_arena, "{.2} s", (f64)smpl.num_frames / (f64)smpl.sample_rate));
+                dyn::Append(segments,
+                            fmt::Format(g.scratch_arena,
+                                        "Root key {}",
+                                        NoteName((u7)inst->instrument.regions[0].root_key)));
+            } else {
+                dyn::Append(segments, "Multisample instrument"_s);
+                dyn::Append(segments, fmt::Format(g.scratch_arena, "{} samples", num_regions));
+            }
+            break;
+        }
+        case InstrumentType::None: break;
+    }
+
+    if (!segments.size) return;
+
+    auto const strip = DoBox(g.builder,
+                             {
+                                 .parent = parent,
+                                 .layout {
+                                     .size = {layout::k_fill_parent, 20},
+                                     .contents_gap = 6,
+                                     .contents_direction = layout::Direction::Row,
+                                     .contents_align = layout::Alignment::Start,
+                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                 },
+                             });
+
+    for (auto const i : Range(segments.size)) {
+        if (i > 0) {
+            auto const dot = DoBox(g.builder,
+                                   {
+                                       .parent = strip,
+                                       .id_extra = i,
+                                       .layout {
+                                           .size = {3, 3},
+                                       },
+                                   });
+            if (auto const r = BoxRect(g.builder, dot)) {
+                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+                g.imgui.draw_list->AddCircleFilled(window_r.Centre(), 1.5f, LiveCol(UiColMap::MidTextDimmed));
+            }
+        }
+
+        DoBox(g.builder,
+              {
+                  .parent = strip,
+                  .id_extra = i,
+                  .text = segments[i],
+                  .size_from_text = true,
+                  .font = FontType::Heading3,
+                  .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                  .text_justification = TextJustification::CentredLeft,
+              });
+    }
+}
+
+static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
     auto& params = g.engine.processor.main_params;
+
+    constexpr f32 k_vol_slider_width = 16;
+    constexpr f32 k_vol_slider_height = 75;
 
     auto const container = DoBox(g.builder,
                                  {
                                      .parent = root,
                                      .layout {
                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_gap = 14,
+                                         .contents_gap = 24,
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Middle,
                                      },
                                  });
 
-    // Volume knob with peak meter
-    auto const& layer_processor = g.engine.processor.layer_processors[layer_index];
-    DoKnobParameter(g,
-                    container,
-                    params.DescribedValue(layer_index, LayerParamIndex::Volume),
-                    {
-                        .width = 88,
-                        .knob_height_fraction = 0.88f,
-                        .style_system = GuiStyleSystem::MidPanel,
-                        .peak_meter = &layer_processor.peak_meter,
-                    });
-
-    // Mute/Solo buttons
+    // Volume: peak meter + vertical slider
     {
-        auto const mute_solo_container = DoBox(g.builder,
-                                               {
-                                                   .parent = container,
-                                                   .layout {
-                                                       .size = {k_mid_button_height * 2, k_mid_button_height},
-                                                       .contents_direction = layout::Direction::Row,
-                                                       .contents_align = layout::Alignment::Start,
-                                                   },
-                                               });
+        auto const vol_col = DoBox(g.builder,
+                                   {
+                                       .parent = container,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                           .contents_gap = 4,
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_align = layout::Alignment::Start,
+                                       },
+                                   });
 
-        // Background and divider
-        if (auto const r = BoxRect(g.builder, mute_solo_container)) {
-            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-            auto const rounding = WwToPixels(k_corner_rounding);
-            g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidDarkSurface), rounding);
-            // Vertical divider in the middle
-            g.imgui.draw_list->AddLine({window_r.Centre().x, window_r.y},
-                                       {window_r.Centre().x, window_r.Bottom()},
-                                       LiveCol(UiColMap::MuteSoloButtonDivider));
-        }
+        // Peak meter
+        auto const& layer_processor = g.engine.processor.layer_processors[layer_index];
+        auto const meter_box = DoBox(g.builder,
+                                     {
+                                         .parent = vol_col,
+                                         .layout {
+                                             .size = {20, k_vol_slider_height},
+                                         },
+                                     });
+        if (auto const r = BoxRect(g.builder, meter_box))
+            DrawPeakMeter(g.imgui,
+                          g.imgui.ViewportRectToWindowRect(*r),
+                          layer_processor.peak_meter,
+                          {
+                              .flash_when_clipping = false,
+                              .show_db_markers = true,
+                              .gap = 1,
+                          });
 
-        DoMuteSoloButton(g,
-                         mute_solo_container,
-                         params.DescribedValue(layer_index, LayerParamIndex::Mute),
-                         false);
-        DoMuteSoloButton(g,
-                         mute_solo_container,
-                         params.DescribedValue(layer_index, LayerParamIndex::Solo),
-                         true);
+        // Volume slider
+        DoKnobParameter(g,
+                        vol_col,
+                        params.DescribedValue(layer_index, LayerParamIndex::Volume),
+                        {
+                            .width = k_vol_slider_width,
+                            .knob_height_fraction = k_vol_slider_height / k_vol_slider_width,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .label = false,
+                            .vertical_slider = true,
+                        });
+    }
+
+    // Middle column: Pan knob + Mute/Solo
+    {
+        auto const mid_col = DoBox(g.builder,
+                                   {
+                                       .parent = container,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                           .contents_gap = 6,
+                                           .contents_direction = layout::Direction::Column,
+                                           .contents_align = layout::Alignment::Middle,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                   });
+
+        DoKnobParameter(g,
+                        mid_col,
+                        params.DescribedValue(layer_index, LayerParamIndex::Pan),
+                        {
+                            .width = 30,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .bidirectional = true,
+                        });
+
+        // Mute/Solo buttons (horizontal)
+        DoMuteSoloButtons(g,
+                          mid_col,
+                          params.DescribedValue(layer_index, LayerParamIndex::Mute),
+                          params.DescribedValue(layer_index, LayerParamIndex::Solo));
+    }
+
+    // Right column: Pitch + Detune
+    {
+        auto const right_col = DoBox(g.builder,
+                                     {
+                                         .parent = container,
+                                         .layout {
+                                             .size = layout::k_hug_contents,
+                                             .contents_gap = 4,
+                                             .contents_direction = layout::Direction::Column,
+                                             .contents_align = layout::Alignment::Middle,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                         },
+                                     });
+
+        DoKnobParameter(g,
+                        right_col,
+                        params.DescribedValue(layer_index, LayerParamIndex::TuneCents),
+                        {
+                            .width = 30,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .bidirectional = true,
+                        });
+
+        DoIntParameter(g,
+                       right_col,
+                       params.DescribedValue(layer_index, LayerParamIndex::TuneSemitone),
+                       {
+                           .width = 58,
+                           .always_show_plus = true,
+                       });
     }
 }
 
@@ -137,12 +665,15 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
     auto const tabs_row = DoBox(g.builder,
                                 {
                                     .parent = parent,
-                                    .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
-                                    .border_edges = 0b0101,
+                                    .background_fill_colours = Col {.c = Col::Black, .alpha = 20},
+                                    .corner_rounding = k_panel_rounding,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_padding = {.lr = 3, .tb = 3},
+                                        .contents_gap = 2,
                                         .contents_direction = layout::Direction::Row,
                                         .contents_align = layout::Alignment::Middle,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                     },
                                 });
 
@@ -159,7 +690,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                     result = params.BoolValue(layer_index, LayerParamIndex::LfoOn);
                     break;
                 case LayerPageType::Eq: result = params.BoolValue(layer_index, LayerParamIndex::EqOn); break;
-                case LayerPageType::Main:
+                case LayerPageType::Envelope:
                 case LayerPageType::Engine:
                 case LayerPageType::Play:
                 case LayerPageType::Count: break;
@@ -169,64 +700,30 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
 
         auto const name = [&]() -> String {
             switch (page_type) {
-                case LayerPageType::Main: return "Main"_s;
-                case LayerPageType::Engine: return "Engine"_s;
+                case LayerPageType::Envelope: return "ENVELOPE"_s;
+                case LayerPageType::Engine: return "ENGINE"_s;
                 case LayerPageType::Eq: return "EQ"_s;
-                case LayerPageType::Play: return "Play"_s;
+                case LayerPageType::Play: return "PLAY"_s;
                 case LayerPageType::Lfo: return "LFO"_s;
-                case LayerPageType::Filter: return "Filter"_s;
+                case LayerPageType::Filter: return "FILTER"_s;
                 case LayerPageType::Count: PanicIfReached();
             }
             return {};
         }();
 
-        auto const tab_btn = DoBox(g.builder,
-                                   {
-                                       .parent = tabs_row,
-                                       .id_extra = (u64)i,
-                                       .layout {
-                                           .size = layout::k_hug_contents,
-                                       },
-                                       .tooltip = FunctionRef<String()> {[&]() -> String {
-                                           return fmt::Format(g.scratch_arena, "Open {} tab", name);
-                                       }},
-                                       .button_behaviour = imgui::ButtonConfig {},
-                                   });
-
-        DoBox(g.builder,
-              {
-                  .parent = tab_btn,
-                  .text = name,
-                  .size_from_text = true,
-                  .text_colours = is_selected ? Colours {ColSet {
-                                                    .base = LiveColStruct(UiColMap::MidTextOn),
-                                                    .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                    .active = LiveColStruct(UiColMap::MidTextHot),
-                                                }}
-                                              : Colours {ColSet {
-                                                    .base = LiveColStruct(UiColMap::MidText),
-                                                    .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                    .active = LiveColStruct(UiColMap::MidTextHot),
-                                                }},
-                  .text_justification = TextJustification::Centred,
-                  .parent_dictates_hot_and_active = true,
-                  .layout {
-                      .margins {.lr = 2.2f, .tb = 12.7f},
-                  },
-              });
+        auto const tab_btn = DoTabButton(g.builder,
+                                         tabs_row,
+                                         name,
+                                         {
+                                             .is_selected = is_selected,
+                                             .show_dot_indicator = tab_has_active_content,
+                                             .tooltip = FunctionRef<String()> {[&]() -> String {
+                                                 return fmt::Format(g.scratch_arena, "Open {} tab", name);
+                                             }},
+                                         },
+                                         (u64)i);
 
         if (tab_btn.button_fired) layer_state.selected_page = page_type;
-
-        // Draw active-content dot indicator
-        if (tab_has_active_content) {
-            if (auto const r = BoxRect(g.builder, tab_btn)) {
-                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-                auto const dot_centre = f32x2 {window_r.CentreX(), window_r.CentreY() + WwToPixels(10.0f)};
-                auto const col =
-                    is_selected ? LiveCol(UiColMap::MidTextOn) : LiveCol(UiColMap::MidTextDimmed);
-                g.imgui.draw_list->AddCircleFilled(dot_centre, WwToPixels(2.0f), col);
-            }
-        }
     }
 
     // Auto-switch tab when a macro destination knob is being interacted
@@ -239,7 +736,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             if (k_desc.module_parts.size >= 2) {
                 switch (k_desc.module_parts[1]) {
                     case ParameterModule::Loop:
-                    case ParameterModule::VolEnv: new_page = LayerPageType::Main; break;
+                    case ParameterModule::VolEnv: new_page = LayerPageType::Envelope; break;
                     case ParameterModule::Lfo: new_page = LayerPageType::Lfo; break;
                     case ParameterModule::Filter: new_page = LayerPageType::Filter; break;
                     case ParameterModule::Playback: new_page = LayerPageType::Play; break;
@@ -253,50 +750,6 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             }
         }
     }
-}
-
-static void DoMixerContainer2(GuiState& g, u8 layer_index, Box root) {
-    auto& params = g.engine.processor.main_params;
-
-    auto const container = DoBox(g.builder,
-                                 {
-                                     .parent = root,
-                                     .layout {
-                                         .size = layout::k_hug_contents,
-                                         .contents_gap = 18,
-                                         .contents_direction = layout::Direction::Row,
-                                         .contents_align = layout::Alignment::Middle,
-                                     },
-                                 });
-
-    // Tune semitone (int dragger)
-    DoIntParameter(g,
-                   container,
-                   params.DescribedValue(layer_index, LayerParamIndex::TuneSemitone),
-                   {
-                       .width = 58,
-                       .always_show_plus = true,
-                   });
-
-    // Tune cents (bidirectional knob)
-    DoKnobParameter(g,
-                    container,
-                    params.DescribedValue(layer_index, LayerParamIndex::TuneCents),
-                    {
-                        .width = k_knob_width,
-                        .style_system = GuiStyleSystem::MidPanel,
-                        .bidirectional = true,
-                    });
-
-    // Pan (bidirectional knob)
-    DoKnobParameter(g,
-                    container,
-                    params.DescribedValue(layer_index, LayerParamIndex::Pan),
-                    {
-                        .width = k_knob_width,
-                        .style_system = GuiStyleSystem::MidPanel,
-                        .bidirectional = true,
-                    });
 }
 
 static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
@@ -436,7 +889,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                            .parent = page,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_gap = 14,
+                                               .contents_gap = 26,
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                            },
@@ -454,7 +907,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                     .id_extra = band_number,
                                     .layout {
                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_gap = 6,
+                                        .contents_gap = 10,
                                         .contents_direction = layout::Direction::Column,
 
                                     },
@@ -465,7 +918,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                     {
                                         .parent = band,
                                         .layout {
-                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .size = layout::k_hug_contents,
                                             .contents_gap = 6,
                                             .contents_direction = layout::Direction::Row,
                                             .contents_align = layout::Alignment::Middle,
@@ -479,7 +932,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = {layout::k_fill_parent, k_font_body_size},
+                      .size = {50, k_font_body_size},
                   },
               });
         DoMenuParameter(g,
@@ -497,7 +950,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                          .parent = band,
                                          .layout {
                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = 15,
+                                             .contents_gap = 24,
                                              .contents_direction = layout::Direction::Row,
                                              .contents_align = layout::Alignment::Middle,
                                          },
@@ -550,6 +1003,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
 
     constexpr f32 k_menu_width = 135;
+    constexpr f32 k_menu_label_width = 50;
 
     auto const page = DoBox(g.builder,
                             {
@@ -559,6 +1013,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                     .contents_gap = k_page_row_gap_y,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                 },
                             });
 
@@ -581,7 +1036,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .id_extra = loc_hash,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -595,7 +1050,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = {layout::k_fill_parent, k_font_body_size},
+                      .size = {k_menu_label_width, k_font_body_size},
                   },
               });
 
@@ -678,6 +1133,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
+    constexpr auto k_play_label_width = 105;
     constexpr auto k_control_width = 76;
     constexpr auto k_narrow_control_width = 63;
     constexpr auto k_narrow_control_gap_x = 3;
@@ -687,9 +1143,10 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_gap = 4,
+                                    .contents_gap = 6,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                 },
                             });
 
@@ -702,7 +1159,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .id_extra = loc_hash,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -716,7 +1173,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String { return param.info.tooltip; }},
               });
@@ -730,10 +1187,8 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                        });
     };
 
-    // Transpose
     do_int_label_row(LayerParamIndex::MidiTranspose);
 
-    // PitchBend
     do_int_label_row(LayerParamIndex::PitchBendRange);
 
     // Keytrack
@@ -746,7 +1201,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .id_extra = (u64)param.info.id,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -770,7 +1225,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_justification = TextJustification::CentredRight,
                   .parent_dictates_hot_and_active = true,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
                   },
               });
 
@@ -796,7 +1251,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_page_row_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -810,7 +1265,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .text_colours = LiveColStruct(UiColMap::MidText),
                   .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
                   },
               });
 
@@ -823,7 +1278,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_narrow_control_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -835,9 +1290,10 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .parent = row,
                   .text = "Range"_s,
                   .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
+                  .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
+                      .margins {.r = k_page_row_gap_x - k_narrow_control_gap_x},
                   },
               });
 
@@ -866,7 +1322,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                {
                                    .parent = page,
                                    .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .size = layout::k_hug_contents,
                                        .contents_gap = k_narrow_control_gap_x,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -878,9 +1334,10 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                   .parent = row,
                   .text = "Key Fade"_s,
                   .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredLeft,
+                  .text_justification = TextJustification::CentredRight,
                   .layout {
-                      .size = layout::k_fill_parent,
+                      .size = {k_play_label_width, k_font_body_size},
+                      .margins {.r = k_page_row_gap_x - k_narrow_control_gap_x},
                   },
               });
 
@@ -908,6 +1365,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                    .parent = page,
                                    .layout {
                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .margins = {.t = 4},
                                        .contents_gap = 2,
                                        .contents_direction = layout::Direction::Column,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -933,7 +1391,7 @@ static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
                                     {
                                         .parent = col,
                                         .layout {
-                                            .size = {layout::k_fill_parent, 53},
+                                            .size = {layout::k_fill_parent, 80},
                                         },
                                     });
 
@@ -959,8 +1417,6 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
-    auto const control_width = 130;
-
     auto const page = DoBox(g.builder,
                             {
                                 .parent = parent,
@@ -972,51 +1428,42 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-#if EXPERIMENTAL_GRANULAR
+    auto const experimental_params = prefs::GetBool(g.prefs, ExperimentalParamsPreferenceDescriptor());
+
     // Engine type menu
-    {
+    if (experimental_params) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
-        auto const row = DoBox(g.builder,
-                               {
-                                   .parent = page,
-                                   .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_gap = k_page_row_gap_x,
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                   },
-                               });
-
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = param.info.gui_label,
-                  .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredRight,
-                  .layout {
-                      .size = layout::k_fill_parent,
-                  },
-              });
-
-        DoMenuParameter(g, row, param, {.width = control_width, .label = false});
+        DoMenuParameter(g, page, param, {.width = layout::k_fill_parent, .label = false});
     }
 
-    auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
-#else
-    auto const play_mode = param_values::PlayMode::Standard;
-#endif
+    auto const play_mode =
+        experimental_params ? params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode)
+                            : param_values::PlayMode::Standard;
 
-    // Waveform display
-    if (auto const r = BoxRect(g.builder,
-                               DoBox(g.builder,
-                                     {
-                                         .parent = page,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, 70},
-                                         },
-                                     })))
-        DoWaveformElement(g, layer, *r, {.play_mode = play_mode});
+    // Waveform display + info strip
+    {
+        auto const waveform_group = DoBox(g.builder,
+                                          {
+                                              .parent = page,
+                                              .layout {
+                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                  .contents_direction = layout::Direction::Column,
+                                              },
+                                          });
+
+        if (auto const r = BoxRect(g.builder,
+                                   DoBox(g.builder,
+                                         {
+                                             .parent = waveform_group,
+                                             .layout {
+                                                 .size = {layout::k_fill_parent, 78},
+                                             },
+                                         })))
+            DoWaveformElement(g, layer, *r, {.play_mode = play_mode});
+
+        DoInstrumentInfoStrip(g, layer_index, waveform_group);
+    }
 
     // Reverse toggle
     {
@@ -1032,91 +1479,340 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
                           });
     }
 
-    // Loop mode selector (hidden in granular position mode)
-    if (play_mode != param_values::PlayMode::GranularFixed) {
-        auto const row = DoBox(g.builder,
-                               {
-                                   .parent = page,
-                                   .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_gap = k_page_row_gap_x,
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                   },
-                               });
+    if (play_mode != param_values::PlayMode::GranularFixed) DoLoopModeSelector(g, page, layer);
 
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = "Loop"_s,
-                  .text_colours = LiveColStruct(UiColMap::MidText),
-                  .text_justification = TextJustification::CentredRight,
-                  .layout {
-                      .size = layout::k_fill_parent,
-                  },
-              });
-
-        auto const loop_container = DoBox(g.builder,
-                                          {
-                                              .parent = row,
-                                              .layout {
-                                                  .size = {control_width, layout::k_hug_contents},
-                                              },
-                                          });
-
-        DoLoopModeSelector(g, loop_container, layer);
-    }
-
-#if EXPERIMENTAL_GRANULAR
-    // Granular controls
     if (IsGranular(play_mode)) {
-        auto const knobs_row = DoBox(g.builder,
-                                     {
-                                         .parent = page,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = 10,
-                                             .contents_direction = layout::Direction::Row,
-                                             .contents_align = layout::Alignment::Middle,
-                                         },
-                                     });
+        auto const granular_container = DoBox(g.builder,
+                                              {
+                                                  .parent = page,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                      .margins = {.t = 2},
+                                                      .contents_gap = 12,
+                                                      .contents_direction = layout::Direction::Column,
+                                                  },
+                                              });
 
-        // Speed knob (in GranularSpeed mode) or Position knob (in GranularPosition mode)
-        {
-            auto const contextual_param = (play_mode == param_values::PlayMode::GranularPlayback)
-                                              ? LayerParamIndex::GranularSpeed
-                                              : LayerParamIndex::GranularPosition;
+        auto const do_heading = [&g](Box parent, String text, u64 loc_hash = SourceLocationHash()) {
+            DoBox(g.builder,
+                  {
+                      .parent = parent,
+                      .id_extra = loc_hash,
+                      .text = text,
+                      .size_from_text = true,
+                      .font = FontType::Heading3,
+                      .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                      .text_justification = TextJustification::CentredLeft,
+                  });
+        };
+
+        auto const do_knob = [&](Box parent, LayerParamIndex param) {
             DoKnobParameter(g,
-                            knobs_row,
-                            params.DescribedValue(layer_index, contextual_param),
+                            parent,
+                            params.DescribedValue(layer_index, param),
                             {
-                                .width = 32,
+                                .width = 28,
                                 .style_system = GuiStyleSystem::MidPanel,
+                                .bidirectional = param == LayerParamIndex::GranularSpeed,
                             });
+        };
+
+        auto const do_row = [&g](Box parent, u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = parent,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                 .contents_gap = 42,
+                                 .contents_direction = layout::Direction::Row,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        auto const do_section = [&g](Box parent, u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = parent,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = layout::k_hug_contents,
+                                 .contents_gap = 4,
+                                 .contents_direction = layout::Direction::Column,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        auto const do_knob_container = [&g](Box parent, u64 loc_hash = SourceLocationHash()) {
+            return DoBox(g.builder,
+                         {
+                             .parent = parent,
+                             .id_extra = loc_hash,
+                             .layout {
+                                 .size = layout::k_hug_contents,
+                                 .margins = {.l = 2},
+                                 .contents_gap = 30,
+                                 .contents_direction = layout::Direction::Row,
+                                 .contents_align = layout::Alignment::Start,
+                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                             },
+                         });
+        };
+
+        // Row 1: PLAYHEAD + GRAINS
+        {
+            auto const row = do_row(granular_container);
+
+            {
+                auto const section = do_section(row);
+                do_heading(section, "PLAYHEAD"_s);
+                auto const knob_box = do_knob_container(section);
+                do_knob(knob_box,
+                        (play_mode == param_values::PlayMode::GranularPlayback)
+                            ? LayerParamIndex::GranularSpeed
+                            : LayerParamIndex::GranularPosition);
+                do_knob(knob_box, LayerParamIndex::GranularSpread);
+            }
+
+            {
+                auto const section = do_section(row);
+                do_heading(section, "GRAINS"_s);
+                auto const knob_box = do_knob_container(section);
+                do_knob(knob_box, LayerParamIndex::GranularDensity);
+                do_knob(knob_box, LayerParamIndex::GranularLength);
+                do_knob(knob_box, LayerParamIndex::GranularSmoothing);
+            }
         }
 
-        // Grain knobs row
+        // Row 2: RANDOM
         {
-            auto const do_knob = [&](LayerParamIndex param) {
-                DoKnobParameter(g,
-                                knobs_row,
-                                params.DescribedValue(layer_index, param),
-                                {
-                                    .width = 32,
-                                    .style_system = GuiStyleSystem::MidPanel,
-                                });
-            };
+            auto const row = do_row(granular_container);
 
-            do_knob(LayerParamIndex::GranularGrains);
-            do_knob(LayerParamIndex::GranularLength);
-            do_knob(LayerParamIndex::GranularSpread);
-            do_knob(LayerParamIndex::GranularSmoothing);
+            {
+                auto const section = do_section(row);
+                do_heading(section, "RANDOM"_s);
+                auto const knob_box = do_knob_container(section);
+                do_knob(knob_box, LayerParamIndex::GranularRandomPan);
+                do_knob(knob_box, LayerParamIndex::GranularRandomDetune);
+                do_knob(knob_box, LayerParamIndex::GranularRandomDirection);
+
+                // Harmony: knob + intervals button
+                {
+                    auto const intervals = layer.harmony_intervals.GetBlockwise();
+                    auto non_unison = intervals;
+                    non_unison.Clear(k_harmony_interval_centre_bit);
+                    bool const has_intervals = non_unison.AnyValuesSet();
+
+                    DoKnobParameter(g,
+                                    knob_box,
+                                    params.DescribedValue(layer_index, LayerParamIndex::GranularHarmony),
+                                    {
+                                        .width = 28,
+                                        .style_system = GuiStyleSystem::MidPanel,
+                                        .greyed_out = !has_intervals,
+                                    });
+
+                    auto const label = HarmonyIntervalsLabel(intervals, g.scratch_arena);
+                    auto const intervals_btn =
+                        MenuOpenButton(g.builder,
+                                       knob_box,
+                                       {
+                                           .text = label,
+                                           .tooltip = "Select which harmony intervals grains can spawn at"_s,
+                                           .width = 80,
+                                           .style_system = GuiStyleSystem::MidPanel,
+                                       });
+
+                    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer_index);
+                    if (intervals_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
+
+                    if (g.imgui.IsPopupMenuOpen(popup_id) && g.builder.IsInputAndRenderPass()) {
+                        auto const popup_r = ({
+                            auto const popup_size = WwToPixels(f32x2 {340, 450});
+                            Rect r {.size = popup_size};
+                            if (auto const btn_r = BoxRect(g.builder, intervals_btn)) {
+                                auto const avoid_r = g.imgui.ViewportRectToWindowRect(*btn_r);
+                                r.pos = imgui::BestPopupPos(Rect {.pos = avoid_r.pos, .size = popup_size},
+                                                            avoid_r,
+                                                            GuiIo().in.window_size.ToFloat2(),
+                                                            imgui::PopupJustification::LeftOrRight);
+                            }
+                            r;
+                        });
+
+                        DoBoxViewport(
+                            g.builder,
+                            {
+                                .run =
+                                    [&g, &layer](GuiBuilder&) {
+                                        auto const is_first_frame = g.imgui.IsViewportFirstSizedFrame();
+                                        auto const popup_root =
+                                            DoBox(g.builder,
+                                                  {
+                                                      .layout {
+                                                          .size = layout::k_fill_parent,
+                                                          .contents_direction = layout::Direction::Row,
+                                                          .contents_align = layout::Alignment::Start,
+                                                      },
+                                                  });
+
+                                        // Left column: presets
+                                        {
+                                            auto const presets_col =
+                                                DoBox(g.builder,
+                                                      {
+                                                          .parent = popup_root,
+                                                          .layout {
+                                                              .size = {layout::k_hug_contents,
+                                                                       layout::k_fill_parent},
+                                                              .contents_direction = layout::Direction::Column,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+
+                                            DoBox(g.builder,
+                                                  {
+                                                      .parent = presets_col,
+                                                      .text = "Presets"_s,
+                                                      .font = FontType::Heading3,
+                                                      .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                                                      .text_justification = TextJustification::CentredLeft,
+                                                      .layout {
+                                                          .size = {layout::k_fill_parent, 20},
+                                                          .margins = {.l = 8, .t = 2, .b = 2},
+                                                      },
+                                                  });
+
+                                            auto const current_intervals =
+                                                layer.harmony_intervals.GetBlockwise();
+                                            for (auto const i : Range(k_harmony_presets.size)) {
+                                                auto const& preset = k_harmony_presets[i];
+                                                bool const is_selected =
+                                                    current_intervals == preset.intervals;
+                                                auto const item = MenuItem(g.builder,
+                                                                           presets_col,
+                                                                           {
+                                                                               .text = preset.name,
+                                                                               .tooltip = preset.tooltip,
+                                                                               .is_selected = is_selected,
+                                                                               .close_on_click = false,
+                                                                           },
+                                                                           (u64)i);
+                                                if (item.button_fired)
+                                                    layer.harmony_intervals.AssignBlockwise(preset.intervals);
+                                            }
+                                        }
+
+                                        // Divider
+                                        DoBox(g.builder,
+                                              {
+                                                  .parent = popup_root,
+                                                  .background_fill_colours = Col {.c = Col::Surface2},
+                                                  .layout {
+                                                      .size = {1, layout::k_fill_parent},
+                                                  },
+                                              });
+
+                                        // Right column: individual intervals (nested
+                                        // scrollable viewport)
+                                        auto const intervals_box =
+                                            DoBox(g.builder,
+                                                  {
+                                                      .parent = popup_root,
+                                                      .layout {
+                                                          .size = layout::k_fill_parent,
+                                                      },
+                                                  });
+
+                                        DoBoxViewport(
+                                            g.builder,
+                                            {
+                                                .run =
+                                                    [&g, &layer, is_first_frame](GuiBuilder&) {
+                                                        auto const intervals_root =
+                                                            DoBox(g.builder,
+                                                                  {
+                                                                      .layout {
+                                                                          .size = {layout::k_fill_parent,
+                                                                                   layout::k_hug_contents},
+                                                                          .contents_direction =
+                                                                              layout::Direction::Column,
+                                                                          .contents_align =
+                                                                              layout::Alignment::Start,
+                                                                      },
+                                                                  });
+
+                                                        // Top to bottom: +48 down to +1, root, -1 down
+                                                        // to -48
+                                                        for (int semitones = k_harmony_interval_max_semitone;
+                                                             semitones >= k_harmony_interval_min_semitone;
+                                                             --semitones) {
+                                                            auto const bit =
+                                                                HarmonyIntervalBitIndex(semitones);
+                                                            bool const is_root = (semitones == 0);
+                                                            bool const is_selected =
+                                                                is_root || layer.harmony_intervals.Get(bit);
+                                                            auto const name =
+                                                                is_root
+                                                                    ? String("Root"_s)
+                                                                    : HarmonyIntervalName(semitones,
+                                                                                          g.scratch_arena);
+
+                                                            auto const item = MenuItem(
+                                                                g.builder,
+                                                                intervals_root,
+                                                                {
+                                                                    .text = name,
+                                                                    .is_selected = is_selected,
+                                                                    .close_on_click = false,
+                                                                    .mode =
+                                                                        is_root
+                                                                            ? MenuItemOptions::Mode::Dimmed
+                                                                            : MenuItemOptions::Mode::Active,
+                                                                },
+                                                                (u64)bit);
+                                                            if (item.button_fired && !is_root)
+                                                                layer.harmony_intervals.Flip(bit);
+
+                                                            if (is_root && is_first_frame) {
+                                                                if (auto const item_r =
+                                                                        BoxRect(g.builder, item))
+                                                                    g.imgui.ScrollViewportToShowRectangle(
+                                                                        *item_r);
+                                                            }
+                                                        }
+                                                    },
+                                                .bounds = intervals_box,
+                                                .imgui_id = g.builder.imgui.MakeId("intervals"),
+                                                .viewport_config = ({
+                                                    auto cfg = k_default_modal_subviewport;
+                                                    cfg.padding = {.lr = 1, .tb = 0};
+                                                    cfg;
+                                                }),
+                                            });
+                                    },
+                                .bounds = popup_r,
+                                .imgui_id = popup_id,
+                                .viewport_config = ({
+                                    auto cfg = k_default_popup_menu_viewport;
+                                    cfg.positioning = imgui::ViewportPositioning::WindowAbsolute;
+                                    cfg.auto_size = false;
+                                    cfg.scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never;
+                                    cfg;
+                                }),
+                            });
+                    }
+                }
+            }
         }
     }
-#endif
 }
 
-static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
+static void DoEnvelopePage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
@@ -1130,23 +1826,6 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                 },
                             });
-
-    // Waveform display
-    {
-        auto const waveform_box = DoBox(g.builder,
-                                        {
-                                            .parent = page,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, 70},
-                                            },
-                                        });
-        if (auto const r = BoxRect(g.builder, waveform_box)) DoWaveformElement(g, layer, *r);
-    }
-
-    // Instrument info strip
-    DoInstrumentInfoStrip(g, layer_index, page, {});
-
-    DoWhitespace(g.builder, page, 16);
 
     // Volume envelope on button
     DoButtonParameter(g,
@@ -1162,7 +1841,7 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
                                         {
                                             .parent = page,
                                             .layout {
-                                                .size = {layout::k_fill_parent, 80},
+                                                .size = {layout::k_fill_parent, 100},
                                                 .margins {
                                                     .tb = 10,
                                                 },
@@ -1214,13 +1893,11 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
 
     if (g.engine.Layer(layer_index).instrument.tag == InstrumentType::None) return;
 
-    DoWhitespace(g.builder, top_controls, 11);
+    DoWhitespace(g.builder, top_controls, 12);
 
-    DoMixerContainer1(g, layer_index, top_controls);
-    DoWhitespace(g.builder, top_controls, 10);
-    DoMixerContainer2(g, layer_index, top_controls);
+    DoMixerRow(g, layer_index, top_controls);
 
-    DoWhitespace(g.builder, top_controls, 10);
+    DoWhitespace(g.builder, top_controls, 12);
 
     DoPageTabs(g, layer_index, root);
 
@@ -1229,13 +1906,13 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
                                           .parent = root,
                                           .layout {
                                               .size = layout::k_fill_parent,
-                                              .contents_padding = {.lr = 15, .tb = 8},
+                                              .contents_padding = {.lr = 15, .tb = 12},
                                           },
                                       });
 
     // Page content
     switch (g.layer_panel_states[layer_index].selected_page) {
-        case LayerPageType::Main: DoMainPage(g, layer_index, page_container); break;
+        case LayerPageType::Envelope: DoEnvelopePage(g, layer_index, page_container); break;
         case LayerPageType::Filter: DoFilterPage(g, layer_index, page_container); break;
         case LayerPageType::Engine: DoEnginePage(g, layer_index, page_container); break;
         case LayerPageType::Lfo: DoLfoPage(g, layer_index, page_container); break;

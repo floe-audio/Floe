@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2024 Sam Windell
+# SPDX-FileCopyrightText: 2024-2026 Sam Windell
 # SPDX-License-Identifier: CC0-1.0
 
 *.DS_Store
@@ -12,6 +12,7 @@ build_resources/external/
 .env
 .claude
 .harper-dictionary.txt
+opencode.jsonc
 website/node_modules/
 website/.docusaurus/
 website/build/

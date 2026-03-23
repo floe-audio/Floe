@@ -1,4 +1,4 @@
-// Copyright 2018-2025 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Based on https://github.com/pkeir/ctfft/tree/master by Paul Keir but with modifications:
@@ -149,6 +149,10 @@ constexpr double Log(double const x) {
                    : (2.0 * LogHelper(Sqrt(Mantissa(x)))) + (2.3025851 * Exponent(x));
 }
 
+constexpr double k_ln2 = 0.6931471805599453;
+
+constexpr double Log2(double const x) { return Log(x) / k_ln2; }
+
 constexpr double Pow(double base, double exponent) {
     constexpr double k_quiet_nan = __builtin_nan("");
     if (base < 0) return k_quiet_nan;
@@ -201,5 +205,7 @@ constexpr double Sin(double x) {
 }
 
 constexpr double Cos(double const x) { return Sin(k_pi_2 - x); }
+
+constexpr double Tan(double const x) { return Sin(x) / Cos(x); }
 
 } // namespace constexpr_math

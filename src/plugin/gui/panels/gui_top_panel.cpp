@@ -9,6 +9,7 @@
 #include "engine/engine.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -198,88 +199,6 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
               .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
           });
 
-    auto preset_box = DoBox(builder,
-                            {
-                                .parent = root,
-                                .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
-                                .round_background_corners = 0b1111,
-                                .layout {
-                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                    .contents_padding = {.l = 7, .r = 4, .tb = 2},
-                                    .contents_direction = layout::Direction::Row,
-                                    .contents_align = layout::Alignment::Start,
-                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                },
-                            });
-
-    auto preset_box_left =
-        DoBox(builder,
-              {
-                  .parent = preset_box,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_direction = layout::Direction::Column,
-                  },
-                  .tooltip = FunctionRef<String()> {[&arena = builder.arena, &engine = g.engine]() -> String {
-                      DynamicArray<char> buffer {arena};
-                      dyn::Assign(buffer, "Open presets window"_s);
-                      fmt::Append(buffer, "\nCurrent preset: {}", engine.last_snapshot.name_or_path.Name());
-                      if (engine.last_snapshot.state.metadata.description.size) {
-                          dyn::AppendSpan(buffer, "\n\n"_s);
-                          dyn::AppendSpan(buffer, engine.last_snapshot.state.metadata.description);
-                      }
-                      return buffer.ToOwnedSpan();
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
-
-    if (preset_box_left.button_fired) {
-        g.imgui.OpenModalViewport(g.preset_browser_state.k_panel_id);
-        g.preset_browser_state.common_state.absolute_button_rect =
-            g.imgui.ViewportRectToWindowRect(*BoxRect(builder, preset_box_left));
-    }
-    if (preset_box_left.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-
-    DoBox(builder,
-          {
-              .parent = preset_box_left,
-              .text = fmt::Format(builder.arena,
-                                  "{}{}",
-                                  g.engine.last_snapshot.name_or_path.Name(),
-                                  StateChangedSinceLastSnapshot(g.engine) ? " (modified)"_s : ""_s),
-              .text_colours =
-                  ColSet {
-                      .base {.c = Col::Text, .dark_mode = true},
-                      .hot {.c = Col::Highlight},
-                      .active {.c = Col::Highlight},
-                  },
-              .parent_dictates_hot_and_active = true,
-              .layout {
-                  .size = {layout::k_fill_parent, k_font_body_size},
-              },
-          });
-
-    // IMPROVE: should this be a text input that changes the description?
-    DoBox(builder,
-          {
-              .parent = preset_box_left,
-              .text = g.engine.last_snapshot.state.metadata.description.size
-                          ? (String)g.engine.last_snapshot.state.metadata.description
-                          : "No description"_s,
-              .font = FontType::BodyItalic,
-              .text_colours =
-                  ColSet {
-                      .base {.c = Col::Subtext0, .dark_mode = true},
-                      .hot {.c = Col::Subtext1, .dark_mode = true},
-                      .active {.c = Col::Subtext1, .dark_mode = true},
-                  },
-              .text_overflow = TextOverflowType::ShowDotsOnRight,
-              .parent_dictates_hot_and_active = true,
-              .layout {
-                  .size = {layout::k_fill_parent, k_font_body_italic_size},
-              },
-          });
-
     auto const do_icon_button = [&](Box parent,
                                     String icon,
                                     String tooltip,
@@ -318,97 +237,194 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
     };
 
     {
-        auto const preset_next =
-            do_icon_button(preset_box,
-                           ICON_FA_CARET_LEFT,
-                           "Load previous preset\n\nThis is based on the currently selected filters."_s,
-                           1.0f,
-                           3);
-        if (preset_next.button_fired) {
-            PresetBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .preset_server = g.shared_engine_systems.preset_server,
-                .library_images = g.library_images,
-                .prefs = g.prefs,
-                .engine = g.engine,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            context.Init(g.scratch_arena);
-            DEFER { context.Deinit(); };
+        auto preset_box = DoBox(builder,
+                                {
+                                    .parent = root,
+                                    .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
+                                    .round_background_corners = 0b1111,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_padding = {.l = 7, .r = 4, .tb = 2},
+                                        .contents_direction = layout::Direction::Row,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                    },
+                                });
 
-            LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Backward);
+        // Don't allow multi-line description to overflow.
+        bool pop_clip_rect = false;
+        if (auto const r = BoxRect(g.builder, preset_box)) {
+            g.imgui.draw_list->PushClipRect(g.imgui.ViewportRectToWindowRect(*r));
+            pop_clip_rect = true;
         }
-        if (preset_next.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-    }
+        DEFER {
+            if (pop_clip_rect) g.imgui.draw_list->PopClipRect();
+        };
 
-    {
-        auto const preset_prev =
-            do_icon_button(preset_box,
-                           ICON_FA_CARET_RIGHT,
-                           "Load next preset\n\nThis is based on the currently selected filters."_s,
-                           1.0f,
-                           3);
-        if (preset_prev.button_fired) {
-            PresetBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .preset_server = g.shared_engine_systems.preset_server,
-                .library_images = g.library_images,
-                .prefs = g.prefs,
-                .engine = g.engine,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            context.Init(g.scratch_arena);
-            DEFER { context.Deinit(); };
+        auto preset_box_left = DoBox(
+            builder,
+            {
+                .parent = preset_box,
+                .layout {
+                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                    .contents_direction = layout::Direction::Column,
+                },
+                .tooltip = FunctionRef<String()> {[&arena = builder.arena, &engine = g.engine]() -> String {
+                    DynamicArray<char> buffer {arena};
+                    dyn::Assign(buffer, "Open presets window"_s);
+                    fmt::Append(buffer, "\nCurrent preset: {}", engine.last_snapshot.name_or_path.Name());
+                    if (engine.last_snapshot.state.metadata.description.size) {
+                        dyn::AppendSpan(buffer, "\n\n"_s);
+                        dyn::AppendSpan(buffer, engine.last_snapshot.state.metadata.description);
+                    }
+                    return buffer.ToOwnedSpan();
+                }},
+                .button_behaviour = imgui::ButtonConfig {},
+            });
 
-            LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Forward);
+        if (preset_box_left.button_fired) {
+            g.imgui.OpenModalViewport(g.preset_browser_state.k_panel_id);
+            g.preset_browser_state.common_state.absolute_button_rect =
+                g.imgui.ViewportRectToWindowRect(*BoxRect(builder, preset_box_left));
         }
-        if (preset_prev.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-    }
+        if (preset_box_left.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
 
-    {
-        auto const preset_random =
-            do_icon_button(preset_box,
-                           ICON_FA_SHUFFLE,
-                           "Load a random preset\n\nThis is based on the currently selected filters."_s,
-                           0.9f,
-                           3);
-        if (preset_random.button_fired) {
-            PresetBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .preset_server = g.shared_engine_systems.preset_server,
-                .library_images = g.library_images,
-                .prefs = g.prefs,
-                .engine = g.engine,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            context.Init(g.scratch_arena);
-            DEFER { context.Deinit(); };
+        DoBox(builder,
+              {
+                  .parent = preset_box_left,
+                  .text = fmt::Format(builder.arena,
+                                      "{}{}",
+                                      g.engine.last_snapshot.name_or_path.Name(),
+                                      StateChangedSinceLastSnapshot(g.engine) ? " (modified)"_s : ""_s),
+                  .text_colours =
+                      ColSet {
+                          .base {.c = Col::Text, .dark_mode = true},
+                          .hot {.c = Col::Highlight},
+                          .active {.c = Col::Highlight},
+                      },
+                  .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+              });
 
-            LoadRandomPreset(context, g.preset_browser_state);
+        // IMPROVE: should this be a text input that changes the description?
+        DoBox(builder,
+              {
+                  .parent = preset_box_left,
+                  .text = g.engine.last_snapshot.state.metadata.description.size
+                              ? (String)g.engine.last_snapshot.state.metadata.description
+                              : "No description"_s,
+                  .font = FontType::BodyItalic,
+                  .text_colours =
+                      ColSet {
+                          .base {.c = Col::Subtext0, .dark_mode = true},
+                          .hot {.c = Col::Subtext1, .dark_mode = true},
+                          .active {.c = Col::Subtext1, .dark_mode = true},
+                      },
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_italic_size},
+                  },
+              });
+
+        {
+            auto const preset_next =
+                do_icon_button(preset_box,
+                               ICON_FA_CARET_LEFT,
+                               "Load previous preset\n\nThis is based on the currently selected filters."_s,
+                               1.0f,
+                               3);
+            if (preset_next.button_fired) {
+                PresetBrowserContext context {
+                    .sample_library_server = g.shared_engine_systems.sample_library_server,
+                    .preset_server = g.shared_engine_systems.preset_server,
+                    .library_images = g.library_images,
+                    .prefs = g.prefs,
+                    .engine = g.engine,
+                    .notifications = g.notifications,
+                    .persistent_store = g.shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g.confirmation_dialog_state,
+                    .frame_context = frame_context,
+                };
+                context.Init(g.scratch_arena);
+                DEFER { context.Deinit(); };
+
+                LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Backward);
+            }
+            if (preset_next.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
         }
-        if (preset_random.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-    }
 
-    {
-        auto const preset_save =
-            do_icon_button(preset_box, ICON_FA_FLOPPY_DISK, "Save the current state as a preset"_s, 0.8f, 3);
-        if (preset_save.button_fired) g.imgui.OpenModalViewport(g.save_preset_panel_state.k_panel_id);
-    }
+        {
+            auto const preset_prev =
+                do_icon_button(preset_box,
+                               ICON_FA_CARET_RIGHT,
+                               "Load next preset\n\nThis is based on the currently selected filters."_s,
+                               1.0f,
+                               3);
+            if (preset_prev.button_fired) {
+                PresetBrowserContext context {
+                    .sample_library_server = g.shared_engine_systems.sample_library_server,
+                    .preset_server = g.shared_engine_systems.preset_server,
+                    .library_images = g.library_images,
+                    .prefs = g.prefs,
+                    .engine = g.engine,
+                    .notifications = g.notifications,
+                    .persistent_store = g.shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g.confirmation_dialog_state,
+                    .frame_context = frame_context,
+                };
+                context.Init(g.scratch_arena);
+                DEFER { context.Deinit(); };
 
-    {
-        auto const preset_load =
-            do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
-        if (preset_load.button_fired)
-            OpenFilePickerLoadPreset(g.file_picker_state, g.shared_engine_systems.paths);
+                LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Forward);
+            }
+            if (preset_prev.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
+        }
+
+        {
+            auto const preset_random =
+                do_icon_button(preset_box,
+                               ICON_FA_SHUFFLE,
+                               "Load a random preset\n\nThis is based on the currently selected filters."_s,
+                               0.9f,
+                               3);
+            if (preset_random.button_fired) {
+                PresetBrowserContext context {
+                    .sample_library_server = g.shared_engine_systems.sample_library_server,
+                    .preset_server = g.shared_engine_systems.preset_server,
+                    .library_images = g.library_images,
+                    .prefs = g.prefs,
+                    .engine = g.engine,
+                    .notifications = g.notifications,
+                    .persistent_store = g.shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g.confirmation_dialog_state,
+                    .frame_context = frame_context,
+                };
+                context.Init(g.scratch_arena);
+                DEFER { context.Deinit(); };
+
+                LoadRandomPreset(context, g.preset_browser_state);
+            }
+            if (preset_random.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
+        }
+
+        {
+            auto const preset_save = do_icon_button(preset_box,
+                                                    ICON_FA_FLOPPY_DISK,
+                                                    "Save the current state as a preset"_s,
+                                                    0.8f,
+                                                    3);
+            if (preset_save.button_fired) g.imgui.OpenModalViewport(g.save_preset_panel_state.k_panel_id);
+        }
+
+        {
+            auto const preset_load =
+                do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
+            if (preset_load.button_fired)
+                OpenFilePickerLoadPreset(g.file_picker_state, g.shared_engine_systems.paths);
+        }
     }
 
     auto right_icon_buttons_container = DoBox(builder,
@@ -418,6 +434,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                                       .size = layout::k_hug_contents,
                                                   },
                                               });
+    DoExperimentalModeIndicatorIfNeeded(builder, right_icon_buttons_container, g.prefs);
+
     // preferences
     {
         auto const prefs_button =

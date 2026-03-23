@@ -6,6 +6,7 @@
 #include "engine/engine.hpp"
 #include "gui/controls/gui_keyboard.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -47,9 +48,13 @@ static bool IconButton(GuiBuilder& builder,
     return button.button_fired;
 }
 
-static Optional<s64>
-OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = SourceLocationHash()) {
-    auto percent = MapTo01((f32)value, k_octave_lowest, k_octave_highest);
+static Optional<s64> OctaveDragger(GuiBuilder& builder,
+                                   Box const parent,
+                                   s64 value,
+                                   s64 oct_lowest,
+                                   s64 oct_highest,
+                                   u64 id_extra = SourceLocationHash()) {
+    auto percent = MapTo01((f32)value, (f32)oct_lowest, (f32)oct_highest);
     auto const box = DoBox(builder,
                            {
                                .parent = parent,
@@ -105,7 +110,7 @@ OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = S
             new_value = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal);
 
         if (dragger_result.value_changed)
-            new_value = (s64)MapFrom01(percent, k_octave_lowest, k_octave_highest);
+            new_value = (s64)MapFrom01(percent, (f32)oct_lowest, (f32)oct_highest);
 
         if (dragger_result.text_input_result)
             DrawTextInput(builder.imgui, *dragger_result.text_input_result, k_draw_config);
@@ -122,6 +127,8 @@ OctaveDragger(GuiBuilder& builder, Box const parent, s64 value, u64 id_extra = S
 static void DoBotPanel(GuiState& g) {
     auto& builder = g.builder;
 
+    bool const perform_tab_active = g.mid_panel_state.tab == MidPanelTab::Perform;
+
     auto const root = DoBox(builder,
                             {
                                 .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
@@ -134,74 +141,40 @@ static void DoBotPanel(GuiState& g) {
                                 },
                             });
 
-    {
+    if (!perform_tab_active) {
         auto const tabs = DoBox(builder,
                                 {
                                     .parent = root,
                                     .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
                                     .layout {
-                                        .size = {53, layout::k_fill_parent},
+                                        .size = {55, layout::k_fill_parent},
                                         .contents_padding = {.lr = 3, .tb = 6},
                                         .contents_gap = 2,
                                         .contents_direction = layout::Direction::Column,
-                                        .contents_align = layout::Alignment::Start,
+                                        .contents_align = layout::Alignment::Middle,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                     },
                                 });
 
-        auto const tab_button = [&](BottomPanelType type,
-                                    TooltipString tooltip,
-                                    u64 id_extra = SourceLocationHash()) {
-            bool const is_selected = type == g.bottom_panel_state.type;
-
-            auto const btn =
-                DoBox(builder,
-                      {
-                          .parent = tabs,
-                          .id_extra = id_extra,
-                          .background_fill_colours =
-                              is_selected ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
-                                          : Colours {ColSet {
-                                                .base = Col {.c = Col::None},
-                                                .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
-                                                .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
-                                            }},
-                          .round_background_corners = 0b1111,
-                          .corner_rounding = 4.0f,
-                          .layout {
-                              .size = {layout::k_fill_parent, 24},
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Middle,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                          .tooltip = tooltip,
-                          .button_behaviour = imgui::ButtonConfig {},
-                      });
-
-            DoBox(builder,
-                  {
-                      .parent = btn,
-                      .text =
-                          [type]() {
-                              switch (type) {
-                                  case BottomPanelType::Play: return "PLAY"_s;
-                                  case BottomPanelType::EditMacros: return "MACROS"_s;
-                                  case BottomPanelType::Count: PanicIfReached();
-                              }
-                          }(),
-                      .size_from_text = true,
-                      .font = FontType::Heading3,
-                      .text_colours = is_selected ? Colours {LiveColStruct(UiColMap::MidTabTextActive)}
-                                                  : Colours {ColSet {
-                                                        .base = LiveColStruct(UiColMap::MidTabText),
-                                                        .hot = LiveColStruct(UiColMap::MidTabTextHot),
-                                                        .active = LiveColStruct(UiColMap::MidTabTextActive),
-                                                    }},
-                      .text_justification = TextJustification::Centred,
-                      .parent_dictates_hot_and_active = true,
-                  });
-            return btn;
-        };
+        auto const tab_button =
+            [&](BottomPanelType type, TooltipString tooltip, u64 id_extra = SourceLocationHash()) {
+                auto const name = [type]() -> String {
+                    switch (type) {
+                        case BottomPanelType::Play: return "PLAY"_s;
+                        case BottomPanelType::EditMacros: return "MACROS"_s;
+                        case BottomPanelType::Count: PanicIfReached();
+                    }
+                }();
+                return DoTabButton(builder,
+                                   tabs,
+                                   name,
+                                   {
+                                       .is_selected = type == g.bottom_panel_state.type,
+                                       .width = layout::k_fill_parent,
+                                       .tooltip = tooltip,
+                                   },
+                                   id_extra);
+            };
 
         Optional<BottomPanelType> new_panel {};
 
@@ -215,102 +188,125 @@ static void DoBotPanel(GuiState& g) {
         if (new_panel) g.bottom_panel_state.type = *new_panel;
     }
 
-    switch (g.bottom_panel_state.type) {
-        case BottomPanelType::Play: {
-            // Macro knobs.
-            {
-                auto const macro_box =
-                    DoBox(builder,
-                          {
-                              .parent = root,
-                              .background_fill_colours = Col {.c = Col::None},
-                              .round_background_corners = 0b1111,
-                              .layout {
-                                  .size = {layout::k_hug_contents, layout::k_fill_parent},
-                                  .margins = {.lrtb = 3},
-                                  .contents_padding = {.lr = 20},
-                                  .contents_gap = 30,
-                                  .contents_direction = layout::Direction::Row,
-                                  .contents_align = layout::Alignment::Start,
-                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                              },
-                          });
+    if (perform_tab_active) {
+        // Full-width keyboard
+        constexpr s8 k_perform_num_octaves = 9;
+        constexpr int k_perform_starting_octave = -1;
 
-                for (auto const [macro_index, param_index] : Enumerate(k_macro_params))
-                    DoKnobParameter(
-                        g,
-                        macro_box,
-                        g.engine.processor.main_params.DescribedValue(param_index),
-                        {
-                            .width = k_small_knob_width,
-                            .greyed_out = g.engine.processor.main_macro_destinations[macro_index].Size() == 0,
-                            .override_label = g.engine.macro_names[macro_index],
-                        });
+        auto const keyboard = DoBox(builder,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = layout::k_fill_parent,
+                                            .margins = {.lrtb = 3},
+                                        },
+                                    });
+        if (auto const r = BoxRect(builder, keyboard)) {
+            if (auto key = KeyboardGui(g, *r, k_perform_starting_octave, k_perform_num_octaves)) {
+                g.engine.processor.gui_note_click_state.Store(
+                    {
+                        .velocity = key->velocity,
+                        .key = key->note,
+                        .is_held = key->is_down,
+                    },
+                    StoreMemoryOrder::Release);
+                g.engine.host.request_process(&g.engine.host);
             }
+        }
+    } else if (g.bottom_panel_state.type == BottomPanelType::Play) {
+        // Macro knobs.
+        {
+            auto const macro_box = DoBox(builder,
+                                         {
+                                             .parent = root,
+                                             .background_fill_colours = Col {.c = Col::None},
+                                             .round_background_corners = 0b1111,
+                                             .layout {
+                                                 .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                                 .margins = {.lrtb = 3},
+                                                 .contents_padding = {.lr = 20},
+                                                 .contents_gap = 30,
+                                                 .contents_direction = layout::Direction::Row,
+                                                 .contents_align = layout::Alignment::Start,
+                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                             },
+                                         });
 
-            auto& preferences = g.prefs;
-            auto const keyboard_octave =
-                Clamp<s64>(prefs::LookupInt(preferences, prefs::key::k_gui_keyboard_octave).ValueOr(0),
-                           k_octave_lowest,
-                           k_octave_highest);
+            for (auto const [macro_index, param_index] : Enumerate(k_macro_params))
+                DoKnobParameter(
+                    g,
+                    macro_box,
+                    g.engine.processor.main_params.DescribedValue(param_index),
+                    {
+                        .width = k_small_knob_width,
+                        .greyed_out = g.engine.processor.main_macro_destinations[macro_index].Size() == 0,
+                        .override_label = g.engine.macro_names[macro_index],
+                    });
+        }
 
-            {
-                auto const keyboard = DoBox(builder,
-                                            {
-                                                .parent = root,
-                                                .layout {
-                                                    .size = layout::k_fill_parent,
-                                                    .margins = {.l = 0, .r = 3, .tb = 3},
-                                                },
-                                            });
-                if (auto const r = BoxRect(builder, keyboard)) {
-                    if (auto key = KeyboardGui(g, *r, (int)keyboard_octave)) {
-                        g.engine.processor.gui_note_click_state.Store(
-                            {
-                                .velocity = key->velocity,
-                                .key = key->note,
-                                .is_held = key->is_down,
-                            },
-                            StoreMemoryOrder::Release);
-                        g.engine.host.request_process(&g.engine.host);
-                    }
+        auto const keyboard_octave =
+            Clamp<s64>(prefs::LookupInt(g.prefs, prefs::key::k_gui_keyboard_octave).ValueOr(0),
+                       k_octave_lowest,
+                       k_octave_highest);
+
+        {
+            auto const keyboard = DoBox(builder,
+                                        {
+                                            .parent = root,
+                                            .layout {
+                                                .size = layout::k_fill_parent,
+                                                .margins = {.l = 0, .r = 3, .tb = 3},
+                                            },
+                                        });
+            if (auto const r = BoxRect(builder, keyboard)) {
+                if (auto key = KeyboardGui(g, *r, (int)keyboard_octave)) {
+                    g.engine.processor.gui_note_click_state.Store(
+                        {
+                            .velocity = key->velocity,
+                            .key = key->note,
+                            .is_held = key->is_down,
+                        },
+                        StoreMemoryOrder::Release);
+                    g.engine.host.request_process(&g.engine.host);
                 }
             }
+        }
 
-            {
-                auto const octave_box =
-                    DoBox(builder,
-                          {
-                              .parent = root,
-                              .layout {
-                                  .size = {layout::k_hug_contents, layout::k_fill_parent},
-                                  .contents_direction = layout::Direction::Column,
-                                  .contents_align = layout::Alignment::Middle,
-                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                              },
-                          });
+        {
+            auto const octave_box = DoBox(builder,
+                                          {
+                                              .parent = root,
+                                              .layout {
+                                                  .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                                  .contents_direction = layout::Direction::Column,
+                                                  .contents_align = layout::Alignment::Middle,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
 
-                Optional<s64> new_octave {};
+            Optional<s64> new_octave {};
 
-                if (IconButton(builder, octave_box, ICON_FA_CARET_UP, "GUI Keyboard Octave Up"_s))
-                    new_octave = Min<s64>(keyboard_octave + 1, k_octave_highest);
+            if (IconButton(builder, octave_box, ICON_FA_CARET_UP, "GUI Keyboard Octave Up"_s))
+                new_octave = Min<s64>(keyboard_octave + 1, k_octave_highest);
 
-                if (auto const v = OctaveDragger(builder, octave_box, keyboard_octave)) new_octave = *v;
+            if (auto const v =
+                    OctaveDragger(builder, octave_box, keyboard_octave, k_octave_lowest, k_octave_highest))
+                new_octave = *v;
 
-                if (IconButton(builder, octave_box, ICON_FA_CARET_DOWN, "GUI Keyboard Octave Down"_s))
-                    new_octave = Max<s64>(keyboard_octave - 1, k_octave_lowest);
+            if (IconButton(builder, octave_box, ICON_FA_CARET_DOWN, "GUI Keyboard Octave Down"_s))
+                new_octave = Max<s64>(keyboard_octave - 1, k_octave_lowest);
 
-                if (new_octave) prefs::SetValue(preferences, prefs::key::k_gui_keyboard_octave, *new_octave);
+            if (new_octave) prefs::SetValue(g.prefs, prefs::key::k_gui_keyboard_octave, *new_octave);
+        }
+    } else {
+        switch (g.bottom_panel_state.type) {
+            case BottomPanelType::EditMacros: {
+                DoMacrosEditGui(g, root);
+                break;
             }
-            break;
+            case BottomPanelType::Play:
+            case BottomPanelType::Count: PanicIfReached();
         }
-
-        case BottomPanelType::EditMacros: {
-            DoMacrosEditGui(g, root);
-            break;
-        }
-
-        case BottomPanelType::Count: PanicIfReached();
     }
 }
 

@@ -631,7 +631,7 @@ print("return preset")
             auto const out_path = path::Join(
                 arena,
                 Array {(String)temp_dir, UniqueFilename("preset- ", FLOE_PRESET_FILE_EXTENSION, seed)});
-            if (auto const r = SavePresetFile(out_path, modified_state); !r.Succeeded()) {
+            if (auto const r = SavePresetFile(out_path, modified_state, false); !r.Succeeded()) {
                 StdPrintF(StdStream::Err, "Error: failed to save modified preset file: {}\n", r.Error());
                 return r.Error();
             }

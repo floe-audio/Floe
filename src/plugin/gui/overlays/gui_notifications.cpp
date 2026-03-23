@@ -174,6 +174,6 @@ void DoNotifications(GuiBuilder& builder, Notifications& notifications) {
                           .debug_name = "notifications",
                       });
 
-        GuiIo().WakeupAtTimedInterval(notifications.dismiss_check_counter, 1);
+        GuiIo().WakeupAtTimedInterval(notifications.dismiss_check_counter, 1, SourceLocationHash());
     }
 }

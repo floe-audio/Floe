@@ -40,9 +40,11 @@ Span<u8> LeakDetectingAllocator::DoCommand(AllocatorCommandUnion const& command_
             auto const& cmd = command_union.Get<FreeCommand>();
             Malloc::Instance().DoCommand(cmd);
             ScopedMutexLock const lock(m_lock);
-            ASSERT(dyn::RemoveValueIf(m_allocations, [memory = cmd.allocation](Allocation const& v) {
-                       return memory.data == v.data.data;
-                   }) != 0);
+            auto const removed =
+                dyn::RemoveValueIf(m_allocations, [memory = cmd.allocation](Allocation const& v) {
+                    return memory.data == v.data.data;
+                });
+            ASSERT(removed != 0);
             return {};
         }
 
@@ -50,9 +52,11 @@ Span<u8> LeakDetectingAllocator::DoCommand(AllocatorCommandUnion const& command_
             auto const& cmd = command_union.Get<ResizeCommand>();
             {
                 ScopedMutexLock const lock(m_lock);
-                ASSERT(dyn::RemoveValueIf(m_allocations, [memory = cmd.allocation](Allocation const& v) {
-                           return memory.data == v.data.data;
-                       }) != 0);
+                auto const removed =
+                    dyn::RemoveValueIf(m_allocations, [memory = cmd.allocation](Allocation const& v) {
+                        return memory.data == v.data.data;
+                    });
+                ASSERT(removed != 0);
             }
 
             auto result = Malloc::Instance().DoCommand(cmd);

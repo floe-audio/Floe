@@ -8,18 +8,23 @@
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_imgui.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/peak_meter.hpp"
 
 // Drawing functions always need window coordinates, not viewport coordinates.
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {});
 
+struct VoiceMarkerLineOptions {
+    f32 opacity = 1;
+    u32 col = LiveCol(UiColMap::WaveformLoopVoiceMarkers);
+};
 void DrawVoiceMarkerLine(imgui::Context const& imgui,
                          f32x2 pos,
                          f32 height,
                          f32 left_min,
                          Optional<Line> upper_line,
-                         f32 opacity = 1);
+                         VoiceMarkerLineOptions const& options);
 
 void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInputResult const& result);
 
@@ -51,6 +56,21 @@ struct DrawPeakMeterOptions {
     bool show_db_markers = true;
     f32 gap = 0; // 0 means use default
 };
+
+struct DrawVerticalSliderOptions {
+    u32 highlight_col;
+    u32 line_col;
+    Optional<f32> modulation_percent; // If set, draws a line at this position showing the modulated value.
+    GuiStyleSystem style_system;
+    bool greyed_out;
+    bool is_fake;
+};
+
+void DrawVerticalSlider(imgui::Context& imgui,
+                        imgui::Id id,
+                        Rect r,
+                        f32 percent,
+                        DrawVerticalSliderOptions const& options);
 
 void DrawPeakMeter(imgui::Context& imgui,
                    Rect r,

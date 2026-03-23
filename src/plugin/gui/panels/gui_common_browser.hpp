@@ -225,6 +225,7 @@ struct BrowserPopupContext {
     prefs::Preferences& preferences;
     persistent_store::Store& store;
     CommonBrowserState& state;
+    FloeInstanceIndex instance_index;
 };
 
 struct FilterItemInfo {
@@ -260,6 +261,7 @@ struct FilterCardOptions {
     Optional<sample_lib::LibraryIdRef> library_id; // For images.
     LibraryImagesTable& library_images;
     sample_lib_server::Server& sample_library_server;
+    FloeInstanceIndex instance_index;
     String subtext;
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
@@ -269,6 +271,7 @@ struct FilterCardOptions {
 struct LibraryFilters {
     sample_lib_server::LibrariesTable const& libraries_table;
     LibraryImagesTable& library_images;
+    FloeInstanceIndex instance_index;
     OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
     bool card_view {};

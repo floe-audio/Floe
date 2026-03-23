@@ -9,7 +9,7 @@ enum class FontType : u8 {
     BodyItalic,
     Heading1,
     Heading2,
-    Heading3,
+    Heading3, // Typically always capitalise all text with this font.
     Icons,
     Count,
 };

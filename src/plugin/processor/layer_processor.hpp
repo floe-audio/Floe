@@ -7,6 +7,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 
+#include "atomic_bitset.hpp"
 #include "clap/host.h"
 #include "param.hpp"
 #include "processing_utils/adsr.hpp"
@@ -161,10 +162,15 @@ struct VoiceProcessingController {
     struct {
         f32 speed {};
         f32 position {};
-        f32 grains {};
-        f32 length {};
+        f32 density {};
+        f32 length_ms {};
         f32 spread {};
         f32 smoothing {};
+        f32 random_pan {};
+        f32 random_detune {};
+        f32 random_direction {};
+        f32 harmony {};
+        HarmonyIntervalsBitset harmony_intervals {};
     } granular {};
 
     bool no_key_tracking = false;
@@ -332,6 +338,7 @@ struct LayerProcessor {
     int num_velocity_regions = 1;
     Bitset<4> active_velocity_regions {};
     CurveMap velocity_curve_map = {};
+    AtomicBitset<k_num_harmony_interval_bits> harmony_intervals {};
 
     StereoPeakMeter peak_meter = {};
 
