@@ -88,7 +88,7 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
             LearnMidiCC(g.engine.processor, param_index);
         }
 
-        auto const persistent_ccs = PersistentCcsForParam(g.prefs, ParamIndexToId(param_index));
+        auto const pinned_ccs = PinnedCcsForParam(g.prefs, ParamIndexToId(param_index));
         auto const ccs_bitset = GetLearnedCCsBitsetForParam(g.engine.processor, param_index);
         bool const closes_popups = ccs_bitset.AnyValuesSet();
         for (auto const cc_num : Range(128uz)) {
@@ -98,31 +98,30 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                          root,
                          {
                              .text = fmt::Format(g.scratch_arena, "Remove MIDI CC {}", cc_num),
-                             .tooltip = "Remove the MIDI CC assignment for this parameter"_s,
+                             .tooltip = "Remove and unpin this MIDI CC mapping"_s,
                              .close_on_click = closes_popups,
                          })
                     .button_fired) {
-                UnlearnMidiCC(g.engine.processor, param_index, (u7)cc_num);
+                UnlearnAndUnpinMidiCC(g.engine.processor, g.prefs, param_index, (u7)cc_num);
             }
 
             {
-                bool state = persistent_ccs.Get(cc_num);
-                if (MenuItem(g.builder,
-                             root,
-                             {
-                                 .text = fmt::Format(g.scratch_arena,
-                                                     "Always set MIDI CC {} to this when Floe opens",
-                                                     cc_num),
-                                 .tooltip = "Set this MIDI CC to this parameter value when Floe starts"_s,
-                                 .is_selected = state,
-                                 .close_on_click = closes_popups,
-                             })
+                bool state = pinned_ccs.Get(cc_num);
+                if (MenuItem(
+                        g.builder,
+                        root,
+                        {
+                            .text = fmt::Format(g.scratch_arena, "Pin MIDI CC {}", cc_num),
+                            .tooltip = "When pinned, this mapping is applied to all new Floe instances"_s,
+                            .is_selected = state,
+                            .close_on_click = closes_popups,
+                        })
                         .button_fired) {
                     state = !state;
                     if (state)
-                        AddPersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
+                        PinCcToParam(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
                     else
-                        RemovePersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
+                        UnpinCcFromParam(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
                 }
             }
         }

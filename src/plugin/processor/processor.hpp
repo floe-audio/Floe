@@ -333,9 +333,11 @@ void UnlearnMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num_to_rem
 Bitset<128> GetLearnedCCsBitsetForParam(AudioProcessor const& processor, ParamIndex param);
 bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex param);
 
-void AddPersistentCcToParamMapping(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
-void RemovePersistentCcToParamMapping(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
-Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& preferences, u32 param_id);
+void PinCcToParam(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
+void UnpinCcFromParam(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
+Bitset<128> PinnedCcsForParam(prefs::PreferencesTable const& preferences, u32 param_id);
+
+void UnlearnAndUnpinMidiCC(AudioProcessor& processor, prefs::Preferences& prefs, ParamIndex param, u7 cc_num);
 
 struct AppendMacroDestinationConfig {
     ParamIndex param;

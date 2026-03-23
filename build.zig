@@ -1595,6 +1595,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/panels/gui_legacy_params_panel.cpp",
             "gui/panels/gui_library_dev_panel.cpp",
             "gui/panels/gui_macros.cpp",
+            "gui/panels/gui_midi_cc_panel.cpp",
             "gui/panels/gui_prefs_panel.cpp",
             "gui/panels/gui_preset_browser.cpp",
             "gui/panels/gui_save_preset_panel.cpp",

@@ -19,7 +19,7 @@ static auto HostsParamsExtension(AudioProcessor& processor) {
     return (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
 }
 
-consteval auto PersistentDefaultCcParamMappingsString() {
+consteval auto DefaultPinnedCcMappingsString() {
     constexpr String k_start = "CC ";
     constexpr String k_middle = " -> ";
     constexpr String k_end = "\n";
@@ -72,7 +72,7 @@ consteval auto PersistentDefaultCcParamMappingsString() {
     return result;
 }
 
-constexpr auto k_str = PersistentDefaultCcParamMappingsString();
+constexpr auto k_str = DefaultPinnedCcMappingsString();
 static_assert(k_str[0] == 'C');
 
 prefs::Descriptor SettingDescriptor(ProcessorSetting s) {
@@ -80,12 +80,12 @@ prefs::Descriptor SettingDescriptor(ProcessorSetting s) {
         case ProcessorSetting::DefaultCcParamMappings: {
             static constexpr auto k_description =
                 ConcatArrays("When Floe starts, map these MIDI CC to parameters:\n"_ca,
-                             PersistentDefaultCcParamMappingsString());
+                             DefaultPinnedCcMappingsString());
             return {
                 .key = "default-cc-param-mappings"_s,
                 .value_requirements = prefs::ValueType::Bool,
                 .default_value = true,
-                .gui_label = "Start with default CC to param mappings"_s,
+                .gui_label = "Pin default MIDI CC mappings"_s,
                 .long_description = k_description,
 
             };
@@ -127,7 +127,7 @@ bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex 
            TimePoint::Now();
 }
 
-void AddPersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
+void PinCcToParam(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(cc_num > 0 && cc_num <= 127);
     ASSERT(ParamIdToIndex(param_id));
@@ -136,7 +136,7 @@ void AddPersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 par
                     (s64)param_id);
 }
 
-void RemovePersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
+void UnpinCcFromParam(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
     ASSERT(g_is_logical_main_thread);
 
     prefs::RemoveValue(prefs,
@@ -144,7 +144,15 @@ void RemovePersistentCcToParamMapping(prefs::Preferences& prefs, u8 cc_num, u32 
                        (s64)param_id);
 }
 
-Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& prefs, u32 param_id) {
+void UnlearnAndUnpinMidiCC(AudioProcessor& processor,
+                           prefs::Preferences& prefs,
+                           ParamIndex param,
+                           u7 cc_num) {
+    UnlearnMidiCC(processor, param, cc_num);
+    UnpinCcFromParam(prefs, (u8)cc_num, ParamIndexToId(param));
+}
+
+Bitset<128> PinnedCcsForParam(prefs::PreferencesTable const& prefs, u32 param_id) {
     ASSERT(g_is_logical_main_thread);
 
     Bitset<128> result {};
@@ -1878,7 +1886,7 @@ AudioProcessor::AudioProcessor(clap_host const& host,
         main_params.values[i] = k_param_descriptors[i].default_linear_value;
 
     for (u32 i = 0; i < k_num_parameters; ++i)
-        param_learned_ccs[i].AssignBlockwise(PersistentCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));
+        param_learned_ccs[i].AssignBlockwise(PinnedCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));
 
     if (prefs::GetBool(prefs, SettingDescriptor(ProcessorSetting::DefaultCcParamMappings)))
         for (auto const mapping : k_default_cc_to_param_mapping)

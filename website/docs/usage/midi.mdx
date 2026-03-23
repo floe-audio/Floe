@@ -15,33 +15,51 @@ import data from "@site/static/generated-data.json";
 Floe is controllable via MIDI in the typical ways you'd expect from a software instrument.
 
 ## MIDI CC
-### Map parameters to MIDI CC
+
+### MIDI CC Assignments panel
+
+You can view and manage all MIDI CC assignments from the **MIDI CC Assignments** panel. Open it from the top-panel menu (the three-dots button).
+
+This panel shows every active CC-to-parameter mapping, including which module each parameter belongs to. From here you can pin or unpin mappings, remove them, and toggle the default CC mappings option.
+
+![MIDI CC Assignments panel](/images/midi-cc-assignments-panel.png)
+
+### Creating MIDI CC mappings
 
 All automatable parameters in Floe can be assigned to a MIDI CC. This allows you to control Floe from a MIDI controller for example.
 
-To do this, right-click on the parameter you want to assign, and select 'MIDI Learn'. Then move the control on your MIDI controller that you want to assign to that parameter. This will create a mapping between the parameter and the MIDI CC. 
+To create a mapping, right-click on the parameter you want to assign and select **MIDI CC Learn**. Then move the control on your MIDI controller that you want to assign to that parameter. This will create a mapping between the parameter and the MIDI CC.
 
-You can remove this mapping by right-clicking on the parameter and selecting 'Remove MIDI Learn'.
-
-This mapping is saved with your DAW project. But it's not permanent. It only applies to the current instance of Floe in your DAW, and it won't be the applied if you load a new instance of Floe.
-
-Preset files do not save MIDI CC mappings. So you can load presets and your MIDI CC mappings will remain.
+You can remove a mapping by right-clicking on the parameter and selecting **Remove MIDI CC**, or by using the trash icon in the MIDI CC Assignments panel.
 
 ![MIDI Learn](/images/midi-learn.png)
 
-### Make MIDI CC mapping more permanent
+### How mappings are saved
 
-You can make the MIDI CC mapping more permanent by right clicking on a 'MIDI learned' parameter and selecting 'Always set MIDI CC to this when Floe opens'. As the name suggests, when you open Floe, the MIDI CC mapping will be added.
+MIDI CC mappings are saved with your DAW project. They only apply to the current instance of Floe in your DAW — they won't be applied if you load a new instance of Floe.
+
+Preset files do not save MIDI CC mappings. So you can load presets and your MIDI CC mappings will remain.
+
+### Pinning mappings
+
+You can **pin** a MIDI CC mapping so that it is automatically applied to all new Floe instances. There are two ways to pin a mapping:
+
+- In the **MIDI CC Assignments** panel, click the pin icon next to a mapping.
+- Right-click a parameter that has a CC mapping and select **Pin MIDI CC**.
+
+Pinned mappings are stored globally in your preferences, not in your DAW project.
 
 ### Default MIDI CC mappings
 
-Floe sets some default MIDI CC mappings for you. You can turn this off in the preferences. The default mappings are:
+Floe applies some default MIDI CC mappings when it starts. You can toggle this on or off in the MIDI CC Assignments panel, or in Preferences. The default mappings are:
 
 <ul>
 {data["default-cc-mappings"].map((mapping, index) => (
   <li key={index}>CC {mapping.cc}: {mapping.name} ({mapping.module})</li>
 ))}
 </ul>
+
+Default mappings are shown with a pin icon in the MIDI CC Assignments panel. If you remove a default mapping, it will reappear when Floe restarts (as long as the default mappings option is enabled).
 
 ## Sustain Pedal
 

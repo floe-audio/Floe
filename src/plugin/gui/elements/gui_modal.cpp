@@ -177,7 +177,7 @@ Box DoModal(GuiBuilder& builder, ModalConfig const& config) {
 
 bool CheckboxButton(GuiBuilder& builder,
                     Box parent,
-                    String text,
+                    Optional<String> text,
                     bool state,
                     TooltipString tooltip,
                     u64 id_extra) {
@@ -187,7 +187,7 @@ bool CheckboxButton(GuiBuilder& builder,
                                   .id_extra = id_extra,
                                   .layout {
                                       .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                      .contents_gap = k_medium_gap,
+                                      .contents_gap = text ? k_medium_gap : 0.0f,
                                       .contents_direction = layout::Direction::Row,
                                       .contents_align = layout::Alignment::Start,
                                   },
@@ -213,12 +213,14 @@ bool CheckboxButton(GuiBuilder& builder,
                   .size = k_icon_button_size,
               },
           });
-    DoBox(builder,
-          {
-              .parent = button,
-              .text = text,
-              .size_from_text = true,
-          });
+
+    if (text)
+        DoBox(builder,
+              {
+                  .parent = button,
+                  .text = *text,
+                  .size_from_text = true,
+              });
 
     return button.button_fired;
 }

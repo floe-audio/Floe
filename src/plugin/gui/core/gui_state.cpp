@@ -352,6 +352,14 @@ void GuiUpdate(GuiState& g) {
     }
 
     {
+        MidiCcPanelContext context {
+            .processor = g.engine.processor,
+            .prefs = g.prefs,
+        };
+        DoMidiCcPanel(g.builder, context, g.midi_cc_panel_state);
+    }
+
+    {
         PreferencesPanelContext context {
             .prefs = g.prefs,
             .paths = g.shared_engine_systems.paths,

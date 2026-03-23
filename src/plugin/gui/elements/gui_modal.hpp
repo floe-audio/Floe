@@ -81,7 +81,7 @@ Box DoModal(GuiBuilder& builder, ModalConfig const& config);
 
 bool CheckboxButton(GuiBuilder& builder,
                     Box parent,
-                    String text,
+                    Optional<String> text,
                     bool state,
                     TooltipString tooltip = k_nullopt,
                     u64 id_extra = SourceLocationHash());
