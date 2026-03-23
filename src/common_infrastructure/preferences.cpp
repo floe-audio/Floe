@@ -713,6 +713,7 @@ static Key CloneKey(Key const& k, PathPool& pool, ArenaAllocator& arena) {
                 case KeyValueType::String: result.key = pool.Clone(result.key.Get<String>(), arena); break;
                 case KeyValueType::Int: break;
             }
+            return result;
         }
     }
     PanicIfReached();
