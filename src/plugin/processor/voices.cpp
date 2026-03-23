@@ -831,6 +831,7 @@ struct VoiceProcessor {
                                                          Span<f32 const> lfo_amounts,
                                                          AudioProcessingContext const& context) {
         ASSERT_HOT(buffer.size <= k_block_size_max);
+        if (buffer.size == 0) return true;
         ZoneNamedN(granular_zone, "Granular Synthesis", true);
         auto const& ctrl = *voice.controller;
         auto const is_fixed = ctrl.play_mode == param_values::PlayMode::GranularFixed;
@@ -838,7 +839,6 @@ struct VoiceProcessor {
         auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
         auto const num_frames = sampler.data->num_frames;
         ASSERT_HOT(ctrl.granular.length_ms > 0);
-        ASSERT_HOT(buffer.size);
 
         auto const grain_length_samples =
             Max(1u, (u32)(ctrl.granular.length_ms * 0.001f * context.sample_rate));
