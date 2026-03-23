@@ -582,36 +582,77 @@ struct ParamDescriptor {
         // https://math.stackexchange.com/questions/1832177/sigmoid-function-with-fixed-bounds-and-variable-steepness-partially-solved
         // https://colab.research.google.com/drive/1uaMKr-1dAX231Z7Bdew4MKj-c4vDD604?usp=sharing
 
+        enum class Type : u8 {
+            Exponential,
+            LinearThenExponential,
+        };
+
         constexpr f32 ProjectValue(f32 linear_value, Range linear_range_) const {
-            if (exponent == 1) return linear_range_.Remap(linear_value, range);
+            switch (type) {
+                case Type::LinearThenExponential: {
+                    auto const value_01 = linear_range_.RamapTo01(linear_value);
+                    if (value_01 <= split_01) {
+                        auto const t = value_01 / split_01;
+                        return range.min + (t * (split_value - range.min));
+                    } else {
+                        auto const t = (value_01 - split_01) / (1.0f - split_01);
+                        return split_value + (Pow(t, exponent) * (range.max - split_value));
+                    }
+                }
+                case Type::Exponential: {
+                    if (exponent == 1) return linear_range_.Remap(linear_value, range);
 
-            if (linear_range_.min == -1 && linear_range_.max == 1) {
-                if (linear_value >= 0)
-                    return Abs(range.max) * Pow(linear_value, exponent);
-                else
-                    return -Abs(range.min) * Pow(-linear_value, exponent);
+                    if (linear_range_.min == -1 && linear_range_.max == 1) {
+                        if (linear_value >= 0)
+                            return Abs(range.max) * Pow(linear_value, exponent);
+                        else
+                            return -Abs(range.min) * Pow(-linear_value, exponent);
+                    }
+
+                    auto const value_01 = linear_range_.RamapTo01(linear_value);
+                    return range.min + (Pow(value_01, exponent) * range.Delta());
+                }
             }
-
-            auto const value_01 = linear_range_.RamapTo01(linear_value);
-            return range.min + (Pow(value_01, exponent) * range.Delta());
+            throw "";
         }
 
         template <f32 (*pow_fn)(f32, f32)>
         constexpr f32 LineariseValue(Range linear_range_, f32 projected_value) const {
-            if (exponent == 1) return range.Remap(projected_value, linear_range_);
+            switch (type) {
+                case Type::LinearThenExponential: {
+                    if (projected_value <= split_value) {
+                        auto const t = (split_value == range.min)
+                                           ? 0.0f
+                                           : (projected_value - range.min) / (split_value - range.min);
+                        auto const value_01 = t * split_01;
+                        return linear_range_.min + (value_01 * linear_range_.Delta());
+                    } else {
+                        auto const t = (projected_value - split_value) / (range.max - split_value);
+                        auto const value_01 = split_01 + (pow_fn(t, 1.0f / exponent) * (1.0f - split_01));
+                        return linear_range_.min + (value_01 * linear_range_.Delta());
+                    }
+                }
+                case Type::Exponential: {
+                    if (exponent == 1) return range.Remap(projected_value, linear_range_);
 
-            if (linear_range_.min == -1 && linear_range_.max == 1) {
-                if (projected_value >= 0)
-                    return pow_fn(projected_value / range.max, 1 / exponent);
-                else
-                    return -pow_fn((-projected_value) / (-range.min), 1 / exponent);
+                    if (linear_range_.min == -1 && linear_range_.max == 1) {
+                        if (projected_value >= 0)
+                            return pow_fn(projected_value / range.max, 1 / exponent);
+                        else
+                            return -pow_fn((-projected_value) / (-range.min), 1 / exponent);
+                    }
+                    auto const value_01 = range.RamapTo01(projected_value);
+                    return linear_range_.min + (pow_fn(value_01, 1 / exponent) * linear_range_.Delta());
+                }
             }
-            auto const value_01 = range.RamapTo01(projected_value);
-            return linear_range_.min + (pow_fn(value_01, 1 / exponent) * linear_range_.Delta());
+            throw "";
         }
 
         Range range;
         f32 exponent;
+        Type type = Type::Exponential;
+        f32 split_01 = 0; // For LinearThenExponential: normalized split position in [0, 1]
+        f32 split_value = 0; // For LinearThenExponential: projected value at the split point
     };
 
     constexpr ParamDescriptor() = default;
@@ -2242,8 +2283,14 @@ consteval auto CreateParams() {
         lp(GranularSpeed) = Args {
             .id = id(region, 58), // never change
             .value_config = ({
-                ParamDescriptor::Range const linear_range = {0, 8};
-                ParamDescriptor::Projection const projection {linear_range, 3.0f};
+                ParamDescriptor::Range const linear_range = {0, 1};
+                ParamDescriptor::Projection const projection {
+                    .range = {0, 8},
+                    .exponent = 3.0f,
+                    .type = ParamDescriptor::Projection::Type::LinearThenExponential,
+                    .split_01 = 0.5f,
+                    .split_value = 1.0f,
+                };
                 val_config_helpers::ValConfig {
                     .linear_range = linear_range,
                     .projection = projection,
