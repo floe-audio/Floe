@@ -1615,4 +1615,276 @@ TEST_CASE(TestEqualPanGains) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterVoiceTests) { REGISTER_TEST(TestEqualPanGains); }
+// ======================================================================================
+// Voice processing tests
+
+static clap_host_t const k_stub_host {
+    .clap_version = CLAP_VERSION,
+    .host_data = nullptr,
+    .name = "Test",
+    .vendor = "Test",
+    .url = "",
+    .version = "1",
+    .get_extension = [](clap_host_t const*, char const*) -> void const* { return nullptr; },
+    .request_restart = [](clap_host_t const*) {},
+    .request_process = [](clap_host_t const*) {},
+    .request_callback = [](clap_host_t const*) {},
+};
+
+struct VoiceTestFixture {
+    VoiceTestFixture(tests::Tester&) {
+        // VoicePool requires 64-byte alignment (due to AtomicSwapBuffer with cacheline avoidance).
+        // The test fixture arena only guarantees 16-byte alignment, so we allocate the pool
+        // using the page allocator which provides page-aligned memory.
+        pool = PageAllocator::Instance().New<VoicePool>();
+        pool->PrepareToPlay();
+    }
+    ~VoiceTestFixture() { PageAllocator::Instance().Delete(pool); }
+
+    VoicePool* pool {};
+    AudioProcessingContext context {
+        .sample_rate = 44100,
+        .process_block_size_max = k_block_size_max,
+        .host = k_stub_host,
+    };
+    VoiceProcessingController controller {.layer_index = 0};
+};
+
+static AudioData CreateTestAudioData(Span<f32> buffer, u32 num_frames, u8 channels = 1) {
+    for (u32 i = 0; i < num_frames * channels; ++i) {
+        auto const frame_index = i / (u32)channels; // Intentional integer division.
+        buffer[i] = Sin(k_two_pi<f32> * (f32)frame_index / (f32)num_frames);
+    }
+    return {
+        .hash = 12345,
+        .channels = channels,
+        .sample_rate = 44100,
+        .num_frames = num_frames,
+        .interleaved_samples = {buffer.data, num_frames * channels},
+    };
+}
+
+static void StartTestSamplerVoice(VoiceTestFixture& fix,
+                                  sample_lib::Region const& region,
+                                  AudioData const& audio_data,
+                                  u7 note = 60,
+                                  f32 velocity = 0.8f,
+                                  bool disable_vol_env = true) {
+    VoiceStartParams::SamplerParams sampler_params {};
+    dyn::Append(sampler_params.voice_sample_params,
+                VoiceStartParams::SamplerParams::Region {
+                    .region = region,
+                    .audio_data = audio_data,
+                    .amp = 1.0f,
+                });
+
+    VoiceStartParams start_params {
+        .initial_pitch = 0,
+        .midi_key_trigger = {.note = note, .channel = 0},
+        .note_num = note,
+        .note_vel = velocity,
+        .lfo_start_phase = 0,
+        .num_frames_before_starting = 0,
+        .params = Move(sampler_params),
+        .disable_vol_env = disable_vol_env,
+    };
+
+    StartVoice(*fix.pool, fix.controller, start_params, fix.context);
+}
+
+static bool VoiceBufferHasNonZero(VoicePool& pool, u32 num_frames) {
+    for (auto& v : pool.EnumerateActiveVoices())
+        for (auto const i : Range(num_frames))
+            if (v.buffer[i][0] != 0.0f || v.buffer[i][1] != 0.0f) return true;
+    return false;
+}
+
+static bool AllVoiceBuffersWithinBounds(VoicePool& pool, u32 num_frames) {
+    for (auto& v : pool.EnumerateActiveVoices())
+        for (auto const i : Range(num_frames))
+            if (!All(v.buffer[i] >= -k_erroneous_sample_value && v.buffer[i] <= k_erroneous_sample_value))
+                return false;
+    return true;
+}
+
+TEST_CASE(TestVoiceProcessingSampler) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+
+    Array<f32, 1024> sample_buf {};
+    sample_lib::Region const region {
+        .root_key = 60,
+    };
+    auto audio_data = CreateTestAudioData(sample_buf, 1024);
+
+    SUBCASE("basic sampler voice produces non-zero output") {
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        StartTestSamplerVoice(fix, region, audio_data);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 1u);
+
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
+
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("sampler voice ends after sample exhausted") {
+        Array<f32, 64> short_buf {};
+        auto short_data = CreateTestAudioData(short_buf, 64);
+
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        StartTestSamplerVoice(fix, region, short_data);
+
+        for (int i = 0; i < 10; ++i)
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
+    }
+
+    SUBCASE("output stays within bounds") {
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        StartTestSamplerVoice(fix, region, audio_data);
+
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
+
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("stereo sample produces output") {
+        Array<f32, 2048> stereo_buf {};
+        auto stereo_data = CreateTestAudioData(stereo_buf, 1024, 2);
+
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        StartTestSamplerVoice(fix, region, stereo_data);
+
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
+
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("reverse playback produces output within bounds") {
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        fix.controller.reverse = true;
+        StartTestSamplerVoice(fix, region, audio_data);
+
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
+        REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
+
+        fix.controller.reverse = false;
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("multiple voices can be active simultaneously") {
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+
+        StartTestSamplerVoice(fix, region, audio_data, 60);
+        StartTestSamplerVoice(fix, region, audio_data, 64);
+        StartTestSamplerVoice(fix, region, audio_data, 67);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 3u);
+
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
+
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("note off triggers voice ending") {
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = true;
+        StartTestSamplerVoice(fix, region, audio_data, 60, 0.8f, false);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 1u);
+
+        NoteOff(*fix.pool, fix.controller, {.note = 60, .channel = 0});
+
+        // Process enough blocks for the envelope release to complete.
+        for (int i = 0; i < 500; ++i)
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestVoiceProcessingGranular) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {
+        .root_key = 60,
+    };
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    SUBCASE("granular with zero-length buffer from frames_before_starting does not crash") {
+        fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
+        fix.controller.vol_env_on = false;
+        fix.controller.granular = {
+            .speed = 1.0f,
+            .density = 0.5f,
+            .length_ms = 50.0f,
+            .spread = 0.1f,
+            .smoothing = 0.5f,
+        };
+
+        // Start the voice with num_frames_before_starting == k_block_size_max so the first
+        // processing block produces a zero-length output buffer for the granular code path.
+        VoiceStartParams::SamplerParams sampler_params {};
+        dyn::Append(sampler_params.voice_sample_params,
+                    VoiceStartParams::SamplerParams::Region {
+                        .region = region,
+                        .audio_data = audio_data,
+                        .amp = 1.0f,
+                    });
+        VoiceStartParams start_params {
+            .initial_pitch = 0,
+            .midi_key_trigger = {.note = 60, .channel = 0},
+            .note_num = 60,
+            .note_vel = 0.8f,
+            .lfo_start_phase = 0,
+            .num_frames_before_starting = k_block_size_max,
+            .params = Move(sampler_params),
+            .disable_vol_env = true,
+        };
+        StartVoice(*fix.pool, fix.controller, start_params, fix.context);
+
+        // First block: buffer is entirely consumed by frames_before_starting, giving size 0.
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        // Voice should still be active (it hasn't started producing audio yet).
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 1u);
+
+        // Subsequent blocks should produce audio normally.
+        bool found_nonzero = false;
+        for (int block = 0; block < 100 && !found_nonzero; ++block) {
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            found_nonzero = VoiceBufferHasNonZero(*fix.pool, k_block_size_max);
+        }
+        REQUIRE(found_nonzero);
+
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterVoiceTests) {
+    REGISTER_TEST(TestEqualPanGains);
+    REGISTER_TEST(TestVoiceProcessingSampler);
+    REGISTER_TEST(TestVoiceProcessingGranular);
+}
