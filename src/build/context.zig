@@ -19,6 +19,7 @@ pub const Options = struct {
     sanitize_thread: bool,
     fetch_floe_logos: bool,
     no_runtime_safety_checks: bool,
+    include_git_hash: bool,
     targets: ?[]const u8,
 };
 
