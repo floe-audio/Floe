@@ -1182,7 +1182,8 @@ struct VoiceProcessor {
                 {
                     ZoneNamedN(mix_zone, "Grain: Mix", true);
 
-                    for (usize i = 0; i < buffer.size; i += 2) {
+                    auto const even_size = buffer.size & ~usize(1);
+                    for (usize i = 0; i < even_size; i += 2) {
                         auto const samples = *(f32x4*)(void*)(&grain_samples[i]);
                         auto const gains = *(f32x4*)(void*)(&grain_gains[i]);
                         // The buffer might not be aligned, so we need memcpy.
@@ -1191,6 +1192,8 @@ struct VoiceProcessor {
                         buf += samples * gains;
                         __builtin_memcpy_inline(&buffer.data[i], &buf, sizeof(f32x4));
                     }
+                    if (buffer.size & 1)
+                        buffer.data[even_size] += grain_samples[even_size] * grain_gains[even_size];
                 }
             }
         }
@@ -1857,8 +1860,73 @@ TEST_CASE(TestVoiceProcessingGranular) {
     return k_success;
 }
 
+TEST_CASE(TestVoiceProcessingNonTypicalBufferSizes) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {
+        .root_key = 60,
+    };
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    constexpr u32 k_block_sizes[] = {1, 2, 3, 7, 13, 15, 16, 17, 31, k_block_size_max};
+    constexpr param_values::PlayMode k_modes[] = {
+        param_values::PlayMode::Standard,
+        param_values::PlayMode::GranularPlayback,
+        param_values::PlayMode::GranularFixed,
+    };
+
+    for (auto const mode : k_modes) {
+        for (auto const block_size : k_block_sizes) {
+            // Test note-start offsets from 0 up to block_size - 1.
+            for (u32 offset = 0; offset < block_size; ++offset) {
+                fix.controller.play_mode = mode;
+                fix.controller.vol_env_on = false;
+                fix.controller.granular = {
+                    .speed = 1.0f,
+                    .position = 0.5f,
+                    .density = 0.8f,
+                    .length_ms = 20.0f,
+                    .spread = 0.2f,
+                    .smoothing = 0.5f,
+                };
+
+                VoiceStartParams::SamplerParams sampler_params {};
+                dyn::Append(sampler_params.voice_sample_params,
+                            VoiceStartParams::SamplerParams::Region {
+                                .region = region,
+                                .audio_data = audio_data,
+                                .amp = 1.0f,
+                            });
+                VoiceStartParams start_params {
+                    .initial_pitch = 0,
+                    .midi_key_trigger = {.note = 60, .channel = 0},
+                    .note_num = 60,
+                    .note_vel = 0.8f,
+                    .lfo_start_phase = 0,
+                    .num_frames_before_starting = offset,
+                    .params = Move(sampler_params),
+                    .disable_vol_env = true,
+                };
+                StartVoice(*fix.pool, fix.controller, start_params, fix.context);
+
+                // Process several blocks to exercise grain spawning and mixing.
+                for (int block = 0; block < 20; ++block)
+                    ProcessVoices(*fix.pool, block_size, fix.context);
+
+                REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, block_size));
+
+                fix.pool->EndAllVoicesInstantly();
+            }
+        }
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterVoiceTests) {
     REGISTER_TEST(TestEqualPanGains);
     REGISTER_TEST(TestVoiceProcessingSampler);
     REGISTER_TEST(TestVoiceProcessingGranular);
+    REGISTER_TEST(TestVoiceProcessingNonTypicalBufferSizes);
 }
