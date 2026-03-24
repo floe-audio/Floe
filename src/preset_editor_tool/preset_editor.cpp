@@ -274,6 +274,34 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
     }
     lua_pop(lua, 1);
 
+    // Extract harmony_intervals
+    lua_getfield(lua, table_index, "harmony_intervals");
+    if (lua_istable(lua, -1)) {
+        lua_pushnil(lua);
+        while (lua_next(lua, -2) != 0) {
+            if (lua_isinteger(lua, -2) && lua_istable(lua, -1)) {
+                auto layer_index = (u32)lua_tointeger(lua, -2) - 1; // Convert from 1-indexed
+                if (layer_index < k_num_layers) {
+                    preset_state.harmony_intervals[layer_index].ClearAll();
+                    lua_pushnil(lua);
+                    while (lua_next(lua, -2) != 0) {
+                        if (lua_isinteger(lua, -1)) {
+                            auto semitone = (int)lua_tointeger(lua, -1);
+                            if (semitone >= k_harmony_interval_min_semitone &&
+                                semitone <= k_harmony_interval_max_semitone) {
+                                preset_state.harmony_intervals[layer_index].Set(
+                                    HarmonyIntervalBitIndex(semitone));
+                            }
+                        }
+                        lua_pop(lua, 1);
+                    }
+                }
+            }
+            lua_pop(lua, 1);
+        }
+    }
+    lua_pop(lua, 1);
+
     // Extract macro_names
     lua_getfield(lua, table_index, "macro_names");
     if (lua_istable(lua, -1)) {
@@ -448,6 +476,21 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
         lua_settable(lua, -3);
     }
     lua_setfield(lua, -2, "velocity_curve_points");
+
+    // harmony_intervals - array of layer arrays of semitone integers
+    lua_newtable(lua);
+    for (u16 i = 0u; i < k_num_layers; ++i) {
+        lua_pushinteger(lua, i + 1); // Lua is 1-indexed
+        lua_newtable(lua);
+        u16 entry_index = 1;
+        preset_state.harmony_intervals[i].ForEachSetBit([&](usize bit) {
+            lua_pushinteger(lua, entry_index++); // Lua is 1-indexed
+            lua_pushinteger(lua, HarmonyIntervalSemitones(bit));
+            lua_settable(lua, -3);
+        });
+        lua_settable(lua, -3);
+    }
+    lua_setfield(lua, -2, "harmony_intervals");
 
     // macro_names - array of strings
     lua_newtable(lua);
