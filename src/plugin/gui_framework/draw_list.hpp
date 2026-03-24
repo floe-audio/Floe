@@ -398,6 +398,7 @@ struct DrawListAllocator {
     void Clear() {
         lists.Clear();
         arena.FreeAll();
+        lists = {}; // Arena is freed, we must not retain pointers into it.
     }
 
     DrawList* Allocate(Renderer& r, Fonts const& f) { return lists.Prepend(arena, r, f); }
