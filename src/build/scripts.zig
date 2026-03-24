@@ -1330,7 +1330,7 @@ fn runBenchmarkCi(context: *Context) !u8 {
     try bencher_args.append("--thresholds-reset");
     try bencher_args.append("--err");
     try bencher_args.append("--adapter");
-    try bencher_args.append("json");
+    try bencher_args.append("shell_hyperfine");
     try bencher_args.append("--file");
     try bencher_args.append(results_file);
 
