@@ -678,7 +678,8 @@ Box DoFilterButton(GuiBuilder& builder,
               },
           });
 
-    if (button.button_fired) HandleFilterButtonClick(builder, state, options.common);
+    if (button.button_fired && !options.skip_click_handler)
+        HandleFilterButtonClick(builder, state, options.common);
 
     if (options.right_click_menu)
         DoRightClickMenuForBox(builder, state, button, options.common.clicked_hash, options.right_click_menu);
@@ -2283,6 +2284,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                                .filter_mode = context.state.filter_mode,
                                            },
                                        .no_bottom_margin = true,
+                                       .skip_click_handler = true,
                                    })
                         .button_fired) {
                     context.state.favourites_only = !context.state.favourites_only;

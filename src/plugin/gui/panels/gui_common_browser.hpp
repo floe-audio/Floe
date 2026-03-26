@@ -398,6 +398,7 @@ struct FilterButtonOptions {
     FilterButtonCommonOptions common;
     ImageID const* icon;
     bool no_bottom_margin;
+    bool skip_click_handler {};
     RightClickMenuState::Function right_click_menu {nullptr};
 };
 
