@@ -958,16 +958,15 @@ struct VoiceProcessor {
 
                             IncrementPlaybackPos(p, spread_offset, num_frames);
 
+                            if (PlaybackEnded(p, num_frames)) return k_nullopt;
+
                             if (ctrl.granular.random_direction > 0.0001f &&
                                 direction_rand < ctrl.granular.random_direction * 0.5f) {
                                 p.Invert(num_frames);
                                 p.InvertLoop(num_frames);
                             }
 
-                            if (!PlaybackEnded(p, num_frames))
-                                return p;
-                            else
-                                return k_nullopt;
+                            return p;
                         }()) {
                         // Init new grain.
                         {
