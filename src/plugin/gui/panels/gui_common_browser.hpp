@@ -209,7 +209,11 @@ struct CommonBrowserState {
     SelectedHashes selected_tags_hashes {"Tag"};
     SelectedHashes selected_folder_hashes {"Folder"};
     bool favourites_only {};
+
+    // We track both states so we know how to handle default_collapsed requests.
     DynamicArrayBounded<u64, 16> collapsed_filter_headers {};
+    DynamicArrayBounded<u64, 16> expanded_filter_headers {};
+
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<char, 100> filter_search {};
     DynamicArrayBounded<SelectedHashes*, 3> other_selected_hashes {};
@@ -356,6 +360,7 @@ struct BrowserSection {
     bool multiline_contents;
     bool subsection;
     bool bigger_contents_gap {false};
+    bool default_collapsed {false};
     bool skip_root_folder {};
     RightClickMenuState::Function right_click_menu {};
 

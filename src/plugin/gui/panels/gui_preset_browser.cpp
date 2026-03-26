@@ -635,6 +635,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
             .parent = parent,
             .heading = "PRESET TYPE",
             .multiline_contents = true,
+            .default_collapsed = true,
         };
 
         for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
@@ -690,6 +691,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
             .parent = parent,
             .heading = "AUTHOR",
             .multiline_contents = true,
+            .default_collapsed = true,
         };
 
         for (auto const [author, author_info, author_hash] : preset_authors) {

@@ -1085,7 +1085,9 @@ Box DoFilterCard(GuiBuilder& builder,
 
 BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
     if (!init) {
-        is_collapsed = Contains(state.collapsed_filter_headers, id);
+        auto& toggled_ids =
+            default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
+        is_collapsed = Contains(toggled_ids, id) != default_collapsed;
         init = true;
     } else {
         if (is_collapsed) return State::Collapsed;
@@ -1136,10 +1138,12 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                   });
 
         if (heading_container.button_fired) {
-            if (Contains(state.collapsed_filter_headers, id))
-                dyn::RemoveValue(state.collapsed_filter_headers, id);
+            auto& toggled_ids =
+                default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
+            if (Contains(toggled_ids, id))
+                dyn::RemoveValue(toggled_ids, id);
             else
-                dyn::Append(state.collapsed_filter_headers, id);
+                dyn::Append(toggled_ids, id);
         }
 
         if (right_click_menu) DoRightClickMenuForBox(builder, state, heading_container, id, right_click_menu);
@@ -1333,6 +1337,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                            ? Optional<String> {"LIBRARIES"_s}
                            : k_nullopt,
             .multiline_contents = !library_filters.card_view,
+            .default_collapsed = true,
         };
 
         for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
@@ -1491,6 +1496,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
             .parent = parent,
             .heading = "LIBRARY AUTHORS"_s,
             .multiline_contents = true,
+            .default_collapsed = true,
         };
 
         for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
@@ -1544,6 +1550,7 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
         .heading = "TAGS",
         .multiline_contents = false,
         .bigger_contents_gap = true,
+        .default_collapsed = true,
     };
 
     for (auto [category, tags_for_category, category_hash] : standard_tags) {
