@@ -2254,6 +2254,7 @@ Context::DraggerResult Context::DraggerBehaviour(DraggerBehaviourArgs const& arg
 
 bool Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
     SetHot(rect_in_window_coords, id);
+    RegisterRectForMouseTracking(rect_in_window_coords);
 
     constexpr auto k_delay_secs = 0.5;
 
