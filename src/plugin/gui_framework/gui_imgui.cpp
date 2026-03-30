@@ -1511,14 +1511,10 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
     if (temp_hot_item != id) RegisterRectForMouseTracking(r);
 
     // Set the hot/active states if necessary.
-    SetHot(r, id, cfg.is_non_viewport_content);
+    if (!cfg.dont_set_hot) SetHot(r, id, cfg.is_non_viewport_content);
     auto const is_hot = IsHot(id);
 
-    if (IsHot(id) && mouse_down) {
-        SetActive(id, cfg.mouse_button);
-        int b = 0;
-        (void)b;
-    }
+    if (IsHot(id) && mouse_down) SetActive(id, cfg.mouse_button);
     auto const is_active = IsActive(id, cfg.mouse_button);
 
     auto button_fired = ({

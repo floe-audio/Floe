@@ -63,7 +63,7 @@ void DoRightClickMenuForBox(GuiBuilder& builder,
         if (builder.imgui.ButtonBehaviour(
                 window_rect,
                 box.imgui_id,
-                {.mouse_button = MouseButton::Right, .event = MouseButtonEvent::Up})) {
+                {.mouse_button = MouseButton::Right, .event = MouseButtonEvent::Up, .dont_set_hot = true})) {
             state.right_click_menu_state.absolute_creator_rect = window_rect;
             state.right_click_menu_state.do_menu = do_menu;
             state.right_click_menu_state.item_hash = item_hash;

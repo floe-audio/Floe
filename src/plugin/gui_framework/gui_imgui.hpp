@@ -111,6 +111,11 @@ struct ButtonConfig {
     // Internal. Specify that this element does not live inside the typical content of a viewport, instead
     // it's inside the padding or scrollbar.
     bool32 is_non_viewport_content : 1 = false;
+
+    // Don't call SetHot. Without this, a secondary ButtonBehaviour call on a parent (e.g. for a
+    // right-click menu) that runs after child buttons would overwrite the child's hot state. The
+    // caller must ensure SetHot was already called for this ID, typically via a prior ButtonBehaviour.
+    bool32 dont_set_hot : 1 = false;
 };
 
 struct SliderConfig {
