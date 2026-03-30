@@ -623,19 +623,19 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
                                OrderedHashTable<String, FilterItemInfo> const& preset_authors,
                                Array<FilterItemInfo, ToInt(PresetFormat::Count)>& preset_type_filter_info,
                                PresetBrowserState& state,
-                               Box const& parent,
-                               u8& num_sections) {
+                               Box const& parent) {
     // We only show the preset type filter if we have both types of presets.
     if (context.presets_snapshot.has_preset_type.NumSet() > 1 &&
         !AllOf(preset_type_filter_info, [](FilterItemInfo const& i) { return i.total_available == 0; })) {
         BrowserSection section {
             .state = state.common_state,
-            .num_sections_rendered = &num_sections,
             .id = HashFnv1a("preset-type-section"),
             .parent = parent,
             .heading = "PRESET TYPE",
             .multiline_contents = true,
             .default_collapsed = true,
+            .dark_mode = true,
+            .store = &context.persistent_store,
         };
 
         for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
@@ -686,12 +686,13 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
     if (preset_authors.size) {
         BrowserSection section {
             .state = state.common_state,
-            .num_sections_rendered = &num_sections,
             .id = HashFnv1a("preset-author-section"),
             .parent = parent,
-            .heading = "AUTHOR",
+            .heading = "AUTHORS",
             .multiline_contents = true,
             .default_collapsed = true,
+            .dark_mode = true,
+            .store = &context.persistent_store,
         };
 
         for (auto const [author, author_info, author_hash] : preset_authors) {
@@ -853,21 +854,17 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                     .tags = tags,
                 },
             .do_extra_filters_top =
-                [&](GuiBuilder& builder, Box const& parent, u8& num_sections) {
-                    if (num_sections) DoModalDivider(builder, parent, {.horizontal = true});
-                    ++num_sections;
-
+                [&](GuiBuilder& builder, Box const& parent) {
                     auto constexpr k_section_id = HashFnv1a("preset-folders-section");
                     BrowserSection section {
                         .state = state.common_state,
                         .id = k_section_id,
                         .parent = parent,
-                        .heading =
-                            ShowPrimaryFilterSectionHeader(state.common_state, context.prefs, k_section_id)
-                                ? Optional<String> {"FOLDER"_s}
-                                : k_nullopt,
+                        .heading = "FOLDERS"_s,
                         .multiline_contents = false,
+                        .dark_mode = true,
                         .right_click_menu = PresetFolderRightClickMenu,
+                        .store = &context.persistent_store,
                     };
 
                     auto const do_card = [&](FolderNode const* folder, FilterItemInfo const& info) {
@@ -910,7 +907,10 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                 }),
                                 .folder_infos = folders,
                                 .folder = folder,
+                                .all_items_suffix = " Presets"_s,
+                                .default_collapsed = true,
                                 .right_click_menu = PresetFolderRightClickMenu,
+                                .store = &context.persistent_store,
                             });
                     };
 
@@ -921,14 +921,13 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                     }
                 },
             .do_extra_filters_bottom =
-                [&](GuiBuilder& builder, Box const& parent, u8& num_sections) {
+                [&](GuiBuilder& builder, Box const& parent) {
                     PresetBrowserExtraFilters(builder,
                                               context,
                                               preset_authors,
                                               preset_type_filter_info,
                                               state,
-                                              parent,
-                                              num_sections);
+                                              parent);
                 },
             .has_extra_filters = state.selected_author_hashes.HasSelected() != 0,
             .favourites_filter_info = favourites_info,

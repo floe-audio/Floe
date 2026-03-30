@@ -17,6 +17,15 @@ For instance: 0.0.1. Don't change the headings.
 ## 1.2.0-beta.2
 - GUI: add MIDI CC Assignments panel for viewing and managing all CC-to-parameter mappings, accessible from the top-panel menu
 - Fix voices from jumping into the loop region if you toggle the 'reversed' mode of a playing voice.
+- GUI: improve browsers panels:
+  - Cards are now expand and collapsible, selecting all items in a card is now done with a separate 'All' button.
+  - Left panel (filters) is now dark to better differentiate it and make the cards and icons look nicer.
+  - Sections are collapsed by default, but retains the collapse/expand state across Floe sessions.
+  - Fix toggle not working for Favourites button
+  - Use smaller radius corner rounding for tag buttons to match the rest of the UI
+  - Remove 3-dots menu and instead put the filter selection modes (One, AND, OR) at the top of the filters panel.
+  - Remove dividers between filter sections
+  - Remove "Show Primary Filter Section Header" option. Libraries/folders are now always collapsible - more consistent and intuitive.
 
 ## 1.2.0-beta.1
 Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.

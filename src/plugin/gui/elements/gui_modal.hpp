@@ -45,9 +45,10 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config);
 
 struct DividerOptions {
     f32 margin = 0;
-    bool horizontal = 0;
-    bool vertical = 0;
-    bool subtle = 0;
+    bool horizontal = false;
+    bool vertical = false;
+    bool subtle = false;
+    bool dark_mode = false;
 };
 Box DoModalDivider(GuiBuilder& builder,
                    Box parent,

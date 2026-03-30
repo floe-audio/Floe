@@ -229,7 +229,8 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& ir = *lib.sorted_irs[cursor.ir_index];
         auto const& folder = ir.folder;
-        auto const folder_hash = folder->Hash();
+        auto folder_hash = folder->Hash();
+        HashUpdate(folder_hash, lib.id);
         auto const new_folder = folder_hash != previous_folder_hash;
 
         if (new_folder) {
@@ -401,8 +402,8 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
         BrowserPopupOptions {
             .title = "Impulse Response",
             .height = 600,
-            .rhs_width = 210,
-            .filters_col_width = 210,
+            .rhs_width = 230,
+            .filters_col_width = 230,
             .item_type_name = "impulse response",
             .rhs_top_button =
                 BrowserPopupOptions::Button {

@@ -82,7 +82,8 @@ Box DoModalDivider(GuiBuilder& builder, Box parent, DividerOptions options, u64 
                  {
                      .parent = parent,
                      .id_extra = id_extra,
-                     .background_fill_colours = Col {.c = !options.subtle ? Col::Surface2 : Col::Surface0},
+                     .background_fill_colours = Col {.c = !options.subtle ? Col::Surface2 : Col::Surface0,
+                                                     .dark_mode = options.dark_mode},
                      .layout {
                          .size = options.horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
                                                     : f32x2 {one_pixel, layout::k_fill_parent},

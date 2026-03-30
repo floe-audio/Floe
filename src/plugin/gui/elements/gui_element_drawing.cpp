@@ -459,7 +459,9 @@ void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollba
     }
 }
 
-void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
+static void DrawModalScrollbarsWithMode(imgui::Context const& imgui,
+                                        imgui::ViewportScrollbars const& bars,
+                                        bool dark_mode) {
     for (auto const b : bars) {
         if (!b) continue;
         if (imgui.IsViewportHovered(imgui.curr_viewport) || imgui.IsActive(b->id, MouseButton::Left)) {
@@ -468,15 +470,15 @@ void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars 
 
             // Channel.
             if (hot_or_active) {
-                u32 col = ToU32({.c = Col::Background2});
+                u32 col = ToU32({.c = Col::Background2, .dark_mode = dark_mode});
                 imgui.draw_list->AddRectFilled(b->strip, col, rounding);
             }
 
             // Handle.
             {
                 auto handle_rect = b->handle;
-                u32 handle_col = ToU32({.c = Col::Surface1});
-                if (hot_or_active) handle_col = ToU32({.c = Col::Overlay0});
+                u32 handle_col = ToU32({.c = Col::Surface1, .dark_mode = dark_mode});
+                if (hot_or_active) handle_col = ToU32({.c = Col::Overlay0, .dark_mode = dark_mode});
                 if (imgui.curr_viewport->cfg.scrollbar_inside_padding) {
                     auto const pad_l = WwToPixels(hot_or_active ? 1 : 3.0f);
                     auto const pad_r = 0;
@@ -490,6 +492,14 @@ void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars 
             }
         }
     }
+}
+
+void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
+    DrawModalScrollbarsWithMode(imgui, bars, false);
+}
+
+void DrawModalScrollbarsDarkMode(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
+    DrawModalScrollbarsWithMode(imgui, bars, true);
 }
 
 void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui) {

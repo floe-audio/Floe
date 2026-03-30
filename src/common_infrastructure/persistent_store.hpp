@@ -108,6 +108,12 @@ void RemoveValue(Store& store, Id id, Optional<Span<u8 const>> value);
 PUBLIC bool GetFlag(Store& store, Id id) { return Get(store, id).tag == GetResult::Found; }
 PUBLIC void AddFlag(Store& store, Id id) { AddValue(store, id, {}); }
 PUBLIC void RemoveFlag(Store& store, Id id) { RemoveValue(store, id, k_nullopt); }
+PUBLIC void SetFlag(Store& store, Id id, bool state) {
+    if (state)
+        AddFlag(store, id);
+    else
+        RemoveFlag(store, id);
+}
 
 // Background thread.
 void StoreActualFileModifiedTime(Store& store);

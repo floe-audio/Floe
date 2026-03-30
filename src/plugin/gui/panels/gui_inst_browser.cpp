@@ -350,7 +350,8 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& inst = *lib.sorted_instruments[cursor.inst_index];
         auto const& folder = inst.folder;
-        auto const folder_hash = folder->Hash();
+        auto folder_hash = folder->Hash();
+        HashUpdate(folder_hash, lib.id);
         auto const new_folder = folder_hash != previous_folder_hash;
 
         if (new_folder) {
@@ -514,15 +515,16 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         }
     }
 
+    auto const waveform_library_hash = state.id ^ HashFnv1a("built-in-waveforms");
+
     FilterCardOptions const waveform_card {
         .common =
             {
                 .id_extra = SourceLocationHash(),
-                .is_selected =
-                    state.common_state.selected_library_hashes.Contains(Hash(k_waveform_library_id)),
-                .text = "Waveforms",
+                .is_selected = state.common_state.selected_library_hashes.Contains(waveform_library_hash),
+                .text = "Built-in Waveforms",
                 .hashes = state.common_state.selected_library_hashes,
-                .clicked_hash = Hash(k_waveform_library_id),
+                .clicked_hash = waveform_library_hash,
                 .filter_mode = state.common_state.filter_mode,
             },
         .library_id = k_waveform_library_id,
@@ -530,6 +532,8 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         .sample_library_server = context.sample_library_server,
         .instance_index = context.engine.instance_index,
         .subtext = "Basic waveforms built into Floe",
+        .default_collapsed = true,
+        .store = &context.persistent_store,
     };
 
     FilterItemInfo const waveform_info = {

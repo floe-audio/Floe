@@ -16,7 +16,7 @@
 struct Notifications;
 
 constexpr auto k_browser_item_height = 20.0f;
-constexpr auto k_browser_spacing = 8.0f;
+constexpr auto k_browser_spacing = 7.0f;
 
 constexpr auto k_untagged_tag_name = "<untagged>"_s;
 
@@ -211,8 +211,8 @@ struct CommonBrowserState {
     bool favourites_only {};
 
     // We track both states so we know how to handle default_collapsed requests.
-    DynamicArrayBounded<u64, 16> collapsed_filter_headers {};
-    DynamicArrayBounded<u64, 16> expanded_filter_headers {};
+    DynamicArray<u64> collapsed_filter_headers {Malloc::Instance()};
+    DynamicArray<u64> expanded_filter_headers {Malloc::Instance()};
 
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<char, 100> filter_search {};
@@ -269,7 +269,10 @@ struct FilterCardOptions {
     String subtext;
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
+    String all_items_suffix {}; // Appended after "All <name>" in the tree, e.g. " Instruments".
+    bool default_collapsed {};
     RightClickMenuState::Function right_click_menu {};
+    persistent_store::Store* store {};
 };
 
 struct LibraryFilters {
@@ -325,8 +328,8 @@ struct BrowserPopupOptions {
 
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
-    TrivialFunctionRef<void(GuiBuilder&, Box const& parent, u8& num_sections)> do_extra_filters_top {};
-    TrivialFunctionRef<void(GuiBuilder&, Box const& parent, u8& num_sections)> do_extra_filters_bottom {};
+    TrivialFunctionRef<void(GuiBuilder&, Box const& parent)> do_extra_filters_top {};
+    TrivialFunctionRef<void(GuiBuilder&, Box const& parent)> do_extra_filters_bottom {};
     bool has_extra_filters {};
     FilterItemInfo const& favourites_filter_info;
 
@@ -336,6 +339,25 @@ struct BrowserPopupOptions {
 Box DoBrowserItemsRoot(GuiBuilder& builder);
 
 struct BrowserItemsSectionOptions {};
+
+static constexpr u64 k_browser_collapse_store_id = HashFnv1a("browser-section-collapse-state");
+
+// Load a persisted section-collapse override into the in-memory toggled_ids array.
+inline void
+LoadCollapseStateFromStore(persistent_store::Store& store, DynamicArray<u64>& toggled_ids, u64 section_id) {
+    if (persistent_store::GetFlag(store, k_browser_collapse_store_id ^ section_id)) {
+        if (!Contains(toggled_ids, section_id)) dyn::Append(toggled_ids, section_id);
+    }
+}
+
+// Persist the current section-collapse state after a toggle.
+inline void SaveCollapseStateToStore(persistent_store::Store& store,
+                                     DynamicArray<u64> const& toggled_ids,
+                                     u64 section_id) {
+    persistent_store::SetFlag(store,
+                              k_browser_collapse_store_id ^ section_id,
+                              Contains(toggled_ids, section_id));
+}
 
 struct BrowserSection {
     enum class State : u8 {
@@ -350,7 +372,6 @@ struct BrowserSection {
     Result Do(GuiBuilder& builder);
 
     CommonBrowserState& state;
-    u8* num_sections_rendered; // Optional.
     u64 id;
     ::Box parent;
     Optional<String> heading;
@@ -362,7 +383,9 @@ struct BrowserSection {
     bool bigger_contents_gap {false};
     bool default_collapsed {false};
     bool skip_root_folder {};
+    bool dark_mode {};
     RightClickMenuState::Function right_click_menu {};
+    persistent_store::Store* store {};
 
     // Don't set these, they are set internally.
     Box box_cache {};
@@ -404,6 +427,7 @@ struct FilterButtonOptions {
     ImageID const* icon;
     bool no_bottom_margin;
     bool skip_click_handler {};
+    bool dark_mode = true;
     RightClickMenuState::Function right_click_menu {nullptr};
 };
 
@@ -411,6 +435,8 @@ struct FilterTreeButtonOptions {
     FilterButtonCommonOptions common;
     bool is_active;
     u8 indent;
+    Optional<FontType> font_override {};
+    String display_text {}; // If set, rendered instead of common.text (common.text is still used for hashes).
 };
 
 Box DoFilterButton(GuiBuilder& builder,
@@ -435,9 +461,5 @@ void DoRightClickMenuForBox(GuiBuilder& builder,
                             Box const& box,
                             u64 item_hash,
                             RightClickMenuState::Function const& do_menu);
-
-bool ShowPrimaryFilterSectionHeader(CommonBrowserState const& state,
-                                    prefs::Preferences const& preferences,
-                                    u64 section_heading_id);
 
 bool MatchesFilterSearch(String filter_text, String search_text);

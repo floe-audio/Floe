@@ -37,14 +37,6 @@ bool RootNodeLessThan(FolderNode const* const& a,
     return a->name < b->name;
 }
 
-static prefs::Descriptor ShowPrimaryFilterSectionHeaderDescriptor() {
-    return {
-        .key = "browser-show-primary-filter-section-header"_s,
-        .value_requirements = prefs::ValueType::Bool,
-        .default_value = false,
-    };
-}
-
 bool MatchesFilterSearch(String filter_text, String search_text) {
     if (search_text.size == 0) return true; // Empty search shows all filters
     if (filter_text.size == 0) return false; // Empty filter text doesn't match
@@ -437,38 +429,47 @@ Box DoBrowserItemsRoot(GuiBuilder& builder) {
                  });
 }
 
+struct FolderFilterTreeContext {
+    FolderFilterItemInfoLookupTable const& folder_infos;
+    u8 indent {};
+};
+
+struct FolderFilterTreeOptions {
+    RightClickMenuState::Function do_right_click_menu {};
+    bool no_lhs_border {};
+    bool parent_card_is_selected {};
+};
+
 static void DoFolderFilterAndChildren(GuiBuilder& builder,
                                       CommonBrowserState& state,
                                       Box const& parent,
-                                      u8& indent,
                                       FolderNode const* folder,
-                                      bool no_lhs_border,
-                                      FolderFilterItemInfoLookupTable const& folder_infos,
-                                      RightClickMenuState::Function const& do_right_click_menu = nullptr) {
+                                      FolderFilterTreeContext& context,
+                                      FolderFilterTreeOptions const& options) {
     // We want to stop if we find a preset bank within the preset bank.
     if (folder->user_data.As<PresetFolderListing const>())
         if (auto const bank = PresetBankAtNode(*folder);
             bank && folder->parent && bank != PresetBankAtNode(*folder->parent))
             return;
 
-    bool is_active = false;
-    if (!no_lhs_border) {
+    bool is_active = options.parent_card_is_selected;
+    if (!is_active && !options.no_lhs_border) {
         for (auto f = folder; f; f = f->parent) {
+            if (state.selected_folder_hashes.Contains(f->Hash())) {
+                is_active = true;
+                break;
+            }
+
             // We want to stop if the parent is part of a different preset bank.
             if (f->user_data.As<PresetFolderListing const>())
                 if (auto const bank = PresetBankAtNode(*f);
                     bank && f->parent && bank != PresetBankAtNode(*f->parent))
                     break;
-
-            if (state.selected_folder_hashes.Contains(f->Hash())) {
-                is_active = true;
-                break;
-            }
         }
     }
     auto const is_selected = state.selected_folder_hashes.Contains(folder->Hash());
 
-    auto this_info = folder_infos.Find(folder);
+    auto this_info = context.folder_infos.Find(folder);
     ASSERT(this_info);
 
     if (this_info->total_available == 0) return;
@@ -492,24 +493,16 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
                     .filter_mode = state.filter_mode,
                 },
             .is_active = is_active,
-            .indent = indent,
+            .indent = context.indent,
         });
 
-    if (do_right_click_menu)
-        DoRightClickMenuForBox(builder, state, button, folder->Hash(), do_right_click_menu);
+    if (options.do_right_click_menu)
+        DoRightClickMenuForBox(builder, state, button, folder->Hash(), options.do_right_click_menu);
 
-    ++indent;
-    for (auto* child = folder->first_child; child; child = child->next) {
-        DoFolderFilterAndChildren(builder,
-                                  state,
-                                  parent,
-                                  indent,
-                                  child,
-                                  no_lhs_border,
-                                  folder_infos,
-                                  do_right_click_menu);
-    }
-    --indent;
+    ++context.indent;
+    for (auto* child = folder->first_child; child; child = child->next)
+        DoFolderFilterAndChildren(builder, state, parent, child, context, options);
+    --context.indent;
 }
 
 static void HandleFilterButtonClick(GuiBuilder& builder,
@@ -584,38 +577,40 @@ Box DoFilterButton(GuiBuilder& builder,
 
     f32 const lr_spacing = 4;
 
-    auto const button = DoBox(builder,
-                              {
-                                  .parent = options.common.parent,
-                                  .id_extra = options.common.id_extra,
-                                  .background_fill_colours = options.common.is_selected
-                                                                 ? Colours {Col {.c = Col::Highlight}}
-                                                                 : Colours {ColSet {
-                                                                       .base = Col {.c = Col::Background2},
-                                                                       .hot = Col {.c = Col::Surface1},
-                                                                       .active = Col {.c = Col::Surface1},
-                                                                   }},
-                                  .background_fill_auto_hot_active_overlay = true,
-                                  .round_background_corners = 0b1111,
-                                  .corner_rounding = 999,
-                                  .layout {
-                                      .size {
-                                          layout::k_hug_contents,
-                                          k_browser_item_height,
-                                      },
-                                      .margins = {.b = options.no_bottom_margin ? 0 : k_browser_spacing / 2},
-                                      .contents_padding {
-                                          .l = !options.icon ? lr_spacing : 0,
-                                          .r = lr_spacing,
-                                      },
-                                      .contents_align = layout::Alignment::Start,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                  },
-                                  .tooltip = options.common.tooltip,
-                                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                                  .tooltip_justification = TooltipJustification::LeftOrRight,
-                                  .button_behaviour = imgui::ButtonConfig {},
-                              });
+    auto const button =
+        DoBox(builder,
+              {
+                  .parent = options.common.parent,
+                  .id_extra = options.common.id_extra,
+                  .background_fill_colours =
+                      options.common.is_selected
+                          ? Colours {Col {.c = Col::Highlight, .dark_mode = options.dark_mode}}
+                          : Colours {ColSet {
+                                .base = Col {.c = Col::Background2, .dark_mode = options.dark_mode},
+                                .hot = Col {.c = Col::Surface1, .dark_mode = options.dark_mode},
+                                .active = Col {.c = Col::Surface1, .dark_mode = options.dark_mode},
+                            }},
+                  .background_fill_auto_hot_active_overlay = true,
+                  .round_background_corners = 0b1111,
+                  .corner_rounding = k_corner_rounding,
+                  .layout {
+                      .size {
+                          layout::k_hug_contents,
+                          k_browser_item_height,
+                      },
+                      .margins = {.b = options.no_bottom_margin ? 0 : k_browser_spacing / 2},
+                      .contents_padding {
+                          .l = !options.icon ? lr_spacing : 0,
+                          .r = lr_spacing,
+                      },
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = options.common.tooltip,
+                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                  .tooltip_justification = TooltipJustification::LeftOrRight,
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
 
     bool grey_out = false;
     if (options.common.filter_mode == FilterMode::MultipleAnd) grey_out = num_used == 0;
@@ -632,6 +627,9 @@ Box DoFilterButton(GuiBuilder& builder,
               });
     }
 
+    // When selected, the background is a bright Highlight colour, we need to account for that.
+    bool const dark_mode_text = !options.common.is_selected && options.dark_mode;
+
     DoBox(builder,
           {
               .parent = button,
@@ -640,9 +638,9 @@ Box DoFilterButton(GuiBuilder& builder,
               .font = FontType::Body,
               .text_colours =
                   ColSet {
-                      .base = Col {.c = grey_out ? Col::Surface1 : Col::Text},
-                      .hot = Col {.c = Col::Text},
-                      .active = Col {.c = Col::Text},
+                      .base = Col {.c = grey_out ? Col::Surface1 : Col::Text, .dark_mode = dark_mode_text},
+                      .hot = Col {.c = Col::Text, .dark_mode = dark_mode_text},
+                      .active = Col {.c = Col::Text, .dark_mode = dark_mode_text},
                   },
               .text_overflow = TextOverflowType::AllowOverflow,
               .parent_dictates_hot_and_active = true,
@@ -665,9 +663,9 @@ Box DoFilterButton(GuiBuilder& builder,
               .font = k_numbering_font,
               .text_colours =
                   ColSet {
-                      .base = Col {.c = grey_out ? Col::Surface1 : Col::Text},
-                      .hot = Col {.c = Col::Text},
-                      .active = Col {.c = Col::Text},
+                      .base = Col {.c = grey_out ? Col::Surface1 : Col::Text, .dark_mode = dark_mode_text},
+                      .hot = Col {.c = Col::Text, .dark_mode = dark_mode_text},
+                      .active = Col {.c = Col::Text, .dark_mode = dark_mode_text},
                   },
               .text_justification = TextJustification::CentredLeft,
               .parent_dictates_hot_and_active = true,
@@ -689,7 +687,7 @@ Box DoFilterButton(GuiBuilder& builder,
 
 namespace filter_card_box {
 constexpr f32 k_outer_pad = 6.0f;
-constexpr f32 k_selection_left_border_width = 6;
+constexpr f32 k_selection_left_border_width = 4;
 constexpr f32 k_tree_indent = 10;
 } // namespace filter_card_box
 
@@ -745,8 +743,9 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                           },
                       },
                   .background_fill_auto_hot_active_overlay = false,
-                  .round_background_corners = 0b1111,
-                  .corner_rounding = 999,
+                  .round_background_corners =
+                      (options.common.is_selected && options.is_active) ? (Corners)0b0110 : (Corners)0b1111,
+                  .corner_rounding = k_corner_rounding,
                   .layout {
                       .size {
                           layout::k_fill_parent,
@@ -773,9 +772,9 @@ Box DoFilterTreeButton(GuiBuilder& builder,
     DoBox(builder,
           {
               .parent = button,
-              .text = options.common.text,
+              .text = options.display_text.size ? options.display_text : options.common.text,
               .size_from_text = false,
-              .font = FontType::Body,
+              .font = options.font_override.ValueOr(FontType::Body),
               .text_colours = text_cols,
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .parent_dictates_hot_and_active = true,
@@ -822,16 +821,24 @@ Box DoFilterCard(GuiBuilder& builder,
 
     auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
 
-    auto const card_outer = DoBox(builder,
-                                  {
-                                      .parent = options.common.parent,
-                                      .id_extra = options.common.id_extra,
-                                      .layout {
-                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                          .margins = {.b = k_browser_spacing},
-                                          .contents_direction = layout::Direction::Row,
-                                      },
-                                  });
+    auto const collapse_id = options.common.clicked_hash ^ HashFnv1a("card-collapse");
+    auto& card_toggled_ids =
+        options.default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
+    if (options.store) LoadCollapseStateFromStore(*options.store, card_toggled_ids, collapse_id);
+    bool const card_collapsed = Contains(card_toggled_ids, collapse_id) != options.default_collapsed;
+
+    auto const card_outer =
+        DoBox(builder,
+              {
+                  .parent = options.common.parent,
+                  .id_extra = options.common.id_extra,
+                  .drop_shadow = !card_collapsed,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .margins = {.t = 2, .b = card_collapsed ? 0 : k_browser_spacing / 2},
+                      .contents_direction = layout::Direction::Row,
+                  },
+              });
 
     Optional<ImageID> background_image1 {};
     Optional<ImageID> background_image2 {};
@@ -848,8 +855,10 @@ Box DoFilterCard(GuiBuilder& builder,
         if (builder.IsInputAndRenderPass()) {
             if (builder.imgui.IsRectVisible(
                     builder.imgui.ViewportRectToWindowRect(*BoxRect(builder, card_outer)))) {
-                background_image1 = imgs.blurred_background;
-                background_image2 = imgs.background;
+                if (!card_collapsed) {
+                    background_image1 = imgs.blurred_background;
+                    background_image2 = imgs.background;
+                }
                 icon = imgs.icon;
             }
         }
@@ -859,11 +868,11 @@ Box DoFilterCard(GuiBuilder& builder,
         DoBox(builder,
               {
                   .parent = card_outer,
-                  .background_fill_colours = Col {.c = Col::Background2, .dark_mode = true},
+                  .background_fill_colours =
+                      Col {.c = card_collapsed ? Col::None : Col::Background2, .dark_mode = true},
                   .background_tex = background_image1.NullableValue(),
                   .background_tex_alpha = 180,
                   .background_tex_fill_mode = BackgroundTexFillMode::Cover,
-                  .round_background_corners = 0b1111,
                   .layout {
                       .size = {layout::k_fill_parent, layout::k_hug_contents},
                       .contents_direction = layout::Direction::Row,
@@ -882,18 +891,6 @@ Box DoFilterCard(GuiBuilder& builder,
                                     .contents_direction = layout::Direction::Row,
                                 },
                             });
-
-    if (is_selected) {
-        DoBox(builder,
-              {
-                  .parent = card,
-                  .background_fill_colours = Col {.c = Col::Highlight},
-                  .round_background_corners = 0b1001,
-                  .layout {
-                      .size = {k_selection_left_border_width, layout::k_fill_parent},
-                  },
-              });
-    }
 
     auto const card_content = DoBox(builder,
                                     {
@@ -914,28 +911,27 @@ Box DoFilterCard(GuiBuilder& builder,
                   .background_fill_colours =
                       ColSet {
                           .base {
-                              .c = options.common.is_selected ? Col::Highlight300 : Col::None,
-                              .alpha = 37,
+                              .c = Col::None,
                           },
                           .hot {
-                              .c = options.common.is_selected ? Col::Highlight200 : Col::Overlay2,
+                              .c = Col::Overlay2,
                               .dark_mode = true,
                               .alpha = 37,
                           },
                           .active {
-                              .c = options.common.is_selected ? Col::Highlight200 : Col::Overlay2,
+                              .c = Col::Overlay2,
                               .dark_mode = true,
                               .alpha = 37,
                           },
                       },
-                  .round_background_corners = !is_selected ? (u4)0b1111 : (u4)0b0110,
+                  .round_background_corners = 0b1111,
                   .layout {
                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.lrtb = k_outer_pad},
-                      .contents_gap = k_outer_pad,
-                      .contents_direction = layout::Direction::Row,
+                      .contents_padding = {.l = 2, .r = 2, .tb = 4},
+                      .contents_gap = 2,
+                      .contents_direction = layout::Direction::Column,
                       .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                   },
                   .tooltip = options.common.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
@@ -950,39 +946,57 @@ Box DoFilterCard(GuiBuilder& builder,
                                options.common.clicked_hash,
                                options.right_click_menu);
 
+    auto const top_row = DoBox(builder,
+                               {
+                                   .parent = card_top,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_gap = k_outer_pad,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_align = layout::Alignment::Start,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                   },
+                               });
+
+    auto const title_row_height = !card_collapsed ? k_font_heading2_size : k_font_body_size;
+
+    DoBox(builder,
+          {
+              .parent = top_row,
+              .text = card_collapsed ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
+              .font = FontType::Icons,
+              .font_size = k_font_icons_size * 0.6f,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .text_justification = TextJustification::Centred,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {12, title_row_height},
+              },
+          });
+
     if (has_icon) {
         DoBox(builder,
               {
-                  .parent = card_top,
+                  .parent = top_row,
                   .background_tex = icon.NullableValue(),
                   .layout {
-                      .size = 28,
+                      .size = 18.0f,
                   },
               });
     }
 
-    auto const rhs = DoBox(builder,
-                           {
-                               .parent = card_top,
-                               .layout {
-                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                   .contents_direction = layout::Direction::Column,
-                                   .contents_align = layout::Alignment::Start,
-                                   .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                               },
-                           });
-
-    auto const title_box = DoBox(builder,
-                                 {
-                                     .parent = rhs,
-                                     .layout {
-                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .contents_gap = 8,
-                                         .contents_direction = layout::Direction::Row,
-                                         .contents_align = layout::Alignment::Start,
-                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                     },
-                                 });
+    auto const title_box = DoBox(
+        builder,
+        {
+            .parent = top_row,
+            .layout {
+                .size = {layout::k_fill_parent, card_collapsed ? title_row_height : layout::k_hug_contents},
+                .contents_gap = 8,
+                .contents_direction = layout::Direction::Row,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+            },
+        });
 
     Col const title_text_colours = {
         .c = num_used != 0 ? Col::Text : Col::Overlay2,
@@ -997,13 +1011,19 @@ Box DoFilterCard(GuiBuilder& builder,
           {
               .parent = title_box,
               .text = options.common.text,
-              .wrap_width = k_wrap_to_parent,
-              .size_from_text = true,
-              .font = FontType::Heading2,
+              .wrap_width = card_collapsed ? k_no_wrap : k_wrap_to_parent,
+              .size_from_text = !card_collapsed,
+              .font = card_collapsed ? FontType::Body : FontType::Heading2,
               .text_colours = title_text_colours,
+              .text_overflow =
+                  card_collapsed ? TextOverflowType::ShowDotsOnRight : TextOverflowType::AllowOverflow,
               .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = card_collapsed ? f32x2 {layout::k_fill_parent, title_row_height} : f32x2 {},
+              },
           });
 
+    bool const has_folder_children = options.folder && options.folder->first_child;
     DoBox(builder,
           {
               .parent = title_box,
@@ -1012,42 +1032,35 @@ Box DoFilterCard(GuiBuilder& builder,
               .font = FontType::Heading3,
               .text_colours = subtitle_text_colours,
               .parent_dictates_hot_and_active = true,
-          });
-
-    DoBox(builder,
-          {
-              .parent = rhs,
-              .text = options.subtext,
-              .wrap_width = k_wrap_to_parent,
-              .size_from_text = true,
-              .font = FontType::Heading3,
-              .text_colours = subtitle_text_colours,
-              .parent_dictates_hot_and_active = true,
               .layout {
-                  // When there's no LHS border, add a bit of padding so that the text won't jump to
-                  // multi-line when clicked on.
-                  .margins = {.r = is_selected ? 0 : k_selection_left_border_width},
+                  .size = {layout::k_hug_contents, title_row_height},
               },
           });
 
-    auto const fired_via_keyboard =
-        key_nav::DoItem(builder,
-                        state.keyboard_navigation,
-                        {
-                            .box = card_top,
-                            .box_for_scrolling = &card,
-                            .rect_for_drawing = BoxRect(builder, card_top).Transform([&](Rect r) {
-                                return r.ExpandLeft(is_selected ? k_selection_left_border_width : 0);
-                            }),
-                            .panel = BrowserKeyboardNavigation::Panel::Filters,
-                            .id = options.common.clicked_hash,
-                            .is_selected = options.common.is_selected,
-                            .is_tab_item = true,
-                        });
+    if (!card_collapsed) {
+        DoBox(builder,
+              {
+                  .parent = card_top,
+                  .text = options.subtext,
+                  .wrap_width = k_wrap_to_parent,
+                  .size_from_text = true,
+                  .font = FontType::Heading3,
+                  .text_colours = subtitle_text_colours,
+                  .parent_dictates_hot_and_active = true,
+                  .layout {.margins = {.l = 2}},
+              });
+    }
 
-    if (card_top.button_fired || fired_via_keyboard) HandleFilterButtonClick(builder, state, options.common);
+    if (card_top.button_fired) {
+        if (Contains(card_toggled_ids, collapse_id))
+            dyn::RemoveValue(card_toggled_ids, collapse_id);
+        else
+            dyn::Append(card_toggled_ids, collapse_id);
 
-    if (options.folder && options.folder->first_child) {
+        if (options.store) SaveCollapseStateToStore(*options.store, card_toggled_ids, collapse_id);
+    }
+
+    if (!card_collapsed) {
         auto const folder_box =
             DoBox(builder,
                   {
@@ -1066,17 +1079,46 @@ Box DoFilterCard(GuiBuilder& builder,
                       },
                   });
 
-        // Do the folder children, not the root folder.
-        for (auto* child = options.folder->first_child; child; child = child->next) {
-            u8 indent = 0;
-            DoFolderFilterAndChildren(builder,
-                                      state,
-                                      folder_box,
-                                      indent,
-                                      child,
-                                      options.common.is_selected,
-                                      options.folder_infos,
-                                      options.right_click_menu);
+        // "All" item: selects the root node (all children).
+        DoFilterTreeButton(
+            builder,
+            state,
+            info,
+            {
+                .common =
+                    {
+                        .parent = folder_box,
+                        .id_extra = options.common.id_extra,
+                        .is_selected = options.common.is_selected,
+                        .text = fmt::Format(builder.arena,
+                                            "All {}{}"_s,
+                                            options.common.text,
+                                            options.all_items_suffix),
+                        .hashes = options.common.hashes,
+                        .clicked_hash = options.common.clicked_hash,
+                        .filter_mode = options.common.filter_mode,
+                    },
+                .is_active = is_selected,
+                .indent = 0,
+                .font_override = FontType::BodyItalic,
+                .display_text = fmt::Format(builder.arena, "All{}"_s, options.all_items_suffix),
+            });
+
+        // Folder children.
+        if (has_folder_children) {
+            FolderFilterTreeContext context {.folder_infos = options.folder_infos, .indent = 0};
+            FolderFilterTreeOptions const folder_options {
+                .do_right_click_menu = options.right_click_menu,
+                .parent_card_is_selected = is_selected,
+            };
+            for (auto* child = options.folder->first_child; child; child = child->next)
+                DoFolderFilterAndChildren(builder, state, folder_box, child, context, folder_options);
+        }
+
+        // Final border around everything.
+        if (auto const card_r = BoxRect(builder, base_background)) {
+            auto const wnd_r = builder.imgui.ViewportRectToWindowRect(*card_r);
+            builder.imgui.draw_list->AddRect(wnd_r, Rgba(255, 255, 255, 0.2f), k_corner_rounding);
         }
     }
 
@@ -1087,6 +1129,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
     if (!init) {
         auto& toggled_ids =
             default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
+        if (store) LoadCollapseStateFromStore(*store, toggled_ids, id);
         is_collapsed = Contains(toggled_ids, id) != default_collapsed;
         init = true;
     } else {
@@ -1097,12 +1140,6 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
 
     builder.imgui.PushId(id);
     DEFER { builder.imgui.PopId(); };
-
-    if (num_sections_rendered) {
-        auto& n = *num_sections_rendered;
-        if (n) DoModalDivider(builder, parent, {.horizontal = true, .subtle = true});
-        ++n;
-    }
 
     auto const container =
         DoBox(builder,
@@ -1124,6 +1161,8 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                   {
                       .parent = container,
                       .background_fill_auto_hot_active_overlay = true,
+                      .round_background_corners = 0b1111,
+                      .corner_rounding = k_corner_rounding,
                       .layout {
                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                           .contents_gap = k_browser_spacing / 2,
@@ -1144,6 +1183,8 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                 dyn::RemoveValue(toggled_ids, id);
             else
                 dyn::Append(toggled_ids, id);
+
+            if (store) SaveCollapseStateToStore(*store, toggled_ids, id);
         }
 
         if (right_click_menu) DoRightClickMenuForBox(builder, state, heading_container, id, right_click_menu);
@@ -1154,7 +1195,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                   .text = is_collapsed ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
                   .font = FontType::Icons,
                   .font_size = k_font_icons_size * 0.6f,
-                  .text_colours = Col {.c = Col::Subtext0},
+                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = dark_mode},
                   .layout {
                       .size = k_font_icons_size * 0.4f,
                   },
@@ -1168,6 +1209,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                       .size_from_text = true,
                       .font = FontType::Icons,
                       .font_size = k_font_icons_size * 0.7f,
+                      .text_colours = Col {.c = Col::Text, .dark_mode = dark_mode},
                   });
         }
 
@@ -1219,6 +1261,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                           .wrap_width = k_wrap_to_parent,
                           .size_from_text = true,
                           .font = FontType::Heading3,
+                          .text_colours = Col {.c = Col::Text, .dark_mode = dark_mode},
                           .parent_dictates_hot_and_active = true,
                           .layout {
                               .margins = {.b = k_browser_spacing / 2},
@@ -1242,6 +1285,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                           .parent = container,
                           .layout {
                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                              .contents_padding = {.t = k_browser_spacing / 2},
                               .contents_gap = k_browser_spacing / 2,
                               .contents_direction = layout::Direction::Row,
                               .contents_multiline = true,
@@ -1309,35 +1353,20 @@ static void DoLibraryRightClickMenu(GuiBuilder& builder,
     }
 }
 
-bool ShowPrimaryFilterSectionHeader(CommonBrowserState const& state,
-                                    prefs::Preferences const& preferences,
-                                    u64 section_heading_id) {
-    bool v = true;
-    if (!prefs::GetBool(preferences, ShowPrimaryFilterSectionHeaderDescriptor())) v = false;
-
-    // If it's currently collapsed, show the heading otherwise it's not intuitive to why there's no
-    // items.
-    if (Contains(state.collapsed_filter_headers, section_heading_id)) v = true;
-    return v;
-}
-
 static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                     BrowserPopupContext& context,
                                     Box const& parent,
-                                    LibraryFilters const& library_filters,
-                                    u8& sections) {
+                                    LibraryFilters const& library_filters) {
     if (library_filters.libraries.size) {
         BrowserSection section = {
             .state = context.state,
-            .num_sections_rendered = &sections,
             .id = context.browser_id ^ HashFnv1a("libraries-section"),
             .parent = parent,
-            .heading = !library_filters.card_view ||
-                               ShowPrimaryFilterSectionHeader(context.state, context.preferences, section.id)
-                           ? Optional<String> {"LIBRARIES"_s}
-                           : k_nullopt,
+            .heading = "LIBRARIES"_s,
             .multiline_contents = !library_filters.card_view,
-            .default_collapsed = true,
+            .default_collapsed = !library_filters.card_view,
+            .dark_mode = true,
+            .store = &context.store,
         };
 
         for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
@@ -1396,6 +1425,12 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                           }),
                                           .folder_infos = library_filters.folders,
                                           .folder = folder,
+                                          .all_items_suffix = library_filters.resource_type ==
+                                                                      sample_lib::ResourceType::Instrument
+                                                                  ? " Instruments"_s
+                                                                  : " IRs"_s,
+                                          .default_collapsed = true,
+                                          .store = &context.store,
                                       });
             } else {
                 if (section.Do(builder) == BrowserSection::State::Collapsed) break;
@@ -1486,17 +1521,17 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
 static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
                                           BrowserPopupContext& context,
                                           Box const& parent,
-                                          LibraryFilters const& library_filters,
-                                          u8& sections) {
+                                          LibraryFilters const& library_filters) {
     if (library_filters.library_authors.size) {
         BrowserSection section = {
             .state = context.state,
-            .num_sections_rendered = &sections,
             .id = context.browser_id ^ HashFnv1a("library-authors-section"),
             .parent = parent,
             .heading = "LIBRARY AUTHORS"_s,
             .multiline_contents = true,
             .default_collapsed = true,
+            .dark_mode = true,
+            .store = &context.store,
         };
 
         for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
@@ -1525,8 +1560,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
 void DoBrowserTagsFilters(GuiBuilder& builder,
                           BrowserPopupContext& context,
                           Box const& parent,
-                          TagsFilters const& tags_filters,
-                          u8& sections) {
+                          TagsFilters const& tags_filters) {
     if (!tags_filters.tags.size) return;
 
     OrderedHashTable<TagCategory, OrderedHashTable<TagType, FilterItemInfo>> standard_tags {};
@@ -1544,13 +1578,14 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
 
     BrowserSection tags_section {
         .state = context.state,
-        .num_sections_rendered = &sections,
         .id = context.browser_id ^ HashFnv1a("tags-section"),
         .parent = parent,
         .heading = "TAGS",
         .multiline_contents = false,
         .bigger_contents_gap = true,
         .default_collapsed = true,
+        .dark_mode = true,
+        .store = &context.store,
     };
 
     for (auto [category, tags_for_category, category_hash] : standard_tags) {
@@ -1565,6 +1600,9 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
             .capitalise = true,
             .multiline_contents = true,
             .subsection = true,
+            .default_collapsed = true,
+            .dark_mode = true,
+            .store = &context.store,
         };
 
         for (auto const [tag, filter_item_info, _] : tags_for_category) {
@@ -1604,6 +1642,8 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
             .heading = "UNCATEGORISED",
             .multiline_contents = true,
             .subsection = true,
+            .default_collapsed = true,
+            .store = &context.store,
         };
 
         for (auto const [name, filter_item_info, name_hash] : non_standard_tags) {
@@ -1687,21 +1727,6 @@ static void DoMoreOptionsMenu(GuiBuilder& builder, BrowserPopupContext& context)
             if (context.state.filter_mode != FilterMode::Single && filter_mode == FilterMode::Single)
                 context.state.ClearToOne();
             context.state.filter_mode = filter_mode;
-        }
-    }
-
-    DoModalDivider(builder, root, {.margin = 4, .horizontal = true});
-
-    {
-        bool const state = prefs::GetBool(context.preferences, ShowPrimaryFilterSectionHeaderDescriptor());
-        if (MenuItem(builder,
-                     root,
-                     {
-                         .text = "Show Primary Filter Section Header",
-                         .is_selected = state,
-                     })
-                .button_fired) {
-            prefs::SetValue(context.preferences, ShowPrimaryFilterSectionHeaderDescriptor(), !state);
         }
     }
 }
@@ -1852,29 +1877,6 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     btn.on_fired();
                 }
             }
-            {
-                auto const btn = IconButton(builder,
-                                            rhs_top,
-                                            ICON_FA_ELLIPSIS_VERTICAL,
-                                            "More options",
-                                            k_font_heading2_size * 0.9f,
-                                            k_font_heading2_size);
-
-                auto const popup_id = builder.imgui.MakeId("moreoptions");
-
-                if (btn.button_fired) builder.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
-
-                if (builder.imgui.IsPopupMenuOpen(popup_id))
-                    DoBoxViewport(
-                        builder,
-                        {
-                            .run = [&context](GuiBuilder& builder) { DoMoreOptionsMenu(builder, context); },
-                            .bounds = btn,
-                            .imgui_id = popup_id,
-                            .viewport_config = k_default_popup_menu_viewport,
-                            .debug_name = "moreoptions",
-                        });
-            }
         }
 
         DoBox(builder,
@@ -1890,8 +1892,6 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
               });
     }
 
-    DoModalDivider(builder, root, {.horizontal = true});
-
     auto const main_section = DoBox(builder,
                                     {
                                         .parent = root,
@@ -1906,6 +1906,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
         auto const lhs = DoBox(builder,
                                {
                                    .parent = main_section,
+                                   .background_fill_colours = Col {.c = Col::Background1, .dark_mode = true},
+                                   .round_background_corners = 0b0001,
+                                   .corner_rounding = k_corner_rounding,
                                    .layout {
                                        .size = {options.filters_col_width, layout::k_fill_parent},
                                        .contents_padding = {.t = k_browser_spacing},
@@ -1934,7 +1937,11 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 DoBox(builder,
                       {
                           .parent = lhs_top,
-                          .background_fill_colours = Col {.c = Col::Background2},
+                          .background_fill_colours =
+                              Col {
+                                  .c = Col::Surface0,
+                                  .dark_mode = true,
+                              },
                           .round_background_corners = 0b1111,
                           .layout {
                               .size = {layout::k_fill_parent, layout::k_hug_contents},
@@ -1952,7 +1959,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                       .size_from_text = true,
                       .font = FontType::Icons,
                       .font_size = k_browser_item_height * 0.8f,
-                      .text_colours = Col {.c = Col::Subtext0},
+                      .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
                   });
 
             auto const filter_text_input =
@@ -1993,8 +2000,8 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 DrawTextInput(builder.imgui,
                               *filter_text_input_result,
                               {
-                                  .text_col = {.c = Col::Text},
-                                  .cursor_col = {.c = Col::Text},
+                                  .text_col = {.c = Col::Text, .dark_mode = true},
+                                  .cursor_col = {.c = Col::Text, .dark_mode = true},
                                   .selection_col = {.c = Col::Highlight, .alpha = 128},
                               });
             }
@@ -2012,7 +2019,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                               .size_from_text = true,
                               .font = FontType::Icons,
                               .font_size = k_browser_item_height * 0.9f,
-                              .text_colours = Col {.c = Col::Subtext0},
+                              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
                               .background_fill_auto_hot_active_overlay = true,
                               .tooltip = "Clear search"_s,
                               .button_behaviour = imgui::ButtonConfig {},
@@ -2022,13 +2029,14 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 }
             }
 
-            if (context.state.filter_mode != FilterMode::Single) {
-                auto const indicator_box =
+            {
+                auto const filter_mode_button =
                     DoBox(builder,
                           {
                               .parent = lhs_top,
                               .font = FontType::Body,
-                              .border_colours = Col {.c = Col::Overlay0},
+                              .background_fill_auto_hot_active_overlay = true,
+                              .border_colours = Col {.c = Col::Overlay0, .dark_mode = true},
                               .round_background_corners = 0b1111,
                               .layout {
                                   .size = {layout::k_hug_contents, layout::k_fill_parent},
@@ -2038,86 +2046,89 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                               },
                               .tooltip = FunctionRef<String()> {[&]() -> String {
                                   return fmt::Format(builder.arena,
-                                                     "Multi-select mode on with \"{}\" behaviour"_s,
-                                                     FilterModeTextAbbreviated(context.state.filter_mode));
+                                                     "Filter mode: {}"_s,
+                                                     FilterModeDescription(context.state.filter_mode));
                               }},
+                              .button_behaviour = imgui::ButtonConfig {},
                           });
 
                 DoBox(builder,
                       {
-                          .parent = indicator_box,
+                          .parent = filter_mode_button,
                           .text = FilterModeTextAbbreviated(context.state.filter_mode),
                           .size_from_text = true,
                           .font = FontType::Body,
-                          .text_colours = Col {.c = Col::Subtext0},
+                          .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+                          .parent_dictates_hot_and_active = true,
                       });
+
+                auto const popup_id = builder.imgui.MakeId("filtermode");
+
+                if (filter_mode_button.button_fired)
+                    builder.imgui.OpenPopupMenu(popup_id, filter_mode_button.imgui_id);
+
+                if (builder.imgui.IsPopupMenuOpen(popup_id))
+                    DoBoxViewport(
+                        builder,
+                        {
+                            .run = [&context](GuiBuilder& builder) { DoMoreOptionsMenu(builder, context); },
+                            .bounds = filter_mode_button,
+                            .imgui_id = popup_id,
+                            .viewport_config = k_default_popup_menu_viewport,
+                            .debug_name = "filtermode",
+                        });
             }
         }
 
-        DoBoxViewport(builder,
-                      {
-                          .run =
-                              [&](GuiBuilder& builder) {
-                                  if (!options.library_filters && !options.tags_filters) return;
+        DoBoxViewport(
+            builder,
+            {
+                .run =
+                    [&](GuiBuilder& builder) {
+                        if (!options.library_filters && !options.tags_filters) return;
 
-                                  auto const root = DoBrowserItemsRoot(builder);
+                        auto const root = DoBrowserItemsRoot(builder);
 
-                                  u8 num_lhs_sections = 0;
+                        if (options.do_extra_filters_top) options.do_extra_filters_top(builder, root);
 
-                                  if (options.do_extra_filters_top)
-                                      options.do_extra_filters_top(builder, root, num_lhs_sections);
+                        if (options.library_filters)
+                            DoBrowserLibraryFilters(builder, context, root, *options.library_filters);
 
-                                  if (options.library_filters)
-                                      DoBrowserLibraryFilters(builder,
-                                                              context,
-                                                              root,
-                                                              *options.library_filters,
-                                                              num_lhs_sections);
+                        if (options.tags_filters)
+                            DoBrowserTagsFilters(builder, context, root, *options.tags_filters);
 
-                                  if (options.tags_filters)
-                                      DoBrowserTagsFilters(builder,
-                                                           context,
-                                                           root,
-                                                           *options.tags_filters,
-                                                           num_lhs_sections);
+                        if (options.library_filters)
+                            DoBrowserLibraryAuthorFilters(builder, context, root, *options.library_filters);
 
-                                  if (options.library_filters)
-                                      DoBrowserLibraryAuthorFilters(builder,
-                                                                    context,
-                                                                    root,
-                                                                    *options.library_filters,
-                                                                    num_lhs_sections);
-
-                                  if (options.do_extra_filters_bottom)
-                                      options.do_extra_filters_bottom(builder, root, num_lhs_sections);
-                              },
-                          .bounds = DoBox(builder,
-                                          {
-                                              .parent = lhs,
-                                              .layout {
-                                                  .size = layout::k_fill_parent,
-                                              },
-                                          }),
-                          .imgui_id = builder.imgui.MakeId("filters"),
-                          .viewport_config = ({
-                              auto cfg = k_default_modal_subviewport;
-                              cfg.scrollbar_inside_padding = true;
-                              cfg.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
-                                                          imgui::ViewportScrollbarVisibility::Auto};
-                              cfg.padding = {.lr = k_browser_spacing};
-                              cfg.scroll_line_size = k_browser_item_height;
-                              cfg;
-                          }),
-                          .debug_name = "filters",
-                      });
+                        if (options.do_extra_filters_bottom) options.do_extra_filters_bottom(builder, root);
+                    },
+                .bounds = DoBox(builder,
+                                {
+                                    .parent = lhs,
+                                    .layout {
+                                        .size = layout::k_fill_parent,
+                                    },
+                                }),
+                .imgui_id = builder.imgui.MakeId("filters"),
+                .viewport_config = ({
+                    auto cfg = k_default_modal_subviewport;
+                    cfg.draw_scrollbars = DrawModalScrollbarsDarkMode, cfg.scrollbar_inside_padding = true;
+                    cfg.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
+                                                imgui::ViewportScrollbarVisibility::Auto};
+                    cfg.padding = {.lr = k_browser_spacing};
+                    cfg.scroll_line_size = k_browser_item_height;
+                    cfg;
+                }),
+                .debug_name = "filters",
+            });
     }
-
-    DoModalDivider(builder, main_section, {.vertical = true});
 
     {
         auto const rhs = DoBox(builder,
                                {
                                    .parent = main_section,
+                                   .border_colours = Col {.c = Col::Surface1},
+                                   .border_edges = 0b0100,
                                    .layout {
                                        .size = {options.rhs_width, layout::k_fill_parent},
                                        .contents_padding = {.t = k_browser_spacing},
@@ -2292,6 +2303,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                            },
                                        .no_bottom_margin = true,
                                        .skip_click_handler = true,
+                                       .dark_mode = false,
                                    })
                         .button_fired) {
                     context.state.favourites_only = !context.state.favourites_only;
@@ -2348,10 +2360,14 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                             DoBox(builder,
                                   {
                                       .parent = container,
-                                      .background_fill_colours = Col {.c = Col::Background2},
-                                      .background_fill_auto_hot_active_overlay = true,
+                                      .background_fill_colours =
+                                          ColSet {
+                                              .base = Col {.c = Col::Highlight},
+                                              .hot = Col {.c = Col::Highlight100},
+                                              .active = Col {.c = Col::Highlight},
+                                          },
                                       .round_background_corners = 0b1111,
-                                      .corner_rounding = 999,
+                                      .corner_rounding = k_corner_rounding,
                                       .layout {
                                           .size = {layout::k_hug_contents, k_browser_item_height},
                                           .margins {.b = k_browser_spacing / 2},
@@ -2380,7 +2396,13 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                   .text = ICON_FA_XMARK,
                                   .font = FontType::Icons,
                                   .font_size = k_font_icons_size * 0.7f,
-                                  .text_colours = Col {.c = Col::Subtext0},
+                                  .text_colours =
+                                      ColSet {
+                                          .base = Col {.c = Col::Subtext0},
+                                          .hot = Col {.c = Col::Text},
+                                          .active = Col {.c = Col::Text},
+                                      },
+                                  .parent_dictates_hot_and_active = true,
                                   .layout {
                                       .size = {k_font_icons_size * 0.7f, k_font_icons_size * 0.7f},
                                   },
