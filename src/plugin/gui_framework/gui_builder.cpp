@@ -480,10 +480,14 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             }
 
             if (config.text.size) {
+                auto const effective_wrap_width =
+                    wrap_width == k_wrap_to_parent ? rect.w : wrap_width;
                 auto text_pos = rect.pos;
                 Optional<f32x2> text_size;
                 if (config.text_justification != TextJustification::TopLeft) {
-                    text_size = builder.fonts.CalcTextSize(config.text, {.font_size = font_size});
+                    text_size = builder.fonts.CalcTextSize(
+                        config.text,
+                        {.font_size = font_size, .wrap_width = effective_wrap_width});
                     text_pos = AlignWithin(rect, *text_size, config.text_justification);
                 }
 
@@ -509,7 +513,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                       : config.text_colours.s.base),
                     text,
                     {
-                        .wrap_width = wrap_width == k_wrap_to_parent ? rect.w : wrap_width,
+                        .wrap_width = effective_wrap_width,
                         .font_size = font_size,
                     });
             }
