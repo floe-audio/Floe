@@ -13,7 +13,6 @@
 #include "engine/engine.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -188,6 +187,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, Box parent) {
                           .font = FontType::BodyItalic,
                           .text_colours = Col {.c = Col::White, .alpha = 220},
                           .text_justification = TextJustification::Centred,
+                          .multiline_alignment = MultilineTextAlignment::Centre,
                       });
             }
         }
@@ -797,7 +797,7 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                     });
 
         for (usize col = 0; col < 2; col++) {
-            auto const macro_index = row * 2 + col;
+            auto const macro_index = (row * 2) + col;
             auto const param_index = k_macro_params[macro_index];
             bool const has_destinations = g.engine.processor.main_macro_destinations[macro_index].Size() != 0;
 
