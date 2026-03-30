@@ -7,11 +7,13 @@
 
 #include "utils/basic_dynamic_array.hpp"
 
+#include "fonts.hpp"
 #include "renderer.hpp"
 
 // We ubiquitously use ABGR format colours stored as u32.
 
 enum class TextOverflowType : u8 { AllowOverflow, ShowDotsOnRight, ShowDotsOnLeft, Count };
+enum class TextAlignment : u8 { Left, Centre, Right };
 
 enum class TextJustification {
     Left = 1,
@@ -59,6 +61,9 @@ struct AddTextOptions {
     // The final font size is the font_size * font_scaling.
     f32 font_scaling = 1;
     f32 font_size = 0; // 0 means use default font size.
+
+    MultilineTextAlignment multiline_alignment = MultilineTextAlignment::Left;
+    f32 multiline_alignment_width = 0; // Width to align within. 0 means use wrap_width.
 };
 
 // Same as AddTextOptions, but with additional Rect-related options.

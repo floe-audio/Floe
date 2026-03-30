@@ -220,6 +220,7 @@ struct BoxConfig {
     f32 font_size = k_default_font_size;
     Colours text_colours = Col {.c = Col::Text};
     TextJustification text_justification = TextJustification::TopLeft;
+    MultilineTextAlignment multiline_alignment = MultilineTextAlignment::Left;
     TextOverflowType text_overflow = TextOverflowType::AllowOverflow;
     bool capitalize_text = false;
 

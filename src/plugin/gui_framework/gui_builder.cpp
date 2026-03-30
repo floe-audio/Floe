@@ -515,6 +515,8 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                     {
                         .wrap_width = effective_wrap_width,
                         .font_size = font_size,
+                        .multiline_alignment = config.multiline_alignment,
+                        .multiline_alignment_width = rect.w,
                     });
             }
 

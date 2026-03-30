@@ -1343,7 +1343,16 @@ void DrawList::AddText(f32x2 pos, u32 col, String str, AddTextOptions const& opt
     auto const font = fonts.Current();
     auto const font_size =
         (options.font_size != 0 ? options.font_size : font->font_size) * options.font_scaling;
-    font->RenderText(this, font_size, pos, col, clip_rect, str, options.wrap_width, false);
+    font->RenderText(this,
+                      font_size,
+                      pos,
+                      col,
+                      clip_rect,
+                      str,
+                      options.wrap_width,
+                      false,
+                      options.multiline_alignment,
+                      options.multiline_alignment_width);
 }
 
 static inline f32x2 Mul(f32x2 lhs, f32x2 rhs) { return f32x2 {lhs.x * rhs.x, lhs.y * rhs.y}; }

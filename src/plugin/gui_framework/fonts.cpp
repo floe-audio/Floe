@@ -721,6 +721,47 @@ void Font::RenderChar(DrawList* draw_list, f32 size, f32x2 pos, u32 col, Char16 
     }
 }
 
+static f32 LineAlignmentOffset(MultilineTextAlignment alignment, f32 wrap_width, f32 line_width) {
+    switch (alignment) {
+        case MultilineTextAlignment::Left: return 0;
+        case MultilineTextAlignment::Centre: return (wrap_width - line_width) * 0.5f;
+        case MultilineTextAlignment::Right: return wrap_width - line_width;
+    }
+    return 0;
+}
+
+static f32
+CalcLineWidth(Font const& font, f32 scale, char const* s, char const* text_end, f32 wrap_width) {
+    f32 line_width = 0;
+    bool const word_wrap_enabled = (wrap_width > 0.0f);
+    char const* word_wrap_eol = nullptr;
+
+    while (s < text_end) {
+        if (word_wrap_enabled) {
+            if (!word_wrap_eol) {
+                word_wrap_eol = font.CalcWordWrapPositionA(scale, s, text_end, wrap_width - line_width);
+                if (word_wrap_eol == s) word_wrap_eol++;
+            }
+            if (s >= word_wrap_eol) break;
+        }
+
+        auto c = (unsigned int)*s;
+        if (c < 0x80)
+            s += 1;
+        else {
+            s += Utf8CharacterToUtf32(&c, s, text_end, k_max_u16_codepoint);
+            if (c == 0) break;
+        }
+
+        if (c == '\n') break;
+        if (c < 32) continue;
+
+        line_width +=
+            (c < font.index_x_advance.size ? font.index_x_advance[c] : font.fallback_x_advance) * scale;
+    }
+    return line_width;
+}
+
 void Font::RenderText(DrawList* draw_list,
                       f32 size,
                       f32x2 pos,
@@ -728,7 +769,9 @@ void Font::RenderText(DrawList* draw_list,
                       f32x4 const& clip_rect,
                       String text,
                       f32 wrap_width,
-                      bool cpu_fine_clip) const {
+                      bool cpu_fine_clip,
+                      MultilineTextAlignment multiline_alignment,
+                      f32 multiline_alignment_width) const {
     // Align to be pixel perfect
     pos.x = (f32)(int)pos.x + display_offset.x;
     pos.y = (f32)(int)pos.y + display_offset.y;
@@ -740,6 +783,11 @@ void Font::RenderText(DrawList* draw_list,
     f32 const line_height = font_size * scale;
     bool const word_wrap_enabled = (wrap_width > 0.0f);
     char const* word_wrap_eol = nullptr;
+    // Alignment width defaults to wrap_width but can be overridden (e.g. to the box rect width)
+    // so that per-line centering is relative to the actual box, not the wrap boundary.
+    f32 const align_width = multiline_alignment_width > 0 ? multiline_alignment_width : wrap_width;
+    bool const needs_line_alignment =
+        multiline_alignment != MultilineTextAlignment::Left && align_width > 0;
 
     // Skip non-visible lines
     auto s = text.data;
@@ -747,6 +795,14 @@ void Font::RenderText(DrawList* draw_list,
     if (!word_wrap_enabled && y + line_height < clip_rect.y)
         while (s < text_end && *s != '\n') // Fast-forward to next line
             s++;
+
+    f32 line_x_offset = 0;
+    if (needs_line_alignment) {
+        line_x_offset = LineAlignmentOffset(multiline_alignment,
+                                            align_width,
+                                            CalcLineWidth(*this, scale, s, text_end, wrap_width));
+        x += line_x_offset;
+    }
 
     // Reserve vertices for remaining worse case (over-reserving is useful and easily amortized)
     auto const vtx_count_max = (u32)(text_end - s) * 4;
@@ -763,7 +819,8 @@ void Font::RenderText(DrawList* draw_list,
             // Calculate how far we can render. Requires two passes on the string data but keeps the code
             // simple and not intrusive for what's essentially an uncommon feature.
             if (!word_wrap_eol) {
-                word_wrap_eol = CalcWordWrapPositionA(scale, s, text_end, wrap_width - (x - pos.x));
+                word_wrap_eol =
+                    CalcWordWrapPositionA(scale, s, text_end, wrap_width - (x - pos.x - line_x_offset));
                 if (word_wrap_eol == s) // Wrap_width is too small to fit anything. Force displaying 1
                                         // character to minimize the height discontinuity.
                     word_wrap_eol++; // +1 may not be a character start point in UTF-8 but it's ok because we
@@ -774,6 +831,7 @@ void Font::RenderText(DrawList* draw_list,
                 x = pos.x;
                 y += line_height;
                 word_wrap_eol = nullptr;
+                line_x_offset = 0;
 
                 // Wrapping skips upcoming blanks
                 while (s < text_end) {
@@ -786,6 +844,12 @@ void Font::RenderText(DrawList* draw_list,
                     } else {
                         break;
                     }
+                }
+                if (needs_line_alignment) {
+                    line_x_offset = LineAlignmentOffset(multiline_alignment,
+                                                        align_width,
+                                                        CalcLineWidth(*this, scale, s, text_end, wrap_width));
+                    x += line_x_offset;
                 }
                 continue;
             }
@@ -804,11 +868,19 @@ void Font::RenderText(DrawList* draw_list,
             if (c == '\n') {
                 x = pos.x;
                 y += line_height;
+                line_x_offset = 0;
 
                 if (y > clip_rect.w) break;
                 if (!word_wrap_enabled && y + line_height < clip_rect.y)
                     while (s < text_end && *s != '\n') // Fast-forward to next line
                         s++;
+                if (needs_line_alignment) {
+                    line_x_offset = LineAlignmentOffset(
+                        multiline_alignment,
+                        align_width,
+                        CalcLineWidth(*this, scale, s, text_end, wrap_width));
+                    x += line_x_offset;
+                }
                 continue;
             }
             if (c == '\r') continue;
