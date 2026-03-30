@@ -574,16 +574,14 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                           });
 
         // Volume slider
-        DoKnobParameter(g,
-                        vol_col,
-                        params.DescribedValue(layer_index, LayerParamIndex::Volume),
-                        {
-                            .width = k_vol_slider_width,
-                            .knob_height_fraction = k_vol_slider_height / k_vol_slider_width,
-                            .style_system = GuiStyleSystem::MidPanel,
-                            .label = false,
-                            .vertical_slider = true,
-                        });
+        DoVerticalSliderParameter(g,
+                                  vol_col,
+                                  params.DescribedValue(layer_index, LayerParamIndex::Volume),
+                                  {
+                                      .width = k_vol_slider_width,
+                                      .height = k_vol_slider_height,
+                                      .style_system = GuiStyleSystem::MidPanel,
+                                  });
     }
 
     // Middle column: Pan knob + Mute/Solo

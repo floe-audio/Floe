@@ -23,7 +23,6 @@ struct ParameterComponentOptions {
     bool bidirectional = false;
     bool is_fake = false;
     bool label = true;
-    bool vertical_slider = false; // Draw as a vertical fader instead of a knob. Incompatible with peak_meter.
     String override_tooltip {};
     String override_label {};
     StereoPeakMeter const* peak_meter = nullptr; // If set, draws a peak meter inside the knob.
@@ -87,7 +86,23 @@ void DoMuteSoloButtons(GuiState& g,
                        DescribedParamValue const& solo_param,
                        MuteSoloButtonsOptions const& options = {});
 
-String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena);
+struct VerticalSliderParameterOptions {
+    f32 width;
+    f32 height;
+    Col highlight_col = {Col::Highlight};
+    Col line_col = {Col::Background0};
+    GuiStyleSystem style_system {};
+    bool greyed_out = false;
+    bool is_fake = false;
+    String override_tooltip {};
+};
+
+Box DoVerticalSliderParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              VerticalSliderParameterOptions const& options);
+
+String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out = false);
 
 void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);
 void AddParamContextMenuBehaviour(GuiState& g,

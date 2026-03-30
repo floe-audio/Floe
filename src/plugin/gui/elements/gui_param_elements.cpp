@@ -184,12 +184,14 @@ void AddParamContextMenuBehaviour(GuiState& g, Box const& box, DescribedParamVal
         AddParamContextMenuBehaviour(g, g.imgui.ViewportRectToWindowRect(*viewport_r), box.imgui_id, param);
 }
 
-String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena) {
+String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out) {
     auto const str = param.info.LinearValueToString(param.LinearValue());
     ASSERT(str);
 
     DynamicArray<char> buf {arena};
-    fmt::Append(buf, "{}: {}\n{}", param.info.name, str.Value(), param.info.tooltip);
+    fmt::Append(buf, "{}: {}\n", param.info.name, str.Value());
+    if (greyed_out) fmt::Append(buf, "Not active. ");
+    fmt::Append(buf, "{}", param.info.tooltip);
     if (param.info.value_type == ParamValueType::Int)
         fmt::Append(buf, ". Drag to edit or double-click to type a value");
 
@@ -349,7 +351,6 @@ Box DoKnobParameter(GuiState& g,
                     DescribedParamValue const& param,
                     ParameterComponentOptions const& options) {
     ASSERT(param.info.value_type == ParamValueType::Float);
-    ASSERT(!(options.vertical_slider && options.peak_meter));
 
     auto container = DoBox(g.builder,
                            {
@@ -363,7 +364,7 @@ Box DoKnobParameter(GuiState& g,
                                },
                                .tooltip = FunctionRef<String()> {[&]() -> String {
                                    if (options.override_tooltip.size) return options.override_tooltip;
-                                   return ParamTooltipText(param, g.builder.arena);
+                                   return ParamTooltipText(param, g.builder.arena, options.greyed_out);
                                }},
                            });
 
@@ -456,53 +457,38 @@ Box DoKnobParameter(GuiState& g,
                                                param.info.linear_range.min,
                                                param.info.linear_range.max);
 
-        if (options.vertical_slider) {
-            DrawVerticalSlider(g.builder.imgui,
-                               container.imgui_id,
-                               g.builder.imgui.ViewportRectToWindowRect(*r),
-                               current_percent,
-                               {
-                                   .highlight_col = ToU32(options.knob_highlight_col),
-                                   .line_col = ToU32(options.knob_line_col),
-                                   .modulation_percent = modulated_percent,
-                                   .style_system = options.style_system,
-                                   .greyed_out = options.greyed_out,
-                                   .is_fake = options.is_fake,
-                               });
-        } else {
-            if (options.peak_meter) {
-                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-                auto const knob_width_px = window_r.w;
-                auto const peak_meter_width_px = WwToPixels(21.0f);
-                auto const peak_meter_height_px = knob_width_px * 0.52f;
-                auto const peak_meter_y_offs = knob_width_px * 0.26f;
+        if (options.peak_meter) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+            auto const knob_width_px = window_r.w;
+            auto const peak_meter_width_px = WwToPixels(21.0f);
+            auto const peak_meter_height_px = knob_width_px * 0.52f;
+            auto const peak_meter_y_offs = knob_width_px * 0.26f;
 
-                Rect const peak_meter_r {
-                    .x = window_r.Centre().x - (peak_meter_width_px / 2),
-                    .y = window_r.y + peak_meter_y_offs,
-                    .w = peak_meter_width_px,
-                    .h = peak_meter_height_px,
-                };
-                DrawPeakMeter(g.imgui, peak_meter_r, *options.peak_meter, {.flash_when_clipping = false});
-            }
-
-            DrawKnob(g.builder.imgui,
-                     container.imgui_id,
-                     g.builder.imgui.ViewportRectToWindowRect(*r),
-                     current_percent,
-                     {
-                         .highlight_col = ToU32(options.knob_highlight_col),
-                         .line_col = ToU32(options.knob_line_col),
-                         .overload_position = param.info.display_format == ParamDisplayFormat::VolumeAmp
-                                                  ? param.info.LineariseValue(1, true)
-                                                  : k_nullopt,
-                         .outer_arc_percent = modulated_percent,
-                         .style_system = options.style_system,
-                         .greyed_out = options.greyed_out,
-                         .is_fake = options.is_fake,
-                         .bidirectional = options.bidirectional,
-                     });
+            Rect const peak_meter_r {
+                .x = window_r.Centre().x - (peak_meter_width_px / 2),
+                .y = window_r.y + peak_meter_y_offs,
+                .w = peak_meter_width_px,
+                .h = peak_meter_height_px,
+            };
+            DrawPeakMeter(g.imgui, peak_meter_r, *options.peak_meter, {.flash_when_clipping = false});
         }
+
+        DrawKnob(g.builder.imgui,
+                 container.imgui_id,
+                 g.builder.imgui.ViewportRectToWindowRect(*r),
+                 current_percent,
+                 {
+                     .highlight_col = ToU32(options.knob_highlight_col),
+                     .line_col = ToU32(options.knob_line_col),
+                     .overload_position = param.info.display_format == ParamDisplayFormat::VolumeAmp
+                                              ? param.info.LineariseValue(1, true)
+                                              : k_nullopt,
+                     .outer_arc_percent = modulated_percent,
+                     .style_system = options.style_system,
+                     .greyed_out = options.greyed_out,
+                     .is_fake = options.is_fake,
+                     .bidirectional = options.bidirectional,
+                 });
     }
 
     // Draw text input after the knob so its on top.
@@ -539,6 +525,94 @@ Box DoKnobParameter(GuiState& g,
                       .size = {knob_width, k_font_body_size},
                   },
               });
+    }
+
+    return container;
+}
+
+Box DoVerticalSliderParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              VerticalSliderParameterOptions const& options) {
+    ASSERT(param.info.value_type == ParamValueType::Float);
+
+    auto container = DoBox(g.builder,
+                           {
+                               .parent = parent,
+                               .id_extra = param.info.id,
+                               .layout {
+                                   .size = {options.width, options.height},
+                               },
+                               .tooltip = FunctionRef<String()> {[&]() -> String {
+                                   if (options.override_tooltip.size) return options.override_tooltip;
+                                   return ParamTooltipText(param, g.builder.arena);
+                               }},
+                           });
+
+    auto val = param.LinearValue();
+    Optional<f32> new_val {};
+
+    // Dragger behaviour.
+    if (auto const viewport_r = BoxRect(g.builder, container)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+            .rect_in_window_coords = window_r,
+            .id = container.imgui_id,
+            .text = ""_s,
+            .min = param.info.linear_range.min,
+            .max = param.info.linear_range.max,
+            .value = val,
+            .default_value = param.info.default_linear_value,
+            .slider_cfg {
+                .sensitivity = 256 / param.info.linear_range.Delta(),
+                .slower_with_shift = true,
+                .default_on_modifer = true,
+            },
+        });
+
+        container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
+        container.is_hot = g.imgui.IsHot(container.imgui_id);
+
+        if (dragger_result.value_changed) new_val = val;
+
+        if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
+            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+        if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
+            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+        ParameterValuePopup(g, param, container.imgui_id, window_r);
+
+        AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
+        OverlayMacroDestinationRegion(g, window_r, param.info.index);
+    }
+
+    // Drawing.
+    if (auto const r = BoxRect(g.builder, container)) {
+        auto const current_percent =
+            MapTo01(new_val ? *new_val : val, param.info.linear_range.min, param.info.linear_range.max);
+        auto const modulated_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params,
+                                                                   g.engine.processor.main_macro_destinations,
+                                                                   val,
+                                                                   param.info.index),
+                                               param.info.linear_range.min,
+                                               param.info.linear_range.max);
+
+        DrawVerticalSlider(g.builder.imgui,
+                           container.imgui_id,
+                           g.builder.imgui.ViewportRectToWindowRect(*r),
+                           current_percent,
+                           {
+                               .highlight_col = ToU32(options.highlight_col),
+                               .line_col = ToU32(options.line_col),
+                               .modulation_percent = modulated_percent,
+                               .style_system = options.style_system,
+                               .greyed_out = options.greyed_out,
+                               .is_fake = options.is_fake,
+                           });
     }
 
     return container;
