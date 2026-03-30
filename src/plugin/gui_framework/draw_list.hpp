@@ -148,6 +148,11 @@ struct DrawList {
 
     void AddCircleFilled(f32x2 centre, f32 radius, u32 col, u32 num_segments = 12);
 
+    // Draws a vignette effect: darkening edges that fade toward the centre. colour is the edge colour
+    // (typically black with some alpha). inner_radius_fraction: 0-1, how far from centre the darkening
+    // starts. subdivisions: grid resolution per axis for smooth radial falloff.
+    void AddVignetteRect(Rect r, u32 colour, f32 inner_radius_fraction = 0.3f, u32 subdivisions = 16);
+
     void AddDropShadow(f32x2 a,
                        f32x2 b,
                        u32 col,

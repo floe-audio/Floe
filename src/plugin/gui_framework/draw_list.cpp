@@ -1043,6 +1043,69 @@ void DrawList::AddQuadFilledMultiColor(f32x2 upr_left,
     PrimWriteVtx(bot_left, uv, col_bot_left);
 }
 
+void DrawList::AddVignetteRect(Rect r, u32 colour, f32 inner_radius_fraction, u32 subdivisions) {
+    if ((colour & k_alpha_mask) == 0) return;
+    if (subdivisions == 0) return;
+
+    auto const base_alpha = (f32)((colour >> k_alpha_shift) & 0xFF);
+    auto const colour_no_alpha = colour & k_alpha_mask_inv;
+
+    // Compute vignette alpha for a point based on its elliptical distance from centre
+    auto const inv_range = 1.0f / Max(1.0f - inner_radius_fraction, 0.001f);
+    auto vignette_colour = [&](f32 nx, f32 ny) -> u32 {
+        // Elliptical distance normalised to 0-1 (0 = centre, 1 = edge)
+        auto const dist = Sqrt((nx * nx) + (ny * ny));
+        // Smoothstep falloff
+        auto t = Clamp((dist - inner_radius_fraction) * inv_range, 0.0f, 1.0f);
+        t = t * t * (3.0f - 2.0f * t);
+        auto const a = (u8)(base_alpha * t);
+        return colour_no_alpha | ((u32)a << k_alpha_shift);
+    };
+
+    // Build a grid of positions and colours. Each vertex gets alpha based on its actual
+    // distance from centre, so there are no seam artifacts at diagonals.
+    auto const n = subdivisions + 1;
+    auto const total_verts = n * n;
+    auto* cols = (u32*)__builtin_alloca(total_verts * sizeof(u32));
+    auto* positions = (f32x2*)__builtin_alloca(total_verts * sizeof(f32x2));
+
+    for (u32 yi = 0; yi < n; ++yi) {
+        auto const fy = (f32)yi / (f32)(n - 1);
+        auto const ny = (fy * 2.0f) - 1.0f; // -1 to 1
+        auto const py = r.y + (r.h * fy);
+
+        for (u32 xi = 0; xi < n; ++xi) {
+            auto const fx = (f32)xi / (f32)(n - 1);
+            auto const nx = (fx * 2.0f) - 1.0f; // -1 to 1
+            auto const idx = (yi * n) + xi;
+            positions[idx] = {r.x + (r.w * fx), py};
+            cols[idx] = vignette_colour(nx, ny);
+        }
+    }
+
+    // Draw quads between grid points
+    for (u32 yi = 0; yi < subdivisions; ++yi) {
+        for (u32 xi = 0; xi < subdivisions; ++xi) {
+            auto const tl = (yi * n) + xi;
+            auto const tr = tl + 1;
+            auto const bl = tl + n;
+            auto const br = bl + 1;
+
+            // Skip fully transparent quads
+            if (((cols[tl] | cols[tr] | cols[bl] | cols[br]) & k_alpha_mask) == 0) continue;
+
+            AddQuadFilledMultiColor(positions[tl],
+                                    positions[tr],
+                                    positions[br],
+                                    positions[bl],
+                                    cols[tl],
+                                    cols[tr],
+                                    cols[br],
+                                    cols[bl]);
+        }
+    }
+}
+
 void DrawList::AddQuad(f32x2 a, f32x2 b, f32x2 c, f32x2 d, u32 col, f32 thickness) {
     if ((col & k_alpha_mask) == 0) return;
 
