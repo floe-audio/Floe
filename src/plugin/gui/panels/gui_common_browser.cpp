@@ -958,7 +958,7 @@ Box DoFilterCard(GuiBuilder& builder,
                                    },
                                });
 
-    auto const title_row_height = !card_collapsed ? k_font_heading2_size : k_font_body_size;
+    auto const title_row_height = k_font_body_size;
 
     DoBox(builder,
           {
@@ -1013,7 +1013,7 @@ Box DoFilterCard(GuiBuilder& builder,
               .text = options.common.text,
               .wrap_width = card_collapsed ? k_no_wrap : k_wrap_to_parent,
               .size_from_text = !card_collapsed,
-              .font = card_collapsed ? FontType::Body : FontType::Heading2,
+              .font = FontType::Body,
               .text_colours = title_text_colours,
               .text_overflow =
                   card_collapsed ? TextOverflowType::ShowDotsOnRight : TextOverflowType::AllowOverflow,
