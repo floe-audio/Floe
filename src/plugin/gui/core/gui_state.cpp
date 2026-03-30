@@ -70,6 +70,9 @@ static void CreateFontsIfNeeded(FontAtlas& fonts) {
                 case FontType::Heading1: load_font(roboto_ttf, k_font_heading1_size, def_ranges); break;
                 case FontType::Heading2: load_font(roboto_ttf, k_font_heading2_size, def_ranges); break;
                 case FontType::Heading3: load_font(roboto_ttf, k_font_heading3_size, def_ranges); break;
+                case FontType::LargeTitle:
+                    load_font(EmbeddedOutfitSemiBold(), k_font_large_title_size, def_ranges);
+                    break;
                 case FontType::Icons: {
                     auto const icons_ttf = EmbeddedFontAwesome();
                     auto constexpr k_icon_ranges = Array {GlyphRange {ICON_MIN_FA, ICON_MAX_FA}};

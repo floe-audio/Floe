@@ -10,6 +10,7 @@ enum class FontType : u8 {
     Heading1,
     Heading2,
     Heading3, // Typically always capitalise all text with this font.
+    LargeTitle,
     Icons,
     Count,
 };
@@ -21,4 +22,5 @@ constexpr f32 k_font_body_italic_size = FontSizeWw(12);
 constexpr f32 k_font_heading1_size = FontSizeWw(18);
 constexpr f32 k_font_heading2_size = FontSizeWw(14);
 constexpr f32 k_font_heading3_size = FontSizeWw(10);
+constexpr f32 k_font_large_title_size = FontSizeWw(32);
 constexpr f32 k_font_icons_size = FontSizeWw(14);

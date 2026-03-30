@@ -75,6 +75,11 @@ void DrawMidBlurredBackground(GuiState& g,
                                      options.rounding_corners);
 }
 
+constexpr u32 k_vignette_colour = Rgba(0, 0, 0, 0.4f);
+constexpr f32 k_vignette_inner_radius = 0.20f;
+constexpr u32 k_vignette_num_bands = 16;
+constexpr f32 k_vignette_panel_opacity = 0.05f;
+
 void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id) {
     auto const panel_rounding = WwToPixels(k_panel_rounding);
 
@@ -82,6 +87,13 @@ void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib:
         DrawMidBlurredBackground(g, window_r, window_r, *lib_id, {});
     else
         g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
+
+    // Darken blurred panels on the perform page so they blend with the vignetted background
+    if (g.mid_panel_state.tab == MidPanelTab::Perform) {
+        g.imgui.draw_list->AddRectFilled(window_r,
+                                         ChangeAlpha(k_vignette_colour, k_vignette_panel_opacity),
+                                         panel_rounding);
+    }
 
     g.imgui.draw_list->AddRect(window_r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
 }
@@ -136,6 +148,11 @@ static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
         DrawMidPanelBackgroundImage(g, *lib_id);
     else
         imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
+
+    if (g.mid_panel_state.tab == MidPanelTab::Perform) {
+        imgui.draw_list->AddRectFilled(r, Rgba(0, 0, 0, 0.0f));
+        imgui.draw_list->AddVignetteRect(r, k_vignette_colour, k_vignette_inner_radius, k_vignette_num_bands);
+    }
 }
 
 struct MidPanelTabBarResult {
