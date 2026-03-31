@@ -1614,7 +1614,8 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     if (coder.IsReading()) {
         for (auto const i : Range(k_num_parameters)) {
             auto const& info = k_param_descriptors[i];
-            state.param_values[i] = Clamp(state.param_values[i], info.linear_range.min, info.linear_range.max);
+            state.param_values[i] =
+                Clamp(state.param_values[i], info.linear_range.min, info.linear_range.max);
         }
     }
 

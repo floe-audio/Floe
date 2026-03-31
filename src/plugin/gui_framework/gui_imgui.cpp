@@ -809,10 +809,12 @@ void Context::EndFrame() {
 
     if (temp_hot_item != hot_item)
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+
     if (temp_active_item.just_activated) {
         temp_hot_item = k_null_id;
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
+
     if (tab_to_focus_next_input)
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }

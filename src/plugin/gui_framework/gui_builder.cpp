@@ -480,8 +480,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             }
 
             if (config.text.size) {
-                auto const effective_wrap_width =
-                    wrap_width == k_wrap_to_parent ? rect.w : wrap_width;
+                auto const effective_wrap_width = wrap_width == k_wrap_to_parent ? rect.w : wrap_width;
                 auto text_pos = rect.pos;
                 Optional<f32x2> text_size;
                 if (config.text_justification != TextJustification::TopLeft) {
@@ -506,18 +505,17 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                     });
                 }
 
-                builder.imgui.draw_list->AddText(
-                    text_pos,
-                    ToU32(is_hot      ? config.text_colours.s.hot
-                          : is_active ? config.text_colours.s.active
-                                      : config.text_colours.s.base),
-                    text,
-                    {
-                        .wrap_width = effective_wrap_width,
-                        .font_size = font_size,
-                        .multiline_alignment = config.multiline_alignment,
-                        .multiline_alignment_width = rect.w,
-                    });
+                builder.imgui.draw_list->AddText(text_pos,
+                                                 ToU32(is_hot      ? config.text_colours.s.hot
+                                                       : is_active ? config.text_colours.s.active
+                                                                   : config.text_colours.s.base),
+                                                 text,
+                                                 {
+                                                     .wrap_width = effective_wrap_width,
+                                                     .font_size = font_size,
+                                                     .multiline_alignment = config.multiline_alignment,
+                                                     .multiline_alignment_width = rect.w,
+                                                 });
             }
 
             if (config.tooltip.tag != TooltipStringType::None) {

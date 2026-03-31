@@ -730,8 +730,7 @@ static f32 LineAlignmentOffset(MultilineTextAlignment alignment, f32 wrap_width,
     return 0;
 }
 
-static f32
-CalcLineWidth(Font const& font, f32 scale, char const* s, char const* text_end, f32 wrap_width) {
+static f32 CalcLineWidth(Font const& font, f32 scale, char const* s, char const* text_end, f32 wrap_width) {
     f32 line_width = 0;
     bool const word_wrap_enabled = (wrap_width > 0.0f);
     char const* word_wrap_eol = nullptr;
@@ -786,8 +785,7 @@ void Font::RenderText(DrawList* draw_list,
     // Alignment width defaults to wrap_width but can be overridden (e.g. to the box rect width)
     // so that per-line centering is relative to the actual box, not the wrap boundary.
     f32 const align_width = multiline_alignment_width > 0 ? multiline_alignment_width : wrap_width;
-    bool const needs_line_alignment =
-        multiline_alignment != MultilineTextAlignment::Left && align_width > 0;
+    bool const needs_line_alignment = multiline_alignment != MultilineTextAlignment::Left && align_width > 0;
 
     // Skip non-visible lines
     auto s = text.data;
@@ -875,10 +873,9 @@ void Font::RenderText(DrawList* draw_list,
                     while (s < text_end && *s != '\n') // Fast-forward to next line
                         s++;
                 if (needs_line_alignment) {
-                    line_x_offset = LineAlignmentOffset(
-                        multiline_alignment,
-                        align_width,
-                        CalcLineWidth(*this, scale, s, text_end, wrap_width));
+                    line_x_offset = LineAlignmentOffset(multiline_alignment,
+                                                        align_width,
+                                                        CalcLineWidth(*this, scale, s, text_end, wrap_width));
                     x += line_x_offset;
                 }
                 continue;
