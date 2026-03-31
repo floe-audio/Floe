@@ -685,6 +685,7 @@ pub fn build(b: *std.Build) void {
                     .library = buildFloeLibrary(&ctx, &native_target_cfg, .{
                         .stb_sprintf = buildStbSprintf(&ctx, &native_target_cfg),
                         .debug_info_lib = buildDebugInfo(&ctx, &native_target_cfg),
+                        .zig_std = buildZigStd(&ctx, &native_target_cfg),
                         .tracy = buildTracy(&ctx, &native_target_cfg),
                     }),
                     .miniz = buildMiniz(&ctx, &native_target_cfg),
@@ -938,10 +939,22 @@ fn buildDebugInfo(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build
     return lib;
 }
 
+fn buildZigStd(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    var opts = cfg.module_options;
+    opts.root_source_file = ctx.b.path("src/foundation/zig_std/zig_std.zig");
+    const lib = ctx.b.addObject(.{
+        .name = "zig_std",
+        .root_module = ctx.b.createModule(opts),
+    });
+    lib.linkLibC();
+    return lib;
+}
+
 // IMPROVE: does this need to be a library? is foundation/os/plugin all linked together?
 fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     stb_sprintf: *std.Build.Step.Compile,
     debug_info_lib: *std.Build.Step.Compile,
+    zig_std: *std.Build.Step.Compile,
     tracy: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     const lib = ctx.b.addStaticLibrary(.{
@@ -1047,6 +1060,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
     lib.linkLibC();
     lib.linkLibrary(deps.tracy);
     lib.addObject(deps.debug_info_lib);
+    lib.addObject(deps.zig_std);
     lib.addObject(deps.stb_sprintf);
     applyUniversalSettings(ctx, lib);
 
@@ -2776,10 +2790,13 @@ fn doTarget(
 
     const embedded_files = buildEmbeddedFiles(ctx, cfg);
 
+    const zig_std = buildZigStd(ctx, cfg);
+
     const library = buildFloeLibrary(ctx, cfg, .{
         .stb_sprintf = stb_sprintf,
         .tracy = tracy,
         .debug_info_lib = debug_info_lib,
+        .zig_std = zig_std,
     });
 
     if (targetCanRunNatively(cfg.target)) {

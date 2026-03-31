@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
+#include "utils/debug/debug.hpp"
 
 #include "common_infrastructure/constants.hpp"
 
@@ -236,8 +237,11 @@ struct GuiFrameOutput {
     };
 
     // Only elevates, never decreases importance.
-    void IncreaseUpdateInterval(UpdateInterval r) {
-        if (ToInt(r) > ToInt(wants.update_interval)) wants.update_interval = r;
+    void IncreaseUpdateInterval(UpdateInterval r, SourceLocation loc = SourceLocation::Current()) {
+        if (ToInt(r) > ToInt(wants.update_interval)) {
+            wants.update_interval = r;
+            TracyMessageEx({.colour = 0xffffffff}, "{} {}", __FUNCTION__, loc);
+        }
     }
 
     // Set or update a timed wakeup. If this ID already has a wakeup, its time is replaced. The caller

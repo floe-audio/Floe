@@ -6,10 +6,11 @@
 #include "tests/framework.hpp"
 
 u64 FolderNode::Hash() const {
-    auto hash = HashInit();
+    if (cached_hash) return cached_hash;
+    cached_hash = HashInitFnv1a();
     for (auto f = this; f; f = f->parent)
-        HashUpdate(hash, f->name);
-    return hash;
+        HashUpdateFnv1a(cached_hash, f->name);
+    return cached_hash;
 }
 
 void ForEachNode(FolderNode* tree, FunctionRef<void(FolderNode*)> func) {

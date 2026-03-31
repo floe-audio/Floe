@@ -209,7 +209,6 @@ Optional<Rect> BoxRect(GuiBuilder& builder, Box const& box) {
 }
 
 Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
-    ZoneScoped;
     auto const id =
         builder.imgui.MakeId(loc_hash ^ config.id_extra ^ (config.parent ? config.parent->imgui_id : 0));
     ASSERT(config.parent || builder.state->pass != GuiBuilderPass::LayoutBoxes ||
@@ -228,7 +227,6 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
     switch (builder.state->pass) {
         case GuiBuilderPass::LayoutBoxes: {
-            ZoneNamedN(tracy_layout, "Builder: layout boxes", true);
             auto const box = Box {
                 .layout_id =
                     layout::CreateItem(builder.state->layout, builder.arena, ({
@@ -297,7 +295,6 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             return box;
         }
         case GuiBuilderPass::HandleInputAndRender: {
-            ZoneNamedN(tracy_input, "Builder: handle input and render", true);
             auto box_ptr = builder.state->boxes.Find(id, id);
 
             if (!box_ptr) {

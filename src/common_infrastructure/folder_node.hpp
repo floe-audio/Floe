@@ -37,6 +37,7 @@ struct FolderNode {
     FolderNode* parent {};
     FolderNode* first_child {};
     FolderNode* next {};
+    mutable u64 cached_hash {};
     TypeErasedUserData user_data {};
 };
 

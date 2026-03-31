@@ -281,6 +281,7 @@ static bool DoItem(GuiBuilder& builder, BrowserKeyboardNavigation& nav, ItemArgs
 
 BrowserItemResult
 DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions const& options) {
+    ZoneScoped;
     auto const scoped_tooltips = ScopedEnableTooltips(builder, true);
 
     auto const container = DoBox(builder,

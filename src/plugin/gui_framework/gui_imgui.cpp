@@ -477,13 +477,7 @@ void Context::PushId(uintptr num) { dyn::Append(id_stack, MakeId(num)); }
 
 void Context::PopId() { dyn::Pop(id_stack); }
 
-// Simple seeded FNV-1a.
-static u64 SeededHash(Span<u8 const> data, u64 seed) {
-    auto hash = HashInit();
-    for (auto const d : Array {AsBytes(seed), data})
-        HashUpdate(hash, d);
-    return hash;
-}
+static u64 SeededHash(Span<u8 const> data, u64 seed) { return RapidHash64(seed, data.data, data.size); }
 
 Id Context::MakeId(String str) const {
     auto const seed = Last(id_stack);

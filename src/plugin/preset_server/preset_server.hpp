@@ -137,7 +137,7 @@ bool HasNestedBank(FolderNode const& node);
 Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena);
 
 struct PresetsSnapshot {
-    // Folders that contain presets, sorted. These will have PresetFolderListing::folder != null.
+    // Folders that contain presets, sorted. These will have non-null PresetFolderListing::folder.
     Span<PresetFolderListing const*> folders;
 
     // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets

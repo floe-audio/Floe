@@ -839,6 +839,10 @@ struct FoldersAggregateInfo {
                                                               arena);
                 }
             }
+
+            ForEachNode(root, [&](FolderNode* node) {
+                node->Hash(); // Populate the hash cache.
+            });
         }
     }
 
@@ -1044,7 +1048,8 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
             if (file_data.size) scratch_arena.Free(file_data.ToByteSpan());
         };
 
-        auto const file_hash = XXH3_64bits(file_data.data, file_data.size) + Hash((String)entry.subpath);
+        auto const file_hash =
+            XXH3_64bits(file_data.data, file_data.size) + HashFnv1a((String)entry.subpath);
 
         if constexpr (k_skip_duplicate_presets) {
             if (server.preset_file_hashes.Contains(file_hash)) continue;

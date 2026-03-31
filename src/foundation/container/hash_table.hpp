@@ -40,9 +40,9 @@ struct HashTable {
 
     struct Element {
         bool Active() const { return hash && hash != k_tombstone; }
-        [[no_unique_address]] ValueType data {};
-        KeyType key {};
         u64 hash {}; // 0 == empty, k_tombstone == deleted, otherwise valid
+        KeyType key {};
+        [[no_unique_address]] ValueType data {};
     };
 
     struct Iterator {
@@ -132,8 +132,11 @@ struct HashTable {
         return result;
     }
 
-    // Quadratic probing is used if there's a hash collision
-    Element* Lookup(KeyType key, u64 hash, u64 dead_hash_value) const {
+    // Quadratic probing is used if there's a hash collision.
+    // When k_stop_at_tombstones is true, the lookup also stops at deleted slots - this is needed for
+    // insertion so that tombstone slots can be reused.
+    template <bool k_stop_at_tombstones>
+    Element* Lookup(KeyType key, u64 hash) const {
         ASSERT(elems);
         ASSERT(size <= Capacity());
 
@@ -141,21 +144,17 @@ struct HashTable {
         usize index = hash;
         usize step = 1;
 
-        usize iterations = 0;
-        constexpr usize k_max_iterations = 1000000;
-
-        for (; iterations < k_max_iterations; ++iterations) {
+        for (;;) {
             element = elems + (index & mask);
 
             if (element->hash == 0) break; // empty slot
-            if (element->hash == dead_hash_value) break; // deleted slot
+            if constexpr (k_stop_at_tombstones)
+                if (element->hash == k_tombstone) break; // deleted slot
             if (element->hash == hash && element->key == key) break; // match
 
             index += step;
             step++;
         }
-
-        ASSERT(iterations < k_max_iterations);
 
         return element;
     }
@@ -163,7 +162,7 @@ struct HashTable {
     Element* FindElement(KeyType key, u64 hash = 0) const {
         if (!elems) return nullptr;
         if (!hash) hash = Hash(key);
-        Element* element = Lookup(key, hash, 0);
+        Element* element = Lookup<false>(key, hash);
         if (element->Active()) return element;
         return nullptr;
     }
@@ -205,7 +204,7 @@ struct HashTable {
     usize Capacity() const { return mask ? mask + 1 : 0; }
 
     // We consider >75% too full.
-    bool LoadFactorTooHigh() const { return (size + num_dead) > (mask - mask / 4); }
+    bool LoadFactorTooHigh() const { return (size + num_dead) > (mask - (mask / 4)); }
 
     void Free(Allocator& a) {
         auto elements = Elements();
@@ -289,7 +288,7 @@ struct HashTable {
         if (old_elements.size) {
             for (auto const& old_element : old_elements) {
                 if (old_element.Active()) {
-                    auto new_element = Lookup(old_element.key, old_element.hash, 0);
+                    auto new_element = Lookup<false>(old_element.key, old_element.hash);
                     *new_element = old_element;
                     AddToOrderedIndicesIfNeeded((usize)(new_element - elems));
                     ++size;
@@ -305,7 +304,7 @@ struct HashTable {
             return false;
         }
         if (!hash) hash = Hash(key);
-        Element* element = Lookup(key, hash, k_tombstone);
+        Element* element = Lookup<true>(key, hash);
         if (element->Active()) return false; // Already exists.
 
         if (LoadFactorTooHigh()) {
@@ -327,7 +326,7 @@ struct HashTable {
     bool InsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value, u64 hash = 0) {
         if (!elems) Reserve(allocator, 0);
         if (!hash) hash = Hash(key);
-        Element* element = Lookup(key, hash, k_tombstone);
+        Element* element = Lookup<true>(key, hash);
         if (element->Active()) return false; // Already exists.
 
         auto const old_hash = element->hash;
@@ -360,7 +359,7 @@ struct HashTable {
     FindOrInsertResult FindOrInsertWithoutGrowing(KeyType key, ValueType value, u64 hash = 0) {
         if (!elems) PanicIfReached(); // Not initialized.
         if (!hash) hash = Hash(key);
-        Element* element = Lookup(key, hash, k_tombstone);
+        Element* element = Lookup<true>(key, hash);
         if (element->Active()) return {.element = *element, .inserted = false};
 
         if (LoadFactorTooHigh()) PanicIfReached(); // Too full.
@@ -379,7 +378,7 @@ struct HashTable {
     FindOrInsertGrowIfNeeded(Allocator& allocator, KeyType key, ValueType value, u64 hash = 0) {
         if (!elems) Reserve(allocator, 0);
         if (!hash) hash = Hash(key);
-        Element* element = Lookup(key, hash, k_tombstone);
+        Element* element = Lookup<true>(key, hash);
         if (element->Active()) return {.element = *element, .inserted = false};
 
         auto const old_hash = element->hash;
@@ -391,7 +390,7 @@ struct HashTable {
 
         if (LoadFactorTooHigh()) {
             Reserve(allocator, size);
-            element = Lookup(key, hash, 0); // Re-lookup after resizing.
+            element = Lookup<false>(key, hash); // Re-lookup after resizing.
             ASSERT_HOT(element->Active());
             ASSERT_HOT(element->hash == hash);
         } else if (old_hash == k_tombstone) {
@@ -457,7 +456,7 @@ struct HashTable {
         for (usize i = 0; i < mask + 1; ++i) {
             auto& element = elems[i];
             if (element.Active()) {
-                Element* other_element = other.Lookup(element.key, element.hash, 0);
+                Element* other_element = other.template Lookup<false>(element.key, element.hash);
                 if (!other_element || !other_element->Active()) DeleteIndex(i);
             }
         }

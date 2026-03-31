@@ -972,7 +972,7 @@ PUBLIC Optional<TagAndCategory> LookupTagName(String name) {
         }
 
         constexpr void Insert(String name, TagAndCategory tag_and_category) {
-            auto const hash = Hash(name);
+            auto const hash = HashFnv1a(name);
             auto& element = elements[Lookup(name, hash)];
             element.key = name;
             element.value = tag_and_category;
@@ -980,7 +980,7 @@ PUBLIC Optional<TagAndCategory> LookupTagName(String name) {
         }
 
         constexpr Optional<TagAndCategory> Find(String name) const {
-            auto& element = elements[Lookup(name, Hash(name))];
+            auto& element = elements[Lookup(name, HashFnv1a(name))];
             if (element.hash == 0) return k_nullopt;
             return element.value;
         }
