@@ -12,8 +12,10 @@
 #include "gui/elements/gui_modal.hpp"
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {
-    state.metadata = engine.state_metadata;
-    state.scroll_to_start = true;
+    if (state.metadata != engine.state_metadata) {
+        state.metadata = engine.state_metadata;
+        state.scroll_to_start = true;
+    }
 }
 
 static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
