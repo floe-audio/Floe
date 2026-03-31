@@ -179,6 +179,9 @@ pub fn makeRelease(
             }
 
             if (builtin.os.tag == .macos) {
+                // Arch-specific suffix to prevent suspected parallel build cache collision.
+                const arch_suffix = @tagName(target.cpu.arch);
+
                 const PkgConfig = struct {
                     plugin_path: std.Build.LazyPath,
                     install_folder: []const u8,
@@ -307,17 +310,17 @@ pub fn makeRelease(
 
                 productbuild_cmd.expectExitCode(0);
 
-                const pkg = productbuild_cmd.addOutputFileArg("installer.pkg");
+                const pkg = productbuild_cmd.addOutputFileArg(b.fmt("installer-{s}.pkg", .{arch_suffix}));
 
                 const signed = maybeAddMacosCodesign(b, pkg, .{
-                    .out_filename = "signed-installer.pkg",
+                    .out_filename = b.fmt("signed-installer-{s}.pkg", .{arch_suffix}),
                     .kind = .pkg,
                     .entitlements = false,
                     .parent_step = step,
                 });
 
                 const final = if (signed) |s| maybeMacosNotarise(b, s, .{
-                    .out_filename = "notarised-installer.pkg",
+                    .out_filename = b.fmt("notarised-installer-{s}.pkg", .{arch_suffix}),
                     .is_bundle = false,
                     .staple = true,
                     .parent_step = step,
