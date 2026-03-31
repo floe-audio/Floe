@@ -561,7 +561,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                                                                lib_id,
                                                                context.sample_library_server,
                                                                context.engine.instance_index,
-                                                               LibraryImagesTypes::All);
+                                                               LibraryImagesTypes::Icon);
                             if (!imgs.icon)
                                 ++num_unknown;
                             else if (lib_id == sample_lib::k_mirage_compat_library_id)
