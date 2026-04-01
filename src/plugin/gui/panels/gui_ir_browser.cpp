@@ -338,7 +338,9 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
     }
 
     auto libraries =
-        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(builder.arena, libs.size);
+        OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo>::Create(
+            builder.arena,
+            libs.size);
     auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(builder.arena, libs.size);
 
     auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(builder.arena, 16);

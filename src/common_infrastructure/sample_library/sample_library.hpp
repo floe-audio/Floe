@@ -223,12 +223,29 @@ struct FileAttribution {
 
 enum class ResourceType : u8 { Instrument, Ir, Count };
 
-using LibraryIdRef = String;
-using LibraryId = DynamicArrayBounded<char, k_max_library_id_size>;
+// Library IDs are typically a hash of an ID string.
+using LibraryId = u64;
+
+constexpr LibraryId HashLibraryIdStringWithoutRegistration(String s) { return HashFnv1a(s); }
+
+// Hashes the string and also registers the String in the registry so it can be later accessed via
+// LookupLibraryIdString.
+LibraryId HashLibraryIdString(String id_string);
+
+// Threadsafe. Get the string ID associated with the hash, if previous registered.
+Optional<String> LookupLibraryIdString(LibraryId id);
+
+// Compares by looking up their string IDs alphabetically, not hashes.
+bool LibraryIdLessThan(LibraryId a, LibraryId b);
+bool LibraryIdLessThanSet(LibraryId const& a,
+                          DummyValueType const&,
+                          LibraryId const& b,
+                          DummyValueType const&);
 
 struct Library {
     String name {};
-    LibraryIdRef id {};
+    LibraryId id {};
+    String id_string {}; // the original string form of the ID, for display
     String tagline {};
     Optional<String> library_url {};
     Optional<String> description {};
@@ -251,16 +268,20 @@ struct Library {
     FileFormatSpecifics file_format_specifics;
 };
 
-usize IdFromAuthorAndName(String author, String name, MutableString out);
-LibraryId IdFromAuthorAndNameInline(String author, String name);
-LibraryIdRef IdFromAuthorAndNameAlloc(String author, String name, Allocator& allocator);
+DynamicArrayBounded<char, k_max_library_id_size> IdStringFromAuthorAndNameInline(String author, String name);
+String IdStringFromAuthorAndNameAlloc(String author, String name, Allocator& allocator);
+LibraryId IdFromAuthorAndName(String author, String name);
 
-usize IdForMdataLibrary(String name, MutableString out);
-LibraryId IdForMdataLibraryInline(String name);
-LibraryIdRef IdForMdataLibraryAlloc(String name, Allocator& arena);
+DynamicArrayBounded<char, k_max_library_id_size> IdStringForMdataLibraryInline(String name);
+String IdStringForMdataLibraryAlloc(String name, Allocator& arena);
+LibraryId IdForMdataLibrary(String name);
 
-constexpr LibraryIdRef k_builtin_library_id = "Built-in - " FLOE_VENDOR;
-constexpr LibraryIdRef k_mirage_compat_library_id = "Mirage Compatibility - FrozenPlain";
+constexpr String k_builtin_library_id_string = "Built-in - " FLOE_VENDOR;
+constexpr String k_mirage_compat_library_id_string = "Mirage Compatibility - FrozenPlain";
+constexpr LibraryId k_builtin_library_id =
+    HashLibraryIdStringWithoutRegistration(k_builtin_library_id_string);
+constexpr LibraryId k_mirage_compat_library_id =
+    HashLibraryIdStringWithoutRegistration(k_mirage_compat_library_id_string);
 
 // Prior to Floe 1.1.1, all Mirage libraries had this author. We changed this when we added separate library
 // IDs.
@@ -271,7 +292,7 @@ struct InstrumentId {
     bool operator==(LoadedInstrument const& inst) const {
         return inst_id == inst.instrument.id && library == inst.instrument.library.id;
     }
-    u64 Hash() const { return HashMultiple(Array {(String)library, (String)inst_id}); }
+    u64 Hash() const { return RapidHash64(library, inst_id.data, inst_id.size); }
     LibraryId library;
     DynamicArrayBounded<char, k_max_instrument_id_size> inst_id;
 };
@@ -279,7 +300,7 @@ struct InstrumentId {
 struct IrId {
     bool operator==(IrId const& other) const = default;
     bool operator==(LoadedIr const& ir) const { return library == ir.ir.library.id && ir_id == ir.ir.name; }
-    u64 Hash() const { return HashMultiple(Array {(String)library, (String)ir_id}); }
+    u64 Hash() const { return RapidHash64(library, ir_id.data, ir_id.size); }
     LibraryId library;
     DynamicArrayBounded<char, k_max_ir_id_size> ir_id;
 };

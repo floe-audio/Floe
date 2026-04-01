@@ -181,7 +181,14 @@ struct PackageInfo {
         Set<String> instrument_tags;
     };
 
-    OrderedHashTable<sample_lib::LibraryId, Library> libraries;
+    static bool LibraryLessThan(sample_lib::LibraryId const& a,
+                                Library const&,
+                                sample_lib::LibraryId const& b,
+                                Library const&) {
+        return sample_lib::LibraryIdLessThan(a, b);
+    }
+
+    OrderedHashTable<sample_lib::LibraryId, Library, NoHash, LibraryLessThan> libraries;
     OrderedHashTable<String, u32> preset_folders; // path -> num presets
     OrderedHashTable<String, u32> preset_tags;
     usize package_size {0}; // total size of the package in bytes

@@ -1519,11 +1519,13 @@ struct TableFields<Library> {
                     .required = false,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
-                            FIELD_OBJ.id = StringFromTop(ctx);
-                            if (FIELD_OBJ.id.size > k_max_library_id_size)
+                            auto const id_string = StringFromTop(ctx);
+                            if (id_string.size > k_max_library_id_size)
                                 luaL_error(ctx.lua,
                                            "Library ID must be less than %d characters long.",
                                            (int)k_max_library_id_size);
+                            FIELD_OBJ.id_string = id_string;
+                            FIELD_OBJ.id = HashLibraryIdString(id_string);
                         },
                 };
             case Field::AuthorUrl:

@@ -507,6 +507,9 @@ enum class StateVersion : u16 {
     // Added per-layer harmony interval bitsets for the granular engine.
     AddedGranularHarmonyIntervals,
 
+    // Library IDs are now stored as u64 hashes instead of strings.
+    LibraryIdAsHash,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -683,7 +686,9 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
         for (auto& t : state.fx_order)
             t = (EffectType)k_num_effect_types;
         for (auto& i : state.inst_ids)
-            i = sample_lib::InstrumentId {.library = "foo"_s, .inst_id = "bar"_s};
+            i = sample_lib::InstrumentId {.library =
+                                              sample_lib::HashLibraryIdStringWithoutRegistration("foo"_s),
+                                          .inst_id = "bar"_s};
         state.ir_id = sample_lib::IrId {
             .library = sample_lib::k_mirage_compat_library_id,
             .ir_id = "Formant 1"_s,
@@ -706,7 +711,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
     } else {
         for (auto& i : state.inst_ids)
             if (auto s = i.TryGet<sample_lib::InstrumentId>())
-                s->library = sample_lib::IdForMdataLibraryAlloc(parser.library_name, scratch_arena);
+                s->library = sample_lib::IdForMdataLibrary(parser.library_name);
     }
 
     // Fill in missing values and convert the existing ones into their new formats
@@ -1213,11 +1218,15 @@ ErrorCodeOr<void> CodeLibraryId(StateCoder& coder, sample_lib::LibraryId& librar
         TRY(coder.CodeDynArray(library_author, StateVersion::Initial));
         TRY(coder.CodeDynArray(library_name, StateVersion::Initial));
         if (library_author == sample_lib::k_old_mirage_author)
-            library_id = sample_lib::IdForMdataLibraryInline(library_name);
+            library_id = sample_lib::IdForMdataLibrary(library_name);
         else
-            library_id = sample_lib::IdFromAuthorAndNameInline(library_author, library_name);
+            library_id = sample_lib::IdFromAuthorAndName(library_author, library_name);
+    } else if (coder.IsReading() && coder.version < StateVersion::LibraryIdAsHash) {
+        DynamicArrayBounded<char, k_max_library_id_size> library_id_string;
+        TRY(coder.CodeDynArray(library_id_string, StateVersion::AddLibraryIdInsteadOfNameAndAuthor));
+        library_id = sample_lib::HashLibraryIdString(library_id_string);
     } else {
-        TRY(coder.CodeDynArray(library_id, StateVersion::AddLibraryIdInsteadOfNameAndAuthor));
+        TRY(coder.CodeNumber(library_id, StateVersion::LibraryIdAsHash));
     }
     return k_success;
 }
@@ -1838,7 +1847,7 @@ static void CheckStateIsValid(tests::Tester& tester, StateSnapshot const& state)
             }
             case InstrumentType::Sampler: {
                 auto& s = i.Get<sample_lib::InstrumentId>();
-                CHECK(s.library.size);
+                CHECK(s.library);
                 CHECK(s.inst_id.size);
                 break;
             }
@@ -1900,12 +1909,13 @@ TEST_CASE(TestNewSerialisation) {
             Shuffle(state.fx_order, random_seed);
 
             state.ir_id = sample_lib::IrId {
-                .library = "irlibname.irlib"_s,
+                .library = sample_lib::HashLibraryIdStringWithoutRegistration("irlibname.irlib"_s),
                 .ir_id = "irfile"_s,
             };
             for (auto [index, inst] : Enumerate(state.inst_ids)) {
+                auto const lib_str = fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index);
                 inst = sample_lib::InstrumentId {
-                    .library = (String)fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index),
+                    .library = sample_lib::HashLibraryIdStringWithoutRegistration(lib_str),
                     .inst_id = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
                 };
             }
@@ -2183,15 +2193,15 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK(state.inst_ids[1].tag == InstrumentType::Sampler);
         CHECK(state.inst_ids[2].tag == InstrumentType::Sampler);
         if (auto i = state.inst_ids[0].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibrary("Phoenix"_s));
             CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[1].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibrary("Phoenix"_s));
             CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[2].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibrary("Phoenix"_s));
             CHECK_EQ(i->inst_id, "Choir"_s);
         }
         CHECK(state.ir_id.HasValue());
@@ -2247,7 +2257,7 @@ TEST_CASE(TestLoadingOldFiles) {
 
         {
             auto const i = state.inst_ids[2].Get<sample_lib::InstrumentId>();
-            CHECK_EQ(i.library, sample_lib::IdForMdataLibraryAlloc("Abstract Energy"_s, scratch_arena));
+            CHECK_EQ(i.library, sample_lib::IdForMdataLibrary("Abstract Energy"_s));
             CHECK_EQ(i.inst_id, "Drone 2 Atmos"_s);
         }
 

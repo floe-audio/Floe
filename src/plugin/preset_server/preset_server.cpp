@@ -13,15 +13,14 @@
 constexpr bool k_skip_duplicate_presets = false;
 
 // If all presets in this folder and all subfolders use the same single library, return that library.
-static bool AllPresetsSingleLibrary(FolderNode const* node,
-                                    Optional<sample_lib::LibraryIdRef>& single_library) {
+static bool AllPresetsSingleLibrary(FolderNode const* node, Optional<sample_lib::LibraryId>& single_library) {
     if (auto const folder = node->user_data.As<PresetFolderListing const>()->folder) {
         if (folder->used_libraries.size > 3) return false;
         if (folder->used_libraries.size != 0) {
             ASSERT(folder->used_libraries.size == 1 || folder->used_libraries.size == 2 ||
                    folder->used_libraries.size == 3);
 
-            Optional<sample_lib::LibraryIdRef> library;
+            Optional<sample_lib::LibraryId> library;
             if (folder->used_libraries.size != 1) {
                 u8 num_proper_libraries = 0;
                 for (auto const& lib : folder->used_libraries) {
@@ -52,8 +51,8 @@ static bool AllPresetsSingleLibrary(FolderNode const* node,
     return true;
 }
 
-Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node) {
-    Optional<sample_lib::LibraryIdRef> single_library {};
+Optional<sample_lib::LibraryId> AllPresetsSingleLibrary(FolderNode const& node) {
+    Optional<sample_lib::LibraryId> single_library {};
     if (AllPresetsSingleLibrary(&node, single_library)) return single_library;
     return k_nullopt;
 }
@@ -317,14 +316,6 @@ static void DeleteUnusedFolders(PresetServer& server) {
     });
 }
 
-static sample_lib::LibraryIdRef FindOrCloneLibraryIdRef(PresetFolder& folder,
-                                                        sample_lib::LibraryIdRef const& lib_id) {
-    // If we are the first to use this library, we need to clone it into the folder's arena.
-    auto found_result = folder.used_libraries.FindOrInsertGrowIfNeeded(folder.arena, lib_id);
-    if (found_result.inserted) found_result.element.key = lib_id.Clone(folder.arena);
-    return found_result.element.key;
-}
-
 static String FindOrCloneTag(PresetFolder& folder, String tag) {
     // If we are the first to use this tag, we need to clone it into the folder's arena.
     auto found_result = folder.used_tags.FindOrInsertGrowIfNeeded(folder.arena, tag);
@@ -341,19 +332,22 @@ static void AddPresetToFolder(PresetFolder& folder,
                                                                      folder.preset_array_capacity,
                                                                      folder.arena);
 
-    auto used_libraries = OrderedSet<sample_lib::LibraryIdRef>::Create(folder.arena, k_num_layers + 1);
+    auto used_libraries =
+        OrderedSet<sample_lib::LibraryId, NoHash, sample_lib::LibraryIdLessThanSet>::Create(folder.arena,
+                                                                                            k_num_layers + 1);
 
     for (auto const& inst_id : state.inst_ids) {
         if (auto const& sampled_inst = inst_id.TryGet<sample_lib::InstrumentId>()) {
-            auto const lib_id =
-                FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)sampled_inst->library);
-            used_libraries.InsertWithoutGrowing(lib_id);
+            folder.used_libraries.InsertGrowIfNeeded(folder.arena, sampled_inst->library);
+            used_libraries.InsertWithoutGrowing(sampled_inst->library);
         }
     }
 
     if (state.ir_id) {
-        auto const lib_id = FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)state.ir_id->library);
-        if (lib_id != sample_lib::k_builtin_library_id) used_libraries.InsertWithoutGrowing(lib_id);
+        if (state.ir_id->library != sample_lib::k_builtin_library_id) {
+            folder.used_libraries.InsertGrowIfNeeded(folder.arena, state.ir_id->library);
+            used_libraries.InsertWithoutGrowing(state.ir_id->library);
+        }
     }
 
     dyn::Append(presets,
@@ -863,7 +857,7 @@ struct FoldersAggregateInfo {
 
     ArenaAllocator& arena;
     Set<String> used_tags;
-    Set<sample_lib::LibraryIdRef> used_libraries;
+    Set<sample_lib::LibraryId, NoHash> used_libraries;
     Set<String> authors;
     FolderNodeAllocator folder_node_allocator;
     ListingAllocator listing_allocator;
@@ -1048,8 +1042,7 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
             if (file_data.size) scratch_arena.Free(file_data.ToByteSpan());
         };
 
-        auto const file_hash =
-            XXH3_64bits(file_data.data, file_data.size) + HashFnv1a((String)entry.subpath);
+        auto const file_hash = XXH3_64bits(file_data.data, file_data.size) + HashFnv1a((String)entry.subpath);
 
         if constexpr (k_skip_duplicate_presets) {
             if (server.preset_file_hashes.Contains(file_hash)) continue;

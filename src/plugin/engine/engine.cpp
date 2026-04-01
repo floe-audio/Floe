@@ -28,14 +28,14 @@ static void NotifyListener(Engine& engine) {
     if (engine.listener) engine.listener->OnEngineChange();
 }
 
-Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine) {
+Optional<sample_lib::LibraryId> LibraryForOverallBackground(Engine const& engine) {
     ASSERT(g_is_logical_main_thread);
 
-    Array<Optional<sample_lib::LibraryIdRef>, k_num_layers> lib_ids {};
+    Array<Optional<sample_lib::LibraryId>, k_num_layers> lib_ids {};
     for (auto [layer_index, l] : Enumerate<u32>(engine.processor.layer_processors))
         lib_ids[layer_index] = engine.processor.layer_processors[layer_index].LibId();
 
-    Optional<sample_lib::LibraryIdRef> first_lib_id {};
+    Optional<sample_lib::LibraryId> first_lib_id {};
     for (auto const& lib_id : lib_ids) {
         if (!lib_id) continue;
         if (!first_lib_id) {
@@ -236,7 +236,7 @@ static void ApplyNewStateFromPending(Engine& engine) {
     SetLastSnapshot(engine, {snapshot, name});
 }
 
-static void SampleLibraryChanged(Engine& engine, sample_lib::LibraryIdRef library_id) {
+static void SampleLibraryChanged(Engine& engine, sample_lib::LibraryId library_id) {
     ZoneScoped;
     ASSERT(g_is_logical_main_thread);
 
@@ -513,8 +513,7 @@ Engine::Engine(clap_host const& host,
               .error_notifications = error_notifications,
               .result_added_callback = [&engine = *this]() { engine.host.request_callback(&engine.host); },
               .library_changed_callback =
-                  [&engine = *this](sample_lib::LibraryIdRef lib_id_ref) {
-                      sample_lib::LibraryId lib_id = lib_id_ref;
+                  [&engine = *this](sample_lib::LibraryId lib_id) {
                       engine.main_thread_callbacks.Push(
                           [lib_id, &engine]() { SampleLibraryChanged(engine, lib_id); });
                   },

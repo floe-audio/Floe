@@ -259,7 +259,7 @@ struct LayerProcessor {
                instrument.tag == InstrumentType::WaveformSynth;
     }
 
-    Optional<sample_lib::LibraryIdRef> LibId() const {
+    Optional<sample_lib::LibraryId> LibId() const {
         ASSERT(g_is_logical_main_thread);
         if (auto sampled_inst = instrument.TryGetFromTag<InstrumentType::Sampler>())
             return (*sampled_inst)->instrument.library.id;

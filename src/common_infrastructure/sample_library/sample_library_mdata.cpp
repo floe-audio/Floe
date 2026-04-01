@@ -56,7 +56,8 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         library.name = arena.Clone(header.Name());
         library.minor_version = header.version;
         library.author = "FrozenPlain";
-        library.id = IdForMdataLibraryAlloc(library.name, arena);
+        library.id_string = IdStringForMdataLibraryAlloc(library.name, arena);
+        library.id = HashLibraryIdString(library.id_string);
     }
 
     {

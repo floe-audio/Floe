@@ -104,9 +104,10 @@ extern PluginCallbacks<Engine> const g_engine_callbacks;
 
 void RunFunctionOnMainThread(Engine& engine, ThreadsafeFunctionQueue::Function function);
 
-constexpr sample_lib::LibraryIdRef k_default_background_lib_id = FLOE_VENDOR ".default-bg";
+constexpr sample_lib::LibraryId k_default_background_lib_id =
+    sample_lib::HashLibraryIdStringWithoutRegistration(FLOE_VENDOR ".default-bg");
 
-Optional<sample_lib::LibraryIdRef> LibraryForOverallBackground(Engine const& engine);
+Optional<sample_lib::LibraryId> LibraryForOverallBackground(Engine const& engine);
 
 // One-off loading of an IR or instrument.
 void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir);

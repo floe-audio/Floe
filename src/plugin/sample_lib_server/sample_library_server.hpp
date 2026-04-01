@@ -152,7 +152,7 @@ struct ListedInstrument;
 // ==========================================================================================================
 struct AsyncCommsChannel {
     using ResultAddedCallback = TrivialFixedSizeFunction<8, void()>;
-    using LibraryChangedCallback = TrivialFixedSizeFunction<8, void(sample_lib::LibraryIdRef)>;
+    using LibraryChangedCallback = TrivialFixedSizeFunction<8, void(sample_lib::LibraryId)>;
 
     // -1 if not valid, else 0 to 100
     Array<Atomic<s32>, k_num_layers> instrument_loading_percents {};
@@ -255,7 +255,7 @@ struct Server {
     // private
     detail::LibrariesAtomicList libraries;
     Mutex libraries_by_id_mutex;
-    DynamicHashTable<sample_lib::LibraryIdRef, detail::LibrariesAtomicList::Node*> libraries_by_id {
+    DynamicHashTable<sample_lib::LibraryId, detail::LibrariesAtomicList::Node*, NoHash> libraries_by_id {
         Malloc::Instance()};
     // Connection-independent errors. If we have access to a channel, we post to the channel's
     // error_notifications instead of this.
@@ -281,15 +281,13 @@ struct Server {
 // ==========================================================================================================
 // At any time, you can access library information from the server using these functions.
 
-bool LibraryLessThan(sample_lib::LibraryIdRef const& key_a,
+bool LibraryLessThan(sample_lib::LibraryId const& key_a,
                      ResourcePointer<sample_lib::Library> const& val_a,
-                     sample_lib::LibraryIdRef const& key_b,
+                     sample_lib::LibraryId const& key_b,
                      ResourcePointer<sample_lib::Library> const& val_b);
 
-using LibrariesTable = OrderedHashTable<sample_lib::LibraryIdRef,
-                                        ResourcePointer<sample_lib::Library>,
-                                        nullptr,
-                                        LibraryLessThan>;
+using LibrariesTable =
+    OrderedHashTable<sample_lib::LibraryId, ResourcePointer<sample_lib::Library>, NoHash, LibraryLessThan>;
 using LibrariesSpan = Span<ResourcePointer<sample_lib::Library>>;
 
 //
@@ -313,7 +311,7 @@ LibrariesTable MakeTable(LibrariesSpan libs, ArenaAllocator& arena); // Does not
 LibrariesTable AllLibrariesRetainedAsTable(Server& server, ArenaAllocator& arena);
 
 // Thread-safe.
-ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryIdRef id);
+ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_lib::LibraryId id);
 
 // Thread-safe. You need understand the AtomicRefList API to use this properly.
 detail::LibrariesAtomicList& LibrariesList(Server& server);

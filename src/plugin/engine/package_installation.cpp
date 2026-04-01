@@ -1339,7 +1339,9 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
 
     SUBCASE("modified file requires user input") {
         auto state = TRY(LoadPresetFile(installed_file_v1, tester.scratch_arena, false));
-        state.inst_ids[0] = sample_lib::InstrumentId {.library = "foo"_s, .inst_id = "bar"_s};
+        state.inst_ids[0] =
+            sample_lib::InstrumentId {.library = sample_lib::HashLibraryIdStringWithoutRegistration("foo"_s),
+                                      .inst_id = "bar"_s};
         TRY(SavePresetFile(installed_file_v1, state, false));
 
         auto const job = CreateInstallJob(tester.scratch_arena, job_opts);

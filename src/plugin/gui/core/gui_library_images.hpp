@@ -39,7 +39,7 @@ struct LibraryImagesTable {
     // but the Futures and table is never freed - they are small and very infrequently changing - simplifying
     // lifetime management.
     ArenaAllocator arena {PageAllocator::Instance()}; // Never reset.
-    HashTable<sample_lib::LibraryId, LibraryImages> table;
+    HashTable<sample_lib::LibraryId, LibraryImages, NoHash> table;
 };
 
 enum class LibraryImagesTypes : u8 {
@@ -53,13 +53,11 @@ BITWISE_OPERATORS(LibraryImagesTypes)
 // needed. Use needed_types to trigger loading only for the images you need.
 LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                imgui::Context& imgui,
-                               sample_lib::LibraryIdRef const& library_id,
+                               sample_lib::LibraryId library_id,
                                sample_lib_server::Server& server,
                                FloeInstanceIndex instance_index,
                                LibraryImagesTypes needed_types = LibraryImagesTypes::All);
 
 void BeginFrame(LibraryImagesTable& table);
 void Shutdown(LibraryImagesTable& table);
-void InvalidateLibraryImages(LibraryImagesTable& table,
-                             sample_lib::LibraryIdRef library_id,
-                             Renderer& renderer);
+void InvalidateLibraryImages(LibraryImagesTable& table, sample_lib::LibraryId library_id, Renderer& renderer);

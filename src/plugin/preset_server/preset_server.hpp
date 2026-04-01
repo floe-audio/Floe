@@ -18,7 +18,7 @@ struct PresetFolder {
     struct Preset {
         String name {};
         StateMetadataRef metadata {};
-        OrderedSet<sample_lib::LibraryIdRef> used_libraries {};
+        OrderedSet<sample_lib::LibraryId, NoHash, sample_lib::LibraryIdLessThanSet> used_libraries {};
         u64 file_hash {};
         u64 full_path_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
@@ -33,7 +33,7 @@ struct PresetFolder {
     String scan_folder {};
     String folder {}; // subpath of scan_folder, if any
     Span<Preset> presets {};
-    Set<sample_lib::LibraryIdRef> used_libraries {};
+    Set<sample_lib::LibraryId, NoHash> used_libraries {};
     Set<String> used_tags {};
 
     Optional<PresetBank> preset_bank_info {}; // From metadata file (primary importance)
@@ -79,7 +79,7 @@ struct PresetServer {
     // The next fields are versioned and mutex protected
     DynamicArray<PresetFolder*> folders {arena};
     DynamicSet<String> used_tags {arena};
-    DynamicSet<sample_lib::LibraryIdRef> used_libraries {arena};
+    DynamicSet<sample_lib::LibraryId, NoHash> used_libraries {arena};
     DynamicSet<String> authors {arena};
     ArenaAllocator folder_node_arena {(Allocator&)arena};
     Span<FolderNode> folder_nodes {};
@@ -121,7 +121,7 @@ struct PresetFolderListing {
 };
 
 // If all presets in this folder and all subfolders use the same single library, return that library.
-Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
+Optional<sample_lib::LibraryId> AllPresetsSingleLibrary(FolderNode const& node);
 
 // The bank associated with a specific node, if there is any.
 PresetBank const* PresetBankAtNode(FolderNode const& node);
@@ -146,7 +146,7 @@ struct PresetsSnapshot {
 
     // Additional convenience data
     Set<String> used_tags;
-    Set<sample_lib::LibraryIdRef> used_libraries;
+    Set<sample_lib::LibraryId, NoHash> used_libraries;
     Set<String> authors;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };

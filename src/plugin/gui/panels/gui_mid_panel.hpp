@@ -35,7 +35,7 @@ struct MidBlurredBackgroundOptions {
 void DrawMidBlurredBackground(GuiState& g,
                               Rect r,
                               Rect clipped_to,
-                              sample_lib::LibraryIdRef library_id,
+                              sample_lib::LibraryId library_id,
                               MidBlurredBackgroundOptions const& options);
-void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_id);
-void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id);
+void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryId library_id);
+void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryId> lib_id);

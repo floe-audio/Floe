@@ -5,6 +5,13 @@
 
 #include "os/filesystem.hpp"
 
+bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
+                                 FilterItemInfo const&,
+                                 sample_lib::LibraryId const& b,
+                                 FilterItemInfo const&) {
+    return sample_lib::LibraryIdLessThan(a, b);
+}
+
 #include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui_actions.hpp"
@@ -1308,9 +1315,8 @@ static void DoLibraryRightClickMenu(GuiBuilder& builder,
                                 },
                             });
 
-    auto const find_library = [&](u64 library_hash) -> Optional<sample_lib::LibraryIdRef> {
-        for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries)
-            if (lib_hash == library_hash) return lib_id;
+    auto const find_library = [&](u64 library_hash) -> Optional<sample_lib::LibraryId> {
+        if (library_filters.libraries.Find(library_hash)) return library_hash;
         return k_nullopt;
     };
 
@@ -1370,7 +1376,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
         };
 
         for (auto const& [lib_id, lib_info, lib_hash] : library_filters.libraries) {
-            ASSERT(lib_id.size);
+            ASSERT(lib_id);
 
             auto const lib_ptr = library_filters.libraries_table.Find(lib_id, lib_hash);
             if (!lib_ptr) continue;

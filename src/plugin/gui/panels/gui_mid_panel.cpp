@@ -20,7 +20,7 @@
 void DrawMidBlurredBackground(GuiState& g,
                               Rect r,
                               Rect clipped_to,
-                              sample_lib::LibraryIdRef library_id,
+                              sample_lib::LibraryId library_id,
                               MidBlurredBackgroundOptions const& options) {
     auto const panel_rounding = WwToPixels(k_panel_rounding);
 
@@ -80,7 +80,7 @@ constexpr f32 k_vignette_inner_radius = 0.20f;
 constexpr u32 k_vignette_num_bands = 16;
 constexpr f32 k_vignette_panel_opacity = 0.05f;
 
-void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id) {
+void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryId> lib_id) {
     auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     if (lib_id)
@@ -98,7 +98,7 @@ void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib:
     g.imgui.draw_list->AddRect(window_r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
 }
 
-void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_id) {
+void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryId library_id) {
     auto const r = g.imgui.curr_viewport->unpadded_bounds;
 
     g.imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
@@ -131,7 +131,7 @@ static String MidPanelTabLabel(MidPanelTab tab) {
     }
 }
 
-static Optional<sample_lib::LibraryIdRef> LibIdForCurrentTab(GuiState& g) {
+static Optional<sample_lib::LibraryId> LibIdForCurrentTab(GuiState& g) {
     switch (g.mid_panel_state.tab) {
         case MidPanelTab::Perform: return LibraryForOverallBackground(g.engine);
         case MidPanelTab::Layers: return LibraryForOverallBackground(g.engine);

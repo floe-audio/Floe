@@ -6,7 +6,8 @@
 #include "engine/favourite_items.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 
-constexpr sample_lib::LibraryIdRef k_waveform_library_id = "Waveforms - " FLOE_VENDOR;
+constexpr sample_lib::LibraryId k_waveform_library_id =
+    sample_lib::HashLibraryIdStringWithoutRegistration("Waveforms - " FLOE_VENDOR);
 
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
@@ -461,7 +462,9 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
 
     HashTable<String, FilterItemInfo> tags {};
     auto libraries =
-        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(builder.arena, libs.size + 1);
+        OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo>::Create(
+            builder.arena,
+            libs.size + 1);
     auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(builder.arena, libs.size + 1);
 
     auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(builder.arena, 16);

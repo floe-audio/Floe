@@ -262,7 +262,7 @@ struct FilterButtonCommonOptions {
 
 struct FilterCardOptions {
     FilterButtonCommonOptions common;
-    Optional<sample_lib::LibraryIdRef> library_id; // For images.
+    Optional<sample_lib::LibraryId> library_id; // For images.
     LibraryImagesTable& library_images;
     sample_lib_server::Server& sample_library_server;
     FloeInstanceIndex instance_index;
@@ -275,11 +275,16 @@ struct FilterCardOptions {
     persistent_store::Store* store {};
 };
 
+bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
+                                 FilterItemInfo const&,
+                                 sample_lib::LibraryId const& b,
+                                 FilterItemInfo const&);
+
 struct LibraryFilters {
     sample_lib_server::LibrariesTable const& libraries_table;
     LibraryImagesTable& library_images;
     FloeInstanceIndex instance_index;
-    OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
+    OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
     bool card_view {};
     sample_lib::ResourceType resource_type {};

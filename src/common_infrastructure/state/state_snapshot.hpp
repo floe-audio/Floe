@@ -76,12 +76,12 @@ struct StateSnapshotWithName {
         case InstrumentType::WaveformSynth:
             fmt::Append(result, "WaveformSynth: {}"_s, id.Get<WaveformType>());
             break;
-        case InstrumentType::Sampler:
-            fmt::Append(result,
-                        "Sampler: {}/{}"_s,
-                        id.Get<sample_lib::InstrumentId>().library,
-                        id.Get<sample_lib::InstrumentId>().inst_id);
+        case InstrumentType::Sampler: {
+            auto const& inst = id.Get<sample_lib::InstrumentId>();
+            auto const lib_name = sample_lib::LookupLibraryIdString(inst.library).ValueOr("?"_s);
+            fmt::Append(result, "Sampler: {}/{}"_s, lib_name, inst.inst_id);
             break;
+        }
     }
     return result;
 }
@@ -92,11 +92,19 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
     dyn::Clear(diff_desc);
 
     if (old_state.ir_id != new_state.ir_id) {
+        auto const old_lib =
+            old_state.ir_id.HasValue()
+                ? sample_lib::LookupLibraryIdString(old_state.ir_id.Value().library).ValueOr("?"_s)
+                : "null"_s;
+        auto const new_lib =
+            new_state.ir_id.HasValue()
+                ? sample_lib::LookupLibraryIdString(new_state.ir_id.Value().library).ValueOr("?"_s)
+                : "null"_s;
         fmt::Append(diff_desc,
                     "IR changed, old: {}:{} vs new: {}:{}\n"_s,
-                    old_state.ir_id.HasValue() ? old_state.ir_id.Value().library.Items() : "null",
+                    old_lib,
                     old_state.ir_id.HasValue() ? old_state.ir_id.Value().ir_id.Items() : "null"_s,
-                    new_state.ir_id.HasValue() ? new_state.ir_id.Value().library.Items() : "null",
+                    new_lib,
                     new_state.ir_id.HasValue() ? new_state.ir_id.Value().ir_id.Items() : "null"_s);
     }
 

@@ -30,7 +30,7 @@ static Optional<sample_lib::LibraryPath> LibraryImagePath(sample_lib::Library co
     return {};
 }
 
-static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryIdRef const& lib_id,
+static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryId lib_id,
                                                    LibraryImageType type,
                                                    sample_lib_server::Server& server,
                                                    ArenaAllocator& scratch_arena,
@@ -81,7 +81,7 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryIdRef cons
 
 inline Allocator& ImageBytesAllocator() { return PageAllocator::Instance(); }
 
-static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
+static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
                           imgui::Context const&,
                           Future<Optional<ImageBytes>>& result,
                           sample_lib_server::Server& server,
@@ -89,7 +89,7 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
                           FloeInstanceIndex instance_index) {
     thread_pool.Async(
         result,
-        [lib_id = sample_lib::LibraryId(lib_id_ref),
+        [lib_id = lib_id,
          &server,
          instance_index,
          desired_icon_size =
@@ -110,7 +110,7 @@ static void AsyncLoadIcon(sample_lib::LibraryIdRef const& lib_id_ref,
         });
 }
 
-static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
+static void AsyncLoadBackgrounds(sample_lib::LibraryId lib_id,
                                  imgui::Context const&,
                                  Future<Optional<LibraryImages::LoadingBackgrounds>>& result,
                                  bool reload_background,
@@ -130,7 +130,7 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryIdRef const& lib_id_ref,
 
     thread_pool.Async(
         result,
-        [lib_id = sample_lib::LibraryId(lib_id_ref),
+        [lib_id,
          reload_background,
          reload_blurred_background,
          blur_options,
@@ -189,7 +189,7 @@ constexpr auto k_background_type_bits =
 
 LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                imgui::Context& imgui,
-                               sample_lib::LibraryIdRef const& lib_id,
+                               sample_lib::LibraryId lib_id,
                                sample_lib_server::Server& server,
                                FloeInstanceIndex instance_index,
                                LibraryImagesTypes needed_types) {
@@ -243,7 +243,7 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
 }
 
 void InvalidateLibraryImages(LibraryImagesTable& table,
-                             sample_lib::LibraryIdRef library_id,
+                             sample_lib::LibraryId library_id,
                              Renderer& renderer) {
     ASSERT(g_is_logical_main_thread);
 

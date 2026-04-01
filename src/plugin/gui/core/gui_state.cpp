@@ -40,7 +40,7 @@
 #include "plugin/plugin.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
-static void SampleLibraryChanged(GuiState& g, sample_lib::LibraryIdRef library_id) {
+static void SampleLibraryChanged(GuiState& g, sample_lib::LibraryId library_id) {
     InvalidateLibraryImages(g.library_images, library_id, *GuiIo().in.renderer);
 }
 
@@ -99,8 +99,7 @@ GuiState::GuiState(Engine& engine)
               .error_notifications = engine.error_notifications,
               .result_added_callback = []() {},
               .library_changed_callback =
-                  [&gui = *this](sample_lib::LibraryIdRef library_id_ref) {
-                      sample_lib::LibraryId lib_id {library_id_ref};
+                  [&gui = *this](sample_lib::LibraryId lib_id) {
                       gui.main_thread_callbacks.Push([&gui, lib_id]() { SampleLibraryChanged(gui, lib_id); });
                       RequestGuiUpdate(gui.engine.instance_index);
                   },

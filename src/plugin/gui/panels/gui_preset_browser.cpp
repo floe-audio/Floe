@@ -526,9 +526,11 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                             dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
                             for (auto const [library, _] : preset.used_libraries) {
                                 auto const maybe_lib = frame_context.lib_table.Find(library);
-                                if (!maybe_lib || !*maybe_lib)
-                                    fmt::Append(buffer, "{} (not installed)", library);
-                                else
+                                if (!maybe_lib || !*maybe_lib) {
+                                    auto const lib_name =
+                                        sample_lib::LookupLibraryIdString(library).ValueOr("Unknown"_s);
+                                    fmt::Append(buffer, "{} (not installed)", lib_name);
+                                } else
                                     dyn::AppendSpan(buffer, (*maybe_lib)->name);
                                 if (preset.used_libraries.size == 2)
                                     dyn::AppendSpan(buffer, " and ");
@@ -729,9 +731,10 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
     auto tags =
         HashTable<String, FilterItemInfo>::Create(builder.arena, context.presets_snapshot.used_tags.size + 1);
 
-    auto libraries = OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(
-        builder.arena,
-        context.presets_snapshot.used_libraries.size);
+    auto libraries =
+        OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo>::Create(
+            builder.arena,
+            context.presets_snapshot.used_libraries.size);
     auto library_authors =
         OrderedHashTable<String, FilterItemInfo>::Create(builder.arena,
                                                          context.presets_snapshot.used_libraries.size);
