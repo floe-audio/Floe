@@ -55,6 +55,12 @@ PUBLIC consteval u64 HashFnv1a(char const (&array_literal)[N]) {
     return HashFnv1a(String {array_literal, N - 1});
 }
 
+template <typename Type>
+requires(Fundamental<RemoveReference<Type>> || Enum<RemoveReference<Type>> || Pointer<RemoveReference<Type>>)
+PUBLIC constexpr u64 HashFnv1a(Type const& data) {
+    return HashFnv1a(Span {(u8 const*)&data, sizeof(data)});
+}
+
 PUBLIC constexpr u64 HashMultipleFnv1a(ContiguousContainerOfContiguousContainers auto const& c_of_c) {
     auto datas = SpanFromContainerOfContainers(c_of_c);
     // FNV-1a https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function#FNV-1a_hash

@@ -40,15 +40,15 @@ static bool IsKeyValid(Key const& key) {
 
 u64 HashKey(Key const& key) {
     switch (key.tag) {
-        case KeyType::GlobalString: return Hash(key.Get<String>());
-        case KeyType::GlobalInt: return Hash(key.Get<s64>());
+        case KeyType::GlobalString: return HashFnv1a(key.Get<String>());
+        case KeyType::GlobalInt: return HashFnv1a(key.Get<s64>());
         case KeyType::Sectioned: {
             auto const k = key.Get<SectionedKey>();
-            auto hash = HashInit();
-            HashUpdate(hash, k.section);
+            auto hash = HashInitFnv1a();
+            HashUpdateFnv1a(hash, k.section);
             switch (k.key.tag) {
-                case KeyValueType::String: HashUpdate(hash, k.key.Get<String>()); break;
-                case KeyValueType::Int: HashUpdate(hash, k.key.Get<s64>()); break;
+                case KeyValueType::String: HashUpdateFnv1a(hash, k.key.Get<String>()); break;
+                case KeyValueType::Int: HashUpdateFnv1a(hash, k.key.Get<s64>()); break;
             }
             return hash;
         }
