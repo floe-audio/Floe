@@ -115,10 +115,8 @@ PUBLIC constexpr u64 Hash(auto data) {
     else
         return RapidHash64(data);
 }
-PUBLIC constexpr u32 Hash32(auto data) { return HashDbj(data); }
 
-PUBLIC constexpr u64 HashMultiple(auto const& data) { return HashMultipleFnv1a(data); }
-PUBLIC constexpr u32 HashMultiple32(auto const& data) { return HashMultipleDbj(data); }
+PUBLIC constexpr u64 HashMultiple(auto const& data) { return RapidHash64Multiple(data); }
 
 PUBLIC consteval u64 SourceLocationHash(char const* file = __builtin_FILE(), u32 line = __builtin_LINE()) {
     u64 hash = 0xcbf29ce484222325;
