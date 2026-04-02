@@ -145,6 +145,17 @@ struct GuiBuilder {
         bool mouse_down_on_modal_background = false;
         CurrentViewportState* next {};
         CurrentViewportState* first_child {};
+
+        // Cached values to speed up the hot path in DoBox.
+        struct ViewportCache {
+            bool is_auto_sized;
+            DrawList* draw_list;
+            f32 pixels_per_ww;
+
+            f32 WwToPixels(f32 ww) const { return ww * pixels_per_ww; }
+            f32x4 WwToPixels(f32x4 ww) const { return ww * pixels_per_ww; }
+        };
+        ViewportCache viewport_cache {};
     };
 
     struct Config {
@@ -162,6 +173,9 @@ struct GuiBuilder {
     Config config;
 
     CurrentViewportState* state; // Ephemeral
+
+    // Persistent: previous frame's box count per viewport, used to pre-reserve hash tables.
+    DynamicHashTable<imgui::Id, u32> prev_box_counts {Malloc::Instance()};
 };
 
 void BeginFrame(GuiBuilder& builder, GuiBuilder::Config const& config);
@@ -258,7 +272,7 @@ struct BoxConfig {
     u8 extra_margin_for_mouse_events = 0;
 };
 
-Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash = SourceLocationHash());
+NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash = SourceLocationHash());
 
 // Returns k_nullopt if we're in the layout pass. Otherwise, returns a viewport-relative rectangle that you
 // can use to add IMGUI behaviours, or do custom drawing in. Use this to add additional functionality that

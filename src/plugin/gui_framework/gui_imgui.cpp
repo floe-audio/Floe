@@ -502,10 +502,7 @@ Context::Context(ArenaAllocator& scratch) : scratch_arena(scratch) {
     textedit_text_utf8.Reserve(Kb(4));
 }
 
-bool Context::IsRectVisible(Rect r) const {
-    Rect const& c = current_scissor_rect;
-    return Rect::DoRectsIntersect(r, c);
-}
+bool Context::IsRectVisible(Rect r) const { return Rect::DoRectsIntersect(r, current_scissor_rect); }
 
 // Hot
 bool Context::IsHot(Id id) const { return hot_item == id; }
