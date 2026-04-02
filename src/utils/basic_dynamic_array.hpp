@@ -46,12 +46,12 @@ struct BasicDynamicArray {
     int Size() const { return size; }
     int Capacity() const { return capacity; }
 
-    ValueType& operator[](u32 i) {
-        ASSERT(i < size);
+    ALWAYS_INLINE ValueType& operator[](u32 i) {
+        ASSERT_HOT(i < size);
         return data[i];
     }
-    ValueType const& operator[](u32 i) const {
-        ASSERT(i < size);
+    ALWAYS_INLINE ValueType const& operator[](u32 i) const {
+        ASSERT_HOT(i < size);
         return data[i];
     }
 

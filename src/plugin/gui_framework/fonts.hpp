@@ -92,14 +92,8 @@ struct FontAtlas {
     static GlyphRanges GetGlyphRangesDefault(); // Basic Latin, Extended Latin
     static GlyphRanges GetGlyphRangesDefaultAudioPlugin();
 
-    Font* operator[](u32 i) {
-        ASSERT(i < fonts.size);
-        return fonts[i];
-    }
-    Font const* operator[](u32 i) const {
-        ASSERT(i < fonts.size);
-        return fonts[i];
-    }
+    ALWAYS_INLINE Font* operator[](u32 i) { return fonts[i]; }
+    ALWAYS_INLINE Font const* operator[](u32 i) const { return fonts[i]; }
 
     unsigned char* tex_pixels_alpha8 = nullptr;
     unsigned int* tex_pixels_rgb_a32 = nullptr;
