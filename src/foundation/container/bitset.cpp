@@ -118,6 +118,41 @@ TEST_CASE(TestBitset) {
         auto const sub2 = b.Subsection<64>(64);
         REQUIRE(sub2.NumSet() == 64);
     }
+
+    // ForEachSetBit
+    {
+        Bitset<8> b(0b00101010);
+        usize count = 0;
+        usize expected[] = {1, 3, 5};
+        b.ForEachSetBit([&](usize bit) {
+            REQUIRE(bit == expected[count]);
+            ++count;
+        });
+        REQUIRE(count == 3);
+    }
+
+    {
+        Bitset<8> b {};
+        usize count = 0;
+        b.ForEachSetBit([&](usize) { ++count; });
+        REQUIRE(count == 0);
+    }
+
+    {
+        Bitset<128> b {};
+        b.Set(0);
+        b.Set(63);
+        b.Set(64);
+        b.Set(127);
+        usize count = 0;
+        usize expected[] = {0, 63, 64, 127};
+        b.ForEachSetBit([&](usize bit) {
+            REQUIRE(bit == expected[count]);
+            ++count;
+        });
+        REQUIRE(count == 4);
+    }
+
     return k_success;
 }
 

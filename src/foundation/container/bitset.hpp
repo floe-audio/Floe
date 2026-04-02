@@ -37,8 +37,14 @@ struct Bitset {
 
     template <typename Function>
     void ForEachSetBit(Function&& function) const {
-        for (auto const bit : Range(k_bits))
-            if (Get(bit)) function(bit);
+        for (auto const element_index : Range(k_num_elements)) {
+            auto element = elements[element_index];
+            while (element) {
+                auto const bit = (usize)__builtin_ctzg(element);
+                function((element_index * k_bits_per_element) + bit);
+                element &= element - 1;
+            }
+        }
     }
 
     constexpr void SetToValue(usize bit, bool value) {
