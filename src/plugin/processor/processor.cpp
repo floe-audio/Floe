@@ -1374,15 +1374,13 @@ static void SendParamChangesToMainThread(AudioProcessor& processor, ChangedParam
     if (!changes_for_main_thread.changed.AnyValuesSet()) return;
 
     DynamicArrayBounded<AudioProcessor::ChangedParam, k_num_parameters> events {};
-    for (auto const param_index : Range(k_num_parameters)) {
-        if (changes_for_main_thread.changed.Get(param_index)) {
-            dyn::Append(events,
-                        {
-                            .value = processor.audio_params.LinearValue((ParamIndex)param_index),
-                            .index = (ParamIndex)param_index,
-                        });
-        }
-    }
+    changes_for_main_thread.changed.ForEachSetBit([&](usize param_index) {
+        dyn::Append(events,
+                    {
+                        .value = processor.audio_params.LinearValue((ParamIndex)param_index),
+                        .index = (ParamIndex)param_index,
+                    });
+    });
     processor.param_changes_for_main_thread.Push(events);
 
     processor.host.request_callback(&processor.host);
