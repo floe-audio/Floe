@@ -678,7 +678,7 @@ Box DoFilterButton(GuiBuilder& builder,
               .parent_dictates_hot_and_active = true,
               .round_background_corners = 0b1111,
               .layout {
-                  .size = total_text.size,
+                  .size = {total_text.size.x, layout::k_fill_parent},
                   .margins = {.l = 3},
               },
           });
@@ -1563,24 +1563,63 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
     }
 }
 
+static void HandleTagFilterButtonClick(CommonBrowserState& state, TagType tag) {
+    state.keyboard_navigation.focused_panel = BrowserKeyboardNavigation::Panel::Filters;
+    auto const is_selected = state.selected_tags.Get(ToInt(tag));
+    switch (state.filter_mode) {
+        case FilterMode::Single: {
+            state.ClearAll();
+            if (!is_selected) state.selected_tags.Set(ToInt(tag));
+            break;
+        }
+        case FilterMode::MultipleAnd:
+        case FilterMode::MultipleOr: {
+            state.selected_tags.SetToValue(ToInt(tag), !is_selected);
+            break;
+        }
+        case FilterMode::Count: break;
+    }
+}
+
+static void HandleUntaggedFilterButtonClick(CommonBrowserState& state) {
+    state.keyboard_navigation.focused_panel = BrowserKeyboardNavigation::Panel::Filters;
+    switch (state.filter_mode) {
+        case FilterMode::Single: {
+            auto const was_selected = state.selected_untagged;
+            state.ClearAll();
+            state.selected_untagged = !was_selected;
+            break;
+        }
+        case FilterMode::MultipleAnd:
+        case FilterMode::MultipleOr: {
+            state.selected_untagged = !state.selected_untagged;
+            break;
+        }
+        case FilterMode::Count: break;
+    }
+}
+
 void DoBrowserTagsFilters(GuiBuilder& builder,
                           BrowserPopupContext& context,
                           Box const& parent,
                           TagsFilters const& tags_filters) {
-    if (!tags_filters.tags.size) return;
+    if (!tags_filters.available_tags.AnyValuesSet() && !tags_filters.has_untagged) return;
 
+    // Group available tags by category.
     OrderedHashTable<TagCategory, OrderedHashTable<TagType, FilterItemInfo>> standard_tags {};
-    OrderedHashTable<String, FilterItemInfo> non_standard_tags {};
-
-    for (auto const [name, info, _] : tags_filters.tags) {
-        if (auto const t = LookupTagName(name)) {
+    tags_filters.available_tags.ForEachSetBit([&](usize bit) {
+        auto const tag = (TagType)bit;
+        auto const tag_and_cat = LookupTagName(GetTagInfo(tag).name);
+        if (tag_and_cat) {
             auto& tags_for_category =
-                standard_tags.FindOrInsertGrowIfNeeded(builder.arena, t->category, {}).element.data;
-            tags_for_category.InsertGrowIfNeeded(builder.arena, t->tag, info);
-        } else {
-            non_standard_tags.InsertGrowIfNeeded(builder.arena, name, info);
+                standard_tags.FindOrInsertGrowIfNeeded(builder.arena, tag_and_cat->category, {}).element.data;
+            tags_for_category.InsertGrowIfNeeded(builder.arena, tag, tags_filters.tags[bit]);
         }
-    }
+    });
+
+    // We need a dummy SelectedHashes to pass to DoFilterButton. It's not used because we set
+    // skip_click_handler = true.
+    SelectedHashes dummy_hashes {"Tag"};
 
     BrowserSection tags_section {
         .state = context.state,
@@ -1616,67 +1655,53 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
             if (!MatchesFilterSearch(tag_info.name, context.state.filter_search)) continue;
 
             if (tags_section.Do(builder) == BrowserSection::State::Collapsed) break;
-            // We now have the outer section. We can give it to the inner section.
             inner_section.parent = tags_section.Do(builder).Get<Box>();
             if (inner_section.Do(builder) == BrowserSection::State::Collapsed) break;
 
-            auto const tag_hash = Hash(tag_info.name);
-            auto const is_selected = context.state.selected_tags_hashes.Contains(tag_hash);
-            DoFilterButton(builder,
-                           context.state,
-                           filter_item_info,
-                           {
-                               .common =
-                                   {
-                                       .parent = inner_section.Do(builder).Get<Box>(),
-                                       .id_extra = (u64)tag,
-                                       .is_selected = is_selected,
-                                       .text = tag_info.name,
-                                       .hashes = context.state.selected_tags_hashes,
-                                       .clicked_hash = tag_hash,
-                                       .filter_mode = context.state.filter_mode,
-                                   },
-                           });
+            bool const is_selected = context.state.selected_tags.Get(ToInt(tag));
+            auto const button = DoFilterButton(builder,
+                                               context.state,
+                                               filter_item_info,
+                                               {
+                                                   .common =
+                                                       {
+                                                           .parent = inner_section.Do(builder).Get<Box>(),
+                                                           .id_extra = (u64)tag,
+                                                           .is_selected = is_selected,
+                                                           .text = tag_info.name,
+                                                           .hashes = dummy_hashes,
+                                                           .clicked_hash = (u64)tag,
+                                                           .filter_mode = context.state.filter_mode,
+                                                       },
+                                                   .skip_click_handler = true,
+                                               });
+            if (button.button_fired) HandleTagFilterButtonClick(context.state, tag);
         }
     }
 
-    if (non_standard_tags.size) {
-        BrowserSection inner_section {
-            .state = context.state,
-            .id = context.browser_id ^ HashFnv1a("tags-section-uncategorised"),
-            .parent = {}, // IMPORTANT: set later
-            .heading = "UNCATEGORISED",
-            .multiline_contents = true,
-            .subsection = true,
-            .default_collapsed = true,
-            .store = &context.store,
-        };
+    if (tags_filters.has_untagged) {
+        if (!MatchesFilterSearch(k_untagged_tag_name, context.state.filter_search)) return;
 
-        for (auto const [name, filter_item_info, name_hash] : non_standard_tags) {
-            if (!MatchesFilterSearch(name, context.state.filter_search)) continue;
+        if (tags_section.Do(builder) == BrowserSection::State::Collapsed) return;
 
-            if (tags_section.Do(builder) == BrowserSection::State::Collapsed) break;
-            // We now have the outer section. We can give it to the inner section.
-            inner_section.parent = tags_section.Do(builder).Get<Box>();
-            if (inner_section.Do(builder) == BrowserSection::State::Collapsed) break;
-
-            auto const is_selected = context.state.selected_tags_hashes.Contains(Hash(name));
-            DoFilterButton(builder,
-                           context.state,
-                           filter_item_info,
-                           {
-                               .common =
-                                   {
-                                       .parent = inner_section.Do(builder).Get<Box>(),
-                                       .id_extra = name_hash,
-                                       .is_selected = is_selected,
-                                       .text = name,
-                                       .hashes = context.state.selected_tags_hashes,
-                                       .clicked_hash = name_hash,
-                                       .filter_mode = context.state.filter_mode,
-                                   },
-                           });
-        }
+        auto const is_selected = context.state.selected_untagged;
+        auto const button = DoFilterButton(builder,
+                                           context.state,
+                                           tags_filters.untagged_info,
+                                           {
+                                               .common =
+                                                   {
+                                                       .parent = tags_section.Do(builder).Get<Box>(),
+                                                       .id_extra = HashFnv1a("untagged"),
+                                                       .is_selected = is_selected,
+                                                       .text = k_untagged_tag_name,
+                                                       .hashes = dummy_hashes,
+                                                       .clicked_hash = HashFnv1a("untagged"),
+                                                       .filter_mode = context.state.filter_mode,
+                                                   },
+                                               .skip_click_handler = true,
+                                           });
+        if (button.button_fired) HandleUntaggedFilterButtonClick(context.state);
     }
 }
 
@@ -2417,7 +2442,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                         return button.button_fired;
                     };
 
-                for (auto const hashes : context.state.AllHashes()) {
+                for (auto const hashes : context.state.AllNonTagHashes()) {
                     for (usize i = 0; i < hashes->hashes.size;) {
                         auto const& hash = hashes->hashes[i];
                         if (do_item(hashes->name, hash.display_name, context.state.filter_mode, hash.hash))
@@ -2425,6 +2450,21 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                         else
                             ++i;
                     }
+                }
+
+                context.state.selected_tags.ForEachSetBit([&](usize bit) {
+                    auto const tag_info = GetTagInfo((TagType)bit);
+                    SelectedHashes::DisplayName display_name;
+                    dyn::Assign(display_name, tag_info.name);
+                    if (do_item("Tag"_s, display_name, context.state.filter_mode))
+                        context.state.selected_tags.Clear(bit);
+                });
+
+                if (context.state.selected_untagged) {
+                    SelectedHashes::DisplayName display_name;
+                    dyn::Assign(display_name, k_untagged_tag_name);
+                    if (do_item("Tag"_s, display_name, context.state.filter_mode))
+                        context.state.selected_untagged = false;
                 }
 
                 if (context.state.favourites_only) {

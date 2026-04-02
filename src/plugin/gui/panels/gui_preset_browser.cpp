@@ -151,18 +151,26 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
         }
     }
 
-    if (state.common_state.selected_tags_hashes.HasSelected()) {
+    if (state.common_state.HasTagFilters()) {
         filtering_on = true;
-        for (auto const& selected_hash : state.common_state.selected_tags_hashes) {
-            if (!(preset.metadata.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
-                  (selected_hash.hash == Hash(k_untagged_tag_name) && preset.metadata.tags.size == 0))) {
-                if (state.common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (state.common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
+        bool const untagged_matched =
+            state.common_state.selected_untagged && !preset.metadata.tags.AnyValuesSet();
+        auto const tags_intersection = state.common_state.selected_tags & preset.metadata.tags;
+
+        switch (state.common_state.filter_mode) {
+            case FilterMode::Single:
+            case FilterMode::MultipleAnd: {
+                // All selected filters must match.
+                if (state.common_state.selected_untagged && !untagged_matched) return true;
+                if (tags_intersection != state.common_state.selected_tags) return true;
+                break;
             }
+            case FilterMode::MultipleOr: {
+                // Any selected filter must match.
+                if (untagged_matched || tags_intersection.AnyValuesSet()) return false;
+                break;
+            }
+            case FilterMode::Count: break;
         }
     }
 
@@ -514,10 +522,13 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                             fmt::Append(buffer, "\n\n{}", preset.metadata.description);
 
                         dyn::AppendSpan(buffer, "\n\nTags: ");
-                        if (preset.metadata.tags.size) {
-                            for (auto const [tag, _] : preset.metadata.tags)
-                                fmt::Append(buffer, "{}, ", tag);
-                            dyn::Pop(buffer, 2);
+                        if (preset.metadata.tags.AnyValuesSet()) {
+                            bool first = true;
+                            preset.metadata.tags.ForEachSetBit([&](usize bit) {
+                                if (!first) dyn::AppendSpan(buffer, ", ");
+                                first = false;
+                                dyn::AppendSpan(buffer, GetTagInfo((TagType)bit).name);
+                            });
                         } else {
                             dyn::AppendSpan(buffer, "none");
                         }
@@ -576,7 +587,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                         if (mirage_compat_icon) dyn::Emplace(icons, *mirage_compat_icon);
 
                         if (!PRODUCTION_BUILD && preset.file_format == PresetFormat::Floe &&
-                            (preset.metadata.tags.size <= 3 || preset.metadata.author.size == 0 ||
+                            (preset.metadata.tags.NumSet() <= 3 || preset.metadata.author.size == 0 ||
                              preset.metadata.description.size == 0))
                             dyn::Emplace(icons, String(ICON_FA_TRIANGLE_EXCLAMATION));
 
@@ -728,8 +739,8 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
     context.Init(builder.arena);
     DEFER { context.Deinit(); };
 
-    auto tags =
-        HashTable<String, FilterItemInfo>::Create(builder.arena, context.presets_snapshot.used_tags.size + 1);
+    TagsFilters tags_filters {};
+    tags_filters.available_tags = context.presets_snapshot.used_tags;
 
     auto libraries =
         OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo>::Create(
@@ -759,14 +770,15 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                 ++favourites_info.total_available;
             }
 
-            for (auto const [tag, tag_hash] : preset.metadata.tags) {
-                auto& i = tags.FindOrInsertWithoutGrowing(tag, {}, tag_hash).element.data;
+            preset.metadata.tags.ForEachSetBit([&](usize bit) {
+                auto& i = tags_filters.tags[bit];
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
-            }
+            });
 
-            if (!preset.metadata.tags.size) {
-                auto& i = tags.FindOrInsertWithoutGrowing(k_untagged_tag_name, {}).element.data;
+            if (!preset.metadata.tags.AnyValuesSet()) {
+                tags_filters.has_untagged = true;
+                auto& i = tags_filters.untagged_info;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
@@ -852,10 +864,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
                 },
-            .tags_filters =
-                TagsFilters {
-                    .tags = tags,
-                },
+            .tags_filters = tags_filters,
             .do_extra_filters_top =
                 [&](GuiBuilder& builder, Box const& parent) {
                     auto constexpr k_section_id = HashFnv1a("preset-folders-section");

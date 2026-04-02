@@ -81,18 +81,24 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
         }
     }
 
-    if (state.common_state.selected_tags_hashes.HasSelected()) {
+    if (state.common_state.HasTagFilters()) {
         filtering_on = true;
-        for (auto const& selected_hash : state.common_state.selected_tags_hashes) {
-            if (!(ir.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
-                  (selected_hash.hash == Hash(k_untagged_tag_name) && ir.tags.size == 0))) {
-                if (state.common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (state.common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
+
+        bool const untagged_matched = state.common_state.selected_untagged && !ir.tags.AnyValuesSet();
+        auto const tags_intersection = state.common_state.selected_tags & ir.tags;
+
+        switch (state.common_state.filter_mode) {
+            case FilterMode::Single:
+            case FilterMode::MultipleAnd: {
+                if (state.common_state.selected_untagged && !untagged_matched) return true;
+                if (tags_intersection != state.common_state.selected_tags) return true;
+                break;
             }
+            case FilterMode::MultipleOr: {
+                if (untagged_matched || tags_intersection.AnyValuesSet()) return false;
+                break;
+            }
+            case FilterMode::Count: break;
         }
     }
 
@@ -249,52 +255,55 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
         auto const is_favourite = IsFavourite(context.prefs, k_favourite_ir_key, ir_hash);
 
         if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
-            auto const item = DoBrowserItem(builder,
-                                            state.common_state,
-                                            {
-                                                .parent = folder_section->Do(builder).Get<Box>(),
-                                                .id_extra = ir_hash,
-                                                .text = ir.name,
-                                                .tooltip = FunctionRef<String()>([&]() -> String {
-                                                    DynamicArray<char> buffer {builder.arena};
+            auto const item =
+                DoBrowserItem(builder,
+                              state.common_state,
+                              {
+                                  .parent = folder_section->Do(builder).Get<Box>(),
+                                  .id_extra = ir_hash,
+                                  .text = ir.name,
+                                  .tooltip = FunctionRef<String()>([&]() -> String {
+                                      DynamicArray<char> buffer {builder.arena};
 
-                                                    fmt::Append(buffer, "{}. Tags: ", ir.name);
-                                                    if (ir.tags.size) {
-                                                        for (auto const& [tag, _] : ir.tags)
-                                                            fmt::Append(buffer, "{}, ", tag);
-                                                        dyn::Pop(buffer, 2);
-                                                    } else {
-                                                        dyn::AppendSpan(buffer, "none");
-                                                    }
+                                      fmt::Append(buffer, "{}. Tags: ", ir.name);
+                                      if (ir.tags.AnyValuesSet()) {
+                                          bool first = true;
+                                          ir.tags.ForEachSetBit([&](usize bit) {
+                                              if (!first) fmt::Append(buffer, ", ");
+                                              first = false;
+                                              fmt::Append(buffer, "{}", GetTagInfo((TagType)bit).name);
+                                          });
+                                      } else {
+                                          dyn::AppendSpan(buffer, "none");
+                                      }
 
-                                                    return buffer.ToOwnedSpan();
-                                                }),
-                                                .item_id = ir_hash,
-                                                .is_current = is_current,
-                                                .is_favourite = is_favourite,
-                                                .is_tab_item = new_folder,
-                                                .icons = ({
-                                                    if (&lib != previous_library) {
-                                                        previous_library = &lib;
-                                                        auto const imgs =
-                                                            GetLibraryImages(context.library_images,
+                                      return buffer.ToOwnedSpan();
+                                  }),
+                                  .item_id = ir_hash,
+                                  .is_current = is_current,
+                                  .is_favourite = is_favourite,
+                                  .is_tab_item = new_folder,
+                                  .icons = ({
+                                      if (&lib != previous_library) {
+                                          previous_library = &lib;
+                                          auto const imgs = GetLibraryImages(context.library_images,
                                                                              builder.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
                                                                              context.engine.instance_index,
                                                                              LibraryImagesTypes::Icon);
-                                                        if (imgs.icon)
-                                                            lib_icon = *imgs.icon;
-                                                        else
-                                                            lib_icon = ItemIconType::None;
-                                                    }
-                                                    decltype(BrowserItemOptions::icons) result;
-                                                    dyn::Emplace(result, lib_icon);
-                                                    result;
-                                                }),
-                                                .notifications = context.notifications,
-                                                .store = context.persistent_store,
-                                            });
+                                          if (imgs.icon)
+                                              lib_icon = *imgs.icon;
+                                          else
+                                              lib_icon = ItemIconType::None;
+                                      }
+                                      decltype(BrowserItemOptions::icons) result;
+                                      dyn::Emplace(result, lib_icon);
+                                      result;
+                                  }),
+                                  .notifications = context.notifications,
+                                  .store = context.persistent_store,
+                              });
 
             if (is_current) {
                 if (auto const r = BoxRect(builder, item.box)) {
@@ -329,13 +338,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
     auto const& libs = context.frame_context.libraries;
     auto& ir_id = context.engine.processor.convo.ir_id;
 
-    HashTable<String, FilterItemInfo> tags {};
-    for (auto const& l_ptr : libs) {
-        auto const& lib = *l_ptr;
-        for (auto const& ir : lib.sorted_irs)
-            for (auto const& [tag, tag_hash] : ir->tags)
-                tags.InsertGrowIfNeeded(builder.arena, tag, {.num_used_in_items_lists = 0}, tag_hash);
-    }
+    TagsFilters tags_filters {};
 
     auto libraries =
         OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo>::Create(
@@ -376,17 +379,17 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
                 ++i.total_available;
             }
 
-            for (auto const& [tag, tag_hash] : ir->tags) {
-                auto& tag_found =
-                    tags.FindOrInsertGrowIfNeeded(builder.arena, tag, {}, tag_hash).element.data;
-                ++tag_found.total_available;
-                if (!skip) ++tag_found.num_used_in_items_lists;
-            }
-            if (!ir->tags.size) {
-                auto& tag_found =
-                    tags.FindOrInsertGrowIfNeeded(builder.arena, k_untagged_tag_name, {}).element.data;
-                ++tag_found.total_available;
-                if (!skip) ++tag_found.num_used_in_items_lists;
+            ir->tags.ForEachSetBit([&](usize bit) {
+                tags_filters.available_tags.Set(bit);
+                auto& i = tags_filters.tags[bit];
+                ++i.total_available;
+                if (!skip) ++i.num_used_in_items_lists;
+            });
+            if (!ir->tags.AnyValuesSet()) {
+                tags_filters.has_untagged = true;
+                auto& i = tags_filters.untagged_info;
+                ++i.total_available;
+                if (!skip) ++i.num_used_in_items_lists;
             }
         }
     }
@@ -450,10 +453,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
                 },
-            .tags_filters =
-                TagsFilters {
-                    .tags = tags,
-                },
+            .tags_filters = tags_filters,
             .favourites_filter_info = favourites_info,
         });
 }

@@ -1358,16 +1358,21 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     // =======================================================================================================
     {
         u8 num_tags {};
-        if (coder.IsWriting()) num_tags = CheckedCast<u8>(state.metadata.tags.size);
+        DynamicArrayBounded<String, k_max_num_tags> tag_strings {};
+        if (coder.IsWriting()) {
+            state.metadata.tags.ForEachSetBit(
+                [&](usize bit) { dyn::Append(tag_strings, GetTagInfo((TagType)bit).name); });
+            num_tags = CheckedCast<u8>(tag_strings.size);
+        }
         TRY(coder.CodeNumber(num_tags, StateVersion::Initial));
 
         for (auto const i : Range(num_tags)) {
             String tag {};
-            if (coder.IsWriting()) tag = state.metadata.tags[i];
+            if (coder.IsWriting()) tag = tag_strings[i];
             TRY(coder.CodeString(tag, scratch_arena, StateVersion::Initial));
             if (coder.IsReading()) {
                 if (tag.size > k_max_tag_size) return ErrorCode(CommonError::InvalidFileFormat);
-                dyn::Emplace(state.metadata.tags, tag);
+                if (auto const t = LookupTagName(tag)) state.metadata.tags.Set(ToInt(t->tag));
             }
         }
     }
@@ -1921,10 +1926,8 @@ TEST_CASE(TestNewSerialisation) {
             }
 
             for (auto const _ : Range(RandomIntInRange<usize>(random_seed, 0, k_max_num_tags - 1))) {
-                DynamicArrayBounded<char, k_max_tag_size> tag;
-                dyn::Resize(tag, RandomIntInRange<usize>(random_seed, 1, k_max_tag_size));
-                FillRandomAsciiChars(random_seed, tag);
-                dyn::Append(state.metadata.tags, tag);
+                auto const tag = (TagType)RandomIntInRange<u16>(random_seed, 0, ToInt(TagType::Count) - 1);
+                state.metadata.tags.Set(ToInt(tag));
             }
 
             {

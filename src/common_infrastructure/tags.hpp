@@ -224,6 +224,8 @@ enum class TagType : u16 {
     Count,
 };
 
+using TagsBitset = Bitset<ToInt(TagType::Count)>;
+
 enum class TagCategoryImportance {
     Primary,
     Secondary,

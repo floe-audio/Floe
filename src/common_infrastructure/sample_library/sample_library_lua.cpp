@@ -13,6 +13,7 @@
 #include "os/filesystem.hpp"
 #include "os/misc.hpp"
 #include "tests/framework.hpp"
+#include "utils/logger/logger.hpp"
 
 #include "sample_library.hpp"
 
@@ -400,6 +401,15 @@ static Span<String> SetArrayOfStrings(LuaState& ctx, FieldInfo field_info, bool 
     });
 
     return list.ToOwnedSpan();
+}
+
+static void SetTagsFromStrings(LuaState& ctx, FieldInfo const& info, TagsBitset& tags) {
+    auto const strings = SetArrayOfStrings(ctx, info, true);
+    for (auto const& s : strings)
+        if (auto const tag = LookupTagName(s))
+            tags.Set(ToInt(tag->tag));
+        else
+            LogWarning(ModuleName::SampleLibrary, "Unrecognised tag '{}' in {}", s, ctx.filepath);
 }
 
 template <>
@@ -1263,13 +1273,7 @@ struct TableFields<ImpulseResponse> {
                     .lua_type = LUA_TTABLE,
                     .required = false,
                     .is_array = LUA_TSTRING,
-                    .set =
-                        [](SET_FIELD_VALUE_ARGS) {
-                            auto const tags = SetArrayOfStrings(ctx, info, true);
-                            FIELD_OBJ.tags = Set<String>::Create(ctx.result_arena, tags.size);
-                            for (auto const& t : tags)
-                                FIELD_OBJ.tags.InsertWithoutGrowing(t);
-                        },
+                    .set = [](SET_FIELD_VALUE_ARGS) { SetTagsFromStrings(ctx, info, FIELD_OBJ.tags); },
                 };
             case Field::Description:
                 return {
@@ -1395,13 +1399,7 @@ struct TableFields<Instrument> {
                     .lua_type = LUA_TTABLE,
                     .required = false,
                     .is_array = LUA_TSTRING,
-                    .set =
-                        [](SET_FIELD_VALUE_ARGS) {
-                            auto const tags = SetArrayOfStrings(ctx, info, true);
-                            FIELD_OBJ.tags = Set<String>::Create(ctx.result_arena, tags.size);
-                            for (auto const t : tags)
-                                FIELD_OBJ.tags.InsertWithoutGrowing(t);
-                        },
+                    .set = [](SET_FIELD_VALUE_ARGS) { SetTagsFromStrings(ctx, info, FIELD_OBJ.tags); },
                 };
             case Field::WaveformFilepath:
                 return {
@@ -3074,12 +3072,12 @@ TEST_CASE(TestBasicFile) {
     })
     local instrument = floe.new_instrument(library, {
         name = "Inst1",
-        tags = {"tag1"},
+        tags = {"acoustic"},
         folder = "Folders/Sub",
     })
     local instrument2 = floe.new_instrument(library, {
         name = "Inst2",
-        tags = {"tag1", "tag2"},
+        tags = {"acoustic", "warm"},
     })
     local proto = {
         trigger_criteria = { auto_map_key_range_group = "group1" },
@@ -3128,9 +3126,9 @@ TEST_CASE(TestBasicFile) {
         REQUIRE(inst2_ptr);
         auto inst2 = *inst2_ptr;
         CHECK_EQ(inst2->name, "Inst2"_s);
-        REQUIRE(inst2->tags.size == 2);
-        CHECK(inst2->tags.Contains("tag1"_s));
-        CHECK(inst2->tags.Contains("tag2"_s));
+        REQUIRE(inst2->tags.NumSet() == 2);
+        CHECK(inst2->tags.Get(ToInt(TagType::Acoustic)));
+        CHECK(inst2->tags.Get(ToInt(TagType::Warm)));
     }
 
     {
@@ -3142,8 +3140,8 @@ TEST_CASE(TestBasicFile) {
         CHECK_EQ(inst1->folder->name, "Sub"_s);
         REQUIRE(inst1->folder->parent);
         CHECK_EQ(inst1->folder->parent->name, "Folders"_s);
-        REQUIRE(inst1->tags.size == 1);
-        CHECK(inst1->tags.Contains("tag1"_s));
+        REQUIRE(inst1->tags.NumSet() == 1);
+        CHECK(inst1->tags.Get(ToInt(TagType::Acoustic)));
 
         CHECK_EQ(inst1->audio_file_path_for_waveform, "foo/file.flac"_s);
 

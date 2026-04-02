@@ -35,22 +35,8 @@ static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
     return desc;
 }
 
-bool DoTagsGui(GuiBuilder& builder,
-               DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
-               Box const& root) {
-    Bitset<ToInt(TagType::Count)> selected_tags = {};
-    for (auto const tag : tags) {
-        for (auto const category : EnumIterator<TagCategory>()) {
-            if (category == TagCategory::ReverbType) continue;
-
-            for (auto const& category_tag : Tags(category).tags) {
-                if (GetTagInfo(category_tag).name == tag) {
-                    selected_tags.Set(ToInt(category_tag));
-                    break;
-                }
-            }
-        }
-    }
+bool DoTagsGui(GuiBuilder& builder, TagsBitset& tags, Box const& root) {
+    auto& selected_tags = tags;
 
     bool result = false;
 
@@ -146,10 +132,7 @@ bool DoTagsGui(GuiBuilder& builder,
 
             if (button.button_fired) {
                 result = true;
-                if (is_selected)
-                    dyn::RemoveValue(tags, tag_info.name);
-                else
-                    dyn::Append(tags, tag_info.name);
+                selected_tags.SetToValue(ToInt(tag), !is_selected);
             }
         }
     }

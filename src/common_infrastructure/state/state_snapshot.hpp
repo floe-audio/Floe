@@ -7,6 +7,7 @@
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/state/macros.hpp"
+#include "common_infrastructure/tags.hpp"
 
 #include "instrument.hpp"
 #include "plugin/processing_utils/curve_map.hpp"
@@ -14,13 +15,13 @@
 struct StateMetadata {
     bool operator==(StateMetadata const& other) const = default;
     bool operator!=(StateMetadata const& other) const = default;
-    DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags> tags {};
+    TagsBitset tags {};
     DynamicArrayBounded<char, k_max_preset_author_size> author {};
     DynamicArrayBounded<char, k_max_preset_description_size> description {};
 };
 
 struct StateMetadataRef {
-    Set<String> tags {};
+    TagsBitset tags {};
     String author {};
     String description {};
 };
@@ -158,10 +159,10 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
 
     if (old_state.metadata.tags != new_state.metadata.tags) {
         fmt::Append(diff_desc, "Tags changed:\n"_s);
-        for (auto const& tag : old_state.metadata.tags)
-            fmt::Append(diff_desc, "  - {}\n"_s, tag);
-        for (auto const& tag : new_state.metadata.tags)
-            fmt::Append(diff_desc, "  + {}\n"_s, tag);
+        old_state.metadata.tags.ForEachSetBit(
+            [&](usize bit) { fmt::Append(diff_desc, "  - {}\n"_s, GetTagInfo((TagType)bit).name); });
+        new_state.metadata.tags.ForEachSetBit(
+            [&](usize bit) { fmt::Append(diff_desc, "  + {}\n"_s, GetTagInfo((TagType)bit).name); });
     }
 
     if (old_state.instance_id != new_state.instance_id) dyn::AppendSpan(diff_desc, "instance ID changes");

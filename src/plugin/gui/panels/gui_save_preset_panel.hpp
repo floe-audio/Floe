@@ -31,6 +31,4 @@ void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine);
 
 void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state);
 
-bool DoTagsGui(GuiBuilder& builder,
-               DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
-               Box const& root);
+bool DoTagsGui(GuiBuilder& builder, TagsBitset& tags, Box const& root);

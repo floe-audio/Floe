@@ -34,7 +34,7 @@ struct PresetFolder {
     String folder {}; // subpath of scan_folder, if any
     Span<Preset> presets {};
     Set<sample_lib::LibraryId, NoHash> used_libraries {};
-    Set<String> used_tags {};
+    TagsBitset used_tags {};
 
     Optional<PresetBank> preset_bank_info {}; // From metadata file (primary importance)
 
@@ -78,7 +78,7 @@ struct PresetServer {
 
     // The next fields are versioned and mutex protected
     DynamicArray<PresetFolder*> folders {arena};
-    DynamicSet<String> used_tags {arena};
+    TagsBitset used_tags {};
     DynamicSet<sample_lib::LibraryId, NoHash> used_libraries {arena};
     DynamicSet<String> authors {arena};
     ArenaAllocator folder_node_arena {(Allocator&)arena};
@@ -145,7 +145,7 @@ struct PresetsSnapshot {
     Span<PresetFolderListing const*> banks;
 
     // Additional convenience data
-    Set<String> used_tags;
+    TagsBitset used_tags;
     Set<sample_lib::LibraryId, NoHash> used_libraries;
     Set<String> authors;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};

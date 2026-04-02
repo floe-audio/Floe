@@ -320,12 +320,12 @@ static void DoTagBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& conte
 
     auto& tags = tags_result.Value();
 
-    TagsArray this_inst_tags {};
+    TagsBitset this_inst_tags {};
     // Fill with tags from the existing tags file.
     if (auto i = tags.Find(inst.instrument.name)) {
         for (auto const [tag, _] : *i) {
             ASSERT(IsValidUtf8(tag));
-            dyn::AppendIfNotAlreadyThere(this_inst_tags, tag);
+            if (auto const t = LookupTagName(tag)) this_inst_tags.Set(ToInt(t->tag));
         }
     }
 
@@ -333,10 +333,10 @@ static void DoTagBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& conte
         // Update the tags for the changed instrument.
         auto& result = tags.FindOrInsertGrowIfNeeded(builder.arena, inst.instrument.name, {}).element.data;
         result.DeleteAll();
-        for (auto const& tag : this_inst_tags) {
-            if (tag.size == 0) continue;
-            result.InsertGrowIfNeeded(builder.arena, tag);
-        }
+        this_inst_tags.ForEachSetBit([&](usize bit) {
+            auto const tag_name = GetTagInfo((TagType)bit).name;
+            result.InsertGrowIfNeeded(builder.arena, tag_name);
+        });
 
         if (auto const o = WriteTagsFile(tags, inst.instrument.library, builder.arena); o.HasError()) {
             *context.notifications.AppendUninitalisedOverwrite() = {

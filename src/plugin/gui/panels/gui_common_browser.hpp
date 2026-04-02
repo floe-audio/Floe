@@ -7,6 +7,7 @@
 
 #include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui_library_images.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
@@ -157,30 +158,34 @@ struct BrowserKeyboardNavigation {
 };
 
 struct CommonBrowserState {
-    auto AllHashes() {
-        DynamicArrayBounded<SelectedHashes*, 7> all_hashes;
-        static_assert(decltype(all_hashes)::Capacity() >= (4 + decltype(other_selected_hashes)::Capacity()));
+    auto AllNonTagHashes() {
+        DynamicArrayBounded<SelectedHashes*, 6> all_hashes;
+        static_assert(decltype(all_hashes)::Capacity() >= (3 + decltype(other_selected_hashes)::Capacity()));
         dyn::AppendAssumeCapacity(all_hashes, &selected_library_hashes);
         dyn::AppendAssumeCapacity(all_hashes, &selected_library_author_hashes);
-        dyn::AppendAssumeCapacity(all_hashes, &selected_tags_hashes);
         dyn::AppendAssumeCapacity(all_hashes, &selected_folder_hashes);
         for (auto& hashes : other_selected_hashes)
             dyn::AppendAssumeCapacity(all_hashes, hashes);
         return all_hashes;
     }
 
-    auto AllHashes() const { return const_cast<CommonBrowserState*>(this)->AllHashes(); }
+    auto AllNonTagHashes() const { return const_cast<CommonBrowserState*>(this)->AllNonTagHashes(); }
+
+    bool HasTagFilters() const { return selected_tags.AnyValuesSet() || selected_untagged; }
 
     bool HasFilters() const {
         if (favourites_only) return true;
-        for (auto const& h : AllHashes())
+        if (HasTagFilters()) return true;
+        for (auto const& h : AllNonTagHashes())
             if (h->HasSelected()) return true;
         return false;
     }
 
     void ClearAll() {
-        for (auto& h : AllHashes())
+        for (auto& h : AllNonTagHashes())
             h->Clear();
+        selected_tags.ClearAll();
+        selected_untagged = false;
         favourites_only = false;
     }
 
@@ -191,7 +196,20 @@ struct CommonBrowserState {
         }
 
         bool found_one = false;
-        for (auto& hashes : AllHashes()) {
+
+        if (HasTagFilters()) {
+            found_one = true;
+            // Keep only one tag selected
+            if (selected_untagged) {
+                selected_tags.ClearAll();
+            } else {
+                auto const first = selected_tags.FirstSetBit();
+                selected_tags.ClearAll();
+                selected_tags.Set(first);
+            }
+        }
+
+        for (auto& hashes : AllNonTagHashes()) {
             if (hashes->hashes.size) {
                 if (found_one)
                     hashes->Clear();
@@ -206,7 +224,8 @@ struct CommonBrowserState {
     Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the browser.
     SelectedHashes selected_library_hashes {"Library"};
     SelectedHashes selected_library_author_hashes {"Library Author"};
-    SelectedHashes selected_tags_hashes {"Tag"};
+    TagsBitset selected_tags {};
+    bool selected_untagged {};
     SelectedHashes selected_folder_hashes {"Folder"};
     bool favourites_only {};
 
@@ -238,7 +257,10 @@ struct FilterItemInfo {
 };
 
 struct TagsFilters {
-    HashTable<String, FilterItemInfo> tags;
+    Array<FilterItemInfo, ToInt(TagType::Count)> tags {};
+    TagsBitset available_tags {};
+    FilterItemInfo untagged_info {};
+    bool has_untagged {};
 };
 
 bool RootNodeLessThan(FolderNode const* const& a,

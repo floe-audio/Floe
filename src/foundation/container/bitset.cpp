@@ -119,7 +119,6 @@ TEST_CASE(TestBitset) {
         REQUIRE(sub2.NumSet() == 64);
     }
 
-    // ForEachSetBit
     {
         Bitset<8> b(0b00101010);
         usize count = 0;

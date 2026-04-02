@@ -7,6 +7,7 @@
 
 #include "common_infrastructure/audio_data.hpp"
 #include "common_infrastructure/folder_node.hpp"
+#include "common_infrastructure/tags.hpp"
 
 #include "mdata.hpp"
 
@@ -155,7 +156,7 @@ struct Instrument {
     String id {};
     FolderNode* folder {};
     Optional<String> description {};
-    Set<String> tags {};
+    TagsBitset tags {};
     LibraryPath audio_file_path_for_waveform {};
     Span<Region> regions {};
     usize regions_allocated_capacity {}; // private
@@ -183,7 +184,7 @@ struct ImpulseResponse {
     String id {};
     LibraryPath path {};
     FolderNode* folder {};
-    Set<String> tags {};
+    TagsBitset tags {};
     Optional<String> description {};
 
     struct AudioProperties {

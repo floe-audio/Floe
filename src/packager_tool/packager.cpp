@@ -227,10 +227,12 @@ static void AddLibrary(PackageInfo& info,
             if (!inst_result.inserted) SinglyLinkedListPrepend(inst_result.element.data, instrument);
         }
 
-        for (auto const [tag, _] : inst->tags) {
-            auto tag_result = lib_result.element.data.instrument_tags.FindOrInsertGrowIfNeeded(arena, tag);
-            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag);
-        }
+        inst->tags.ForEachSetBit([&](usize bit) {
+            auto const tag_name = GetTagInfo((TagType)bit).name;
+            auto tag_result =
+                lib_result.element.data.instrument_tags.FindOrInsertGrowIfNeeded(arena, tag_name);
+            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag_name);
+        });
     }
 }
 
@@ -251,11 +253,12 @@ AddPresetIfNeeded(PackageInfo& info, String path_in_zip, ArenaAllocator& arena, 
 
     if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile, true); outcome.HasValue()) {
         auto const& state = outcome.Value();
-        for (auto const tag : state.metadata.tags) {
-            auto tag_result = info.preset_tags.FindOrInsertGrowIfNeeded(arena, tag, 0);
-            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag);
+        state.metadata.tags.ForEachSetBit([&](usize bit) {
+            auto const tag_name = GetTagInfo((TagType)bit).name;
+            auto tag_result = info.preset_tags.FindOrInsertGrowIfNeeded(arena, tag_name, 0);
+            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag_name);
             ++tag_result.element.data;
-        }
+        });
     }
 }
 

@@ -26,6 +26,7 @@ For instance: 0.0.1. Don't change the headings.
   - Remove 3-dots menu and instead put the filter selection modes (One, AND, OR) at the top of the filters panel.
   - Remove dividers between filter sections
   - Remove "Show Primary Filter Section Header" option. Libraries/folders are now always collapsible - more consistent and intuitive.
+- Library development: removed the ability to add custom tags for instruments/IRs. Only tags from the known set are now allowed. This change allowed for simpler and faster code and enforces standardisation. Non-standard tags are now ignored. https://floe.audio/docs/develop/tags-and-folders
 
 ## 1.2.0-beta.1
 Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.

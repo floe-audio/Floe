@@ -175,18 +175,14 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
         // Extract tags
         lua_getfield(lua, -1, "tags");
         if (lua_istable(lua, -1)) {
-            dyn::Clear(preset_state.metadata.tags);
+            preset_state.metadata.tags.ClearAll();
             lua_pushnil(lua);
             while (lua_next(lua, -2) != 0) {
                 if (lua_isstring(lua, -1)) {
                     size_t len;
                     auto str = lua_tolstring(lua, -1, &len);
-                    if (preset_state.metadata.tags.size < preset_state.metadata.tags.Capacity()) {
-                        DynamicArrayBounded<char, k_max_tag_size> new_tag;
-                        auto copy_len = Min(len, new_tag.Capacity());
-                        dyn::Assign(new_tag, {str, copy_len});
-                        dyn::AppendAssumeCapacity(preset_state.metadata.tags, Move(new_tag));
-                    }
+                    if (auto const t = LookupTagName({str, len}))
+                        preset_state.metadata.tags.Set(ToInt(t->tag));
                 }
                 lua_pop(lua, 1);
             }
@@ -431,10 +427,14 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
 
     // tags - array of strings
     lua_newtable(lua);
-    for (u16 i = 0u; i < preset_state.metadata.tags.size; ++i) {
-        lua_pushinteger(lua, i + 1); // Lua is 1-indexed
-        lua_pushlstring(lua, preset_state.metadata.tags[i].data, preset_state.metadata.tags[i].size);
-        lua_settable(lua, -3);
+    {
+        int tag_index = 1; // Lua is 1-indexed
+        preset_state.metadata.tags.ForEachSetBit([&](usize bit) {
+            auto const tag_name = GetTagInfo((TagType)bit).name;
+            lua_pushinteger(lua, tag_index++);
+            lua_pushlstring(lua, tag_name.data, tag_name.size);
+            lua_settable(lua, -3);
+        });
     }
     lua_setfield(lua, -2, "tags");
 

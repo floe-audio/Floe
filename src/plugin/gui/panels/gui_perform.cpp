@@ -130,14 +130,15 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, Box parent) {
         }
 
         auto const folder_len = tags_buf.size;
-        for (auto const& tag : metadata.tags) {
-            auto const lookup = LookupTagName(tag);
-            if (lookup && Tags(lookup->category).importance == TagCategoryImportance::Primary) {
+        metadata.tags.ForEachSetBit([&](usize bit) {
+            auto const tag_type = (TagType)bit;
+            auto const tag_and_cat = LookupTagName(GetTagInfo(tag_type).name);
+            if (tag_and_cat && Tags(tag_and_cat->category).importance == TagCategoryImportance::Primary) {
                 if (tags_buf.size)
                     fmt::Append(tags_buf, "{}", tags_buf.size == folder_len ? "  |  "_s : " · "_s);
-                fmt::Append(tags_buf, "{}", tag);
+                fmt::Append(tags_buf, "{}", GetTagInfo(tag_type).name);
             }
-        }
+        });
 
         bool const has_tags = tags_buf.size != 0;
         bool const has_desc = metadata.description.size != 0;
@@ -210,7 +211,7 @@ static void DoTagsAndEffectsPills(GuiBuilder& builder, GuiState& g, Box parent) 
         }
     }
 
-    if (!metadata.tags.size && !has_any_effect) return;
+    if (!metadata.tags.AnyValuesSet() && !has_any_effect) return;
 
     auto const lib_id = LibraryForOverallBackground(g.engine);
     auto const pill_rounding = WwToPixels(k_panel_rounding);
@@ -277,23 +278,25 @@ static void DoTagsAndEffectsPills(GuiBuilder& builder, GuiState& g, Box parent) 
         constexpr usize k_max_visible_secondary = 4;
 
         usize total_secondary = 0;
-        for (auto const& tag : metadata.tags) {
-            auto const lookup = LookupTagName(tag);
-            if (!lookup || Tags(lookup->category).importance == TagCategoryImportance::Secondary)
+        metadata.tags.ForEachSetBit([&](usize bit) {
+            auto const tag_and_cat = LookupTagName(GetTagInfo((TagType)bit).name);
+            if (!tag_and_cat || Tags(tag_and_cat->category).importance == TagCategoryImportance::Secondary)
                 total_secondary++;
-        }
+        });
 
         if (total_secondary) {
             auto const row = make_pills_row(1);
             usize shown = 0;
-            for (auto const [tag_index, tag] : Enumerate(metadata.tags)) {
-                if (shown >= k_max_visible_secondary) break;
-                auto const lookup = LookupTagName(tag);
-                if (!lookup || Tags(lookup->category).importance == TagCategoryImportance::Secondary) {
-                    do_tag_pill(row, tag, 500 + tag_index);
+            metadata.tags.ForEachSetBit([&](usize bit) {
+                if (shown >= k_max_visible_secondary) return;
+                auto const tag_type = (TagType)bit;
+                auto const tag_and_cat = LookupTagName(GetTagInfo(tag_type).name);
+                if (!tag_and_cat ||
+                    Tags(tag_and_cat->category).importance == TagCategoryImportance::Secondary) {
+                    do_tag_pill(row, GetTagInfo(tag_type).name, 500 + bit);
                     shown++;
                 }
-            }
+            });
 
             if (total_secondary > k_max_visible_secondary) {
                 do_tag_pill(row,
@@ -302,17 +305,18 @@ static void DoTagsAndEffectsPills(GuiBuilder& builder, GuiState& g, Box parent) 
                             FunctionRef<String()> {[&]() -> String {
                                 DynamicArray<char> buf {builder.arena};
                                 usize skipped = 0;
-                                for (auto const& tag : metadata.tags) {
-                                    auto const lookup = LookupTagName(tag);
-                                    if (!lookup || Tags(lookup->category).importance ==
-                                                       TagCategoryImportance::Secondary) {
+                                metadata.tags.ForEachSetBit([&](usize bit) {
+                                    auto const tag_type = (TagType)bit;
+                                    auto const tag_and_cat = LookupTagName(GetTagInfo(tag_type).name);
+                                    if (!tag_and_cat || Tags(tag_and_cat->category).importance ==
+                                                            TagCategoryImportance::Secondary) {
                                         skipped++;
                                         if (skipped > k_max_visible_secondary) {
                                             if (buf.size) fmt::Append(buf, ", ");
-                                            fmt::Append(buf, "{}", tag);
+                                            fmt::Append(buf, "{}", GetTagInfo(tag_type).name);
                                         }
                                     }
-                                }
+                                });
                                 return buf.ToOwnedSpan();
                             }});
             }

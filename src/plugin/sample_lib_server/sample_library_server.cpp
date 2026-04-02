@@ -1260,13 +1260,11 @@ static sample_lib::Library* BuiltinLibrary() {
         sample_lib::detail::InitialiseRootFolders(builtin_library, alloc);
 
         for (auto const& embedded_ir : Span<EmbeddedIr const> {embedded_irs.irs, embedded_irs.count}) {
-            usize num_tags = 0;
-            if (embedded_ir.tag1.size) ++num_tags;
-            if (embedded_ir.tag2.size) ++num_tags;
-
-            auto tags = Set<String>::Create(alloc, num_tags);
-            if (embedded_ir.tag1.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag1));
-            if (embedded_ir.tag2.size) tags.InsertWithoutGrowing(ToString(embedded_ir.tag2));
+            TagsBitset tags {};
+            if (embedded_ir.tag1.size)
+                if (auto const t = LookupTagName(ToString(embedded_ir.tag1))) tags.Set(ToInt(t->tag));
+            if (embedded_ir.tag2.size)
+                if (auto const t = LookupTagName(ToString(embedded_ir.tag2))) tags.Set(ToInt(t->tag));
 
             auto const id = ToString(embedded_ir.id);
 

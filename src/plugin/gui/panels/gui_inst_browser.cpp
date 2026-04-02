@@ -93,18 +93,25 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
         }
     }
 
-    if (common_state.selected_tags_hashes.HasSelected()) {
+    if (common_state.HasTagFilters()) {
         filtering_on = true;
-        for (auto const& selected_hash : common_state.selected_tags_hashes)
-            if (!(inst.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
-                  (selected_hash.hash == Hash(k_untagged_tag_name) && inst.tags.size == 0))) {
-                if (common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (common_state.filter_mode == FilterMode::MultipleOr) return false;
+
+        bool const untagged_matched = common_state.selected_untagged && !inst.tags.AnyValuesSet();
+        auto const tags_intersection = common_state.selected_tags & inst.tags;
+
+        switch (common_state.filter_mode) {
+            case FilterMode::Single:
+            case FilterMode::MultipleAnd: {
+                if (common_state.selected_untagged && !untagged_matched) return true;
+                if (tags_intersection != common_state.selected_tags) return true;
+                break;
             }
+            case FilterMode::MultipleOr: {
+                if (untagged_matched || tags_intersection.AnyValuesSet()) return false;
+                break;
+            }
+            case FilterMode::Count: break;
+        }
     }
 
     if (filtering_on && common_state.filter_mode == FilterMode::MultipleOr) {
@@ -372,62 +379,62 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
             auto const is_current = context.layer.instrument_id == inst_id;
             auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
 
-            // TODO: a Panic was hit here where the GUI changed between layout and render passes while
-            // updating a floe.lua file. It's rare though.
-            auto const item = DoBrowserItem(builder,
-                                            common_state,
-                                            {
-                                                .parent = folder_section->Do(builder).Get<Box>(),
-                                                .id_extra = inst_hash,
-                                                .text = inst.name,
-                                                .tooltip = FunctionRef<String()>([&]() -> String {
-                                                    DynamicArray<char> buf {builder.arena};
-                                                    fmt::Append(buf,
-                                                                "{} from {} by {}.\n\n",
-                                                                inst.name,
-                                                                inst.library.name,
-                                                                inst.library.author);
+            auto const item =
+                DoBrowserItem(builder,
+                              common_state,
+                              {
+                                  .parent = folder_section->Do(builder).Get<Box>(),
+                                  .id_extra = inst_hash,
+                                  .text = inst.name,
+                                  .tooltip = FunctionRef<String()>([&]() -> String {
+                                      DynamicArray<char> buf {builder.arena};
+                                      fmt::Append(buf,
+                                                  "{} from {} by {}.\n\n",
+                                                  inst.name,
+                                                  inst.library.name,
+                                                  inst.library.author);
 
-                                                    if (inst.description)
-                                                        fmt::Append(buf, "{}", inst.description);
+                                      if (inst.description) fmt::Append(buf, "{}", inst.description);
 
-                                                    fmt::Append(buf, "\n\nTags: ");
-                                                    if (inst.tags.size == 0)
-                                                        fmt::Append(buf, "None");
-                                                    else {
-                                                        for (auto const [t, _] : inst.tags)
-                                                            fmt::Append(buf, "{}, ", t);
-                                                        dyn::Pop(buf, 2);
-                                                    }
+                                      fmt::Append(buf, "\n\nTags: ");
+                                      if (!inst.tags.AnyValuesSet())
+                                          fmt::Append(buf, "None");
+                                      else {
+                                          bool first = true;
+                                          inst.tags.ForEachSetBit([&](usize bit) {
+                                              if (!first) fmt::Append(buf, ", ");
+                                              first = false;
+                                              fmt::Append(buf, "{}", GetTagInfo((TagType)bit).name);
+                                          });
+                                      }
 
-                                                    return buf.ToOwnedSpan();
-                                                }),
-                                                .item_id = inst_hash,
-                                                .is_current = is_current,
-                                                .is_favourite = is_favourite,
-                                                .is_tab_item = new_folder,
-                                                .icons = ({
-                                                    if (&lib != previous_library) {
-                                                        previous_library = &lib;
-                                                        auto const imgs =
-                                                            GetLibraryImages(context.library_images,
+                                      return buf.ToOwnedSpan();
+                                  }),
+                                  .item_id = inst_hash,
+                                  .is_current = is_current,
+                                  .is_favourite = is_favourite,
+                                  .is_tab_item = new_folder,
+                                  .icons = ({
+                                      if (&lib != previous_library) {
+                                          previous_library = &lib;
+                                          auto const imgs = GetLibraryImages(context.library_images,
                                                                              builder.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
                                                                              context.engine.instance_index,
                                                                              LibraryImagesTypes::Icon);
-                                                        if (imgs.icon)
-                                                            lib_icon = *imgs.icon;
-                                                        else
-                                                            lib_icon = ItemIconType::None;
-                                                    }
-                                                    decltype(BrowserItemOptions::icons) result {};
-                                                    dyn::Emplace(result, lib_icon);
-                                                    result;
-                                                }),
-                                                .notifications = context.notifications,
-                                                .store = context.persistent_store,
-                                            });
+                                          if (imgs.icon)
+                                              lib_icon = *imgs.icon;
+                                          else
+                                              lib_icon = ItemIconType::None;
+                                      }
+                                      decltype(BrowserItemOptions::icons) result {};
+                                      dyn::Emplace(result, lib_icon);
+                                      result;
+                                  }),
+                                  .notifications = context.notifications,
+                                  .store = context.persistent_store,
+                              });
 
             if (is_current) {
                 if (auto const r = BoxRect(builder, item.box)) {
@@ -460,7 +467,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
     if (!builder.imgui.IsModalOpen(state.id)) return;
     auto const& libs = context.frame_context.libraries;
 
-    HashTable<String, FilterItemInfo> tags {};
+    TagsFilters tags_filters {};
     auto libraries =
         OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo>::Create(
             builder.arena,
@@ -505,13 +512,15 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 ++i.total_available;
             }
 
-            for (auto const& [tag, tag_hash] : inst->tags) {
-                auto& i = tags.FindOrInsertGrowIfNeeded(builder.arena, tag, {}, tag_hash).element.data;
+            inst->tags.ForEachSetBit([&](usize bit) {
+                tags_filters.available_tags.Set(bit);
+                auto& i = tags_filters.tags[bit];
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
-            }
-            if (!inst->tags.size) {
-                auto& i = tags.FindOrInsertGrowIfNeeded(builder.arena, k_untagged_tag_name, {}).element.data;
+            });
+            if (!inst->tags.AnyValuesSet()) {
+                tags_filters.has_untagged = true;
+                auto& i = tags_filters.untagged_info;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
@@ -614,9 +623,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 f;
             }),
             .tags_filters = ({
-                Optional<TagsFilters> f = TagsFilters {
-                    .tags = tags,
-                };
+                Optional<TagsFilters> f = tags_filters;
                 f;
             }),
             .favourites_filter_info = favourites_info,

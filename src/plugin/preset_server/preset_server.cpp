@@ -264,7 +264,7 @@ BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& ar
             {
                 .folders = preset_folders,
                 .banks = preset_banks,
-                .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
+                .used_tags = server.used_tags,
                 .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
                 .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
                 .has_preset_type = server.has_preset_type,
@@ -316,13 +316,6 @@ static void DeleteUnusedFolders(PresetServer& server) {
     });
 }
 
-static String FindOrCloneTag(PresetFolder& folder, String tag) {
-    // If we are the first to use this tag, we need to clone it into the folder's arena.
-    auto found_result = folder.used_tags.FindOrInsertGrowIfNeeded(folder.arena, tag);
-    if (found_result.inserted) found_result.element.key = folder.arena.Clone(tag);
-    return found_result.element.key;
-}
-
 static void AddPresetToFolder(PresetFolder& folder,
                               dir_iterator::Entry const& entry,
                               StateSnapshot const& state,
@@ -355,10 +348,8 @@ static void AddPresetToFolder(PresetFolder& folder,
                     .name = folder.arena.Clone(path::FilenameWithoutExtension(entry.subpath)),
                     .metadata {
                         .tags = ({
-                            auto tags = Set<String>::Create(folder.arena, state.metadata.tags.size);
-                            for (auto const tag : state.metadata.tags)
-                                tags.InsertWithoutGrowing(FindOrCloneTag(folder, tag));
-                            tags;
+                            folder.used_tags |= state.metadata.tags;
+                            state.metadata.tags;
                         }),
                         .author = folder.arena.Clone(state.metadata.author),
                         .description = folder.arena.Clone(state.metadata.description),
@@ -507,8 +498,7 @@ struct FoldersAggregateInfo {
         // Tags and libraries point to memory within each folder, so they share the same versioning as the
         // folders.
 
-        for (auto const [tag, tag_hash] : preset.metadata.tags)
-            used_tags.InsertGrowIfNeeded(arena, tag, tag_hash);
+        used_tags |= preset.metadata.tags;
 
         for (auto const [lib_id, lib_id_hash] : preset.used_libraries)
             used_libraries.InsertGrowIfNeeded(arena, lib_id, lib_id_hash);
@@ -842,7 +832,7 @@ struct FoldersAggregateInfo {
 
     // Call under the mutex.
     void CopyToServer(PresetServer& server) const {
-        server.used_tags.Assign(used_tags);
+        server.used_tags = used_tags;
         server.used_libraries.Assign(used_libraries);
         server.authors.Assign(authors);
 
@@ -856,7 +846,7 @@ struct FoldersAggregateInfo {
     }
 
     ArenaAllocator& arena;
-    Set<String> used_tags;
+    TagsBitset used_tags {};
     Set<sample_lib::LibraryId, NoHash> used_libraries;
     Set<String> authors;
     FolderNodeAllocator folder_node_allocator;
