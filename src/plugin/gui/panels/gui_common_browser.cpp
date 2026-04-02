@@ -5,13 +5,6 @@
 
 #include "os/filesystem.hpp"
 
-bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
-                                 FilterItemInfo const&,
-                                 sample_lib::LibraryId const& b,
-                                 FilterItemInfo const&) {
-    return sample_lib::LibraryIdLessThan(a, b);
-}
-
 #include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui_actions.hpp"
@@ -23,6 +16,135 @@ bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
 #include "gui_framework/fonts.hpp"
 #include "gui_framework/gui_imgui.hpp"
 #include "preset_server/preset_server.hpp"
+
+bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
+                                 FilterItemInfo const&,
+                                 sample_lib::LibraryId const& b,
+                                 FilterItemInfo const&) {
+    return sample_lib::LibraryIdLessThan(a, b);
+}
+
+static constexpr u64 k_untagged_key = HashFnv1a("untagged");
+
+bool FilterSelection::HasSelected() const {
+    switch (type) {
+        case Type::Hashes: return hashes.items.size;
+        case Type::Tags: return tags.bitset.AnyValuesSet() || tags.selected_untagged;
+        case Type::Bool: return flag.value;
+    }
+    return false;
+}
+
+bool FilterSelection::Contains(u64 key) const {
+    switch (type) {
+        case Type::Hashes:
+            for (auto const& h : hashes.items)
+                if (h.hash == key) return true;
+            return false;
+        case Type::Tags:
+            if (key == k_untagged_key) return tags.selected_untagged;
+            return tags.bitset.Get(key);
+        case Type::Bool: return flag.value;
+    }
+    return false;
+}
+
+void FilterSelection::Add(u64 key, String display_name) {
+    switch (type) {
+        case Type::Hashes: {
+            if (hashes.items.size >= hashes.items.Capacity()) return;
+            DisplayName n;
+            if (display_name.size > DisplayName::Capacity()) {
+                constexpr auto k_ellipsis = "…"_s;
+                display_name = display_name.SubSpan(
+                    0,
+                    FindUtf8TruncationPoint(display_name, DisplayName::Capacity() - k_ellipsis.size));
+                n = display_name;
+                dyn::AppendSpan(n, k_ellipsis);
+            } else {
+                n = display_name;
+            }
+            dyn::Append(hashes.items, {.hash = key, .display_name = n});
+            break;
+        }
+        case Type::Tags:
+            if (key == k_untagged_key)
+                tags.selected_untagged = true;
+            else
+                tags.bitset.Set(key);
+            break;
+        case Type::Bool: flag.value = true; break;
+    }
+}
+
+void FilterSelection::Remove(u64 key) {
+    switch (type) {
+        case Type::Hashes:
+            dyn::RemoveValueIfSwapLast(hashes.items, [key](SelectedHash const& h) { return h.hash == key; });
+            break;
+        case Type::Tags:
+            if (key == k_untagged_key)
+                tags.selected_untagged = false;
+            else
+                tags.bitset.Clear(key);
+            break;
+        case Type::Bool: flag.value = false; break;
+    }
+}
+
+void FilterSelection::Toggle(u64 key, String display_name) {
+    if (Contains(key))
+        Remove(key);
+    else
+        Add(key, display_name);
+}
+
+void FilterSelection::Clear() {
+    switch (type) {
+        case Type::Hashes: dyn::Clear(hashes.items); break;
+        case Type::Tags:
+            tags.bitset.ClearAll();
+            tags.selected_untagged = false;
+            break;
+        case Type::Bool: flag.value = false; break;
+    }
+}
+
+void FilterSelection::ClearToOne() {
+    switch (type) {
+        case Type::Hashes:
+            if (hashes.items.size > 1) dyn::Remove(hashes.items, 1, hashes.items.size - 1);
+            break;
+        case Type::Tags:
+            if (tags.selected_untagged) {
+                tags.bitset.ClearAll();
+            } else {
+                auto const first = tags.bitset.FirstSetBit();
+                tags.bitset.ClearAll();
+                tags.bitset.Set(first);
+            }
+            break;
+        case Type::Bool: break;
+    }
+}
+
+bool MatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_tags, FilterMode mode) {
+    ASSERT(filter.type == FilterSelection::Type::Tags);
+    auto const& td = filter.tags;
+    bool const untagged_matched = td.selected_untagged && !item_tags.AnyValuesSet();
+    auto const intersection = td.bitset & item_tags;
+
+    switch (mode) {
+        case FilterMode::Single:
+        case FilterMode::MultipleAnd:
+            if (td.selected_untagged && !untagged_matched) return false;
+            if (intersection != td.bitset) return false;
+            return true;
+        case FilterMode::MultipleOr: return untagged_matched || intersection.AnyValuesSet();
+        case FilterMode::Count: PanicIfReached();
+    }
+    return false;
+}
 
 auto ScopedEnableTooltips(GuiBuilder& builder, bool enable) {
     struct ScopeGuard {
@@ -462,7 +584,7 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
     bool is_active = options.parent_card_is_selected;
     if (!is_active && !options.no_lhs_border) {
         for (auto f = folder; f; f = f->parent) {
-            if (state.selected_folder_hashes.Contains(f->Hash())) {
+            if (state.Filter(FilterIndex::Folder).Contains(f->Hash())) {
                 is_active = true;
                 break;
             }
@@ -474,7 +596,7 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
                     break;
         }
     }
-    auto const is_selected = state.selected_folder_hashes.Contains(folder->Hash());
+    auto const is_selected = state.Filter(FilterIndex::Folder).Contains(folder->Hash());
 
     auto this_info = context.folder_infos.Find(folder);
     ASSERT(this_info);
@@ -495,8 +617,8 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
                     .is_selected = is_selected,
                     .text = folder->display_name.size ? folder->display_name : folder->name,
                     .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
-                    .hashes = state.selected_folder_hashes,
-                    .clicked_hash = folder_hash,
+                    .filter = state.Filter(FilterIndex::Folder),
+                    .clicked_key = folder_hash,
                     .filter_mode = state.filter_mode,
                 },
             .is_active = is_active,
@@ -521,29 +643,29 @@ static void HandleFilterButtonClick(GuiBuilder& builder,
     switch (options.filter_mode) {
         case FilterMode::Single: {
             state.ClearAll();
-            if (!options.is_selected) options.hashes.Add(options.clicked_hash, display_name);
+            if (!options.is_selected) options.filter.Add(options.clicked_key, display_name);
             break;
         }
         case FilterMode::MultipleAnd: {
             if (single_exclusive_mode_for_and) {
                 // In card mode, we assume that each item can only belong to a single card,
                 // so, AND mode is not useful. Instead, we treat it like Single mode, except
-                // we only clear the current hashes, not all state.
-                options.hashes.Clear();
-                if (!options.is_selected) options.hashes.Add(options.clicked_hash, display_name);
+                // we only clear the current filter, not all state.
+                options.filter.Clear();
+                if (!options.is_selected) options.filter.Add(options.clicked_key, display_name);
             } else {
                 if (options.is_selected)
-                    options.hashes.Remove(options.clicked_hash);
+                    options.filter.Remove(options.clicked_key);
                 else
-                    options.hashes.Add(options.clicked_hash, display_name);
+                    options.filter.Add(options.clicked_key, display_name);
             }
             break;
         }
         case FilterMode::MultipleOr: {
             if (options.is_selected)
-                options.hashes.Remove(options.clicked_hash);
+                options.filter.Remove(options.clicked_key);
             else
-                options.hashes.Add(options.clicked_hash, display_name);
+                options.filter.Add(options.clicked_key, display_name);
             break;
         }
         case FilterMode::Count: PanicIfReached();
@@ -683,11 +805,10 @@ Box DoFilterButton(GuiBuilder& builder,
               },
           });
 
-    if (button.button_fired && !options.skip_click_handler)
-        HandleFilterButtonClick(builder, state, options.common);
+    if (button.button_fired) HandleFilterButtonClick(builder, state, options.common);
 
     if (options.right_click_menu)
-        DoRightClickMenuForBox(builder, state, button, options.common.clicked_hash, options.right_click_menu);
+        DoRightClickMenuForBox(builder, state, button, options.common.clicked_key, options.right_click_menu);
 
     return button;
 }
@@ -808,7 +929,7 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                                                         .box = button,
                                                         .rect_for_drawing = BoxRect(builder, button_outer),
                                                         .panel = BrowserKeyboardNavigation::Panel::Filters,
-                                                        .id = options.common.clicked_hash,
+                                                        .id = options.common.clicked_key,
                                                         .is_selected = options.common.is_selected,
                                                         .is_tab_item = false,
                                                     });
@@ -828,7 +949,7 @@ Box DoFilterCard(GuiBuilder& builder,
 
     auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
 
-    auto const collapse_id = options.common.clicked_hash ^ HashFnv1a("card-collapse");
+    auto const collapse_id = options.common.clicked_key ^ HashFnv1a("card-collapse");
     auto& card_toggled_ids =
         options.default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
     if (options.store) LoadCollapseStateFromStore(*options.store, card_toggled_ids, collapse_id);
@@ -950,7 +1071,7 @@ Box DoFilterCard(GuiBuilder& builder,
         DoRightClickMenuForBox(builder,
                                state,
                                card_top,
-                               options.common.clicked_hash,
+                               options.common.clicked_key,
                                options.right_click_menu);
 
     auto const top_row = DoBox(builder,
@@ -1101,8 +1222,8 @@ Box DoFilterCard(GuiBuilder& builder,
                                             "All {}{}"_s,
                                             options.common.text,
                                             options.all_items_suffix),
-                        .hashes = options.common.hashes,
-                        .clicked_hash = options.common.clicked_hash,
+                        .filter = options.common.filter,
+                        .clicked_key = options.common.clicked_key,
                         .filter_mode = options.common.filter_mode,
                     },
                 .is_active = is_selected,
@@ -1388,7 +1509,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
             if (library_filters.card_view) {
                 auto const folder = &lib->root_folders[ToInt(library_filters.resource_type)];
 
-                auto const is_selected = context.state.selected_library_hashes.Contains(lib_hash);
+                auto const is_selected = context.state.Filter(FilterIndex::Library).Contains(lib_hash);
 
                 if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
@@ -1416,8 +1537,8 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                                       }
                                                       return buf.ToOwnedSpan();
                                                   }),
-                                                  .hashes = context.state.selected_library_hashes,
-                                                  .clicked_hash = lib_hash,
+                                                  .filter = context.state.Filter(FilterIndex::Library),
+                                                  .clicked_key = lib_hash,
                                                   .filter_mode = context.state.filter_mode,
                                               },
                                           .library_id = lib_id,
@@ -1457,7 +1578,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                             {
                                 .parent = section.Do(builder).Get<Box>(),
                                 .id_extra = lib_hash,
-                                .is_selected = context.state.selected_library_hashes.Contains(lib_hash),
+                                .is_selected = context.state.Filter(FilterIndex::Library).Contains(lib_hash),
                                 .text = lib->name,
                                 .tooltip = FunctionRef<String()>([&]() -> String {
                                     auto lib =
@@ -1476,8 +1597,8 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                     }
                                     return buf.ToOwnedSpan();
                                 }),
-                                .hashes = context.state.selected_library_hashes,
-                                .clicked_hash = lib_hash,
+                                .filter = context.state.Filter(FilterIndex::Library),
+                                .clicked_key = lib_hash,
                                 .filter_mode = context.state.filter_mode,
                             },
                         .icon = ({
@@ -1543,7 +1664,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
         for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
             if (!MatchesFilterSearch(author, context.state.filter_search)) continue;
             if (section.Do(builder) == BrowserSection::State::Collapsed) break;
-            auto const is_selected = context.state.selected_library_author_hashes.Contains(author_hash);
+            auto const is_selected = context.state.Filter(FilterIndex::LibraryAuthor).Contains(author_hash);
             DoFilterButton(builder,
                            context.state,
                            author_info,
@@ -1554,48 +1675,12 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
                                        .id_extra = author_hash,
                                        .is_selected = is_selected,
                                        .text = author,
-                                       .hashes = context.state.selected_library_author_hashes,
-                                       .clicked_hash = author_hash,
+                                       .filter = context.state.Filter(FilterIndex::LibraryAuthor),
+                                       .clicked_key = author_hash,
                                        .filter_mode = context.state.filter_mode,
                                    },
                            });
         }
-    }
-}
-
-static void HandleTagFilterButtonClick(CommonBrowserState& state, TagType tag) {
-    state.keyboard_navigation.focused_panel = BrowserKeyboardNavigation::Panel::Filters;
-    auto const is_selected = state.selected_tags.Get(ToInt(tag));
-    switch (state.filter_mode) {
-        case FilterMode::Single: {
-            state.ClearAll();
-            if (!is_selected) state.selected_tags.Set(ToInt(tag));
-            break;
-        }
-        case FilterMode::MultipleAnd:
-        case FilterMode::MultipleOr: {
-            state.selected_tags.SetToValue(ToInt(tag), !is_selected);
-            break;
-        }
-        case FilterMode::Count: break;
-    }
-}
-
-static void HandleUntaggedFilterButtonClick(CommonBrowserState& state) {
-    state.keyboard_navigation.focused_panel = BrowserKeyboardNavigation::Panel::Filters;
-    switch (state.filter_mode) {
-        case FilterMode::Single: {
-            auto const was_selected = state.selected_untagged;
-            state.ClearAll();
-            state.selected_untagged = !was_selected;
-            break;
-        }
-        case FilterMode::MultipleAnd:
-        case FilterMode::MultipleOr: {
-            state.selected_untagged = !state.selected_untagged;
-            break;
-        }
-        case FilterMode::Count: break;
     }
 }
 
@@ -1616,10 +1701,6 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
             tags_for_category.InsertGrowIfNeeded(builder.arena, tag, tags_filters.tags[bit]);
         }
     });
-
-    // We need a dummy SelectedHashes to pass to DoFilterButton. It's not used because we set
-    // skip_click_handler = true.
-    SelectedHashes dummy_hashes {"Tag"};
 
     BrowserSection tags_section {
         .state = context.state,
@@ -1658,24 +1739,22 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
             inner_section.parent = tags_section.Do(builder).Get<Box>();
             if (inner_section.Do(builder) == BrowserSection::State::Collapsed) break;
 
-            bool const is_selected = context.state.selected_tags.Get(ToInt(tag));
-            auto const button = DoFilterButton(builder,
-                                               context.state,
-                                               filter_item_info,
-                                               {
-                                                   .common =
-                                                       {
-                                                           .parent = inner_section.Do(builder).Get<Box>(),
-                                                           .id_extra = (u64)tag,
-                                                           .is_selected = is_selected,
-                                                           .text = tag_info.name,
-                                                           .hashes = dummy_hashes,
-                                                           .clicked_hash = (u64)tag,
-                                                           .filter_mode = context.state.filter_mode,
-                                                       },
-                                                   .skip_click_handler = true,
-                                               });
-            if (button.button_fired) HandleTagFilterButtonClick(context.state, tag);
+            bool const is_selected = context.state.Filter(FilterIndex::Tags).Contains((u64)tag);
+            DoFilterButton(builder,
+                           context.state,
+                           filter_item_info,
+                           {
+                               .common =
+                                   {
+                                       .parent = inner_section.Do(builder).Get<Box>(),
+                                       .id_extra = (u64)tag,
+                                       .is_selected = is_selected,
+                                       .text = tag_info.name,
+                                       .filter = context.state.Filter(FilterIndex::Tags),
+                                       .clicked_key = (u64)tag,
+                                       .filter_mode = context.state.filter_mode,
+                                   },
+                           });
         }
     }
 
@@ -1684,24 +1763,22 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
 
         if (tags_section.Do(builder) == BrowserSection::State::Collapsed) return;
 
-        auto const is_selected = context.state.selected_untagged;
-        auto const button = DoFilterButton(builder,
-                                           context.state,
-                                           tags_filters.untagged_info,
-                                           {
-                                               .common =
-                                                   {
-                                                       .parent = tags_section.Do(builder).Get<Box>(),
-                                                       .id_extra = HashFnv1a("untagged"),
-                                                       .is_selected = is_selected,
-                                                       .text = k_untagged_tag_name,
-                                                       .hashes = dummy_hashes,
-                                                       .clicked_hash = HashFnv1a("untagged"),
-                                                       .filter_mode = context.state.filter_mode,
-                                                   },
-                                               .skip_click_handler = true,
-                                           });
-        if (button.button_fired) HandleUntaggedFilterButtonClick(context.state);
+        auto const is_selected = context.state.Filter(FilterIndex::Tags).Contains(k_untagged_key);
+        DoFilterButton(builder,
+                       context.state,
+                       tags_filters.untagged_info,
+                       {
+                           .common =
+                               {
+                                   .parent = tags_section.Do(builder).Get<Box>(),
+                                   .id_extra = k_untagged_key,
+                                   .is_selected = is_selected,
+                                   .text = k_untagged_tag_name,
+                                   .filter = context.state.Filter(FilterIndex::Tags),
+                                   .clicked_key = k_untagged_key,
+                                   .filter_mode = context.state.filter_mode,
+                               },
+                       });
     }
 }
 
@@ -2318,27 +2395,23 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
             }
 
             {
-                SelectedHashes dummy_hashes {};
-                if (DoFilterButton(builder,
-                                   context.state,
-                                   options.favourites_filter_info,
-                                   {
-                                       .common =
-                                           {
-                                               .parent = search_and_fave_box,
-                                               .is_selected = context.state.favourites_only,
-                                               .text = "Favourites"_s,
-                                               .hashes = dummy_hashes,
-                                               .clicked_hash = 1,
-                                               .filter_mode = context.state.filter_mode,
-                                           },
-                                       .no_bottom_margin = true,
-                                       .skip_click_handler = true,
-                                       .dark_mode = false,
-                                   })
-                        .button_fired) {
-                    context.state.favourites_only = !context.state.favourites_only;
-                }
+                DoFilterButton(
+                    builder,
+                    context.state,
+                    options.favourites_filter_info,
+                    {
+                        .common =
+                            {
+                                .parent = search_and_fave_box,
+                                .is_selected = context.state.Filter(FilterIndex::Favourites).HasSelected(),
+                                .text = "Favourites"_s,
+                                .filter = context.state.Filter(FilterIndex::Favourites),
+                                .clicked_key = 1,
+                                .filter_mode = context.state.filter_mode,
+                            },
+                        .no_bottom_margin = true,
+                        .dark_mode = false,
+                    });
             }
 
             // For each selected hash, we want to show it with a dismissable button, like showing active
@@ -2442,34 +2515,11 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                         return button.button_fired;
                     };
 
-                for (auto const hashes : context.state.AllNonTagHashes()) {
-                    for (usize i = 0; i < hashes->hashes.size;) {
-                        auto const& hash = hashes->hashes[i];
-                        if (do_item(hashes->name, hash.display_name, context.state.filter_mode, hash.hash))
-                            hashes->Remove(hash.hash);
-                        else
-                            ++i;
-                    }
-                }
-
-                context.state.selected_tags.ForEachSetBit([&](usize bit) {
-                    auto const tag_info = GetTagInfo((TagType)bit);
-                    SelectedHashes::DisplayName display_name;
-                    dyn::Assign(display_name, tag_info.name);
-                    if (do_item("Tag"_s, display_name, context.state.filter_mode))
-                        context.state.selected_tags.Clear(bit);
-                });
-
-                if (context.state.selected_untagged) {
-                    SelectedHashes::DisplayName display_name;
-                    dyn::Assign(display_name, k_untagged_tag_name);
-                    if (do_item("Tag"_s, display_name, context.state.filter_mode))
-                        context.state.selected_untagged = false;
-                }
-
-                if (context.state.favourites_only) {
-                    if (do_item("Favourites"_s, {}, context.state.filter_mode))
-                        context.state.favourites_only = false;
+                for (auto& filter : context.state.filters) {
+                    filter.ForEachSelected([&](String display_name, u64 key) {
+                        if (do_item(filter.name, display_name, context.state.filter_mode, key))
+                            filter.Remove(key);
+                    });
                 }
 
                 if (context.state.search.size)

@@ -13,7 +13,11 @@
 
 struct IrBrowserState {
     static constexpr u64 k_panel_id = SourceLocationHash();
-    CommonBrowserState common_state;
+    CommonBrowserState common_state = [] {
+        CommonBrowserState s {};
+        InitCommonFilters(s);
+        return s;
+    }();
     bool scroll_to_show_selected = false;
 };
 

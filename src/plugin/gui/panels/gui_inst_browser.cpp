@@ -38,88 +38,31 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
 
-    bool filtering_on = false;
+    return ShouldSkipByFilters(common_state, [&](usize index, FilterSelection const& filter) -> bool {
+        auto const fi = (FilterIndex)index;
 
-    if (state.common_state.favourites_only) {
-        filtering_on = true;
-        if (!IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst))) {
-            if (common_state.filter_mode == FilterMode::MultipleAnd ||
-                common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (common_state.filter_mode == FilterMode::MultipleOr) return false;
+        if (fi == FilterIndex::Favourites)
+            return IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst));
+
+        if (fi == FilterIndex::Folder) {
+            bool any_match = false;
+            filter.ForEachSelected([&](String, u64 key) {
+                if (IsInsideFolder(inst.folder, key)) any_match = true;
+            });
+            return any_match;
         }
-    }
 
-    if (common_state.selected_folder_hashes.HasSelected()) {
-        filtering_on = true;
-        for (auto const& folder_hash : common_state.selected_folder_hashes) {
-            if (!IsInsideFolder(inst.folder, folder_hash.hash)) {
-                if (common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (common_state.filter_mode == FilterMode::MultipleOr) return false;
-            }
-        }
-    }
+        if (fi == FilterIndex::Library)
+            return filter.Contains(Hash(inst.library.id));
 
-    if (common_state.selected_library_hashes.HasSelected()) {
-        filtering_on = true;
-        if (!common_state.selected_library_hashes.Contains(Hash(inst.library.id))) {
-            if (common_state.filter_mode == FilterMode::MultipleAnd)
-                return true;
-            else if (common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (common_state.filter_mode == FilterMode::MultipleOr)
-                return false;
-            else if (common_state.filter_mode == FilterMode::MultipleAnd &&
-                     common_state.selected_library_hashes.hashes.size != 1)
-                return true;
-        }
-    }
+        if (fi == FilterIndex::LibraryAuthor)
+            return filter.Contains(Hash(inst.library.author));
 
-    if (common_state.selected_library_author_hashes.HasSelected()) {
-        filtering_on = true;
-        if (!common_state.selected_library_author_hashes.Contains(Hash(inst.library.author))) {
-            if (common_state.filter_mode == FilterMode::MultipleAnd)
-                return true;
-            else if (common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (common_state.filter_mode == FilterMode::MultipleOr) return false;
-        }
-    }
+        if (fi == FilterIndex::Tags)
+            return MatchesTagFilter(filter, inst.tags, common_state.filter_mode);
 
-    if (common_state.HasTagFilters()) {
-        filtering_on = true;
-
-        bool const untagged_matched = common_state.selected_untagged && !inst.tags.AnyValuesSet();
-        auto const tags_intersection = common_state.selected_tags & inst.tags;
-
-        switch (common_state.filter_mode) {
-            case FilterMode::Single:
-            case FilterMode::MultipleAnd: {
-                if (common_state.selected_untagged && !untagged_matched) return true;
-                if (tags_intersection != common_state.selected_tags) return true;
-                break;
-            }
-            case FilterMode::MultipleOr: {
-                if (untagged_matched || tags_intersection.AnyValuesSet()) return false;
-                break;
-            }
-            case FilterMode::Count: break;
-        }
-    }
-
-    if (filtering_on && common_state.filter_mode == FilterMode::MultipleOr) {
-        // Filtering is applied, but the item does not match any of the selected filters.
-        return true;
-    }
-
-    return false;
+        return false;
+    });
 }
 
 static Optional<InstrumentCursor> IterateInstrument(InstBrowserContext const& context,
@@ -533,10 +476,10 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         .common =
             {
                 .id_extra = SourceLocationHash(),
-                .is_selected = state.common_state.selected_library_hashes.Contains(waveform_library_hash),
+                .is_selected = state.common_state.Filter(FilterIndex::Library).Contains(waveform_library_hash),
                 .text = "Built-in Waveforms",
-                .hashes = state.common_state.selected_library_hashes,
-                .clicked_hash = waveform_library_hash,
+                .filter = state.common_state.Filter(FilterIndex::Library),
+                .clicked_key = waveform_library_hash,
                 .filter_mode = state.common_state.filter_mode,
             },
         .library_id = k_waveform_library_id,

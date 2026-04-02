@@ -12,7 +12,11 @@
 
 struct InstBrowserState {
     imgui::Id const id;
-    CommonBrowserState common_state {};
+    CommonBrowserState common_state = [] {
+        CommonBrowserState s {};
+        InitCommonFilters(s);
+        return s;
+    }();
     bool scroll_to_show_selected = false;
 };
 

@@ -59,127 +59,56 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
          !ContainsCaseInsensitiveAscii(folder.folder->folder, state.common_state.search)))
         return true;
 
-    bool filtering_on = false;
+    return ShouldSkipByFilters(state.common_state, [&](usize index, FilterSelection const& filter) -> bool {
+        auto const fi = (FilterIndex)index;
 
-    if (state.common_state.favourites_only) {
-        filtering_on = true;
-        if (!IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash)) {
-            if (state.common_state.filter_mode == FilterMode::MultipleAnd ||
-                state.common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
+        if (fi == FilterIndex::Favourites)
+            return IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
+
+        if (fi == FilterIndex::Folder) {
+            bool any_match = false;
+            filter.ForEachSelected([&](String, u64 key) {
+                if (IsInsideFolder(&folder, key)) any_match = true;
+            });
+            return any_match;
         }
-    }
 
-    if (state.common_state.selected_folder_hashes.HasSelected()) {
-        filtering_on = true;
-        for (auto const& folder_hash : state.common_state.selected_folder_hashes) {
-            if (!IsInsideFolder(&folder, folder_hash.hash)) {
-                if (state.common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (state.common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
+        if (fi == FilterIndex::Library) {
+            bool any_match = false;
+            filter.ForEachSelected([&](String, u64 key) {
+                if (preset.used_libraries.ContainsSkipKeyCheck(key)) any_match = true;
+            });
+            return any_match;
+        }
+
+        if (fi == FilterIndex::LibraryAuthor) {
+            bool any_match = false;
+            for (auto [lib_id, _] : preset.used_libraries) {
+                auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
+                if (!maybe_lib) continue;
+                auto const& lib = *maybe_lib;
+                if (filter.Contains(Hash(lib->author))) { any_match = true; break; }
             }
+            return any_match;
         }
-    }
 
-    // If multiple preset types exist, we offer a way to filter by them.
-    if (context.presets_snapshot.has_preset_type.NumSet() > 1) {
-        if (state.selected_preset_types.HasSelected()) {
-            filtering_on = true;
-            if (!state.selected_preset_types.Contains(ToInt(preset.file_format))) {
-                if (state.common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (state.common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
-            }
+        if (fi == FilterIndex::Tags)
+            return MatchesTagFilter(filter, preset.metadata.tags, state.common_state.filter_mode);
+
+        // Preset-specific filters (by index beyond CommonCount).
+        auto const pfi = (PresetFilterIndex)index;
+
+        if (pfi == PresetFilterIndex::PresetType)
+            return filter.Contains(ToInt(preset.file_format));
+
+        if (pfi == PresetFilterIndex::Author) {
+            auto const author_hash = Hash(preset.metadata.author);
+            return filter.Contains(author_hash) ||
+                   (preset.metadata.author.size == 0 && filter.Contains(Hash(k_no_preset_author)));
         }
-    }
 
-    if (state.common_state.selected_library_hashes.HasSelected()) {
-        filtering_on = true;
-        for (auto const& selected_hash : state.common_state.selected_library_hashes) {
-            if (!preset.used_libraries.ContainsSkipKeyCheck(selected_hash.hash)) {
-                if (state.common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (state.common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
-            }
-        }
-    }
-
-    if (state.common_state.selected_library_author_hashes.HasSelected()) {
-        filtering_on = true;
-
-        for (auto [lib_id, _] : preset.used_libraries) {
-            auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
-            if (!maybe_lib) continue;
-            auto const& lib = *maybe_lib;
-
-            auto const author_hash = Hash(lib->author);
-            auto const contains = state.common_state.selected_library_author_hashes.Contains(author_hash);
-            if (!contains) {
-                if (state.common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (state.common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
-            }
-        }
-    }
-
-    if (state.selected_author_hashes.HasSelected()) {
-        filtering_on = true;
-        auto const author_hash = Hash(preset.metadata.author);
-        if (!(state.selected_author_hashes.Contains(author_hash) ||
-              (preset.metadata.author.size == 0 &&
-               state.selected_author_hashes.Contains(Hash(k_no_preset_author))))) {
-            if (state.common_state.filter_mode == FilterMode::MultipleAnd)
-                return true;
-            else if (state.common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (state.common_state.filter_mode == FilterMode::MultipleOr) return false;
-        }
-    }
-
-    if (state.common_state.HasTagFilters()) {
-        filtering_on = true;
-        bool const untagged_matched =
-            state.common_state.selected_untagged && !preset.metadata.tags.AnyValuesSet();
-        auto const tags_intersection = state.common_state.selected_tags & preset.metadata.tags;
-
-        switch (state.common_state.filter_mode) {
-            case FilterMode::Single:
-            case FilterMode::MultipleAnd: {
-                // All selected filters must match.
-                if (state.common_state.selected_untagged && !untagged_matched) return true;
-                if (tags_intersection != state.common_state.selected_tags) return true;
-                break;
-            }
-            case FilterMode::MultipleOr: {
-                // Any selected filter must match.
-                if (untagged_matched || tags_intersection.AnyValuesSet()) return false;
-                break;
-            }
-            case FilterMode::Count: break;
-        }
-    }
-
-    if (filtering_on && state.common_state.filter_mode == FilterMode::MultipleOr) {
-        // Filtering is applied, but the item does not match any of the selected filters.
-        return true;
-    }
-
-    return false;
+        return false;
+    });
 }
 
 static Optional<PresetCursor> IteratePreset(PresetBrowserContext const& context,
@@ -652,7 +581,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
         };
 
         for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
-            auto const is_selected = state.selected_preset_types.Contains(type_index);
+            auto const is_selected = state.common_state.Filter(PresetFilterIndex::PresetType).Contains(type_index);
             auto const info = preset_type_filter_info[type_index];
             if (info.total_available == 0) continue;
 
@@ -688,8 +617,8 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
                                            }
                                            s;
                                        }),
-                                       .hashes = state.selected_preset_types,
-                                       .clicked_hash = type_index,
+                                       .filter = state.common_state.Filter(PresetFilterIndex::PresetType),
+                                       .clicked_key = type_index,
                                        .filter_mode = state.common_state.filter_mode,
                                    },
                            });
@@ -712,7 +641,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
             if (!MatchesFilterSearch(author, state.common_state.filter_search)) continue;
             if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
-            auto const is_selected = state.selected_author_hashes.Contains(author_hash);
+            auto const is_selected = state.common_state.Filter(PresetFilterIndex::Author).Contains(author_hash);
 
             DoFilterButton(builder,
                            state.common_state,
@@ -724,8 +653,8 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
                                        .id_extra = author_hash,
                                        .is_selected = is_selected,
                                        .text = author,
-                                       .hashes = state.selected_author_hashes,
-                                       .clicked_hash = author_hash,
+                                       .filter = state.common_state.Filter(PresetFilterIndex::Author),
+                                       .clicked_key = author_hash,
                                        .filter_mode = state.common_state.filter_mode,
                                    },
                            });
@@ -897,12 +826,12 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                         .parent = section.Do(builder).Get<Box>(),
                                         .id_extra = folder_hash,
                                         .is_selected =
-                                            state.common_state.selected_folder_hashes.Contains(folder_hash),
+                                            state.common_state.Filter(FilterIndex::Folder).Contains(folder_hash),
                                         .text = folder_name,
                                         .tooltip = folder->display_name.size ? TooltipString {folder->name}
                                                                              : k_nullopt,
-                                        .hashes = state.common_state.selected_folder_hashes,
-                                        .clicked_hash = folder_hash,
+                                        .filter = state.common_state.Filter(FilterIndex::Folder),
+                                        .clicked_key = folder_hash,
                                         .filter_mode = state.common_state.filter_mode,
                                     },
                                 .library_id = AllPresetsSingleLibrary(*folder),
@@ -941,7 +870,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                               state,
                                               parent);
                 },
-            .has_extra_filters = state.selected_author_hashes.HasSelected() != 0,
+            .has_extra_filters = state.common_state.Filter(PresetFilterIndex::Author).HasSelected() != 0,
             .favourites_filter_info = favourites_info,
             .right_click_menu_user_data = &context,
         });

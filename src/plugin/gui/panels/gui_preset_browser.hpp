@@ -41,19 +41,23 @@ struct PresetBrowserContext {
     PresetServerReadHandle preset_read_handle;
 };
 
+enum class PresetFilterIndex : usize {
+    Author = (usize)FilterIndex::CommonCount,
+    PresetType,
+};
+
 // Persistent
 struct PresetBrowserState {
     static constexpr u64 k_panel_id = HashFnv1a("preset-browser");
-    SelectedHashes selected_author_hashes {"Author"};
     bool scroll_to_show_selected = false;
 
-    // This is contains PresetFormat as u64. We use a dynamic array of u64 so we can share the same code as
-    // the other types of selected_* filters.
-    SelectedHashes selected_preset_types {"Preset Type"};
-
-    CommonBrowserState common_state {
-        .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},
-    };
+    CommonBrowserState common_state = [] {
+        CommonBrowserState s {};
+        InitCommonFilters(s);
+        dyn::Append(s.filters, MakeHashesFilter("Author"_s));
+        dyn::Append(s.filters, MakeHashesFilter("Preset Type"_s));
+        return s;
+    }();
 };
 
 void LoadAdjacentPreset(PresetBrowserContext const& context,
