@@ -342,7 +342,7 @@ static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id, u32 dim) {
     return Max(max_child_size2, max_child_size);
 }
 
-static void CalcSize(Context& ctx, Id const id, u32 const dim) {
+NO_UBSAN static void CalcSize(Context& ctx, Id const id, u32 const dim) {
     auto const size_dim = dim + 2;
     auto item = GetItem(ctx, id);
 
@@ -682,7 +682,7 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
     return offset;
 }
 
-static void Arrange(Context& ctx, Id id, u32 dim) {
+NO_UBSAN static void Arrange(Context& ctx, Id id, u32 dim) {
     auto* item = GetItem(ctx, id);
 
     auto const flags = item->flags;
