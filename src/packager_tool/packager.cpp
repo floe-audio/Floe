@@ -11,7 +11,9 @@
 #include "utils/json/json_writer.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
+#include "common_infrastructure/encrypted_package.hpp"
 #include "common_infrastructure/global.hpp"
+#include "common_infrastructure/license.hpp"
 #include "common_infrastructure/package_format.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
@@ -548,6 +550,10 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         auto const package_name = PackageName(arena, lib_for_package_name, cli_args);
         if (generate_package_info) package_info.name = package_name;
 
+        Array<u8, encrypted_package::k_key_size> package_key {};
+        bool const should_encrypt = cli_args[ToInt(PackagerCliArgId::Encrypt)].was_provided;
+        if (should_encrypt) CryptoRandomBytes(package_key.data, encrypted_package::k_key_size);
+
         if (create_package) {
             String const folder = TRY_OR(
                 AbsolutePath(arena, cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].values[0]),
@@ -565,16 +571,41 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                     return error;
                 });
 
-            auto const package_path = path::Join(arena, Array {folder, package_name});
+            if (should_encrypt) {
+                auto const encrypted = TRY_OR(encrypted_package::Encrypt(zip_data, package_key, arena), {
+                    StdPrintF(StdStream::Err, "Error: failed to encrypt package: {}\n", error);
+                    return error;
+                });
 
-            TRY_OR(WriteFile(package_path, zip_data), {
-                StdPrintF(StdStream::Err,
-                          "Error: failed to write package file to '{}': {}\n",
-                          package_path,
-                          error);
-                return error;
-            });
-            StdPrintF(StdStream::Out, "Successfully created package: {}\n", package_path);
+                auto enc_name = fmt::Format(arena,
+                                            "{}{}",
+                                            path::FilenameWithoutExtension(package_name),
+                                            encrypted_package::k_file_extension);
+                auto const enc_path = path::Join(arena, Array {folder, String(enc_name)});
+                TRY_OR(WriteFile(enc_path, encrypted), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to write encrypted package to '{}': {}\n",
+                              enc_path,
+                              error);
+                    return error;
+                });
+                StdPrintF(StdStream::Out, "Successfully created encrypted package: {}\n", enc_path);
+                StdPrintF(StdStream::Out, "Package key: ");
+                for (auto const byte : package_key)
+                    StdPrintF(StdStream::Out, "{02x}", byte);
+                StdPrintF(StdStream::Out, "\n");
+                StdPrintF(StdStream::Out, "Store this key securely - it is needed to sign license keys.\n");
+            } else {
+                auto const package_path = path::Join(arena, Array {folder, package_name});
+                TRY_OR(WriteFile(package_path, zip_data), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to write package file to '{}': {}\n",
+                              package_path,
+                              error);
+                    return error;
+                });
+                StdPrintF(StdStream::Out, "Successfully created package: {}\n", package_path);
+            }
         }
 
         if (generate_package_info) package_info.package_size = zip_data.size;

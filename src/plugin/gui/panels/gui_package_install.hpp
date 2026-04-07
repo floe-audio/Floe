@@ -69,6 +69,103 @@ PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component co
                        package::ComponentTypeString(comp.component.type));
 }
 
+PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
+                                     package::InstallJobs& package_install_jobs,
+                                     ThreadPool& thread_pool) {
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = "License Key Required",
+              .size_from_text = true,
+          });
+
+    for (auto& job : package_install_jobs) {
+        auto const state = job.job->state.Load(LoadMemoryOrder::Acquire);
+        if (state != package::InstallJob::State::AwaitingLicenseKey) continue;
+
+        auto const container = DoBox(builder,
+                                     {
+                                         .parent = root,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_gap = k_medium_gap,
+                                             .contents_direction = layout::Direction::Column,
+                                             .contents_align = layout::Alignment::Start,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                         },
+                                     });
+
+        auto const desc = fmt::Format(builder.arena,
+                                      "Paste the license key for {}",
+                                      path::FilenameWithoutExtension(job.job->path));
+        DoBox(builder,
+              {
+                  .parent = container,
+                  .text = desc,
+                  .wrap_width = -1,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+              });
+
+        auto const text_input = TextInput(builder,
+                                          container,
+                                          {
+                                              .text = job.job->pasted_license_text,
+                                              .size = {layout::k_fill_parent, WwToPixels(140.0f)},
+                                              .border = true,
+                                              .background = true,
+                                              .multiline = true,
+                                          });
+        if (text_input.result && text_input.result->buffer_changed)
+            dyn::Assign(job.job->pasted_license_text, text_input.result->text);
+
+        // Show error if previous attempt failed
+        if (job.job->error_buffer.size) {
+            DoBox(builder,
+                  {
+                      .parent = container,
+                      .text = job.job->error_buffer,
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                      .text_colours = Col {.c = Col::Red},
+                  });
+        }
+
+        auto const button_row = DoBox(builder,
+                                      {
+                                          .parent = container,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_gap = k_medium_gap,
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::Start,
+                                          },
+                                      });
+
+        if (TextButton(builder, button_row, {.text = "Activate"})) {
+            dyn::Clear(job.job->error_buffer);
+            if (!package::OnLicenseKeyReceived(*job.job, thread_pool)) {
+                // Error is already in error_buffer, will be shown next frame
+            }
+        }
+        if (TextButton(builder, button_row, {.text = "Cancel"})) {
+            dyn::Assign(job.job->error_buffer, "Cancelled"_s);
+            job.job->state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
+        }
+    }
+}
+
 PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs& package_install_jobs) {
     auto const root = DoBox(builder,
                             {
@@ -170,6 +267,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
         }
 
         bool user_input_needed = false;
+        bool license_key_needed = false;
 
         for (auto it = package_install_jobs.begin(); it != package_install_jobs.end();) {
             auto& job = *it;
@@ -183,6 +281,11 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
             switch (state) {
                 case package::InstallJob::State::Installing: break;
 
+                case package::InstallJob::State::AwaitingLicenseKey: {
+                    license_key_needed = true;
+                    break;
+                }
+
                 case package::InstallJob::State::DoneError: {
                     if (auto err = error_notifs.BeginWriteError(job_id)) {
                         DEFER { error_notifs.EndWriteError(*err); };
@@ -195,10 +298,11 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                     next = package::RemoveJob(package_install_jobs, it);
                     break;
                 }
+
                 case package::InstallJob::State::DoneSuccess: {
                     error_notifs.RemoveError(job_id);
 
-                    DynamicArrayBounded<char, k_notification_buffer_size - 24> buffer {};
+                    DynamicArrayBounded<char, k_notification_buffer_size - 160> buffer {};
                     u8 num_truncated = 0;
                     for (auto [index, component] : Enumerate(job.job->components)) {
                         if (!num_truncated) {
@@ -214,8 +318,11 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                             ++num_truncated;
                     }
 
+                    DynamicArrayBounded<char, 128> license_email {};
+                    dyn::AssignFitInCapacity(license_email, job.job->license_email);
+
                     *notifications.AppendUninitalisedOverwrite() = {
-                        .get_diplay_info = [buffer, num_truncated](
+                        .get_diplay_info = [buffer, num_truncated, license_email](
                                                ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
                             NotificationDisplayInfo c {};
                             c.icon = NotificationDisplayInfo::IconType::Success;
@@ -227,6 +334,9 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                 c.message =
                                     fmt::Format(scratch_arena, "{}\n... and {} more", buffer, num_truncated);
                             }
+                            if (license_email.size)
+                                c.message =
+                                    fmt::Format(scratch_arena, "{}Licensed to: {}", c.message, license_email);
                             return c;
                         },
                         .id = job_id,
@@ -255,6 +365,28 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                     break;
                 }
             }
+        }
+
+        if (license_key_needed) {
+            DoBoxViewport(
+                builder,
+                {
+                    .run =
+                        [&package_install_jobs, &thread_pool](GuiBuilder& b) {
+                            PackageLicenseInputPanel(b, package_install_jobs, thread_pool);
+                        },
+                    .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+                        WwToPixels(f32x2 {500, 400})),
+                    .imgui_id = builder.imgui.MakeId("license input"),
+                    .viewport_config = ({
+                        auto cfg = k_default_modal_viewport;
+                        cfg.mode = imgui::ViewportMode::Floating;
+                        cfg.exclusive_focus = true;
+                        cfg.z_order = 200;
+                        cfg;
+                    }),
+                    .debug_name = "pkg-license-input-dialog",
+                });
         }
 
         if (user_input_needed) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "common_infrastructure/encrypted_package.hpp"
 #include "common_infrastructure/package_format.hpp"
 #include "common_infrastructure/paths.hpp"
 #include "common_infrastructure/preferences.hpp"
@@ -51,6 +52,7 @@ struct InstallJob {
     enum class State {
         Installing, // worker owns all data
         AwaitingUserInput, // worker thread is not running, user input needed
+        AwaitingLicenseKey, // worker thread is not running, license key paste needed
         DoneSuccess, // worker thread is not running, packages install completed
         DoneError, // worker thread is not running, packages install failed
     };
@@ -79,6 +81,15 @@ struct InstallJob {
     Optional<Reader> file_reader {};
     Optional<PackageReader> reader {}; // NOTE: needs uninit
     DynamicArray<char> error_buffer {arena};
+
+    // Encrypted package support
+    bool is_encrypted {};
+    Optional<encrypted_package::Header> encrypted_header {};
+    Optional<Reader> encrypted_file_reader {}; // raw file reader kept alive while decrypting_reader uses it
+    Optional<encrypted_package::DecryptingReader> decrypting_reader {};
+    Array<u8, encrypted_package::k_key_size> package_key {}; // extracted from verified license
+    DynamicArrayBounded<char, 4096> pasted_license_text {}; // set by UI when license is pasted
+    DynamicArrayBounded<char, 256> license_email {}; // set after successful verification, shown in UI
 
     struct Component {
         package::Component component;
@@ -125,6 +136,12 @@ void DoJobPhase2(InstallJob& job);
 // Complete a job that was started but needed user input.
 // [main thread]
 void OnAllUserInputReceived(InstallJob& job, ThreadPool& thread_pool);
+
+// Complete a job that was waiting for a license key. The pasted_license_text must already be set.
+// Returns true if the license was valid and installation will proceed.
+// Returns false if the license was invalid - error_buffer will contain the reason.
+// [main thread]
+bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool);
 
 // [threadsafe]
 String TypeOfActionTaken(ExistingInstalledComponent existing_installation_status,

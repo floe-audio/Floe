@@ -70,6 +70,7 @@ PUBLIC void DoErrorsPanel(GuiBuilder& builder,
                                   {
                                       .parent = root,
                                       .text = e.title,
+                                      .wrap_width = k_wrap_to_parent,
                                       .size_from_text = true,
                                       .font = FontType::Heading2,
                                   });

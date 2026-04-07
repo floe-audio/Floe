@@ -1481,10 +1481,12 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
             "autosave.cpp",
             "checksum_crc32_file.cpp",
             "common_errors.cpp",
+            "encrypted_package.cpp",
             "descriptors/param_descriptors.cpp",
             "error_reporting.cpp",
             "folder_node.cpp",
             "global.cpp",
+            "license.cpp",
             "package_format.cpp",
             "paths.cpp",
             "persistent_store.cpp",
@@ -1818,6 +1820,36 @@ fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
     exe.addIncludePath(ctx.b.path("src"));
     exe.addConfigHeader(cfg.floe_config_h);
     exe.addObject(deps.embedded_files);
+
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildLicenseTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    var exe = ctx.b.addExecutable(.{
+        .name = "floe-license-tool",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/license_tool/license_tool.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "LicenseTool");
+    exe.linkLibrary(deps.common_infrastructure);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addConfigHeader(cfg.floe_config_h);
 
     applyUniversalSettings(ctx, exe);
 
@@ -2852,6 +2884,15 @@ fn doTarget(
             .path = codesigned_exe,
         };
     };
+
+    {
+        const exe = buildLicenseTool(ctx, cfg, .{
+            .common_infrastructure = common_infrastructure,
+        });
+
+        const install = ctx.b.addInstallArtifact(exe, .{});
+        top_level_steps.install_all.dependOn(&install.step);
+    }
 
     {
         const exe = buildPresetEditor(ctx, cfg, .{

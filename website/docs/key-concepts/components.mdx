@@ -12,7 +12,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 Floe organises its content into several key components. This page serves as an overview and glossary to help you understand how these pieces fit together.
 
 ## Packages
-A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**. They use the extension `.floe-pkg`, but they're really ZIP files with a specific structure. Floe also accepts `.zip` packages. Packages are [installed](../installation/install-packages) using Floe's _Install package_ button (or manually).
+A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**. They use the extension `.floe-pkg`, but they're really ZIP files with a specific structure. Floe also accepts `.zip` packages. Additionally, `.floe-pkg-enc` packages are encrypted and require a license key to install. Packages are [installed](../installation/install-packages) using Floe's _Install package_ button (or manually for unencrypted packages).
 
 A package may contain:
 - Samples Libraries
@@ -24,7 +24,7 @@ But alternatively, a package could also contain only presets, or a collection of
 
 Floe doesn't remember packages after installation; they're just a means to get content onto your computer. Packages are created using Floe's [packaging tools](../develop/packaging), or using a ZIP utility.
 
-Want the audio files in a package? [Rename it to .zip and extract](../installation/install-packages#manually-installing).
+Want the audio files in an unencrypted package? [Rename it to .zip and extract](../installation/install-packages#manually-installing).
 
 ## Sample Libraries
 

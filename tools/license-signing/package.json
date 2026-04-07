@@ -1,0 +1,8 @@
+{
+  "name": "@floe-audio/license-signing",
+  "version": "1.0.0",
+  "description": "Sign Floe license keys for encrypted packages",
+  "main": "index.js",
+  "type": "module",
+  "license": "GPL-3.0-or-later"
+}

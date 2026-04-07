@@ -25,7 +25,8 @@ constexpr String k_libraries_subdir = "Libraries";
 constexpr String k_presets_subdir = "Presets";
 constexpr auto k_component_subdirs = Array {k_libraries_subdir, k_presets_subdir};
 constexpr String k_file_extension = ".floe-pkg"_s;
-constexpr auto k_package_extensions = Array {k_file_extension, ".zip"};
+constexpr String k_encrypted_file_extension = ".floe-pkg-enc"_s;
+constexpr auto k_package_extensions = Array {k_file_extension, k_encrypted_file_extension, ".zip"};
 
 inline bool HasPackageExtension(String path) {
     auto const ext = path::Extension(path);

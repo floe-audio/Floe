@@ -35,7 +35,7 @@ void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
 }
 
 void OpenFilePickerInstallPackage(FilePickerState& state) {
-    static constexpr auto k_package_wildcards = Array {"*.floe-pkg"_s, "*.zip"_s};
+    static constexpr auto k_package_wildcards = Array {"*.floe-pkg"_s, "*.floe-pkg-enc"_s, "*.zip"_s};
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
             .description = "Floe Package"_s,

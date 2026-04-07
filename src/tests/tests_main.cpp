@@ -26,6 +26,7 @@
     X(RegisterCliArgParseTests)                                                                              \
     X(RegisterDebugTests)                                                                                    \
     X(RegisterDynamicArrayTests)                                                                             \
+    X(RegisterEncryptedPackageTests)                                                                         \
     X(RegisterErrorCodeTests)                                                                                \
     X(RegisterErrorNotificationsTests)                                                                       \
     X(RegisterFilesystemTests)                                                                               \
@@ -41,6 +42,7 @@
     X(RegisterJsonWriterTests)                                                                               \
     X(RegisterLayerProcessorTests)                                                                           \
     X(RegisterLayoutTests)                                                                                   \
+    X(RegisterLicenseTests)                                                                                  \
     X(RegisterLibraryLuaTests)                                                                               \
     X(RegisterLibraryMdataTests)                                                                             \
     X(RegisterLinkedListTests)                                                                               \

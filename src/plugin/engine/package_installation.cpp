@@ -6,7 +6,9 @@
 #include "tests/framework.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
+#include "common_infrastructure/encrypted_package.hpp"
 #include "common_infrastructure/error_reporting.hpp"
+#include "common_infrastructure/license.hpp"
 
 namespace fmt {
 
@@ -21,6 +23,7 @@ CustomValueToString(Writer writer, package::InstallJob::State state, FormatOptio
     switch (state) {
         case package::InstallJob::State::Installing: s = "Installing"; break;
         case package::InstallJob::State::AwaitingUserInput: s = "AwaitingUserInput"; break;
+        case package::InstallJob::State::AwaitingLicenseKey: s = "AwaitingLicenseKey"; break;
         case package::InstallJob::State::DoneSuccess: s = "DoneSuccess"; break;
         case package::InstallJob::State::DoneError: s = "DoneError"; break;
     }
@@ -511,13 +514,26 @@ static bool MirageIsInstalled() {
     return false;
 }
 
-static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
-    using H = package::TryHelpersToState;
-
+static InstallJob::State OpenPackageFile(InstallJob& job) {
     job.file_reader = TRY_OR(Reader::FromFile(job.path), {
         fmt::Append(job.error_buffer, "Couldn't read file {}: {}\n", path::Filename(job.path), error);
         return InstallJob::State::DoneError;
     });
+
+    if (encrypted_package::HasEncryptedPackageExtension(job.path)) {
+        job.is_encrypted = true;
+        job.encrypted_header = TRY_OR(encrypted_package::ReadHeader(*job.file_reader), {
+            fmt::Append(job.error_buffer, "Invalid encrypted package: {}\n", error);
+            return InstallJob::State::DoneError;
+        });
+        return InstallJob::State::AwaitingLicenseKey;
+    }
+
+    return InstallJob::State::Installing;
+}
+
+static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
+    using H = package::TryHelpersToState;
 
     job.reader = PackageReader {.zip_file_reader = *job.file_reader};
 
@@ -878,17 +894,27 @@ void DestroyInstallJob(InstallJob* job) {
     ASSERT(job);
     ASSERT(job->state.Load(LoadMemoryOrder::Acquire) != InstallJob::State::Installing);
     if (job->reader) package::ReaderDeinit(*job->reader);
+    if (job->decrypting_reader) encrypted_package::DestroyDecryptingReader(*job->decrypting_reader);
     job->~InstallJob();
 }
 
 void DoJobPhase2(InstallJob& job);
 
 // Run this and then check the 'state' variable. You might need to ask the user a question on the main thread
-// and then call OnAllUserInputReceived.
+// and then call OnAllUserInputReceived or OnLicenseKeyReceived.
 // [worker thread (probably)]
 void DoJobPhase1(InstallJob& job) {
     ASSERT_EQ(job.state.Load(LoadMemoryOrder::Acquire), InstallJob::State::Installing);
-    auto const result = DoJobPhase1Impl(job);
+
+    // Open the file and detect encryption. This may return AwaitingLicenseKey.
+    auto result = OpenPackageFile(job);
+    if (result != InstallJob::State::Installing) {
+        LogDebug(ModuleName::Package, "DoJobPhase1 finished with state: {}", result);
+        job.state.Store(result, StoreMemoryOrder::Release);
+        return;
+    }
+
+    result = DoJobPhase1Impl(job);
     LogDebug(ModuleName::Package, "DoJobPhase1 finished with state: {}", result);
     if (result != InstallJob::State::Installing) {
         job.state.Store(result, StoreMemoryOrder::Release);
@@ -922,6 +948,67 @@ void OnAllUserInputReceived(InstallJob& job, ThreadPool& thread_pool) {
             job.state.Store(InstallJob::State::DoneError, StoreMemoryOrder::Release);
         }
     });
+}
+
+bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
+    ASSERT_EQ(job.state.Load(LoadMemoryOrder::Acquire), InstallJob::State::AwaitingLicenseKey);
+    ASSERT(job.encrypted_header.HasValue());
+
+    // Verify the license
+    auto const license_result = license::ParseAndVerify(job.pasted_license_text);
+    if (license_result.HasError()) {
+        dyn::Clear(job.error_buffer);
+        fmt::Append(job.error_buffer, "Invalid license key: {}", license_result.Error());
+        return false;
+    }
+
+    auto const& payload = license_result.Value();
+    CopyMemory(job.package_key.data, payload.package_key.data, encrypted_package::k_key_size);
+    dyn::Assign(job.license_email, payload.email);
+
+    // Verify the content key matches this package
+    auto const verify_result =
+        encrypted_package::VerifyContentKey(*job.file_reader, *job.encrypted_header, job.package_key);
+    if (verify_result.HasError()) {
+        dyn::Clear(job.error_buffer);
+        fmt::Append(job.error_buffer, "License key does not match this package");
+        return false;
+    }
+
+    // Move the raw file reader aside (DecryptingReader needs it to stay alive)
+    job.encrypted_file_reader = Move(job.file_reader);
+
+    // Set up the decrypting reader and a transparent Reader wrapper
+    auto dr_result = encrypted_package::CreateDecryptingReader(*job.encrypted_file_reader,
+                                                               *job.encrypted_header,
+                                                               job.package_key,
+                                                               job.arena);
+    if (dr_result.HasError()) {
+        dyn::Clear(job.error_buffer);
+        fmt::Append(job.error_buffer, "Failed to set up decryption: {}", dr_result.Error());
+        return false;
+    }
+    job.decrypting_reader = dr_result.Value();
+
+    // Replace file_reader with a decrypting wrapper so Phase 1 reads decrypted ZIP data
+    job.file_reader = encrypted_package::ReaderFromDecryptingReader(*job.decrypting_reader);
+
+    // Resume: run Phase 1 (component iteration) and Phase 2 (extraction) on worker thread
+    job.state.Store(InstallJob::State::Installing, StoreMemoryOrder::Release);
+    thread_pool.AddJob([&job]() {
+        try {
+            auto const result = DoJobPhase1Impl(job);
+            if (result != InstallJob::State::Installing) {
+                job.state.Store(result, StoreMemoryOrder::Release);
+                return;
+            }
+            DoJobPhase2(job);
+        } catch (PanicException) {
+            dyn::AppendSpan(job.error_buffer, "fatal error\n");
+            job.state.Store(InstallJob::State::DoneError, StoreMemoryOrder::Release);
+        }
+    });
+    return true;
 }
 
 // [threadsafe]
@@ -2044,6 +2131,100 @@ TEST_CASE(TestFindNextNonExistentFilename) {
     return k_success;
 }
 
+TEST_CASE(TestEncryptedPackageInstallation) {
+    auto const destination_folder = tests::TempFolderUnique(tester);
+
+    ThreadPool thread_pool;
+    thread_pool.Init("pkg-install", {});
+
+    ThreadsafeErrorNotifications error_notif;
+    sample_lib_server::Server sample_lib_server {thread_pool, destination_folder, error_notif};
+    sample_lib_server.disable_file_watching.Store(true, StoreMemoryOrder::Relaxed);
+    PresetServer preset_server {
+        .error_notifications = error_notif,
+    };
+    InitPresetServer(preset_server, destination_folder);
+    DEFER { ShutdownPresetServer(preset_server); };
+
+    // Create a normal package
+    auto const zip_data =
+        REQUIRE_UNWRAP(CreateValidTestPackage(tester, LibFolder::Regular, "Test-Lib-1/floe.lua", true));
+
+    // Generate a random content key
+    Array<u8, encrypted_package::k_key_size> package_key;
+    CryptoRandomBytes(package_key.data, encrypted_package::k_key_size);
+
+    // Encrypt the package
+    auto const encrypted =
+        REQUIRE_UNWRAP(encrypted_package::Encrypt(zip_data, package_key, tester.scratch_arena));
+
+    // Write encrypted package to a .floe-pkg-enc file
+    auto const enc_path = fmt::Format(tester.scratch_arena,
+                                      "{}{}",
+                                      tests::TempFilename(tester),
+                                      encrypted_package::k_file_extension);
+    REQUIRE_UNWRAP(WriteFile(enc_path, encrypted));
+
+    // Create the install job
+    auto job = CreateInstallJob(tester.scratch_arena,
+                                {
+                                    .package_path = enc_path,
+                                    .install_folders = {destination_folder, destination_folder},
+                                    .sample_lib_server = sample_lib_server,
+                                    .preset_server = preset_server,
+                                });
+    DEFER { DestroyInstallJob(job); };
+
+    // Phase 1 should detect the encrypted package and request a license key
+    DoJobPhase1(*job);
+    REQUIRE_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::AwaitingLicenseKey);
+    CHECK(job->is_encrypted);
+    CHECK(job->encrypted_header.HasValue());
+
+    SUBCASE("wrong key fails verification") {
+        Array<u8, encrypted_package::k_key_size> wrong_key;
+        CryptoRandomBytes(wrong_key.data, encrypted_package::k_key_size);
+        CHECK(encrypted_package::VerifyContentKey(*job->file_reader, *job->encrypted_header, wrong_key)
+                  .HasError());
+    }
+
+    SUBCASE("correct key installs successfully") {
+        // Verify the content key matches
+        REQUIRE_UNWRAP(
+            encrypted_package::VerifyContentKey(*job->file_reader, *job->encrypted_header, package_key));
+
+        // Set up decryption (mirrors what OnLicenseKeyReceived does after license verification)
+        CopyMemory(job->package_key.data, package_key.data, encrypted_package::k_key_size);
+        dyn::Assign(job->license_email, "test@example.com"_s);
+
+        job->encrypted_file_reader = Move(job->file_reader);
+        job->decrypting_reader =
+            REQUIRE_UNWRAP(encrypted_package::CreateDecryptingReader(*job->encrypted_file_reader,
+                                                                     *job->encrypted_header,
+                                                                     job->package_key,
+                                                                     job->arena));
+        job->file_reader = encrypted_package::ReaderFromDecryptingReader(*job->decrypting_reader);
+
+        // Run Phase 1 (component iteration) and Phase 2 (extraction) synchronously
+        job->state.Store(InstallJob::State::Installing, StoreMemoryOrder::Release);
+        auto const phase1_result = DoJobPhase1Impl(*job);
+        if (phase1_result == InstallJob::State::DoneError)
+            tester.log.Error("Phase 1 failed: {}", job->error_buffer);
+        REQUIRE_EQ(phase1_result, InstallJob::State::Installing);
+
+        DoJobPhase2(*job);
+
+        auto const final_state = job->state.Load(LoadMemoryOrder::Acquire);
+        if (final_state == InstallJob::State::DoneError)
+            tester.log.Error("Installation failed: {}", job->error_buffer);
+
+        CHECK_EQ(final_state, InstallJob::State::DoneSuccess);
+        CHECK_EQ(job->license_email, "test@example.com"_s);
+    }
+
+    return k_success;
+}
+
 } // namespace package
 
 TEST_REGISTRATION(RegisterPackageInstallationTests) {
@@ -2055,4 +2236,5 @@ TEST_REGISTRATION(RegisterPackageInstallationTests) {
     REGISTER_TEST(package::TestFindNextNonExistentFilename);
     REGISTER_TEST(package::TestPackageInstallationUpdatePresets);
     REGISTER_TEST(package::TestPackageInstallationMdataToLua);
+    REGISTER_TEST(package::TestEncryptedPackageInstallation);
 }

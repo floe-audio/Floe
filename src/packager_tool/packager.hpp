@@ -10,6 +10,7 @@ enum class PackagerCliArgId : u32 {
     OutputPackageFolder,
     PackageName,
     OutputPackageInfoJsonFile,
+    Encrypt,
     Count,
 };
 
@@ -62,6 +63,15 @@ auto constexpr k_packager_command_line_args_defs = MakeCommandLineArgDefs<Packag
         .value_type = "path",
         .required = false,
         .num_values = 1,
+    },
+    {
+        .id = (u32)PackagerCliArgId::Encrypt,
+        .key = "encrypt",
+        .description = "Encrypt the output package. A random content key is generated and printed to stdout. "
+                       "Output will be .floe-pkg-enc instead of .floe-pkg.",
+        .value_type = {},
+        .required = false,
+        .num_values = 0,
     },
 });
 
