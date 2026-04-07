@@ -22,7 +22,7 @@ Building is done inside a Nix flake shell. You can use `nix develop` to enter th
 
 # Source code overview
 Here are some notable subdirectories, though there are plenty more.
-- `src/foundation/`: our 'standard library' with data structures and core utilities. All code depends on this.
+- `src/foundation/`: our 'standard library' with data structures and core utilities. All code depends on this. A single `#include "foundation/foundation.hpp"` includes ALL headers from the foundation.
 - `src/os/`: OS abstraction layer.
 - `src/utils/`: more specific utilities that are not necessary Floe-specific, building on OS and foundation.
 - `src/common_infrastructure/`: Floe-specific code that's used by the plugin and also installers and other tools.
