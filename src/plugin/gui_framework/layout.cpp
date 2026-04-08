@@ -6,9 +6,16 @@
 
 #include "layout.hpp"
 
-#include "benchmarks/framework.hpp"
 #include "os/filesystem.hpp"
 #include "tests/framework.hpp"
+
+#include "benchmarks/framework.hpp"
+
+// Performance notes: CalcSize and Arrange are called for every item in the layout tree, so they are hot.
+// - NO_UBSAN is used on hot functions because the sanitizer pointer-arithmetic checks are very expensive.
+// - 'dim' (0 or 1) is a template parameter rather than a runtime argument so that all rect[dim] accesses
+//   resolve to fixed offsets, enabling the compiler to use direct loads instead of scalar element extraction.
+// - GetItem uses ASSERT_HOT instead of ASSERT to avoid checks in optimised builds.
 
 namespace layout {
 
@@ -22,8 +29,8 @@ struct Item {
     f32x4 container_padding_ltrb; // padding around all children
 };
 
-Item* GetItem(Context const& ctx, Id id) {
-    ASSERT(id != k_invalid_id && ToInt(id) < ctx.num_items);
+NO_UBSAN Item* GetItem(Context const& ctx, Id id) {
+    ASSERT_HOT(id != k_invalid_id && ToInt(id) < ctx.num_items);
     return ctx.items + ToInt(id);
 }
 
@@ -150,12 +157,14 @@ void DestroyContext(Context& ctx, Allocator& a) {
 
 void ResetContext(Context& ctx) { ctx.num_items = 0; }
 
-static void CalcSize(Context& ctx, Id item, u32 dim);
-static void Arrange(Context& ctx, Id item, u32 dim);
+template <u32 dim>
+static void CalcSize(Context& ctx, Id id);
+template <u32 dim>
+static void Arrange(Context& ctx, Id id);
 
 void RunItem(Context& ctx, Id id) {
-    CalcSize(ctx, id, 0);
-    Arrange(ctx, id, 0);
+    CalcSize<0>(ctx, id);
+    Arrange<0>(ctx, id);
 
     for (u32 i = 0; i < ctx.num_items; ++i)
         if (ctx.items[i].flags & flags::SetItemHeightAfterWidth) {
@@ -163,8 +172,8 @@ void RunItem(Context& ctx, Id id) {
             ctx.items[i].flags |= flags::VerticalSizeFixed;
         }
 
-    CalcSize(ctx, id, 1);
-    Arrange(ctx, id, 1);
+    CalcSize<1>(ctx, id);
+    Arrange<1>(ctx, id);
 
     if (ctx.snap_to_integers) {
         // We round the edges (pos and pos+size) independently so that two elements sharing a float edge
@@ -270,8 +279,9 @@ void Push(Context& ctx, Id parent_id, Id new_child_id) {
     child->next_sibling = old_child;
 }
 
-static ALWAYS_INLINE f32 MaxChildSize(Context& ctx, Id id, u32 dim) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE f32 MaxChildSize(Context& ctx, Id id) {
+    constexpr u32 size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto child_id = item->first_child;
@@ -286,8 +296,9 @@ static ALWAYS_INLINE f32 MaxChildSize(Context& ctx, Id id, u32 dim) {
     return max_child_size;
 }
 
-static ALWAYS_INLINE f32 TotalChildSize(Context& ctx, Id id, u32 dim) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE f32 TotalChildSize(Context& ctx, Id id) {
+    constexpr u32 size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto need_size = 0.0f;
     auto child_id = item->first_child;
@@ -301,8 +312,9 @@ static ALWAYS_INLINE f32 TotalChildSize(Context& ctx, Id id, u32 dim) {
     return need_size;
 }
 
-static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id, u32 dim) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id) {
+    constexpr u32 size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto max_child_size2 = 0.0f;
@@ -324,8 +336,9 @@ static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id, u32 dim) {
            (num_lines > 1 ? (f32)(num_lines - 1) * item->contents_gap[dim] : 0);
 }
 
-static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id, u32 dim) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id) {
+    constexpr u32 size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto max_child_size2 = 0.0f;
@@ -343,8 +356,9 @@ static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id, u32 dim) {
     return Max(max_child_size2, max_child_size);
 }
 
-NO_UBSAN static void CalcSize(Context& ctx, Id const id, u32 const dim) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static void CalcSize(Context& ctx, Id const id) {
+    constexpr u32 size_dim = dim + 2;
     auto item = GetItem(ctx, id);
 
     auto const item_layout_dim = item->flags & 1;
@@ -358,24 +372,23 @@ NO_UBSAN static void CalcSize(Context& ctx, Id const id, u32 const dim) {
             child->margins_ltrb[size_dim] += item->contents_gap[dim];
 
         // To support container padding, we increase the margins of the children
-        f32x4 increase {};
         if (dim == item_layout_dim) {
             // Along the layout direction we don't increase margins between items, only the first and last
-            increase[dim] = child_id == item->first_child ? item->container_padding_ltrb[dim] : 0;
-            increase[size_dim] =
-                child->next_sibling == k_invalid_id ? item->container_padding_ltrb[size_dim] : 0;
+            if (child_id == item->first_child)
+                child->margins_ltrb[dim] += item->container_padding_ltrb[dim];
+            if (child->next_sibling == k_invalid_id)
+                child->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
         } else {
             // Cross-axis direction: for wrapping layouts, padding is added during arrangement instead
             auto const is_wrapping = (item->flags & flags::Wrap) && (item->flags & flags::AutoLayout);
             if (!is_wrapping) {
-                increase[dim] = item->container_padding_ltrb[dim];
-                increase[size_dim] = item->container_padding_ltrb[size_dim];
+                child->margins_ltrb[dim] += item->container_padding_ltrb[dim];
+                child->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
             }
         }
-        child->margins_ltrb += increase;
 
         // NOTE: this is recursive and will run out of stack space if items are nested too deeply.
-        CalcSize(ctx, child_id, dim);
+        CalcSize<dim>(ctx, child_id);
         child_id = child->next_sibling;
     }
 
@@ -394,27 +407,27 @@ NO_UBSAN static void CalcSize(Context& ctx, Id const id, u32 const dim) {
     f32 cal_size;
     switch (item->flags & flags::LayoutModeMask) {
         case flags::Column | flags::Wrap:
-            if (dim) // direction
-                cal_size = TotalChildSize(ctx, id, 1);
+            if constexpr (dim == 1)
+                cal_size = TotalChildSize<1>(ctx, id);
             else
-                cal_size = MaxChildSize(ctx, id, 0);
+                cal_size = MaxChildSize<0>(ctx, id);
             break;
         case flags::Row | flags::Wrap:
-            if (!dim) // direction
-                cal_size = TotalChildSizeWrapped(ctx, id, 0);
+            if constexpr (dim == 0)
+                cal_size = TotalChildSizeWrapped<0>(ctx, id);
             else
-                cal_size = MaxChildSizeWrapped(ctx, id, 1);
+                cal_size = MaxChildSizeWrapped<1>(ctx, id);
             break;
         case flags::Column:
         case flags::Row:
-            if (item_layout_dim == dim) // direction
-                cal_size = TotalChildSize(ctx, id, dim);
+            if (item_layout_dim == dim)
+                cal_size = TotalChildSize<dim>(ctx, id);
             else
-                cal_size = MaxChildSize(ctx, id, dim);
+                cal_size = MaxChildSize<dim>(ctx, id);
             break;
         default:
             // NoLayout
-            cal_size = MaxChildSize(ctx, id, dim);
+            cal_size = MaxChildSize<dim>(ctx, id);
             break;
     }
 
@@ -430,8 +443,9 @@ NO_UBSAN static void CalcSize(Context& ctx, Id const id, u32 const dim) {
     ctx.rects[ToInt(id)][size_dim] = cal_size;
 }
 
-static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, u32 const dim, bool const wrap) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool const wrap) {
+    constexpr u32 size_dim = dim + 2;
     auto item = GetItem(ctx, id);
 
     auto const item_flags = item->flags;
@@ -449,6 +463,7 @@ static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, u32 const dim, boo
         // first pass: count items that need to be expanded, and the space that is used
         auto child_id = start_child_id;
         auto end_child_id = k_invalid_id;
+        auto prev_child_id = k_invalid_id;
         while (child_id != k_invalid_id) {
             auto* child = GetItem(ctx, child_id);
             auto const child_flags = child->flags;
@@ -471,6 +486,7 @@ static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, u32 const dim, boo
                 break;
             } else {
                 used = extend;
+                prev_child_id = child_id;
                 child_id = child->next_sibling;
             }
             ++total;
@@ -486,27 +502,17 @@ static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, u32 const dim, boo
                 used += item->container_padding_ltrb[dim];
             }
 
-            // Find and handle last item on this line (if there's a next line)
-            if (end_child_id != k_invalid_id) {
-                auto scan_id = start_child_id;
-                Id last_on_line_id = k_invalid_id;
-                while (scan_id != end_child_id) {
-                    last_on_line_id = scan_id;
-                    auto* scan_child = GetItem(ctx, scan_id);
-                    scan_id = scan_child->next_sibling;
-                }
+            // Handle last item on this line (if there's a next line)
+            if (end_child_id != k_invalid_id && prev_child_id != k_invalid_id) {
+                auto* last_on_line = GetItem(ctx, prev_child_id);
 
-                if (last_on_line_id != k_invalid_id) {
-                    auto* last_on_line = GetItem(ctx, last_on_line_id);
+                // Remove the gap since next item is on a different line
+                last_on_line->margins_ltrb[size_dim] -= item->contents_gap[dim];
+                used -= item->contents_gap[dim];
 
-                    // Remove the gap since next item is on a different line
-                    last_on_line->margins_ltrb[size_dim] -= item->contents_gap[dim];
-                    used -= item->contents_gap[dim];
-
-                    // Add end padding to last item of this line
-                    last_on_line->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
-                    used += item->container_padding_ltrb[size_dim];
-                }
+                // Add end padding to last item of this line
+                last_on_line->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
+                used += item->container_padding_ltrb[size_dim];
             }
         }
 
@@ -576,8 +582,9 @@ static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, u32 const dim, boo
     }
 }
 
-static ALWAYS_INLINE void ArrangeOverlay(Context& ctx, Id id, u32 dim) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE void ArrangeOverlay(Context& ctx, Id id) {
+    constexpr u32 size_dim = dim + 2;
     auto* item = GetItem(ctx, id);
     auto const rect = ctx.rects[ToInt(id)];
     auto const offset = rect[dim];
@@ -610,13 +617,10 @@ static ALWAYS_INLINE void ArrangeOverlay(Context& ctx, Id id, u32 dim) {
     }
 }
 
-static ALWAYS_INLINE void ArrangeOverlaySqueezedRange(Context& ctx,
-                                                      u32 const dim,
-                                                      Id start_item_id,
-                                                      Id end_item_id,
-                                                      f32 offset,
-                                                      f32 space) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE void
+ArrangeOverlaySqueezedRange(Context& ctx, Id start_item_id, Id end_item_id, f32 offset, f32 space) {
+    constexpr u32 size_dim = dim + 2;
     auto item_id = start_item_id;
     while (item_id != end_item_id) {
         auto* item = GetItem(ctx, item_id);
@@ -650,8 +654,9 @@ static ALWAYS_INLINE void ArrangeOverlaySqueezedRange(Context& ctx,
     }
 }
 
-static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 dim) {
-    auto const size_dim = dim + 2;
+template <u32 dim>
+NO_UBSAN static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id) {
+    constexpr u32 size_dim = dim + 2;
     auto* item = GetItem(ctx, id);
     auto offset = ctx.rects[ToInt(id)][dim];
 
@@ -664,7 +669,7 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
     while (child_id != k_invalid_id) {
         Item* child = GetItem(ctx, child_id);
         if (child->flags & flags::LineBreak) {
-            ArrangeOverlaySqueezedRange(ctx, dim, start_child_id, child_id, offset, need_size);
+            ArrangeOverlaySqueezedRange<dim>(ctx, start_child_id, child_id, offset, need_size);
             offset += need_size + item->contents_gap[dim];
             start_child_id = child_id;
             need_size = 0;
@@ -674,7 +679,7 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
         need_size = Max(need_size, child_size);
         child_id = child->next_sibling;
     }
-    ArrangeOverlaySqueezedRange(ctx, dim, start_child_id, k_invalid_id, offset, need_size);
+    ArrangeOverlaySqueezedRange<dim>(ctx, start_child_id, k_invalid_id, offset, need_size);
     offset += need_size;
 
     // Add bottom/end padding for wrapping layouts in cross-axis
@@ -683,45 +688,46 @@ static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id, u32 
     return offset;
 }
 
-NO_UBSAN static void Arrange(Context& ctx, Id id, u32 dim) {
+template <u32 dim>
+NO_UBSAN static void Arrange(Context& ctx, Id id) {
     auto* item = GetItem(ctx, id);
+    if (item->first_child == k_invalid_id) return;
 
     auto const flags = item->flags;
     switch (flags & flags::LayoutModeMask) {
         case flags::Column | flags::Wrap:
-            if (dim != 0) {
-                ArrangeStacked(ctx, id, 1, true);
-                f32 offset = ArrangeWrappedOverlaySqueezed(ctx, id, 0);
+            if constexpr (dim != 0) {
+                ArrangeStacked<1>(ctx, id, true);
+                f32 offset = ArrangeWrappedOverlaySqueezed<0>(ctx, id);
                 ctx.rects[ToInt(id)][2 + 0] = offset - ctx.rects[ToInt(id)][0];
             }
             break;
         case flags::Row | flags::Wrap:
-            if (dim == 0)
-                ArrangeStacked(ctx, id, 0, true);
+            if constexpr (dim == 0)
+                ArrangeStacked<0>(ctx, id, true);
             else
                 // discard return value
-                ArrangeWrappedOverlaySqueezed(ctx, id, 1);
+                ArrangeWrappedOverlaySqueezed<1>(ctx, id);
             break;
         case flags::Column:
         case flags::Row:
             if ((flags & 1) == dim) {
-                ArrangeStacked(ctx, id, dim, false);
+                ArrangeStacked<dim>(ctx, id, false);
             } else {
                 f32x4 const rect = ctx.rects[ToInt(id)];
-                ArrangeOverlaySqueezedRange(ctx,
-                                            dim,
-                                            item->first_child,
-                                            k_invalid_id,
-                                            rect[dim],
-                                            rect[dim + 2]);
+                ArrangeOverlaySqueezedRange<dim>(ctx,
+                                                 item->first_child,
+                                                 k_invalid_id,
+                                                 rect[dim],
+                                                 rect[dim + 2]);
             }
             break;
-        default: ArrangeOverlay(ctx, id, dim); break;
+        default: ArrangeOverlay<dim>(ctx, id); break;
     }
     auto child_id = item->first_child;
     while (child_id != k_invalid_id) {
         // NOTE: this is recursive and will run out of stack space if items are nested too deeply.
-        Arrange(ctx, child_id, dim);
+        Arrange<dim>(ctx, child_id);
         auto* child = GetItem(ctx, child_id);
         child_id = child->next_sibling;
     }
@@ -1044,134 +1050,125 @@ TEST_CASE(TestLayout) {
 
 TEST_REGISTRATION(RegisterLayoutTests) { REGISTER_TEST(TestLayout); }
 
-BENCHMARK_FN void BenchmarkLayoutColumn1000() {
+BENCHMARK_FN void BenchmarkLayoutColumn10000() {
     ArenaAllocator arena {PageAllocator::Instance()};
 
-    constexpr u32 k_num_children = 1000;
-    constexpr u32 k_iterations = 200;
+    constexpr u32 k_num_children = 10000;
 
-    for (auto const _ : Range(k_iterations)) {
-        layout::Context ctx;
-        layout::ReserveItemsCapacity(ctx, arena, k_num_children + 1);
+    layout::Context ctx;
+    layout::ReserveItemsCapacity(ctx, arena, k_num_children + 1);
 
-        auto const root = layout::CreateItem(ctx,
-                                             arena,
-                                             {
-                                                 .size = {400, layout::k_hug_contents},
-                                                 .contents_gap = 2.0f,
-                                                 .contents_direction = layout::Direction::Column,
-                                                 .contents_align = layout::Alignment::Start,
-                                             });
+    auto const root = layout::CreateItem(ctx,
+                                         arena,
+                                         {
+                                             .size = {400, layout::k_hug_contents},
+                                             .contents_gap = 2.0f,
+                                             .contents_direction = layout::Direction::Column,
+                                             .contents_align = layout::Alignment::Start,
+                                         });
 
-        for (auto const _ : Range(k_num_children))
+    for (auto const _ : Range(k_num_children))
+        layout::CreateItem(ctx,
+                           arena,
+                           {
+                               .parent = root,
+                               .size = {layout::k_fill_parent, 20},
+                           });
+
+    for (auto const _ : Range(700u)) {
+        layout::RunContext(ctx);
+        auto rect = layout::GetRect(ctx, root);
+        benchmarks::DoNotOptimise(rect);
+    }
+
+    layout::DestroyContext(ctx, arena);
+}
+
+BENCHMARK_FN void BenchmarkLayoutWrappingGrid10000() {
+    ArenaAllocator arena {PageAllocator::Instance()};
+
+    constexpr u32 k_num_children = 10000;
+
+    layout::Context ctx;
+    layout::ReserveItemsCapacity(ctx, arena, k_num_children + 1);
+
+    auto const root = layout::CreateItem(ctx,
+                                         arena,
+                                         {
+                                             .size = {400, layout::k_hug_contents},
+                                             .contents_gap = 4.0f,
+                                             .contents_direction = layout::Direction::Row,
+                                             .contents_multiline = true,
+                                             .contents_align = layout::Alignment::Start,
+                                         });
+
+    for (auto const _ : Range(k_num_children))
+        layout::CreateItem(ctx,
+                           arena,
+                           {
+                               .parent = root,
+                               .size = {30, 30},
+                           });
+
+    for (auto const _ : Range(800u)) {
+        layout::RunContext(ctx);
+        auto rect = layout::GetRect(ctx, root);
+        benchmarks::DoNotOptimise(rect);
+    }
+
+    layout::DestroyContext(ctx, arena);
+}
+
+BENCHMARK_FN void BenchmarkLayoutNestedContainers10000() {
+    ArenaAllocator arena {PageAllocator::Instance()};
+
+    constexpr u32 k_groups = 500;
+    constexpr u32 k_children_per_group = 20;
+
+    layout::Context ctx;
+    layout::ReserveItemsCapacity(ctx, arena, 1 + (k_groups * (1 + k_children_per_group)));
+
+    auto const root = layout::CreateItem(ctx,
+                                         arena,
+                                         {
+                                             .size = {800, layout::k_hug_contents},
+                                             .contents_gap = 4.0f,
+                                             .contents_direction = layout::Direction::Column,
+                                             .contents_align = layout::Alignment::Start,
+                                         });
+
+    for (auto const _ : Range(k_groups)) {
+        auto const group = layout::CreateItem(ctx,
+                                              arena,
+                                              {
+                                                  .parent = root,
+                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                  .contents_padding = {.lrtb = 4},
+                                                  .contents_gap = 2.0f,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_align = layout::Alignment::Start,
+                                              });
+
+        for (auto const _ : Range(k_children_per_group))
             layout::CreateItem(ctx,
                                arena,
                                {
-                                   .parent = root,
-                                   .size = {layout::k_fill_parent, 20},
+                                   .parent = group,
+                                   .size = {60, 20},
                                });
+    }
 
+    for (auto const _ : Range(700u)) {
         layout::RunContext(ctx);
-
         auto rect = layout::GetRect(ctx, root);
         benchmarks::DoNotOptimise(rect);
-
-        layout::DestroyContext(ctx, arena);
-        arena.ResetCursorAndConsolidateRegions();
     }
-}
 
-BENCHMARK_FN void BenchmarkLayoutWrappingGrid1000() {
-    ArenaAllocator arena {PageAllocator::Instance()};
-
-    constexpr u32 k_num_children = 1000;
-    constexpr u32 k_iterations = 200;
-
-    for (auto const _ : Range(k_iterations)) {
-        layout::Context ctx;
-        layout::ReserveItemsCapacity(ctx, arena, k_num_children + 1);
-
-        auto const root = layout::CreateItem(ctx,
-                                             arena,
-                                             {
-                                                 .size = {400, layout::k_hug_contents},
-                                                 .contents_gap = 4.0f,
-                                                 .contents_direction = layout::Direction::Row,
-                                                 .contents_multiline = true,
-                                                 .contents_align = layout::Alignment::Start,
-                                             });
-
-        for (auto const _ : Range(k_num_children))
-            layout::CreateItem(ctx,
-                               arena,
-                               {
-                                   .parent = root,
-                                   .size = {30, 30},
-                               });
-
-        layout::RunContext(ctx);
-
-        auto rect = layout::GetRect(ctx, root);
-        benchmarks::DoNotOptimise(rect);
-
-        layout::DestroyContext(ctx, arena);
-        arena.ResetCursorAndConsolidateRegions();
-    }
-}
-
-BENCHMARK_FN void BenchmarkLayoutNestedContainers() {
-    ArenaAllocator arena {PageAllocator::Instance()};
-
-    constexpr u32 k_groups = 100;
-    constexpr u32 k_children_per_group = 10;
-    constexpr u32 k_iterations = 200;
-
-    for (auto const _ : Range(k_iterations)) {
-        layout::Context ctx;
-        layout::ReserveItemsCapacity(ctx, arena, 1 + (k_groups * (1 + k_children_per_group)));
-
-        auto const root = layout::CreateItem(ctx,
-                                             arena,
-                                             {
-                                                 .size = {800, layout::k_hug_contents},
-                                                 .contents_gap = 4.0f,
-                                                 .contents_direction = layout::Direction::Column,
-                                                 .contents_align = layout::Alignment::Start,
-                                             });
-
-        for (auto const _ : Range(k_groups)) {
-            auto const group = layout::CreateItem(ctx,
-                                                  arena,
-                                                  {
-                                                      .parent = root,
-                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                      .contents_padding = {.lrtb = 4},
-                                                      .contents_gap = 2.0f,
-                                                      .contents_direction = layout::Direction::Row,
-                                                      .contents_align = layout::Alignment::Start,
-                                                  });
-
-            for (auto const _ : Range(k_children_per_group))
-                layout::CreateItem(ctx,
-                                   arena,
-                                   {
-                                       .parent = group,
-                                       .size = {60, 20},
-                                   });
-        }
-
-        layout::RunContext(ctx);
-
-        auto rect = layout::GetRect(ctx, root);
-        benchmarks::DoNotOptimise(rect);
-
-        layout::DestroyContext(ctx, arena);
-        arena.ResetCursorAndConsolidateRegions();
-    }
+    layout::DestroyContext(ctx, arena);
 }
 
 BENCHMARK_REGISTRATION(RegisterLayoutBenchmarks) {
-    REGISTER_BENCHMARK(BenchmarkLayoutColumn1000);
-    REGISTER_BENCHMARK(BenchmarkLayoutWrappingGrid1000);
-    REGISTER_BENCHMARK(BenchmarkLayoutNestedContainers);
+    REGISTER_BENCHMARK(BenchmarkLayoutColumn10000);
+    REGISTER_BENCHMARK(BenchmarkLayoutWrappingGrid10000);
+    REGISTER_BENCHMARK(BenchmarkLayoutNestedContainers10000);
 }
