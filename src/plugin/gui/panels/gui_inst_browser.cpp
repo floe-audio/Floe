@@ -52,7 +52,7 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
             return any_match;
         }
 
-        if (fi == FilterIndex::Library) return filter.Contains(Hash(inst.library.id));
+        if (fi == FilterIndex::Library) return filter.Contains(inst.library.id);
 
         if (fi == FilterIndex::LibraryAuthor) return filter.Contains(inst.library.author_hash);
 

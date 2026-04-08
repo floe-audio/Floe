@@ -40,7 +40,7 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
             return any_match;
         }
 
-        if (fi == FilterIndex::Library) return filter.Contains(Hash(ir.library.id));
+        if (fi == FilterIndex::Library) return filter.Contains(ir.library.id);
 
         if (fi == FilterIndex::LibraryAuthor) return filter.Contains(ir.library.author_hash);
 

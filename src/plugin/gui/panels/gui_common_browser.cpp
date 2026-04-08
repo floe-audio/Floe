@@ -1609,7 +1609,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                     });
             }
 
-            if (lib_hash != Hash(sample_lib::k_builtin_library_id))
+            if (lib_hash != sample_lib::k_builtin_library_id)
                 DoRightClickMenuForBox(builder,
                                        context.state,
                                        button,
