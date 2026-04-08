@@ -42,7 +42,7 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
 
         if (fi == FilterIndex::Library) return filter.Contains(Hash(ir.library.id));
 
-        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(Hash(ir.library.author));
+        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(ir.library.author_hash);
 
         if (fi == FilterIndex::Tags) return MatchesTagFilter(filter, ir.tags, state.common_state.filter_mode);
 
@@ -294,7 +294,8 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
     for (auto const l : libs) {
         if (l->irs_by_id.size == 0) continue;
         auto& lib_found = libraries.FindOrInsertWithoutGrowing(l->id, {}).element.data;
-        auto& author_found = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
+        auto& author_found =
+            library_authors.FindOrInsertWithoutGrowing(l->author, {}, l->author_hash).element.data;
 
         if (auto& f = l->root_folders[ToInt(sample_lib::ResourceType::Ir)]; f.first_child)
             root_folder.InsertGrowIfNeeded(builder.arena, &f);

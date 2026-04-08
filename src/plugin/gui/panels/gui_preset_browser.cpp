@@ -87,7 +87,7 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
                 auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
                 if (!maybe_lib) continue;
                 auto const& lib = *maybe_lib;
-                if (filter.Contains(Hash(lib->author))) {
+                if (filter.Contains(lib->author_hash)) {
                     any_match = true;
                     break;
                 }
@@ -716,7 +716,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                 ++i.total_available;
             }
 
-            DynamicArrayBounded<String, k_num_layers + 1> library_authors_used;
+            DynamicArrayBounded<Pair<String, u64>, k_num_layers + 1> library_authors_used;
 
             for (auto const [lib_id, lib_id_hash] : preset.used_libraries) {
                 auto& i = libraries.FindOrInsertWithoutGrowing(lib_id, {}, lib_id_hash).element.data;
@@ -724,11 +724,16 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                 ++i.total_available;
 
                 if (auto const lib = context.frame_context.lib_table.Find(lib_id))
-                    dyn::AppendIfNotAlreadyThere(library_authors_used, (*lib)->author);
+                    if (!FindIf(library_authors_used, [&](Pair<String, u64> const& la) {
+                            return la.second == (*lib)->author_hash;
+                        })) {
+                        dyn::Append(library_authors_used, {(*lib)->author, (*lib)->author_hash});
+                    }
             }
 
             for (auto const& author : library_authors_used) {
-                auto& i = library_authors.FindOrInsertWithoutGrowing(author, {}).element.data;
+                auto& i =
+                    library_authors.FindOrInsertWithoutGrowing(author.first, {}, author.second).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }

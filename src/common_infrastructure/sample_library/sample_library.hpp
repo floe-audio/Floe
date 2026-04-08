@@ -251,6 +251,7 @@ struct Library {
     Optional<String> library_url {};
     Optional<String> description {};
     String author {};
+    u64 author_hash {}; // cached Hash(author)
     Optional<String> author_url {};
     u32 minor_version {1};
     Optional<LibraryPath> background_image_path {};

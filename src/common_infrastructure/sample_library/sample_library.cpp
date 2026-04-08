@@ -249,6 +249,8 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         lib.id = HashLibraryIdString(lib.id_string);
     }
 
+    lib.author_hash = Hash(lib.author);
+
     lib.sorted_instruments =
         BuildSorted(arena, lib.insts_by_id, &lib.root_folders[ToInt(ResourceType::Instrument)]);
     lib.sorted_irs = BuildSorted(arena, lib.irs_by_id, &lib.root_folders[ToInt(ResourceType::Ir)]);

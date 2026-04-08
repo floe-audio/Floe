@@ -54,7 +54,7 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
         if (fi == FilterIndex::Library) return filter.Contains(Hash(inst.library.id));
 
-        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(Hash(inst.library.author));
+        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(inst.library.author_hash);
 
         if (fi == FilterIndex::Tags) return MatchesTagFilter(filter, inst.tags, common_state.filter_mode);
 
@@ -423,7 +423,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         if (l->sorted_instruments.size == 0) continue;
 
         auto& lib = libraries.FindOrInsertWithoutGrowing(l->id, {}).element.data;
-        auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
+        auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}, l->author_hash).element.data;
 
         root_folder.InsertGrowIfNeeded(builder.arena,
                                        &l->root_folders[ToInt(sample_lib::ResourceType::Instrument)]);
