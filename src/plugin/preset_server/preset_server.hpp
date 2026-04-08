@@ -18,6 +18,7 @@ struct PresetFolder {
     struct Preset {
         String name {};
         StateMetadataRef metadata {};
+        u64 author_hash {}; // cached Hash(metadata.author)
         OrderedSet<sample_lib::LibraryId, NoHash, sample_lib::LibraryIdLessThanSet> used_libraries {};
         u64 file_hash {};
         u64 full_path_hash {};

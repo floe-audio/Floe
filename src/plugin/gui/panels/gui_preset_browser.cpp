@@ -15,6 +15,7 @@
 #include "preset_server/preset_server.hpp"
 
 constexpr String k_no_preset_author = "<no author>"_s;
+constexpr u64 k_no_preset_author_hash = HashFnv1a(k_no_preset_author);
 
 inline prefs::Key FavouriteItemKey() { return "favourite-preset"_s; }
 
@@ -104,9 +105,9 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
         if (pfi == PresetFilterIndex::PresetType) return filter.Contains(ToInt(preset.file_format));
 
         if (pfi == PresetFilterIndex::Author) {
-            auto const author_hash = Hash(preset.metadata.author);
+            auto const author_hash = preset.author_hash;
             return filter.Contains(author_hash) ||
-                   (preset.metadata.author.size == 0 && filter.Contains(Hash(k_no_preset_author)));
+                   (preset.metadata.author.size == 0 && filter.Contains(k_no_preset_author_hash));
         }
 
         return false;
@@ -740,7 +741,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
 
             {
                 auto const author = preset.metadata.author.size ? preset.metadata.author : k_no_preset_author;
-                auto const hash = Hash(author);
+                auto const hash = preset.metadata.author.size ? preset.author_hash : k_no_preset_author_hash;
                 auto& i = preset_authors.FindOrInsertWithoutGrowing(author, {}, hash).element.data;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
