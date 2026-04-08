@@ -41,10 +41,13 @@ struct PresetBrowserContext {
     PresetServerReadHandle preset_read_handle;
 };
 
-enum class PresetFilterIndex : usize {
-    Author = (usize)FilterIndex::CommonCount,
+enum class PresetBrowserFilter : usize {
+    Author = (usize)BrowserFilter::CommonCount,
     PresetType,
+    Count,
 };
+
+static_assert(ToInt(PresetBrowserFilter::Count) <= k_max_browser_filters);
 
 // Persistent
 struct PresetBrowserState {
@@ -54,8 +57,8 @@ struct PresetBrowserState {
     CommonBrowserState common_state = [] {
         CommonBrowserState s {};
         InitCommonFilters(s);
-        dyn::Append(s.filters, MakeHashesFilter("Author"_s));
-        dyn::Append(s.filters, MakeHashesFilter("Preset Type"_s));
+        dyn::Append(s.filters, FilterSelection::Hashes("Author"_s));
+        dyn::Append(s.filters, FilterSelection::Hashes("Preset Type"_s));
         return s;
     }();
 };

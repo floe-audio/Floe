@@ -58,11 +58,12 @@ struct FilterSelection {
         bool selected_untagged {};
     };
 
-    struct BoolData {
-        bool value {};
-    };
-
     enum class Type : u8 { Hashes, Tags, Bool };
+
+    using Union = TaggedUnion<Type,
+                              TypeAndTag<bool, Type::Bool>,
+                              TypeAndTag<TagsData, Type::Tags>,
+                              TypeAndTag<HashesData, Type::Hashes>>;
 
     bool HasSelected() const;
     bool Contains(u64 key) const;
@@ -75,41 +76,30 @@ struct FilterSelection {
     // Calls f(String display_name, u64 key) for each selected item.
     template <typename F>
     void ForEachSelected(F&& f) const {
-        switch (type) {
+        switch (data.tag) {
             case Type::Hashes:
-                for (auto const& h : hashes.items)
+                for (auto const& h : data.Get<HashesData>().items)
                     f((String)h.display_name, h.hash);
                 break;
-            case Type::Tags:
+            case Type::Tags: {
+                auto& tags = data.Get<TagsData>();
                 tags.bitset.ForEachSetBit([&](usize bit) { f(GetTagInfo((TagType)bit).name, (u64)bit); });
                 if (tags.selected_untagged) f(k_untagged_tag_name, HashFnv1a("untagged"));
                 break;
+            }
             case Type::Bool:
-                if (flag.value) f(String {}, 1);
+                if (data.Get<bool>()) f(String {}, 1);
                 break;
         }
     }
 
+    static FilterSelection Hashes(String name) { return {.name = name, .data = HashesData {}}; }
+    static FilterSelection Tags(String name) { return {.name = name, .data = TagsData {}}; }
+    static FilterSelection Bool(String name) { return {.name = name, .data = false}; }
+
     String name;
-    Type type;
-    union {
-        HashesData hashes;
-        TagsData tags;
-        BoolData flag;
-    };
+    Union data;
 };
-
-inline FilterSelection MakeHashesFilter(String name) {
-    return {.name = name, .type = FilterSelection::Type::Hashes, .hashes = {}};
-}
-
-inline FilterSelection MakeTagsFilter(String name) {
-    return {.name = name, .type = FilterSelection::Type::Tags, .tags = {}};
-}
-
-inline FilterSelection MakeBoolFilter(String name) {
-    return {.name = name, .type = FilterSelection::Type::Bool, .flag = {}};
-}
 
 struct BrowserKeyboardNavigation {
     enum class Panel : u8 {
@@ -177,18 +167,22 @@ struct BrowserKeyboardNavigation {
     Input input {};
 };
 
-enum class FilterIndex : usize {
-    Library = 0,
-    LibraryAuthor = 1,
-    Folder = 2,
-    Tags = 3,
-    Favourites = 4,
-    CommonCount = 5,
+enum class BrowserFilter : usize {
+    Library,
+    LibraryAuthor,
+    Folder,
+    Tags,
+    Favourites,
+    CommonCount,
 };
 
-struct CommonBrowserState {
-    static constexpr usize k_max_filters = 8;
+// We actually allow more than CommonCount filters to be tracked. If a browser needs more than the standard
+// set, it can append them, starting with index ToInt(CommonCount). This way they are all stored in the same
+// array and the common state can access them to implement the common behaviour.
+static constexpr usize k_max_browser_filters = 8;
+static_assert(k_max_browser_filters >= ToInt(BrowserFilter::CommonCount));
 
+struct CommonBrowserState {
     bool HasFilters() const {
         for (auto const& f : filters)
             if (f.HasSelected()) return true;
@@ -214,23 +208,23 @@ struct CommonBrowserState {
         }
     }
 
-    FilterSelection& Filter(FilterIndex i) { return filters[(usize)i]; }
-    FilterSelection const& Filter(FilterIndex i) const { return filters[(usize)i]; }
+    FilterSelection& Filter(BrowserFilter i) { return filters[(usize)i]; }
+    FilterSelection const& Filter(BrowserFilter i) const { return filters[(usize)i]; }
 
     // Allow browser-specific filter index enums that extend FilterIndex.
-    template <typename EnumT>
-    requires(!Same<EnumT, FilterIndex> && Enum<EnumT>)
+    template <Enum EnumT>
+    requires(!Same<EnumT, BrowserFilter>)
     FilterSelection& Filter(EnumT i) {
         return filters[(usize)i];
     }
-    template <typename EnumT>
-    requires(!Same<EnumT, FilterIndex> && Enum<EnumT>)
+    template <Enum EnumT>
+    requires(!Same<EnumT, BrowserFilter>)
     FilterSelection const& Filter(EnumT i) const {
         return filters[(usize)i];
     }
 
     Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the browser.
-    DynamicArrayBounded<FilterSelection, k_max_filters> filters {};
+    DynamicArrayBounded<FilterSelection, k_max_browser_filters> filters {};
 
     // We track both states so we know how to handle default_collapsed requests.
     DynamicArray<u64> collapsed_filter_headers {Malloc::Instance()};
@@ -243,16 +237,17 @@ struct CommonBrowserState {
     BrowserKeyboardNavigation keyboard_navigation {};
 };
 
-// Generic filter evaluation. Each browser builds a match callback that tests whether an item matches a
-// given filter (identified by index). Returns true if the item should be skipped.
-template <typename MatchFunc>
-bool ShouldSkipByFilters(CommonBrowserState const& state, MatchFunc&& matches_filter) {
+// Returns true if the item should be hidden. matches_filter(index, filter) should return true if the item
+// matches that filter. AND mode: skip if any active filter doesn't match. OR mode: skip if no active filter
+// matches.
+bool IsFilteredOut(CommonBrowserState const& state, auto&& matches_filter) {
     bool filtering_on = false;
     for (auto const [index, filter] : Enumerate(state.filters)) {
         if (!filter.HasSelected()) continue;
         filtering_on = true;
 
         bool const matched = matches_filter(index, filter);
+
         switch (state.filter_mode) {
             case FilterMode::Single:
             case FilterMode::MultipleAnd:
@@ -267,15 +262,17 @@ bool ShouldSkipByFilters(CommonBrowserState const& state, MatchFunc&& matches_fi
     return filtering_on && state.filter_mode == FilterMode::MultipleOr;
 }
 
-// Helper: check if a TagsBitset matches the Tags filter selection using AND/OR semantics.
-bool MatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_tags, FilterMode mode);
+// Unlike other filters where an item has a single value (e.g. one library), items can have multiple tags
+// and the user can select multiple tags. This function resolves the inner AND/OR logic within the Tags
+// filter into a single bool for IsFilteredOut.
+bool ItemMatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_tags, FilterMode mode);
 
 inline void InitCommonFilters(CommonBrowserState& state) {
-    dyn::Append(state.filters, MakeHashesFilter("Library"_s));
-    dyn::Append(state.filters, MakeHashesFilter("Library Author"_s));
-    dyn::Append(state.filters, MakeHashesFilter("Folder"_s));
-    dyn::Append(state.filters, MakeTagsFilter("Tag"_s));
-    dyn::Append(state.filters, MakeBoolFilter("Favourites"_s));
+    dyn::Append(state.filters, FilterSelection::Hashes("Library"_s));
+    dyn::Append(state.filters, FilterSelection::Hashes("Library Author"_s));
+    dyn::Append(state.filters, FilterSelection::Hashes("Folder"_s));
+    dyn::Append(state.filters, FilterSelection::Tags("Tag"_s));
+    dyn::Append(state.filters, FilterSelection::Bool("Favourites"_s));
 }
 
 // Ephemeral

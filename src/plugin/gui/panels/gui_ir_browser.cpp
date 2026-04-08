@@ -26,26 +26,23 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
                          sample_lib::ImpulseResponse const& ir) {
     if (state.common_state.search.size && !IrMatchesSearch(ir, state.common_state.search)) return true;
 
-    return ShouldSkipByFilters(state.common_state, [&](usize index, FilterSelection const& filter) -> bool {
-        auto const fi = (FilterIndex)index;
-
-        if (fi == FilterIndex::Favourites)
-            return IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(ir));
-
-        if (fi == FilterIndex::Folder) {
-            bool any_match = false;
-            filter.ForEachSelected([&](String, u64 key) {
-                if (IsInsideFolder(ir.folder, key)) any_match = true;
-            });
-            return any_match;
+    return IsFilteredOut(state.common_state, [&](usize index, FilterSelection const& filter) -> bool {
+        switch ((BrowserFilter)index) {
+            case BrowserFilter::Favourites:
+                return IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(ir));
+            case BrowserFilter::Folder: {
+                bool any_match = false;
+                filter.ForEachSelected([&](String, u64 key) {
+                    if (IsInsideFolder(ir.folder, key)) any_match = true;
+                });
+                return any_match;
+            }
+            case BrowserFilter::Library: return filter.Contains(ir.library.id);
+            case BrowserFilter::LibraryAuthor: return filter.Contains(ir.library.author_hash);
+            case BrowserFilter::Tags:
+                return ItemMatchesTagFilter(filter, ir.tags, state.common_state.filter_mode);
+            case BrowserFilter::CommonCount: break;
         }
-
-        if (fi == FilterIndex::Library) return filter.Contains(ir.library.id);
-
-        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(ir.library.author_hash);
-
-        if (fi == FilterIndex::Tags) return MatchesTagFilter(filter, ir.tags, state.common_state.filter_mode);
-
         return false;
     });
 }

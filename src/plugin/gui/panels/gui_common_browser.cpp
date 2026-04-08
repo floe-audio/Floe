@@ -24,34 +24,40 @@ bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
     return sample_lib::LibraryIdLessThan(a, b);
 }
 
-static constexpr u64 k_untagged_key = HashFnv1a("untagged");
+static constexpr u64 k_untagged_key = ToInt(TagType::Count);
 
 bool FilterSelection::HasSelected() const {
-    switch (type) {
-        case Type::Hashes: return hashes.items.size;
-        case Type::Tags: return tags.bitset.AnyValuesSet() || tags.selected_untagged;
-        case Type::Bool: return flag.value;
+    switch (data.tag) {
+        case Type::Hashes: return data.Get<HashesData>().items.size;
+        case Type::Tags: {
+            auto& tags = data.Get<TagsData>();
+            return tags.bitset.AnyValuesSet() || tags.selected_untagged;
+        }
+        case Type::Bool: return data.Get<bool>();
     }
     return false;
 }
 
 bool FilterSelection::Contains(u64 key) const {
-    switch (type) {
+    switch (data.tag) {
         case Type::Hashes:
-            for (auto const& h : hashes.items)
+            for (auto const& h : data.Get<HashesData>().items)
                 if (h.hash == key) return true;
             return false;
-        case Type::Tags:
+        case Type::Tags: {
+            auto& tags = data.Get<TagsData>();
             if (key == k_untagged_key) return tags.selected_untagged;
             return tags.bitset.Get(key);
-        case Type::Bool: return flag.value;
+        }
+        case Type::Bool: return data.Get<bool>();
     }
     return false;
 }
 
 void FilterSelection::Add(u64 key, String display_name) {
-    switch (type) {
+    switch (data.tag) {
         case Type::Hashes: {
+            auto& hashes = data.Get<HashesData>();
             if (hashes.items.size >= hashes.items.Capacity()) return;
             DisplayName n;
             if (display_name.size > DisplayName::Capacity()) {
@@ -67,28 +73,33 @@ void FilterSelection::Add(u64 key, String display_name) {
             dyn::Append(hashes.items, {.hash = key, .display_name = n});
             break;
         }
-        case Type::Tags:
+        case Type::Tags: {
+            auto& tags = data.Get<TagsData>();
             if (key == k_untagged_key)
                 tags.selected_untagged = true;
             else
                 tags.bitset.Set(key);
             break;
-        case Type::Bool: flag.value = true; break;
+        }
+        case Type::Bool: data.Get<bool>() = true; break;
     }
 }
 
 void FilterSelection::Remove(u64 key) {
-    switch (type) {
+    switch (data.tag) {
         case Type::Hashes:
-            dyn::RemoveValueIfSwapLast(hashes.items, [key](SelectedHash const& h) { return h.hash == key; });
+            dyn::RemoveValueIfSwapLast(data.Get<HashesData>().items,
+                                       [key](SelectedHash const& h) { return h.hash == key; });
             break;
-        case Type::Tags:
+        case Type::Tags: {
+            auto& tags = data.Get<TagsData>();
             if (key == k_untagged_key)
                 tags.selected_untagged = false;
             else
                 tags.bitset.Clear(key);
             break;
-        case Type::Bool: flag.value = false; break;
+        }
+        case Type::Bool: data.Get<bool>() = false; break;
     }
 }
 
@@ -100,22 +111,27 @@ void FilterSelection::Toggle(u64 key, String display_name) {
 }
 
 void FilterSelection::Clear() {
-    switch (type) {
-        case Type::Hashes: dyn::Clear(hashes.items); break;
-        case Type::Tags:
+    switch (data.tag) {
+        case Type::Hashes: dyn::Clear(data.Get<HashesData>().items); break;
+        case Type::Tags: {
+            auto& tags = data.Get<TagsData>();
             tags.bitset.ClearAll();
             tags.selected_untagged = false;
             break;
-        case Type::Bool: flag.value = false; break;
+        }
+        case Type::Bool: data.Get<bool>() = false; break;
     }
 }
 
 void FilterSelection::ClearToOne() {
-    switch (type) {
-        case Type::Hashes:
-            if (hashes.items.size > 1) dyn::Remove(hashes.items, 1, hashes.items.size - 1);
+    switch (data.tag) {
+        case Type::Hashes: {
+            auto& hashes = data.Get<HashesData>();
+            if (hashes.items.size > 1) dyn::Resize(hashes.items, 1);
             break;
-        case Type::Tags:
+        }
+        case Type::Tags: {
+            auto& tags = data.Get<TagsData>();
             if (tags.selected_untagged) {
                 tags.bitset.ClearAll();
             } else {
@@ -124,13 +140,14 @@ void FilterSelection::ClearToOne() {
                 tags.bitset.Set(first);
             }
             break;
+        }
         case Type::Bool: break;
     }
 }
 
-bool MatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_tags, FilterMode mode) {
-    ASSERT(filter.type == FilterSelection::Type::Tags);
-    auto const& td = filter.tags;
+bool ItemMatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_tags, FilterMode mode) {
+    ASSERT(filter.data.tag == FilterSelection::Type::Tags);
+    auto const& td = filter.data.Get<FilterSelection::TagsData>();
     bool const untagged_matched = td.selected_untagged && !item_tags.AnyValuesSet();
     auto const intersection = td.bitset & item_tags;
 
@@ -584,7 +601,7 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
     bool is_active = options.parent_card_is_selected;
     if (!is_active && !options.no_lhs_border) {
         for (auto f = folder; f; f = f->parent) {
-            if (state.Filter(FilterIndex::Folder).Contains(f->Hash())) {
+            if (state.Filter(BrowserFilter::Folder).Contains(f->Hash())) {
                 is_active = true;
                 break;
             }
@@ -596,7 +613,7 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
                     break;
         }
     }
-    auto const is_selected = state.Filter(FilterIndex::Folder).Contains(folder->Hash());
+    auto const is_selected = state.Filter(BrowserFilter::Folder).Contains(folder->Hash());
 
     auto this_info = context.folder_infos.Find(folder);
     ASSERT(this_info);
@@ -617,7 +634,7 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
                     .is_selected = is_selected,
                     .text = folder->display_name.size ? folder->display_name : folder->name,
                     .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
-                    .filter = state.Filter(FilterIndex::Folder),
+                    .filter = state.Filter(BrowserFilter::Folder),
                     .clicked_key = folder_hash,
                     .filter_mode = state.filter_mode,
                 },
@@ -1509,7 +1526,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
             if (library_filters.card_view) {
                 auto const folder = &lib->root_folders[ToInt(library_filters.resource_type)];
 
-                auto const is_selected = context.state.Filter(FilterIndex::Library).Contains(lib_hash);
+                auto const is_selected = context.state.Filter(BrowserFilter::Library).Contains(lib_hash);
 
                 if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
@@ -1537,7 +1554,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                                       }
                                                       return buf.ToOwnedSpan();
                                                   }),
-                                                  .filter = context.state.Filter(FilterIndex::Library),
+                                                  .filter = context.state.Filter(BrowserFilter::Library),
                                                   .clicked_key = lib_hash,
                                                   .filter_mode = context.state.filter_mode,
                                               },
@@ -1578,7 +1595,8 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                             {
                                 .parent = section.Do(builder).Get<Box>(),
                                 .id_extra = lib_hash,
-                                .is_selected = context.state.Filter(FilterIndex::Library).Contains(lib_hash),
+                                .is_selected =
+                                    context.state.Filter(BrowserFilter::Library).Contains(lib_hash),
                                 .text = lib->name,
                                 .tooltip = FunctionRef<String()>([&]() -> String {
                                     auto lib =
@@ -1597,7 +1615,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                     }
                                     return buf.ToOwnedSpan();
                                 }),
-                                .filter = context.state.Filter(FilterIndex::Library),
+                                .filter = context.state.Filter(BrowserFilter::Library),
                                 .clicked_key = lib_hash,
                                 .filter_mode = context.state.filter_mode,
                             },
@@ -1664,7 +1682,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
         for (auto const [author, author_info, author_hash] : library_filters.library_authors) {
             if (!MatchesFilterSearch(author, context.state.filter_search)) continue;
             if (section.Do(builder) == BrowserSection::State::Collapsed) break;
-            auto const is_selected = context.state.Filter(FilterIndex::LibraryAuthor).Contains(author_hash);
+            auto const is_selected = context.state.Filter(BrowserFilter::LibraryAuthor).Contains(author_hash);
             DoFilterButton(builder,
                            context.state,
                            author_info,
@@ -1675,7 +1693,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
                                        .id_extra = author_hash,
                                        .is_selected = is_selected,
                                        .text = author,
-                                       .filter = context.state.Filter(FilterIndex::LibraryAuthor),
+                                       .filter = context.state.Filter(BrowserFilter::LibraryAuthor),
                                        .clicked_key = author_hash,
                                        .filter_mode = context.state.filter_mode,
                                    },
@@ -1739,7 +1757,7 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
             inner_section.parent = tags_section.Do(builder).Get<Box>();
             if (inner_section.Do(builder) == BrowserSection::State::Collapsed) break;
 
-            bool const is_selected = context.state.Filter(FilterIndex::Tags).Contains((u64)tag);
+            bool const is_selected = context.state.Filter(BrowserFilter::Tags).Contains((u64)tag);
             DoFilterButton(builder,
                            context.state,
                            filter_item_info,
@@ -1750,7 +1768,7 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
                                        .id_extra = (u64)tag,
                                        .is_selected = is_selected,
                                        .text = tag_info.name,
-                                       .filter = context.state.Filter(FilterIndex::Tags),
+                                       .filter = context.state.Filter(BrowserFilter::Tags),
                                        .clicked_key = (u64)tag,
                                        .filter_mode = context.state.filter_mode,
                                    },
@@ -1763,7 +1781,7 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
 
         if (tags_section.Do(builder) == BrowserSection::State::Collapsed) return;
 
-        auto const is_selected = context.state.Filter(FilterIndex::Tags).Contains(k_untagged_key);
+        auto const is_selected = context.state.Filter(BrowserFilter::Tags).Contains(k_untagged_key);
         DoFilterButton(builder,
                        context.state,
                        tags_filters.untagged_info,
@@ -1774,7 +1792,7 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
                                    .id_extra = k_untagged_key,
                                    .is_selected = is_selected,
                                    .text = k_untagged_tag_name,
-                                   .filter = context.state.Filter(FilterIndex::Tags),
+                                   .filter = context.state.Filter(BrowserFilter::Tags),
                                    .clicked_key = k_untagged_key,
                                    .filter_mode = context.state.filter_mode,
                                },
@@ -2403,9 +2421,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                         .common =
                             {
                                 .parent = search_and_fave_box,
-                                .is_selected = context.state.Filter(FilterIndex::Favourites).HasSelected(),
+                                .is_selected = context.state.Filter(BrowserFilter::Favourites).HasSelected(),
                                 .text = "Favourites"_s,
-                                .filter = context.state.Filter(FilterIndex::Favourites),
+                                .filter = context.state.Filter(BrowserFilter::Favourites),
                                 .clicked_key = 1,
                                 .filter_mode = context.state.filter_mode,
                             },

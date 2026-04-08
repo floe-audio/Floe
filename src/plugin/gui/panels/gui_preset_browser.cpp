@@ -60,54 +60,51 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
          !ContainsCaseInsensitiveAscii(folder.folder->folder, state.common_state.search)))
         return true;
 
-    return ShouldSkipByFilters(state.common_state, [&](usize index, FilterSelection const& filter) -> bool {
-        auto const fi = (FilterIndex)index;
-
-        if (fi == FilterIndex::Favourites)
-            return IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
-
-        if (fi == FilterIndex::Folder) {
-            bool any_match = false;
-            filter.ForEachSelected([&](String, u64 key) {
-                if (IsInsideFolder(&folder, key)) any_match = true;
-            });
-            return any_match;
-        }
-
-        if (fi == FilterIndex::Library) {
-            bool any_match = false;
-            filter.ForEachSelected([&](String, u64 key) {
-                if (preset.used_libraries.ContainsSkipKeyCheck(key)) any_match = true;
-            });
-            return any_match;
-        }
-
-        if (fi == FilterIndex::LibraryAuthor) {
-            bool any_match = false;
-            for (auto [lib_id, _] : preset.used_libraries) {
-                auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
-                if (!maybe_lib) continue;
-                auto const& lib = *maybe_lib;
-                if (filter.Contains(lib->author_hash)) {
-                    any_match = true;
-                    break;
-                }
+    return IsFilteredOut(state.common_state, [&](usize index, FilterSelection const& filter) -> bool {
+        switch ((BrowserFilter)index) {
+            case BrowserFilter::Favourites:
+                return IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
+            case BrowserFilter::Folder: {
+                bool any_match = false;
+                filter.ForEachSelected([&](String, u64 key) {
+                    if (IsInsideFolder(&folder, key)) any_match = true;
+                });
+                return any_match;
             }
-            return any_match;
+            case BrowserFilter::Library: {
+                bool any_match = false;
+                filter.ForEachSelected([&](String, u64 key) {
+                    if (preset.used_libraries.ContainsSkipKeyCheck(key)) any_match = true;
+                });
+                return any_match;
+            }
+            case BrowserFilter::LibraryAuthor: {
+                bool any_match = false;
+                for (auto [lib_id, _] : preset.used_libraries) {
+                    auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
+                    if (!maybe_lib) continue;
+                    auto const& lib = *maybe_lib;
+                    if (filter.Contains(lib->author_hash)) {
+                        any_match = true;
+                        break;
+                    }
+                }
+                return any_match;
+            }
+            case BrowserFilter::Tags:
+                return ItemMatchesTagFilter(filter, preset.metadata.tags, state.common_state.filter_mode);
+            case BrowserFilter::CommonCount: break;
         }
-
-        if (fi == FilterIndex::Tags)
-            return MatchesTagFilter(filter, preset.metadata.tags, state.common_state.filter_mode);
 
         // Preset-specific filters (by index beyond CommonCount).
-        auto const pfi = (PresetFilterIndex)index;
-
-        if (pfi == PresetFilterIndex::PresetType) return filter.Contains(ToInt(preset.file_format));
-
-        if (pfi == PresetFilterIndex::Author) {
-            auto const author_hash = preset.author_hash;
-            return filter.Contains(author_hash) ||
-                   (preset.metadata.author.size == 0 && filter.Contains(k_no_preset_author_hash));
+        switch ((PresetBrowserFilter)index) {
+            case PresetBrowserFilter::PresetType: return filter.Contains(ToInt(preset.file_format));
+            case PresetBrowserFilter::Author: {
+                auto const author_hash = preset.author_hash;
+                return filter.Contains(author_hash) ||
+                       (preset.metadata.author.size == 0 && filter.Contains(k_no_preset_author_hash));
+            }
+            case PresetBrowserFilter::Count: PanicIfReached();
         }
 
         return false;
@@ -585,7 +582,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
 
         for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
             auto const is_selected =
-                state.common_state.Filter(PresetFilterIndex::PresetType).Contains(type_index);
+                state.common_state.Filter(PresetBrowserFilter::PresetType).Contains(type_index);
             auto const info = preset_type_filter_info[type_index];
             if (info.total_available == 0) continue;
 
@@ -621,7 +618,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
                                            }
                                            s;
                                        }),
-                                       .filter = state.common_state.Filter(PresetFilterIndex::PresetType),
+                                       .filter = state.common_state.Filter(PresetBrowserFilter::PresetType),
                                        .clicked_key = type_index,
                                        .filter_mode = state.common_state.filter_mode,
                                    },
@@ -646,7 +643,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
             if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
             auto const is_selected =
-                state.common_state.Filter(PresetFilterIndex::Author).Contains(author_hash);
+                state.common_state.Filter(PresetBrowserFilter::Author).Contains(author_hash);
 
             DoFilterButton(builder,
                            state.common_state,
@@ -658,7 +655,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
                                        .id_extra = author_hash,
                                        .is_selected = is_selected,
                                        .text = author,
-                                       .filter = state.common_state.Filter(PresetFilterIndex::Author),
+                                       .filter = state.common_state.Filter(PresetBrowserFilter::Author),
                                        .clicked_key = author_hash,
                                        .filter_mode = state.common_state.filter_mode,
                                    },
@@ -835,12 +832,12 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                     {
                                         .parent = section.Do(builder).Get<Box>(),
                                         .id_extra = folder_hash,
-                                        .is_selected = state.common_state.Filter(FilterIndex::Folder)
+                                        .is_selected = state.common_state.Filter(BrowserFilter::Folder)
                                                            .Contains(folder_hash),
                                         .text = folder_name,
                                         .tooltip = folder->display_name.size ? TooltipString {folder->name}
                                                                              : k_nullopt,
-                                        .filter = state.common_state.Filter(FilterIndex::Folder),
+                                        .filter = state.common_state.Filter(BrowserFilter::Folder),
                                         .clicked_key = folder_hash,
                                         .filter_mode = state.common_state.filter_mode,
                                     },
@@ -880,7 +877,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                               state,
                                               parent);
                 },
-            .has_extra_filters = state.common_state.Filter(PresetFilterIndex::Author).HasSelected() != 0,
+            .has_extra_filters = state.common_state.Filter(PresetBrowserFilter::Author).HasSelected() != 0,
             .favourites_filter_info = favourites_info,
             .right_click_menu_user_data = &context,
         });

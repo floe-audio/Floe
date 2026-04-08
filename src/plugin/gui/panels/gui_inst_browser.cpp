@@ -38,26 +38,23 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
 
-    return ShouldSkipByFilters(common_state, [&](usize index, FilterSelection const& filter) -> bool {
-        auto const fi = (FilterIndex)index;
-
-        if (fi == FilterIndex::Favourites)
-            return IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst));
-
-        if (fi == FilterIndex::Folder) {
-            bool any_match = false;
-            filter.ForEachSelected([&](String, u64 key) {
-                if (IsInsideFolder(inst.folder, key)) any_match = true;
-            });
-            return any_match;
+    return IsFilteredOut(common_state, [&](usize index, FilterSelection const& filter) -> bool {
+        switch ((BrowserFilter)index) {
+            case BrowserFilter::Favourites:
+                return IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst));
+            case BrowserFilter::Folder: {
+                bool any_match = false;
+                filter.ForEachSelected([&](String, u64 key) {
+                    if (IsInsideFolder(inst.folder, key)) any_match = true;
+                });
+                return any_match;
+            }
+            case BrowserFilter::Library: return filter.Contains(inst.library.id);
+            case BrowserFilter::LibraryAuthor: return filter.Contains(inst.library.author_hash);
+            case BrowserFilter::Tags:
+                return ItemMatchesTagFilter(filter, inst.tags, common_state.filter_mode);
+            case BrowserFilter::CommonCount: break;
         }
-
-        if (fi == FilterIndex::Library) return filter.Contains(inst.library.id);
-
-        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(inst.library.author_hash);
-
-        if (fi == FilterIndex::Tags) return MatchesTagFilter(filter, inst.tags, common_state.filter_mode);
-
         return false;
     });
 }
@@ -474,9 +471,9 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             {
                 .id_extra = SourceLocationHash(),
                 .is_selected =
-                    state.common_state.Filter(FilterIndex::Library).Contains(waveform_library_hash),
+                    state.common_state.Filter(BrowserFilter::Library).Contains(waveform_library_hash),
                 .text = "Built-in Waveforms",
-                .filter = state.common_state.Filter(FilterIndex::Library),
+                .filter = state.common_state.Filter(BrowserFilter::Library),
                 .clicked_key = waveform_library_hash,
                 .filter_mode = state.common_state.filter_mode,
             },
