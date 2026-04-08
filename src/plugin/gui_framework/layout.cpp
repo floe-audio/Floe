@@ -6,6 +6,7 @@
 
 #include "layout.hpp"
 
+#include "benchmarks/framework.hpp"
 #include "os/filesystem.hpp"
 #include "tests/framework.hpp"
 
@@ -1042,3 +1043,135 @@ TEST_CASE(TestLayout) {
 }
 
 TEST_REGISTRATION(RegisterLayoutTests) { REGISTER_TEST(TestLayout); }
+
+BENCHMARK_FN void BenchmarkLayoutColumn1000() {
+    ArenaAllocator arena {PageAllocator::Instance()};
+
+    constexpr u32 k_num_children = 1000;
+    constexpr u32 k_iterations = 200;
+
+    for (auto const _ : Range(k_iterations)) {
+        layout::Context ctx;
+        layout::ReserveItemsCapacity(ctx, arena, k_num_children + 1);
+
+        auto const root = layout::CreateItem(ctx,
+                                             arena,
+                                             {
+                                                 .size = {400, layout::k_hug_contents},
+                                                 .contents_gap = 2.0f,
+                                                 .contents_direction = layout::Direction::Column,
+                                                 .contents_align = layout::Alignment::Start,
+                                             });
+
+        for (auto const _ : Range(k_num_children))
+            layout::CreateItem(ctx,
+                               arena,
+                               {
+                                   .parent = root,
+                                   .size = {layout::k_fill_parent, 20},
+                               });
+
+        layout::RunContext(ctx);
+
+        auto rect = layout::GetRect(ctx, root);
+        benchmarks::DoNotOptimise(rect);
+
+        layout::DestroyContext(ctx, arena);
+        arena.ResetCursorAndConsolidateRegions();
+    }
+}
+
+BENCHMARK_FN void BenchmarkLayoutWrappingGrid1000() {
+    ArenaAllocator arena {PageAllocator::Instance()};
+
+    constexpr u32 k_num_children = 1000;
+    constexpr u32 k_iterations = 200;
+
+    for (auto const _ : Range(k_iterations)) {
+        layout::Context ctx;
+        layout::ReserveItemsCapacity(ctx, arena, k_num_children + 1);
+
+        auto const root = layout::CreateItem(ctx,
+                                             arena,
+                                             {
+                                                 .size = {400, layout::k_hug_contents},
+                                                 .contents_gap = 4.0f,
+                                                 .contents_direction = layout::Direction::Row,
+                                                 .contents_multiline = true,
+                                                 .contents_align = layout::Alignment::Start,
+                                             });
+
+        for (auto const _ : Range(k_num_children))
+            layout::CreateItem(ctx,
+                               arena,
+                               {
+                                   .parent = root,
+                                   .size = {30, 30},
+                               });
+
+        layout::RunContext(ctx);
+
+        auto rect = layout::GetRect(ctx, root);
+        benchmarks::DoNotOptimise(rect);
+
+        layout::DestroyContext(ctx, arena);
+        arena.ResetCursorAndConsolidateRegions();
+    }
+}
+
+BENCHMARK_FN void BenchmarkLayoutNestedContainers() {
+    ArenaAllocator arena {PageAllocator::Instance()};
+
+    constexpr u32 k_groups = 100;
+    constexpr u32 k_children_per_group = 10;
+    constexpr u32 k_iterations = 200;
+
+    for (auto const _ : Range(k_iterations)) {
+        layout::Context ctx;
+        layout::ReserveItemsCapacity(ctx, arena, 1 + (k_groups * (1 + k_children_per_group)));
+
+        auto const root = layout::CreateItem(ctx,
+                                             arena,
+                                             {
+                                                 .size = {800, layout::k_hug_contents},
+                                                 .contents_gap = 4.0f,
+                                                 .contents_direction = layout::Direction::Column,
+                                                 .contents_align = layout::Alignment::Start,
+                                             });
+
+        for (auto const _ : Range(k_groups)) {
+            auto const group = layout::CreateItem(ctx,
+                                                  arena,
+                                                  {
+                                                      .parent = root,
+                                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                      .contents_padding = {.lrtb = 4},
+                                                      .contents_gap = 2.0f,
+                                                      .contents_direction = layout::Direction::Row,
+                                                      .contents_align = layout::Alignment::Start,
+                                                  });
+
+            for (auto const _ : Range(k_children_per_group))
+                layout::CreateItem(ctx,
+                                   arena,
+                                   {
+                                       .parent = group,
+                                       .size = {60, 20},
+                                   });
+        }
+
+        layout::RunContext(ctx);
+
+        auto rect = layout::GetRect(ctx, root);
+        benchmarks::DoNotOptimise(rect);
+
+        layout::DestroyContext(ctx, arena);
+        arena.ResetCursorAndConsolidateRegions();
+    }
+}
+
+BENCHMARK_REGISTRATION(RegisterLayoutBenchmarks) {
+    REGISTER_BENCHMARK(BenchmarkLayoutColumn1000);
+    REGISTER_BENCHMARK(BenchmarkLayoutWrappingGrid1000);
+    REGISTER_BENCHMARK(BenchmarkLayoutNestedContainers);
+}

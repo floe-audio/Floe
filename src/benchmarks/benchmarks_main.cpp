@@ -10,7 +10,7 @@
 #include "benchmarks/framework.hpp"
 
 // X-macro list of benchmark registration functions.
-#define BENCHMARK_REGISTER_FUNCTIONS X(RegisterAllocatorBenchmarks) X(RegisterSampleProcessingBenchmarks)
+#define BENCHMARK_REGISTER_FUNCTIONS X(RegisterAllocatorBenchmarks) X(RegisterSampleProcessingBenchmarks) X(RegisterLayoutBenchmarks)
 
 // Declare the registration functions.
 #define X(fn) void fn(benchmarks::Benchmarker&);
