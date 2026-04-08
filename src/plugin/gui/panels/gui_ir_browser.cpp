@@ -40,14 +40,11 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
             return any_match;
         }
 
-        if (fi == FilterIndex::Library)
-            return filter.Contains(Hash(ir.library.id));
+        if (fi == FilterIndex::Library) return filter.Contains(Hash(ir.library.id));
 
-        if (fi == FilterIndex::LibraryAuthor)
-            return filter.Contains(Hash(ir.library.author));
+        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(Hash(ir.library.author));
 
-        if (fi == FilterIndex::Tags)
-            return MatchesTagFilter(filter, ir.tags, state.common_state.filter_mode);
+        if (fi == FilterIndex::Tags) return MatchesTagFilter(filter, ir.tags, state.common_state.filter_mode);
 
         return false;
     });

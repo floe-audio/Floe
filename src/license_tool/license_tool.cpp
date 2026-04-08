@@ -81,8 +81,7 @@ static ErrorCodeOr<int> DoSignLicense(Span<CommandLineArg const> cli_args, Arena
 
     auto const email = email_arg.values[0];
 
-    auto const license_text =
-        TRY(license::CreateSignedLicense(package_key, email, secret_key.data, arena));
+    auto const license_text = TRY(license::CreateSignedLicense(package_key, email, secret_key.data, arena));
 
     StdPrintF(StdStream::Out, "{}", String(license_text));
 

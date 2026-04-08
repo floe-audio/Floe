@@ -87,7 +87,10 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
                 auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
                 if (!maybe_lib) continue;
                 auto const& lib = *maybe_lib;
-                if (filter.Contains(Hash(lib->author))) { any_match = true; break; }
+                if (filter.Contains(Hash(lib->author))) {
+                    any_match = true;
+                    break;
+                }
             }
             return any_match;
         }
@@ -98,8 +101,7 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
         // Preset-specific filters (by index beyond CommonCount).
         auto const pfi = (PresetFilterIndex)index;
 
-        if (pfi == PresetFilterIndex::PresetType)
-            return filter.Contains(ToInt(preset.file_format));
+        if (pfi == PresetFilterIndex::PresetType) return filter.Contains(ToInt(preset.file_format));
 
         if (pfi == PresetFilterIndex::Author) {
             auto const author_hash = Hash(preset.metadata.author);
@@ -581,7 +583,8 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
         };
 
         for (auto const type_index : Range(ToInt(PresetFormat::Count))) {
-            auto const is_selected = state.common_state.Filter(PresetFilterIndex::PresetType).Contains(type_index);
+            auto const is_selected =
+                state.common_state.Filter(PresetFilterIndex::PresetType).Contains(type_index);
             auto const info = preset_type_filter_info[type_index];
             if (info.total_available == 0) continue;
 
@@ -641,7 +644,8 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
             if (!MatchesFilterSearch(author, state.common_state.filter_search)) continue;
             if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
-            auto const is_selected = state.common_state.Filter(PresetFilterIndex::Author).Contains(author_hash);
+            auto const is_selected =
+                state.common_state.Filter(PresetFilterIndex::Author).Contains(author_hash);
 
             DoFilterButton(builder,
                            state.common_state,
@@ -825,8 +829,8 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                     {
                                         .parent = section.Do(builder).Get<Box>(),
                                         .id_extra = folder_hash,
-                                        .is_selected =
-                                            state.common_state.Filter(FilterIndex::Folder).Contains(folder_hash),
+                                        .is_selected = state.common_state.Filter(FilterIndex::Folder)
+                                                           .Contains(folder_hash),
                                         .text = folder_name,
                                         .tooltip = folder->display_name.size ? TooltipString {folder->name}
                                                                              : k_nullopt,

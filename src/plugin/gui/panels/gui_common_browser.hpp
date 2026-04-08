@@ -81,8 +81,7 @@ struct FilterSelection {
                     f((String)h.display_name, h.hash);
                 break;
             case Type::Tags:
-                tags.bitset.ForEachSetBit(
-                    [&](usize bit) { f(GetTagInfo((TagType)bit).name, (u64)bit); });
+                tags.bitset.ForEachSetBit([&](usize bit) { f(GetTagInfo((TagType)bit).name, (u64)bit); });
                 if (tags.selected_untagged) f(k_untagged_tag_name, HashFnv1a("untagged"));
                 break;
             case Type::Bool:
@@ -111,7 +110,6 @@ inline FilterSelection MakeTagsFilter(String name) {
 inline FilterSelection MakeBoolFilter(String name) {
     return {.name = name, .type = FilterSelection::Type::Bool, .flag = {}};
 }
-
 
 struct BrowserKeyboardNavigation {
     enum class Panel : u8 {
@@ -221,11 +219,15 @@ struct CommonBrowserState {
 
     // Allow browser-specific filter index enums that extend FilterIndex.
     template <typename EnumT>
-        requires(!Same<EnumT, FilterIndex> && Enum<EnumT>)
-    FilterSelection& Filter(EnumT i) { return filters[(usize)i]; }
+    requires(!Same<EnumT, FilterIndex> && Enum<EnumT>)
+    FilterSelection& Filter(EnumT i) {
+        return filters[(usize)i];
+    }
     template <typename EnumT>
-        requires(!Same<EnumT, FilterIndex> && Enum<EnumT>)
-    FilterSelection const& Filter(EnumT i) const { return filters[(usize)i]; }
+    requires(!Same<EnumT, FilterIndex> && Enum<EnumT>)
+    FilterSelection const& Filter(EnumT i) const {
+        return filters[(usize)i];
+    }
 
     Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the browser.
     DynamicArrayBounded<FilterSelection, k_max_filters> filters {};

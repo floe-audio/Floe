@@ -52,14 +52,11 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
             return any_match;
         }
 
-        if (fi == FilterIndex::Library)
-            return filter.Contains(Hash(inst.library.id));
+        if (fi == FilterIndex::Library) return filter.Contains(Hash(inst.library.id));
 
-        if (fi == FilterIndex::LibraryAuthor)
-            return filter.Contains(Hash(inst.library.author));
+        if (fi == FilterIndex::LibraryAuthor) return filter.Contains(Hash(inst.library.author));
 
-        if (fi == FilterIndex::Tags)
-            return MatchesTagFilter(filter, inst.tags, common_state.filter_mode);
+        if (fi == FilterIndex::Tags) return MatchesTagFilter(filter, inst.tags, common_state.filter_mode);
 
         return false;
     });
@@ -476,7 +473,8 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         .common =
             {
                 .id_extra = SourceLocationHash(),
-                .is_selected = state.common_state.Filter(FilterIndex::Library).Contains(waveform_library_hash),
+                .is_selected =
+                    state.common_state.Filter(FilterIndex::Library).Contains(waveform_library_hash),
                 .text = "Built-in Waveforms",
                 .filter = state.common_state.Filter(FilterIndex::Library),
                 .clicked_key = waveform_library_hash,

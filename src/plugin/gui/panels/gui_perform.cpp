@@ -639,7 +639,8 @@ DoActionsColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_c
                     InstBrowserState ephemeral_state {.id = HashFnv1a("ephemeral-inst-browser")};
                     auto const folder_name =
                         inst.folder->display_name.size ? inst.folder->display_name : inst.folder->name;
-                    ephemeral_state.common_state.Filter(FilterIndex::Folder).Add(inst.folder->Hash(), folder_name);
+                    ephemeral_state.common_state.Filter(FilterIndex::Folder)
+                        .Add(inst.folder->Hash(), folder_name);
 
                     InstBrowserContext context {
                         .layer = layer,
@@ -674,7 +675,8 @@ DoActionsColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_c
                     auto const& library = (*sampled_inst)->instrument.library;
 
                     InstBrowserState ephemeral_state {.id = HashFnv1a("ephemeral-inst-browser")};
-                    ephemeral_state.common_state.Filter(FilterIndex::Library).Add(Hash(library.id), library.name);
+                    ephemeral_state.common_state.Filter(FilterIndex::Library)
+                        .Add(Hash(library.id), library.name);
 
                     InstBrowserContext context {
                         .layer = layer,

@@ -374,8 +374,7 @@ NO_UBSAN static void CalcSize(Context& ctx, Id const id) {
         // To support container padding, we increase the margins of the children
         if (dim == item_layout_dim) {
             // Along the layout direction we don't increase margins between items, only the first and last
-            if (child_id == item->first_child)
-                child->margins_ltrb[dim] += item->container_padding_ltrb[dim];
+            if (child_id == item->first_child) child->margins_ltrb[dim] += item->container_padding_ltrb[dim];
             if (child->next_sibling == k_invalid_id)
                 child->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
         } else {
