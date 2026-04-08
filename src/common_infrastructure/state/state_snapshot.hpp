@@ -26,6 +26,15 @@ struct StateMetadataRef {
     String description {};
 };
 
+struct InstanceConfig {
+    bool operator==(InstanceConfig const&) const = default;
+    bool operator!=(InstanceConfig const&) const = default;
+
+    bool reset_on_transport {false};
+    Optional<u7> reset_keyswitch {}; // MIDI note that triggers a reset, or nullopt for disabled
+    u8 seed {0}; // 0-99, determines what the master PRNG resets to
+};
+
 struct StateSnapshot {
     f32& LinearParam(ParamIndex index) { return param_values[ToInt(index)]; }
     f32 LinearParam(ParamIndex index) const { return param_values[ToInt(index)]; }
@@ -44,6 +53,7 @@ struct StateSnapshot {
     Array<HarmonyIntervalsBitset, k_num_layers> harmony_intervals {};
     MacroNames macro_names {};
     MacroDestinations macro_destinations {};
+    InstanceConfig instance_config {};
 };
 
 enum class StateSource { PresetFile, Daw };
@@ -186,4 +196,7 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
     for (auto macro_index : Range(k_num_macros))
         if (old_state.macro_destinations[macro_index] != new_state.macro_destinations[macro_index])
             fmt::Append(diff_desc, "Macro {} destinations changed\n"_s, macro_index);
+
+    if (old_state.instance_config != new_state.instance_config)
+        dyn::AppendSpan(diff_desc, "Instance config changed\n"_s);
 }

@@ -173,6 +173,23 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
 
     Optional<KeyboardGuiKeyPressed> result {};
 
+    auto const instance_config = g.engine.processor.instance_config.Load(LoadMemoryOrder::Relaxed);
+    auto const keyswitch_note =
+        instance_config.reset_keyswitch.HasValue() ? (s32)instance_config.reset_keyswitch.Value() : -1;
+    auto const col_keyswitch = ToU32(Col {.c = Col::Blue, .dark_mode = true, .alpha = 200});
+
+    auto const draw_keyswitch_marker = [&](s32 key, Rect key_rect, bool) {
+        if (key != keyswitch_note) return;
+        f32 const marker_h = Max(3.0f, key_rect.h * 0.08f);
+        Rect marker_r {
+            .x = key_rect.x,
+            .y = key_rect.y + key_rect.h - marker_h,
+            .w = key_rect.w,
+            .h = marker_h,
+        };
+        imgui.draw_list->AddRectFilled(marker_r, col_keyswitch);
+    };
+
     auto const overlay_key = [&](s32 key, Rect key_rect, UiColMap col_index) {
         auto const num_active_voices = voices_per_midi_key[(usize)key].Load(LoadMemoryOrder::Relaxed);
         if (num_active_voices != 0) {
@@ -220,6 +237,10 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
         if (imgui.IsHot(id)) col = col_white_key_hover;
         imgui.draw_list->AddRectFilled(key_r, col);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
+        draw_keyswitch_marker(this_abs_key, key_r, false);
+
+        if (this_abs_key == keyswitch_note && imgui.IsHot(id))
+            Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
 
         // Show the octave number if it's middle-C.
         if (this_abs_key == 60) {
@@ -281,6 +302,10 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
         }
         imgui.draw_list->AddRectFilled(key_r, col);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardBlackVoiceOverlay);
+        draw_keyswitch_marker(this_abs_key, key_r, true);
+
+        if (this_abs_key == keyswitch_note && imgui.IsHot(id))
+            Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
     }
     imgui.PopId();
 

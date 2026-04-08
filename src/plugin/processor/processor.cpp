@@ -907,6 +907,8 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
         }
     }
 
+    processor.instance_config.Store(state.instance_config, StoreMemoryOrder::Release);
+
     processor.inbox_flags.FetchOr(audio_thread_inbox::ReloadAllAudioState, RmwMemoryOrder::Release);
 
     processor.host.request_process(&processor.host);
@@ -934,6 +936,8 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
 
     for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
         result.param_learned_ccs[i] = cc.GetBlockwise();
+
+    result.instance_config = processor.instance_config.Load(LoadMemoryOrder::Relaxed);
 
     return result;
 }
@@ -979,6 +983,7 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     processor.audio_processing_context.pitchwheel_position = {};
     processor.audio_processing_context.midi_note_state = {};
 
+    processor.prev_transport_playing = false;
     processor.gui_note_currently_held = k_nullopt;
     processor.inbox_flags.Store(0, StoreMemoryOrder::Relaxed);
 
@@ -1019,6 +1024,39 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
     return true;
 }
 
+static void ResetRandomState(AudioProcessor& processor, u8 seed_0_99) {
+    u64 seed_bytes = seed_0_99;
+    processor.master_random_seed = HashFnv1a(Span<u8 const> {(u8 const*)&seed_bytes, sizeof(seed_bytes)});
+
+    // Use a copy of the master seed to derive RR starting positions so we don't consume the master seed state
+    // that voices will use.
+    u64 rr_seed = processor.master_random_seed;
+    for (auto& layer : processor.layer_processors) {
+        layer.rr_pos = {};
+        if (auto inst_ptr = layer.audio_thread_inst.TryGet<sample_lib::LoadedInstrument const*>()) {
+            auto const& inst = **inst_ptr;
+            for (auto const trigger_event : Range(ToInt(sample_lib::TriggerEvent::Count))) {
+                for (auto [group_index, group] :
+                     Enumerate(inst.instrument.round_robin_sequence_groups[trigger_event])) {
+                    auto const num_positions = (u8)(group.max_rr_pos + 1);
+                    if (num_positions > 1)
+                        layer.rr_pos[trigger_event][group_index] = (u8)(RandomU64(rr_seed) % num_positions);
+                }
+            }
+        }
+    }
+}
+
+// Returns true if the note was consumed as a keyswitch reset (and should not trigger voices).
+static bool HandleResetKeyswitch(AudioProcessor& processor, u7 note_key) {
+    auto const config = processor.instance_config.Load(LoadMemoryOrder::Acquire);
+    if (config.reset_keyswitch.HasValue() && note_key == config.reset_keyswitch.Value()) {
+        ResetRandomState(processor, config.seed);
+        return true;
+    }
+    return false;
+}
+
 static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
@@ -1036,6 +1074,8 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
 
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
+            if (HandleResetKeyswitch(processor, (u7)note.key)) break;
+
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
             auto const vel = Clamp((f32)note.velocity, 0.0f, 1.0f); // MuLab 10 VST3 sent invalid values
 
@@ -1135,6 +1175,8 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             switch (message.Type()) {
                 case MidiMessageType::NoteOn: {
                     auto const chan_note = message.ChannelNote();
+                    if (HandleResetKeyswitch(processor, chan_note.note)) break;
+
                     processor.audio_processing_context.midi_note_state.NoteOn(chan_note,
                                                                               message.Velocity() / 127.0f);
 
@@ -1467,6 +1509,16 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             processor.audio_processing_context.tempo = 120;
             changes.tempo_changed = true;
         }
+    }
+
+    // Check for transport start to reset random state.
+    if (frame_index == 0 && process.transport) {
+        bool const is_playing = process.transport->flags & CLAP_TRANSPORT_IS_PLAYING;
+        if (is_playing && !processor.prev_transport_playing) {
+            auto const config = processor.instance_config.Load(LoadMemoryOrder::Acquire);
+            if (config.reset_on_transport) ResetRandomState(processor, config.seed);
+        }
+        processor.prev_transport_playing = is_playing;
     }
 
     constexpr f32 k_fade_out_ms = 30;
@@ -1879,6 +1931,9 @@ AudioProcessor::AudioProcessor(clap_host const& host,
           &phaser,
           &convo,
       })) {
+
+    voice_pool.master_random_seed = &master_random_seed;
+    ResetRandomState(*this, 0); // Initialise with default seed for deterministic starting state.
 
     for (auto const i : Range(k_num_parameters))
         main_params.values[i] = k_param_descriptors[i].default_linear_value;

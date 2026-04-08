@@ -41,6 +41,7 @@ const sidebars = {
                 'usage/effects',
                 'usage/key-ranges',
                 'usage/randomisation',
+                'usage/reproducibility',
                 'usage/midi',
                 'usage/looping',
                 'usage/macros',

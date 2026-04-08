@@ -24,6 +24,7 @@
 #include "gui/panels/gui_library_dev_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
+#include "gui/panels/gui_instance_config_panel.hpp"
 #include "gui/panels/gui_midi_cc_panel.hpp"
 #include "gui/panels/gui_prefs_panel.hpp"
 #include "gui/panels/gui_preset_browser.hpp"
@@ -71,6 +72,7 @@ struct GuiState : EngineListener {
     PresetBrowserState preset_browser_state {};
     LibraryDevPanelState library_dev_panel_state {};
     MidiCcPanelState midi_cc_panel_state {};
+    InstanceConfigPanelState instance_config_panel_state {};
     bool show_new_version_indicator {};
     BottomPanelState bottom_panel_state {};
     MidPanelState mid_panel_state {};

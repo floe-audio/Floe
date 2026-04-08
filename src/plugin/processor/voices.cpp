@@ -331,6 +331,20 @@ void StartVoice(VoicePool& pool,
     auto const sample_rate = audio_processing_context.sample_rate;
     ASSERT(sample_rate != 0);
 
+    // Derive this voice's random seed from the master seed for reproducible randomness.
+    ASSERT(pool.master_random_seed);
+    {
+        auto const s1 = RandomU64(*pool.master_random_seed);
+        auto const s2 = RandomU64(*pool.master_random_seed);
+        // `| 1u` to ensure non-zero.
+        voice.random_seed = {
+            (u32)s1 | 1u,
+            (u32)(s1 >> 32) | 1u,
+            (u32)s2 | 1u,
+            (u32)(s2 >> 32) | 1u,
+        };
+    }
+
     voice.controller = &voice_controller;
     voice.lfo.phase = params.lfo_start_phase;
 

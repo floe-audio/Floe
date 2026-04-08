@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.2.0-beta.2
+- Add reproducible playback: new Instance Config panel (accessible from the top-panel menu) with reset-on-transport, reset keyswitch, and seed controls. These reset round robin positions and random sequences so that playback from the same point is identical every time. [Documentation](usage/reproducibility.mdx)
 - Support encrypted packages (`.floe-pkg-enc`) that require a license key to install
 - GUI: add MIDI CC Assignments panel for viewing and managing all CC-to-parameter mappings, accessible from the top-panel menu
 - Fix voices from jumping into the loop region if you toggle the 'reversed' mode of a playing voice.

@@ -77,6 +77,16 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     if (MenuItem(g.builder,
                  root,
                  {
+                     .text = "Instance Config",
+                     .tooltip = "Configure per-instance settings such as randomisation behaviour"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.instance_config_panel_state.k_panel_id);
+    }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
                      .text = "Randomise All Parameters",
                      .tooltip = "Randomise all parameters and load random instruments and IRs"_s,
                  })

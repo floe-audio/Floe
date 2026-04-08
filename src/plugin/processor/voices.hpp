@@ -80,12 +80,7 @@ struct Voice {
 
     u16 index = 0;
 
-    u32x4 random_seed = {
-        (u32)RandomSeed(),
-        (u32)RandomSeed(),
-        (u32)RandomSeed(),
-        (u32)RandomSeed(),
-    };
+    u32x4 random_seed = {};
 
     sv_filter::CachedHelpers filter_coeffs = {};
     sv_filter::Data<f32x2> filters = {};
@@ -213,6 +208,8 @@ struct VoicePool {
 
     void PrepareToPlay();
     void EndAllVoicesInstantly();
+
+    u64* master_random_seed {}; // Points to AudioProcessor::master_random_seed. Audio thread only.
 
     u64 voice_start_counter = 0;
     u16 voice_id_counter = 0;

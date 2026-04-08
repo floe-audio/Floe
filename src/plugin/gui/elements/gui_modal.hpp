@@ -85,6 +85,7 @@ bool CheckboxButton(GuiBuilder& builder,
                     Optional<String> text,
                     bool state,
                     TooltipString tooltip = k_nullopt,
+                    GuiStyleSystem style = GuiStyleSystem::Overlay,
                     u64 id_extra = SourceLocationHash());
 
 struct TextButtonOptions {
@@ -114,6 +115,7 @@ struct TextInputOptions {
     bool border = true;
     bool background = true;
     bool multiline = false;
+    GuiStyleSystem style = GuiStyleSystem::Overlay;
 };
 
 struct TextInputResult {
@@ -132,6 +134,9 @@ struct IntFieldOptions {
     f32 width;
     s64 value;
     FunctionRef<s64(s64 value)> constrainer;
+    GuiStyleSystem style = GuiStyleSystem::Overlay;
+    bool midi_note_names = false;
+    bool greyed_out = false;
 };
 
 Optional<s64> IntField(GuiBuilder& builder,

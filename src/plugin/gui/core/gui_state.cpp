@@ -377,6 +377,13 @@ void GuiUpdate(GuiState& g) {
     }
 
     {
+        InstanceConfigPanelContext context {
+            .processor = g.engine.processor,
+        };
+        DoInstanceConfigPanel(g.builder, context, g.instance_config_panel_state);
+    }
+
+    {
         PreferencesPanelContext context {
             .prefs = g.prefs,
             .paths = g.shared_engine_systems.paths,

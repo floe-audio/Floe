@@ -290,6 +290,11 @@ struct AudioProcessor {
     Atomic<u64> desired_effects_order {EncodeEffectsArray(effects_ordered_by_type)};
     EffectsArray actual_fx_order {effects_ordered_by_type};
 
+    Atomic<InstanceConfig> instance_config {}; // Written by main thread, read by audio thread.
+
+    u64 master_random_seed {}; // Audio thread only. Deterministic PRNG advanced per voice start.
+    bool prev_transport_playing {}; // Audio thread only. Tracks transport state transitions.
+
     bool activated = false;
 };
 

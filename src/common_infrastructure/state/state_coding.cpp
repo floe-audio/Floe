@@ -510,6 +510,9 @@ enum class StateVersion : u16 {
     // Library IDs are now stored as u64 hashes instead of strings.
     LibraryIdAsHash,
 
+    // Added per-instance config: reset-on-transport, reset keyswitch, and seed for reproducible randomness.
+    AddedInstanceConfig,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -1616,6 +1619,37 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                 if (!index) continue; // Experimental params may be removed
                 state.param_learned_ccs[(usize)*index].Set(m.cc_num);
             }
+        }
+    }
+
+    // =======================================================================================================
+    {
+        constexpr auto k_added = StateVersion::AddedInstanceConfig;
+
+        u8 reset_on_transport {};
+        u8 has_reset_keyswitch {};
+        u8 reset_keyswitch_note {};
+        u8 seed {};
+
+        if (coder.IsWriting()) {
+            reset_on_transport = state.instance_config.reset_on_transport ? 1 : 0;
+            has_reset_keyswitch = state.instance_config.reset_keyswitch.HasValue() ? 1 : 0;
+            reset_keyswitch_note = state.instance_config.reset_keyswitch.ValueOr(0);
+            seed = state.instance_config.seed;
+        }
+
+        TRY(coder.CodeNumber(reset_on_transport, k_added));
+        TRY(coder.CodeNumber(has_reset_keyswitch, k_added));
+        TRY(coder.CodeNumber(reset_keyswitch_note, k_added));
+        TRY(coder.CodeNumber(seed, k_added));
+
+        if (coder.IsReading()) {
+            state.instance_config.reset_on_transport = reset_on_transport != 0;
+            if (has_reset_keyswitch && reset_keyswitch_note <= 127)
+                state.instance_config.reset_keyswitch = (u7)reset_keyswitch_note;
+            else
+                state.instance_config.reset_keyswitch = k_nullopt;
+            state.instance_config.seed = Min(seed, (u8)99);
         }
     }
 

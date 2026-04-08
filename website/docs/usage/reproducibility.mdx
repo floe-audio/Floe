@@ -1,0 +1,29 @@
+---
+id: reproducibility
+title: Reproducibility
+hide_table_of_contents: true
+description: How to make Floe's playback exactly reproducible in a DAW
+---
+
+<!--
+SPDX-FileCopyrightText: 2026 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
+Floe has elements that vary between performances: round robin sample selection cycles through different samples for repeated notes, and the granular engine uses randomness for grain parameters such as pan, detune, and spread. By default, these are not reset between plays, meaning each performance is slightly different.
+
+The **Instance Config** panel provides controls to make playback exactly reproducible. Open it from the top-panel menu (the three-dots button).
+
+## Reset on transport
+
+When enabled, Floe resets its round robin positions and random sequences each time the DAW transport starts playing. This means pressing play from the same position will always produce identical output.
+
+## Reset keyswitch
+
+A MIDI note that triggers a reset. When this note is received, Floe resets as if the transport had just started. The keyswitch note is consumed and does not trigger any sound. This is useful for free-playing: send the keyswitch, then play a sequence, and you can reproduce it exactly by sending the keyswitch again before replaying the same notes.
+
+The reset keyswitch is shown as a blue marker on the on-screen keyboard.
+
+## Seed
+
+The seed value determines the starting state after a reset. Different seeds produce different round robin starting positions and random sequences. This allows you to explore variations: reset, change the seed, and play the same notes to hear a different but equally reproducible result.

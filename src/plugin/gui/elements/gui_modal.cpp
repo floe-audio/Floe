@@ -3,6 +3,8 @@
 
 #include "gui/elements/gui_modal.hpp"
 
+#include "common_infrastructure/audio_utils.hpp"
+
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 
@@ -176,12 +178,16 @@ Box DoModal(GuiBuilder& builder, ModalConfig const& config) {
     return root;
 }
 
+static bool IsDarkMode(GuiStyleSystem style) { return style == GuiStyleSystem::TopBottomPanels; }
+
 bool CheckboxButton(GuiBuilder& builder,
                     Box parent,
                     Optional<String> text,
                     bool state,
                     TooltipString tooltip,
+                    GuiStyleSystem style,
                     u64 id_extra) {
+    auto const dark_mode = IsDarkMode(style);
     auto const button = DoBox(builder,
                               {
                                   .parent = parent,
@@ -202,11 +208,11 @@ bool CheckboxButton(GuiBuilder& builder,
               .text = state ? ICON_FA_CHECK : ""_s,
               .font = FontType::Icons,
               .font_size = k_font_icons_size * 0.7f,
-              .text_colours = Col {Col::Text},
+              .text_colours = Col {.c = Col::Text, .dark_mode = dark_mode},
               .text_justification = TextJustification::Centred,
-              .background_fill_colours = Col {Col::Background2},
+              .background_fill_colours = Col {.c = Col::Background2, .dark_mode = dark_mode},
               .background_fill_auto_hot_active_overlay = true,
-              .border_colours = Col {Col::Overlay0},
+              .border_colours = Col {.c = Col::Overlay0, .dark_mode = dark_mode},
               .border_auto_hot_active_overlay = true,
               .parent_dictates_hot_and_active = true,
               .round_background_corners = 0b1111,
@@ -221,6 +227,7 @@ bool CheckboxButton(GuiBuilder& builder,
                   .parent = button,
                   .text = *text,
                   .size_from_text = true,
+                  .text_colours = Col {.c = Col::Text, .dark_mode = dark_mode},
               });
 
     return button.button_fired;
@@ -298,17 +305,19 @@ Box IconButton(GuiBuilder& builder,
 }
 
 TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions const& options, u64 id_extra) {
+    auto const dm = IsDarkMode(options.style);
     auto const box =
         DoBox(builder,
               {
                   .parent = parent,
                   .id_extra = id_extra,
-                  .background_fill_colours = Col {.c = options.background ? Col::Background2 : Col::None},
+                  .background_fill_colours =
+                      Col {.c = options.background ? Col::Background2 : Col::None, .dark_mode = dm},
                   .border_colours =
                       ColSet {
-                          .base = {.c = options.border ? Col::Overlay0 : Col::None},
-                          .hot = {.c = options.border ? Col::Overlay1 : Col::None},
-                          .active = {.c = options.border ? Col::Blue : Col::None},
+                          .base = {.c = options.border ? Col::Overlay0 : Col::None, .dark_mode = dm},
+                          .hot = {.c = options.border ? Col::Overlay1 : Col::None, .dark_mode = dm},
+                          .active = {.c = options.border ? Col::Blue : Col::None, .dark_mode = dm},
                       },
                   .round_background_corners = 0b1111,
                   .layout {.size = options.size},
@@ -342,9 +351,9 @@ TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions cons
         DrawTextInput(builder.imgui,
                       *result,
                       {
-                          .text_col = {Col::Text},
-                          .cursor_col = {Col::Text},
-                          .selection_col = {.c = Col::Highlight, .alpha = 128},
+                          .text_col = {.c = Col::Text, .dark_mode = dm},
+                          .cursor_col = {.c = Col::Text, .dark_mode = dm},
+                          .selection_col = {.c = Col::Highlight, .dark_mode = dm, .alpha = 128},
                       });
     }
 
@@ -352,6 +361,9 @@ TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions cons
 }
 
 Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& options, u64 id_extra) {
+    auto const dm = IsDarkMode(options.style);
+    auto const greyed = options.greyed_out;
+    auto const text_col = Col {.c = greyed ? Col::Overlay0 : Col::Text, .dark_mode = dm};
     auto value = options.value;
     auto const initial_value = value;
     auto const container = DoBox(builder,
@@ -363,34 +375,95 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
                                          .contents_gap = k_medium_gap,
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Start,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                      },
                                  });
 
-    auto const item_container = DoBox(builder,
-                                      {
-                                          .parent = container,
-                                          .background_fill_colours = Col {.c = Col::Background2},
-                                          .border_colours = Col {.c = Col::Overlay0},
-                                          .round_background_corners = 0b1111,
-                                          .layout {
-                                              .size = layout::k_hug_contents,
-                                          },
-                                      });
+    auto const item_container =
+        DoBox(builder,
+              {
+                  .parent = container,
+                  .background_fill_colours = Col {.c = Col::Background2, .dark_mode = dm},
+                  .border_colours = Col {.c = Col::Overlay0, .dark_mode = dm},
+                  .round_background_corners = 0b1111,
+                  .layout {
+                      .size = layout::k_hug_contents,
+                      .contents_padding = {.l = 4},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+              });
 
-    {
-        auto const text = fmt::IntToString(value);
-        auto const text_input = TextInput(builder,
-                                          item_container,
-                                          {
-                                              .text = text,
-                                              .tooltip = "Enter a new value"_s,
-                                              .size = f32x2 {options.width, 20},
-                                              .border = false,
-                                              .background = false,
-                                          });
-        if (text_input.result && text_input.result->buffer_changed) {
-            auto const new_value = ParseInt(text_input.result->text, ParseIntBase::Decimal);
-            if (new_value.HasValue()) value = options.constrainer(new_value.Value());
+    auto const min = options.constrainer(SmallestRepresentableValue<s64>());
+    auto const max = options.constrainer(LargestRepresentableValue<s64>());
+    String display_string;
+    if (options.midi_note_names && value >= 0 && value <= 127)
+        display_string = builder.arena.Clone(NoteName((u7)value));
+    else
+        display_string = fmt::IntToString(value);
+
+    Optional<imgui::TextInputResult> text_input_result {};
+
+    // Dragger text area.
+    auto const dragger_box = DoBox(builder,
+                                   {
+                                       .parent = item_container,
+                                       .text = display_string,
+                                       .text_colours = text_col,
+                                       .text_justification = TextJustification::CentredLeft,
+                                       .text_overflow = TextOverflowType::AllowOverflow,
+                                       .layout {
+                                           .size = {options.width, 20},
+                                       },
+                                       .tooltip = options.tooltip,
+                                   });
+
+    // Dragger behaviour.
+    if (!greyed) {
+        if (auto const viewport_r = BoxRect(builder, dragger_box)) {
+            auto const window_r = builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+            auto val = (f32)value;
+
+            auto const dragger_result = builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = dragger_box.imgui_id,
+                .text = display_string,
+                .min = (f32)min,
+                .max = (f32)max,
+                .value = val,
+                .default_value = (f32)min,
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg {
+                    .x_padding = WwToPixels(4.0f),
+                    .chars_decimal = !options.midi_note_names,
+                    .chars_note_names = options.midi_note_names,
+                    .centre_align = false,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                },
+                .slider_cfg {
+                    .sensitivity = 15,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
+
+            if (dragger_result.value_changed) value = options.constrainer((s64)(int)val);
+
+            if (dragger_result.new_string_value) {
+                if (options.midi_note_names) {
+                    if (auto const midi_note = MidiNoteFromName(*dragger_result.new_string_value))
+                        value = options.constrainer((s64)midi_note.Value());
+                } else if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal)) {
+                    value = options.constrainer(o.Value());
+                }
+            }
+
+            text_input_result = dragger_result.text_input_result;
         }
     }
 
@@ -401,14 +474,15 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
                   .parent = item_container,
                   .text = ICON_FA_CARET_LEFT,
                   .font = FontType::Icons,
+                  .text_colours = text_col,
                   .text_justification = TextJustification::Centred,
-                  .background_fill_auto_hot_active_overlay = true,
+                  .background_fill_auto_hot_active_overlay = !greyed,
                   .round_background_corners = 0b1001,
                   .layout {
                       .size = {k_button_width, layout::k_fill_parent},
                   },
-                  .tooltip = "Decrease value"_s,
-                  .button_behaviour = imgui::ButtonConfig {},
+                  .tooltip = greyed ? TooltipString(k_nullopt) : TooltipString("Decrease value"_s),
+                  .button_behaviour = greyed ? Optional<imgui::ButtonConfig> {} : imgui::ButtonConfig {},
               })
             .button_fired) {
         value = options.constrainer(value - 1);
@@ -419,17 +493,26 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
                   .parent = item_container,
                   .text = ICON_FA_CARET_RIGHT,
                   .font = FontType::Icons,
+                  .text_colours = text_col,
                   .text_justification = TextJustification::Centred,
-                  .background_fill_auto_hot_active_overlay = true,
+                  .background_fill_auto_hot_active_overlay = !greyed,
                   .round_background_corners = 0b0110,
                   .layout {
                       .size = {k_button_width, layout::k_fill_parent},
                   },
-                  .tooltip = "Increase value"_s,
-                  .button_behaviour = imgui::ButtonConfig {},
+                  .tooltip = greyed ? TooltipString(k_nullopt) : TooltipString("Increase value"_s),
+                  .button_behaviour = greyed ? Optional<imgui::ButtonConfig> {} : imgui::ButtonConfig {},
               })
             .button_fired) {
         value = options.constrainer(value + 1);
+    }
+
+    // Draw text input overlay after the dragger so it's on top.
+    if (text_input_result) {
+        if (auto const rel_r = BoxRect(builder, dragger_box)) {
+            auto const r = builder.imgui.ViewportRectToWindowRect(*rel_r);
+            DrawParameterTextInput(builder.imgui, r, *text_input_result);
+        }
     }
 
     // label
@@ -438,6 +521,7 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
               .parent = container,
               .text = options.label,
               .size_from_text = true,
+              .text_colours = Col {.c = Col::Text, .dark_mode = dm},
               .tooltip = options.tooltip,
           });
 
