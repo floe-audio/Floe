@@ -571,22 +571,24 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
             auto const desc = SettingDescriptor(gui_setting);
             if (gui_setting == GuiPreference::WindowWidth) {
                 auto const& int_info = desc.value_requirements.Get<prefs::Descriptor::IntRequirements>();
-                if (auto const v =
-                        IntField(builder,
-                                 options_rhs_column,
-                                 {
-                                     .label = "Window size",
-                                     .tooltip = desc.long_description,
-                                     .width = k_settings_int_field_width,
-                                     .value = prefs::GetValue(context.prefs, desc).value.Get<s64>() /
-                                              k_prefs_window_width_step,
-                                     .constrainer =
-                                         [&int_info](s64 value) {
-                                             value *= k_prefs_window_width_step;
-                                             if (int_info.validator) int_info.validator(value);
-                                             return value;
-                                         },
-                                 })) {
+                if (auto const v = IntField(
+                        builder,
+                        options_rhs_column,
+                        {
+                            .label = "Window size",
+                            .tooltip = desc.long_description,
+                            .width = k_settings_int_field_width,
+                            .value = prefs::GetValue(context.prefs, desc).value.Get<s64>() /
+                                     k_prefs_window_width_step,
+                            .constrainer =
+                                [&int_info](s64 value) {
+                                    s64 new_value;
+                                    if (__builtin_mul_overflow(value, k_prefs_window_width_step, &new_value))
+                                        new_value = value;
+                                    if (int_info.validator) int_info.validator(new_value);
+                                    return new_value;
+                                },
+                        })) {
                     prefs::SetValue(context.prefs, desc, *v);
                 }
                 continue;
