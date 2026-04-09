@@ -273,6 +273,7 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                                    .parent = root,
                                                    .layout {
                                                        .size = layout::k_fill_parent,
+                                                       .contents_padding = {.lr = 8.08f, .b = 6.08f},
                                                    },
                                                });
 

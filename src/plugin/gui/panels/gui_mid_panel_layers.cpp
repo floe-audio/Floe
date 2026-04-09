@@ -78,11 +78,7 @@ void MidPanelLayersContent(GuiBuilder& builder,
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding =
-                                        {
-                                            .lr = k_subpanel_gap_x,
-                                            .tb = 6.08f,
-                                        },
+                                    .contents_padding = {.t = 6.08f},
                                     .contents_gap = k_subpanel_gap_x,
                                     .contents_direction = layout::Direction::Row,
                                     .contents_align = layout::Alignment::Start,

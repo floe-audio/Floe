@@ -1111,8 +1111,6 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             GuiFrameContext const& frame_context,
                             Box parent,
                             Box tab_extra_buttons_box) {
-    constexpr f32 k_subpanel_gap_x = 8.08f;
-
     // Add randomise button to heading.
     {
         auto const rand_btn = DoMidPanelShuffleButton(builder,
@@ -1140,7 +1138,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lr = k_subpanel_gap_x * 3, .tb = 6.08f},
+                                    .contents_padding = {.t = 6.08f},
                                     .contents_gap = 8,
                                     .contents_direction = layout::Direction::Row,
                                     .contents_align = layout::Alignment::Middle,
