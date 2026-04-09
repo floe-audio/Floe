@@ -302,7 +302,7 @@ constexpr auto k_layer_params = ArrayT<LayerParamId>({
     {"FlSus", LayerParamIndex::FilterSustain},
     {"FlRel", LayerParamIndex::FilterRelease},
     {"LfoOn", LayerParamIndex::LfoOn},
-    {"LfoSh", LayerParamIndex::LfoShape},
+    {"LfoSh", LayerParamIndex::LegacyLfoShape},
     {"LfoMd", LayerParamIndex::LfoRestart},
     {"LfoAm", LayerParamIndex::LfoAmount},
     {"LfoTg", LayerParamIndex::LfoDestination},
@@ -318,9 +318,9 @@ constexpr auto k_layer_params = ArrayT<LayerParamId>({
     {"EqRs1", LayerParamIndex::EqResonance2},
     {"EqGn1", LayerParamIndex::EqGain2},
     {"EqTy1", LayerParamIndex::EqType2},
-    {"Vel", LayerParamIndex::VelocityMapping},
+    {"Vel", LayerParamIndex::LegacyVelocityMapping},
     {"KTr", LayerParamIndex::Keytrack},
-    {"Mono", LayerParamIndex::Monophonic},
+    {"Mono", LayerParamIndex::LegacyMonophonicBool},
     {"Trn", LayerParamIndex::MidiTranspose},
 });
 

@@ -84,6 +84,8 @@ void UpdateLFOWaveform(Voice& v) {
         case param_values::LfoShape::Triangle: waveform = LFO::Waveform::Triangle; break;
         case param_values::LfoShape::Sawtooth: waveform = LFO::Waveform::Sawtooth; break;
         case param_values::LfoShape::Square: waveform = LFO::Waveform::Square; break;
+        case param_values::LfoShape::RandomSteps: waveform = LFO::Waveform::RandomSteps; break;
+        case param_values::LfoShape::RandomGlide: waveform = LFO::Waveform::RandomGlide; break;
         case param_values::LfoShape::Count: PanicIfReached(); break;
     }
     if (waveform != v.lfo.waveform) v.lfo.SetWaveform(waveform);
@@ -346,7 +348,21 @@ void StartVoice(VoicePool& pool,
     }
 
     voice.controller = &voice_controller;
-    voice.lfo.phase = params.lfo_start_phase;
+    voice.lfo.phase = params.lfo_start_state.phase;
+    if (params.lfo_start_state.random_state != 0) {
+        // Free-mode: inherit random state from a previously active voice in this layer
+        // so the random sequence feels continuous across overlapping notes.
+        voice.lfo.random_state = params.lfo_start_state.random_state;
+        voice.lfo.prev_random = params.lfo_start_state.prev_random;
+        voice.lfo.next_random = params.lfo_start_state.next_random;
+    } else {
+        // Retrigger or first voice: derive a fresh seed deterministically from the master
+        // seed so reproducibility (Reset on Transport / Reset Keyswitch / Seed) extends to
+        // random LFO waveforms. Bootstrap next_random so the very first cycle has a target.
+        voice.lfo.random_state = (u32)RandomU64(*pool.master_random_seed) | 1u;
+        voice.lfo.prev_random = 0;
+        voice.lfo.next_random = voice.lfo.NextRandomBipolar();
+    }
 
     UpdateLFOWaveform(voice);
     UpdateLFOTime(voice, audio_processing_context.sample_rate);
@@ -1236,12 +1252,12 @@ struct VoiceProcessor {
     }
 
     // Returns 4 floats in [0, 1).
-    // Float trick: set the exponent bits to 127 (0x3F800000 == 1.0f in IEEE 754), fill the mantissa with the
-    // upper 23 bits of the random value, then subtract 1.0. This gives [1.0, 2.0) - 1.0 = [0.0, 1.0) with no
-    // division.
+    // Float trick: set the exponent bits to 127, fill the mantissa with the upper 23 bits of the random
+    // value, then subtract 1.0. This gives [1.0, 2.0) - 1.0 = [0.0, 1.0) with no division.
     static f32x4 Rand01(u32x4& seed) {
         auto r = Rand(seed);
-        return (f32x4)((r >> 9) | 0x3F800000u) - 1.0f;
+        // (f32x4) on a same-sized vector is a bitcast (reinterpret), not a numeric convert.
+        return (f32x4)((r >> 9) | __builtin_bit_cast(u32, 1.0f)) - 1.0f;
     }
 
     static f32x4 RandomWhiteNoiseSample(u32x4& seed) {
@@ -1675,7 +1691,7 @@ static void StartTestSamplerVoice(VoiceTestFixture& fix,
         .midi_key_trigger = {.note = note, .channel = 0},
         .note_num = note,
         .note_vel = velocity,
-        .lfo_start_phase = 0,
+        .lfo_start_state = {},
         .num_frames_before_starting = 0,
         .params = Move(sampler_params),
         .disable_vol_env = disable_vol_env,
@@ -1848,7 +1864,7 @@ TEST_CASE(TestVoiceProcessingGranular) {
             .midi_key_trigger = {.note = 60, .channel = 0},
             .note_num = 60,
             .note_vel = 0.8f,
-            .lfo_start_phase = 0,
+            .lfo_start_state = {},
             .num_frames_before_starting = k_block_size_max,
             .params = Move(sampler_params),
             .disable_vol_env = true,
@@ -1918,7 +1934,7 @@ TEST_CASE(TestVoiceProcessingNonTypicalBufferSizes) {
                     .midi_key_trigger = {.note = 60, .channel = 0},
                     .note_num = 60,
                     .note_vel = 0.8f,
-                    .lfo_start_phase = 0,
+                    .lfo_start_state = {},
                     .num_frames_before_starting = offset,
                     .params = Move(sampler_params),
                     .disable_vol_env = true,

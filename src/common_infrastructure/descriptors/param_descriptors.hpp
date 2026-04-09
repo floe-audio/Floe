@@ -34,13 +34,14 @@ enum class LayerParamIndex : u16 {
     FilterSustain,
     FilterRelease,
     LfoOn,
-    LfoShape,
+    LegacyLfoShape,
     LfoRestart,
     LfoAmount,
     LfoDestination,
     LfoRateTempoSynced,
     LfoRateHz,
     LfoSyncSwitch,
+    LfoShape,
     EqOn,
     EqFreq1,
     EqResonance1,
@@ -50,9 +51,9 @@ enum class LayerParamIndex : u16 {
     EqResonance2,
     EqGain2,
     EqType2,
-    VelocityMapping, // Legacy
+    LegacyVelocityMapping,
     Keytrack,
-    Monophonic, // Legacy
+    LegacyMonophonicBool,
     MonophonicMode,
     MidiTranspose,
     PitchBendRange,
@@ -352,11 +353,28 @@ constexpr auto k_lfo_destinations_strings = ArrayT<String>({
 });
 static_assert(k_lfo_destinations_strings.size == ToInt(LfoDestination::Count));
 
+enum class LegacyLfoShape : u8 { // never reorder
+    Sine,
+    Triangle,
+    Sawtooth,
+    Square,
+    Count,
+};
+constexpr auto k_legacy_lfo_shape_strings = ArrayT<String>({
+    "Sine",
+    "Triangle",
+    "Sawtooth",
+    "Square",
+});
+static_assert(k_legacy_lfo_shape_strings.size == ToInt(LegacyLfoShape::Count));
+
 enum class LfoShape : u8 { // never reorder
     Sine,
     Triangle,
     Sawtooth,
     Square,
+    RandomSteps,
+    RandomGlide,
     Count,
 };
 constexpr auto k_lfo_shape_strings = ArrayT<String>({
@@ -364,6 +382,8 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
     "Triangle",
     "Sawtooth",
     "Square",
+    "Random Steps",
+    "Random Glide",
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
 
@@ -540,6 +560,7 @@ struct ParamDescriptor {
         LfoSyncedRate,
         LfoRestartMode,
         LfoDestination,
+        LegacyLfoShape,
         LfoShape,
         LayerFilterType,
         EffectFilterType,
@@ -789,6 +810,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::LfoSyncedRate: return k_lfo_synced_rate_strings;
         case ParamDescriptor::MenuType::LfoRestartMode: return k_lfo_restart_mode_strings;
         case ParamDescriptor::MenuType::LfoDestination: return k_lfo_destinations_strings;
+        case ParamDescriptor::MenuType::LegacyLfoShape: return k_legacy_lfo_shape_strings;
         case ParamDescriptor::MenuType::LfoShape: return k_lfo_shape_strings;
         case ParamDescriptor::MenuType::LayerFilterType: return k_layer_filter_type_strings;
         case ParamDescriptor::MenuType::EffectFilterType: return k_effect_filter_type_strings;
@@ -2020,16 +2042,17 @@ consteval auto CreateParams() {
             .gui_label = "LFO"_s,
             .tooltip = "Enable/disable the Low Frequency Oscillator (LFO)"_s,
         };
-        lp(LfoShape) = Args {
+        lp(LegacyLfoShape) = Args {
             .id = id(region, 28), // never change
             .value_config = val_config_helpers::Menu({
-                .type = ParamDescriptor::MenuType::LfoShape,
-                .default_val = (u32)LfoShape::Sine,
+                .type = ParamDescriptor::MenuType::LegacyLfoShape,
+                .default_val = (u32)LegacyLfoShape::Sine,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
-            .name = "Shape"_s,
+            .name = "Shape (Legacy)"_s,
             .gui_label = "Shape"_s,
-            .tooltip = "Oscillator shape"_s,
+            .tooltip = "Legacy LFO shape parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.hidden = true},
         };
         lp(LfoRestart) = Args {
             .id = id(region, 29), // never change
@@ -2091,6 +2114,17 @@ consteval auto CreateParams() {
             .name = "Sync On"_s,
             .gui_label = "Sync"_s,
             .tooltip = "Sync the LFO speed to the host"_s,
+        };
+        lp(LfoShape) = Args {
+            .id = id(region, 67), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LfoShape,
+                .default_val = (u32)LfoShape::Sine,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Shape"_s,
+            .gui_label = "Shape"_s,
+            .tooltip = "Oscillator shape, including random waveforms"_s,
         };
 
         // =================================================================================================
@@ -2174,7 +2208,7 @@ consteval auto CreateParams() {
         };
 
         // =================================================================================================
-        lp(VelocityMapping) = Args {
+        lp(LegacyVelocityMapping) = Args {
             .id = id(region, 44), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::VelocityMappingMode,
@@ -2196,7 +2230,7 @@ consteval auto CreateParams() {
             .tooltip =
                 "Tune the sound to match the key played; if disabled it will always play the sound at its root pitch"_s,
         };
-        lp(Monophonic) = Args {
+        lp(LegacyMonophonicBool) = Args {
             .id = id(region, 46), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Playback},

@@ -548,10 +548,11 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
                 processor.main_params.DescribedValue(l.index, LayerParamIndex::Keytrack),
                 BiasType::Strong);
             randomise_button_preffering_default(
-                processor.main_params.DescribedValue(l.index, LayerParamIndex::Monophonic),
+                processor.main_params.DescribedValue(l.index, LayerParamIndex::LegacyMonophonicBool),
                 BiasType::Strong);
             set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::MidiTranspose), 0.0f);
-            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::VelocityMapping), 0.0f);
+            set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::LegacyVelocityMapping),
+                      0.0f);
             set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::Mute), 0.0f);
             set_param(processor.main_params.DescribedValue(l.index, LayerParamIndex::Solo), 0.0f);
 

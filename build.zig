@@ -1642,6 +1642,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "plugin/hosting_tests.cpp",
             "plugin/plugin.cpp",
             "preset_server/preset_server.cpp",
+            "processing_utils/lfo.cpp",
             "processing_utils/midi.cpp",
             "processing_utils/volume_fade.cpp",
             "processor/layer_processor.cpp",

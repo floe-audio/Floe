@@ -102,12 +102,12 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
         });
         return k_types.Items();
 
-    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LfoShape)) {
+    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyLfoShape)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::LfoShape::Sine, {"Sine"}},
-            {(f32)param_values::LfoShape::Triangle, {"Triangle"}},
-            {(f32)param_values::LfoShape::Sawtooth, {"Sawtooth"}},
-            {(f32)param_values::LfoShape::Square, {"Square"}},
+            {(f32)param_values::LegacyLfoShape::Sine, {"Sine"}},
+            {(f32)param_values::LegacyLfoShape::Triangle, {"Triangle"}},
+            {(f32)param_values::LegacyLfoShape::Sawtooth, {"Sawtooth"}},
+            {(f32)param_values::LegacyLfoShape::Square, {"Square"}},
         });
         return k_types.Items();
 
@@ -513,6 +513,10 @@ enum class StateVersion : u16 {
     // Added per-instance config: reset-on-transport, reset keyswitch, and seed for reproducible randomness.
     AddedInstanceConfig,
 
+    // Added new LFO shape parameter (Sine, Triangle, Sawtooth, Square, RandomSteps, RandomGlide). The legacy
+    // LfoShape parameter is now hidden and kept only for DAW automation backwards compatibility.
+    AddedNewLfoShapeParameter,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -521,7 +525,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 228,
+    static_assert(k_num_non_experimental_parameters == 231,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -545,7 +549,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             // Adapt LayerParamIndex::VelocityMapping to the new curve and clear out the old param.
             for (auto const layer_index : Range(k_num_layers)) {
                 auto& val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping));
                 auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
 
                 // We don't use this param anymore.
@@ -662,7 +666,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             // Adapt legacy Monophonic bool to new MonophonicMode enum
             for (auto const layer_index : Range(k_num_layers)) {
                 auto& bool_val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Monophonic));
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyMonophonicBool));
 
                 auto const was_monophonic = bool_val >= 0.5f; // Bool params use 0.0f/1.0f
 
@@ -674,6 +678,44 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                     ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode));
                 mode_val = was_monophonic ? (f32)param_values::MonophonicMode::Retrigger
                                           : (f32)param_values::MonophonicMode::Off;
+            }
+        }
+    }
+
+    if (version < StateVersion::AddedNewLfoShapeParameter) {
+        if (source == StateSource::Daw) {
+            // Don't adapt parameters from the DAW because there might be automation on the legacy
+            // LfoShape param. Default the new param to Sine; the audio thread's LFO param pump
+            // falls through to the legacy param when it is non-default, so existing automation
+            // continues to drive the sound.
+            for (auto const layer_index : Range(k_num_layers)) {
+                state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoShape)) =
+                    (f32)param_values::LfoShape::Sine;
+            }
+        } else {
+            // Adapt legacy value to new enum and clear the legacy param.
+            for (auto const layer_index : Range(k_num_layers)) {
+                auto& legacy_val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyLfoShape));
+                auto const legacy_shape = (param_values::LegacyLfoShape)Round(legacy_val);
+                legacy_val = (f32)param_values::LegacyLfoShape::Sine; // clear legacy
+
+                param_values::LfoShape new_shape {};
+                switch (legacy_shape) {
+                    case param_values::LegacyLfoShape::Sine: new_shape = param_values::LfoShape::Sine; break;
+                    case param_values::LegacyLfoShape::Triangle:
+                        new_shape = param_values::LfoShape::Triangle;
+                        break;
+                    case param_values::LegacyLfoShape::Sawtooth:
+                        new_shape = param_values::LfoShape::Sawtooth;
+                        break;
+                    case param_values::LegacyLfoShape::Square:
+                        new_shape = param_values::LfoShape::Square;
+                        break;
+                    case param_values::LegacyLfoShape::Count: new_shape = param_values::LfoShape::Sine; break;
+                }
+                state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoShape)) =
+                    (f32)new_shape;
             }
         }
     }
@@ -1773,11 +1815,11 @@ ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource sou
 TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
     StateSnapshot state {};
 
-    state.LinearParam(ParamIndexFromLayerParamIndex(0, LayerParamIndex::VelocityMapping)) =
+    state.LinearParam(ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyVelocityMapping)) =
         (f32)param_values::VelocityMappingMode::TopToMiddle;
-    state.LinearParam(ParamIndexFromLayerParamIndex(1, LayerParamIndex::VelocityMapping)) =
+    state.LinearParam(ParamIndexFromLayerParamIndex(1, LayerParamIndex::LegacyVelocityMapping)) =
         (f32)param_values::VelocityMappingMode::MiddleOutwards;
-    state.LinearParam(ParamIndexFromLayerParamIndex(2, LayerParamIndex::VelocityMapping)) =
+    state.LinearParam(ParamIndexFromLayerParamIndex(2, LayerParamIndex::LegacyVelocityMapping)) =
         (f32)param_values::VelocityMappingMode::MiddleToBottom;
 
     SUBCASE("when master velocity is set to 0") {
@@ -1803,7 +1845,8 @@ TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
     // All velocity mapping modes should be set to the none.
     for (auto const layer_index : Range(k_num_layers)) {
         CHECK_APPROX_EQ(
-            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping)),
+            state.LinearParam(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping)),
             (f32)param_values::VelocityMappingMode::None,
             0.01f);
     }
@@ -2249,6 +2292,9 @@ TEST_CASE(TestLoadingOldFiles) {
 
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::Volume), DbToAmp(-6.0f), 0.01f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::SampleOffset), 0.054875f, 0.005f);
+        CHECK_EQ(ParamToInt<param_values::LegacyLfoShape>(
+                     ProjectedLayerValue(state, 0, LayerParamIndex::LegacyLfoShape)),
+                 param_values::LegacyLfoShape::Sine);
         CHECK_EQ(ParamToInt<param_values::LfoShape>(ProjectedLayerValue(state, 0, LayerParamIndex::LfoShape)),
                  param_values::LfoShape::Sine);
         CHECK_EQ(ParamToInt<param_values::LfoSyncedRate>(
@@ -2335,7 +2381,7 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::Pan), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::TuneCents), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::TuneSemitone), 0.0f, 0.1f);
-        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VelocityMapping), 0.0f, 0.1f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::LegacyVelocityMapping), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolEnvOn), 1.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeAttack), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeDecay), 0.0f, 0.1f);

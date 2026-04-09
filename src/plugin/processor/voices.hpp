@@ -272,11 +272,18 @@ struct VoiceStartParams {
                                TypeAndTag<SamplerParams, InstrumentType::Sampler>,
                                TypeAndTag<WaveformParams, InstrumentType::WaveformSynth>>;
 
+    struct LfoStartState {
+        u32 phase = 0;
+        u32 random_state = 0; // 0 sentinel = "uninitialised, derive fresh from master seed"
+        f32 prev_random = 0;
+        f32 next_random = 0;
+    };
+
     f32 initial_pitch;
     MidiChannelNote midi_key_trigger;
     u7 note_num;
     f32 note_vel;
-    unsigned int lfo_start_phase;
+    LfoStartState lfo_start_state;
     u32 num_frames_before_starting;
     Params params;
     bool disable_vol_env;

@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.2.0-beta.2
+- Add two random LFO shapes: 'Random Steps' (sample-and-hold; a new random value held for each LFO cycle) and 'Random Glide' (smoothly eases between random values for organic, wandering modulation). Both integrate with the reproducibility system above.
 - Add reproducible playback: new Instance Config panel (accessible from the top-panel menu) with reset-on-transport, reset keyswitch, and seed controls. These reset round robin positions and random sequences so that playback from the same point is identical every time. [Documentation](usage/reproducibility.mdx)
 - Support encrypted packages (`.floe-pkg-enc`) that require a license key to install
 - GUI: add MIDI CC Assignments panel for viewing and managing all CC-to-parameter mappings, accessible from the top-panel menu

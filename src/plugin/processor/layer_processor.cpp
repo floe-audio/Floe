@@ -285,11 +285,14 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     p.midi_key_trigger = note;
     p.note_num = note_for_samples;
     p.note_vel = note_vel_float;
-    p.lfo_start_phase = 0;
+    p.lfo_start_state = {};
     p.num_frames_before_starting = offset;
     if (layer.lfo_restart_mode == param_values::LfoRestartMode::Free) {
         for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller)) {
-            p.lfo_start_phase = v.lfo.phase;
+            p.lfo_start_state.phase = v.lfo.phase;
+            p.lfo_start_state.random_state = v.lfo.random_state; // already non-zero
+            p.lfo_start_state.prev_random = v.lfo.prev_random;
+            p.lfo_start_state.next_random = v.lfo.next_random;
             break;
         }
     }
@@ -429,7 +432,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
     // =======================================================================================================
     if (auto p = changes.changed_params.IntValue<param_values::VelocityMappingMode>(
             layer.index,
-            LayerParamIndex::VelocityMapping))
+            LayerParamIndex::LegacyVelocityMapping))
         SetVelocityMapping(layer, *p);
 
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::Volume)) layer.gain = *p;
@@ -543,11 +546,28 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
     // LFO
     // =======================================================================================================
-    if (auto p =
-            changes.changed_params.IntValue<param_values::LfoShape>(layer.index, LayerParamIndex::LfoShape)) {
-        vmst.lfo.shape = *p;
-        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-            UpdateLFOWaveform(v);
+    {
+        bool lfo_shape_changed = false;
+        if (auto p = changes.changed_params.IntValue<param_values::LegacyLfoShape>(
+                layer.index,
+                LayerParamIndex::LegacyLfoShape)) {
+            layer.lfo_shape_legacy = *p;
+            lfo_shape_changed = true;
+        }
+        if (auto p = changes.changed_params.IntValue<param_values::LfoShape>(layer.index,
+                                                                             LayerParamIndex::LfoShape)) {
+            layer.lfo_shape = *p;
+            lfo_shape_changed = true;
+        }
+        if (lfo_shape_changed) {
+            // Backwards compat: if the legacy LfoShape param is non-default it was likely set by
+            // user/automation, so let it override the new param.
+            vmst.lfo.shape = (layer.lfo_shape_legacy != param_values::LegacyLfoShape::Sine)
+                                 ? (param_values::LfoShape)ToInt(layer.lfo_shape_legacy)
+                                 : layer.lfo_shape;
+            for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+                UpdateLFOWaveform(v);
+        }
     }
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::LfoAmount))
         vmst.lfo.amount = *p;
@@ -624,7 +644,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
         layer.lfo_restart_mode = *p;
 
     // Read legacy bool parameter for DAW automation compatibility
-    if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::Monophonic))
+    if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LegacyMonophonicBool))
         layer.monophonic_retrigger_legacy = *p;
 
     if (auto p =

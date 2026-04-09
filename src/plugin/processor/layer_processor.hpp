@@ -267,7 +267,8 @@ struct LayerProcessor {
     }
 
     param_values::VelocityMappingMode GetVelocityMode(Parameters const& params) const {
-        return params.IntValue<param_values::VelocityMappingMode>(index, LayerParamIndex::VelocityMapping);
+        return params.IntValue<param_values::VelocityMappingMode>(index,
+                                                                  LayerParamIndex::LegacyVelocityMapping);
     }
 
     clap_host const& host;
@@ -332,6 +333,8 @@ struct LayerProcessor {
     param_values::LfoSyncedRate lfo_synced_time {};
     f32 lfo_unsynced_hz {};
     bool lfo_is_synced {};
+    param_values::LfoShape lfo_shape {param_values::LfoShape::Sine};
+    param_values::LegacyLfoShape lfo_shape_legacy {param_values::LegacyLfoShape::Sine}; // Legacy
 
     EqBands eq_bands;
 
