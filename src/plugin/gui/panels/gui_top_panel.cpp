@@ -3,6 +3,7 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "common_infrastructure/auto_description.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "build_resources/embedded_files.h"
@@ -318,13 +319,15 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   },
               });
 
+        auto const has_desc = g.engine.last_snapshot.state.metadata.description.size;
+        auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine);
+
         // IMPROVE: should this be a text input that changes the description?
         DoBox(builder,
               {
                   .parent = preset_box_left,
-                  .text = g.engine.last_snapshot.state.metadata.description.size
-                              ? (String)g.engine.last_snapshot.state.metadata.description
-                              : "No description"_s,
+                  .text = has_desc ? (String)g.engine.last_snapshot.state.metadata.description
+                                   : (String)auto_desc,
                   .font = FontType::BodyItalic,
                   .text_colours =
                       ColSet {

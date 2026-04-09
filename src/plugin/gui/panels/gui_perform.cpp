@@ -5,10 +5,9 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "common_infrastructure/auto_description.hpp"
 #include "common_infrastructure/constants.hpp"
-#include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/state/macros.hpp"
-#include "common_infrastructure/tags.hpp"
 
 #include "engine/engine.hpp"
 #include "gui/controls/gui_waveform.hpp"
@@ -25,30 +24,6 @@
 #include "preset_server/preset_server.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
-
-struct FXColours {
-    UiColMap back;
-    UiColMap highlight;
-    UiColMap button;
-};
-
-static FXColours GetFxColMap(EffectType type) {
-    using enum UiColMap;
-    switch (type) {
-        case EffectType::Distortion: return {DistortionBack, DistortionHighlight, DistortionButton};
-        case EffectType::BitCrush: return {BitCrushBack, BitCrushHighlight, BitCrushButton};
-        case EffectType::Compressor: return {CompressorBack, CompressorHighlight, CompressorButton};
-        case EffectType::FilterEffect: return {FilterBack, FilterHighlight, FilterButton};
-        case EffectType::StereoWiden: return {StereoBack, StereoHighlight, StereoButton};
-        case EffectType::Chorus: return {ChorusBack, ChorusHighlight, ChorusButton};
-        case EffectType::Reverb: return {ReverbBack, ReverbHighlight, ReverbButton};
-        case EffectType::Delay: return {DelayBack, DelayHighlight, DelayButton};
-        case EffectType::ConvolutionReverb: return {ConvolutionBack, ConvolutionHighlight, ConvolutionButton};
-        case EffectType::Phaser: return {PhaserBack, PhaserHighlight, PhaserButton};
-        case EffectType::Count: PanicIfReached();
-    }
-    return {};
-}
 
 static Colours MidIconButtonColours(bool greyed_out) {
     if (greyed_out)
@@ -69,6 +44,7 @@ DoSectionLabel(GuiBuilder& builder, Box parent, String text, u64 loc_hash = Sour
               .parent = parent,
               .id_extra = loc_hash,
               .text = text,
+              .wrap_width = k_wrap_to_parent,
               .size_from_text = true,
               .font = FontType::Heading3,
               .text_colours = Col {.c = Col::White, .alpha = 120},
@@ -87,22 +63,88 @@ static String StripNumberedPrefix(String s) {
     return s.SubSpan(pos);
 }
 
-static void DoPresetInfo(GuiBuilder& builder, GuiState& g, Box parent) {
+static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto const& snapshot = g.engine.last_snapshot;
-    auto const& metadata = snapshot.state.metadata;
 
     auto const container = DoBox(builder,
                                  {
                                      .parent = parent,
                                      .layout {
                                          .size = {500, layout::k_hug_contents},
-                                         .contents_padding = {.l = 20, .r = 20, .t = 12},
                                          .contents_gap = 5,
                                          .contents_direction = layout::Direction::Column,
                                          .contents_align = layout::Alignment::Start,
                                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                      },
                                  });
+
+    // Library name
+    {
+        Optional<sample_lib::LibraryId> first_lib_id {};
+        bool mixed = false;
+        for (auto const& layer : g.engine.processor.layer_processors) {
+            auto const lib_id = layer.LibId();
+            if (!lib_id) continue;
+            if (!first_lib_id) {
+                first_lib_id = *lib_id;
+            } else if (*lib_id != *first_lib_id) {
+                mixed = true;
+                break;
+            }
+        }
+
+        String library_name {};
+        if (mixed) {
+            library_name = "Mixed Libraries"_s;
+        } else if (first_lib_id) {
+            if (auto const maybe_lib = frame_context.lib_table.Find(*first_lib_id))
+                if (*maybe_lib) library_name = (*maybe_lib)->name;
+        }
+
+        if (library_name.size) {
+            auto const lib_name_row =
+                DoBox(builder,
+                      {
+                          .parent = container,
+                          .layout {
+                              .size = {layout::k_hug_contents, layout::k_hug_contents},
+                              .contents_gap = 6,
+                              .contents_direction = layout::Direction::Row,
+                              .contents_align = layout::Alignment::Middle,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                      });
+
+            if (!mixed && first_lib_id) {
+                auto const imgs = GetLibraryImages(g.library_images,
+                                                   g.imgui,
+                                                   *first_lib_id,
+                                                   g.shared_engine_systems.sample_library_server,
+                                                   g.engine.instance_index,
+                                                   LibraryImagesTypes::Icon);
+                if (imgs.icon) {
+                    DoBox(builder,
+                          {
+                              .parent = lib_name_row,
+                              .background_tex = imgs.icon.NullableValue(),
+                              .layout {
+                                  .size = k_library_icon_standard_size,
+                              },
+                          });
+                }
+            }
+
+            DoBox(builder,
+                  {
+                      .parent = lib_name_row,
+                      .text = library_name,
+                      .size_from_text = true,
+                      .font = FontType::Heading1,
+                      .text_colours = Col {.c = Col::White},
+                      .text_justification = TextJustification::Centred,
+                  });
+        }
+    }
 
     // Preset name
     {
@@ -119,248 +161,6 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, Box parent) {
                   });
         }
     }
-
-    // Folder/primary tags and description in a blurred-background box
-    {
-        DynamicArray<char> tags_buf {g.scratch_arena};
-
-        if (auto const preset_path = snapshot.name_or_path.Path()) {
-            if (auto const dir = path::Directory(*preset_path))
-                fmt::Append(tags_buf, "{}", StripNumberedPrefix(path::Filename(*dir)));
-        }
-
-        auto const folder_len = tags_buf.size;
-        metadata.tags.ForEachSetBit([&](usize bit) {
-            auto const tag_type = (TagType)bit;
-            auto const tag_and_cat = LookupTagName(GetTagInfo(tag_type).name);
-            if (tag_and_cat && Tags(tag_and_cat->category).importance == TagCategoryImportance::Primary) {
-                if (tags_buf.size)
-                    fmt::Append(tags_buf, "{}", tags_buf.size == folder_len ? "  |  "_s : " · "_s);
-                fmt::Append(tags_buf, "{}", GetTagInfo(tag_type).name);
-            }
-        });
-
-        bool const has_tags = tags_buf.size != 0;
-        bool const has_desc = metadata.description.size != 0;
-
-        if (has_tags || has_desc) {
-            auto const lib_id = LibraryForOverallBackground(g.engine);
-
-            auto const subtitle_box =
-                DoBox(builder,
-                      {
-                          .parent = container,
-                          .layout {
-                              .size = {layout::k_hug_contents, layout::k_hug_contents},
-                              .contents_padding = {.lr = 10, .tb = 6},
-                              .contents_gap = 4,
-                              .contents_direction = layout::Direction::Column,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                      });
-            if (auto const r = BoxRect(builder, subtitle_box)) {
-                auto const wr = builder.imgui.ViewportRectToWindowRect(*r);
-                DrawMidBlurredPanelSurface(g, wr, lib_id);
-            }
-
-            if (has_tags) {
-                DoBox(builder,
-                      {
-                          .parent = subtitle_box,
-                          .text = tags_buf.ToOwnedSpan(),
-                          .size_from_text = true,
-                          .font = FontType::BodyItalic,
-                          .text_colours = Col {.c = Col::White, .alpha = 200},
-                          .text_justification = TextJustification::Centred,
-                      });
-            }
-
-            if (has_desc) {
-                DoBox(builder,
-                      {
-                          .parent = subtitle_box,
-                          .text = fmt::FormatStringReplace(g.scratch_arena,
-                                                           metadata.description,
-                                                           ArrayT<fmt::StringReplacement>({{"\n"_s, ""_s}})),
-                          .wrap_width = 440,
-                          .size_from_text = true,
-                          .font = FontType::BodyItalic,
-                          .text_colours = Col {.c = Col::White, .alpha = 220},
-                          .text_justification = TextJustification::Centred,
-                          .multiline_alignment = MultilineTextAlignment::Centre,
-                      });
-            }
-        }
-    }
-}
-
-static void DoTagsAndEffectsPills(GuiBuilder& builder, GuiState& g, Box parent) {
-    auto const& snapshot = g.engine.last_snapshot;
-    auto const& metadata = snapshot.state.metadata;
-    auto const& params = g.engine.processor.main_params;
-    auto const ordered_effects =
-        DecodeEffectsArray(g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
-                           g.engine.processor.effects_ordered_by_type);
-
-    bool has_any_effect = false;
-    for (auto const fx : ordered_effects) {
-        if (EffectIsOn(params, fx)) {
-            has_any_effect = true;
-            break;
-        }
-    }
-
-    if (!metadata.tags.AnyValuesSet() && !has_any_effect) return;
-
-    auto const lib_id = LibraryForOverallBackground(g.engine);
-    auto const pill_rounding = WwToPixels(k_panel_rounding);
-
-    auto const container = DoBox(builder,
-                                 {
-                                     .parent = parent,
-                                     .layout {
-                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                         .margins = {.b = 8},
-                                         .contents_gap = 4,
-                                         .contents_direction = layout::Direction::Column,
-                                         .contents_align = layout::Alignment::Start,
-                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                     },
-                                 });
-
-    auto const make_pills_row = [&](u64 id_extra) {
-        return DoBox(builder,
-                     {
-                         .parent = container,
-                         .id_extra = id_extra,
-                         .layout {
-                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                             .contents_gap = 5,
-                             .contents_direction = layout::Direction::Row,
-                             .contents_multiline = true,
-                             .contents_align = layout::Alignment::Middle,
-                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                         },
-                     });
-    };
-
-    auto const do_tag_pill = [&](Box row, String tag, u64 id_extra, TooltipString tooltip = k_nullopt) {
-        auto const pill = DoBox(builder,
-                                {
-                                    .parent = row,
-                                    .id_extra = id_extra,
-                                    .layout {
-                                        .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                        .contents_padding = {.lr = 8, .tb = 2},
-                                        .contents_align = layout::Alignment::Middle,
-                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                    },
-                                    .tooltip = tooltip,
-                                });
-        if (auto const r = BoxRect(builder, pill)) {
-            auto const wr = builder.imgui.ViewportRectToWindowRect(*r);
-            DrawMidBlurredPanelSurface(g, wr, lib_id);
-        }
-        DoBox(builder,
-              {
-                  .parent = pill,
-                  .text = tag,
-                  .size_from_text = true,
-                  .font = FontType::Body,
-                  .font_size = k_font_body_size * 0.9f,
-                  .text_colours = Col {.c = Col::White, .alpha = 180},
-              });
-    };
-
-    // Secondary tags (capped to avoid visual noise)
-    {
-        constexpr usize k_max_visible_secondary = 4;
-
-        usize total_secondary = 0;
-        metadata.tags.ForEachSetBit([&](usize bit) {
-            auto const tag_and_cat = LookupTagName(GetTagInfo((TagType)bit).name);
-            if (!tag_and_cat || Tags(tag_and_cat->category).importance == TagCategoryImportance::Secondary)
-                total_secondary++;
-        });
-
-        if (total_secondary) {
-            auto const row = make_pills_row(1);
-            usize shown = 0;
-            metadata.tags.ForEachSetBit([&](usize bit) {
-                if (shown >= k_max_visible_secondary) return;
-                auto const tag_type = (TagType)bit;
-                auto const tag_and_cat = LookupTagName(GetTagInfo(tag_type).name);
-                if (!tag_and_cat ||
-                    Tags(tag_and_cat->category).importance == TagCategoryImportance::Secondary) {
-                    do_tag_pill(row, GetTagInfo(tag_type).name, 500 + bit);
-                    shown++;
-                }
-            });
-
-            if (total_secondary > k_max_visible_secondary) {
-                do_tag_pill(row,
-                            fmt::Format(g.scratch_arena, "+{}", total_secondary - k_max_visible_secondary),
-                            SourceLocationHash(),
-                            FunctionRef<String()> {[&]() -> String {
-                                DynamicArray<char> buf {builder.arena};
-                                usize skipped = 0;
-                                metadata.tags.ForEachSetBit([&](usize bit) {
-                                    auto const tag_type = (TagType)bit;
-                                    auto const tag_and_cat = LookupTagName(GetTagInfo(tag_type).name);
-                                    if (!tag_and_cat || Tags(tag_and_cat->category).importance ==
-                                                            TagCategoryImportance::Secondary) {
-                                        skipped++;
-                                        if (skipped > k_max_visible_secondary) {
-                                            if (buf.size) fmt::Append(buf, ", ");
-                                            fmt::Append(buf, "{}", GetTagInfo(tag_type).name);
-                                        }
-                                    }
-                                });
-                                return buf.ToOwnedSpan();
-                            }});
-            }
-        }
-    }
-
-    // Active effects
-    if (has_any_effect) {
-        auto const row = make_pills_row(2);
-        for (auto const fx : ordered_effects) {
-            if (!EffectIsOn(params, fx)) continue;
-
-            auto const pill = DoBox(builder,
-                                    {
-                                        .parent = row,
-                                        .id_extra = 1000 + (u64)fx->type,
-                                        .round_background_corners = 0b1111,
-                                        .corner_rounding = k_panel_rounding,
-                                        .layout {
-                                            .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                            .contents_padding = {.lr = 8, .tb = 2},
-                                            .contents_align = layout::Alignment::Middle,
-                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                        },
-                                    });
-
-            if (auto const r = BoxRect(builder, pill)) {
-                auto const wr = builder.imgui.ViewportRectToWindowRect(*r);
-                DrawMidBlurredPanelSurface(g, wr, lib_id);
-                auto const cols = GetFxColMap(fx->type);
-                g.imgui.draw_list->AddRectFilled(wr, ChangeAlpha(LiveCol(cols.back), 0.7f), pill_rounding);
-            }
-
-            DoBox(builder,
-                  {
-                      .parent = pill,
-                      .text = k_effect_info[ToInt(fx->type)].name,
-                      .size_from_text = true,
-                      .font = FontType::Body,
-                      .font_size = k_font_body_size * 0.9f,
-                      .text_colours = Col {.c = Col::White, .alpha = 180},
-                  });
-        }
-    }
 }
 
 static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
@@ -374,7 +174,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                               {
                                   .parent = parent,
                                   .border_colours = Col {.c = Col::White, .alpha = 20},
-                                  .border_edges = 0b1010, // left and right
+                                  .border_edges = 0b0010, // right
                                   .layout {
                                       .size = {k_layers_column_width, layout::k_fill_parent},
                                       .contents_padding = {.lr = 10, .tb = 10},
@@ -455,7 +255,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                   .text = folder_name,
                                   .size_from_text = true,
                                   .font = FontType::Body,
-                                  .text_colours = Col {.c = Col::White, .alpha = 100},
+                                  .text_colours = Col {.c = Col::White, .alpha = 120},
                                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                               });
                     }
@@ -762,6 +562,8 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     auto const column = DoBox(builder,
                               {
                                   .parent = parent,
+                                  .border_colours = Col {.c = Col::White, .alpha = 20},
+                                  .border_edges = 0b1000, // left
                                   .layout {
                                       .size = {k_macros_column_width, layout::k_fill_parent},
                                       .contents_padding = {.lr = 10, .tb = 10},
@@ -831,6 +633,61 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     }
 }
 
+static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
+    constexpr f32 k_desc_column_width = 160;
+
+    auto const& snapshot = g.engine.last_snapshot;
+    auto const& metadata = snapshot.state.metadata;
+
+    bool const has_desc = metadata.description.size != 0;
+
+    auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine);
+    bool const has_auto_desc = auto_desc.size != 0;
+
+    if (!has_desc && !has_auto_desc) return;
+
+    auto const column = DoBox(builder,
+                              {
+                                  .parent = parent,
+                                  .border_colours = Col {.c = Col::White, .alpha = 20},
+                                  .border_edges = 0b0010, // right
+                                  .layout {
+                                      .size = {k_desc_column_width, layout::k_fill_parent},
+                                      .contents_padding = {.lr = 10, .tb = 10},
+                                      .contents_gap = 6,
+                                      .contents_direction = layout::Direction::Column,
+                                      .contents_align = layout::Alignment::Start,
+                                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                  },
+                              });
+
+    DoSectionLabel(builder, column, "DESCRIPTION"_s);
+
+    if (has_desc) {
+        DoBox(builder,
+              {
+                  .parent = column,
+                  .text = fmt::FormatStringReplace(g.scratch_arena,
+                                                   metadata.description,
+                                                   ArrayT<fmt::StringReplacement>({{"\n"_s, " "_s}})),
+                  .wrap_width = k_desc_column_width - 20,
+                  .size_from_text = true,
+                  .font = FontType::BodyItalic,
+                  .text_colours = Col {.c = Col::White, .alpha = 170},
+              });
+    } else if (has_auto_desc) {
+        DoBox(builder,
+              {
+                  .parent = column,
+                  .text = auto_desc,
+                  .wrap_width = k_desc_column_width - 20,
+                  .size_from_text = true,
+                  .font = FontType::BodyItalic,
+                  .text_colours = Col {.c = Col::White, .alpha = 130},
+              });
+    }
+}
+
 void MidPanelPerformContent(GuiBuilder& builder,
                             GuiState& g,
                             GuiFrameContext const& frame_context,
@@ -842,7 +699,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lr = 100, .t = 15, .b = 20},
+                                    .contents_padding = {.lr = 0, .t = 15, .b = 6.08f},
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -918,11 +775,46 @@ void MidPanelPerformContent(GuiBuilder& builder,
         if (prev_btn.button_fired) load_adjacent(SearchDirection::Backward);
         if (prev_btn.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
 
-        DoPresetInfo(builder, g, info_row);
+        DoPresetInfo(builder, g, frame_context, info_row);
 
         auto const next_btn = do_nav_button(info_row, ICON_FA_CARET_RIGHT ""_s, "Next preset"_s, 1);
         if (next_btn.button_fired) load_adjacent(SearchDirection::Forward);
         if (next_btn.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
+    }
+
+    // Folder name badge at the bottom of the top section
+    {
+        auto const& snapshot = g.engine.last_snapshot;
+        DynamicArray<char> folder_buf {g.scratch_arena};
+        if (auto const preset_path = snapshot.name_or_path.Path()) {
+            if (auto const dir = path::Directory(*preset_path))
+                fmt::Append(folder_buf, "{}", StripNumberedPrefix(path::Filename(*dir)));
+        }
+        if (folder_buf.size) {
+            auto const badge = DoBox(builder,
+                                     {
+                                         .parent = root,
+                                         .round_background_corners = 0b1111,
+                                         .corner_rounding = k_corner_rounding,
+                                         .layout {
+                                             .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                             .margins = {.t = 8},
+                                             .contents_padding = {.lr = 8, .tb = 4},
+                                         },
+                                     });
+            if (auto const r = BoxRect(builder, badge))
+                DrawMidBlurredPanelSurface(g,
+                                           builder.imgui.ViewportRectToWindowRect(*r),
+                                           LibraryForOverallBackground(g.engine));
+            DoBox(builder,
+                  {
+                      .parent = badge,
+                      .text = folder_buf.ToOwnedSpan(),
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                      .text_colours = Col {.c = Col::White, .alpha = 160},
+                  });
+        }
     }
 
     // Spacer pushes the central panel to the bottom
@@ -934,14 +826,12 @@ void MidPanelPerformContent(GuiBuilder& builder,
               },
           });
 
-    DoTagsAndEffectsPills(builder, g, root);
-
     {
         auto const central_panel = DoBox(builder,
                                          {
                                              .parent = root,
                                              .layout {
-                                                 .size = {layout::k_hug_contents, 190},
+                                                 .size = {layout::k_hug_contents, 170},
                                                  .contents_direction = layout::Direction::Row,
                                                  .contents_align = layout::Alignment::Start,
                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -953,10 +843,12 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                        builder.imgui.ViewportRectToWindowRect(*r),
                                        LibraryForOverallBackground(g.engine));
 
-        DoMacrosColumn(builder, g, central_panel);
+        DoDescriptionColumn(builder, g, central_panel);
 
         DoLayersColumn(builder, g, central_panel);
 
         DoActionsColumn(builder, g, frame_context, central_panel);
+
+        DoMacrosColumn(builder, g, central_panel);
     }
 }

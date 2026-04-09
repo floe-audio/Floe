@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
+#include "common_infrastructure/auto_description.hpp"
 #include "common_infrastructure/autosave.hpp"
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
@@ -124,3 +125,5 @@ void LoadPresetFromFile(Engine& engine, String path);
 void SaveCurrentStateToFile(Engine& engine, String path);
 
 void SetToDefaultState(Engine& engine);
+
+AutoDescriptionString AutoDescription(Engine const& engine);

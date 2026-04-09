@@ -614,6 +614,25 @@ usize MegabytesUsedBySamples(Engine const& engine) {
     return (result) / (1024 * 1024);
 }
 
+AutoDescriptionString AutoDescription(Engine const& engine) {
+    Array<AutoDescriptionLayerInfo, k_num_layers> layer_info {};
+
+    for (auto const i : Range(k_num_layers)) {
+        auto const& layer = engine.processor.layer_processors[i];
+        layer_info[i].inst_name = layer.InstName();
+        if (auto sampled = layer.instrument.TryGetFromTag<InstrumentType::Sampler>())
+            if (*sampled) layer_info[i].inst_has_loops = (*sampled)->instrument.loop_overview.has_loops;
+    }
+
+    auto result = GenerateAutoDescription(engine.last_snapshot.state,
+                                          layer_info,
+                                          Hash(engine.last_snapshot.name_or_path.Name()));
+
+    dyn::PrependSpan(result, ICON_FA_WAND_MAGIC_SPARKLES " ");
+
+    return result;
+}
+
 void SetToDefaultState(Engine& engine) {
     for (auto layer_index : Range(k_num_layers))
         LoadInstrument(engine, layer_index, InstrumentType::None);

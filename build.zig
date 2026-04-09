@@ -1478,6 +1478,7 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
         .root = src_root,
         .files = &.{
             "audio_utils.cpp",
+            "auto_description.cpp",
             "autosave.cpp",
             "checksum_crc32_file.cpp",
             "common_errors.cpp",

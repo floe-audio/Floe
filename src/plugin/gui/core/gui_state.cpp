@@ -64,9 +64,24 @@ static void CreateFontsIfNeeded(FontAtlas& fonts) {
         for (auto const font_type : EnumIterator<FontType>()) {
             switch (font_type) {
                 case FontType::Body: load_font(roboto_ttf, k_font_body_size, def_ranges); break;
-                case FontType::BodyItalic:
+                case FontType::BodyItalic: {
                     load_font(roboto_italic_ttf, k_font_body_italic_size, def_ranges);
+                    // Merge a few FontAwesome icons into body italic for inline use
+                    auto const fa_ttf = EmbeddedFontAwesome();
+                    auto constexpr k_inline_icon_ranges =
+                        Array {GlyphRange {0xe2ca, 0xe2ca}}; // FA wand-magic-sparkles (U+E2CA)
+                    FontConfig merge_cfg {};
+                    merge_cfg.font_data_reference_only = true;
+                    merge_cfg.merge_mode = true;
+                    merge_cfg.merge_glyph_center_v = true;
+                    auto const merge_size = k_font_body_italic_size * 0.64f * GuiIo().in.pixels_per_ww;
+                    fonts.AddFontFromMemoryTTF((void*)fa_ttf.data,
+                                               fa_ttf.size,
+                                               merge_size,
+                                               merge_cfg,
+                                               k_inline_icon_ranges);
                     break;
+                }
                 case FontType::Heading1: load_font(roboto_ttf, k_font_heading1_size, def_ranges); break;
                 case FontType::Heading2: load_font(roboto_ttf, k_font_heading2_size, def_ranges); break;
                 case FontType::Heading3: load_font(roboto_ttf, k_font_heading3_size, def_ranges); break;
