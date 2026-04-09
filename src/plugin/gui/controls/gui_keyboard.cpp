@@ -64,7 +64,7 @@ struct KeyboardLayout {
     }
 
     Rect WhiteKeyRect(s32 white_key_index, f32 key_y, f32 key_height) const {
-        f32 const gap = 1;
+        f32 const gap = 2;
         Rect key_r;
         key_r.x = keyboard_x + (f32)white_key_index * white_key_width;
         key_r.y = key_y;
@@ -157,13 +157,23 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     auto const keyboard = g.engine.processor.notes_currently_held.GetBlockwise();
     auto const& voices_per_midi_key = g.engine.processor.voice_pool.voices_per_midi_note_for_gui;
 
-    auto const col_black_key = ToU32(Col {.c = Col::Background0, .dark_mode = true});
-    auto const col_black_key_outline = ToU32(Col {.c = Col::Background0, .dark_mode = true});
-    auto const col_black_key_hover = ToU32(Col {.c = Col::Background1, .dark_mode = true});
-    auto const col_black_key_down = ToU32({.c = Col::Highlight});
-    auto const col_white_key = ToU32(Col {.c = Col::Text, .dark_mode = true});
-    auto const col_white_key_hover = ToU32(Col {.c = Col::Subtext1, .dark_mode = true});
-    auto const col_white_key_down = ToU32({.c = Col::Highlight});
+    auto const col_natural_key_top = Hsl(205, 7, 12);
+    auto const col_natural_key_bot = Hsl(205, 7, 16);
+    auto const col_natural_key_top_hover = Hsl(205, 7, 18);
+    auto const col_natural_key_bot_hover = Hsl(205, 7, 22);
+    auto const col_natural_key_divider = Hsl(205, 8, 3);
+
+    auto const col_sharp_rim_top = Hsl(205, 7, 34);
+    auto const col_sharp_face_top = Hsl(205, 5, 29);
+    auto const col_sharp_face_bot = Hsl(205, 6, 23);
+    auto const col_sharp_rim_bot = Hsl(205, 7, 16);
+
+    auto const col_sharp_rim_top_hover = Hsl(205, 7, 40);
+    auto const col_sharp_face_top_hover = Hsl(205, 5, 35);
+    auto const col_sharp_face_bot_hover = Hsl(205, 6, 29);
+    auto const col_sharp_rim_bot_hover = Hsl(205, 7, 22);
+
+    auto const col_pressed_accent = ToU32({.c = Col::Highlight200});
 
     auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave, num_octaves);
 
@@ -205,6 +215,11 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     constexpr imgui::ButtonConfig k_click_cfg = {.mouse_button = MouseButton::Left,
                                                  .event = MouseButtonEvent::Down};
 
+    // Draw a backdrop in the divider colour. The 1px gaps between natural keys reveal it as thin
+    // dark separators.
+    imgui.draw_list->AddRectFilled(imgui.RegisterAndConvertRect(r).ExpandLeft(1).ExpandBottom(1).ExpandTop(1),
+                                   col_natural_key_divider);
+
     imgui.PushId("white");
     for (auto const i : Range(num_octaves * 7)) {
         s32 const this_white_key = i % 7;
@@ -231,16 +246,33 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
         if (imgui.WasJustDeactivated(id, k_click_cfg.mouse_button))
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
-        u32 col = col_white_key;
-        if (imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key))
-            col = col_white_key_down;
-        if (imgui.IsHot(id)) col = col_white_key_hover;
-        imgui.draw_list->AddRectFilled(key_r, col);
+        bool const is_down =
+            imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key);
+        bool const is_hot = imgui.IsHot(id);
+        u32 col_top = col_natural_key_top;
+        u32 col_bot = col_natural_key_bot;
+        if (is_hot) {
+            col_top = col_natural_key_top_hover;
+            col_bot = col_natural_key_bot_hover;
+        }
+        f32 const mid_y = key_r.y + (key_r.h * 0.5f);
+        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, key_r.y}, f32x2 {key_r.Right(), mid_y}, col_top);
+        imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, mid_y},
+                                                 f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                                 col_top,
+                                                 col_top,
+                                                 col_bot,
+                                                 col_bot);
+        if (is_down) {
+            f32 const accent_h = WwToPixels(4.0f);
+            imgui.draw_list->AddRectFilled(f32x2 {key_r.x, key_r.y + key_r.h - accent_h},
+                                           f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                           col_pressed_accent);
+        }
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, false);
 
-        if (this_abs_key == keyswitch_note && imgui.IsHot(id))
-            Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
+        if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
 
         // Show the octave number if it's middle-C.
         if (this_abs_key == 60) {
@@ -252,7 +284,7 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
             text_r.y += key_r.h - text_height;
             text_r.h = text_height;
             g.imgui.draw_list->AddTextInRect(text_r,
-                                             ToU32(Col {.c = Col::Background2, .dark_mode = true}),
+                                             ToU32(Col {.c = Col::Overlay2, .dark_mode = true}),
                                              "C3",
                                              {
                                                  .justification = TextJustification::Centred,
@@ -289,23 +321,46 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
         if (imgui.WasJustDeactivated(id, k_click_cfg.mouse_button))
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
-        u32 col = col_black_key;
-        if (imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key))
-            col = col_black_key_down;
-        if (imgui.IsHot(id)) col = col_black_key_hover;
+        bool const is_down =
+            imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key);
+        bool const is_hot = imgui.IsHot(id);
 
-        if (col != col_black_key) {
-            imgui.draw_list->AddRectFilled(key_r, col_black_key_outline);
-            key_r.x += 1;
-            key_r.w -= 2;
-            key_r.h -= 1;
+        u32 rim_top = col_sharp_rim_top;
+        u32 face_top = col_sharp_face_top;
+        u32 face_bot = col_sharp_face_bot;
+        u32 rim_bot = col_sharp_rim_bot;
+        if (is_hot) {
+            rim_top = col_sharp_rim_top_hover;
+            face_top = col_sharp_face_top_hover;
+            face_bot = col_sharp_face_bot_hover;
+            rim_bot = col_sharp_rim_bot_hover;
         }
-        imgui.draw_list->AddRectFilled(key_r, col);
+        if (is_down) rim_bot = col_pressed_accent;
+
+        // border
+        imgui.draw_list->AddRectFilled(key_r, col_natural_key_divider);
+        key_r.x += 1;
+        key_r.w -= 2;
+        key_r.h -= 1;
+
+        f32 const rim_top_h = 1.5f;
+        f32 const rim_bot_h = WwToPixels(4.0f);
+        f32 const face_top_y = key_r.y + rim_top_h;
+        f32 const face_bot_y = key_r.y + key_r.h - rim_bot_h;
+        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, key_r.y}, f32x2 {key_r.Right(), face_top_y}, rim_top);
+        imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, face_top_y},
+                                                 f32x2 {key_r.Right(), face_bot_y},
+                                                 face_top,
+                                                 face_top,
+                                                 face_bot,
+                                                 face_bot);
+        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, face_bot_y},
+                                       f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                       rim_bot);
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardBlackVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, true);
 
-        if (this_abs_key == keyswitch_note && imgui.IsHot(id))
-            Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
+        if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
     }
     imgui.PopId();
 
