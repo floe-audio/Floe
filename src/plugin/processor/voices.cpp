@@ -1627,10 +1627,12 @@ struct VoiceTestFixture {
         // The test fixture arena only guarantees 16-byte alignment, so we allocate the pool
         // using the page allocator which provides page-aligned memory.
         pool = PageAllocator::Instance().New<VoicePool>();
+        pool->master_random_seed = &master_random_seed;
         pool->PrepareToPlay();
     }
     ~VoiceTestFixture() { PageAllocator::Instance().Delete(pool); }
 
+    u64 master_random_seed = 1;
     VoicePool* pool {};
     AudioProcessingContext context {
         .sample_rate = 44100,
