@@ -7,6 +7,7 @@
 
 #include "common_infrastructure/auto_description.hpp"
 #include "common_infrastructure/constants.hpp"
+#include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/state/macros.hpp"
 
 #include "engine/engine.hpp"
@@ -163,12 +164,41 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
     }
 }
 
-static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
-    constexpr f32 k_meter_width = 10;
-    constexpr f32 k_vol_slider_width = 12;
-    constexpr f32 k_layers_column_width = 420;
-
+static void
+DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto& params = g.engine.processor.main_params;
+
+    enum class RandomScope { Folder, Library, Any };
+    auto const load_random = [&](LayerProcessor& target_layer, RandomScope scope) {
+        InstBrowserState ephemeral_state {.id = HashFnv1a("ephemeral-inst-browser")};
+        if (scope != RandomScope::Any) {
+            auto sampled_inst = target_layer.instrument.TryGetFromTag<InstrumentType::Sampler>();
+            if (!sampled_inst) return;
+            auto const& inst = (*sampled_inst)->instrument;
+            if (scope == RandomScope::Folder) {
+                if (!inst.folder) return;
+                auto const folder_name =
+                    inst.folder->display_name.size ? inst.folder->display_name : inst.folder->name;
+                ephemeral_state.common_state.Filter(BrowserFilter::Folder)
+                    .Add(inst.folder->Hash(), folder_name);
+            } else {
+                ephemeral_state.common_state.Filter(BrowserFilter::Library)
+                    .Add(Hash(inst.library.id), inst.library.name);
+            }
+        }
+        InstBrowserContext context {
+            .layer = target_layer,
+            .sample_library_server = g.shared_engine_systems.sample_library_server,
+            .library_images = g.library_images,
+            .engine = g.engine,
+            .prefs = g.prefs,
+            .notifications = g.notifications,
+            .persistent_store = g.shared_engine_systems.persistent_store,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
+            .frame_context = frame_context,
+        };
+        LoadRandomInstrument(context, ephemeral_state);
+    };
 
     auto const column = DoBox(builder,
                               {
@@ -176,71 +206,172 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                   .border_colours = Col {.c = Col::White, .alpha = 20},
                                   .border_edges = 0b0010, // right
                                   .layout {
-                                      .size = {k_layers_column_width, layout::k_fill_parent},
+                                      .size = {layout::k_fill_parent, layout::k_fill_parent},
                                       .contents_padding = {.lr = 10, .tb = 10},
                                       .contents_gap = 8,
-                                      .contents_direction = layout::Direction::Column,
+                                      .contents_direction = layout::Direction::Row,
                                       .contents_align = layout::Alignment::Start,
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                   },
                               });
 
-    // Waveform entries
-    bool any_active = false;
     for (auto const layer_index : Range<u8>(k_num_layers)) {
         auto& layer = g.engine.processor.layer_processors[layer_index];
-        if (layer.instrument.tag == InstrumentType::None) continue;
-        any_active = true;
+        bool const active = layer.instrument.tag != InstrumentType::None;
 
-        auto const entry = DoBox(builder,
-                                 {
-                                     .parent = column,
-                                     .id_extra = layer_index,
-                                     .layout {
-                                         .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                         .contents_gap = 3,
-                                         .contents_direction = layout::Direction::Column,
-                                         .contents_align = layout::Alignment::Start,
-                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                     },
-                                 });
-
-        // Label row
-        {
-            auto const inst_name = layer.InstName();
-            auto const label_text = fmt::Format(g.scratch_arena, "LAYER {}", layer_index + 1);
-
-            auto const label_row = DoBox(builder,
-                                         {
-                                             .parent = entry,
-                                             .layout {
-                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                 .contents_padding = {.l = 2},
-                                                 .contents_gap = 6,
-                                                 .contents_direction = layout::Direction::Row,
-                                                 .contents_align = layout::Alignment::Start,
-                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                             },
-                                         });
-
+        auto const cell =
             DoBox(builder,
                   {
-                      .parent = label_row,
-                      .text = label_text,
-                      .size_from_text = true,
-                      .font = FontType::Heading3,
-                      .text_colours = Col {.c = Col::White, .alpha = 100},
+                      .parent = column,
+                      .id_extra = layer_index,
+                      .border_colours = Col {.c = Col::White, .alpha = 14},
+                      .border_edges = (Edges)((layer_index < k_num_layers - 1) ? 0b0010 : 0b0000),
+                      .layout {
+                          .size = {layout::k_fill_parent, layout::k_fill_parent},
+                          .contents_padding = {.r = 4},
+                          .contents_gap = 3,
+                          .contents_direction = layout::Direction::Column,
+                          .contents_align = layout::Alignment::Start,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                      },
                   });
+
+        // Header row: LAYER label + random-instrument actions + mute/solo.
+        auto const top_row = DoBox(builder,
+                                   {
+                                       .parent = cell,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, k_mid_button_height},
+                                           .contents_gap = 4,
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                   });
+
+        DoBox(builder,
+              {
+                  .parent = top_row,
+                  .text = fmt::Format(g.scratch_arena, "LAYER {}", layer_index + 1),
+                  .size_from_text = true,
+                  .font = FontType::Heading3,
+                  .text_colours = Col {.c = Col::White, .alpha = (u8)(active ? 100 : 60)},
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .margins = {.l = 2},
+                  },
+              });
+
+        // Spacer pushes the action buttons to the right edge.
+        DoBox(builder,
+              {
+                  .parent = top_row,
+                  .layout {
+                      .size = {layout::k_fill_parent, 0},
+                  },
+              });
+
+        // Dice group: 3 random-instrument buttons styled as a single grouped pill,
+        // matching the mute/solo button group exactly.
+        auto const dice_group = DoBox(builder,
+                                      {
+                                          .parent = top_row,
+                                          .layout {
+                                              .size = {k_mid_button_height * 3, k_mid_button_height},
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::Start,
+                                          },
+                                      });
+
+        if (auto const r = BoxRect(builder, dice_group)) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+            auto const rounding = WwToPixels(k_corner_rounding);
+            g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidDarkSurface), rounding);
+
+            f32 const third = window_r.w / 3.0f;
+            g.imgui.draw_list->AddLine({window_r.x + third, window_r.y},
+                                       {window_r.x + third, window_r.Bottom()},
+                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+            g.imgui.draw_list->AddLine({window_r.x + (2.0f * third), window_r.y},
+                                       {window_r.x + (2.0f * third), window_r.Bottom()},
+                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+        }
+
+        auto const do_dice =
+            [&](String icon, String tooltip, u64 id, Corners corners, bool grey, RandomScope scope) {
+                auto const btn = DoBox(builder,
+                                       {
+                                           .parent = dice_group,
+                                           .id_extra = id,
+                                           .text = icon,
+                                           .font = FontType::Icons,
+                                           .font_size = k_font_icons_size * 0.95f,
+                                           .text_colours = MidIconButtonColours(grey),
+                                           .text_justification = TextJustification::Centred,
+                                           .background_fill_colours = Col {.c = Col::None},
+                                           .round_background_corners = corners,
+                                           .corner_rounding = k_corner_rounding,
+                                           .layout {
+                                               .size = layout::k_fill_parent,
+                                           },
+                                           .tooltip = tooltip,
+                                           .button_behaviour = imgui::ButtonConfig {},
+                                       });
+                if (btn.button_fired && !grey) load_random(layer, scope);
+            };
+
+        do_dice(ICON_FA_DICE_ONE ""_s,
+                "Random instrument from the same folder — most similar"_s,
+                1,
+                (Corners)0b1001,
+                !active,
+                RandomScope::Folder);
+        do_dice(ICON_FA_DICE_THREE ""_s,
+                "Random instrument from the same library — different but related"_s,
+                2,
+                (Corners)0b0000,
+                !active,
+                RandomScope::Library);
+        do_dice(ICON_FA_DICE_SIX ""_s,
+                "Random instrument from any library — all bets off"_s,
+                3,
+                (Corners)0b0110,
+                false,
+                RandomScope::Any);
+
+        // Mute/solo on the far right - or an invisible reservation when inactive,
+        // so the dice group never shifts horizontally between presets.
+        if (active) {
+            DoMuteSoloButtons(g,
+                              top_row,
+                              params.DescribedValue(layer_index, LayerParamIndex::Mute),
+                              params.DescribedValue(layer_index, LayerParamIndex::Solo),
+                              {.vertical = false});
+        } else {
+            DoBox(builder,
+                  {
+                      .parent = top_row,
+                      .layout {
+                          .size = {k_mid_button_height * 2, k_mid_button_height},
+                      },
+                  });
+        }
+
+        if (active) {
+            auto const inst_name = layer.InstName();
 
             if (inst_name.size) {
                 DoBox(builder,
                       {
-                          .parent = label_row,
+                          .parent = cell,
                           .text = inst_name,
-                          .size_from_text = true,
                           .font = FontType::Body,
                           .text_colours = Col {.c = Col::White, .alpha = 200},
                           .text_overflow = TextOverflowType::ShowDotsOnRight,
+                          .layout {
+                              .size = {layout::k_fill_parent, k_font_body_size},
+                              .margins = {.l = 2, .t = 2},
+                          },
                       });
 
                 if (auto sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
@@ -251,12 +382,15 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                         auto const folder_name = StripNumberedPrefix(raw_folder_name);
                         DoBox(builder,
                               {
-                                  .parent = label_row,
+                                  .parent = cell,
                                   .text = folder_name,
-                                  .size_from_text = true,
                                   .font = FontType::Body,
                                   .text_colours = Col {.c = Col::White, .alpha = 120},
                                   .text_overflow = TextOverflowType::ShowDotsOnRight,
+                                  .layout {
+                                      .size = {layout::k_fill_parent, k_font_body_size},
+                                      .margins = {.l = 2},
+                                  },
                               });
                     }
                 }
@@ -265,9 +399,10 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 
         auto const controls_row = DoBox(builder,
                                         {
-                                            .parent = entry,
+                                            .parent = cell,
                                             .layout {
                                                 .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                                .margins = {.t = 6},
                                                 .contents_gap = 4,
                                                 .contents_direction = layout::Direction::Row,
                                                 .contents_align = layout::Alignment::Start,
@@ -275,7 +410,6 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                             },
                                         });
 
-        // Waveform
         {
             auto const waveform_box = DoBox(builder,
                                             {
@@ -287,13 +421,12 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
             if (auto const r = BoxRect(builder, waveform_box)) DoWaveformElement(g, layer, *r);
         }
 
-        // Peak meter
         {
             auto const meter_box = DoBox(builder,
                                          {
                                              .parent = controls_row,
                                              .layout {
-                                                 .size = {k_meter_width, layout::k_fill_parent},
+                                                 .size = {10, layout::k_fill_parent},
                                              },
                                          });
             if (auto const r = BoxRect(builder, meter_box))
@@ -307,251 +440,16 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                               });
         }
 
-        // Volume slider
         DoVerticalSliderParameter(g,
                                   controls_row,
                                   params.DescribedValue(layer_index, LayerParamIndex::Volume),
                                   {
-                                      .width = k_vol_slider_width,
+                                      .width = 12,
                                       .height = layout::k_fill_parent,
                                       .style_system = GuiStyleSystem::MidPanel,
+                                      .greyed_out = !active,
+                                      .is_fake = !active,
                                   });
-
-        DoMuteSoloButtons(g,
-                          controls_row,
-                          params.DescribedValue(layer_index, LayerParamIndex::Mute),
-                          params.DescribedValue(layer_index, LayerParamIndex::Solo),
-                          {.vertical = true});
-    }
-
-    if (!any_active) {
-        DoBox(builder,
-              {
-                  .parent = column,
-                  .text = "No instruments loaded"_s,
-                  .size_from_text = true,
-                  .font = FontType::Body,
-                  .text_colours = Col {.c = Col::White, .alpha = 80},
-              });
-    }
-}
-
-static Box DoIconButton(GuiBuilder& builder, Box parent, String icon, String tooltip, u64 id_extra) {
-    constexpr f32 k_icon_btn_size = 28;
-    auto const btn = DoBox(builder,
-                           {
-                               .parent = parent,
-                               .id_extra = id_extra,
-                               .background_fill_colours =
-                                   ColSet {
-                                       .base = Col {.c = Col::White, .alpha = 12},
-                                       .hot = Col {.c = Col::White, .alpha = 25},
-                                       .active = Col {.c = Col::White, .alpha = 35},
-                                   },
-                               .round_background_corners = 0b1111,
-                               .corner_rounding = k_corner_rounding,
-                               .layout {
-                                   .size = {k_icon_btn_size, k_icon_btn_size},
-                                   .contents_align = layout::Alignment::Middle,
-                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                               },
-                               .tooltip = tooltip,
-                               .button_behaviour = imgui::ButtonConfig {},
-                           });
-
-    DoBox(builder,
-          {
-              .parent = btn,
-              .text = icon,
-              .size_from_text = true,
-              .font = FontType::Icons,
-              .font_size = k_font_icons_size * 0.85f,
-              .text_colours = MidIconButtonColours(false),
-              .parent_dictates_hot_and_active = true,
-          });
-
-    return btn;
-}
-
-static void
-DoActionsColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
-    constexpr f32 k_heading_gap = 10;
-
-    auto const column = DoBox(builder,
-                              {
-                                  .parent = parent,
-                                  .layout {
-                                      .size = {layout::k_hug_contents, layout::k_fill_parent},
-                                      .contents_padding = {.lr = 10, .tb = 10},
-                                      .contents_gap = 4,
-                                      .contents_direction = layout::Direction::Column,
-                                      .contents_align = layout::Alignment::Start,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                  },
-                              });
-
-    DoSectionLabel(builder, column, "RANDOMISE"_s);
-
-    // Instruments randomise section
-    {
-        auto const section = DoBox(builder,
-                                   {
-                                       .parent = column,
-                                       .layout {
-                                           .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                           .margins = {.t = k_heading_gap},
-                                           .contents_gap = 4,
-                                           .contents_direction = layout::Direction::Column,
-                                           .contents_align = layout::Alignment::Start,
-                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                       },
-                                   });
-
-        DoSectionLabel(builder, section, "INSTRUMENTS"_s);
-
-        auto const btn_row = DoBox(builder,
-                                   {
-                                       .parent = section,
-                                       .layout {
-                                           .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                           .contents_gap = 4,
-                                           .contents_direction = layout::Direction::Row,
-                                       },
-                                   });
-
-        // Shuffle instruments (same folder)
-        {
-            auto const btn = DoIconButton(builder,
-                                          btn_row,
-                                          ICON_FA_FOLDER ""_s,
-                                          "Random instruments from same folder"_s,
-                                          4);
-            if (btn.button_fired) {
-                for (auto& layer : g.engine.processor.layer_processors) {
-                    if (layer.instrument.tag == InstrumentType::None) continue;
-
-                    auto sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>();
-                    if (!sampled_inst) continue;
-
-                    auto const& inst = (*sampled_inst)->instrument;
-                    if (!inst.folder) continue;
-
-                    InstBrowserState ephemeral_state {.id = HashFnv1a("ephemeral-inst-browser")};
-                    auto const folder_name =
-                        inst.folder->display_name.size ? inst.folder->display_name : inst.folder->name;
-                    ephemeral_state.common_state.Filter(BrowserFilter::Folder)
-                        .Add(inst.folder->Hash(), folder_name);
-
-                    InstBrowserContext context {
-                        .layer = layer,
-                        .sample_library_server = g.shared_engine_systems.sample_library_server,
-                        .library_images = g.library_images,
-                        .engine = g.engine,
-                        .prefs = g.prefs,
-                        .notifications = g.notifications,
-                        .persistent_store = g.shared_engine_systems.persistent_store,
-                        .confirmation_dialog_state = g.confirmation_dialog_state,
-                        .frame_context = frame_context,
-                    };
-                    LoadRandomInstrument(context, ephemeral_state);
-                }
-            }
-        }
-
-        // Shuffle instruments (same library)
-        {
-            auto const btn = DoIconButton(builder,
-                                          btn_row,
-                                          ICON_FA_BOOK ""_s,
-                                          "Random instruments from same library"_s,
-                                          3);
-            if (btn.button_fired) {
-                for (auto& layer : g.engine.processor.layer_processors) {
-                    if (layer.instrument.tag == InstrumentType::None) continue;
-
-                    auto sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>();
-                    if (!sampled_inst) continue;
-
-                    auto const& library = (*sampled_inst)->instrument.library;
-
-                    InstBrowserState ephemeral_state {.id = HashFnv1a("ephemeral-inst-browser")};
-                    ephemeral_state.common_state.Filter(BrowserFilter::Library)
-                        .Add(Hash(library.id), library.name);
-
-                    InstBrowserContext context {
-                        .layer = layer,
-                        .sample_library_server = g.shared_engine_systems.sample_library_server,
-                        .library_images = g.library_images,
-                        .engine = g.engine,
-                        .prefs = g.prefs,
-                        .notifications = g.notifications,
-                        .persistent_store = g.shared_engine_systems.persistent_store,
-                        .confirmation_dialog_state = g.confirmation_dialog_state,
-                        .frame_context = frame_context,
-                    };
-                    LoadRandomInstrument(context, ephemeral_state);
-                }
-            }
-        }
-
-        // Shuffle instruments (any)
-        {
-            auto const btn = DoIconButton(builder,
-                                          btn_row,
-                                          ICON_FA_GLOBE ""_s,
-                                          "Random instruments from any library"_s,
-                                          1);
-            if (btn.button_fired) {
-                for (auto& layer : g.engine.processor.layer_processors) {
-                    InstBrowserState ephemeral_state {.id = HashFnv1a("ephemeral-inst-browser")};
-                    InstBrowserContext context {
-                        .layer = layer,
-                        .sample_library_server = g.shared_engine_systems.sample_library_server,
-                        .library_images = g.library_images,
-                        .engine = g.engine,
-                        .prefs = g.prefs,
-                        .notifications = g.notifications,
-                        .persistent_store = g.shared_engine_systems.persistent_store,
-                        .confirmation_dialog_state = g.confirmation_dialog_state,
-                        .frame_context = frame_context,
-                    };
-                    LoadRandomInstrument(context, ephemeral_state);
-                }
-            }
-        }
-    }
-
-    // Effects randomise section
-    {
-        auto const section = DoBox(builder,
-                                   {
-                                       .parent = column,
-                                       .layout {
-                                           .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                           .contents_gap = 4,
-                                           .contents_direction = layout::Direction::Column,
-                                           .contents_align = layout::Alignment::Start,
-                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                       },
-                                   });
-
-        DoSectionLabel(builder, section, "EFFECTS"_s);
-
-        auto const btn = DoIconButton(builder, section, ICON_FA_SHUFFLE ""_s, "Randomise all effects"_s, 2);
-        if (btn.button_fired) {
-            RandomiseAllEffectParameterValues(g.engine.processor);
-            IrBrowserContext ir_context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            LoadRandomIr(ir_context, g.ir_browser_state);
-        }
     }
 }
 
@@ -644,8 +542,6 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine);
     bool const has_auto_desc = auto_desc.size != 0;
 
-    if (!has_desc && !has_auto_desc) return;
-
     auto const column = DoBox(builder,
                               {
                                   .parent = parent,
@@ -660,6 +556,8 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                   },
                               });
+
+    if (!has_desc && !has_auto_desc) return;
 
     DoSectionLabel(builder, column, "DESCRIPTION"_s);
 
@@ -826,12 +724,57 @@ void MidPanelPerformContent(GuiBuilder& builder,
               },
           });
 
+    constexpr u64 k_perform_collapsed_id = HashFnv1a("perform-panel-collapsed");
+    bool const collapsed =
+        persistent_store::GetFlag(g.shared_engine_systems.persistent_store, k_perform_collapsed_id);
+
+    // Collapse/expand toggle - generous click target with chevron icon at the bottom-centre.
+    // The icon is hover-only when expanded, always visible when collapsed.
     {
+        auto const toggle_bar =
+            DoBox(builder,
+                  {
+                      .parent = root,
+                      .layout {
+                          .size = {300, 100},
+                          .contents_align = layout::Alignment::Middle,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::End,
+                      },
+                      .tooltip = collapsed ? "Show bottom panel"_s : "Hide bottom panel"_s,
+                      .button_behaviour = imgui::ButtonConfig {},
+                  });
+
+        DoBox(builder,
+              {
+                  .parent = toggle_bar,
+                  .text = (collapsed ? ICON_FA_CHEVRON_UP ""_s : ICON_FA_CHEVRON_DOWN ""_s),
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .font_size = k_font_icons_size * 0.9f,
+                  .text_colours =
+                      ColSet {
+                          .base = Col {.c = Col::White, .alpha = (u8)(collapsed ? 160 : 0)},
+                          .hot = Col {.c = Col::White, .alpha = (u8)(collapsed ? 220 : 180)},
+                          .active = Col {.c = Col::White, .alpha = 220},
+                      },
+                  .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .margins = {.b = 4},
+                  },
+              });
+
+        if (toggle_bar.button_fired)
+            persistent_store::SetFlag(g.shared_engine_systems.persistent_store,
+                                      k_perform_collapsed_id,
+                                      !collapsed);
+    }
+
+    if (!collapsed) {
         auto const central_panel = DoBox(builder,
                                          {
                                              .parent = root,
                                              .layout {
-                                                 .size = {layout::k_hug_contents, 170},
+                                                 .size = {layout::k_fill_parent, 170},
                                                  .contents_direction = layout::Direction::Row,
                                                  .contents_align = layout::Alignment::Start,
                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -845,9 +788,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
 
         DoDescriptionColumn(builder, g, central_panel);
 
-        DoLayersColumn(builder, g, central_panel);
-
-        DoActionsColumn(builder, g, frame_context, central_panel);
+        DoLayersColumn(builder, g, frame_context, central_panel);
 
         DoMacrosColumn(builder, g, central_panel);
     }
