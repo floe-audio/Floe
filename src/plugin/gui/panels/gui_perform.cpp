@@ -185,7 +185,7 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                     .Add(inst.folder->Hash(), folder_name);
             } else {
                 ephemeral_state.common_state.Filter(BrowserFilter::Library)
-                    .Add(Hash(inst.library.id), inst.library.name);
+                    .Add(inst.library.id, inst.library.name);
             }
         }
 
