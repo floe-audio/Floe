@@ -264,10 +264,14 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
                                                  col_bot,
                                                  col_bot);
         if (is_down) {
-            f32 const accent_h = WwToPixels(4.0f);
-            imgui.draw_list->AddRectFilled(f32x2 {key_r.x, key_r.y + key_r.h - accent_h},
-                                           f32x2 {key_r.Right(), key_r.y + key_r.h},
-                                           col_pressed_accent);
+            auto highlight = FromU32(col_pressed_accent);
+            highlight.a = 0;
+            imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, key_r.y},
+                                                     f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                                     ToU32(highlight),
+                                                     ToU32(highlight),
+                                                     col_pressed_accent,
+                                                     col_pressed_accent);
         }
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, false);
@@ -335,8 +339,6 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
             face_bot = col_sharp_face_bot_hover;
             rim_bot = col_sharp_rim_bot_hover;
         }
-        if (is_down) rim_bot = col_pressed_accent;
-
         // border
         imgui.draw_list->AddRectFilled(key_r, col_natural_key_divider);
         key_r.x += 1;
@@ -357,6 +359,16 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
         imgui.draw_list->AddRectFilled(f32x2 {key_r.x, face_bot_y},
                                        f32x2 {key_r.Right(), key_r.y + key_r.h},
                                        rim_bot);
+        if (is_down) {
+            auto highlight = FromU32(col_pressed_accent);
+            highlight.a = 0;
+            imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, key_r.y},
+                                                     f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                                     ToU32(highlight),
+                                                     ToU32(highlight),
+                                                     col_pressed_accent,
+                                                     col_pressed_accent);
+        }
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardBlackVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, true);
 
