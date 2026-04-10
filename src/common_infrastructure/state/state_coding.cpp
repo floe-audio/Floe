@@ -521,6 +521,9 @@ enum class StateVersion : u16 {
     // hidden and kept only for DAW automation backwards compatibility.
     AddedNewLfoDestinationParameter,
 
+    // Added per-effect visibility bitset, decoupling GUI visibility from audio activeness.
+    AddedEffectVisibility,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -765,6 +768,13 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                     ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoDestination)) =
                     (f32)new_dest;
             }
+        }
+    }
+
+    if (version < StateVersion::AddedEffectVisibility) {
+        for (auto const i : Range(k_num_effect_types)) {
+            auto const on_param = k_effect_info[i].on_param_index;
+            if (state.param_values[ToInt(on_param)] != 0.0f) state.fx_visible.Set(i);
         }
     }
 }
@@ -1669,6 +1679,36 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                 static_assert(k_num_effect_types == 10,
                               "You've changed the number of effects, you must add the new "
                               "effects here so that the fx_order contains all values");
+            }
+        }
+    }
+
+    // =======================================================================================================
+    {
+        u16 num_visible {};
+        DynamicArrayBounded<u8, k_num_effect_types> visible_ids;
+
+        if (coder.IsWriting()) {
+            for (auto const i : Range(k_num_effect_types)) {
+                if (state.fx_visible.Get(i)) {
+                    dyn::Append(visible_ids, k_effect_info[i].id);
+                    ++num_visible;
+                }
+            }
+        }
+
+        TRY(coder.CodeNumber(num_visible, StateVersion::AddedEffectVisibility));
+
+        if (coder.IsWriting()) {
+            for (auto const id : visible_ids)
+                TRY(coder.CodeNumber(const_cast<u8&>(id), StateVersion::AddedEffectVisibility));
+        } else {
+            for (auto const _ : Range(num_visible)) {
+                u8 id {};
+                TRY(coder.CodeNumber(id, StateVersion::AddedEffectVisibility));
+                auto const type =
+                    FindIf(k_effect_info, [id](EffectInfo const& info) { return info.id == id; });
+                if (type.HasValue()) state.fx_visible.Set(*type);
             }
         }
     }

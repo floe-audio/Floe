@@ -138,12 +138,13 @@ static void InstanceConfigPanel(GuiBuilder& builder, InstanceConfigPanelContext&
 
     // Reset on transport
     {
-        if (CheckboxButton(builder,
-                           controls,
-                           "Reset on transport"_s,
-                           config.reset_on_transport,
-                           "Reset round robin positions and random sequences when the DAW transport starts playing"_s,
-                           GuiStyleSystem::TopBottomPanels))
+        if (CheckboxButton(
+                builder,
+                controls,
+                "Reset on transport"_s,
+                config.reset_on_transport,
+                "Reset round robin positions and random sequences when the DAW transport starts playing"_s,
+                GuiStyleSystem::TopBottomPanels))
             config.reset_on_transport = !config.reset_on_transport;
     }
 

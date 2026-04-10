@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.2.0-beta.2
+- GUI: add effect bypass button to each effect in the rack — deactivates the effect's audio processing while keeping it visible for quick re-enabling. The switchboard toggles continue to show/hide effects as before. [Documentation](usage/effects)
 - Add reproducible playback: new Instance Config panel (accessible from the top-panel menu) with reset-on-transport, reset keyswitch, and seed controls. These reset round robin positions and random sequences so that playback from the same point is identical every time. [Documentation](usage/reproducibility.mdx)
 - Add two random LFO shapes: 'Random Steps' (sample-and-hold; a new random value held for each LFO cycle) and 'Random Glide' (smoothly eases between random values for organic, wandering modulation). Both integrate with the reproducibility system.
 - Add 'Grain Position' as an LFO target, allowing the LFO to sweep the grain position in Granular Fixed mode

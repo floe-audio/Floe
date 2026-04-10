@@ -46,6 +46,7 @@ struct StateSnapshot {
     InitialisedArray<InstrumentId, k_num_layers> inst_ids {InstrumentType::None};
     Array<f32, k_num_parameters> param_values {};
     Array<EffectType, k_num_effect_types> fx_order {};
+    Bitset<k_num_effect_types> fx_visible {};
     Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
     StateMetadata metadata {};
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
@@ -140,6 +141,7 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
     }
 
     if (old_state.fx_order != new_state.fx_order) fmt::Append(diff_desc, "FX order changed\n"_s);
+    if (old_state.fx_visible != new_state.fx_visible) fmt::Append(diff_desc, "FX visibility changed\n"_s);
 
     for (auto cc : Range<usize>(1, 128)) {
         for (auto param_index : Range(k_num_parameters)) {

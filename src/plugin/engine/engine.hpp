@@ -93,6 +93,7 @@ struct Engine : ProcessorListener {
 
     StateMetadata state_metadata {};
 
+    Bitset<k_num_effect_types> fx_visible {};
     MacroNames macro_names = DefaultMacroNames();
 
     // Optional listener for engine changes. The GUI sets this when it's active.

@@ -128,6 +128,7 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
 
         engine.state_metadata = state.state.metadata;
         engine.macro_names = state.state.macro_names;
+        engine.fx_visible = state.state.fx_visible;
         ApplyNewState(engine.processor, state.state, source);
         SetLastSnapshot(engine, state);
 
@@ -222,6 +223,7 @@ static void ApplyNewStateFromPending(Engine& engine) {
     }
     engine.state_metadata = pending_state_change.snapshot.state.metadata;
     engine.macro_names = pending_state_change.snapshot.state.macro_names;
+    engine.fx_visible = pending_state_change.snapshot.state.fx_visible;
 
     // IMPORTANT: we clear the pending state before applying the new state because some hosts, such as Bitwig,
     // will call our param get_value during the call to rescan that we make, and we want our get_value to
@@ -331,6 +333,7 @@ static StateSnapshot CurrentStateSnapshot(Engine& engine) {
                                                          : MakeStateSnapshot(engine.processor);
     snapshot.metadata = engine.state_metadata;
     snapshot.macro_names = engine.macro_names;
+    snapshot.fx_visible = engine.fx_visible;
     snapshot.instance_id = InstanceId(engine.autosave_state);
     return snapshot;
 }
@@ -638,6 +641,7 @@ void SetToDefaultState(Engine& engine) {
         LoadInstrument(engine, layer_index, InstrumentType::None);
     LoadConvolutionIr(engine, k_nullopt);
     engine.state_metadata = {};
+    engine.fx_visible = {};
     SetAllParametersToDefaultValues(engine.processor);
     auto snapshot = MakeStateSnapshot(engine.processor);
     engine.macro_names = DefaultMacroNames();
