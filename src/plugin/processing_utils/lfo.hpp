@@ -51,6 +51,8 @@ struct LFO {
     }
 
     void SetRate(f32 sample_rate, f32 new_rate_hz) {
+        // The random modes feel too slow relative to the other modes.
+        if (waveform == Waveform::RandomSteps || waveform == Waveform::RandomGlide) new_rate_hz *= 2;
         phase_increment_per_tick = (u32)((256.0f * new_rate_hz / sample_rate) * (f32)(1 << 24));
     }
 
