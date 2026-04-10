@@ -287,7 +287,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             {
                 .parent = preset_box,
                 .layout {
-                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                    .size = {layout::k_fill_parent, k_font_body_size + k_font_body_italic_size},
                     .contents_direction = layout::Direction::Column,
                 },
                 .tooltip = FunctionRef<String()> {[&arena = builder.arena, &engine = g.engine]() -> String {
@@ -329,28 +329,30 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   },
               });
 
-        auto const has_desc = g.engine.last_snapshot.state.metadata.description.size;
-        auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine, 2);
+        if (g.mid_panel_state.tab != MidPanelTab::Perform) {
+            auto const has_desc = g.engine.last_snapshot.state.metadata.description.size;
+            auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine, 2);
 
-        // IMPROVE: should this be a text input that changes the description?
-        DoBox(builder,
-              {
-                  .parent = preset_box_left,
-                  .text = has_desc ? (String)g.engine.last_snapshot.state.metadata.description
-                                   : (String)auto_desc,
-                  .font = FontType::BodyItalic,
-                  .text_colours =
-                      ColSet {
-                          .base {.c = Col::Subtext0, .dark_mode = true},
-                          .hot {.c = Col::Subtext1, .dark_mode = true},
-                          .active {.c = Col::Subtext1, .dark_mode = true},
+            // IMPROVE: should this be a text input that changes the description?
+            DoBox(builder,
+                  {
+                      .parent = preset_box_left,
+                      .text = has_desc ? (String)g.engine.last_snapshot.state.metadata.description
+                                       : (String)auto_desc,
+                      .font = FontType::BodyItalic,
+                      .text_colours =
+                          ColSet {
+                              .base {.c = Col::Subtext0, .dark_mode = true},
+                              .hot {.c = Col::Subtext1, .dark_mode = true},
+                              .active {.c = Col::Subtext1, .dark_mode = true},
+                          },
+                      .text_overflow = TextOverflowType::ShowDotsOnRight,
+                      .parent_dictates_hot_and_active = true,
+                      .layout {
+                          .size = {layout::k_fill_parent, k_font_body_italic_size},
                       },
-                  .text_overflow = TextOverflowType::ShowDotsOnRight,
-                  .parent_dictates_hot_and_active = true,
-                  .layout {
-                      .size = {layout::k_fill_parent, k_font_body_italic_size},
-                  },
-              });
+                  });
+        }
 
         {
             auto const preset_next =
