@@ -5,8 +5,6 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
-// Identifies a phrase in the auto-description. Each kind maps to one or more
-// wording variations, selected deterministically by a random seed.
 enum class PhraseKind : u8 {
     SlowAttack,
     SharpAttack,
@@ -47,14 +45,12 @@ enum class PhraseKind : u8 {
 };
 
 struct PhraseText {
+    // Each has 2 styles so the most appropriate version can be picked when assembling the sentence.
     String descriptor; // used in leading position
     String modifier; // used after "with"
 };
 
-// Centralised wording lookup. Variants are picked deterministically based on the seed
-// so the same preset always generates the same description, but different presets vary.
 static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
-    // Mix the phrase kind into the seed so different phrases pick independent variants.
     auto const pick = [&](Span<PhraseText const> variants) -> PhraseText {
         auto const mixed = seed ^ ((u64)kind * 0x9E3779B97F4A7C15ULL);
         return variants[mixed % variants.size];
@@ -93,7 +89,7 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
         case PhraseKind::Granular: {
             static constexpr PhraseText k_variants[] = {
                 {"granular"_s, "granular processing"_s},
-                {"grainy"_s, "grain processing"_s},
+                {"grain-engined"_s, "grain processing"_s},
             };
             return pick(k_variants);
         }
@@ -344,16 +340,14 @@ GenerateAutoDescription(StateSnapshot const& state,
         }
     }
 
-    // Build description phrases, each tagged with a salience score (0.0-1.0).
-    // Higher salience = more defining characteristic. Phrases are sorted by salience
-    // so the most prominent features appear first in the description.
-    // The first phrase uses its descriptor form, all subsequent phrases use their
-    // modifier form joined with "with ... and".
+    // Build description phrases, each tagged with a salience score (0.0-1.0). Higher salience = more defining
+    // characteristic. Phrases are sorted by salience so the most prominent features appear first in the
+    // description.
     struct Phrase {
         PhraseKind kind;
         f32 salience;
-        // Index into fx_entries (below) if this phrase mentions an FX, else -1.
-        // Used to recount FX mentions after capping by max_items.
+        // Index into fx_entries (below) if this phrase mentions an FX, else -1. Used to recount FX mentions
+        // after capping by max_items.
         s32 fx_entry_index = -1;
     };
     DynamicArrayBounded<Phrase, 16> phrases {};
@@ -376,9 +370,9 @@ GenerateAutoDescription(StateSnapshot const& state,
         dyn::Append(phrases, Phrase {PhraseKind::SharpAttack, 0.4f});
     }
 
-    // Layering - only mention when layers are reasonably balanced (otherwise one
-    // layer dominates and it doesn't really feel "layered"). Keep salience low
-    // since most presets use multiple layers and it's not very distinctive.
+    // Layering - only mention when layers are reasonably balanced (otherwise one layer dominates and it
+    // doesn't really feel "layered"). Keep salience low since most presets use multiple layers and it's not
+    // very distinctive.
     bool const is_stacked = num_layers >= 2 && all_same_instrument && first_inst_name.size;
     if (is_stacked) {
         // Handled during assembly so we can format the instrument name
@@ -472,6 +466,7 @@ GenerateAutoDescription(StateSnapshot const& state,
         {ParamIndex::ConvolutionReverbOn, PhraseKind::FxConvolutionReverb, false},
     };
     // clang-format on
+    static_assert(ArraySize(fx_entries) == ToInt(EffectType::Count));
 
     u32 num_fx = 0;
     for (auto& e : fx_entries)
