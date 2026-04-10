@@ -336,6 +336,9 @@ struct LayerProcessor {
     param_values::LfoShape lfo_shape {param_values::LfoShape::Sine};
     param_values::LegacyLfoShape lfo_shape_legacy {param_values::LegacyLfoShape::Sine}; // Legacy
 
+    param_values::LfoDestination lfo_dest {param_values::LfoDestination::Volume};
+    param_values::LegacyLfoDestination lfo_dest_legacy {param_values::LegacyLfoDestination::Volume}; // Legacy
+
     EqBands eq_bands;
 
     int num_velocity_regions = 1;

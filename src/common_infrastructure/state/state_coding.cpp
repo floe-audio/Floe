@@ -93,12 +93,12 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
         });
         return k_types.Items();
 
-    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LfoDestination)) {
+    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyLfoDestination)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::LfoDestination::Volume, {"Volume"}},
-            {(f32)param_values::LfoDestination::Filter, {"Filter"}},
-            {(f32)param_values::LfoDestination::Pan, {"Pan"}},
-            {(f32)param_values::LfoDestination::Pitch, {"Pitch"}},
+            {(f32)param_values::LegacyLfoDestination::Volume, {"Volume"}},
+            {(f32)param_values::LegacyLfoDestination::Filter, {"Filter"}},
+            {(f32)param_values::LegacyLfoDestination::Pan, {"Pan"}},
+            {(f32)param_values::LegacyLfoDestination::Pitch, {"Pitch"}},
         });
         return k_types.Items();
 
@@ -517,6 +517,10 @@ enum class StateVersion : u16 {
     // LfoShape parameter is now hidden and kept only for DAW automation backwards compatibility.
     AddedNewLfoShapeParameter,
 
+    // Added new LFO destination parameter with GranularPosition. The legacy LfoDestination parameter is now
+    // hidden and kept only for DAW automation backwards compatibility.
+    AddedNewLfoDestinationParameter,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -525,7 +529,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 231,
+    static_assert(k_num_non_experimental_parameters == 234,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -716,6 +720,50 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                 }
                 state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoShape)) =
                     (f32)new_shape;
+            }
+        }
+    }
+
+    if (version < StateVersion::AddedNewLfoDestinationParameter) {
+        if (source == StateSource::Daw) {
+            // Don't adapt parameters from the DAW because there might be automation on the legacy
+            // LfoDestination param. Default the new param to Volume; the audio thread's LFO param pump
+            // falls through to the legacy param when it is non-default, so existing automation
+            // continues to drive the sound.
+            for (auto const layer_index : Range(k_num_layers)) {
+                state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoDestination)) =
+                    (f32)param_values::LfoDestination::Volume;
+            }
+        } else {
+            // Adapt legacy value to new enum and clear the legacy param.
+            for (auto const layer_index : Range(k_num_layers)) {
+                auto& legacy_val = state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyLfoDestination));
+                auto const legacy_dest = (param_values::LegacyLfoDestination)Round(legacy_val);
+                legacy_val = (f32)param_values::LegacyLfoDestination::Volume; // clear legacy
+
+                param_values::LfoDestination new_dest {};
+                switch (legacy_dest) {
+                    case param_values::LegacyLfoDestination::Volume:
+                        new_dest = param_values::LfoDestination::Volume;
+                        break;
+                    case param_values::LegacyLfoDestination::Filter:
+                        new_dest = param_values::LfoDestination::Filter;
+                        break;
+                    case param_values::LegacyLfoDestination::Pan:
+                        new_dest = param_values::LfoDestination::Pan;
+                        break;
+                    case param_values::LegacyLfoDestination::Pitch:
+                        new_dest = param_values::LfoDestination::Pitch;
+                        break;
+                    case param_values::LegacyLfoDestination::Count:
+                        new_dest = param_values::LfoDestination::Volume;
+                        break;
+                }
+                state.LinearParam(
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoDestination)) =
+                    (f32)new_dest;
             }
         }
     }

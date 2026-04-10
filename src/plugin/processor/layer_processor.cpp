@@ -571,10 +571,28 @@ void ProcessLayerChanges(LayerProcessor& layer,
     }
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::LfoAmount))
         vmst.lfo.amount = *p;
-    if (auto p =
-            changes.changed_params.IntValue<param_values::LfoDestination>(layer.index,
-                                                                          LayerParamIndex::LfoDestination))
-        layer.voice_controller.lfo.dest = *p;
+    {
+        bool lfo_dest_changed = false;
+        if (auto p = changes.changed_params.IntValue<param_values::LegacyLfoDestination>(
+                layer.index,
+                LayerParamIndex::LegacyLfoDestination)) {
+            layer.lfo_dest_legacy = *p;
+            lfo_dest_changed = true;
+        }
+        if (auto p = changes.changed_params.IntValue<param_values::LfoDestination>(
+                layer.index,
+                LayerParamIndex::LfoDestination)) {
+            layer.lfo_dest = *p;
+            lfo_dest_changed = true;
+        }
+        if (lfo_dest_changed) {
+            // Backwards compat: if the legacy LfoDestination param is non-default it was likely set by
+            // user/automation, so let it override the new param.
+            vmst.lfo.dest = (layer.lfo_dest_legacy != param_values::LegacyLfoDestination::Volume)
+                                ? (param_values::LfoDestination)ToInt(layer.lfo_dest_legacy)
+                                : layer.lfo_dest;
+        }
+    }
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LfoOn))
         layer.voice_controller.lfo.on = *p;
 

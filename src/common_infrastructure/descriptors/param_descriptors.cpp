@@ -305,7 +305,7 @@ constexpr auto k_layer_params = ArrayT<LayerParamId>({
     {"LfoSh", LayerParamIndex::LegacyLfoShape},
     {"LfoMd", LayerParamIndex::LfoRestart},
     {"LfoAm", LayerParamIndex::LfoAmount},
-    {"LfoTg", LayerParamIndex::LfoDestination},
+    {"LfoTg", LayerParamIndex::LegacyLfoDestination},
     {"LfoSyt", LayerParamIndex::LfoRateTempoSynced},
     {"LfoHZ", LayerParamIndex::LfoRateHz},
     {"LfoSyO", LayerParamIndex::LfoSyncSwitch},

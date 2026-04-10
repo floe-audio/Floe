@@ -37,11 +37,12 @@ enum class LayerParamIndex : u16 {
     LegacyLfoShape,
     LfoRestart,
     LfoAmount,
-    LfoDestination,
+    LegacyLfoDestination,
     LfoRateTempoSynced,
     LfoRateHz,
     LfoSyncSwitch,
     LfoShape,
+    LfoDestination,
     EqOn,
     EqFreq1,
     EqResonance1,
@@ -338,20 +339,37 @@ constexpr auto k_lfo_restart_mode_strings = ArrayT<String>({
 });
 static_assert(k_lfo_restart_mode_strings.size == ToInt(LfoRestartMode::Count));
 
-enum class LfoDestination : u8 { // never reorder
+enum class LegacyLfoDestination : u8 { // never reorder
     Volume,
     Filter,
     Pan,
     Pitch,
     Count,
 };
-constexpr auto k_lfo_destinations_strings = ArrayT<String>({
+constexpr auto k_legacy_lfo_destination_strings = ArrayT<String>({
     "Volume",
     "Filter",
     "Pan",
     "Pitch",
 });
-static_assert(k_lfo_destinations_strings.size == ToInt(LfoDestination::Count));
+static_assert(k_legacy_lfo_destination_strings.size == ToInt(LegacyLfoDestination::Count));
+
+enum class LfoDestination : u8 { // never reorder
+    Volume,
+    Filter,
+    Pan,
+    Pitch,
+    GranularPosition,
+    Count,
+};
+constexpr auto k_lfo_destination_strings = ArrayT<String>({
+    "Volume",
+    "Filter",
+    "Pan",
+    "Pitch",
+    "Grain Position",
+});
+static_assert(k_lfo_destination_strings.size == ToInt(LfoDestination::Count));
 
 enum class LegacyLfoShape : u8 { // never reorder
     Sine,
@@ -559,6 +577,7 @@ struct ParamDescriptor {
         EqType,
         LfoSyncedRate,
         LfoRestartMode,
+        LegacyLfoDestination,
         LfoDestination,
         LegacyLfoShape,
         LfoShape,
@@ -809,7 +828,8 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::LoopMode: return k_loop_mode_strings;
         case ParamDescriptor::MenuType::LfoSyncedRate: return k_lfo_synced_rate_strings;
         case ParamDescriptor::MenuType::LfoRestartMode: return k_lfo_restart_mode_strings;
-        case ParamDescriptor::MenuType::LfoDestination: return k_lfo_destinations_strings;
+        case ParamDescriptor::MenuType::LegacyLfoDestination: return k_legacy_lfo_destination_strings;
+        case ParamDescriptor::MenuType::LfoDestination: return k_lfo_destination_strings;
         case ParamDescriptor::MenuType::LegacyLfoShape: return k_legacy_lfo_shape_strings;
         case ParamDescriptor::MenuType::LfoShape: return k_lfo_shape_strings;
         case ParamDescriptor::MenuType::LayerFilterType: return k_layer_filter_type_strings;
@@ -2077,16 +2097,17 @@ consteval auto CreateParams() {
             .gui_label = "Amount"_s,
             .tooltip = "Intensity of the LFO effect"_s,
         };
-        lp(LfoDestination) = Args {
+        lp(LegacyLfoDestination) = Args {
             .id = id(region, 31), // never change
             .value_config = val_config_helpers::Menu({
-                .type = ParamDescriptor::MenuType::LfoDestination,
-                .default_val = (u32)LfoDestination::Volume,
+                .type = ParamDescriptor::MenuType::LegacyLfoDestination,
+                .default_val = (u32)LegacyLfoDestination::Volume,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
-            .name = "Target"_s,
+            .name = "Target (Legacy)"_s,
             .gui_label = "Target"_s,
-            .tooltip = "The parameter that the LFO will modulate"_s,
+            .tooltip = "Legacy LFO target parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.hidden = true},
         };
         lp(LfoRateTempoSynced) = Args {
             .id = id(region, 32), // never change
@@ -2125,6 +2146,17 @@ consteval auto CreateParams() {
             .name = "Shape"_s,
             .gui_label = "Shape"_s,
             .tooltip = "Oscillator shape, including random waveforms"_s,
+        };
+        lp(LfoDestination) = Args {
+            .id = id(region, 68), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LfoDestination,
+                .default_val = (u32)LfoDestination::Volume,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Target"_s,
+            .gui_label = "Target"_s,
+            .tooltip = "The parameter that the LFO will modulate"_s,
         };
 
         // =================================================================================================

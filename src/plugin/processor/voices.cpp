@@ -768,6 +768,11 @@ struct VoiceProcessor {
         return v.controller->lfo.on && v.controller->lfo.dest == param_values::LfoDestination::Volume;
     }
 
+    static bool HasGranularPositionLfo(Voice const& v) {
+        return v.controller->lfo.on &&
+               v.controller->lfo.dest == param_values::LfoDestination::GranularPosition;
+    }
+
     static f64 PitchRatio(Voice const& voice,
                           VoiceSoundSource& s,
                           f32 current_lfo_value,
@@ -935,12 +940,26 @@ struct VoiceProcessor {
         {
             ZoneNamedN(granular_pass1, "Granular: Spawn Grains", true);
 
-            if (is_fixed) sampler.playhead.frame_pos = (f64)ctrl.granular.position * (f64)(num_frames - 1);
+            auto const has_grain_pos_lfo = HasGranularPositionLfo(voice);
+
+            if (is_fixed) {
+                auto position = (f64)ctrl.granular.position;
+                if (has_grain_pos_lfo)
+                    position = Clamp(position + (f64)lfo_amounts[0] * (f64)ctrl.lfo.amount * 0.5, 0.0, 1.0);
+                sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
+            }
 
             auto const increment =
                 (f64)ctrl.granular.speed * ((f64)sampler.data->sample_rate / (f64)context.sample_rate);
 
             for (auto const frame_index : Range(buffer.size)) {
+                if (is_fixed && has_grain_pos_lfo) {
+                    auto position = Clamp((f64)ctrl.granular.position +
+                                              (f64)lfo_amounts[frame_index] * (f64)ctrl.lfo.amount * 0.5,
+                                          0.0,
+                                          1.0);
+                    sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
+                }
                 if (!is_fixed && PlaybackEnded(sampler.playhead, num_frames)) {
                     source_dead_frame = frame_index;
                     break;

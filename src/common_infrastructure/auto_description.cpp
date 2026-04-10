@@ -470,6 +470,7 @@ GenerateAutoDescription(StateSnapshot const& state,
                 else
                     dyn::Append(phrases, Phrase {PhraseKind::LfoPitchWarping, 0.6f});
                 break;
+            case param_values::LfoDestination::GranularPosition: break;
             case param_values::LfoDestination::Count: break;
         }
     }
