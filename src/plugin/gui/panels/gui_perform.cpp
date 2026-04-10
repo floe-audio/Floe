@@ -17,6 +17,7 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
+#include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
 #include "gui/panels/gui_preset_browser.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -162,6 +163,8 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
         }
     }
 }
+
+constexpr f32 k_inst_name_top_margin = 2;
 
 static void
 DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
@@ -348,44 +351,104 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                 false,
                 RandomScope::Any);
 
-        if (active) {
-            auto const inst_name = layer.InstName();
-
-            if (inst_name.size) {
+        {
+            auto const inst_btn =
                 DoBox(builder,
                       {
                           .parent = cell,
-                          .text = inst_name,
-                          .font = FontType::Body,
-                          .text_colours = Col {.c = Col::White, .alpha = 200},
-                          .text_overflow = TextOverflowType::ShowDotsOnRight,
+                          .id_extra = layer_index,
+                          .background_fill_colours =
+                              ColSet {
+                                  .base = Col {.c = Col::None},
+                                  .hot = Col {.c = Col::White, .alpha = 10},
+                                  .active = Col {.c = Col::White, .alpha = 18},
+                              },
+                          .round_background_corners = 0b1111,
+                          .corner_rounding = k_corner_rounding,
                           .layout {
-                              .size = {layout::k_fill_parent, k_font_body_size},
-                              .margins = {.l = 2, .t = 2},
+                              .size = {layout::k_fill_parent, k_font_body_size * 2 + k_inst_name_top_margin},
+                              .contents_direction = layout::Direction::Column,
+                              .contents_align = layout::Alignment::Start,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                           },
+                          .tooltip = active ? "Open instrument browser"_s : "Choose an instrument"_s,
+                          .button_behaviour = imgui::ButtonConfig {},
                       });
 
-                if (auto sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
-                    auto const& inst = (*sampled_inst)->instrument;
-                    if (inst.folder) {
-                        auto const raw_folder_name =
-                            inst.folder->display_name.size ? inst.folder->display_name : inst.folder->name;
-                        auto const folder_name = StripNumberedPrefix(raw_folder_name);
-                        DoBox(builder,
-                              {
-                                  .parent = cell,
-                                  .text = folder_name,
-                                  .font = FontType::Body,
-                                  .text_colours = Col {.c = Col::White, .alpha = 120},
-                                  .text_overflow = TextOverflowType::ShowDotsOnRight,
-                                  .layout {
-                                      .size = {layout::k_fill_parent, k_font_body_size},
-                                      .margins = {.l = 2},
+            if (inst_btn.button_fired) {
+                g.imgui.OpenModalViewport(g.inst_browser_state[layer_index].id);
+                if (auto const r = BoxRect(builder, inst_btn))
+                    g.inst_browser_state[layer_index].common_state.absolute_button_rect =
+                        g.imgui.ViewportRectToWindowRect(*r);
+            }
+
+            if (active) {
+                auto const inst_name = layer.InstName();
+
+                if (inst_name.size) {
+                    DoBox(builder,
+                          {
+                              .parent = inst_btn,
+                              .text = inst_name,
+                              .font = FontType::Body,
+                              .text_colours =
+                                  ColSet {
+                                      .base = Col {.c = Col::White, .alpha = 200},
+                                      .hot = Col {.c = Col::White, .alpha = 240},
+                                      .active = Col {.c = Col::White, .alpha = 255},
                                   },
-                              });
+                              .text_overflow = TextOverflowType::ShowDotsOnRight,
+                              .parent_dictates_hot_and_active = true,
+                              .layout {
+                                  .size = {layout::k_fill_parent, k_font_body_size},
+                                  .margins = {.l = 2, .t = k_inst_name_top_margin},
+                              },
+                          });
+
+                    if (auto sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
+                        auto const& inst = (*sampled_inst)->instrument;
+                        if (inst.folder) {
+                            auto const raw_folder_name = inst.folder->display_name.size
+                                                             ? inst.folder->display_name
+                                                             : inst.folder->name;
+                            auto const folder_name = StripNumberedPrefix(raw_folder_name);
+                            DoBox(builder,
+                                  {
+                                      .parent = inst_btn,
+                                      .text = folder_name,
+                                      .font = FontType::Body,
+                                      .text_colours = Col {.c = Col::White, .alpha = 120},
+                                      .text_overflow = TextOverflowType::ShowDotsOnRight,
+                                      .parent_dictates_hot_and_active = true,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, k_font_body_size},
+                                          .margins = {.l = 2},
+                                      },
+                                  });
+                        }
                     }
                 }
+            } else {
+                DoBox(builder,
+                      {
+                          .parent = inst_btn,
+                          .text = "None"_s,
+                          .font = FontType::Body,
+                          .text_colours =
+                              ColSet {
+                                  .base = Col {.c = Col::White, .alpha = 60},
+                                  .hot = Col {.c = Col::White, .alpha = 120},
+                                  .active = Col {.c = Col::White, .alpha = 160},
+                              },
+                          .parent_dictates_hot_and_active = true,
+                          .layout {
+                              .size = {layout::k_fill_parent, k_font_body_size},
+                              .margins = {.l = 2, .t = k_inst_name_top_margin},
+                          },
+                      });
             }
+
+            DoInstSelectorRightClickMenu(g, inst_btn, layer_index);
         }
 
         auto const controls_row = DoBox(builder,
@@ -588,7 +651,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lr = 0, .t = 45},
+                                    .contents_padding = {.lr = 0, .t = 15},
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,

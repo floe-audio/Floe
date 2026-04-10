@@ -507,9 +507,10 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             .title = fmt::Format(builder.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
                 auto const window_height = GuiIo().in.window_size.height;
-                auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
-                auto const available_height = window_height - button_bottom - 20;
-                PixelsToWw(available_height);
+                auto const& button_rect = state.common_state.absolute_button_rect;
+                auto const space_below = window_height - button_rect.Bottom() - 20;
+                auto const space_above = button_rect.y - 20;
+                PixelsToWw(Max(space_below, space_above));
             }),
             .rhs_width = 300,
             .filters_col_width = 250,
