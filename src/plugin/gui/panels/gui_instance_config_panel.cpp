@@ -179,18 +179,17 @@ static void InstanceConfigPanel(GuiBuilder& builder, InstanceConfigPanelContext&
         bool const ks_active = config.reset_keyswitch.HasValue();
         auto const keyswitch_value = (s64)config.reset_keyswitch.ValueOr((u7)0);
 
-        if (auto const v =
-                IntField(builder,
-                         row,
-                         {
-                             .tooltip = "MIDI note that triggers a reset"_s,
-                             .width = k_field_width,
-                             .value = keyswitch_value,
-                             .constrainer = [](s64 value) { return Clamp(value, (s64)0, (s64)127); },
-                             .style = GuiStyleSystem::TopBottomPanels,
-                             .midi_note_names = true,
-                             .greyed_out = !ks_active,
-                         })) {
+        if (auto const v = IntField(builder,
+                                    row,
+                                    {
+                                        .tooltip = "MIDI note that triggers a reset"_s,
+                                        .width = k_field_width,
+                                        .value = keyswitch_value,
+                                        .constrainer = [](s64 value) { return Clamp<s64>(value, 0, 127); },
+                                        .style = GuiStyleSystem::TopBottomPanels,
+                                        .midi_note_names = true,
+                                        .greyed_out = !ks_active,
+                                    })) {
             config.reset_keyswitch = (u7)*v;
         }
     }

@@ -400,7 +400,7 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
     if (options.midi_note_names && value >= 0 && value <= 127)
         display_string = builder.arena.Clone(NoteName((u7)value));
     else
-        display_string = fmt::IntToString(value);
+        display_string = builder.arena.Clone(fmt::IntToString(value));
 
     Optional<imgui::TextInputResult> text_input_result {};
 
