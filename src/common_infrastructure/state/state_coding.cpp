@@ -777,6 +777,35 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             if (state.param_values[ToInt(on_param)] != 0.0f) state.fx_visible.Set(i);
         }
     }
+
+    // When sustain is at max, decay has no audible effect but a short value causes the GUI's
+    // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so
+    // the handle is visually separated.
+    if (source == StateSource::PresetFile) {
+        auto const decay_200ms_linear =
+            k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(0, LayerParamIndex::VolumeDecay))]
+                .LineariseValue(200.0f, true)
+                .Value();
+
+        for (auto const layer_index : Range(k_num_layers)) {
+            struct EnvPair {
+                LayerParamIndex sustain;
+                LayerParamIndex decay;
+                f32 sustain_max_linear;
+            };
+            for (auto const& env : Array<EnvPair, 2> {{
+                     {LayerParamIndex::VolumeSustain, LayerParamIndex::VolumeDecay, 1.0f},
+                     {LayerParamIndex::FilterSustain, LayerParamIndex::FilterDecay, 1.0f},
+                 }}) {
+                auto const sustain_val =
+                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, env.sustain));
+                auto& decay_val =
+                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, env.decay));
+                if (sustain_val >= env.sustain_max_linear && decay_val < decay_200ms_linear)
+                    decay_val = decay_200ms_linear;
+            }
+        }
+    }
 }
 
 static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
