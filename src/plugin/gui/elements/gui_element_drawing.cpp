@@ -364,30 +364,27 @@ void DrawPeakMeter(imgui::Context& imgui,
     DEFER { imgui.draw_list->renderer.anti_aliased_shapes = saved_aa; };
 
     // Background channels.
-    imgui.draw_list->AddRectFilled(
-        f32x2 {origin_x + (f32)l_chan_x, origin_y},
-        f32x2 {origin_x + (f32)(l_chan_x + chan_w), origin_y + (f32)total_h},
-        LiveCol(UiColMap::PeakMeterBack),
-        rounding);
-    imgui.draw_list->AddRectFilled(
-        f32x2 {origin_x + (f32)r_chan_x, origin_y},
-        f32x2 {origin_x + (f32)(r_chan_x + chan_w), origin_y + (f32)total_h},
-        LiveCol(UiColMap::PeakMeterBack),
-        rounding);
+    imgui.draw_list->AddRectFilled(f32x2 {origin_x + (f32)l_chan_x, origin_y},
+                                   f32x2 {origin_x + (f32)(l_chan_x + chan_w), origin_y + (f32)total_h},
+                                   LiveCol(UiColMap::PeakMeterBack),
+                                   rounding);
+    imgui.draw_list->AddRectFilled(f32x2 {origin_x + (f32)r_chan_x, origin_y},
+                                   f32x2 {origin_x + (f32)(r_chan_x + chan_w), origin_y + (f32)total_h},
+                                   LiveCol(UiColMap::PeakMeterBack),
+                                   rounding);
 
     // dB markers.
     if (options.show_db_markers) {
         auto draw_marker = [&](f32 db, bool bold) {
             int const y = (int)((1 - MapTo01(db, k_min_db, k_max_db)) * (f32)total_h);
-            auto const col = bold ? LiveCol(UiColMap::PeakMeterMarkersBold)
-                                  : LiveCol(UiColMap::PeakMeterMarkers);
+            auto const col =
+                bold ? LiveCol(UiColMap::PeakMeterMarkersBold) : LiveCol(UiColMap::PeakMeterMarkers);
             imgui.draw_list->AddLine(f32x2 {origin_x, origin_y + y},
                                      f32x2 {origin_x + (marker_w - marker_pad), origin_y + y},
                                      col);
-            imgui.draw_list->AddLine(
-                f32x2 {origin_x + total_w - (marker_w - marker_pad), origin_y + y},
-                f32x2 {origin_x + total_w, origin_y + y},
-                col);
+            imgui.draw_list->AddLine(f32x2 {origin_x + total_w - (marker_w - marker_pad), origin_y + y},
+                                     f32x2 {origin_x + total_w, origin_y + y},
+                                     col);
         };
 
         draw_marker(0, true);
@@ -424,9 +421,7 @@ void DrawPeakMeter(imgui::Context& imgui,
             auto col = LiveCol(UiColMap::PeakMeterHighlightTop);
             if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
             int const bottom = Min(total_h, top_seg_y);
-            imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y + ly},
-                                           f32x2 {x1, origin_y + bottom},
-                                           col);
+            imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y + ly}, f32x2 {x1, origin_y + bottom}, col);
         }
 
         // Middle segment (0dB to -12dB).
@@ -435,9 +430,7 @@ void DrawPeakMeter(imgui::Context& imgui,
             if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
             int const top = Max(ly, top_seg_y);
             int const bottom = Min(total_h, mid_seg_y);
-            imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y + top},
-                                           f32x2 {x1, origin_y + bottom},
-                                           col);
+            imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y + top}, f32x2 {x1, origin_y + bottom}, col);
         }
 
         // Bottom segment (below -12dB).
