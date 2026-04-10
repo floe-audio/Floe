@@ -193,6 +193,14 @@ struct LayerProcessor {
         , voice_controller({
               .layer_index = index,
           })
+        , lfo_shape({
+              .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoShape),
+              .legacies = {{{ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShape)}}},
+          })
+        , lfo_dest({
+              .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoDestination),
+              .legacies = {{{ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoDestination)}}},
+          })
         , eq_bands() {
         velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);
     }
@@ -333,11 +341,8 @@ struct LayerProcessor {
     param_values::LfoSyncedRate lfo_synced_time {};
     f32 lfo_unsynced_hz {};
     bool lfo_is_synced {};
-    param_values::LfoShape lfo_shape {param_values::LfoShape::Sine};
-    param_values::LegacyLfoShape lfo_shape_legacy {param_values::LegacyLfoShape::Sine}; // Legacy
-
-    param_values::LfoDestination lfo_dest {param_values::LfoDestination::Volume};
-    param_values::LegacyLfoDestination lfo_dest_legacy {param_values::LegacyLfoDestination::Volume}; // Legacy
+    EnumParamWithLegacies<param_values::LfoShape> lfo_shape {};
+    EnumParamWithLegacies<param_values::LfoDestination> lfo_dest {};
 
     EqBands eq_bands;
 

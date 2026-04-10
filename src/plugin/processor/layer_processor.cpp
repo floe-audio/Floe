@@ -546,52 +546,15 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
     // LFO
     // =======================================================================================================
-    {
-        bool lfo_shape_changed = false;
-        if (auto p = changes.changed_params.IntValue<param_values::LegacyLfoShape>(
-                layer.index,
-                LayerParamIndex::LegacyLfoShape)) {
-            layer.lfo_shape_legacy = *p;
-            lfo_shape_changed = true;
-        }
-        if (auto p = changes.changed_params.IntValue<param_values::LfoShape>(layer.index,
-                                                                             LayerParamIndex::LfoShape)) {
-            layer.lfo_shape = *p;
-            lfo_shape_changed = true;
-        }
-        if (lfo_shape_changed) {
-            // Backwards compat: if the legacy LfoShape param is non-default it was likely set by
-            // user/automation, so let it override the new param.
-            vmst.lfo.shape = (layer.lfo_shape_legacy != param_values::LegacyLfoShape::Sine)
-                                 ? (param_values::LfoShape)ToInt(layer.lfo_shape_legacy)
-                                 : layer.lfo_shape;
-            for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-                UpdateLFOWaveform(v);
-        }
+    if (auto shape = layer.lfo_shape.Poll(changes.changed_params)) {
+        vmst.lfo.shape = *shape;
+        for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+            UpdateLFOWaveform(v);
     }
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::LfoAmount))
         vmst.lfo.amount = *p;
-    {
-        bool lfo_dest_changed = false;
-        if (auto p = changes.changed_params.IntValue<param_values::LegacyLfoDestination>(
-                layer.index,
-                LayerParamIndex::LegacyLfoDestination)) {
-            layer.lfo_dest_legacy = *p;
-            lfo_dest_changed = true;
-        }
-        if (auto p = changes.changed_params.IntValue<param_values::LfoDestination>(
-                layer.index,
-                LayerParamIndex::LfoDestination)) {
-            layer.lfo_dest = *p;
-            lfo_dest_changed = true;
-        }
-        if (lfo_dest_changed) {
-            // Backwards compat: if the legacy LfoDestination param is non-default it was likely set by
-            // user/automation, so let it override the new param.
-            vmst.lfo.dest = (layer.lfo_dest_legacy != param_values::LegacyLfoDestination::Volume)
-                                ? (param_values::LfoDestination)ToInt(layer.lfo_dest_legacy)
-                                : layer.lfo_dest;
-        }
+    if (auto dest = layer.lfo_dest.Poll(changes.changed_params)) {
+        vmst.lfo.dest = *dest;
     }
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LfoOn))
         layer.voice_controller.lfo.on = *p;

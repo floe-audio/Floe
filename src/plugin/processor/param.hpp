@@ -129,3 +129,36 @@ struct ChangedParams {
     Parameters const& params;
     Bitset<k_num_parameters> changed;
 };
+
+// Pairs a current enum parameter with one or more legacy predecessors. Handles change detection
+// and resolution: the oldest non-default legacy overrides the current value (preserving DAW automation).
+// Requires that legacy enum values are an integer prefix of the current enum.
+template <typename CurrentEnum, usize MaxLegacies = 1>
+struct EnumParamWithLegacies {
+    struct LegacySlot {
+        ParamIndex idx {};
+        s32 value = 0; // 0 = default = "not set by automation"
+    };
+
+    CurrentEnum current {};
+    ParamIndex current_idx {};
+    Array<LegacySlot, MaxLegacies> legacies {};
+
+    Optional<CurrentEnum> Poll(ChangedParams const& cp) {
+        bool changed = false;
+        for (auto& leg : legacies) {
+            if (cp.Changed(leg.idx)) {
+                leg.value = (s32)Trunc(cp.params.LinearValue(leg.idx));
+                changed = true;
+            }
+        }
+        if (auto p = cp.IntValue<CurrentEnum>(current_idx)) {
+            current = *p;
+            changed = true;
+        }
+        if (!changed) return k_nullopt;
+        for (auto const& leg : legacies)
+            if (leg.value != 0) return (CurrentEnum)leg.value;
+        return current;
+    }
+};

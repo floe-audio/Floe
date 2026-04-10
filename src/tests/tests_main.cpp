@@ -55,6 +55,7 @@
     X(RegisterPackageFormatTests)                                                                            \
     X(RegisterPackageInstallationTests)                                                                      \
     X(RegisterParamDescriptorTests)                                                                          \
+    X(RegisterParamTests)                                                                                    \
     X(RegisterPathPoolTests)                                                                                 \
     X(RegisterPathTests)                                                                                     \
     X(RegisterPersistentStoreTests)                                                                          \

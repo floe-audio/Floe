@@ -1646,6 +1646,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "processing_utils/midi.cpp",
             "processing_utils/volume_fade.cpp",
             "processor/layer_processor.cpp",
+            "processor/param.cpp",
             "processor/processor.cpp",
             "processor/sample_processing.cpp",
             "processor/voices.cpp",
