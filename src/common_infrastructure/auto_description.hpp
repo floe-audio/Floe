@@ -21,6 +21,9 @@ using AutoDescriptionString = DynamicArrayBounded<char, 200>;
 // a preset has no explicit description. The random_seed is used to pick between
 // wording variations so the output is stable for a given preset but varies
 // between presets - typically seeded by Hash(preset_name).
+// max_items caps the total number of items in the description (instrument name,
+// descriptive phrases, FX summary each count as one); pass -1 for no limit.
 AutoDescriptionString GenerateAutoDescription(StateSnapshot const& state,
                                               Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
-                                              u64 random_seed);
+                                              u64 random_seed,
+                                              s32 max_items = -1);

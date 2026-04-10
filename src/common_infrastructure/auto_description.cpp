@@ -229,7 +229,8 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
 DynamicArrayBounded<char, 200>
 GenerateAutoDescription(StateSnapshot const& state,
                         Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
-                        u64 random_seed) {
+                        u64 random_seed,
+                        s32 max_items) {
     DynamicArrayBounded<char, 200> result {};
 
     auto const lp = [&](u32 layer, LayerParamIndex p) -> f32 {
@@ -368,6 +369,9 @@ GenerateAutoDescription(StateSnapshot const& state,
     struct Phrase {
         PhraseKind kind;
         f32 salience;
+        // Index into fx_entries (below) if this phrase mentions an FX, else -1.
+        // Used to recount FX mentions after capping by max_items.
+        s32 fx_entry_index = -1;
     };
     DynamicArrayBounded<Phrase, 16> phrases {};
 
@@ -503,9 +507,13 @@ GenerateAutoDescription(StateSnapshot const& state,
     // Notable effects - mention with descriptive characteristics
     u32 mentioned_fx = 0;
     auto const mention = [&](ParamIndex on_param, PhraseKind kind, f32 salience) {
-        for (auto& e : fx_entries)
-            if (e.on_param == on_param) e.mentioned = true;
-        dyn::Append(phrases, Phrase {kind, salience});
+        s32 fx_index = -1;
+        for (s32 i = 0; i < (s32)ArraySize(fx_entries); i++)
+            if (fx_entries[i].on_param == on_param) {
+                fx_entries[i].mentioned = true;
+                fx_index = i;
+            }
+        dyn::Append(phrases, Phrase {kind, salience, fx_index});
         mentioned_fx++;
     };
 
@@ -542,15 +550,37 @@ GenerateAutoDescription(StateSnapshot const& state,
 
     // For small FX counts, name any unmentioned ones explicitly
     if (num_fx <= 2) {
-        for (auto& e : fx_entries)
+        for (s32 i = 0; i < (s32)ArraySize(fx_entries); i++) {
+            auto& e = fx_entries[i];
             if (is_on(e.on_param) && !e.mentioned) {
-                dyn::Append(phrases, Phrase {e.generic_kind, 0.2f});
+                dyn::Append(phrases, Phrase {e.generic_kind, 0.2f, i});
                 mentioned_fx++;
             }
+        }
     }
 
     // Sort all phrases by salience (highest first)
     Sort(phrases, [](Phrase const& a, Phrase const& b) { return a.salience > b.salience; });
+
+    // Cap items. Priority: instrument name first, then phrases by salience, then FX summary.
+    bool const has_inst_name_item = is_stacked || (num_layers == 1 && first_inst_name.size);
+    if (max_items >= 0) {
+        s32 const phrase_budget = Max(0, max_items - (has_inst_name_item ? 1 : 0));
+        if (phrases.size > (usize)phrase_budget) phrases.size = (usize)phrase_budget;
+    }
+
+    // Recount FX mentions among surviving phrases.
+    mentioned_fx = 0;
+    for (auto const& p : phrases)
+        if (p.fx_entry_index >= 0) mentioned_fx++;
+
+    // Show trailing FX summary if there are unmentioned FX and we have budget for it.
+    auto const unmentioned_fx = num_fx - mentioned_fx;
+    bool show_trailing_fx_line = unmentioned_fx > 0;
+    if (show_trailing_fx_line && max_items >= 0) {
+        s32 const used = (has_inst_name_item ? 1 : 0) + (s32)phrases.size;
+        if (used >= max_items) show_trailing_fx_line = false;
+    }
 
     // Assemble: first phrase as descriptor, rest as "with modifier, modifier and modifier"
     if (is_stacked)
@@ -576,14 +606,13 @@ GenerateAutoDescription(StateSnapshot const& state,
         }
     }
 
-    if (num_fx > 0) {
-        auto const remaining = num_fx - mentioned_fx;
+    if (show_trailing_fx_line) {
         if (mentioned_fx == 0) {
             if (result.size) dyn::AppendSpan(result, ". ");
             fmt::Append(result, "{} FX", num_fx);
-        } else if (remaining > 0) {
+        } else {
             dyn::AppendSpan(result, ", ");
-            fmt::Append(result, "+{} more FX", remaining);
+            fmt::Append(result, "+{} more FX", unmentioned_fx);
         }
     }
 

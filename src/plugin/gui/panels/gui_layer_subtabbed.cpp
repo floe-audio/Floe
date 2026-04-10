@@ -560,18 +560,14 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                      {
                                          .parent = vol_col,
                                          .layout {
-                                             .size = {20, k_vol_slider_height},
+                                             .size = {k_peak_meter_standard_width, k_vol_slider_height},
                                          },
                                      });
         if (auto const r = BoxRect(g.builder, meter_box))
             DrawPeakMeter(g.imgui,
                           g.imgui.ViewportRectToWindowRect(*r),
                           layer_processor.peak_meter,
-                          {
-                              .flash_when_clipping = false,
-                              .show_db_markers = true,
-                              .gap = 1,
-                          });
+                          {.flash_when_clipping = false});
 
         // Volume slider
         DoVerticalSliderParameter(g,

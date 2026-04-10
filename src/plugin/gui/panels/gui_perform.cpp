@@ -17,7 +17,6 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
-#include "gui/panels/gui_ir_browser.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
 #include "gui/panels/gui_preset_browser.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -169,12 +168,15 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
     auto& params = g.engine.processor.main_params;
 
     enum class RandomScope { Folder, Library, Any };
+
     auto const load_random = [&](LayerProcessor& target_layer, RandomScope scope) {
-        InstBrowserState ephemeral_state {.id = HashFnv1a("ephemeral-inst-browser")};
+        InstBrowserState ephemeral_state {.id = HashFnv1a("dummy-inst-browser")};
+
         if (scope != RandomScope::Any) {
             auto sampled_inst = target_layer.instrument.TryGetFromTag<InstrumentType::Sampler>();
             if (!sampled_inst) return;
             auto const& inst = (*sampled_inst)->instrument;
+
             if (scope == RandomScope::Folder) {
                 if (!inst.folder) return;
                 auto const folder_name =
@@ -186,6 +188,7 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                     .Add(Hash(inst.library.id), inst.library.name);
             }
         }
+
         InstBrowserContext context {
             .layer = target_layer,
             .sample_library_server = g.shared_engine_systems.sample_library_server,
@@ -271,8 +274,14 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                   },
               });
 
-        // Dice group: 3 random-instrument buttons styled as a single grouped pill,
-        // matching the mute/solo button group exactly.
+        if (active) {
+            DoMuteSoloButtons(g,
+                              top_row,
+                              params.DescribedValue(layer_index, LayerParamIndex::Mute),
+                              params.DescribedValue(layer_index, LayerParamIndex::Solo),
+                              {.vertical = false});
+        }
+
         auto const dice_group = DoBox(builder,
                                       {
                                           .parent = top_row,
@@ -338,24 +347,6 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                 (Corners)0b0110,
                 false,
                 RandomScope::Any);
-
-        // Mute/solo on the far right - or an invisible reservation when inactive,
-        // so the dice group never shifts horizontally between presets.
-        if (active) {
-            DoMuteSoloButtons(g,
-                              top_row,
-                              params.DescribedValue(layer_index, LayerParamIndex::Mute),
-                              params.DescribedValue(layer_index, LayerParamIndex::Solo),
-                              {.vertical = false});
-        } else {
-            DoBox(builder,
-                  {
-                      .parent = top_row,
-                      .layout {
-                          .size = {k_mid_button_height * 2, k_mid_button_height},
-                      },
-                  });
-        }
 
         if (active) {
             auto const inst_name = layer.InstName();
@@ -426,7 +417,7 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                                          {
                                              .parent = controls_row,
                                              .layout {
-                                                 .size = {10, layout::k_fill_parent},
+                                                 .size = {6, layout::k_fill_parent},
                                              },
                                          });
             if (auto const r = BoxRect(builder, meter_box))
@@ -436,7 +427,7 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                               {
                                   .flash_when_clipping = false,
                                   .show_db_markers = false,
-                                  .gap = 1,
+                                  .gap_px = 1,
                               });
         }
 
@@ -597,7 +588,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
-                                    .contents_padding = {.lr = 0, .t = 15, .b = 6.08f},
+                                    .contents_padding = {.lr = 0, .t = 45},
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,

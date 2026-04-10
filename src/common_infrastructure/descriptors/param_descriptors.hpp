@@ -2069,7 +2069,7 @@ consteval auto CreateParams() {
                 .default_val = (u32)LegacyLfoShape::Sine,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
-            .name = "Shape (Legacy)"_s,
+            .name = "Legacy Shape"_s,
             .gui_label = "Shape"_s,
             .tooltip = "Legacy LFO shape parameter. Kept for backwards-compatibility with DAW automation"_s,
             .flags = {.hidden = true},
@@ -2247,7 +2247,7 @@ consteval auto CreateParams() {
                 .default_val = (u32)VelocityMappingMode::None,
             }),
             .modules = {layer_module, ParameterModule::Playback},
-            .name = "Velocity Mapping"_s,
+            .name = "Legacy Velocity Mapping"_s,
             .gui_label = "Velocity Mapping"_s,
             .tooltip =
                 "Choose how MIDI velocity should affect the volume of this layer. There are 6 modes that can be selected for this parameter via the buttons on the GUI. By setting one layer to be quiet at high velocities and another layer to be quiet at low velocities you can create an instrument that sounds different based on how hard the notes are played. (0) Ignore velocity, always play full volume. (1) Loudest at high velocity, quietist at low velocity (2) Loudest at low velocity, quietist at high velocity (3) Loudest at high velocity, quietist at middle velocity and below (4) Loudest at middle velocity, quietist at both high and low velocities (5) Loudest at bottom velocity, quietist at middle velocity and above,"_s,
@@ -2266,7 +2266,7 @@ consteval auto CreateParams() {
             .id = id(region, 46), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Playback},
-            .name = "Monophonic On"_s,
+            .name = "Legacy Monophonic On"_s,
             .gui_label = "Monophonic"_s,
             .tooltip = "Only allow one voice of each sound to play at a time"_s,
             .flags = {.hidden = true},

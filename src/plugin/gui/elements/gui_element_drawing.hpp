@@ -54,7 +54,7 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
 struct DrawPeakMeterOptions {
     bool flash_when_clipping;
     bool show_db_markers = true;
-    f32 gap = 0; // 0 means use default
+    int gap_px = 2;
 };
 
 struct DrawVerticalSliderOptions {

@@ -330,7 +330,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
               });
 
         auto const has_desc = g.engine.last_snapshot.state.metadata.description.size;
-        auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine);
+        auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine, 2);
 
         // IMPROVE: should this be a text input that changes the description?
         DoBox(builder,
@@ -574,7 +574,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                               {
                                                   .parent = root,
                                                   .layout {
-                                                      .size = {22.0f, 37.06f},
+                                                      .size = {k_peak_meter_standard_width, 37.06f},
                                                   },
                                               })))
         DrawPeakMeter(g.imgui,

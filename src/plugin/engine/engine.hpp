@@ -127,4 +127,4 @@ void SaveCurrentStateToFile(Engine& engine, String path);
 
 void SetToDefaultState(Engine& engine);
 
-AutoDescriptionString AutoDescription(Engine const& engine);
+AutoDescriptionString AutoDescription(Engine const& engine, s32 max_items = -1);

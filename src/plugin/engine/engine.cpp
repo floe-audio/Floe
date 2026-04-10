@@ -617,7 +617,7 @@ usize MegabytesUsedBySamples(Engine const& engine) {
     return (result) / (1024 * 1024);
 }
 
-AutoDescriptionString AutoDescription(Engine const& engine) {
+AutoDescriptionString AutoDescription(Engine const& engine, s32 max_items) {
     Array<AutoDescriptionLayerInfo, k_num_layers> layer_info {};
 
     for (auto const i : Range(k_num_layers)) {
@@ -629,7 +629,8 @@ AutoDescriptionString AutoDescription(Engine const& engine) {
 
     auto result = GenerateAutoDescription(engine.last_snapshot.state,
                                           layer_info,
-                                          Hash(engine.last_snapshot.name_or_path.Name()));
+                                          Hash(engine.last_snapshot.name_or_path.Name()),
+                                          max_items);
 
     dyn::PrependSpan(result, ICON_FA_WAND_MAGIC_SPARKLES " ");
 
