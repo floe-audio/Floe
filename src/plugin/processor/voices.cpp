@@ -529,82 +529,6 @@ void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannel
         if (v.is_active && v.midi_key_trigger == note && &controller == v.controller) EndVoice(v);
 }
 
-namespace granular {
-
-struct GrainSpreadBounds {
-    struct Region {
-        f64 start; // frame_pos space
-        f64 end; // frame_pos space
-    };
-    Region region_1 {};
-    Region region_2 {};
-    bool has_region_2 = false;
-};
-
-inline GrainSpreadBounds ComputeGrainSpreadBounds(f64 playhead_frame_pos,
-                                                  f32 spread_fraction,
-                                                  Optional<PlayHead::Loop> const& loop,
-                                                  u32 num_frames,
-                                                  bool is_fixed) {
-    auto const spread_size = (f64)spread_fraction * (f64)num_frames;
-
-    GrainSpreadBounds bounds {};
-
-    if (is_fixed) {
-        // GranularFixed: no loops, clamp to sample bounds.
-        bounds.region_1.start = playhead_frame_pos;
-        bounds.region_1.end = Min(playhead_frame_pos + spread_size, (f64)(num_frames - 1));
-        return bounds;
-    }
-
-    auto const region_end_fp = playhead_frame_pos + spread_size;
-
-    if (loop && loop->only_use_frames_within_loop) {
-        auto const loop_start = (f64)loop->start;
-        auto const loop_end = (f64)loop->end;
-        auto const loop_size = loop_end - loop_start;
-
-        if (loop_size <= 0) {
-            bounds.region_1.start = playhead_frame_pos;
-            bounds.region_1.end = playhead_frame_pos;
-            return bounds;
-        }
-
-        if (spread_size >= loop_size) {
-            // Spread covers the entire loop.
-            bounds.region_1.start = loop_start;
-            bounds.region_1.end = loop_end;
-            return bounds;
-        }
-
-        if (region_end_fp <= loop_end) {
-            // No wrapping needed - spread fits within loop.
-            bounds.region_1.start = playhead_frame_pos;
-            bounds.region_1.end = region_end_fp;
-        } else {
-            // Spread wraps around loop end -> two disjoint regions.
-            auto const wrapped_end = loop_start + (region_end_fp - loop_end);
-
-            bounds.region_1.start = playhead_frame_pos;
-            bounds.region_1.end = loop_end;
-            bounds.region_2.start = loop_start;
-            bounds.region_2.end = wrapped_end;
-            bounds.has_region_2 = true;
-        }
-    } else {
-        // Pre-loop or no loop: clamp to sample bounds. When a loop exists but the playhead
-        // hasn't entered it yet, also clamp to the loop end so the visual region doesn't
-        // extend past where grains will be constrained once looping begins.
-        auto const clamp_end = (loop ? (f64)loop->end : (f64)(num_frames - 1));
-        bounds.region_1.start = playhead_frame_pos;
-        bounds.region_1.end = Min(region_end_fp, clamp_end);
-    }
-
-    return bounds;
-}
-
-} // namespace granular
-
 struct VoiceProcessor {
     enum class VoiceBlockResult {
         Continue,
@@ -651,53 +575,10 @@ struct VoiceProcessor {
 
             constexpr f32 k_max_u16 = LargestRepresentableValue<u16>();
 
-            // Compute spread bounds for granular modes.
-            VoiceWaveformMarkerForGui::SpreadRegion spread_1 {};
-            VoiceWaveformMarkerForGui::SpreadRegion spread_2 {};
-
-            if (IsGranular(voice.controller->play_mode)) {
-                for (auto const& s : voice.sound_sources) {
-                    if (!s.is_active || s.source_data.tag != InstrumentType::Sampler) continue;
-                    auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-                    if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
-
-                    auto const nf = sampler.data->num_frames;
-                    auto const is_fixed =
-                        voice.controller->play_mode == param_values::PlayMode::GranularFixed;
-                    auto const bounds = granular::ComputeGrainSpreadBounds(sampler.playhead.frame_pos,
-                                                                           voice.controller->granular.spread,
-                                                                           sampler.playhead.loop,
-                                                                           nf,
-                                                                           is_fixed);
-
-                    // Convert from frame_pos space to audio-data 0-1 space.
-                    auto to_audio_01 = [&](f64 fp) -> f64 {
-                        auto const fi = (u32)Clamp(fp, 0.0, (f64)(nf - 1));
-                        auto const real = sampler.playhead.inverse_data_lookup ? ((nf - 1) - fi) : fi;
-                        return (f64)real / (f64)nf;
-                    };
-
-                    auto const s1 = to_audio_01(bounds.region_1.start);
-                    auto const e1 = to_audio_01(bounds.region_1.end);
-                    spread_1.start = (u16)(Min(s1, e1) * (f64)k_max_u16);
-                    spread_1.end = (u16)(Max(s1, e1) * (f64)k_max_u16);
-
-                    if (bounds.has_region_2) {
-                        auto const s2 = to_audio_01(bounds.region_2.start);
-                        auto const e2 = to_audio_01(bounds.region_2.end);
-                        spread_2.start = (u16)(Min(s2, e2) * (f64)k_max_u16);
-                        spread_2.end = (u16)(Max(s2, e2) * (f64)k_max_u16);
-                    }
-                    break; // Use the first active sampler source.
-                }
-            }
-
             voice.pool.voice_waveform_markers_for_gui.Write()[voice.index] = {
                 .position = (u16)(Clamp01(position_for_gui) * (f64)k_max_u16),
                 .intensity = (u16)(Clamp01(voice.current_gain) * k_max_u16),
                 .layer_index = voice.controller->layer_index,
-                .spread_region_1 = spread_1,
-                .spread_region_2 = spread_2,
             };
             voice.pool.voice_vol_env_markers_for_gui.Write()[voice.index] = {
                 .on = voice.controller->vol_env_on && !voice.disable_vol_env && !voice.vol_env.IsIdle(),

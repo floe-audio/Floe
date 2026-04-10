@@ -121,14 +121,6 @@ struct VoiceWaveformMarkerForGui {
     u16 position {};
     u16 intensity {};
     u8 layer_index {};
-
-    // Granular grain spread region in audio-data 0-1 space. 0 when not used.
-    struct SpreadRegion {
-        u16 start {};
-        u16 end {};
-    };
-    SpreadRegion spread_region_1 {};
-    SpreadRegion spread_region_2 {};
 };
 
 struct GrainMarkerForGui {

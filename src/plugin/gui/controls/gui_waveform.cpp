@@ -15,7 +15,6 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "processor/granular.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/sample_processing.hpp"
 
@@ -116,53 +115,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
         case param_values::PlayMode::Count: PanicIfReached();
     }
     PanicIfReached();
-}
-
-struct SpreadRegion01 {
-    f32 start; // audio-data 0-1 space
-    f32 end; // audio-data 0-1 space
-};
-
-// Collect spread regions from all active voice markers for a given layer, merge overlapping regions, and
-// return the merged set. This avoids drawing visually confusing multiple translucent overlapping rectangles.
-static Span<SpreadRegion01>
-MergedSpreadRegions(ArenaAllocator& arena,
-                    Array<VoiceWaveformMarkerForGui, k_num_voices> const& voice_waveform_markers,
-                    u8 layer_index) {
-
-    DynamicArray<SpreadRegion01> regions {arena};
-
-    for (auto const voice_index : Range(k_num_voices)) {
-        auto const& marker = voice_waveform_markers[voice_index];
-        if (!marker.intensity || marker.layer_index != layer_index) continue;
-
-        auto const r1_start = (f32)marker.spread_region_1.start / (f32)UINT16_MAX;
-        auto const r1_end = (f32)marker.spread_region_1.end / (f32)UINT16_MAX;
-        if (r1_start < r1_end) dyn::Append(regions, SpreadRegion01 {r1_start, r1_end});
-
-        auto const r2_start = (f32)marker.spread_region_2.start / (f32)UINT16_MAX;
-        auto const r2_end = (f32)marker.spread_region_2.end / (f32)UINT16_MAX;
-        if (r2_start < r2_end) dyn::Append(regions, SpreadRegion01 {r2_start, r2_end});
-    }
-
-    if (regions.size <= 1) return regions.ToOwnedSpan();
-
-    // Sort by start position.
-    Sort(regions, [](SpreadRegion01 const& a, SpreadRegion01 const& b) { return a.start < b.start; });
-
-    // Merge overlapping/adjacent regions in-place.
-    usize write = 0;
-    for (usize read = 1; read < regions.size; ++read) {
-        if (regions[read].start <= regions[write].end) {
-            regions[write].end = Max(regions[write].end, regions[read].end);
-        } else {
-            ++write;
-            regions[write] = regions[read];
-        }
-    }
-    regions.ResizeWithoutCtorDtor(write + 1);
-
-    return regions.ToOwnedSpan();
 }
 
 static void DrawSpreadRegionRect(DrawList& draw_list,
@@ -963,26 +915,6 @@ void DoWaveformElement(GuiState& g,
                 }
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
             }
-        }
-
-        // Spread regions from voice markers (for all granular modes when voices are active).
-        // Regions from all voices are merged so overlapping areas are drawn once rather than
-        // stacking translucent rectangles.
-        if (has_active_voices && options.play_mode.HasValue() && IsGranular(*options.play_mode)) {
-            bool const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
-            auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
-            auto const merged = MergedSpreadRegions(g.scratch_arena, voice_waveform_markers, layer.index);
-
-            for (auto const& region : merged)
-                DrawSpreadRegionRect(*g.imgui.draw_list,
-                                     window_r,
-                                     viewport_r.w,
-                                     region.start,
-                                     region.end,
-                                     reverse,
-                                     col);
-
-            if (merged.size) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
         }
 
         // Waveform controls: loop handles, offset handle, crossfade handle.
