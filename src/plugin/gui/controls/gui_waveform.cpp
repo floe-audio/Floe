@@ -24,6 +24,13 @@ static u64 DebouncedWaveformHash(WaveformHashDebounce& state, u64 raw_hash) {
     constexpr f64 k_detection_window_secs = 0.10;
     constexpr f64 k_calm_threshold_secs = 1.3;
 
+    // A zero hash means the audio thread cleared it (instrument change) — reset immediately so we
+    // don't keep showing a waveform from the previous instrument.
+    if (raw_hash == 0) {
+        state = {};
+        return 0;
+    }
+
     auto const now = TimePoint::Now();
     auto const secs_since_last_change =
         state.last_change_time ? (now - state.last_change_time) : k_calm_threshold_secs;
