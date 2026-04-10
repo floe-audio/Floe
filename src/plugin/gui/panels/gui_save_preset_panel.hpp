@@ -23,7 +23,8 @@ struct SavePresetPanelContext {
 struct SavePresetPanelState {
     static constexpr u64 k_panel_id = HashFnv1a("save-preset-panel");
     StateMetadata metadata;
-    bool scroll_to_start;
+    StateMetadata last_synced_engine_metadata;
+    bool scroll_to_start {};
     bool modeless {};
 };
 

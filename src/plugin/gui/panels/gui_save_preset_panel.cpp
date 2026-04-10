@@ -12,7 +12,8 @@
 #include "gui/elements/gui_modal.hpp"
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {
-    if (state.metadata != engine.state_metadata) {
+    if (state.last_synced_engine_metadata != engine.state_metadata) {
+        state.last_synced_engine_metadata = engine.state_metadata;
         state.metadata = engine.state_metadata;
         state.scroll_to_start = true;
     }
