@@ -923,15 +923,16 @@ void DoWaveformElement(GuiState& g,
 
         // GranularFixed spread indicator from params (visible even with no notes playing).
         if (features.show_grain_position_indicator) {
-            auto const grain_pos_raw = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
+            auto const grain_pos = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
-            auto const grain_pos = reverse ? 1.0f - grain_pos_raw : grain_pos_raw;
             auto const grain_spread = params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread);
             auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
 
-            f32 const start = grain_pos;
-            f32 const end = Min(grain_pos + grain_spread, 1.0f);
-            DrawSpreadRegionRect(*g.imgui.draw_list, window_r, viewport_r.w, start, end, reverse, col);
+            f32 const fp_start = grain_pos;
+            f32 const fp_end = Min(grain_pos + grain_spread, 1.0f);
+            f32 const audio_start = reverse ? (1.0f - fp_end) : fp_start;
+            f32 const audio_end = reverse ? (1.0f - fp_start) : fp_end;
+            DrawSpreadRegionRect(*g.imgui.draw_list, window_r, viewport_r.w, audio_start, audio_end, reverse, col);
         }
 
         // Voice cursors (shown in both modes).
