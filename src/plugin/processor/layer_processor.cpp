@@ -553,9 +553,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
     }
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::LfoAmount))
         vmst.lfo.amount = *p;
-    if (auto dest = layer.lfo_dest.Poll(changes.changed_params)) {
-        vmst.lfo.dest = *dest;
-    }
+    if (auto dest = layer.lfo_dest.Poll(changes.changed_params)) vmst.lfo.dest = *dest;
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LfoOn))
         layer.voice_controller.lfo.on = *p;
 

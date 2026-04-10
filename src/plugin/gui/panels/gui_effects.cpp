@@ -305,32 +305,31 @@ static void DoImpulseResponseSelector(GuiState& g,
     auto const btn_row = DoMidPanelPrevNextRow(g.builder, selector_row, layout::k_fill_parent);
 
     // IR name button
-    auto const ir_btn = DoBox(g.builder,
-                              {
-                                  .parent = btn_row,
-                                  .text = ir_name,
-                                  .text_colours =
-                                      greyed_out
-                                          ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                          : Colours {ColSet {
-                                                .base = LiveColStruct(UiColMap::MidText),
-                                                .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                .active = LiveColStruct(UiColMap::MidTextOn),
-                                            }},
-                                  .text_justification = TextJustification::CentredLeft,
-                                  .text_overflow = TextOverflowType::ShowDotsOnRight,
-                                  .layout {
-                                      .size = {layout::k_fill_parent, k_mid_button_height},
-                                  },
-                                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                                      return fmt::Format(g.scratch_arena,
-                                                         "Impulse: {}\n{}{}",
-                                                         ir_name,
-                                                         greyed_out ? "Not active. " : "",
-                                                         "The impulse response to use");
-                                  }},
-                                  .button_behaviour = imgui::ButtonConfig {},
-                              });
+    auto const ir_btn =
+        DoBox(g.builder,
+              {
+                  .parent = btn_row,
+                  .text = ir_name,
+                  .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                             : Colours {ColSet {
+                                                   .base = LiveColStruct(UiColMap::MidText),
+                                                   .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                   .active = LiveColStruct(UiColMap::MidTextOn),
+                                               }},
+                  .text_justification = TextJustification::CentredLeft,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_mid_button_height},
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      return fmt::Format(g.scratch_arena,
+                                         "Impulse: {}\n{}{}",
+                                         ir_name,
+                                         greyed_out ? "Not active. " : "",
+                                         "The impulse response to use");
+                  }},
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
 
     if (ir_btn.button_fired) {
         g.imgui.OpenModalViewport(g.ir_browser_state.k_panel_id);
@@ -377,7 +376,7 @@ static void DoImpulseResponseSelector(GuiState& g,
               .parent = selector_row,
               .text = "Impulse"_s,
               .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                        : Colours {LiveColStruct(UiColMap::MidText)},
+                                         : Colours {LiveColStruct(UiColMap::MidText)},
               .text_justification = TextJustification::Centred,
               .layout {
                   .size = {layout::k_fill_parent, k_font_body_size},

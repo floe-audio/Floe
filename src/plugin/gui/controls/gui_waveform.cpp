@@ -939,7 +939,13 @@ void DoWaveformElement(GuiState& g,
             f32 const fp_end = Min(grain_pos + grain_spread, 1.0f);
             f32 const audio_start = reverse ? (1.0f - fp_end) : fp_start;
             f32 const audio_end = reverse ? (1.0f - fp_start) : fp_end;
-            DrawSpreadRegionRect(*g.imgui.draw_list, window_r, viewport_r.w, audio_start, audio_end, reverse, col);
+            DrawSpreadRegionRect(*g.imgui.draw_list,
+                                 window_r,
+                                 viewport_r.w,
+                                 audio_start,
+                                 audio_end,
+                                 reverse,
+                                 col);
         }
 
         // Voice cursors (shown in both modes).

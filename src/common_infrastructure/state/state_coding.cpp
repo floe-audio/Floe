@@ -760,8 +760,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                  }}) {
                 auto const sustain_val =
                     state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, env.sustain));
-                auto& decay_val =
-                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, env.decay));
+                auto& decay_val = state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, env.decay));
                 if (sustain_val >= env.sustain_max_linear && decay_val < decay_200ms_linear)
                     decay_val = decay_200ms_linear;
             }

@@ -56,7 +56,8 @@ struct KeyboardLayout {
         layout.sharp_key_x_offset[0] = d1; // c#
         layout.sharp_key_x_offset[1] = (d1 * 2) + layout.sharp_key_width; // d#
         layout.sharp_key_x_offset[2] = (layout.natural_key_width * 3) + d2; // f#
-        layout.sharp_key_x_offset[3] = (layout.natural_key_width * 3) + (d2 * 2) + layout.sharp_key_width; // g#
+        layout.sharp_key_x_offset[3] =
+            (layout.natural_key_width * 3) + (d2 * 2) + layout.sharp_key_width; // g#
         layout.sharp_key_x_offset[4] =
             ((layout.natural_key_width * 3) + (d2 * 3) + (layout.sharp_key_width * 2)); // a#
 
