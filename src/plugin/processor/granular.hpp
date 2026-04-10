@@ -57,32 +57,45 @@ constexpr HarmonyIntervalsBitset MakeHarmonyPreset(Span<int const> semitones_fro
     return result;
 }
 
+constexpr HarmonyIntervalsBitset MakeHarmonyPresetRange(int min_semitone, int max_semitone) {
+    HarmonyIntervalsBitset result {};
+    result.Set(k_harmony_interval_centre_bit);
+    for (int s = min_semitone; s <= max_semitone; ++s)
+        if (s != 0) result.Set(HarmonyIntervalBitIndex(s));
+    return result;
+}
+
 struct HarmonyPreset {
     String name;
     String tooltip;
     HarmonyIntervalsBitset intervals;
+    bool divider_before = false;
 };
 
 // clang-format off
 constexpr Array k_harmony_presets = {
     HarmonyPreset {"None"_s,            "Clear all intervals"_s,                                     MakeHarmonyPreset({})},
-    HarmonyPreset {"Octave"_s,          "Root + octave above and below"_s,                           MakeHarmonyPreset(Array {-12, 12})},
-    HarmonyPreset {"Perfect 5th"_s,     "Root + perfect 5th above and below"_s,                      MakeHarmonyPreset(Array {-7, 7})},
-    HarmonyPreset {"Power Chord"_s,     "Root + 5th + octave: classic power chord voicing"_s,        MakeHarmonyPreset(Array {7, 12})},
-    HarmonyPreset {"Major Triad"_s,     "Root + major 3rd + 5th"_s,                                  MakeHarmonyPreset(Array {4, 7})},
+
+    HarmonyPreset {"Octave"_s,          "Octave above"_s,                                            MakeHarmonyPreset(Array {12}),               true},
+    HarmonyPreset {"Octaves"_s,         "Octave above and below"_s,                                  MakeHarmonyPreset(Array {-12, 12})},
+    HarmonyPreset {"Wide Octaves"_s,    "Two octaves above and below"_s,                             MakeHarmonyPreset(Array {-24, -12, 12, 24})},
+    HarmonyPreset {"Sub + Octave"_s,    "Octave above with deep sub three octaves below"_s,          MakeHarmonyPreset(Array {12, -36})},
+
+    HarmonyPreset {"Fifth"_s,           "Perfect 5th above"_s,                                       MakeHarmonyPreset(Array {7}),                true},
+    HarmonyPreset {"Fifths"_s,          "Perfect 5th above and below"_s,                             MakeHarmonyPreset(Array {-7, 7})},
+    HarmonyPreset {"Power Chord"_s,     "Root + 5th + octave"_s,                                     MakeHarmonyPreset(Array {7, 12})},
+
+    HarmonyPreset {"Major Triad"_s,     "Root + major 3rd + 5th"_s,                                  MakeHarmonyPreset(Array {4, 7}),             true},
     HarmonyPreset {"Minor Triad"_s,     "Root + minor 3rd + 5th"_s,                                  MakeHarmonyPreset(Array {3, 7})},
-    HarmonyPreset {"Major 7th"_s,       "Root + major 3rd + 5th + major 7th"_s,                      MakeHarmonyPreset(Array {4, 7, 11})},
-    HarmonyPreset {"Minor 7th"_s,       "Root + minor 3rd + 5th + minor 7th"_s,                      MakeHarmonyPreset(Array {3, 7, 10})},
-    HarmonyPreset {"Sus4"_s,            "Root + perfect 4th + 5th: suspended, open sound"_s,         MakeHarmonyPreset(Array {5, 7})},
     HarmonyPreset {"Pentatonic"_s,      "Major pentatonic scale intervals"_s,                        MakeHarmonyPreset(Array {2, 4, 7, 9, 12})},
-    HarmonyPreset {"Whole Tone"_s,      "Whole tone scale: dreamy, ambiguous harmony"_s,             MakeHarmonyPreset(Array {2, 4, 6, 8, 10, 12})},
+
+    HarmonyPreset {"Whole Tone"_s,      "Whole tone scale: dreamy, ambiguous"_s,                     MakeHarmonyPreset(Array {2, 4, 6, 8, 10, 12}), true},
     HarmonyPreset {"Chromatic"_s,       "All 12 semitones within one octave"_s,                      MakeHarmonyPreset(Array {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})},
-    HarmonyPreset {"Shimmer"_s,         "Octave + 5th above: lush, reverb-like shimmer"_s,           MakeHarmonyPreset(Array {7, 12, 19, 24})},
-    HarmonyPreset {"Sub Bass"_s,        "Octave + 5th below: deep, weighty sub layers"_s,            MakeHarmonyPreset(Array {-12, -7, -24})},
-    HarmonyPreset {"Wide Octaves"_s,    "Multiple octaves above and below: huge spread"_s,           MakeHarmonyPreset(Array {-24, -12, 12, 24})},
-    HarmonyPreset {"Dissonant"_s,       "Minor 2nd + tritone + minor 7th: tense, unsettling"_s,      MakeHarmonyPreset(Array {1, 6, 10})},
-    HarmonyPreset {"Stacked 4ths"_s,    "Quartal voicing: modern, open harmony"_s,                   MakeHarmonyPreset(Array {5, 10, 15})},
-    HarmonyPreset {"Cosmic"_s,          "Wide intervals spanning multiple octaves"_s,                 MakeHarmonyPreset(Array {-24, -7, 7, 12, 19, 24, 36})},
+    HarmonyPreset {"Dissonant"_s,       "Minor 2nd + tritone + minor 7th"_s,                         MakeHarmonyPreset(Array {1, 6, 10})},
+    HarmonyPreset {"Cluster"_s,         "Dense semitone cluster around root"_s,                      MakeHarmonyPreset(Array {-3, -2, -1, 1, 2, 3})},
+    HarmonyPreset {"Jagged"_s,          "Repeating semitone-tone pattern across two octaves"_s,      MakeHarmonyPreset(Array {1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19, 21, 22, 24})},
+    HarmonyPreset {"Dense"_s,           "Every semitone within one octave above and below"_s,        MakeHarmonyPresetRange(-12, 12)},
+    HarmonyPreset {"All"_s,             "Every interval selected"_s,                                 MakeHarmonyPresetRange(-48, 48)},
 };
 // clang-format on
 

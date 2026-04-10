@@ -1377,7 +1377,7 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
 
     if (g.imgui.IsPopupMenuOpen(popup_id) && g.builder.IsInputAndRenderPass()) {
         auto const popup_r = ({
-            auto const popup_size = WwToPixels(f32x2 {340, 450});
+            auto const popup_size = WwToPixels(f32x2 {460, 450});
             Rect r {.size = popup_size};
             if (auto const btn_r = BoxRect(g.builder, intervals_btn)) {
                 auto const avoid_r = g.imgui.ViewportRectToWindowRect(*btn_r);
@@ -1394,7 +1394,6 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
             {
                 .run =
                     [&g, &layer](GuiBuilder&) {
-                        auto const is_first_frame = g.imgui.IsViewportFirstSizedFrame();
                         auto const popup_root = DoBox(g.builder,
                                                       {
                                                           .layout {
@@ -1433,6 +1432,17 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                             auto const current_intervals = layer.harmony_intervals.GetBlockwise();
                             for (auto const i : Range(k_harmony_presets.size)) {
                                 auto const& preset = k_harmony_presets[i];
+                                if (preset.divider_before)
+                                    DoBox(g.builder,
+                                          {
+                                              .parent = presets_col,
+                                              .id_extra = SourceLocationHash() + i,
+                                              .background_fill_colours = Col {.c = Col::Surface2},
+                                              .layout {
+                                                  .size = {layout::k_fill_parent, 1},
+                                                  .margins = {.tb = 2},
+                                              },
+                                          });
                                 bool const is_selected = current_intervals == preset.intervals;
                                 auto const item = MenuItem(g.builder,
                                                            presets_col,
@@ -1442,7 +1452,7 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                                                                .is_selected = is_selected,
                                                                .close_on_click = false,
                                                            },
-                                                           (u64)i);
+                                                           SourceLocationHash() + i);
                                 if (item.button_fired)
                                     layer.harmony_intervals.AssignBlockwise(preset.intervals);
                             }
@@ -1458,96 +1468,124 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                                   },
                               });
 
-                        // Right column: individual intervals (nested
-                        // scrollable viewport)
-                        auto const intervals_col =
-                            DoBox(g.builder,
-                                  {
-                                      .parent = popup_root,
-                                      .layout {
-                                          .size = layout::k_fill_parent,
-                                          .contents_direction = layout::Direction::Column,
-                                          .contents_align = layout::Alignment::Start,
-                                      },
-                                  });
+                        // Right column: interval grid (manually laid out)
+                        {
+                            constexpr int k_grid_cols = 12;
+                            constexpr int k_num_rows = 9; // 4 neg + root + 4 pos
+                            constexpr f32 k_heading_h = 18;
+                            constexpr f32 k_cell_gap = 1;
+                            constexpr f32 k_pad = 4;
 
-                        DoBox(g.builder,
-                              {
-                                  .parent = intervals_col,
-                                  .text = "INTERVALS"_s,
-                                  .font = FontType::Heading3,
-                                  .text_colours = Col {.c = Col::Subtext0},
-                                  .text_justification = TextJustification::CentredLeft,
-                                  .layout {
-                                      .size = {layout::k_fill_parent, 20},
-                                      .margins = {.l = 8, .t = 2, .b = 2},
-                                  },
-                              });
+                            auto const grid_box = DoBox(g.builder,
+                                                        {
+                                                            .parent = popup_root,
+                                                            .layout {
+                                                                .size = layout::k_fill_parent,
+                                                            },
+                                                        });
 
-                        auto const intervals_box = DoBox(g.builder,
-                                                         {
-                                                             .parent = intervals_col,
-                                                             .layout {
-                                                                 .size = layout::k_fill_parent,
-                                                             },
-                                                         });
+                            if (auto const vp_r = BoxRect(g.builder, grid_box)) {
+                                auto const r = g.imgui.ViewportRectToWindowRect(*vp_r);
+                                auto const cell_w =
+                                    (r.w - k_pad * 2 - k_cell_gap * (k_grid_cols - 1)) / (f32)k_grid_cols;
+                                auto const cell_h =
+                                    (r.h - k_pad * 2 - k_heading_h - k_cell_gap * (k_num_rows - 1)) /
+                                    (f32)k_num_rows;
+                                auto const grid_top = r.y + k_pad + k_heading_h;
 
-                        DoBoxViewport(
-                            g.builder,
-                            {
-                                .run =
-                                    [&g, &layer, is_first_frame](GuiBuilder&) {
-                                        auto const intervals_root = DoBox(
-                                            g.builder,
-                                            {
-                                                .layout {
-                                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                    .contents_direction = layout::Direction::Column,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
+                                // Heading
+                                {
+                                    Rect heading_r {
+                                        .pos = {r.x + k_pad + 4, r.y + k_pad},
+                                        .size = {r.w - k_pad * 2, k_heading_h},
+                                    };
+                                    g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
+                                    g.imgui.draw_list->AddTextInRect(
+                                        heading_r,
+                                        ToU32(Col {.c = Col::Subtext0}),
+                                        "INTERVALS",
+                                        {.justification = TextJustification::CentredLeft});
+                                    g.fonts.Pop();
+                                }
 
-                                        // Top to bottom: +48 down to +1, root, -1 down
-                                        // to -48
-                                        for (int semitones = k_harmony_interval_max_semitone;
-                                             semitones >= k_harmony_interval_min_semitone;
-                                             --semitones) {
-                                            auto const bit = HarmonyIntervalBitIndex(semitones);
-                                            bool const is_root = (semitones == 0);
-                                            bool const is_selected =
-                                                is_root || layer.harmony_intervals.Get(bit);
-                                            auto const name =
-                                                is_root ? String("Root"_s)
-                                                        : HarmonyIntervalName(semitones, g.scratch_arena);
+                                g.imgui.PushId("interval_grid"_s);
+                                DEFER { g.imgui.PopId(); };
 
-                                            auto const item =
-                                                MenuItem(g.builder,
-                                                         intervals_root,
-                                                         {
-                                                             .text = name,
-                                                             .is_selected = is_selected,
-                                                             .close_on_click = false,
-                                                             .mode = is_root ? MenuItemOptions::Mode::Dimmed
-                                                                             : MenuItemOptions::Mode::Active,
-                                                         },
-                                                         (u64)bit);
-                                            if (item.button_fired && !is_root)
-                                                layer.harmony_intervals.Flip(bit);
+                                auto const draw_cell = [&](int grid_row, int grid_col, int semitones) {
+                                    auto const cx = r.x + k_pad + ((f32)grid_col * (cell_w + k_cell_gap));
+                                    auto const cy = grid_top + ((f32)grid_row * (cell_h + k_cell_gap));
+                                    Rect cell_r {.pos = {cx, cy}, .size = {cell_w, cell_h}};
 
-                                            if (is_root && is_first_frame) {
-                                                if (auto const item_r = BoxRect(g.builder, item))
-                                                    g.imgui.ScrollViewportToShowRectangle(*item_r);
-                                            }
-                                        }
-                                    },
-                                .bounds = intervals_box,
-                                .imgui_id = g.builder.imgui.MakeId("intervals"),
-                                .viewport_config = ({
-                                    auto cfg = k_default_modal_subviewport;
-                                    cfg.padding = {.lr = 1, .tb = 0};
-                                    cfg;
-                                }),
-                            });
+                                    auto const bit = HarmonyIntervalBitIndex(semitones);
+                                    bool const is_selected = layer.harmony_intervals.Get(bit);
+                                    auto const id = g.imgui.MakeId((uintptr)bit);
+
+                                    if (g.imgui.ButtonBehaviour(cell_r, id, imgui::ButtonConfig {}))
+                                        layer.harmony_intervals.Flip(bit);
+
+                                    bool const hot_or_active = g.imgui.IsHotOrActive(id);
+                                    auto const rounding = WwToPixels(2.0f);
+
+                                    u32 bg_col;
+                                    if (is_selected && hot_or_active)
+                                        bg_col = ToU32(Col {.c = Col::Surface0});
+                                    else if (is_selected)
+                                        bg_col = ToU32(Col {.c = Col::Surface1});
+                                    else if (hot_or_active)
+                                        bg_col = ToU32(Col {.c = Col::Surface2});
+                                    else
+                                        bg_col = 0;
+
+                                    if (bg_col) g.imgui.draw_list->AddRectFilled(cell_r, bg_col, rounding);
+
+                                    auto const text_col = ToU32(Col {.c = Col::Text});
+                                    auto const label = fmt::Format(g.scratch_arena, "{}", semitones);
+                                    g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
+                                    g.imgui.draw_list->AddTextInRect(
+                                        cell_r,
+                                        text_col,
+                                        label,
+                                        {.justification = TextJustification::Centred});
+                                    g.fonts.Pop();
+
+                                    auto const tooltip_name = HarmonyIntervalName(semitones, g.scratch_arena);
+                                    Tooltip(g, id, cell_r, tooltip_name, {});
+                                };
+
+                                // Positive rows: +48 to +1 (top-left = 48, descending)
+                                for (int row_idx = 0; row_idx < 4; ++row_idx) {
+                                    for (int col = 0; col < k_grid_cols; ++col) {
+                                        int semitones = ((4 - row_idx) * k_grid_cols) - col;
+                                        draw_cell(row_idx, col, semitones);
+                                    }
+                                }
+
+                                // Root row (row index 4)
+                                {
+                                    auto const root_y = grid_top + (4.0f * (cell_h + k_cell_gap));
+                                    Rect root_r {
+                                        .pos = {r.x + k_pad, root_y},
+                                        .size = {r.w - k_pad * 2, cell_h},
+                                    };
+                                    g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
+                                    g.imgui.draw_list->AddTextInRect(
+                                        root_r,
+                                        ToU32(Col {.c = Col::Subtext0}),
+                                        "0",
+                                        {.justification = TextJustification::Centred});
+                                    g.fonts.Pop();
+                                }
+
+                                // Negative rows: -1 to -48 (below root, closest first)
+                                for (int row_idx = 0; row_idx < 4; ++row_idx) {
+                                    int grid_row = 5 + row_idx;
+                                    for (int col = 0; col < k_grid_cols; ++col) {
+                                        int semitones = -((row_idx * k_grid_cols) + col + 1);
+                                        draw_cell(grid_row, col, semitones);
+                                    }
+                                }
+                            }
+                        }
                     },
                 .bounds = popup_r,
                 .imgui_id = popup_id,
