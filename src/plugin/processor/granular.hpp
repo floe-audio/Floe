@@ -125,6 +125,7 @@ struct Grain {
     f32 env_phase_inc {}; // = 1.0f / duration_samples, pre-computed at spawn
 
     f32 pan_pos {}; // -1 (left) to +1 (right), assigned randomly at grain spawn
+    f32 amp {1.0f}; // subtle random amplitude jitter per grain
     u8 source_index {};
     bool active {};
 

@@ -878,6 +878,7 @@ struct VoiceProcessor {
                     auto const detune_rand = r1[3];
                     auto const density_jitter_rand = r2[0];
                     auto const direction_rand = r2[1];
+                    auto const amp_jitter_rand = r2[3];
 
                     auto const spread_offset = (f64)(spread_rand * ctrl.granular.spread) * (f64)num_frames;
 
@@ -919,6 +920,7 @@ struct VoiceProcessor {
                             new_grain->steal_fade_dec = 0;
 
                             new_grain->pan_pos = (pan_rand * 2.0f - 1.0f) * ctrl.granular.random_pan;
+                            new_grain->amp = 1.0f - (amp_jitter_rand * 0.45f);
 
                             new_grain->detune_ratio = ({
                                 f64 r;
@@ -1045,7 +1047,7 @@ struct VoiceProcessor {
                 {
                     ZoneNamedN(mix_zone, "Grain: Gain calc", true);
 
-                    auto const amp = s.amp;
+                    auto const amp = s.amp * grain.amp;
                     auto const grain_pan_gains = EqualPanGains2(f32x2(grain.pan_pos)).xy;
 
                     // Constants.
