@@ -582,10 +582,8 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     // Reset stuff
     //
 
-    for (auto& v : viewports) {
-        if (!v->active) v->prev_content_size = {};
+    for (auto& v : viewports)
         v->active = false;
-    }
 
     UpdateExclusiveFocusViewport();
 
