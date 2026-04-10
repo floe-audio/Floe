@@ -2078,6 +2078,9 @@ TEST_CASE(TestNewSerialisation) {
                 type = (EffectType)i;
             Shuffle(state.fx_order, random_seed);
 
+            for (auto const i : Range(k_num_effect_types))
+                if (RandomIntInRange<int>(random_seed, 0, 1)) state.fx_visible.Set(i);
+
             state.ir_id = sample_lib::IrId {
                 .library = sample_lib::HashLibraryIdStringWithoutRegistration("irlibname.irlib"_s),
                 .ir_id = "irfile"_s,
@@ -2145,6 +2148,16 @@ TEST_CASE(TestNewSerialisation) {
                     .value = 0.5f,
                 };
             }
+
+            for (auto& intervals : state.harmony_intervals)
+                for (auto const i : Range(k_num_harmony_interval_bits))
+                    if (RandomIntInRange<int>(random_seed, 0, 1)) intervals.Set(i);
+
+            state.instance_config = {
+                .reset_on_transport = true,
+                .reset_keyswitch = (u7)60,
+                .seed = 42,
+            };
 
             if (source == StateSource::Daw) {
                 for (auto const param : Range(k_num_parameters)) {
