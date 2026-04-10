@@ -284,8 +284,10 @@ static void DoIrSelectorRightClickMenu(GuiState& g, Box selector_button) {
     }
 }
 
-static void
-DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box param_container) {
+static void DoImpulseResponseSelector(GuiState& g,
+                                      GuiFrameContext const& frame_context,
+                                      Box param_container,
+                                      bool greyed_out) {
     auto const ir_name = IrName(g.engine);
 
     // Selector row
@@ -308,11 +310,13 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
                                   .parent = btn_row,
                                   .text = ir_name,
                                   .text_colours =
-                                      ColSet {
-                                          .base = LiveColStruct(UiColMap::MidText),
-                                          .hot = LiveColStruct(UiColMap::MidTextHot),
-                                          .active = LiveColStruct(UiColMap::MidTextOn),
-                                      },
+                                      greyed_out
+                                          ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                          : Colours {ColSet {
+                                                .base = LiveColStruct(UiColMap::MidText),
+                                                .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                .active = LiveColStruct(UiColMap::MidTextOn),
+                                            }},
                                   .text_justification = TextJustification::CentredLeft,
                                   .text_overflow = TextOverflowType::ShowDotsOnRight,
                                   .layout {
@@ -320,8 +324,9 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
                                   },
                                   .tooltip = FunctionRef<String()> {[&]() -> String {
                                       return fmt::Format(g.scratch_arena,
-                                                         "Impulse: {}\n{}",
+                                                         "Impulse: {}\n{}{}",
                                                          ir_name,
+                                                         greyed_out ? "Not active. " : "",
                                                          "The impulse response to use");
                                   }},
                                   .button_behaviour = imgui::ButtonConfig {},
@@ -351,6 +356,7 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
         g.builder,
         btn_row,
         {
+            .greyed_out = greyed_out,
             .prev_tooltip = "Previous IR.\n\nThis is based on the currently selected filters."_s,
             .next_tooltip = "Next IR.\n\nThis is based on the currently selected filters."_s,
         });
@@ -361,7 +367,8 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
     auto const shuffle_btn = DoMidPanelShuffleButton(
         g.builder,
         btn_row,
-        {.tooltip = "Load a random IR.\n\nThis is based on the currently selected filters."_s});
+        {.greyed_out = greyed_out,
+         .tooltip = "Load a random IR.\n\nThis is based on the currently selected filters."_s});
     if (shuffle_btn.button_fired) LoadRandomIr(context, g.ir_browser_state);
 
     // Label below
@@ -369,7 +376,8 @@ DoImpulseResponseSelector(GuiState& g, GuiFrameContext const& frame_context, Box
           {
               .parent = selector_row,
               .text = "Impulse"_s,
-              .text_colours = LiveColStruct(UiColMap::MidText),
+              .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                        : Colours {LiveColStruct(UiColMap::MidText)},
               .text_justification = TextJustification::Centred,
               .layout {
                   .size = {layout::k_fill_parent, k_font_body_size},
@@ -910,7 +918,7 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::ConvolutionReverb: {
-            DoImpulseResponseSelector(g, frame_context, param_container);
+            DoImpulseResponseSelector(g, frame_context, param_container, greyed_out);
 
             DoKnobParameter(
                 g,
