@@ -889,6 +889,8 @@ void DoWaveformElement(GuiState& g,
         // Consume voice waveform markers once for use by both spread regions and voice cursors.
         auto const has_active_voices =
             g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) > 0;
+        auto const muted_opacity =
+            LayerIsSilent(g.engine.processor, layer.index) ? 0.25f : 1.0f;
         auto& voice_waveform_markers =
             g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
 
@@ -916,7 +918,7 @@ void DoWaveformElement(GuiState& g,
                                         g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
                                         {},
                                         {
-                                            .opacity = voice_intensity,
+                                            .opacity = voice_intensity * muted_opacity,
                                             .col = LiveCol(UiColMap::WaveformLoopGrainMarkers),
                                         });
                 }
@@ -965,7 +967,7 @@ void DoWaveformElement(GuiState& g,
                                     viewport_r.h,
                                     g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
                                     {},
-                                    {.opacity = intensity});
+                                    {.opacity = intensity * muted_opacity});
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
             }
         }
