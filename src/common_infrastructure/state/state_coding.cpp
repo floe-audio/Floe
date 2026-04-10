@@ -2474,7 +2474,7 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::LegacyVelocityMapping), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolEnvOn), 1.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeAttack), 0.0f, 0.1f);
-        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeDecay), 0.0f, 0.1f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeDecay), 200.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeSustain), DbToAmp(0.0f), 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeRelease), 15.045f, 0.1f);
         CHECK_EQ(ParamToInt<param_values::LayerFilterType>(
