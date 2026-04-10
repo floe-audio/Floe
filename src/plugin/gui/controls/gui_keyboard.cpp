@@ -25,15 +25,15 @@ struct TopDisplayOptions {
     f32 text_gap = 0.0f;
 };
 
-constexpr bool IsWhiteNote(s32 key_in_octave) {
-    constexpr u16 k_white_key_bitset = 0b101011010101;
-    return (k_white_key_bitset & (1 << (11 - key_in_octave))) != 0;
+constexpr bool IsNaturalNote(s32 key_in_octave) {
+    constexpr u16 k_natural_key_bitset = 0b101011010101;
+    return (k_natural_key_bitset & (1 << (11 - key_in_octave))) != 0;
 }
 
 struct KeyboardLayout {
-    f32 white_key_width;
-    f32 black_key_width;
-    f32 black_key_x_offset[5];
+    f32 natural_key_width;
+    f32 sharp_key_width;
+    f32 sharp_key_x_offset[5];
     f32 keyboard_x;
     f32 keyboard_width;
     u7 lowest_key_shown;
@@ -46,39 +46,39 @@ struct KeyboardLayout {
         layout.lowest_key_shown = CheckedCast<u7>((starting_octave + k_octave_default_offset) * 12);
         layout.num_octaves = num_octaves;
 
-        auto const k_white_key_width_factor = 1.0f / (num_octaves * 7.0f);
-        layout.white_key_width = keyboard_w * k_white_key_width_factor;
-        layout.black_key_width = (layout.white_key_width * (0.5f * 118.52f / 100.0f));
+        auto const k_natural_key_width_factor = 1.0f / (num_octaves * 7.0f);
+        layout.natural_key_width = keyboard_w * k_natural_key_width_factor;
+        layout.sharp_key_width = (layout.natural_key_width * (0.5f * 118.52f / 100.0f));
 
-        auto const d1 = ((layout.white_key_width * 3) - (layout.black_key_width * 2)) / 3;
-        auto const d2 = ((layout.white_key_width * 4) - (layout.black_key_width * 3)) / 4;
+        auto const d1 = ((layout.natural_key_width * 3) - (layout.sharp_key_width * 2)) / 3;
+        auto const d2 = ((layout.natural_key_width * 4) - (layout.sharp_key_width * 3)) / 4;
 
-        layout.black_key_x_offset[0] = d1; // c#
-        layout.black_key_x_offset[1] = (d1 * 2) + layout.black_key_width; // d#
-        layout.black_key_x_offset[2] = (layout.white_key_width * 3) + d2; // f#
-        layout.black_key_x_offset[3] = (layout.white_key_width * 3) + (d2 * 2) + layout.black_key_width; // g#
-        layout.black_key_x_offset[4] =
-            ((layout.white_key_width * 3) + (d2 * 3) + (layout.black_key_width * 2)); // a#
+        layout.sharp_key_x_offset[0] = d1; // c#
+        layout.sharp_key_x_offset[1] = (d1 * 2) + layout.sharp_key_width; // d#
+        layout.sharp_key_x_offset[2] = (layout.natural_key_width * 3) + d2; // f#
+        layout.sharp_key_x_offset[3] = (layout.natural_key_width * 3) + (d2 * 2) + layout.sharp_key_width; // g#
+        layout.sharp_key_x_offset[4] =
+            ((layout.natural_key_width * 3) + (d2 * 3) + (layout.sharp_key_width * 2)); // a#
 
         return layout;
     }
 
-    Rect WhiteKeyRect(s32 white_key_index, f32 key_y, f32 key_height) const {
+    Rect NaturalKeyRect(s32 natural_key_index, f32 key_y, f32 key_height) const {
         f32 const gap = 2;
         Rect key_r;
-        key_r.x = keyboard_x + (f32)white_key_index * white_key_width;
+        key_r.x = keyboard_x + (f32)natural_key_index * natural_key_width;
         key_r.y = key_y;
-        key_r.w = white_key_width - gap;
+        key_r.w = natural_key_width - gap;
         key_r.h = key_height;
         return key_r;
     }
 
-    Rect BlackKeyRect(s32 black_key_index_rel_octave, s32 octave, f32 key_y, f32 key_height) const {
+    Rect SharpKeyRect(s32 sharp_key_index_rel_octave, s32 octave, f32 key_y, f32 key_height) const {
         Rect key_r;
-        key_r.x = (f32)RoundPositiveFloat(keyboard_x + black_key_x_offset[black_key_index_rel_octave] +
-                                          ((f32)octave * white_key_width * 7));
+        key_r.x = (f32)RoundPositiveFloat(keyboard_x + sharp_key_x_offset[sharp_key_index_rel_octave] +
+                                          ((f32)octave * natural_key_width * 7));
         key_r.y = key_y;
-        key_r.w = (f32)RoundPositiveFloat(black_key_width);
+        key_r.w = (f32)RoundPositiveFloat(sharp_key_width);
         key_r.h = key_height;
         return key_r;
     }
@@ -94,17 +94,17 @@ struct KeyboardLayout {
         constexpr u8 k_key_color_index[] = {0, 0, 1, 1, 2, 3, 2, 4, 3, 5, 4, 6};
 
         Rect rect;
-        if (IsWhiteNote(key_in_octave)) {
-            auto const white_index = k_key_color_index[key_in_octave];
-            rect = WhiteKeyRect((octave * 7) + white_index, 0, 0);
+        if (IsNaturalNote(key_in_octave)) {
+            auto const natural_index = k_key_color_index[key_in_octave];
+            rect = NaturalKeyRect((octave * 7) + natural_index, 0, 0);
 
-            // We want the top edge of the key, so for white keys we need to subtract the necessary cut-out
-            // that the adjacent black key makes.
+            // We want the top edge of the key, so for natural keys we need to subtract the necessary
+            // cut-out that the adjacent sharp key makes.
 
             bool left_cutout = false;
             bool right_cutout = false;
 
-            switch (white_index) {
+            switch (natural_index) {
                 case 0: { // C
                     right_cutout = true;
                     break;
@@ -143,7 +143,7 @@ struct KeyboardLayout {
             else if (left_cutout && edge == NoteEdge::Left)
                 rect.x = KeyTopEdgeX(midi_key - 1, NoteEdge::Right);
         } else
-            rect = BlackKeyRect(k_key_color_index[key_in_octave], octave, 0, 0);
+            rect = SharpKeyRect(k_key_color_index[key_in_octave], octave, 0, 0);
 
         if (edge == NoteEdge::Right) return rect.Right();
         return rect.x;
@@ -177,8 +177,8 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
 
     auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave, num_octaves);
 
-    f32 const white_height = r.h;
-    auto const black_height = (f32)RoundPositiveFloat(r.h * 0.65f);
+    f32 const natural_height = r.h;
+    auto const sharp_height = (f32)RoundPositiveFloat(r.h * 0.65f);
     f32 const active_voice_marker_h = r.h * (11.93f / 100.0f);
 
     Optional<KeyboardGuiKeyPressed> result {};
@@ -220,16 +220,16 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     imgui.draw_list->AddRectFilled(imgui.RegisterAndConvertRect(r).ExpandLeft(1).ExpandBottom(1).ExpandTop(1),
                                    col_natural_key_divider);
 
-    imgui.PushId("white");
+    imgui.PushId("natural");
     for (auto const i : Range(num_octaves * 7)) {
-        s32 const this_white_key = i % 7;
+        s32 const this_natural_key = i % 7;
         s32 const this_octave = i / 7;
-        constexpr s32 k_white_key_nums[] = {0, 2, 4, 5, 7, 9, 11};
-        s32 const this_rel_key = k_white_key_nums[this_white_key] + (this_octave * 12);
+        constexpr s32 k_natural_key_nums[] = {0, 2, 4, 5, 7, 9, 11};
+        s32 const this_rel_key = k_natural_key_nums[this_natural_key] + (this_octave * 12);
         s32 const this_abs_key = layout.lowest_key_shown + this_rel_key;
         if (this_abs_key > 127) continue;
 
-        auto key_r = layout.WhiteKeyRect(i, r.y, white_height);
+        auto key_r = layout.NaturalKeyRect(i, r.y, natural_height);
 
         key_r = imgui.RegisterAndConvertRect(key_r);
         auto const id = imgui.MakeId((u32)i);
@@ -273,7 +273,7 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
                                                      col_pressed_accent,
                                                      col_pressed_accent);
         }
-        overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
+        overlay_key(this_abs_key, key_r, UiColMap::KeyboardNaturalVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, false);
 
         if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
@@ -299,16 +299,16 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     }
     imgui.PopId();
 
-    imgui.PushId("black");
+    imgui.PushId("sharp");
     for (auto const i : Range(num_octaves * 5)) {
-        s32 const this_black_key = i % 5;
+        s32 const this_sharp_key = i % 5;
         s32 const this_octave = i / 5;
-        constexpr s32 k_black_key_nums[] = {1, 3, 6, 8, 10};
-        s32 const this_rel_key = k_black_key_nums[this_black_key] + (this_octave * 12);
+        constexpr s32 k_sharp_key_nums[] = {1, 3, 6, 8, 10};
+        s32 const this_rel_key = k_sharp_key_nums[this_sharp_key] + (this_octave * 12);
         s32 const this_abs_key = layout.lowest_key_shown + this_rel_key;
         if (this_abs_key > 127) continue;
 
-        auto key_r = layout.BlackKeyRect(this_black_key, this_octave, r.y, black_height);
+        auto key_r = layout.SharpKeyRect(this_sharp_key, this_octave, r.y, sharp_height);
 
         key_r = imgui.RegisterAndConvertRect(key_r);
         auto const id = imgui.MakeId((u32)i);
@@ -369,7 +369,7 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
                                                      col_pressed_accent,
                                                      col_pressed_accent);
         }
-        overlay_key(this_abs_key, key_r, UiColMap::KeyboardBlackVoiceOverlay);
+        overlay_key(this_abs_key, key_r, UiColMap::KeyboardSharpVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, true);
 
         if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
