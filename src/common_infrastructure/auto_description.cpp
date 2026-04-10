@@ -10,10 +10,8 @@
 enum class PhraseKind : u8 {
     SlowAttack,
     SharpAttack,
-    DenselyLayered,
-    Layered,
-    LightlyLayered,
-    Accented,
+    DualLayer,
+    TripleLayer,
     Granular,
     OneShot,
     Looping,
@@ -78,32 +76,17 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
             };
             return pick(k_variants);
         }
-        case PhraseKind::DenselyLayered: {
+        case PhraseKind::DualLayer: {
             static constexpr PhraseText k_variants[] = {
-                {"densely layered"_s, "dense layering"_s},
-                {"thickly stacked"_s, "thick stacking"_s},
-                {"richly layered"_s, "rich layering"_s},
+                {"dual-layer"_s, "2 layers"_s},
+                {"2-layer"_s, "2 layers"_s},
             };
             return pick(k_variants);
         }
-        case PhraseKind::Layered: {
+        case PhraseKind::TripleLayer: {
             static constexpr PhraseText k_variants[] = {
-                {"layered"_s, "layering"_s},
-                {"stacked"_s, "stacking"_s},
-            };
-            return pick(k_variants);
-        }
-        case PhraseKind::LightlyLayered: {
-            static constexpr PhraseText k_variants[] = {
-                {"lightly layered"_s, "light layering"_s},
-                {"gently stacked"_s, "gentle stacking"_s},
-            };
-            return pick(k_variants);
-        }
-        case PhraseKind::Accented: {
-            static constexpr PhraseText k_variants[] = {
-                {"accented"_s, "subtle layering"_s},
-                {"coloured"_s, "subtle colouring"_s},
+                {"3-layer"_s, "3 layers"_s},
+                {"triple-layered"_s, "3 layers"_s},
             };
             return pick(k_variants);
         }
@@ -393,26 +376,16 @@ GenerateAutoDescription(StateSnapshot const& state,
         dyn::Append(phrases, Phrase {PhraseKind::SharpAttack, 0.4f});
     }
 
-    // Layering - salience and phrasing depend on both count and mix balance.
-    // High balance (layers comparable in level) reads as dense/layered,
-    // low balance (one layer dominates) reads as accented/subtle layering.
+    // Layering - only mention when layers are reasonably balanced (otherwise one
+    // layer dominates and it doesn't really feel "layered"). Keep salience low
+    // since most presets use multiple layers and it's not very distinctive.
     bool const is_stacked = num_layers >= 2 && all_same_instrument && first_inst_name.size;
     if (is_stacked) {
         // Handled during assembly so we can format the instrument name
-    } else if (num_layers >= 3) {
-        if (layer_balance > 0.75f)
-            dyn::Append(phrases, Phrase {PhraseKind::DenselyLayered, 0.5f + (layer_balance * 0.25f)});
-        else if (layer_balance > 0.4f)
-            dyn::Append(phrases, Phrase {PhraseKind::Layered, 0.3f});
-        else
-            dyn::Append(phrases, Phrase {PhraseKind::Accented, 0.2f});
-    } else if (num_layers == 2) {
-        if (layer_balance > 0.75f)
-            dyn::Append(phrases, Phrase {PhraseKind::Layered, 0.3f + (layer_balance * 0.15f)});
-        else if (layer_balance > 0.4f)
-            dyn::Append(phrases, Phrase {PhraseKind::LightlyLayered, 0.2f});
-        else
-            dyn::Append(phrases, Phrase {PhraseKind::Accented, 0.15f});
+    } else if (num_layers >= 3 && layer_balance > 0.4f) {
+        dyn::Append(phrases, Phrase {PhraseKind::TripleLayer, 0.1f});
+    } else if (num_layers == 2 && layer_balance > 0.4f) {
+        dyn::Append(phrases, Phrase {PhraseKind::DualLayer, 0.1f});
     }
 
     // Playback character
