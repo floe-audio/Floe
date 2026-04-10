@@ -130,35 +130,37 @@ struct ChangedParams {
     Bitset<k_num_parameters> changed;
 };
 
-// Pairs a current enum parameter with one or more legacy predecessors. Handles change detection
-// and resolution: the oldest non-default legacy overrides the current value (preserving DAW automation).
-// Requires that legacy enum values are an integer prefix of the current enum.
+// Makes dealing with enum parameters that have legacy versions easier.
 template <typename CurrentEnum, usize MaxLegacies = 1>
 struct EnumParamWithLegacies {
     struct LegacySlot {
         ParamIndex idx {};
-        s32 value = 0; // 0 = default = "not set by automation"
+        Span<CurrentEnum const> remap_table; // e.g. k_legacy_lfo_destination_to_current
     };
 
-    CurrentEnum current {};
-    ParamIndex current_idx {};
-    Array<LegacySlot, MaxLegacies> legacies {};
+    ParamIndex const current_idx {};
+    Array<LegacySlot, MaxLegacies> const legacies {};
 
-    Optional<CurrentEnum> Poll(ChangedParams const& cp) {
-        bool changed = false;
-        for (auto& leg : legacies) {
-            if (cp.Changed(leg.idx)) {
-                leg.value = (s32)Trunc(cp.params.LinearValue(leg.idx));
-                changed = true;
+    Optional<CurrentEnum> Poll(ChangedParams const& cp) const {
+        bool changed = cp.Changed(current_idx);
+        for (auto const& leg : legacies)
+            if (cp.Changed(leg.idx)) changed = true;
+        if (!changed) return k_nullopt;
+
+        // One of the parameters changed. Now we need to find out which of the legacy or current values we
+        // should take as the truth. We use the logic that the oldest legacy parameter is the most important
+        // since these legacy parameters are not displayed on the GUI (other than tucked away in a 'legacy
+        // panel') and therefore it's likely that the value comes from DAW automation - we need to maintain
+        // compatibility with that.
+        for (auto const& leg : legacies) {
+            auto const val = (s64)Trunc(cp.params.LinearValue(leg.idx));
+            auto const default_val = (s64)Trunc(k_param_descriptors[ToInt(leg.idx)].default_linear_value);
+            if (val != default_val) {
+                ASSERT(val >= 0 && (usize)val < leg.remap_table.size);
+                return leg.remap_table[(usize)val];
             }
         }
-        if (auto p = cp.IntValue<CurrentEnum>(current_idx)) {
-            current = *p;
-            changed = true;
-        }
-        if (!changed) return k_nullopt;
-        for (auto const& leg : legacies)
-            if (leg.value != 0) return (CurrentEnum)leg.value;
-        return current;
+
+        return ParamToInt<CurrentEnum>(cp.params.LinearValue(current_idx));
     }
 };

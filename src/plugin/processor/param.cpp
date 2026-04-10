@@ -13,7 +13,14 @@ TEST_CASE(TestEnumParamWithLegacies) {
 
     EnumParamWithLegacies<param_values::LfoShape, 2> p {
         .current_idx = current,
-        .legacies = {{{legacy_v1}, {legacy_v2}}},
+        .legacies = {{{
+                          .idx = legacy_v1,
+                          .remap_table = param_values::k_legacy_lfo_shape_to_current,
+                      },
+                      {
+                          .idx = legacy_v2,
+                          .remap_table = param_values::k_legacy_lfo_shape_to_current,
+                      }}},
     };
 
     {

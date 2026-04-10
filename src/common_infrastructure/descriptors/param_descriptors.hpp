@@ -371,6 +371,15 @@ constexpr auto k_lfo_destination_strings = ArrayT<String>({
 });
 static_assert(k_lfo_destination_strings.size == ToInt(LfoDestination::Count));
 
+// Remap legacy to new params. We do this pattern so that param values can be safely re-arranged.
+constexpr auto k_legacy_lfo_destination_to_current = ArrayT<LfoDestination>({
+    LfoDestination::Volume,
+    LfoDestination::Filter,
+    LfoDestination::Pan,
+    LfoDestination::Pitch,
+});
+static_assert(k_legacy_lfo_destination_to_current.size == ToInt(LegacyLfoDestination::Count));
+
 enum class LegacyLfoShape : u8 { // never reorder
     Sine,
     Triangle,
@@ -404,6 +413,14 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
     "Random Glide",
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
+
+constexpr auto k_legacy_lfo_shape_to_current = ArrayT<LfoShape>({
+    LfoShape::Sine,
+    LfoShape::Triangle,
+    LfoShape::Sawtooth,
+    LfoShape::Square,
+});
+static_assert(k_legacy_lfo_shape_to_current.size == ToInt(LegacyLfoShape::Count));
 
 enum class LayerFilterType : u8 { // never reorder
     Lowpass,

@@ -195,11 +195,17 @@ struct LayerProcessor {
           })
         , lfo_shape({
               .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoShape),
-              .legacies = {{{ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShape)}}},
+              .legacies = {{{
+                  .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShape),
+                  .remap_table = param_values::k_legacy_lfo_shape_to_current,
+              }}},
           })
         , lfo_dest({
               .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoDestination),
-              .legacies = {{{ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoDestination)}}},
+              .legacies = {{{
+                  .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoDestination),
+                  .remap_table = param_values::k_legacy_lfo_destination_to_current,
+              }}},
           })
         , eq_bands() {
         velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);

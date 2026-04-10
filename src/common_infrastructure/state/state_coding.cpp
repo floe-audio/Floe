@@ -528,6 +528,33 @@ enum class StateVersion : u16 {
     Latest = LatestPlusOne - 1,
 };
 
+template <typename CurrentEnum, usize N>
+static void MigrateLegacyEnumLayerParam(StateSnapshot& state,
+                                        StateSource source,
+                                        LayerParamIndex legacy_idx,
+                                        LayerParamIndex current_idx,
+                                        Array<CurrentEnum, N> const& mapping) {
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto const legacy_pi = ParamIndexFromLayerParamIndex(layer_index, legacy_idx);
+        auto const current_pi = ParamIndexFromLayerParamIndex(layer_index, current_idx);
+        auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
+        auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
+        if (source == StateSource::Daw) {
+            // We maintain DAW backwards compatibility by retaining the legacy parameter value and default the
+            // newer version. Our audio-processing code will correctly select the true 'effective' value. See
+            // EnumParamWithLegacies.
+            state.LinearParam(current_pi) = current_default;
+        } else {
+            // Remap from old to new and clear out the old.
+            auto& legacy_val = state.LinearParam(legacy_pi);
+            auto const legacy_int = (usize)Trunc(legacy_val);
+            legacy_val = legacy_default;
+            state.LinearParam(current_pi) =
+                (legacy_int < mapping.size) ? (f32)mapping[legacy_int] : current_default;
+        }
+    }
+}
+
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
@@ -690,85 +717,19 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     }
 
     if (version < StateVersion::AddedNewLfoShapeParameter) {
-        if (source == StateSource::Daw) {
-            // Don't adapt parameters from the DAW because there might be automation on the legacy
-            // LfoShape param. Default the new param to Sine; the audio thread's LFO param pump
-            // falls through to the legacy param when it is non-default, so existing automation
-            // continues to drive the sound.
-            for (auto const layer_index : Range(k_num_layers)) {
-                state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoShape)) =
-                    (f32)param_values::LfoShape::Sine;
-            }
-        } else {
-            // Adapt legacy value to new enum and clear the legacy param.
-            for (auto const layer_index : Range(k_num_layers)) {
-                auto& legacy_val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyLfoShape));
-                auto const legacy_shape = (param_values::LegacyLfoShape)Round(legacy_val);
-                legacy_val = (f32)param_values::LegacyLfoShape::Sine; // clear legacy
-
-                param_values::LfoShape new_shape {};
-                switch (legacy_shape) {
-                    case param_values::LegacyLfoShape::Sine: new_shape = param_values::LfoShape::Sine; break;
-                    case param_values::LegacyLfoShape::Triangle:
-                        new_shape = param_values::LfoShape::Triangle;
-                        break;
-                    case param_values::LegacyLfoShape::Sawtooth:
-                        new_shape = param_values::LfoShape::Sawtooth;
-                        break;
-                    case param_values::LegacyLfoShape::Square:
-                        new_shape = param_values::LfoShape::Square;
-                        break;
-                    case param_values::LegacyLfoShape::Count: new_shape = param_values::LfoShape::Sine; break;
-                }
-                state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoShape)) =
-                    (f32)new_shape;
-            }
-        }
+        MigrateLegacyEnumLayerParam(state,
+                                    source,
+                                    LayerParamIndex::LegacyLfoShape,
+                                    LayerParamIndex::LfoShape,
+                                    param_values::k_legacy_lfo_shape_to_current);
     }
 
     if (version < StateVersion::AddedNewLfoDestinationParameter) {
-        if (source == StateSource::Daw) {
-            // Don't adapt parameters from the DAW because there might be automation on the legacy
-            // LfoDestination param. Default the new param to Volume; the audio thread's LFO param pump
-            // falls through to the legacy param when it is non-default, so existing automation
-            // continues to drive the sound.
-            for (auto const layer_index : Range(k_num_layers)) {
-                state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoDestination)) =
-                    (f32)param_values::LfoDestination::Volume;
-            }
-        } else {
-            // Adapt legacy value to new enum and clear the legacy param.
-            for (auto const layer_index : Range(k_num_layers)) {
-                auto& legacy_val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyLfoDestination));
-                auto const legacy_dest = (param_values::LegacyLfoDestination)Round(legacy_val);
-                legacy_val = (f32)param_values::LegacyLfoDestination::Volume; // clear legacy
-
-                param_values::LfoDestination new_dest {};
-                switch (legacy_dest) {
-                    case param_values::LegacyLfoDestination::Volume:
-                        new_dest = param_values::LfoDestination::Volume;
-                        break;
-                    case param_values::LegacyLfoDestination::Filter:
-                        new_dest = param_values::LfoDestination::Filter;
-                        break;
-                    case param_values::LegacyLfoDestination::Pan:
-                        new_dest = param_values::LfoDestination::Pan;
-                        break;
-                    case param_values::LegacyLfoDestination::Pitch:
-                        new_dest = param_values::LfoDestination::Pitch;
-                        break;
-                    case param_values::LegacyLfoDestination::Count:
-                        new_dest = param_values::LfoDestination::Volume;
-                        break;
-                }
-                state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LfoDestination)) =
-                    (f32)new_dest;
-            }
-        }
+        MigrateLegacyEnumLayerParam(state,
+                                    source,
+                                    LayerParamIndex::LegacyLfoDestination,
+                                    LayerParamIndex::LfoDestination,
+                                    param_values::k_legacy_lfo_destination_to_current);
     }
 
     if (version < StateVersion::AddedEffectVisibility) {
