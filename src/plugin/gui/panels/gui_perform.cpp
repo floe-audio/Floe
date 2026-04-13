@@ -622,7 +622,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                   .text = fmt::FormatStringReplace(g.scratch_arena,
                                                    metadata.description,
                                                    ArrayT<fmt::StringReplacement>({{"\n"_s, " "_s}})),
-                  .wrap_width = k_desc_column_width - 20,
+                  .wrap_width = k_wrap_to_parent,
                   .size_from_text = true,
                   .font = FontType::BodyItalic,
                   .text_colours = Col {.c = Col::White, .alpha = 170},
@@ -632,7 +632,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
               {
                   .parent = column,
                   .text = auto_desc,
-                  .wrap_width = k_desc_column_width - 20,
+                  .wrap_width = k_wrap_to_parent,
                   .size_from_text = true,
                   .font = FontType::BodyItalic,
                   .text_colours = Col {.c = Col::White, .alpha = 130},
