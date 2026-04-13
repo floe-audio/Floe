@@ -65,7 +65,7 @@ void DoCurveMap(GuiState& g,
     auto const point_color = LiveCol(UiColMap::CurveMapPoint);
     auto const point_hover_color = LiveCol(UiColMap::CurveMapPointHover);
 
-    imgui.PushId("curve-map-points");
+    imgui.PushId((uintptr)&curve_map);
     DEFER { imgui.PopId(); };
 
     constexpr auto k_remove_all = LargestRepresentableValue<usize>();
