@@ -38,7 +38,7 @@ Small but noticeable improvements - mostly GUI related. Behind the scenes, a hug
 - GUI: improve crispness of all visuals
 - GUI: minor visual improvements throughout: even spacing, move layer menu labels to left, standardised colours, updated popup menus, legacy parameters and error panels to the new style
 - GUI: add instrument info strip with info about sample length, root key, number of samples
-- GUI: split loop controls into a new Engine tab, ready for new engine mode that need more space
+- GUI: split loop controls into a new Playback tab, ready for new engine mode that need more space
 - GUI: notifications now appear on top of the window you have open and can be closed
 - Add 'Copy to Clipboard' for errors
 - Support installing packages with `.floe-pkg` as well as `.zip`
@@ -166,7 +166,7 @@ In latch mode, the note only ends when all notes are released; new key-presses a
   - Macros parameters allow for controlling multiple other parameters at once with a single knob and with a custom name
   - On the Macros tab, you can add and remove the parameters that are linked to each macro and control the strength of the link
 - Add pitch wheel support: configure the bend range using the 'Pitch Bend Range' parameter on each layer.
-- Add key range controls for splitting the keyboard into zones for each layer. These ranges are shown above the keyboard. They are controlled using new parameters on the Play tab of each layer.
+- Add key range controls for splitting the keyboard into zones for each layer. These ranges are shown above the keyboard. They are controlled using new parameters on the Config tab of each layer.
 - Fix velocity curves being clear when randomising parameters
 - Add more information to the velocity curve tooltips
 - New documentation pages for velocity curves

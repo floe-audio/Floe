@@ -629,16 +629,14 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
         bool const tab_has_active_content = ({
             bool result = false;
             switch (page_type) {
-                case LayerPageType::Filter:
-                    result = params.BoolValue(layer_index, LayerParamIndex::FilterOn);
-                    break;
                 case LayerPageType::Lfo:
                     result = params.BoolValue(layer_index, LayerParamIndex::LfoOn);
                     break;
                 case LayerPageType::Eq: result = params.BoolValue(layer_index, LayerParamIndex::EqOn); break;
-                case LayerPageType::Envelope:
-                case LayerPageType::Engine:
-                case LayerPageType::Play:
+                case LayerPageType::Main:
+                case LayerPageType::Playback:
+                case LayerPageType::Arp:
+                case LayerPageType::Config:
                 case LayerPageType::Count: break;
             }
             result;
@@ -646,12 +644,12 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
 
         auto const name = [&]() -> String {
             switch (page_type) {
-                case LayerPageType::Envelope: return "ENVELOPE"_s;
-                case LayerPageType::Engine: return "ENGINE"_s;
+                case LayerPageType::Main: return "MAIN"_s;
+                case LayerPageType::Playback: return "PLAYBACK"_s;
                 case LayerPageType::Eq: return "EQ"_s;
-                case LayerPageType::Play: return "PLAY"_s;
+                case LayerPageType::Config: return "CONFIG"_s;
                 case LayerPageType::Lfo: return "LFO"_s;
-                case LayerPageType::Filter: return "FILTER"_s;
+                case LayerPageType::Arp: return "ARP"_s;
                 case LayerPageType::Count: PanicIfReached();
             }
             return {};
@@ -682,10 +680,10 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             if (k_desc.module_parts.size >= 2) {
                 switch (k_desc.module_parts[1]) {
                     case ParameterModule::Loop:
-                    case ParameterModule::VolEnv: new_page = LayerPageType::Envelope; break;
+                    case ParameterModule::VolEnv: new_page = LayerPageType::Main; break;
                     case ParameterModule::Lfo: new_page = LayerPageType::Lfo; break;
-                    case ParameterModule::Filter: new_page = LayerPageType::Filter; break;
-                    case ParameterModule::Playback: new_page = LayerPageType::Play; break;
+                    case ParameterModule::Filter: new_page = LayerPageType::Main; break;
+                    case ParameterModule::Playback: new_page = LayerPageType::Config; break;
                     case ParameterModule::Eq: new_page = LayerPageType::Eq; break;
                     default: break;
                 }
@@ -785,7 +783,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                         {
                                             .parent = page,
                                             .layout {
-                                                .size = {layout::k_fill_parent, 75},
+                                                .size = {layout::k_fill_parent, 80},
                                             },
                                         });
 
@@ -1075,7 +1073,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     }
 }
 
-static void DoPlayPage(GuiState& g, u8 layer_index, Box parent) {
+static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
@@ -1600,7 +1598,7 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
     }
 }
 
-static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
+static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
@@ -1823,36 +1821,34 @@ static void DoEnginePage(GuiState& g, u8 layer_index, Box parent) {
     }
 }
 
-static void DoEnvelopePage(GuiState& g, u8 layer_index, Box parent) {
+static void DoEnvelopeSection(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
-    auto const page = DoBox(g.builder,
-                            {
-                                .parent = parent,
-                                .layout {
-                                    .size = layout::k_fill_parent,
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                },
-                            });
+    auto const section = DoBox(g.builder,
+                               {
+                                   .parent = parent,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_direction = layout::Direction::Column,
+                                       .contents_align = layout::Alignment::Start,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                   },
+                               });
 
-    // Volume envelope on button
     DoButtonParameter(g,
-                      page,
+                      section,
                       params.DescribedValue(layer_index, LayerParamIndex::VolEnvOn),
                       {
                           .width = layout::k_fill_parent,
                       });
 
-    // Envelope display
     {
         auto const envelope_box = DoBox(g.builder,
                                         {
-                                            .parent = page,
+                                            .parent = section,
                                             .layout {
-                                                .size = {layout::k_fill_parent, 100},
+                                                .size = {layout::k_fill_parent, 80},
                                                 .margins {
                                                     .tb = 10,
                                                 },
@@ -1873,6 +1869,23 @@ static void DoEnvelopePage(GuiState& g, u8 layer_index, Box parent) {
                           GuiEnvelopeType::Volume);
     }
 }
+
+static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
+    auto const page = DoBox(g.builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    DoEnvelopeSection(g, layer_index, page);
+    DoFilterPage(g, layer_index, page);
+}
+
+static void DoArpPage(GuiState&, u8, Box) {}
 
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent) {
     auto const root = DoBox(g.builder,
@@ -1923,12 +1936,12 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
 
     // Page content
     switch (g.layer_panel_states[layer_index].selected_page) {
-        case LayerPageType::Envelope: DoEnvelopePage(g, layer_index, page_container); break;
-        case LayerPageType::Filter: DoFilterPage(g, layer_index, page_container); break;
-        case LayerPageType::Engine: DoEnginePage(g, layer_index, page_container); break;
+        case LayerPageType::Main: DoMainPage(g, layer_index, page_container); break;
+        case LayerPageType::Playback: DoPlaybackPage(g, layer_index, page_container); break;
         case LayerPageType::Lfo: DoLfoPage(g, layer_index, page_container); break;
         case LayerPageType::Eq: DoEqPage(g, layer_index, page_container); break;
-        case LayerPageType::Play: DoPlayPage(g, layer_index, page_container); break;
+        case LayerPageType::Arp: DoArpPage(g, layer_index, page_container); break;
+        case LayerPageType::Config: DoConfigPage(g, layer_index, page_container); break;
         case LayerPageType::Count: PanicIfReached();
     }
 }

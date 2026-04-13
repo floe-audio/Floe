@@ -7,12 +7,12 @@
 #include "gui_framework/gui_builder.hpp"
 
 enum class LayerPageType : u8 {
-    Engine,
-    Envelope,
-    Filter,
+    Playback,
+    Main,
     Lfo,
     Eq,
-    Play,
+    Arp,
+    Config,
     Count,
 };
 
