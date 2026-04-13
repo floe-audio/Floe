@@ -1965,12 +1965,20 @@ void Context::EndViewport() {
 
 bool Context::ScrollViewportToShowRectangle(Rect r) {
     auto const window_r = RegisterAndConvertRect(r);
-    if (!Rect::DoRectsIntersect(window_r, curr_viewport->clipping_rect.ReducedVertically(r.h))) {
+    bool scrolled = false;
+    if (curr_viewport->scroll_max.y > 0 &&
+        !Rect::DoRectsIntersect(window_r, curr_viewport->clipping_rect.ReducedVertically(r.h))) {
         SetYScroll(curr_viewport,
                    Clamp(r.CentreY() - (CurrentVpHeight() / 2), 0.0f, curr_viewport->scroll_max.y));
-        return true;
+        scrolled = true;
     }
-    return false;
+    if (curr_viewport->scroll_max.x > 0 &&
+        !Rect::DoRectsIntersect(window_r, curr_viewport->clipping_rect.ReducedHorizontally(r.w))) {
+        SetXScroll(curr_viewport,
+                   Clamp(r.CentreX() - (CurrentVpWidth() / 2), 0.0f, curr_viewport->scroll_max.x));
+        scrolled = true;
+    }
+    return scrolled;
 }
 
 void Context::PushScissorStack() { dyn::Append(scissor_stacks, DynamicArray<Rect>(Malloc::Instance())); }

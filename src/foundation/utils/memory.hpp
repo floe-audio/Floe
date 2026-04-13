@@ -109,7 +109,7 @@ PUBLIC constexpr void WriteAndIncrement(UnsignedInt auto& pos, DestType* dest, T
                   }) {
         __builtin_memcpy(&dest[pos], src.data, src.size * sizeof(DestType));
         pos += src.size;
-    } else if constexpr (Fundamental<Type> && sizeof(Type) == sizeof(DestType)) {
+    } else if constexpr ((Fundamental<Type> || Trivial<Type>) && sizeof(Type) == sizeof(DestType)) {
         dest[pos] = (DestType)src;
         pos += 1;
     } else {

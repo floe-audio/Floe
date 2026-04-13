@@ -3,6 +3,7 @@
 
 #include "sample_library.hpp"
 
+#include "common_infrastructure/constants.hpp"
 #include "os/threading.hpp"
 #include "tests/framework.hpp"
 
@@ -257,6 +258,70 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
 
     for (auto [key, value, _] : lib.insts_by_id) {
         auto& inst = *value;
+
+        for (auto& region : inst.regions) {
+            if (region.slices.size && inst.regions.size > 1)
+                return String(fmt::Format(
+                    scratch_arena,
+                    "Instrument '{}': regions with slices must be the only region on the instrument",
+                    inst.name));
+            if (region.slices.size) {
+                if (region.loop_beats == 0)
+                    return String(fmt::Format(
+                        scratch_arena,
+                        "Instrument '{}': regions with slices must specify loop_beats",
+                        inst.name));
+                if (region.native_bpm <= 0)
+                    return String(fmt::Format(
+                        scratch_arena,
+                        "Instrument '{}': regions with slices must specify native_bpm",
+                        inst.name));
+                // Simplify by the greatest common divisor of all length_proportions so that e.g. {4, 4, 2, 6}
+                // becomes {2, 2, 1, 3}. This gives more headroom against k_arp_max_steps.
+                auto const gcd_of_all = ({
+                    u32 g = region.slices[0].length_proportion;
+                    for (auto const& slice : region.slices.SubSpan(1)) {
+                        auto a = g;
+                        auto b = slice.length_proportion;
+                        while (b) {
+                            auto const t = b;
+                            b = a % b;
+                            a = t;
+                        }
+                        g = a;
+                        if (g == 1) break;
+                    }
+                    g;
+                });
+                if (gcd_of_all > 1)
+                    for (auto& slice : region.slices)
+                        slice.length_proportion /= gcd_of_all;
+
+                u32 total_proportion = 0;
+                for (auto const& slice : region.slices)
+                    total_proportion += slice.length_proportion;
+                if (total_proportion > k_arp_max_steps)
+                    return String(fmt::Format(
+                        scratch_arena,
+                        "Instrument '{}': sum of slice length_proportion ({}) exceeds maximum steps ({})",
+                        inst.name,
+                        total_proportion,
+                        k_arp_max_steps));
+
+                LogDebug(ModuleName::SampleLibrary,
+                         "Instrument '{}': {} slices, total length_proportion={} (gcd={})",
+                         inst.name,
+                         region.slices.size,
+                         total_proportion,
+                         gcd_of_all);
+                for (auto const [i, slice] : Enumerate(region.slices))
+                    LogDebug(ModuleName::SampleLibrary,
+                             "  Slice {}: start_frame={}, length_proportion={}",
+                             i,
+                             slice.start_frame,
+                             slice.length_proportion);
+            }
+        }
 
         inst.loop_overview.all_regions_require_looping = true;
 

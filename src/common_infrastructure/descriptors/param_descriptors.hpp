@@ -75,6 +75,14 @@ enum class LayerParamIndex : u16 {
     GranularRandomDirection,
     GranularHarmony,
 
+    ArpMode,
+    ArpNoteOrder,
+    ArpTriggerMode,
+    ArpRate,
+    ArpAutoRate,
+    ArpLength,
+    ArpHumanise,
+
     Count,
 };
 
@@ -219,6 +227,7 @@ enum class ParameterModule : u8 {
     Granular,
     Eq,
     VolEnv,
+    Arpeggiator,
 
     Distortion,
     Reverb,
@@ -239,16 +248,35 @@ enum class ParameterModule : u8 {
 constexpr String k_parameter_module_strings[] = {
     "",
 
-    "Layer 1",    "Layer 2",    "Layer 3",
+    "Layer 1",
+    "Layer 2",
+    "Layer 3",
 
-    "Effect",     "Master",     "Macro",
+    "Effect",
+    "Master",
+    "Macro",
 
-    "LFO",        "Loop",       "Filter",  "Playback",    "Granular", "EQ",     "Volume Envelope",
+    "LFO",
+    "Loop",
+    "Filter",
+    "Playback",
+    "Granular",
+    "EQ",
+    "Volume Envelope",
+    "Arpeggiator",
 
-    "Distortion", "Reverb",     "Delay",   "StereoWiden", "Chorus",   "Phaser", "Convolution Reverb",
-    "Bitcrush",   "Compressor",
+    "Distortion",
+    "Reverb",
+    "Delay",
+    "StereoWiden",
+    "Chorus",
+    "Phaser",
+    "Convolution Reverb",
+    "Bitcrush",
+    "Compressor",
 
-    "Band 1",     "Band 2",
+    "Band 1",
+    "Band 2",
 };
 
 static_assert(ArraySize(k_parameter_module_strings) == ToInt(ParameterModule::Count));
@@ -585,6 +613,84 @@ constexpr auto k_play_mode_strings = ArrayT<String>({
 });
 static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
 
+enum class ArpMode : u8 { // never reorder
+    Off,
+    Played,
+    Fixed,
+    Count,
+};
+constexpr auto k_arp_type_strings = ArrayT<String>({
+    "Arpeggiator Off",
+    "Arpeggiator On",
+    "Arpeggiator On - Fixed Notes",
+});
+static_assert(k_arp_type_strings.size == ToInt(ArpMode::Count));
+
+enum class ArpNoteOrder : u8 { // never reorder
+    Chord,
+    Up,
+    Down,
+    UpDown,
+    Count,
+};
+constexpr auto k_arp_note_order_strings = ArrayT<String>({
+    "Chord",
+    "Up",
+    "Down",
+    "Up/Down",
+});
+static_assert(k_arp_note_order_strings.size == ToInt(ArpNoteOrder::Count));
+
+enum class ArpTriggerMode : u8 { // never reorder
+    Free,
+    Retrigger,
+    Count,
+};
+constexpr auto k_arp_trigger_mode_strings = ArrayT<String>({
+    "Free",
+    "Retrigger",
+});
+static_assert(k_arp_trigger_mode_strings.size == ToInt(ArpTriggerMode::Count));
+
+enum class ArpSyncedRate : u8 { // never reorder
+    // NOLINTBEGIN(readability-identifier-naming)
+    _1_64T,
+    _1_64,
+    _1_64D,
+    _1_32T,
+    _1_32,
+    _1_32D,
+    _1_16T,
+    _1_16,
+    _1_16D,
+    _1_8T,
+    _1_8,
+    _1_8D,
+    _1_4T,
+    _1_4,
+    _1_4D,
+    _1_2T,
+    _1_2,
+    _1_2D,
+    _1_1T,
+    _1_1,
+    _1_1D,
+    _2_1T,
+    _2_1,
+    _2_1D,
+    _4_1T,
+    _4_1,
+    _4_1D,
+    Count,
+    // NOLINTEND(readability-identifier-naming)
+};
+constexpr auto k_arp_synced_rate_strings = ArrayT<String>({
+    "1/64T", "1/64", "1/64D", "1/32T", "1/32", "1/32D", "1/16T", "1/16", "1/16D",
+    "1/8T",  "1/8",  "1/8D",  "1/4T",  "1/4",  "1/4D",  "1/2T",  "1/2",  "1/2D",
+    "1/1T",  "1/1",  "1/1D",  "2/1T",  "2/1",  "2/1D",  "4/1T",  "4/1",  "4/1D",
+});
+static_assert(k_arp_synced_rate_strings.size == ToInt(ArpSyncedRate::Count));
+
 } // namespace param_values
 
 struct ParamDescriptor {
@@ -606,6 +712,10 @@ struct ParamDescriptor {
         VelocityMappingMode,
         MonophonicMode,
         PlayMode,
+        ArpMode,
+        ArpNoteOrder,
+        ArpTriggerMode,
+        ArpSyncedRate,
         Count,
     };
 
@@ -857,6 +967,10 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
         case ParamDescriptor::MenuType::MonophonicMode: return k_monophonic_mode_strings;
         case ParamDescriptor::MenuType::PlayMode: return k_play_mode_strings;
+        case ParamDescriptor::MenuType::ArpMode: return k_arp_type_strings;
+        case ParamDescriptor::MenuType::ArpNoteOrder: return k_arp_note_order_strings;
+        case ParamDescriptor::MenuType::ArpTriggerMode: return k_arp_trigger_mode_strings;
+        case ParamDescriptor::MenuType::ArpSyncedRate: return k_arp_synced_rate_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -2483,6 +2597,87 @@ consteval auto CreateParams() {
             .gui_label = "Harmony"_s,
             .tooltip =
                 "Chance that grains spawn at one of the selected harmony intervals instead of the root pitch. Configure which intervals are active using the Intervals button"_s,
+            .flags = {.experimental = true},
+        };
+
+        // Arpeggiator
+        // =================================================================================================
+        lp(ArpMode) = Args {
+            .id = id(region, 74), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpMode,
+                .default_val = (u32)param_values::ArpMode::Off,
+            }),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Arpeggiator"_s,
+            .gui_label = "Arpeggiator"_s,
+            .tooltip = "Arpeggiator mode - Off disables the arpeggiator"_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpNoteOrder) = Args {
+            .id = id(region, 70), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpNoteOrder,
+                .default_val = (u32)param_values::ArpNoteOrder::Up,
+            }),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Note Order"_s,
+            .gui_label = "Order"_s,
+            .tooltip = "Order in which held notes are played"_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpTriggerMode) = Args {
+            .id = id(region, 71), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpTriggerMode,
+                .default_val = (u32)param_values::ArpTriggerMode::Free,
+            }),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Trigger"_s,
+            .gui_label = "Trigger"_s,
+            .tooltip =
+                "Free: arpeggiator keeps running when new notes are pressed. Retrigger: arpeggiator restarts from step 1"_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpRate) = Args {
+            .id = id(region, 72), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpSyncedRate,
+                .default_val = (u32)param_values::ArpSyncedRate::_1_8,
+            }),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Rate"_s,
+            .gui_label = "Rate"_s,
+            .tooltip = "Arpeggiator rate (synced to host tempo)"_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpAutoRate) = Args {
+            .id = id(region, 76), // never change
+            .value_config = val_config_helpers::Bool({.default_state = true}),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Auto Rate"_s,
+            .gui_label = "Auto Rate"_s,
+            .tooltip =
+                "Automatically pick an arpeggiator rate based on the sliced instrument's loop length and host tempo. Only applies to sliced instruments."_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpLength) = Args {
+            .id = id(region, 73), // never change
+            .value_config = val_config_helpers::Int({.range = {1, k_arp_max_steps}, .default_val = 8}),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Length"_s,
+            .gui_label = "Length"_s,
+            .tooltip = "Number of active steps in the arpeggiator pattern"_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpHumanise) = Args {
+            .id = id(region, 75), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 5}),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Humanise"_s,
+            .gui_label = "Humanise"_s,
+            .tooltip =
+                "Add random timing variation to note starts and velocity. Higher values create looser, more human-like performance"_s,
             .flags = {.experimental = true},
         };
     }

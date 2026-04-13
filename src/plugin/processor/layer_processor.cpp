@@ -15,7 +15,6 @@
 #include "processing_utils/key_range.hpp"
 #include "processing_utils/midi.hpp"
 #include "processing_utils/peak_meter.hpp"
-#include "processing_utils/stereo_audio_frame.hpp"
 #include "processing_utils/synced_timings.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
@@ -33,6 +32,15 @@ static void UpdateVolumeEnvelopeOn(LayerProcessor& layer, VoicePool& voice_pool)
             v.vol_env.Gate(false);
     else
         UpdateLoopPointsForVoices(layer, voice_pool);
+}
+
+static Span<sample_lib::Region::Slice const> AudioThreadSlices(InstrumentUnwrapped const& inst) {
+    if (auto p = inst.TryGet<sample_lib::LoadedInstrument const*>()) {
+        auto const& i = **p;
+        if (i.instrument.regions.size == 1 && i.instrument.regions[0].slices.size)
+            return i.instrument.regions[0].slices;
+    }
+    return {};
 }
 
 struct VelocityRegion {
@@ -152,6 +160,20 @@ void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context)
     layer.peak_meter.PrepareToPlay(context.sample_rate);
 }
 
+void LayerApplyNewState(LayerProcessor& layer, StateSnapshot const& state, StateSource) {
+    ASSERT(g_is_logical_main_thread);
+
+    layer.velocity_curve_map.SetNewPoints(state.velocity_curve_points[layer.index]);
+
+    layer.harmony_intervals.AssignBlockwise(state.harmony_intervals[layer.index]);
+
+    // Always load the user's arp steps. Slice-mode overrides are stored in separate fields and don't affect
+    // the user's state.
+    auto& arp = layer.arp_state;
+    for (auto const step_index : Range(k_arp_max_steps))
+        arp.steps[step_index].Store(state.arp_steps[layer.index][step_index], StoreMemoryOrder::Relaxed);
+}
+
 //
 // ==========================================================================================================
 
@@ -160,6 +182,9 @@ void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context)
 //
 
 static param_values::MonophonicMode EffectiveMonophonicMode(LayerProcessor const& layer) {
+    // The arp manages its own voice lifecycle, so monophonic modes don't apply.
+    if (layer.arp_state.audio.EffectivelyOn()) return param_values::MonophonicMode::Off;
+
     // We maintain backwards compatibility with DAW projects that may have been automating the legacy
     // monophonic switch by overwriting the mode if the legacy param is true.
     return layer.monophonic_retrigger_legacy ? param_values::MonophonicMode::Retrigger
@@ -173,7 +198,6 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                                   MidiChannelNote note,
                                   f32 note_vel_float,
                                   u32 offset) {
-    ASSERT_HOT(offset < k_block_size_max);
     ZoneScoped;
     if (layer.audio_thread_inst.tag == InstrumentType::None) return;
 
@@ -328,7 +352,18 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
         }
     }
 
-    if (start_voice) StartVoice(voice_pool, layer.voice_controller, p, context);
+    if (start_voice) {
+        // NOTE: don't clear the pending slice here — a single arp step with Chord note order triggers
+        // multiple chord notes and they all need the slice info. The pending values are explicitly set
+        // by ArpTriggerStep at the start of every step (and cleared when not in slice mode).
+        if (layer.pending_slice_start_frame) {
+            if (auto sp = p.params.TryGet<VoiceStartParams::SamplerParams>()) {
+                sp->slice_start_frame = layer.pending_slice_start_frame;
+                sp->slice_end_frame = layer.pending_slice_end_frame;
+            }
+        }
+        StartVoice(voice_pool, layer.voice_controller, p, context);
+    }
 }
 
 static bool NoNotesHeld(AudioProcessingContext const& context) {
@@ -397,7 +432,274 @@ static void LayerHandleNoteOn(LayerProcessor& layer,
                           offset);
 }
 
-bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_pool) {
+// Arpeggiator
+// =========================================================================================================
+
+static u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context) {
+    auto const hz = SyncedTimeToHz(context.tempo, rate);
+    return Max(1u, (u32)(context.sample_rate / hz));
+}
+
+static void ArpReleaseLastNotes(ArpeggiatorState& arp, VoicePool& voice_pool, VoiceProcessingController& vc) {
+    for (auto const chan : Range<u8>(16))
+        arp.audio.last_triggered_notes[chan].ForEachSetBit(
+            [&](usize bit) { NoteOff(voice_pool, vc, {.note = (u7)bit, .channel = (u4)chan}); });
+    arp.audio.last_triggered_notes = {};
+}
+
+static bool ArpAnyNotesHeld(AudioProcessingContext const& context) {
+    for (auto const chan : Range<u8>(16))
+        if (context.midi_note_state.NotesHeldIncludingSustained((u4)chan).AnyValuesSet()) return true;
+    return false;
+}
+
+static void ArpTriggerStep(LayerProcessor& layer,
+                           AudioProcessingContext const& context,
+                           VoicePool& voice_pool,
+                           u32 frame_offset) {
+    auto& arp = layer.arp_state;
+
+    auto const [notes, num_notes] = ({
+        // Sorted by note regardless of MIDI channel.
+        Array<MidiChannelNote, 128 * 16> arr;
+        u32 num = 0;
+        for (auto const chan : Range<u8>(16)) {
+            auto const held = context.midi_note_state.NotesHeldIncludingSustained((u4)chan);
+            held.ForEachSetBit([&](usize bit) {
+                WriteAndIncrement(num, arr, MidiChannelNote {.note = (u7)bit, .channel = (u4)chan});
+            });
+        }
+        Sort(Span {arr.data, num}, [](auto const& a, auto const& b) { return a.note < b.note; });
+        Pair {arr, num};
+    });
+
+    if (notes.size == 0) return;
+
+    // Effective arp state: overridden by slice mode. Inlined here (rather than via ActualArpBehaviour) to
+    // avoid pulling the engine-layer header into the processor.
+    auto const effective_length = arp.audio.slice_mode ? arp.audio.slice_length : arp.audio.length;
+    auto const effective_type = arp.audio.slice_mode ? param_values::ArpMode::Played : arp.audio.type;
+    auto const effective_note_order = arp.audio.note_order;
+    auto const effective_step = [&](u32 i) {
+        ArpStep s = arp.steps[i].Load(LoadMemoryOrder::Relaxed);
+        if (arp.audio.slice_mode) {
+            s.tie = (i > 0) && arp.audio.step_to_slice_index[i] == arp.audio.step_to_slice_index[i - 1];
+            s.interval = 0;
+            s.note = 0;
+        }
+        return s;
+    };
+
+    auto const step = effective_step(arp.audio.current_step % effective_length);
+
+    if (arp.audio.current_step == 0) layer.rr_pos = {};
+
+    auto const advance_step = [&]() {
+        arp.current_step_for_gui.Store(arp.audio.current_step, StoreMemoryOrder::Relaxed);
+        arp.audio.current_step = (arp.audio.current_step + 1) % effective_length;
+    };
+
+    // Tied step: keep previous notes playing, just advance.
+    if (step.tie) {
+        advance_step();
+        return;
+    }
+
+    ArpReleaseLastNotes(arp, voice_pool, layer.voice_controller);
+
+    if (!step.on) {
+        advance_step();
+        return;
+    }
+
+    if (arp.audio.slice_mode) {
+        auto const slices = AudioThreadSlices(layer.audio_thread_inst);
+        auto const slice_idx = arp.audio.step_to_slice_index[arp.audio.current_step % effective_length];
+        layer.pending_slice_start_frame = slices[slice_idx].start_frame;
+        layer.pending_slice_end_frame =
+            (slice_idx + 1 < slices.size) ? Optional<u32>(slices[slice_idx + 1].start_frame) : k_nullopt;
+    } else {
+        layer.pending_slice_start_frame = k_nullopt;
+        layer.pending_slice_end_frame = k_nullopt;
+    }
+
+    auto const humanise_note_delay = [&]() -> u32 {
+        constexpr f32 k_max_ms = 80;
+        constexpr f32 k_max_fraction_of_rate = 0.2f;
+        if (arp.audio.humanise <= 0 || !voice_pool.master_random_seed) return 0;
+        auto max_delay = (f32)arp.audio.frames_per_step * k_max_fraction_of_rate * arp.audio.humanise;
+        max_delay = Min(context.sample_rate * (k_max_ms / 1000.0f), max_delay);
+        auto max_delay_u32 = (u32)max_delay;
+        if (max_delay_u32 == 0) return 0;
+        return RandomIntInRange<u32>(*voice_pool.master_random_seed, 0, max_delay_u32);
+    };
+
+    auto const humanise_velocity = [&](f32 vel) -> f32 {
+        constexpr f32 k_max_bidirectional_jitter_fraction = 0.15f;
+        if (arp.audio.humanise <= 0 || !voice_pool.master_random_seed) return vel;
+        auto const jitter = RandomFloatInRange(*voice_pool.master_random_seed,
+                                               -k_max_bidirectional_jitter_fraction,
+                                               k_max_bidirectional_jitter_fraction) *
+                            arp.audio.humanise;
+        return Clamp(vel + jitter, 0.0f, 1.0f);
+    };
+
+    switch (effective_type) {
+        case param_values::ArpMode::Off: PanicIfReached(); break; // EffectivelyOn guards against this
+        case param_values::ArpMode::Fixed: {
+            MidiChannelNote note {.note = step.note, .channel = 0};
+            LayerHandleNoteOn(layer,
+                              context,
+                              voice_pool,
+                              note,
+                              humanise_velocity(step.Velocity01()),
+                              frame_offset + humanise_note_delay());
+            arp.audio.last_triggered_notes[0].Set(note.note);
+            break;
+        }
+        case param_values::ArpMode::Played: {
+            auto const trigger_note = [&](u32 idx) {
+                auto const note = notes[idx % num_notes];
+                auto const input_vel = context.midi_note_state.velocities[note.channel][note.note];
+                auto const vel =
+                    humanise_velocity(step.Velocity01() * LinearInterpolate(0.5f, 1.0f, input_vel));
+                auto triggered_note = note;
+                triggered_note.note = (u7)Clamp((int)note.note + (int)step.interval, 0, 127);
+                LayerHandleNoteOn(layer,
+                                  context,
+                                  voice_pool,
+                                  triggered_note,
+                                  vel,
+                                  frame_offset + humanise_note_delay());
+                arp.audio.last_triggered_notes[triggered_note.channel].Set(triggered_note.note);
+            };
+
+            switch (effective_note_order) {
+                case param_values::ArpNoteOrder::Chord: {
+                    for (auto const i : Range(num_notes))
+                        trigger_note(i);
+                    break;
+                }
+                case param_values::ArpNoteOrder::Up: {
+                    trigger_note(arp.audio.current_step % num_notes);
+                    break;
+                }
+                case param_values::ArpNoteOrder::Down: {
+                    trigger_note((num_notes - 1) - (arp.audio.current_step % num_notes));
+                    break;
+                }
+                case param_values::ArpNoteOrder::UpDown: {
+                    if (num_notes <= 1) {
+                        trigger_note(0);
+                    } else {
+                        auto const cycle_len = 2 * (num_notes - 1);
+                        auto const pos = arp.audio.current_step % cycle_len;
+                        trigger_note(pos < num_notes ? pos : cycle_len - pos);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::Count: PanicIfReached(); break;
+            }
+            break;
+        }
+        case param_values::ArpMode::Count: PanicIfReached();
+    }
+
+    // Schedule gate-off if gate < 1 and next step is not tied.
+    auto const next_step_index = arp.audio.current_step % effective_length;
+    bool const next_is_tied = effective_step(next_step_index).tie;
+    auto const gate_01 = step.Gate01();
+    if (gate_01 < 1.0f && !next_is_tied)
+        arp.audio.gate_off_frame = Max(1u, (u32)((f32)arp.audio.frames_per_step * gate_01));
+    else
+        arp.audio.gate_off_frame = 0;
+
+    advance_step();
+}
+
+static void ArpUpdateNoteStartEnd(LayerProcessor& layer,
+                                  AudioProcessingContext const& context,
+                                  VoicePool& voice_pool,
+                                  u32 num_frames) {
+    auto& arp = layer.arp_state;
+    if (!arp.audio.EffectivelyOn()) return;
+    if (!arp.audio.any_notes_held) return;
+    if (num_frames == 0) return;
+
+    for (auto const i : Range(num_frames)) {
+        if (arp.audio.frames_until_next_step == 0) {
+            ArpTriggerStep(layer, context, voice_pool, i);
+            arp.audio.frames_until_next_step = arp.audio.frames_per_step;
+            arp.audio.frames_into_current_step = 0;
+        }
+
+        // Gate-off: release notes mid-step.
+        if (arp.audio.gate_off_frame > 0 && arp.audio.frames_into_current_step == arp.audio.gate_off_frame) {
+            ArpReleaseLastNotes(arp, voice_pool, layer.voice_controller);
+            arp.audio.gate_off_frame = 0;
+        }
+
+        --arp.audio.frames_until_next_step;
+        ++arp.audio.frames_into_current_step;
+    }
+}
+
+void ProcessLayerPreVoices(LayerProcessor& layer,
+                           AudioProcessingContext const& context,
+                           VoicePool& voice_pool,
+                           u32 num_frames) {
+    // Harmony intervals are not a parameter - always sync from the AtomicBitset to the voice controller.
+    layer.voice_controller.granular.harmony_intervals = layer.harmony_intervals.GetBlockwise();
+
+    ArpUpdateNoteStartEnd(layer, context, voice_pool, num_frames);
+}
+
+// Returns the largest SyncedTimes whose duration (at the host BPM) is still <= the target duration.
+// This minimizes gaps within sliced playback: the arp triggers the next slice before the current one
+// naturally finishes, rather than lagging and leaving silence. Falls back to the fastest SyncedTimes
+// (shortest duration) if no rate fits.
+static SyncedTimes LargestSyncedTimeWithinTarget(f64 target_ms, AudioProcessingContext const& context) {
+    SyncedTimes best = SyncedTimes::_1_64T;
+    f64 best_ms = SyncedTimeToMs(context.tempo, best);
+    bool found = false;
+    for (auto const i : Range(ToInt(SyncedTimes::Count))) {
+        auto const candidate = (SyncedTimes)i;
+        auto const ms = SyncedTimeToMs(context.tempo, candidate);
+        if (ms <= 0 || ms > target_ms) continue;
+        if (!found || ms > best_ms) {
+            best_ms = ms;
+            best = candidate;
+            found = true;
+        }
+    }
+    return best;
+}
+
+// For sliced instruments with auto-rate: compute the best SyncedTimes from the loop's declared musical
+// length (loop_beats) and native tempo (native_bpm), plus the slice count. Returns nullopt if the
+// instrument isn't sliced or doesn't have the required metadata.
+static Optional<SyncedTimes> AutoSyncedTimeForLayer(LayerProcessor const& layer,
+                                                    AudioProcessingContext const& context) {
+    auto const* inst_ptr = layer.audio_thread_inst.TryGet<sample_lib::LoadedInstrument const*>();
+    if (!inst_ptr || !*inst_ptr) return k_nullopt;
+    auto const& regions = (*inst_ptr)->instrument.regions;
+    if (regions.size != 1) return k_nullopt;
+    auto const& region = regions[0];
+    if (!region.slices.size || !region.loop_beats || region.native_bpm <= 0) return k_nullopt;
+
+    u32 total_prop = 0;
+    for (auto const& s : region.slices)
+        total_prop += s.length_proportion;
+    if (!total_prop) return k_nullopt;
+
+    // Native step duration in seconds: (beats * 60 / bpm) / total_prop. Convert to milliseconds.
+    f64 const native_step_ms = ((f64)region.loop_beats * 60000.0 / (f64)region.native_bpm) / (f64)total_prop;
+    return LargestSyncedTimeWithinTarget(native_step_ms, context);
+}
+
+bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer,
+                                      VoicePool& voice_pool,
+                                      AudioProcessingContext const& context) {
     ZoneScoped;
     auto desired_inst = layer.desired_inst.Consume();
 
@@ -418,8 +720,99 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_po
     UpdateLoopPointsForVoices(layer, voice_pool);
     UpdateVolumeEnvelopeOn(layer, voice_pool);
 
+    // Configure arp for sliced instruments. User's arp state is preserved; only the separate slice_* fields
+    // change. The tie pattern is derived from step_to_slice_index at read time; velocity/gate/on come from
+    // user steps; interval/note are zeroed.
+    auto const slices = AudioThreadSlices(layer.audio_thread_inst);
+    auto& arp = layer.arp_state;
+    bool const effective_on_before = arp.audio.EffectivelyOn();
+    if (slices.size) {
+        u32 total_steps = 0;
+        for (auto const& s : slices)
+            total_steps += s.length_proportion;
+        ASSERT(total_steps <= k_arp_max_steps);
+
+        arp.audio.slice_mode = true;
+        arp.audio.slice_length = total_steps;
+
+        u32 step_idx = 0;
+        for (u32 slice_i = 0; slice_i < slices.size; slice_i++) {
+            for (u32 j = 0; j < slices[slice_i].length_proportion; j++) {
+                arp.audio.step_to_slice_index[step_idx] = (u8)slice_i;
+                step_idx++;
+            }
+        }
+        for (; step_idx < k_arp_max_steps; step_idx++)
+            arp.audio.step_to_slice_index[step_idx] = 0;
+    } else {
+        arp.audio.slice_mode = false;
+        layer.pending_slice_start_frame = k_nullopt;
+        layer.pending_slice_end_frame = k_nullopt;
+    }
+
+    // Handle effective_on transition caused by slice_mode change.
+    bool const effective_on_after = arp.audio.EffectivelyOn();
+    arp.effectively_on_for_gui.Store(effective_on_after, StoreMemoryOrder::Relaxed);
+
+    // Recompute auto rate now that we have new loop data (if applicable).
+    if (arp.audio.auto_rate) {
+        if (auto const auto_time = AutoSyncedTimeForLayer(layer, context)) arp.audio.rate = *auto_time;
+        arp.resolved_rate_for_gui.Store(arp.audio.rate, StoreMemoryOrder::Relaxed);
+    }
+
+    if (effective_on_before != effective_on_after) {
+        if (effective_on_after) {
+            arp.audio.frames_per_step = ArpFramesPerStep(arp.audio.rate, context);
+        } else {
+            ArpReleaseLastNotes(arp, voice_pool, layer.voice_controller);
+            arp.ResetAudioPlayback();
+        }
+    } else if (arp.audio.auto_rate) {
+        // Effective-on didn't change but the auto rate may have (different loop length).
+        arp.audio.frames_per_step = ArpFramesPerStep(arp.audio.rate, context);
+    }
+
     return true;
 }
+
+template <typename Type>
+static SyncedTimes SyncedTimesFromParam(Type param_rate) {
+    // Remapping enum values like this allows us to separate values that cannot ever change (the parameter
+    // value), with values that we have more control over (DSP code). It helps make things explicit when
+    // things change and we need to maintain perfect backwards compatibility.
+    switch (param_rate) {
+        case Type::_1_64T: return SyncedTimes::_1_64T;
+        case Type::_1_64: return SyncedTimes::_1_64;
+        case Type::_1_64D: return SyncedTimes::_1_64D;
+        case Type::_1_32T: return SyncedTimes::_1_32T;
+        case Type::_1_32: return SyncedTimes::_1_32;
+        case Type::_1_32D: return SyncedTimes::_1_32D;
+        case Type::_1_16T: return SyncedTimes::_1_16T;
+        case Type::_1_16: return SyncedTimes::_1_16;
+        case Type::_1_16D: return SyncedTimes::_1_16D;
+        case Type::_1_8T: return SyncedTimes::_1_8T;
+        case Type::_1_8: return SyncedTimes::_1_8;
+        case Type::_1_8D: return SyncedTimes::_1_8D;
+        case Type::_1_4T: return SyncedTimes::_1_4T;
+        case Type::_1_4: return SyncedTimes::_1_4;
+        case Type::_1_4D: return SyncedTimes::_1_4D;
+        case Type::_1_2T: return SyncedTimes::_1_2T;
+        case Type::_1_2: return SyncedTimes::_1_2;
+        case Type::_1_2D: return SyncedTimes::_1_2D;
+        case Type::_1_1T: return SyncedTimes::_1_1T;
+        case Type::_1_1: return SyncedTimes::_1_1;
+        case Type::_1_1D: return SyncedTimes::_1_1D;
+        case Type::_2_1T: return SyncedTimes::_2_1T;
+        case Type::_2_1: return SyncedTimes::_2_1;
+        case Type::_2_1D: return SyncedTimes::_2_1D;
+        case Type::_4_1T: return SyncedTimes::_4_1T;
+        case Type::_4_1: return SyncedTimes::_4_1;
+        case Type::_4_1D: return SyncedTimes::_4_1D;
+        case Type::Count: PanicIfReached(); break;
+    }
+    return SyncedTimes::_1_8;
+}
+
 
 void ProcessLayerChanges(LayerProcessor& layer,
                          AudioProcessingContext const& context,
@@ -577,39 +970,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
         }
         if (update_voice_controller_times) {
             if (layer.lfo_is_synced) {
-                SyncedTimes synced_time {};
-                // Remapping enum values like this allows us to separate values that cannot change (the
-                // parameter value), with values that we have more control over (DSP code)
-                switch (layer.lfo_synced_time) {
-                    case param_values::LfoSyncedRate::_1_64T: synced_time = SyncedTimes::_1_64T; break;
-                    case param_values::LfoSyncedRate::_1_64: synced_time = SyncedTimes::_1_64; break;
-                    case param_values::LfoSyncedRate::_1_64D: synced_time = SyncedTimes::_1_64D; break;
-                    case param_values::LfoSyncedRate::_1_32T: synced_time = SyncedTimes::_1_32T; break;
-                    case param_values::LfoSyncedRate::_1_32: synced_time = SyncedTimes::_1_32; break;
-                    case param_values::LfoSyncedRate::_1_32D: synced_time = SyncedTimes::_1_32D; break;
-                    case param_values::LfoSyncedRate::_1_16T: synced_time = SyncedTimes::_1_16T; break;
-                    case param_values::LfoSyncedRate::_1_16: synced_time = SyncedTimes::_1_16; break;
-                    case param_values::LfoSyncedRate::_1_16D: synced_time = SyncedTimes::_1_16D; break;
-                    case param_values::LfoSyncedRate::_1_8T: synced_time = SyncedTimes::_1_8T; break;
-                    case param_values::LfoSyncedRate::_1_8: synced_time = SyncedTimes::_1_8; break;
-                    case param_values::LfoSyncedRate::_1_8D: synced_time = SyncedTimes::_1_8D; break;
-                    case param_values::LfoSyncedRate::_1_4T: synced_time = SyncedTimes::_1_4T; break;
-                    case param_values::LfoSyncedRate::_1_4: synced_time = SyncedTimes::_1_4; break;
-                    case param_values::LfoSyncedRate::_1_4D: synced_time = SyncedTimes::_1_4D; break;
-                    case param_values::LfoSyncedRate::_1_2T: synced_time = SyncedTimes::_1_2T; break;
-                    case param_values::LfoSyncedRate::_1_2: synced_time = SyncedTimes::_1_2; break;
-                    case param_values::LfoSyncedRate::_1_2D: synced_time = SyncedTimes::_1_2D; break;
-                    case param_values::LfoSyncedRate::_1_1T: synced_time = SyncedTimes::_1_1T; break;
-                    case param_values::LfoSyncedRate::_1_1: synced_time = SyncedTimes::_1_1; break;
-                    case param_values::LfoSyncedRate::_1_1D: synced_time = SyncedTimes::_1_1D; break;
-                    case param_values::LfoSyncedRate::_2_1T: synced_time = SyncedTimes::_2_1T; break;
-                    case param_values::LfoSyncedRate::_2_1: synced_time = SyncedTimes::_2_1; break;
-                    case param_values::LfoSyncedRate::_2_1D: synced_time = SyncedTimes::_2_1D; break;
-                    case param_values::LfoSyncedRate::_4_1T: synced_time = SyncedTimes::_4_1T; break;
-                    case param_values::LfoSyncedRate::_4_1: synced_time = SyncedTimes::_4_1; break;
-                    case param_values::LfoSyncedRate::_4_1D: synced_time = SyncedTimes::_4_1D; break;
-                    case param_values::LfoSyncedRate::Count: PanicIfReached(); break;
-                }
+                auto const synced_time = SyncedTimesFromParam(layer.lfo_synced_time);
                 vmst.lfo.time_hz = (f32)(1.0 / (SyncedTimeToMs(context.tempo, synced_time) / 1000.0));
             } else {
                 vmst.lfo.time_hz = layer.lfo_unsynced_hz;
@@ -708,24 +1069,155 @@ void ProcessLayerChanges(LayerProcessor& layer,
     for (auto const eq_band_index : Range(k_num_layer_eq_bands))
         layer.eq_bands.OnParamChange(eq_band_index, changes.changed_params, layer.index, sample_rate);
 
+    // Arpeggiator
+    // =======================================================================================================
+    {
+        auto& arp = layer.arp_state;
+        bool rate_changed = false;
+
+        // Always update user's arp config from params. Slice mode overrides are handled by ActualArpBehaviour,
+        // not by overwriting user fields.
+        if (auto p =
+                changes.changed_params.IntValue<param_values::ArpMode>(layer.index, LayerParamIndex::ArpMode)) {
+            if (*p != arp.audio.type) {
+                bool const effective_before = arp.audio.EffectivelyOn();
+                arp.audio.type = *p;
+                arp.audio.on = (*p != param_values::ArpMode::Off);
+                bool const effective_after = arp.audio.EffectivelyOn();
+                if (effective_before != effective_after) {
+                    arp.effectively_on_for_gui.Store(effective_after, StoreMemoryOrder::Relaxed);
+                    if (effective_after) {
+                        arp.audio.frames_per_step = ArpFramesPerStep(arp.audio.rate, context);
+                    } else {
+                        ArpReleaseLastNotes(arp, voice_pool, layer.voice_controller);
+                        arp.ResetAudioPlayback();
+                    }
+                }
+            }
+        }
+
+        if (auto p = changes.changed_params.IntValue<param_values::ArpNoteOrder>(
+                layer.index,
+                LayerParamIndex::ArpNoteOrder))
+            arp.audio.note_order = *p;
+
+        if (auto p = changes.changed_params.IntValue<u32>(layer.index, LayerParamIndex::ArpLength))
+            arp.audio.length = Clamp(*p, 1u, (u32)k_arp_max_steps);
+
+        if (auto p = changes.changed_params.IntValue<param_values::ArpTriggerMode>(
+                layer.index,
+                LayerParamIndex::ArpTriggerMode))
+            arp.audio.trigger_mode = *p;
+
+        if (auto p = changes.changed_params.IntValue<param_values::ArpSyncedRate>(layer.index,
+                                                                                  LayerParamIndex::ArpRate)) {
+            arp.audio.user_rate = SyncedTimesFromParam(*p);
+            rate_changed = true;
+        }
+
+        if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::ArpAutoRate)) {
+            if (*p != arp.audio.auto_rate) {
+                arp.audio.auto_rate = *p;
+                rate_changed = true;
+            }
+        }
+
+        if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::ArpHumanise))
+            arp.audio.humanise = *p;
+
+        if (rate_changed || changes.tempo_changed) {
+            arp.audio.rate = arp.audio.user_rate;
+            if (arp.audio.auto_rate)
+                if (auto const auto_time = AutoSyncedTimeForLayer(layer, context))
+                    arp.audio.rate = *auto_time;
+            arp.audio.frames_per_step = ArpFramesPerStep(arp.audio.rate, context);
+            arp.resolved_rate_for_gui.Store(arp.audio.rate, StoreMemoryOrder::Relaxed);
+        }
+    }
+
+    // Detect recording false->true transition. The GUI only flips the `recording` atomic; audio is
+    // responsible for resetting current_step so we don't have a cross-thread write race on it.
+    {
+        auto& arp = layer.arp_state;
+        bool const recording_now = arp.recording.Load(LoadMemoryOrder::Relaxed);
+        if (recording_now && !arp.audio.was_recording_last_block) {
+            arp.audio.current_step = 0;
+            arp.current_step_for_gui.Store(0, StoreMemoryOrder::Relaxed);
+        }
+        arp.audio.was_recording_last_block = recording_now;
+    }
+
     // Start/end notes.
     // =======================================================================================================
-    for (auto const& note : changes.note_events) {
-        if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != layer.index) continue;
-        switch (note.type) {
-            case NoteEvent::Type::On: {
-                LayerHandleNoteOn(layer, context, voice_pool, note.note, note.velocity, note.offset);
-                break;
+    bool const arp_is_recording = layer.arp_state.recording.Load(LoadMemoryOrder::Relaxed);
+    bool const arp_playback = layer.arp_state.audio.EffectivelyOn() && !arp_is_recording;
+
+    if (!arp_playback) {
+        // Regular playback of notes.
+
+        for (auto const& note : changes.note_events) {
+            if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != layer.index) continue;
+            switch (note.type) {
+                case NoteEvent::Type::On: {
+                    LayerHandleNoteOn(layer, context, voice_pool, note.note, note.velocity, note.offset);
+
+                    // Also record note if in arp recording mode.
+                    auto& arp = layer.arp_state;
+                    if (arp_is_recording && arp.audio.current_step < arp.audio.length) {
+                        // Atomic Load-modify-Store: audio owns step.note here, but the GUI may be
+                        // editing other steps concurrently. A racing GUI edit on this same step
+                        // during recording would be lost; the GUI greys out step-note editing in
+                        // recording mode so this is acceptable.
+                        auto s = arp.steps[arp.audio.current_step].Load(LoadMemoryOrder::Relaxed);
+                        s.note = note.note.note;
+                        arp.steps[arp.audio.current_step].Store(s, StoreMemoryOrder::Relaxed);
+                        arp.audio.current_step++;
+                        if (arp.audio.current_step >= arp.audio.length) {
+                            arp.recording.Store(false, StoreMemoryOrder::Relaxed);
+                            arp.audio.was_recording_last_block = false;
+                            arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+                        } else {
+                            arp.current_step_for_gui.Store(arp.audio.current_step,
+                                                           StoreMemoryOrder::Relaxed);
+                        }
+                    }
+                    break;
+                }
+                case NoteEvent::Type::Off: {
+                    LayerHandleNoteOff(layer,
+                                       context,
+                                       voice_pool,
+                                       note.note,
+                                       note.velocity,
+                                       note.created_by_cc64);
+                    break;
+                }
             }
-            case NoteEvent::Type::Off: {
-                LayerHandleNoteOff(layer,
-                                   context,
-                                   voice_pool,
-                                   note.note,
-                                   note.velocity,
-                                   note.created_by_cc64);
-                break;
+        }
+    } else {
+        // Arpeggiator playback.
+
+        auto& arp = layer.arp_state;
+        bool const was_held = arp.audio.any_notes_held;
+        arp.audio.any_notes_held = ArpAnyNotesHeld(context);
+
+        for (auto const& note : changes.note_events) {
+            if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != layer.index) continue;
+
+            if (note.type == NoteEvent::Type::On &&
+                arp.audio.trigger_mode == param_values::ArpTriggerMode::Retrigger) {
+                ArpReleaseLastNotes(arp, voice_pool, layer.voice_controller);
+                arp.audio.frames_until_next_step = 0;
+                arp.audio.current_step = 0;
             }
+        }
+
+        if (!was_held && arp.audio.any_notes_held) arp.audio.frames_until_next_step = 0;
+
+        if (was_held && !arp.audio.any_notes_held) {
+            ArpReleaseLastNotes(arp, voice_pool, layer.voice_controller);
+            arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+            arp.audio.current_step = 0;
         }
     }
 }
@@ -763,7 +1255,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
 
     if (!result.output || layer.audio_thread_inst.tag == InstrumentType::None) {
         if (layer.inst_change_fade.JumpMultipleSteps(num_frames) == VolumeFade::State::Silent)
-            result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
+            result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool, context);
 
         layer.peak_meter.Zero();
         return result;
@@ -780,7 +1272,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                 auto const fade = layer.inst_change_fade.GetFadeAndStateChange();
                 frame *= fade.value;
                 if (fade.state_changed == VolumeFade::State::Silent)
-                    result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
+                    result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool, context);
             } else {
                 // If we have swapped we want to be silent for the remainder of this block - we will use the
                 // new instrument next block

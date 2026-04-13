@@ -42,6 +42,7 @@ struct VoiceSoundSource {
         f32 xfade_vol = 1;
         OnePoleLowPassFilter<f32> xfade_vol_smoother = {};
         PlayHead playhead {};
+        Optional<u32> slice_end_frame {};
     };
 
     struct WaveformSource {
@@ -253,6 +254,8 @@ struct VoiceStartParams {
 
         f32 initial_timbre_param_value_01 {};
         DynamicArrayBounded<Region, k_max_num_voice_sound_sources> voice_sample_params {};
+        Optional<u32> slice_start_frame {};
+        Optional<u32> slice_end_frame {};
     };
 
     struct WaveformParams {

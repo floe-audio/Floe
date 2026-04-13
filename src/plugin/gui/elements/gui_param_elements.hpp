@@ -39,6 +39,7 @@ struct MenuParameterComponentOptions {
     bool label = true;
     String override_tooltip {};
     String override_label {};
+    String override_button_text {}; // If non-empty, shown on the button instead of the menu item text.
 };
 
 Box DoMenuParameter(GuiState& g,

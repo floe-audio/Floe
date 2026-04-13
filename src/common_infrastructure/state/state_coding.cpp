@@ -524,6 +524,8 @@ enum class StateVersion : u16 {
     // Added per-effect visibility bitset, decoupling GUI visibility from audio activeness.
     AddedEffectVisibility,
 
+    AddedArpeggiator,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -737,6 +739,12 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             auto const on_param = k_effect_info[i].on_param_index;
             if (state.param_values[ToInt(on_param)] != 0.0f) state.fx_visible.Set(i);
         }
+    }
+
+    if (version < StateVersion::AddedArpeggiator) {
+        for (auto& layer_steps : state.arp_steps)
+            for (auto& s : layer_steps)
+                s = {};
     }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
@@ -1444,6 +1452,24 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                     TRY(coder.CodeNumber(intervals.elements[e], StateVersion::AddedGranularHarmonyIntervals));
                 if (coder.IsReading()) state.harmony_intervals[i] = intervals;
             }
+
+            // Arp steps.
+            {
+                auto steps = state.arp_steps[i];
+                for (auto& s : steps) {
+                    TRY(coder.CodeNumber(s.velocity, StateVersion::AddedArpeggiator));
+                    TRY(coder.CodeNumber(s.gate, StateVersion::AddedArpeggiator));
+                    u8 on_val = s.on ? 1 : 0;
+                    TRY(coder.CodeNumber(on_val, StateVersion::AddedArpeggiator));
+                    if (coder.IsReading()) s.on = on_val != 0;
+                    u8 tie_val = s.tie ? 1 : 0;
+                    TRY(coder.CodeNumber(tie_val, StateVersion::AddedArpeggiator));
+                    if (coder.IsReading()) s.tie = tie_val != 0;
+                    TRY(coder.CodeNumber(s.interval, StateVersion::AddedArpeggiator));
+                    TRY(coder.CodeNumber(s.note, StateVersion::AddedArpeggiator));
+                }
+                if (coder.IsReading()) state.arp_steps[i] = steps;
+            }
         }
     }
 
@@ -1548,6 +1574,11 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         if (coder.IsReading()) {
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
             if (coder.version < StateVersion::AddedGranularHarmonyIntervals) state.harmony_intervals = {};
+            if (coder.version < StateVersion::AddedArpeggiator) {
+                for (auto& layer_steps : state.arp_steps)
+                    for (auto& s : layer_steps)
+                        s = {};
+            }
 
             // In commit e0b15326e9528ca33de7d3c8f905a3449a36d31a we introduced a bug where the LFO amount was
             // inverted prior to all previous versions. We have now fixed this, however, for presets that were

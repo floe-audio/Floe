@@ -409,8 +409,17 @@ void StartVoice(VoicePool& pool,
                 s.pitch_ratio = CalculatePitchRatio(RootKey(voice, s), s, params.initial_pitch, sample_rate);
                 s.pitch_ratio_smoother.Reset();
 
-                if (voice_controller.play_mode == param_values::PlayMode::GranularFixed &&
-                    s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff) {
+                if (sampler.slice_start_frame) {
+                    auto const start =
+                        Min((f64)*sampler.slice_start_frame, (f64)(s_sampler.data->num_frames - 1));
+                    s_sampler.slice_end_frame = sampler.slice_end_frame;
+                    ResetPlayhead(s_sampler.playhead,
+                                  start,
+                                  k_nullopt,
+                                  voice_controller.reverse,
+                                  s_sampler.data->num_frames);
+                } else if (voice_controller.play_mode == param_values::PlayMode::GranularFixed &&
+                           s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff) {
                     // GranularFixed ignores loops and sample offset; position is user-controlled.
                     // Note-off triggered samples use the standard playback path instead.
                     ResetPlayhead(s_sampler.playhead,
@@ -697,6 +706,10 @@ struct VoiceProcessor {
         return out;
     }
 
+    static u32 EffectiveEndFrame(VoiceSoundSource::SampleSource const& sampler) {
+        return sampler.slice_end_frame.ValueOr(sampler.data->num_frames);
+    }
+
     static bool AddSampleDataOntoBuffer(Voice const& voice,
                                         VoiceSoundSource& s,
                                         Span<f32x2> buffer,
@@ -704,8 +717,9 @@ struct VoiceProcessor {
                                         AudioProcessingContext const& context) {
         if (auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
             sampler.region->timbre_layering.layer_range) {
+            auto const end_frame = EffectiveEndFrame(sampler);
             for (auto [frame_index, val] : Enumerate(buffer)) {
-                if (PlaybackEnded(sampler.playhead, sampler.data->num_frames)) return false;
+                if (PlaybackEnded(sampler.playhead, end_frame)) return false;
 
                 auto const sample_frame = ({
                     f32x2 f;
@@ -727,8 +741,12 @@ struct VoiceProcessor {
                 val += sample_frame * s.amp;
             }
         } else {
+            auto const end_frame =
+                EffectiveEndFrame(s.source_data.Get<VoiceSoundSource::SampleSource>());
             for (auto [frame_index, val] : Enumerate(buffer)) {
-                if (PlaybackEnded(sampler.playhead, sampler.data->num_frames)) return false;
+                if (PlaybackEnded(s.source_data.Get<VoiceSoundSource::SampleSource>().playhead,
+                                  end_frame))
+                    return false;
 
                 auto const sample_frame = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
 

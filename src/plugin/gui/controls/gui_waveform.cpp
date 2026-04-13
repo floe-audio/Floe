@@ -857,7 +857,8 @@ void DoWaveformElement(GuiState& g,
                 // Badge in the top-right corner.
                 auto const badge_pad = WwToPixels(4.5f);
                 auto const badge_font_scaling = 0.72f;
-                String const badge_text = (last_activated_hash) ? "Last Played"_s : "Representative"_s;
+                String const badge_text =
+                    (last_activated_hash && !debounce.locked) ? "Last Played"_s : "Representative"_s;
 
                 // Measure text to size the badge.
                 auto const font = g.fonts.Current();
@@ -884,13 +885,33 @@ void DoWaveformElement(GuiState& g,
                                                      .font_scaling = badge_font_scaling,
                                                  });
             }
+
+            // Slice markers: thin vertical lines on the waveform at slice boundaries.
+            if (auto inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
+                auto const& regions = (*inst)->instrument.regions;
+                if (regions.size == 1 && regions[0].slices.size && (*inst)->audio_datas.size) {
+                    auto const num_frames = (*inst)->audio_datas[0]->num_frames;
+                    if (num_frames > 0) {
+                        auto const slice_col = LiveCol(UiColMap::WaveformSliceMarker);
+                        for (auto const& slice : regions[0].slices) {
+                            if (slice.start_frame == 0 || slice.start_frame >= num_frames) continue;
+                            f32 pos = (f32)slice.start_frame / (f32)num_frames;
+                            if (reverse) pos = 1.0f - pos;
+                            auto const x_vp = Round(viewport_r.x + pos * viewport_r.w);
+                            auto const top = g.imgui.ViewportPosToWindowPos({x_vp, viewport_r.y});
+                            auto const bottom = g.imgui.ViewportPosToWindowPos(
+                                {x_vp, viewport_r.y + viewport_r.h});
+                            g.imgui.draw_list->AddLine(top, bottom, slice_col);
+                        }
+                    }
+                }
+            }
         }
 
         // Consume voice waveform markers once for use by both spread regions and voice cursors.
         auto const has_active_voices =
             g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) > 0;
-        auto const muted_opacity =
-            LayerIsSilent(g.engine.processor, layer.index) ? 0.25f : 1.0f;
+        auto const muted_opacity = LayerIsSilent(g.engine.processor, layer.index) ? 0.25f : 1.0f;
         auto& voice_waveform_markers =
             g.engine.processor.voice_pool.voice_waveform_markers_for_gui.Consume().data;
 

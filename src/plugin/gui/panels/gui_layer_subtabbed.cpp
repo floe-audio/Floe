@@ -5,9 +5,11 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "engine/arp_behaviour.hpp"
 #include "engine/engine.hpp"
 #include "engine/engine_prefs.hpp"
 #include "engine/loop_modes.hpp"
+#include "gui/controls/gui_arp_step_sequencer.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
@@ -413,6 +415,17 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
             auto const num_regions = inst->instrument.regions.size;
             if (num_regions == 0) {
                 dyn::Append(segments, "Empty instrument"_s);
+            } else if (num_regions == 1 && inst->instrument.regions[0].slices.size) {
+                dyn::Append(segments, "Sliced"_s);
+                auto const& smpl = *inst->audio_datas[0];
+                dyn::Append(segments,
+                            fmt::Format(g.scratch_arena,
+                                        "{} slices",
+                                        inst->instrument.regions[0].slices.size));
+                if (smpl.channels == 1) dyn::Append(segments, "Mono"_s);
+                dyn::Append(
+                    segments,
+                    fmt::Format(g.scratch_arena, "{.2} s", (f64)smpl.num_frames / (f64)smpl.sample_rate));
             } else if (num_regions == 1) {
                 dyn::Append(segments, "Single sample"_s);
                 auto const& smpl = *inst->audio_datas[0];
@@ -623,8 +636,11 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                                     },
                                 });
 
+    auto const experimental_params = prefs::GetBool(g.prefs, ExperimentalParamsPreferenceDescriptor());
+
     for (auto const i : Range(ToInt(LayerPageType::Count))) {
         auto const page_type = (LayerPageType)i;
+        if (page_type == LayerPageType::Arp && !experimental_params) continue;
         bool const is_selected = page_type == layer_state.selected_page;
         bool const tab_has_active_content = ({
             bool result = false;
@@ -633,9 +649,12 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                     result = params.BoolValue(layer_index, LayerParamIndex::LfoOn);
                     break;
                 case LayerPageType::Eq: result = params.BoolValue(layer_index, LayerParamIndex::EqOn); break;
+                case LayerPageType::Arp:
+                    result =
+                        g.engine.processor.layer_processors[layer_index].arp_state.EffectivelyOnForGui();
+                    break;
                 case LayerPageType::Main:
                 case LayerPageType::Playback:
-                case LayerPageType::Arp:
                 case LayerPageType::Config:
                 case LayerPageType::Count: break;
             }
@@ -1885,7 +1904,280 @@ static void DoMainPage(GuiState& g, u8 layer_index, Box parent) {
     DoFilterPage(g, layer_index, page);
 }
 
-static void DoArpPage(GuiState&, u8, Box) {}
+static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
+    auto& params = g.engine.processor.main_params;
+    auto& layer_proc = g.engine.processor.layer_processors[layer_index];
+    auto& arp_state = layer_proc.arp_state;
+
+    auto const behaviour = ActualArpBehaviour(params, layer_index, arp_state, layer_proc.instrument);
+    auto const& bval = behaviour.value;
+    auto const& edit = bval.edit;
+    bool const is_fixed = bval.type == param_values::ArpMode::Fixed;
+    bool const is_sliced = bval.id == ArpBehaviourId::ForcedBySlicing;
+
+    // Humanise/Rate/TriggerMode stay editable when arp is effectively on (including slice mode).
+    bool const secondary_greyed = !bval.on;
+
+    // Whether a control that's non-editable should be shown anyway. In slice mode we hide irrelevant
+    // controls; in user-off mode we show everything greyed.
+    auto const show_if_non_editable = [&](bool editable) { return editable || !is_sliced; };
+
+    constexpr f32 k_menu_width = 80;
+    constexpr f32 k_menu_label_width = 35;
+
+    auto const page = DoBox(g.builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_gap = k_page_row_gap_y,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                },
+                            });
+
+    // Heading row: ArpMode menu (Off / Played / Fixed), or a static label when forced by slicing.
+    {
+        auto const heading_row = DoBox(g.builder,
+                                       {
+                                           .parent = page,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_gap = 12,
+                                               .contents_direction = layout::Direction::Row,
+                                           },
+                                       });
+
+        if (edit.mode) {
+            DoMenuParameter(g,
+                            heading_row,
+                            params.DescribedValue(layer_index, LayerParamIndex::ArpMode),
+                            {.width = layout::k_fill_parent, .label = false});
+        } else {
+            // Non-interactive label showing the forced mode (e.g. "Sliced"). Tooltip explains why.
+            auto const tooltip_text =
+                String(fmt::Format(g.scratch_arena, "{} {}", bval.description, behaviour.reason));
+            DoBox(g.builder,
+                  {
+                      .parent = heading_row,
+                      .text = bval.short_name,
+                      .text_colours = LiveColStruct(UiColMap::MidTextHot),
+                      .text_justification = TextJustification::CentredLeft,
+                      .layout {.size = {layout::k_fill_parent, k_font_body_size}},
+                      .tooltip = tooltip_text,
+                  });
+        }
+    }
+
+    // Step sequencer
+    {
+        auto const seq_box = DoBox(g.builder,
+                                   {
+                                       .parent = page,
+                                       .layout {.size = {layout::k_fill_parent, 155}},
+                                   });
+
+        if (auto const r = BoxRect(g.builder, seq_box)) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+            auto const playing = arp_state.current_step_for_gui.Load(LoadMemoryOrder::Relaxed);
+            DoArpStepSequencer(g, arp_state, window_r, bval, playing);
+        }
+    }
+
+    if (!is_fixed) arp_state.recording.Store(false, StoreMemoryOrder::Relaxed);
+
+    DoWhitespace(g.builder, page, 2);
+
+    auto const do_menu_param = [&](Box row_parent,
+                                   LayerParamIndex param_index,
+                                   bool is_grey,
+                                   String override_button_text = {}) {
+        auto const param = params.DescribedValue(layer_index, param_index);
+
+        DoBox(g.builder,
+              {
+                  .parent = row_parent,
+                  .id_extra = ToInt(param_index),
+                  .text = param.info.gui_label,
+                  .text_colours = LiveColStruct(is_grey ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                  .text_justification = TextJustification::CentredRight,
+                  .layout {.size = {k_menu_label_width, k_font_body_size}},
+              });
+
+        DoMenuParameter(g,
+                        row_parent,
+                        param,
+                        {
+                            .width = k_menu_width,
+                            .greyed_out = is_grey,
+                            .label = false,
+                            .override_button_text = override_button_text,
+                        });
+    };
+
+    auto const do_row = [&](u64 loc_hash = SourceLocationHash()) {
+        return DoBox(g.builder,
+                     {
+                         .parent = page,
+                         .id_extra = loc_hash,
+                         .layout {
+                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                             .contents_padding = {.lr = 8},
+                             .contents_gap = 12,
+                             .contents_direction = layout::Direction::Row,
+                             .contents_align = layout::Alignment::Start,
+                         },
+                     });
+    };
+
+    // Row 1: Auto Rate toggle (slice mode only) + Rate menu (hidden when Auto Rate is on) + Length (hidden
+    // in slice mode, shown greyed when arp is user-off).
+    {
+        auto const row = do_row();
+
+        // Auto-rate only takes effect for sliced instruments; for everything else the param's value
+        // is ignored and the user's rate is always shown.
+        bool const auto_rate_on =
+            edit.auto_rate_visible && params.BoolValue(layer_index, LayerParamIndex::ArpAutoRate);
+        if (edit.auto_rate_visible) {
+            String auto_rate_label {};
+            if (auto_rate_on) {
+                auto const resolved_idx =
+                    (usize)ToInt(arp_state.resolved_rate_for_gui.Load(LoadMemoryOrder::Relaxed));
+                if (resolved_idx < param_values::k_arp_synced_rate_strings.size)
+                    auto_rate_label = fmt::Format(g.scratch_arena,
+                                                  "Auto Rate: {}",
+                                                  param_values::k_arp_synced_rate_strings[resolved_idx]);
+            }
+            DoButtonParameter(g,
+                              row,
+                              params.DescribedValue(layer_index, LayerParamIndex::ArpAutoRate),
+                              {
+                                  .width = layout::k_hug_contents,
+                                  .greyed_out = secondary_greyed,
+                                  .override_label = auto_rate_label,
+                              });
+        }
+
+        if (!auto_rate_on) do_menu_param(row, LayerParamIndex::ArpRate, secondary_greyed);
+
+        if (show_if_non_editable(edit.length)) {
+            // Spacer.
+            DoBox(g.builder,
+                  {
+                      .parent = row,
+                      .layout {.size = layout::k_fill_parent},
+                  });
+
+            auto const length_param = params.DescribedValue(layer_index, LayerParamIndex::ArpLength);
+            DoBox(g.builder,
+                  {
+                      .parent = row,
+                      .text = length_param.info.gui_label,
+                      .text_colours = LiveColStruct(!edit.length ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                      .text_justification = TextJustification::CentredRight,
+                      .layout {.size = {k_menu_label_width, k_font_body_size}},
+                  });
+            DoIntParameter(g,
+                           row,
+                           length_param,
+                           {
+                               .width = k_menu_width,
+                               .greyed_out = !edit.length,
+                               .label = false,
+                           });
+        }
+    }
+
+    // Row 2: Trigger (+ Order when note order is meaningful). Note Order is hidden in Fixed mode (where
+    // it's not meaningful) and shown greyed when arp is user-off. Editable in slice mode.
+    {
+        auto const row = do_row();
+        do_menu_param(row, LayerParamIndex::ArpTriggerMode, secondary_greyed);
+        if (!is_fixed && show_if_non_editable(edit.note_order)) {
+            // Spacer.
+            DoBox(g.builder,
+                  {
+                      .parent = row,
+                      .layout {.size = layout::k_fill_parent},
+                  });
+            do_menu_param(row, LayerParamIndex::ArpNoteOrder, !edit.note_order);
+        }
+    }
+
+    // Row 3: Humanise knob + Record button (Fixed mode)
+    {
+        auto const row = do_row();
+        DoKnobParameter(g,
+                        row,
+                        params.DescribedValue(layer_index, LayerParamIndex::ArpHumanise),
+                        {
+                            .width = k_knob_width,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = secondary_greyed,
+                        });
+
+        // Record button only shown in Fixed mode with a user-controlled arp (not slice mode).
+        if (is_fixed && edit.mode) {
+            auto const is_recording = !secondary_greyed && arp_state.recording.Load(LoadMemoryOrder::Relaxed);
+            auto const text_col =
+                secondary_greyed
+                    ? LiveColStruct(UiColMap::MidTextDimmed)
+                    : LiveColStruct(is_recording ? UiColMap::MidTextHot : UiColMap::MidTextDimmed);
+
+            auto const rec_btn = DoBox(g.builder,
+                                       {
+                                           .parent = row,
+                                           .parent_dictates_hot_and_active = true,
+                                           .corner_rounding = 3,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_padding = {.lr = 6, .tb = 3},
+                                               .contents_gap = 4,
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Middle,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                           },
+                                       });
+
+            DoBox(g.builder,
+                  {
+                      .parent = rec_btn,
+                      .text = ICON_FA_CIRCLE,
+                      .size_from_text = true,
+                      .font = FontType::Icons,
+                      .text_colours = is_recording ? Col {.c = Col::Coral, .alpha = 255} : text_col,
+                      .parent_dictates_hot_and_active = true,
+                  });
+
+            DoBox(g.builder,
+                  {
+                      .parent = rec_btn,
+                      .text = is_recording ? "Recording..."_s : "Record"_s,
+                      .size_from_text = true,
+                      .text_colours = text_col,
+                      .parent_dictates_hot_and_active = true,
+                  });
+
+            if (!secondary_greyed)
+                if (auto const r = BoxRect(g.builder, rec_btn)) {
+                    auto const wr = g.imgui.ViewportRectToWindowRect(*r);
+                    auto const btn_id = g.imgui.MakeId(SourceLocationHash());
+                    if (g.imgui.ButtonBehaviour(wr, btn_id, {})) {
+                        if (is_recording) {
+                            arp_state.recording.Store(false, StoreMemoryOrder::Relaxed);
+                            arp_state.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+                        } else {
+                            // Audio resets current_step on detecting the false->true transition;
+                            // GUI only flips the recording flag.
+                            arp_state.recording.Store(true, StoreMemoryOrder::Relaxed);
+                        }
+                    }
+                }
+        }
+    }
+}
 
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent) {
     auto const root = DoBox(g.builder,

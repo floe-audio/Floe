@@ -6,6 +6,7 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/state/instrument.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "atomic_bitset.hpp"
 #include "clap/host.h"
@@ -16,6 +17,7 @@
 #include "processing_utils/filters.hpp"
 #include "processing_utils/midi.hpp"
 #include "processing_utils/peak_meter.hpp"
+#include "processing_utils/synced_timings.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 
@@ -180,6 +182,84 @@ struct VoiceProcessingController {
 
 struct VoicePool;
 
+// Cross-thread layout:
+//   - `steps` is shared. Each ArpStep is 8 bytes so Atomic<ArpStep> is lock-free; either thread may
+//     load/store any element. GUI writes user edits; audio reads on each trigger and Load/modify/Store
+//     `step.note` while recording.
+//   - `current_step_for_gui`, `recording`, `effectively_on_for_gui`, `resolved_rate_for_gui` are
+//     audio<->GUI atomics.
+//   - `audio` holds everything the audio thread mutates internally (timing, cached params, slice cache).
+//     Only the audio thread reads or writes inside `audio`. The GUI must use the published atomics or
+//     read directly from params/instrument.
+struct ArpeggiatorState {
+    // Shared GUI <-> audio. GUI writes when user edits steps. Audio reads on trigger and
+    // Load/modify/Stores step.note during recording.
+    Array<Atomic<ArpStep>, k_arp_max_steps> steps {};
+
+    // Written by audio thread, read by GUI. k_arp_max_steps means not playing/recording.
+    Atomic<u32> current_step_for_gui {k_arp_max_steps};
+
+    // Written by GUI to request recording (Fixed mode only); cleared by audio when recording finishes.
+    Atomic<bool> recording {false};
+
+    // Audio publishes (slice_mode || on). GUI reads via EffectivelyOnForGui().
+    Atomic<bool> effectively_on_for_gui {false};
+
+    // Audio publishes the effective rate (= user rate, or auto-resolved in slice mode). GUI reads to
+    // display the active rate.
+    Atomic<SyncedTimes> resolved_rate_for_gui {SyncedTimes::_1_8};
+
+    // Audio-thread-only state. No atomicity: only the audio thread touches anything inside.
+    struct AudioOnly {
+        Array<Bitset<128>, 16> last_triggered_notes {};
+
+        u32 frames_until_next_step {};
+        u32 frames_into_current_step {};
+        u32 frames_per_step {1};
+        u32 current_step {};
+        bool any_notes_held {};
+        u32 gate_off_frame {}; // frames into current step at which to release notes (0 = no pending release)
+
+        // Cached parameter values, refreshed in ProcessLayerChanges() from changed_params.
+        bool on {};
+        param_values::ArpMode type {};
+        param_values::ArpNoteOrder note_order {};
+        param_values::ArpTriggerMode trigger_mode {};
+        SyncedTimes user_rate {SyncedTimes::_1_8}; // From ArpRate param
+        SyncedTimes rate {SyncedTimes::_1_8}; // Effective rate (= user_rate, or auto-resolved in slice mode)
+        bool auto_rate {};
+        u32 length {8};
+        f32 humanise {};
+
+        // Slice-mode cache, set when the instrument changes. The user's `steps` are unaffected; tie is
+        // derived from step_to_slice_index, and interval/note are zeroed by the audio thread.
+        bool slice_mode {};
+        u32 slice_length {};
+        Array<u8, k_arp_max_steps> step_to_slice_index {};
+
+        // Used to detect a GUI-initiated recording false->true transition so audio can reset
+        // current_step itself (avoiding a cross-thread write race on it).
+        bool was_recording_last_block {};
+
+        bool EffectivelyOn() const { return slice_mode || on; }
+    } audio;
+
+    // GUI accessor: reads the published atomic. Audio code should use `audio.EffectivelyOn()` directly.
+    bool EffectivelyOnForGui() const {
+        return effectively_on_for_gui.Load(LoadMemoryOrder::Relaxed);
+    }
+
+    // Clears audio-thread playback timing (not user's `steps`). Audio thread only.
+    void ResetAudioPlayback() {
+        audio.last_triggered_notes = {};
+        audio.frames_until_next_step = 0;
+        audio.frames_into_current_step = 0;
+        audio.current_step = 0;
+        audio.any_notes_held = false;
+        current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+    }
+};
+
 constexpr auto k_default_velocity_curve_points = Array {
     CurveMap::Point {0.0f, 0.3f, 0.0f},
     CurveMap::Point {1.0f, 1.0f, 0.0f},
@@ -247,6 +327,7 @@ struct LayerProcessor {
                     instrument.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>()
                         ->instrument;
                 if (s.regions.size == 0) return "Empty"_s;
+                if (s.regions.size == 1 && s.regions[0].slices.size) return "Sliced"_s;
                 if (s.regions.size == 1) return "Single sample"_s;
                 return "Multisample"_s;
             }
@@ -352,6 +433,11 @@ struct LayerProcessor {
 
     EqBands eq_bands;
 
+    ArpeggiatorState arp_state {};
+
+    Optional<u32> pending_slice_start_frame {};
+    Optional<u32> pending_slice_end_frame {};
+
     int num_velocity_regions = 1;
     Bitset<4> active_velocity_regions {};
     CurveMap velocity_curve_map = {};
@@ -363,7 +449,9 @@ struct LayerProcessor {
 };
 
 void SetSilent(LayerProcessor& layer, bool state);
-bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_pool);
+bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer,
+                                      VoicePool& voice_pool,
+                                      AudioProcessingContext const& context);
 void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context);
 
 struct LayerProcessResult {
@@ -383,3 +471,10 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 bool start_fade_out);
 
 void ResetLayerAudioProcessing(LayerProcessor& layer);
+
+void ProcessLayerPreVoices(LayerProcessor& layer,
+                           AudioProcessingContext const& context,
+                           VoicePool& voice_pool,
+                           u32 num_frames);
+
+void LayerApplyNewState(LayerProcessor& layer, StateSnapshot const& state, StateSource source);

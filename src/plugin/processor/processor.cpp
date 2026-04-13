@@ -290,6 +290,10 @@ void SetAllParametersToDefaultValues(AudioProcessor& processor) {
     for (auto& velo_curve : state.velocity_curve_points)
         velo_curve = k_default_velocity_curve_points;
 
+    for (auto& layer_steps : state.arp_steps)
+        for (auto& s : layer_steps)
+            s = {};
+
     ApplyNewState(processor, state, StateSource::PresetFile);
 }
 
@@ -864,16 +868,9 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
 
     processor.desired_effects_order.Store(EncodeEffectsArray(state.fx_order), StoreMemoryOrder::Relaxed);
 
-    // Velocity curves.
-    for (auto const layer_index : Range(k_num_layers)) {
-        processor.layer_processors[layer_index].velocity_curve_map.SetNewPoints(
-            state.velocity_curve_points[layer_index]);
-    }
-
-    // Harmony intervals.
+    // Layers.
     for (auto const layer_index : Range(k_num_layers))
-        processor.layer_processors[layer_index].harmony_intervals.AssignBlockwise(
-            state.harmony_intervals[layer_index]);
+        LayerApplyNewState(processor.layer_processors[layer_index], state, source);
 
     // Macro destinations.
     {
@@ -927,6 +924,9 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
         result.inst_ids[i] = processor.layer_processors[i].instrument_id;
         result.velocity_curve_points[i] = processor.layer_processors[i].velocity_curve_map.points;
         result.harmony_intervals[i] = processor.layer_processors[i].harmony_intervals.GetBlockwise();
+        for (auto const step_index : Range(k_arp_max_steps))
+            result.arp_steps[i][step_index] =
+                processor.layer_processors[i].arp_state.steps[step_index].Load(LoadMemoryOrder::Relaxed);
     }
 
     result.ir_id = processor.convo.ir_id;
@@ -969,7 +969,7 @@ inline void ResetProcessor(AudioProcessor& processor, ProcessBlockChanges& chang
 
     // Reset layers
     for (auto& l : processor.layer_processors)
-        ChangeInstrumentIfNeededAndReset(l, processor.voice_pool);
+        ChangeInstrumentIfNeededAndReset(l, processor.voice_pool, processor.audio_processing_context);
 
     Reset(processor.voice_pool);
 }
@@ -1729,9 +1729,8 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
     ProcessorHandleChanges(processor, changes);
 
-    // Harmony intervals are not a parameter - always sync from the AtomicBitset to the voice controller.
     for (auto& l : processor.layer_processors)
-        l.voice_controller.granular.harmony_intervals = l.harmony_intervals.GetBlockwise();
+        ProcessLayerPreVoices(l, processor.audio_processing_context, processor.voice_pool, sub_block_size);
 
     // Voices and layers
     // ======================================================================================================
@@ -1864,8 +1863,11 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
         processor.audio_processing_context.midi_note_state.NotesCurrentlyHeldAllChannels());
 
     if (!processor.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
-    for (auto& layer : processor.layer_processors)
+    for (auto& layer : processor.layer_processors) {
         if (!layer.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
+        if (layer.arp_state.audio.EffectivelyOn() && layer.arp_state.audio.any_notes_held)
+            change_flags |= ProcessorListener::PeakMeterChanged;
+    }
 
     if (change_flags) processor.listener.OnProcessorChange(change_flags);
     SendParamChangesToMainThread(processor, changes_for_main_thread);

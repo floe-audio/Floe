@@ -125,6 +125,15 @@ struct Region {
         Optional<Range<u8>> layer_range {};
         // IMPROVE: add layer_range_curve: enum: equal-power, quarter-sine, linear
     } timbre_layering;
+
+    struct Slice {
+        u32 start_frame {};
+        u32 length_proportion {};
+    };
+
+    Span<Slice> slices {};
+    u8 loop_beats {};
+    f32 native_bpm {};
 };
 
 struct Library;

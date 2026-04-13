@@ -6,8 +6,9 @@
 #include "engine/favourite_items.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 
+constexpr String k_waveform_library_id_string = "Waveforms - " FLOE_VENDOR;
 constexpr sample_lib::LibraryId k_waveform_library_id =
-    sample_lib::HashLibraryIdStringWithoutRegistration("Waveforms - " FLOE_VENDOR);
+    sample_lib::HashLibraryIdStringWithoutRegistration(k_waveform_library_id_string);
 
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
@@ -222,6 +223,7 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
     sample_lib::Library const pseudo_lib {
         .name = "Waveforms"_s,
         .id = k_waveform_library_id,
+        .id_string = k_waveform_library_id_string,
         .author = FLOE_VENDOR,
         .file_format_specifics = sample_lib::LuaSpecifics {},
     };

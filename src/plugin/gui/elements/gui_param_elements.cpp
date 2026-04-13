@@ -259,7 +259,9 @@ Box DoMenuParameter(GuiState& g,
         DoBox(g.builder,
               {
                   .parent = row,
-                  .text = ParamMenuText(param.info.index, param.LinearValue()),
+                  .text = options.override_button_text.size
+                              ? options.override_button_text
+                              : ParamMenuText(param.info.index, param.LinearValue()),
                   .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
                                                      : Colours {ColSet {
                                                            .base = LiveColStruct(UiColMap::MidText),
