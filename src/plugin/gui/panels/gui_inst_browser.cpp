@@ -466,17 +466,15 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         }
     }
 
-    auto const waveform_library_hash = state.id ^ HashFnv1a("built-in-waveforms");
-
     FilterCardOptions const waveform_card {
         .common =
             {
                 .id_extra = SourceLocationHash(),
                 .is_selected =
-                    state.common_state.Filter(BrowserFilter::Library).Contains(waveform_library_hash),
+                    state.common_state.Filter(BrowserFilter::Library).Contains(k_waveform_library_id),
                 .text = "Built-in Waveforms",
                 .filter = state.common_state.Filter(BrowserFilter::Library),
-                .clicked_key = waveform_library_hash,
+                .clicked_key = k_waveform_library_id,
                 .filter_mode = state.common_state.filter_mode,
             },
         .library_id = k_waveform_library_id,
