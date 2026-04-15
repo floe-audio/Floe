@@ -847,7 +847,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                             fmt::Assign(err->message,
                                         "Could not find reverb impulse response: {}, in library: {}",
                                         ir_id.ir_id,
-                                        library_id);
+                                        sample_lib::LookupLibraryIdString(library_id).ValueOr("Unknown"));
                             err->error_code = CommonError::NotFound;
                         }
 
@@ -899,7 +899,8 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                             "Failed to load audio file '{}', part of instrument '{}', in library '{}'",
                             *audio_path,
                             listed_inst.inst.instrument.id,
-                            listed_inst.inst.instrument.library.id);
+                            sample_lib::LookupLibraryIdString(listed_inst.inst.instrument.library.id)
+                                .ValueOr("Unknown"));
             }
 
             CancelLoadingAudioForInstrumentIfPossible(&listed_inst, pending_resource.debug_id);
@@ -995,7 +996,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     fmt::Assign(err->message,
                                 "File '{}', in library {} failed to load. Check your Lua file: {}",
                                 ir.audio_data->path.str,
-                                ir_id.library,
+                                sample_lib::LookupLibraryIdString(ir_id.library).ValueOr("Unknown"),
                                 ir.ir.ir.library.path);
                 }
 
