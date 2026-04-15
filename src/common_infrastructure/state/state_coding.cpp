@@ -1235,6 +1235,14 @@ struct StateCoder {
         return CodeTrivialObject(number, version_added);
     }
 
+    template <usize k_bits>
+    ErrorCodeOr<void> CodeBitset(Bitset<k_bits>& bitset, StateVersion version_added) {
+        constexpr auto k_num_elements = RemoveReference<decltype(bitset)>::k_num_elements;
+        for (usize e = 0; e < k_num_elements; ++e)
+            TRY(CodeNumber(bitset.elements[e], version_added));
+        return k_success;
+    }
+
     template <TriviallyCopyable Type>
     ErrorCodeOr<void> CodeTrivialObject(Type& trivial_obj, StateVersion version_added) {
         if (version >= version_added) return args.read_or_write_data(&trivial_obj, sizeof(Type));
@@ -1447,9 +1455,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             {
                 // Serialise the bitset as raw u64 elements.
                 auto intervals = state.harmony_intervals[i];
-                constexpr auto k_num_elements = decltype(intervals)::k_num_elements;
-                for (usize e = 0; e < k_num_elements; ++e)
-                    TRY(coder.CodeNumber(intervals.elements[e], StateVersion::AddedGranularHarmonyIntervals));
+                TRY(coder.CodeBitset(intervals, StateVersion::AddedGranularHarmonyIntervals));
                 if (coder.IsReading()) state.harmony_intervals[i] = intervals;
             }
 
