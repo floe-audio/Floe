@@ -839,6 +839,9 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
         }
         case InstrumentType::None: {
             processor.layer_processors[layer_index].desired_inst.SetNone();
+            auto const layer_solo_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Solo);
+            if (processor.main_params.BoolValue(layer_solo_index))
+                SetParameterValue(processor, layer_solo_index, 0, {.host_should_not_record = true});
             break;
         }
     }
