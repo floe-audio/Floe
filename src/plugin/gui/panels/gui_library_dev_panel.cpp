@@ -49,31 +49,25 @@ static void DoUtilitiesPanel(GuiBuilder& builder, LibraryDevPanelContext& contex
         auto const outcome = try_install();
         auto const notification_id = SourceLocationHash();
         if (outcome.Succeeded()) {
-            *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
-                .get_diplay_info =
-                    [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
-                        return NotificationDisplayInfo {
-                            .title = "Installed Lua definitions",
-                            .message = p,
-                            .dismissable = true,
-                            .icon = NotificationDisplayInfo::IconType::Success,
-                        };
-                    },
-                .id = notification_id,
-            };
+            context.notifications.AddOrUpdate(notification_id,
+                                              [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
+                                                  return NotificationDisplayInfo {
+                                                      .title = "Installed Lua definitions",
+                                                      .message = p,
+                                                      .dismissable = true,
+                                                      .icon = NotificationDisplayInfo::IconType::Success,
+                                                  };
+                                              });
         } else {
-            *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
-                .get_diplay_info =
-                    [error = outcome.Error()](ArenaAllocator& arena) {
-                        return NotificationDisplayInfo {
-                            .title = "Error installing Lua definitions",
-                            .message = fmt::Format(arena, "{}", error),
-                            .dismissable = true,
-                            .icon = NotificationDisplayInfo::IconType::Error,
-                        };
-                    },
-                .id = notification_id,
-            };
+            context.notifications.AddOrUpdate(notification_id,
+                                              [error = outcome.Error()](ArenaAllocator& arena) {
+                                                  return NotificationDisplayInfo {
+                                                      .title = "Error installing Lua definitions",
+                                                      .message = fmt::Format(arena, "{}", error),
+                                                      .dismissable = true,
+                                                      .icon = NotificationDisplayInfo::IconType::Error,
+                                                  };
+                                              });
         }
     }
 
@@ -84,18 +78,15 @@ static void DoUtilitiesPanel(GuiBuilder& builder, LibraryDevPanelContext& contex
         auto const path = sample_lib::LuaDefinitionsFilepath(builder.arena);
         dyn::Assign(GuiIo().out.set_clipboard_text, path);
         auto const notification_id = SourceLocationHash();
-        *context.notifications.FindOrAppendUninitalisedOverwrite(notification_id) = {
-            .get_diplay_info =
-                [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
-                    return NotificationDisplayInfo {
-                        .title = "Copied to clipboard",
-                        .message = p,
-                        .dismissable = true,
-                        .icon = NotificationDisplayInfo::IconType::Success,
-                    };
-                },
-            .id = notification_id,
-        };
+        context.notifications.AddOrUpdate(notification_id,
+                                          [p = DynamicArrayBounded<char, 200>(path)](ArenaAllocator&) {
+                                              return NotificationDisplayInfo {
+                                                  .title = "Copied to clipboard",
+                                                  .message = p,
+                                                  .dismissable = true,
+                                                  .icon = NotificationDisplayInfo::IconType::Success,
+                                              };
+                                          });
     }
 }
 
@@ -302,19 +293,17 @@ static void DoTagBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& conte
     String error_message;
     auto tags_result = LoadExistingTagsFile(inst.instrument, builder.arena, error_message);
     if (tags_result.HasError()) {
-        *context.notifications.AppendUninitalisedOverwrite() = {
-            .get_diplay_info =
-                [error = tags_result.Error(),
-                 msg = DynamicArrayBounded<char, 200>(error_message)](ArenaAllocator& arena) {
-                    return NotificationDisplayInfo {
-                        .title = "Error loading tags file",
-                        .message = fmt::Format(arena, "{}: {}", msg, error),
-                        .dismissable = true,
-                        .icon = NotificationDisplayInfo::IconType::Error,
-                    };
-                },
-            .id = SourceLocationHash(),
-        };
+        context.notifications.AddOrUpdate(
+            SourceLocationHash(),
+            [error = tags_result.Error(),
+             msg = DynamicArrayBounded<char, 200>(error_message)](ArenaAllocator& arena) {
+                return NotificationDisplayInfo {
+                    .title = "Error loading tags file",
+                    .message = fmt::Format(arena, "{}: {}", msg, error),
+                    .dismissable = true,
+                    .icon = NotificationDisplayInfo::IconType::Error,
+                };
+            });
         return;
     }
 
@@ -339,18 +328,15 @@ static void DoTagBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& conte
         });
 
         if (auto const o = WriteTagsFile(tags, inst.instrument.library, builder.arena); o.HasError()) {
-            *context.notifications.AppendUninitalisedOverwrite() = {
-                .get_diplay_info =
-                    [error = o.Error()](ArenaAllocator& arena) {
-                        return NotificationDisplayInfo {
-                            .title = "Error writing tags file",
-                            .message = fmt::Format(arena, "{}", error),
-                            .dismissable = true,
-                            .icon = NotificationDisplayInfo::IconType::Error,
-                        };
-                    },
-                .id = SourceLocationHash(),
-            };
+            context.notifications.AddOrUpdate(SourceLocationHash(),
+                                              [error = o.Error()](ArenaAllocator& arena) {
+                                                  return NotificationDisplayInfo {
+                                                      .title = "Error writing tags file",
+                                                      .message = fmt::Format(arena, "{}", error),
+                                                      .dismissable = true,
+                                                      .icon = NotificationDisplayInfo::IconType::Error,
+                                                  };
+                                              });
         }
     }
 }

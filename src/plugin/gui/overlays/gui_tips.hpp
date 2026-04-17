@@ -31,17 +31,14 @@ ShowTipIfNeeded(Notifications& notifications, persistent_store::Store& store, u6
 
     // Not found or not already shown.
 
-    *notifications.AppendUninitialised() = {
-        .get_diplay_info = [tip](ArenaAllocator&) -> NotificationDisplayInfo {
-            return {
-                .title = "Tip"_s,
-                .message = tip,
-                .dismissable = true,
-                .icon = NotificationDisplayInfo::IconType::Info,
-            };
-        },
-        .id = tip_id,
-    };
+    notifications.AddOrUpdate(tip_id, [tip](ArenaAllocator&) -> NotificationDisplayInfo {
+        return {
+            .title = "Tip"_s,
+            .message = tip,
+            .dismissable = true,
+            .icon = NotificationDisplayInfo::IconType::Info,
+        };
+    });
 
     persistent_store::AddValue(store, k_tips_persistent_store_id, tip_id);
 }

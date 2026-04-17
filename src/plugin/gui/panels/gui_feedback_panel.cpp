@@ -116,17 +116,15 @@ static void FeedbackPanel(GuiBuilder& builder, FeedbackPanelContext& context, Fe
                 break;
             }
         }
-        *context.notifications.AppendUninitalisedOverwrite() = {
-            .get_diplay_info = [icon,
-                                title = notification_message](ArenaAllocator&) -> NotificationDisplayInfo {
+        context.notifications.AddOrUpdate(
+            SourceLocationHash(),
+            [icon, title = notification_message](ArenaAllocator&) -> NotificationDisplayInfo {
                 return {
                     .title = title,
                     .dismissable = true,
                     .icon = icon,
                 };
-            },
-            .id = SourceLocationHash(),
-        };
+            });
     }
 }
 

@@ -364,19 +364,17 @@ void PresetFolderRightClickMenu(GuiBuilder& builder,
 
                     if (outcome.HasValue()) {
                         error_notifications.RemoveError(id);
-                        *gui_notifications.FindOrAppendUninitalisedOverwrite(id) = {
-                            .get_diplay_info =
-                                [p = DynamicArrayBounded<char, 200>(path::Filename(cloned_path))](
-                                    ArenaAllocator&) {
-                                    return NotificationDisplayInfo {
-                                        .title = "Preset Folder Deleted",
-                                        .message = p,
-                                        .dismissable = true,
-                                        .icon = NotificationDisplayInfo::IconType::Success,
-                                    };
-                                },
-                            .id = id,
-                        };
+                        gui_notifications.AddOrUpdate(
+                            id,
+                            [p = DynamicArrayBounded<char, 200>(path::Filename(cloned_path))](
+                                ArenaAllocator&) {
+                                return NotificationDisplayInfo {
+                                    .title = "Preset Folder Deleted",
+                                    .message = p,
+                                    .dismissable = true,
+                                    .icon = NotificationDisplayInfo::IconType::Success,
+                                };
+                            });
                         if (auto const d = path::Directory(cloned_path)) RescanFolder(preset_server, *d);
 
                     } else if (auto item = error_notifications.BeginWriteError(id)) {

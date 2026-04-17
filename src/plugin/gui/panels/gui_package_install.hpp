@@ -246,10 +246,9 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                           ThreadPool& thread_pool) {
     constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
     if (!package_install_jobs.Empty()) {
-        if (!notifications.Find(k_installing_packages_notif_id)) {
-            *notifications.AppendUninitalisedOverwrite() = {
-                .get_diplay_info =
-                    [&package_install_jobs](ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
+        if (notifications.AddOrUpdate(
+                k_installing_packages_notif_id,
+                [&package_install_jobs](ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
                     NotificationDisplayInfo c {};
                     c.icon = NotificationDisplayInfo::IconType::Info;
                     c.dismissable = false;
@@ -260,9 +259,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                             path::FilenameWithoutExtension(package_install_jobs.First().job->path),
                             package_install_jobs.ContainsMoreThanOne() ? " and others" : "");
                     return c;
-                },
-                .id = k_installing_packages_notif_id,
-            };
+                })) {
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
 
@@ -321,9 +318,10 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                     DynamicArrayBounded<char, 128> license_email {};
                     dyn::AssignFitInCapacity(license_email, job.job->license_email);
 
-                    *notifications.AppendUninitalisedOverwrite() = {
-                        .get_diplay_info = [buffer, num_truncated, license_email](
-                                               ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
+                    notifications.AddOrUpdate(
+                        job_id,
+                        [buffer, num_truncated, license_email](
+                            ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
                             NotificationDisplayInfo c {};
                             c.icon = NotificationDisplayInfo::IconType::Success;
                             c.dismissable = true;
@@ -338,9 +336,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                 c.message =
                                     fmt::Format(scratch_arena, "{}Licensed to: {}", c.message, license_email);
                             return c;
-                        },
-                        .id = job_id,
-                    };
+                        });
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
                     next = package::RemoveJob(package_install_jobs, it);
@@ -409,6 +405,6 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                 });
         }
     } else {
-        notifications.Remove(notifications.Find(k_installing_packages_notif_id));
+        notifications.Remove(k_installing_packages_notif_id);
     }
 }
