@@ -333,47 +333,47 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
             };
 
         do_dice(ICON_FA_DICE_ONE ""_s,
-                "Random instrument from the same folder — most similar"_s,
+                "Random instrument from the same folder: similar"_s,
                 1,
                 (Corners)0b1001,
                 !active,
                 RandomScope::Folder);
         do_dice(ICON_FA_DICE_THREE ""_s,
-                "Random instrument from the same library — different but related"_s,
+                "Random instrument from the same library: different but related"_s,
                 2,
                 (Corners)0b0000,
                 !active,
                 RandomScope::Library);
         do_dice(ICON_FA_DICE_SIX ""_s,
-                "Random instrument from any library — all bets off"_s,
+                "Random instrument from any library: truly random"_s,
                 3,
                 (Corners)0b0110,
                 false,
                 RandomScope::Any);
 
         {
-            auto const inst_btn =
-                DoBox(builder,
-                      {
-                          .parent = cell,
-                          .id_extra = layer_index,
-                          .background_fill_colours =
-                              ColSet {
-                                  .base = Col {.c = Col::None},
-                                  .hot = Col {.c = Col::White, .alpha = 10},
-                                  .active = Col {.c = Col::White, .alpha = 18},
-                              },
-                          .round_background_corners = 0b1111,
-                          .corner_rounding = k_corner_rounding,
-                          .layout {
-                              .size = {layout::k_fill_parent, k_font_body_size * 2 + k_inst_name_top_margin},
-                              .contents_direction = layout::Direction::Column,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                          },
-                          .tooltip = active ? "Open instrument browser"_s : "Choose an instrument"_s,
-                          .button_behaviour = imgui::ButtonConfig {},
-                      });
+            auto const inst_btn = DoBox(
+                builder,
+                {
+                    .parent = cell,
+                    .id_extra = layer_index,
+                    .background_fill_colours =
+                        ColSet {
+                            .base = Col {.c = Col::None},
+                            .hot = Col {.c = Col::White, .alpha = 10},
+                            .active = Col {.c = Col::White, .alpha = 18},
+                        },
+                    .round_background_corners = 0b1111,
+                    .corner_rounding = k_corner_rounding,
+                    .layout {
+                        .size = {layout::k_fill_parent, (k_font_body_size * 2) + k_inst_name_top_margin},
+                        .contents_direction = layout::Direction::Column,
+                        .contents_align = layout::Alignment::Start,
+                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                    },
+                    .tooltip = active ? "Open instrument browser"_s : "Choose an instrument"_s,
+                    .button_behaviour = imgui::ButtonConfig {},
+                });
 
             if (inst_btn.button_fired) {
                 g.imgui.OpenModalViewport(g.inst_browser_state[layer_index].id);
@@ -515,7 +515,7 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                               {
                                   .parent = parent,
                                   .border_colours = Col {.c = Col::White, .alpha = 20},
-                                  .border_edges = 0b1000, // left
+                                  .border_edges = 0b0010, // right
                                   .layout {
                                       .size = {k_macros_column_width, layout::k_fill_parent},
                                       .contents_padding = {.lr = 10, .tb = 10},
@@ -600,7 +600,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                               {
                                   .parent = parent,
                                   .border_colours = Col {.c = Col::White, .alpha = 20},
-                                  .border_edges = 0b0010, // right
+                                  .border_edges = 0b1000, // left
                                   .layout {
                                       .size = {k_desc_column_width, layout::k_fill_parent},
                                       .contents_padding = {.lr = 10, .tb = 10},
@@ -840,10 +840,10 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                        builder.imgui.ViewportRectToWindowRect(*r),
                                        LibraryForOverallBackground(g.engine));
 
-        DoDescriptionColumn(builder, g, central_panel);
+        DoMacrosColumn(builder, g, central_panel);
 
         DoLayersColumn(builder, g, frame_context, central_panel);
 
-        DoMacrosColumn(builder, g, central_panel);
+        DoDescriptionColumn(builder, g, central_panel);
     }
 }

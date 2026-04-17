@@ -16,7 +16,6 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
-#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_layer_common.hpp"
@@ -418,10 +417,9 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
             } else if (num_regions == 1 && inst->instrument.regions[0].slices.size) {
                 dyn::Append(segments, "Sliced"_s);
                 auto const& smpl = *inst->audio_datas[0];
-                dyn::Append(segments,
-                            fmt::Format(g.scratch_arena,
-                                        "{} slices",
-                                        inst->instrument.regions[0].slices.size));
+                dyn::Append(
+                    segments,
+                    fmt::Format(g.scratch_arena, "{} slices", inst->instrument.regions[0].slices.size));
                 if (smpl.channels == 1) dyn::Append(segments, "Mono"_s);
                 dyn::Append(
                     segments,
@@ -650,8 +648,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                     break;
                 case LayerPageType::Eq: result = params.BoolValue(layer_index, LayerParamIndex::EqOn); break;
                 case LayerPageType::Arp:
-                    result =
-                        g.engine.processor.layer_processors[layer_index].arp_state.EffectivelyOnForGui();
+                    result = g.engine.processor.layer_processors[layer_index].arp_state.EffectivelyOnForGui();
                     break;
                 case LayerPageType::Main:
                 case LayerPageType::Playback:
@@ -726,6 +723,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
+                                    .margins = {.t = 15},
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
@@ -1106,6 +1104,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                 .parent = parent,
                                 .layout {
                                     .size = layout::k_fill_parent,
+                                    .margins = {.t = 15},
                                     .contents_gap = 6,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
@@ -1989,32 +1988,30 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
 
     DoWhitespace(g.builder, page, 2);
 
-    auto const do_menu_param = [&](Box row_parent,
-                                   LayerParamIndex param_index,
-                                   bool is_grey,
-                                   String override_button_text = {}) {
-        auto const param = params.DescribedValue(layer_index, param_index);
+    auto const do_menu_param =
+        [&](Box row_parent, LayerParamIndex param_index, bool is_grey, String override_button_text = {}) {
+            auto const param = params.DescribedValue(layer_index, param_index);
 
-        DoBox(g.builder,
-              {
-                  .parent = row_parent,
-                  .id_extra = ToInt(param_index),
-                  .text = param.info.gui_label,
-                  .text_colours = LiveColStruct(is_grey ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                  .text_justification = TextJustification::CentredRight,
-                  .layout {.size = {k_menu_label_width, k_font_body_size}},
-              });
+            DoBox(g.builder,
+                  {
+                      .parent = row_parent,
+                      .id_extra = ToInt(param_index),
+                      .text = param.info.gui_label,
+                      .text_colours = LiveColStruct(is_grey ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                      .text_justification = TextJustification::CentredRight,
+                      .layout {.size = {k_menu_label_width, k_font_body_size}},
+                  });
 
-        DoMenuParameter(g,
-                        row_parent,
-                        param,
-                        {
-                            .width = k_menu_width,
-                            .greyed_out = is_grey,
-                            .label = false,
-                            .override_button_text = override_button_text,
-                        });
-    };
+            DoMenuParameter(g,
+                            row_parent,
+                            param,
+                            {
+                                .width = k_menu_width,
+                                .greyed_out = is_grey,
+                                .label = false,
+                                .override_button_text = override_button_text,
+                            });
+        };
 
     auto const do_row = [&](u64 loc_hash = SourceLocationHash()) {
         return DoBox(g.builder,
@@ -2071,14 +2068,15 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                   });
 
             auto const length_param = params.DescribedValue(layer_index, LayerParamIndex::ArpLength);
-            DoBox(g.builder,
-                  {
-                      .parent = row,
-                      .text = length_param.info.gui_label,
-                      .text_colours = LiveColStruct(!edit.length ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                      .text_justification = TextJustification::CentredRight,
-                      .layout {.size = {k_menu_label_width, k_font_body_size}},
-                  });
+            DoBox(
+                g.builder,
+                {
+                    .parent = row,
+                    .text = length_param.info.gui_label,
+                    .text_colours = LiveColStruct(!edit.length ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                    .text_justification = TextJustification::CentredRight,
+                    .layout {.size = {k_menu_label_width, k_font_body_size}},
+                });
             DoIntParameter(g,
                            row,
                            length_param,
@@ -2121,10 +2119,9 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         // Record button only shown in Fixed mode with a user-controlled arp (not slice mode).
         if (is_fixed && edit.mode) {
             auto const is_recording = !secondary_greyed && arp_state.recording.Load(LoadMemoryOrder::Relaxed);
-            auto const text_col =
-                secondary_greyed
-                    ? LiveColStruct(UiColMap::MidTextDimmed)
-                    : LiveColStruct(is_recording ? UiColMap::MidTextHot : UiColMap::MidTextDimmed);
+            auto const text_col = secondary_greyed ? LiveColStruct(UiColMap::MidTextDimmed)
+                                                   : LiveColStruct(is_recording ? UiColMap::MidTextHot
+                                                                                : UiColMap::MidTextDimmed);
 
             auto const rec_btn = DoBox(g.builder,
                                        {
