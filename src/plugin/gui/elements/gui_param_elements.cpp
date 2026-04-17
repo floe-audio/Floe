@@ -281,7 +281,6 @@ Box DoMenuParameter(GuiState& g,
               });
 
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
-    if (menu_btn.button_fired) g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
 
     // Popup menu with items.
     if (g.builder.imgui.IsPopupMenuOpen(popup_id))
@@ -303,8 +302,14 @@ Box DoMenuParameter(GuiState& g,
     }
 
     // Slider behaviour
+    static bool slider_value_changed_during_interaction = false;
     if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+        if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left)) {
+            slider_value_changed_during_interaction = false;
+            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+        }
 
         auto current = param.LinearValue();
         if (g.builder.imgui.SliderBehaviourRange({
@@ -317,10 +322,11 @@ Box DoMenuParameter(GuiState& g,
                 .cfg = {.sensitivity = 20},
             })) {
             new_val = current;
+            slider_value_changed_during_interaction = true;
         }
 
-        if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+        if (menu_btn.button_fired && !slider_value_changed_during_interaction)
+            g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
 
         if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
 
