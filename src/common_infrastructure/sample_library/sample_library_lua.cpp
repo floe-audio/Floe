@@ -1130,9 +1130,7 @@ struct TableFields<Region> {
                         [](SET_FIELD_VALUE_ARGS) {
                             auto const val = luaL_checkinteger(ctx.lua, -1);
                             if (val < 1 || val > 255)
-                                luaL_error(ctx.lua,
-                                           "'%s' must be between 1 and 255",
-                                           info.name.data);
+                                luaL_error(ctx.lua, "'%s' must be between 1 and 255", info.name.data);
                             FIELD_OBJ.loop_beats = (u8)val;
                         },
                 };
@@ -1149,9 +1147,7 @@ struct TableFields<Region> {
                         [](SET_FIELD_VALUE_ARGS) {
                             auto const val = luaL_checknumber(ctx.lua, -1);
                             if (val < 1.0 || val > 999.0)
-                                luaL_error(ctx.lua,
-                                           "'%s' must be between 1 and 999",
-                                           info.name.data);
+                                luaL_error(ctx.lua, "'%s' must be between 1 and 999", info.name.data);
                             FIELD_OBJ.native_bpm = (f32)val;
                         },
                 };

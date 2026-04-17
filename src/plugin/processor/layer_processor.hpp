@@ -245,9 +245,7 @@ struct ArpeggiatorState {
     } audio;
 
     // GUI accessor: reads the published atomic. Audio code should use `audio.EffectivelyOn()` directly.
-    bool EffectivelyOnForGui() const {
-        return effectively_on_for_gui.Load(LoadMemoryOrder::Relaxed);
-    }
+    bool EffectivelyOnForGui() const { return effectively_on_for_gui.Load(LoadMemoryOrder::Relaxed); }
 
     // Clears audio-thread playback timing (not user's `steps`). Audio thread only.
     void ResetAudioPlayback() {

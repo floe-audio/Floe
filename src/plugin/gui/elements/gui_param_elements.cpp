@@ -255,30 +255,29 @@ Box DoMenuParameter(GuiState& g,
                                     : layout::k_fill_parent;
 
     // Menu text button that opens a popup.
-    auto const menu_btn =
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = options.override_button_text.size
-                              ? options.override_button_text
-                              : ParamMenuText(param.info.index, param.LinearValue()),
-                  .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                                     : Colours {ColSet {
-                                                           .base = LiveColStruct(UiColMap::MidText),
-                                                           .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                           .active = LiveColStruct(UiColMap::MidTextHot),
-                                                       }},
-                  .text_justification = TextJustification::CentredLeft,
-                  .text_overflow = TextOverflowType::ShowDotsOnRight,
-                  .layout {
-                      .size = {menu_btn_width, k_mid_button_height},
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      if (options.override_tooltip.size) return options.override_tooltip;
-                      return ParamTooltipText(param, g.builder.arena);
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
+    auto const menu_btn = DoBox(
+        g.builder,
+        {
+            .parent = row,
+            .text = options.override_button_text.size ? options.override_button_text
+                                                      : ParamMenuText(param.info.index, param.LinearValue()),
+            .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                               : Colours {ColSet {
+                                                     .base = LiveColStruct(UiColMap::MidText),
+                                                     .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                     .active = LiveColStruct(UiColMap::MidTextHot),
+                                                 }},
+            .text_justification = TextJustification::CentredLeft,
+            .text_overflow = TextOverflowType::ShowDotsOnRight,
+            .layout {
+                .size = {menu_btn_width, k_mid_button_height},
+            },
+            .tooltip = FunctionRef<String()> {[&]() -> String {
+                if (options.override_tooltip.size) return options.override_tooltip;
+                return ParamTooltipText(param, g.builder.arena);
+            }},
+            .button_behaviour = imgui::ButtonConfig {},
+        });
 
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
 

@@ -81,8 +81,7 @@ void DoArpStepSequencer(GuiState& g,
     // Step width: each step is 1/16 of the outer width so 16 steps fit exactly; extras scroll.
     constexpr f32 k_gap = 2.0f;
     constexpr u32 k_default_visible_steps = 16;
-    auto const step_width =
-        (rect.w - (k_gap * (k_default_visible_steps - 1))) / (f32)k_default_visible_steps;
+    auto const step_width = (rect.w - (k_gap * (k_default_visible_steps - 1))) / (f32)k_default_visible_steps;
     auto const step_stride = step_width + k_gap;
 
     auto const label_pad = WwToPixels(2.0f);
@@ -113,8 +112,8 @@ void DoArpStepSequencer(GuiState& g,
 
     // Left-click drag sets velocity (walks back to root for tied steps). The registration here also
     // tells the viewport about the full content width so it can show a scrollbar when needed.
-    auto const bar_rect = imgui.RegisterAndConvertRect(
-        Rect {.x = 0, .y = 0, .w = total_content_w, .h = bar_area_height});
+    auto const bar_rect =
+        imgui.RegisterAndConvertRect(Rect {.x = 0, .y = 0, .w = total_content_w, .h = bar_area_height});
     if (edit.step_velocity) {
         auto const drag_id = imgui.MakeId(SourceLocationHash());
         imgui.ButtonBehaviour(bar_rect,
@@ -126,9 +125,8 @@ void DoArpStepSequencer(GuiState& g,
 
         if (imgui.IsActive(drag_id, MouseButton::Left)) {
             auto const mouse_pos = GuiIo().in.cursor_pos;
-            auto step_index = (u32)Clamp((mouse_pos.x - bar_rect.x) / step_stride,
-                                         0.0f,
-                                         (f32)active_steps - 1.0f);
+            auto step_index =
+                (u32)Clamp((mouse_pos.x - bar_rect.x) / step_stride, 0.0f, (f32)active_steps - 1.0f);
             while (step_index > 0 && step_at(step_index).tie)
                 --step_index;
             auto const vel = Clamp(1.0f - ((mouse_pos.y - bar_rect.y) / bar_area_height), 0.0f, 1.0f);
@@ -190,9 +188,8 @@ void DoArpStepSequencer(GuiState& g,
                     .w = step_width,
                     .h = bar_area_height,
                 });
-                auto const hl_col = dim(recording
-                                            ? WithAlphaU8(LiveCol(UiColMap::MidTextHot), 40)
-                                            : WithAlphaU8(LiveCol(UiColMap::CurveMapPointHover), 40));
+                auto const hl_col = dim(recording ? WithAlphaU8(LiveCol(UiColMap::MidTextHot), 40)
+                                                  : WithAlphaU8(LiveCol(UiColMap::CurveMapPointHover), 40));
                 draw_list.AddRectFilled(hl_rect, hl_col);
             }
         }
@@ -202,8 +199,8 @@ void DoArpStepSequencer(GuiState& g,
 
         // Row: Step number + on/off toggle (always shown)
         if (!is_tied) {
-            auto const label_click_rect = imgui.RegisterAndConvertRect(
-                {.x = x_vp, .y = row_y_vp, .w = step_width, .h = row_height});
+            auto const label_click_rect =
+                imgui.RegisterAndConvertRect({.x = x_vp, .y = row_y_vp, .w = step_width, .h = row_height});
             auto const label_rect = imgui.ViewportRectToWindowRect({
                 .x = x_vp,
                 .y = row_y_vp + label_pad,
@@ -234,7 +231,8 @@ void DoArpStepSequencer(GuiState& g,
         }
         row_y_vp += row_height;
 
-        // Row: Note/interval display + drag to edit (hidden when show_note_row is false, skipped for tied steps)
+        // Row: Note/interval display + drag to edit (hidden when show_note_row is false, skipped for tied
+        // steps)
         if (show_note_row && !is_tied) {
             auto const note_click_rect = imgui.RegisterAndConvertRect({
                 .x = x_vp,

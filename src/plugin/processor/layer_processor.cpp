@@ -813,7 +813,6 @@ static SyncedTimes SyncedTimesFromParam(Type param_rate) {
     return SyncedTimes::_1_8;
 }
 
-
 void ProcessLayerChanges(LayerProcessor& layer,
                          AudioProcessingContext const& context,
                          ProcessBlockChanges changes,
@@ -1075,10 +1074,10 @@ void ProcessLayerChanges(LayerProcessor& layer,
         auto& arp = layer.arp_state;
         bool rate_changed = false;
 
-        // Always update user's arp config from params. Slice mode overrides are handled by ActualArpBehaviour,
-        // not by overwriting user fields.
-        if (auto p =
-                changes.changed_params.IntValue<param_values::ArpMode>(layer.index, LayerParamIndex::ArpMode)) {
+        // Always update user's arp config from params. Slice mode overrides are handled by
+        // ActualArpBehaviour, not by overwriting user fields.
+        if (auto p = changes.changed_params.IntValue<param_values::ArpMode>(layer.index,
+                                                                            LayerParamIndex::ArpMode)) {
             if (*p != arp.audio.type) {
                 bool const effective_before = arp.audio.EffectivelyOn();
                 arp.audio.type = *p;
@@ -1096,9 +1095,9 @@ void ProcessLayerChanges(LayerProcessor& layer,
             }
         }
 
-        if (auto p = changes.changed_params.IntValue<param_values::ArpNoteOrder>(
-                layer.index,
-                LayerParamIndex::ArpNoteOrder))
+        if (auto p =
+                changes.changed_params.IntValue<param_values::ArpNoteOrder>(layer.index,
+                                                                            LayerParamIndex::ArpNoteOrder))
             arp.audio.note_order = *p;
 
         if (auto p = changes.changed_params.IntValue<u32>(layer.index, LayerParamIndex::ArpLength))
@@ -1177,8 +1176,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
                             arp.audio.was_recording_last_block = false;
                             arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
                         } else {
-                            arp.current_step_for_gui.Store(arp.audio.current_step,
-                                                           StoreMemoryOrder::Relaxed);
+                            arp.current_step_for_gui.Store(arp.audio.current_step, StoreMemoryOrder::Relaxed);
                         }
                     }
                     break;

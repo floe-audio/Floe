@@ -3,9 +3,10 @@
 
 #include "sample_library.hpp"
 
-#include "common_infrastructure/constants.hpp"
 #include "os/threading.hpp"
 #include "tests/framework.hpp"
+
+#include "common_infrastructure/constants.hpp"
 
 namespace sample_lib {
 
@@ -267,15 +268,13 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                     inst.name));
             if (region.slices.size) {
                 if (region.loop_beats == 0)
-                    return String(fmt::Format(
-                        scratch_arena,
-                        "Instrument '{}': regions with slices must specify loop_beats",
-                        inst.name));
+                    return String(fmt::Format(scratch_arena,
+                                              "Instrument '{}': regions with slices must specify loop_beats",
+                                              inst.name));
                 if (region.native_bpm <= 0)
-                    return String(fmt::Format(
-                        scratch_arena,
-                        "Instrument '{}': regions with slices must specify native_bpm",
-                        inst.name));
+                    return String(fmt::Format(scratch_arena,
+                                              "Instrument '{}': regions with slices must specify native_bpm",
+                                              inst.name));
                 // Simplify by the greatest common divisor of all length_proportions so that e.g. {4, 4, 2, 6}
                 // becomes {2, 2, 1, 3}. This gives more headroom against k_arp_max_steps.
                 auto const gcd_of_all = ({

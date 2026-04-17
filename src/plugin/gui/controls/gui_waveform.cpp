@@ -899,8 +899,8 @@ void DoWaveformElement(GuiState& g,
                             if (reverse) pos = 1.0f - pos;
                             auto const x_vp = Round(viewport_r.x + pos * viewport_r.w);
                             auto const top = g.imgui.ViewportPosToWindowPos({x_vp, viewport_r.y});
-                            auto const bottom = g.imgui.ViewportPosToWindowPos(
-                                {x_vp, viewport_r.y + viewport_r.h});
+                            auto const bottom =
+                                g.imgui.ViewportPosToWindowPos({x_vp, viewport_r.y + viewport_r.h});
                             g.imgui.draw_list->AddLine(top, bottom, slice_col);
                         }
                     }

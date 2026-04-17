@@ -741,11 +741,9 @@ struct VoiceProcessor {
                 val += sample_frame * s.amp;
             }
         } else {
-            auto const end_frame =
-                EffectiveEndFrame(s.source_data.Get<VoiceSoundSource::SampleSource>());
+            auto const end_frame = EffectiveEndFrame(s.source_data.Get<VoiceSoundSource::SampleSource>());
             for (auto [frame_index, val] : Enumerate(buffer)) {
-                if (PlaybackEnded(s.source_data.Get<VoiceSoundSource::SampleSource>().playhead,
-                                  end_frame))
+                if (PlaybackEnded(s.source_data.Get<VoiceSoundSource::SampleSource>().playhead, end_frame))
                     return false;
 
                 auto const sample_frame = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);

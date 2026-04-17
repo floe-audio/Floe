@@ -74,8 +74,7 @@ struct ArpSliceMapping {
     Array<u8, k_arp_max_steps> step_to_slice_index {};
 };
 
-PUBLIC ArpSliceMapping
-ComputeArpSliceMapping(Span<sample_lib::Region::Slice const> slices) {
+PUBLIC ArpSliceMapping ComputeArpSliceMapping(Span<sample_lib::Region::Slice const> slices) {
     ArpSliceMapping mapping {};
     u32 step_idx = 0;
     for (u32 slice_i = 0; slice_i < slices.size; slice_i++) {
@@ -89,8 +88,10 @@ ComputeArpSliceMapping(Span<sample_lib::Region::Slice const> slices) {
     return mapping;
 }
 
-PUBLIC ArpBehaviour
-ActualArpBehaviour(Parameters const& params, u8 layer_index, ArpeggiatorState const& arp, Instrument const& inst) {
+PUBLIC ArpBehaviour ActualArpBehaviour(Parameters const& params,
+                                       u8 layer_index,
+                                       ArpeggiatorState const& arp,
+                                       Instrument const& inst) {
     // Detect slice mode from the loaded instrument (main thread view).
     Span<sample_lib::Region::Slice const> slices {};
     if (auto s = inst.TryGetFromTag<InstrumentType::Sampler>()) {

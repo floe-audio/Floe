@@ -139,10 +139,11 @@ static void MidiCcTableContent(GuiBuilder& builder, MidiCcPanelContext& context)
             }
 
             // Parameter name + module column (fills remaining space)
-            TableCellText(builder,
-                          row,
-                          fmt::Format(builder.arena, "{} ({})", descriptor.name, descriptor.ModuleString(" › ")),
-                          layout::k_fill_parent);
+            TableCellText(
+                builder,
+                row,
+                fmt::Format(builder.arena, "{} ({})", descriptor.name, descriptor.ModuleString(" › ")),
+                layout::k_fill_parent);
 
             bool const is_pinned = pinned_ccs.Get(cc_num);
 
