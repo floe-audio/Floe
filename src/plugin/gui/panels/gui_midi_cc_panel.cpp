@@ -14,7 +14,6 @@
 #include "processor/processor.hpp"
 
 constexpr f32 k_cc_col_width = 60.0f;
-constexpr f32 k_module_col_width = 220.0f;
 constexpr f32 k_icon_col_width = 25.0f;
 constexpr f32 k_table_row_height = 20.0f;
 
@@ -139,11 +138,11 @@ static void MidiCcTableContent(GuiBuilder& builder, MidiCcPanelContext& context)
                       });
             }
 
-            // Parameter name column (fills remaining space)
-            TableCellText(builder, row, descriptor.name, layout::k_fill_parent);
-
-            // Module path column
-            TableCellText(builder, row, descriptor.ModuleString(" › "), k_module_col_width);
+            // Parameter name + module column (fills remaining space)
+            TableCellText(builder,
+                          row,
+                          fmt::Format(builder.arena, "{} ({})", descriptor.name, descriptor.ModuleString(" › ")),
+                          layout::k_fill_parent);
 
             bool const is_pinned = pinned_ccs.Get(cc_num);
 
@@ -323,7 +322,6 @@ static void MidiCcPanel(GuiBuilder& builder, MidiCcPanelContext& context) {
         auto const header_row = TableRow(builder, header_container);
         TableHeaderText(builder, header_row, "CC"_s, k_cc_col_width);
         TableHeaderText(builder, header_row, "Parameter"_s, layout::k_fill_parent);
-        TableHeaderText(builder, header_row, "Module"_s, k_module_col_width);
         // Spacer for the pin + remove icon columns
         DoBox(builder,
               {
