@@ -310,6 +310,7 @@ Box DoMenuParameter(GuiState& g,
             ParameterJustStartedMoving(g.engine.processor, param.info.index);
         }
 
+        auto const initial_int_val = param.IntValue<int>();
         auto current = param.LinearValue();
         if (g.builder.imgui.SliderBehaviourRange({
                 .rect_in_window_coords = window_r,
@@ -321,7 +322,7 @@ Box DoMenuParameter(GuiState& g,
                 .cfg = {.sensitivity = 20},
             })) {
             new_val = current;
-            slider_value_changed_during_interaction = true;
+            if ((int)current != initial_int_val) slider_value_changed_during_interaction = true;
         }
 
         if (menu_btn.button_fired && !slider_value_changed_during_interaction)
