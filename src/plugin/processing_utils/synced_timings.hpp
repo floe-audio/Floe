@@ -95,8 +95,7 @@ LargestSyncedTimeWithinTarget(f64 target_ms,
     SyncedTimes fastest = SyncedTimes::_1_64T;
     f64 fastest_ms = 0;
     bool found_any = false;
-    for (auto const i : Range(ToInt(SyncedTimes::Count))) {
-        auto const candidate = (SyncedTimes)i;
+    for (auto const candidate : EnumIterator<SyncedTimes>()) {
         if (preferred_type && SyncedTimesType(candidate) != *preferred_type) continue;
         auto const ms = SyncedTimeToMs(tempo, candidate);
         if (ms <= 0) continue;
