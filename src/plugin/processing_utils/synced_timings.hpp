@@ -24,6 +24,42 @@ enum class SyncedTimes {
     Count,
 };
 
+enum class SyncedTimesType { Straight, Dotted, Triplet };
+
+constexpr SyncedTimesType SyncedTimesType(SyncedTimes t) {
+    switch (t) {
+        case SyncedTimes::_1_64T:
+        case SyncedTimes::_1_32T:
+        case SyncedTimes::_1_16T:
+        case SyncedTimes::_1_8T:
+        case SyncedTimes::_1_4T:
+        case SyncedTimes::_1_2T:
+        case SyncedTimes::_1_1T:
+        case SyncedTimes::_2_1T:
+        case SyncedTimes::_4_1T: return SyncedTimesType::Triplet;
+        case SyncedTimes::_1_64D:
+        case SyncedTimes::_1_32D:
+        case SyncedTimes::_1_16D:
+        case SyncedTimes::_1_8D:
+        case SyncedTimes::_1_4D:
+        case SyncedTimes::_1_2D:
+        case SyncedTimes::_1_1D:
+        case SyncedTimes::_2_1D:
+        case SyncedTimes::_4_1D: return SyncedTimesType::Dotted;
+        case SyncedTimes::_1_64:
+        case SyncedTimes::_1_32:
+        case SyncedTimes::_1_16:
+        case SyncedTimes::_1_8:
+        case SyncedTimes::_1_4:
+        case SyncedTimes::_1_2:
+        case SyncedTimes::_1_1:
+        case SyncedTimes::_2_1:
+        case SyncedTimes::_4_1: return SyncedTimesType::Straight;
+        case SyncedTimes::Count: break;
+    }
+    return {};
+}
+
 constexpr f64 k_synced_times_ms_at_1_bpm[] = {
     // triplets are whole-note * 2/3
     // dotted are whole-note * 1.5

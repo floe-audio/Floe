@@ -658,21 +658,33 @@ void ProcessLayerPreVoices(LayerProcessor& layer,
 // This minimizes gaps within sliced playback: the arp triggers the next slice before the current one
 // naturally finishes, rather than lagging and leaving silence. Falls back to the fastest SyncedTimes
 // (shortest duration) if no rate fits.
-static SyncedTimes LargestSyncedTimeWithinTarget(f64 target_ms, AudioProcessingContext const& context) {
+static SyncedTimes LargestSyncedTimeWithinTarget(f64 target_ms,
+                                                 AudioProcessingContext const& context,
+                                                 Optional<enum SyncedTimesType> preferred_type = k_nullopt) {
     SyncedTimes best = SyncedTimes::_1_64T;
-    f64 best_ms = SyncedTimeToMs(context.tempo, best);
-    bool found = false;
+    f64 best_ms = 0;
+    bool found_fitting = false;
+    SyncedTimes fastest = SyncedTimes::_1_64T;
+    f64 fastest_ms = 0;
+    bool found_any = false;
     for (auto const i : Range(ToInt(SyncedTimes::Count))) {
         auto const candidate = (SyncedTimes)i;
+        if (preferred_type && SyncedTimesType(candidate) != *preferred_type) continue;
         auto const ms = SyncedTimeToMs(context.tempo, candidate);
-        if (ms <= 0 || ms > target_ms) continue;
-        if (!found || ms > best_ms) {
+        if (ms <= 0) continue;
+        if (!found_any || ms < fastest_ms) {
+            fastest_ms = ms;
+            fastest = candidate;
+            found_any = true;
+        }
+        if (ms > target_ms) continue;
+        if (!found_fitting || ms > best_ms) {
             best_ms = ms;
             best = candidate;
-            found = true;
+            found_fitting = true;
         }
     }
-    return best;
+    return found_fitting ? best : fastest;
 }
 
 // For sliced instruments with auto-rate: compute the best SyncedTimes from the loop's declared musical
@@ -694,7 +706,7 @@ static Optional<SyncedTimes> AutoSyncedTimeForLayer(LayerProcessor const& layer,
 
     // Native step duration in seconds: (beats * 60 / bpm) / total_prop. Convert to milliseconds.
     f64 const native_step_ms = ((f64)region.loop_beats * 60000.0 / (f64)region.native_bpm) / (f64)total_prop;
-    return LargestSyncedTimeWithinTarget(native_step_ms, context);
+    return LargestSyncedTimeWithinTarget(native_step_ms, context, SyncedTimesType::Straight);
 }
 
 bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer,
