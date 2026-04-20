@@ -156,7 +156,7 @@ void DoArpStepSequencer(GuiState& g,
                     if (!step_at(j).tie) break;
                     ++num_tied_following;
                 }
-                auto const chain_width = step_width + (f32)num_tied_following * step_stride;
+                auto const chain_width = step_width + ((f32)num_tied_following * step_stride);
 
                 auto const bg_rect = imgui.ViewportRectToWindowRect({
                     .x = x_vp,
@@ -268,11 +268,11 @@ void DoArpStepSequencer(GuiState& g,
                     })) {
                     if (arp_type == param_values::ArpMode::Fixed)
                         ModifyStep(arp_state, i, [frac](ArpStep& s) {
-                            s.note = (u7)Clamp((int)(frac * 127.0f + 0.5f), 0, 127);
+                            s.note = (u7)Clamp((int)((frac * 127.0f) + 0.5f), 0, 127);
                         });
                     else
                         ModifyStep(arp_state, i, [frac](ArpStep& s) {
-                            s.interval = (s8)Clamp((int)(frac * 96.0f - 48.0f + 0.5f), -48, 48);
+                            s.interval = (s8)Clamp((int)((frac * 96.0f) - 48.0f + 0.5f), -48, 48);
                         });
                 }
 
@@ -315,12 +315,12 @@ void DoArpStepSequencer(GuiState& g,
                 .x = x_vp,
                 .y = row_y_vp + label_pad,
                 .w = step_width,
-                .h = row_height - label_pad * 2,
+                .h = row_height - (label_pad * 2),
             });
 
             bool tie_hot = false;
             if (edit.step_tie) {
-                imgui.PushId((u64)(i + k_arp_max_steps * 2));
+                imgui.PushId((u64)(i + (k_arp_max_steps * 2)));
                 auto const tie_id = imgui.MakeId(SourceLocationHash());
                 if (imgui.ButtonBehaviour(tie_click_rect, tie_id, {}))
                     ModifyStep(arp_state, i, [](ArpStep& s) { s.tie = !s.tie; });
@@ -346,7 +346,7 @@ void DoArpStepSequencer(GuiState& g,
         // Row: Gate knob (always shown, skipped for tied steps)
         if (!is_tied) {
             auto const knob_rect = imgui.RegisterAndConvertRect({
-                .x = x_vp + (step_width - knob_size) / 2.0f,
+                .x = x_vp + ((step_width - knob_size) / 2.0f),
                 .y = row_y_vp + label_pad,
                 .w = knob_size,
                 .h = knob_size,
@@ -354,7 +354,7 @@ void DoArpStepSequencer(GuiState& g,
 
             bool knob_hot = false;
             if (edit.step_gate) {
-                imgui.PushId((u64)(i + k_arp_max_steps * 3));
+                imgui.PushId((u64)(i + (k_arp_max_steps * 3)));
                 auto const knob_id = imgui.MakeId(SourceLocationHash());
 
                 f32 gate_frac = step.Gate01();
@@ -379,11 +379,11 @@ void DoArpStepSequencer(GuiState& g,
             }
 
             // Draw a tiny arc knob.
-            auto const center = f32x2 {knob_rect.x + knob_size / 2, knob_rect.y + knob_size / 2};
-            auto const radius = knob_size / 2 - 1;
+            auto const center = f32x2 {knob_rect.x + (knob_size / 2), knob_rect.y + (knob_size / 2)};
+            auto const radius = (knob_size / 2) - 1;
             constexpr f32 k_start_angle = 2.356f; // ~135 degrees
             constexpr f32 k_end_angle = 7.069f; // ~405 degrees (135 + 270)
-            auto const value_angle = k_start_angle + step.Gate01() * (k_end_angle - k_start_angle);
+            auto const value_angle = k_start_angle + (step.Gate01() * (k_end_angle - k_start_angle));
 
             auto const track_col = dim(WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 40));
             auto const fill_col = dim(knob_hot   ? LiveCol(UiColMap::MidTextHot)

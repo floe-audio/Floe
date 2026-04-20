@@ -897,7 +897,7 @@ void DoWaveformElement(GuiState& g,
                             if (slice.start_frame == 0 || slice.start_frame >= num_frames) continue;
                             f32 pos = (f32)slice.start_frame / (f32)num_frames;
                             if (reverse) pos = 1.0f - pos;
-                            auto const x_vp = Round(viewport_r.x + pos * viewport_r.w);
+                            auto const x_vp = Round(viewport_r.x + (pos * viewport_r.w));
                             auto const top = g.imgui.ViewportPosToWindowPos({x_vp, viewport_r.y});
                             auto const bottom =
                                 g.imgui.ViewportPosToWindowPos({x_vp, viewport_r.y + viewport_r.h});

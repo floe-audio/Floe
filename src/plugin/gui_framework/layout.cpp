@@ -281,7 +281,7 @@ void Push(Context& ctx, Id parent_id, Id new_child_id) {
 
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE f32 MaxChildSize(Context& ctx, Id id) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto child_id = item->first_child;
@@ -289,7 +289,7 @@ NO_UBSAN static ALWAYS_INLINE f32 MaxChildSize(Context& ctx, Id id) {
         auto const child = GetItem(ctx, child_id);
         // rect[dim] will contain the start margin already
         auto const rect = ctx.rects[ToInt(child_id)];
-        auto const child_size = rect[dim] + rect[size_dim] + child->margins_ltrb[size_dim];
+        auto const child_size = rect[dim] + rect[k_size_dim] + child->margins_ltrb[k_size_dim];
         max_child_size = Max(max_child_size, child_size);
         child_id = child->next_sibling;
     }
@@ -298,7 +298,7 @@ NO_UBSAN static ALWAYS_INLINE f32 MaxChildSize(Context& ctx, Id id) {
 
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE f32 TotalChildSize(Context& ctx, Id id) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto need_size = 0.0f;
     auto child_id = item->first_child;
@@ -306,7 +306,7 @@ NO_UBSAN static ALWAYS_INLINE f32 TotalChildSize(Context& ctx, Id id) {
         auto const child = GetItem(ctx, child_id);
         auto const rect = ctx.rects[ToInt(child_id)];
         // rect[dim] will contain the start margin already
-        need_size += rect[dim] + rect[size_dim] + child->margins_ltrb[size_dim];
+        need_size += rect[dim] + rect[k_size_dim] + child->margins_ltrb[k_size_dim];
         child_id = child->next_sibling;
     }
     return need_size;
@@ -314,7 +314,7 @@ NO_UBSAN static ALWAYS_INLINE f32 TotalChildSize(Context& ctx, Id id) {
 
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto max_child_size2 = 0.0f;
@@ -328,7 +328,7 @@ NO_UBSAN static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id) {
             max_child_size = 0;
             ++num_lines;
         }
-        auto const child_size = rect[dim] + rect[size_dim] + child->margins_ltrb[size_dim];
+        auto const child_size = rect[dim] + rect[k_size_dim] + child->margins_ltrb[k_size_dim];
         max_child_size = Max(max_child_size, child_size);
         child_id = child->next_sibling;
     }
@@ -338,7 +338,7 @@ NO_UBSAN static ALWAYS_INLINE f32 MaxChildSizeWrapped(Context& ctx, Id id) {
 
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     Item const* __restrict item = GetItem(ctx, id);
     auto max_child_size = 0.0f;
     auto max_child_size2 = 0.0f;
@@ -350,7 +350,7 @@ NO_UBSAN static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id) {
             max_child_size2 = Max(max_child_size2, max_child_size);
             max_child_size = 0;
         }
-        max_child_size += rect[dim] + rect[size_dim] + child->margins_ltrb[size_dim];
+        max_child_size += rect[dim] + rect[k_size_dim] + child->margins_ltrb[k_size_dim];
         child_id = child->next_sibling;
     }
     return Max(max_child_size2, max_child_size);
@@ -358,7 +358,7 @@ NO_UBSAN static ALWAYS_INLINE f32 TotalChildSizeWrapped(Context& ctx, Id id) {
 
 template <u32 dim>
 NO_UBSAN static void CalcSize(Context& ctx, Id const id) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     auto item = GetItem(ctx, id);
 
     auto const item_layout_dim = item->flags & 1;
@@ -369,20 +369,20 @@ NO_UBSAN static void CalcSize(Context& ctx, Id const id) {
 
         // To support item gaps, we increase the inner margins between items
         if (child->next_sibling != k_invalid_id && dim == item_layout_dim)
-            child->margins_ltrb[size_dim] += item->contents_gap[dim];
+            child->margins_ltrb[k_size_dim] += item->contents_gap[dim];
 
         // To support container padding, we increase the margins of the children
         if (dim == item_layout_dim) {
             // Along the layout direction we don't increase margins between items, only the first and last
             if (child_id == item->first_child) child->margins_ltrb[dim] += item->container_padding_ltrb[dim];
             if (child->next_sibling == k_invalid_id)
-                child->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
+                child->margins_ltrb[k_size_dim] += item->container_padding_ltrb[k_size_dim];
         } else {
             // Cross-axis direction: for wrapping layouts, padding is added during arrangement instead
             auto const is_wrapping = (item->flags & flags::Wrap) && (item->flags & flags::AutoLayout);
             if (!is_wrapping) {
                 child->margins_ltrb[dim] += item->container_padding_ltrb[dim];
-                child->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
+                child->margins_ltrb[k_size_dim] += item->container_padding_ltrb[k_size_dim];
             }
         }
 
@@ -397,7 +397,7 @@ NO_UBSAN static void CalcSize(Context& ctx, Id const id) {
     // If we have an explicit input size, ust set our output size (which other calc_size and arrange
     // procedures will use) to it.
     if (item->size[dim] != 0) {
-        ctx.rects[ToInt(id)][size_dim] = item->size[dim];
+        ctx.rects[ToInt(id)][k_size_dim] = item->size[dim];
         return;
     }
 
@@ -435,21 +435,21 @@ NO_UBSAN static void CalcSize(Context& ctx, Id const id) {
     {
         auto const is_wrapping = (item->flags & flags::Wrap) && (item->flags & flags::AutoLayout);
         if (is_wrapping && dim != item_layout_dim)
-            cal_size += item->container_padding_ltrb[dim] + item->container_padding_ltrb[size_dim];
+            cal_size += item->container_padding_ltrb[dim] + item->container_padding_ltrb[k_size_dim];
     }
 
     // Set our output data size. Will be used by parent calc_size procedures., and by arrange procedures.
-    ctx.rects[ToInt(id)][size_dim] = cal_size;
+    ctx.rects[ToInt(id)][k_size_dim] = cal_size;
 }
 
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool const wrap) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     auto item = GetItem(ctx, id);
 
     auto const item_flags = item->flags;
     auto rect = ctx.rects[ToInt(id)];
-    auto space = rect[size_dim];
+    auto space = rect[k_size_dim];
 
     auto max_x2 = rect[dim] + space;
 
@@ -472,9 +472,9 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool cons
             auto extend = used;
             if ((behaviour_flags & flags::AnchorLeftAndRight) == flags::AnchorLeftAndRight) {
                 ++count;
-                extend += child_rect[dim] + child_margins[size_dim];
+                extend += child_rect[dim] + child_margins[k_size_dim];
             } else {
-                extend += child_rect[dim] + child_rect[size_dim] + child_margins[size_dim];
+                extend += child_rect[dim] + child_rect[k_size_dim] + child_margins[k_size_dim];
             }
             // wrap on end of line or manual flag
             if (wrap && (total && ((extend > space) || (child_flags & flags::LineBreak)))) {
@@ -506,12 +506,12 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool cons
                 auto* last_on_line = GetItem(ctx, prev_child_id);
 
                 // Remove the gap since next item is on a different line
-                last_on_line->margins_ltrb[size_dim] -= item->contents_gap[dim];
+                last_on_line->margins_ltrb[k_size_dim] -= item->contents_gap[dim];
                 used -= item->contents_gap[dim];
 
                 // Add end padding to last item of this line
-                last_on_line->margins_ltrb[size_dim] += item->container_padding_ltrb[size_dim];
-                used += item->container_padding_ltrb[size_dim];
+                last_on_line->margins_ltrb[k_size_dim] += item->container_padding_ltrb[k_size_dim];
+                used += item->container_padding_ltrb[k_size_dim];
             }
         }
 
@@ -556,23 +556,23 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool cons
             if ((behaviour_flags & flags::AnchorLeftAndRight) == flags::AnchorLeftAndRight) // grow
                 x1 = x + filler;
             else if ((fixed_size_flags & flags::HorizontalSizeFixed) == flags::HorizontalSizeFixed)
-                x1 = x + child_rect[size_dim];
+                x1 = x + child_rect[k_size_dim];
             else // squeeze
                 // NOTE(Sam): I have removed the eater addition in the squeeze calculations, so that when
                 // passing 0 as a width or height, the compenent will fit to the size of it's children, even
                 // if it overruns the parent size. This is not fully tested if it does what I expect all the
                 // time
-                x1 = x + Max(0.0f, child_rect[size_dim] /* + eater */);
+                x1 = x + Max(0.0f, child_rect[k_size_dim] /* + eater */);
 
             ix0 = x;
             if (wrap)
-                ix1 = Min(max_x2 - child_margins[size_dim], x1);
+                ix1 = Min(max_x2 - child_margins[k_size_dim], x1);
             else
                 ix1 = x1;
             child_rect[dim] = ix0; // pos
-            child_rect[size_dim] = ix1 - ix0; // size
+            child_rect[k_size_dim] = ix1 - ix0; // size
             ctx.rects[ToInt(child_id)] = child_rect;
-            x = x1 + child_margins[size_dim];
+            x = x1 + child_margins[k_size_dim];
             child_id = child->next_sibling;
             extra_margin = spacer;
         }
@@ -583,11 +583,11 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool cons
 
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE void ArrangeOverlay(Context& ctx, Id id) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     auto* item = GetItem(ctx, id);
     auto const rect = ctx.rects[ToInt(id)];
     auto const offset = rect[dim];
-    auto const space = rect[size_dim];
+    auto const space = rect[k_size_dim];
 
     auto child_id = item->first_child;
     while (child_id != k_invalid_id) {
@@ -598,14 +598,14 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeOverlay(Context& ctx, Id id) {
 
         switch (behaviour_flags & flags::AnchorLeftAndRight) {
             case flags::CentreHorizontal:
-                child_rect[dim] += (space - child_rect[size_dim]) / 2 - child_margins[size_dim];
+                child_rect[dim] += (space - child_rect[k_size_dim]) / 2 - child_margins[k_size_dim];
                 break;
             case flags::AnchorRight:
                 child_rect[dim] +=
-                    space - child_rect[size_dim] - child_margins[dim] - child_margins[size_dim];
+                    space - child_rect[k_size_dim] - child_margins[dim] - child_margins[k_size_dim];
                 break;
             case flags::AnchorLeftAndRight:
-                child_rect[size_dim] = Max(0.0f, space - child_rect[dim] - child_margins[size_dim]);
+                child_rect[k_size_dim] = Max(0.0f, space - child_rect[dim] - child_margins[k_size_dim]);
                 break;
             default: break;
         }
@@ -619,7 +619,7 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeOverlay(Context& ctx, Id id) {
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE void
 ArrangeOverlaySqueezedRange(Context& ctx, Id start_item_id, Id end_item_id, f32 offset, f32 space) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     auto item_id = start_item_id;
     while (item_id != end_item_id) {
         auto* item = GetItem(ctx, item_id);
@@ -628,22 +628,22 @@ ArrangeOverlaySqueezedRange(Context& ctx, Id start_item_id, Id end_item_id, f32 
         auto const behaviour_flags = (item->flags & flags::ChildBehaviourMask) >> dim;
         auto const margins = item->margins_ltrb;
         auto rect = ctx.rects[ToInt(item_id)];
-        auto min_size = Max(0.0f, space - rect[dim] - margins[size_dim]);
+        auto min_size = Max(0.0f, space - rect[dim] - margins[k_size_dim]);
         switch (behaviour_flags & flags::AnchorLeftAndRight) {
             case flags::CentreHorizontal:
-                rect[size_dim] = Min(rect[size_dim], min_size);
-                rect[dim] += (space - rect[size_dim]) / 2 - margins[size_dim];
+                rect[k_size_dim] = Min(rect[k_size_dim], min_size);
+                rect[dim] += (space - rect[k_size_dim]) / 2 - margins[k_size_dim];
                 break;
             case flags::AnchorRight:
-                rect[size_dim] = Min(rect[size_dim], min_size);
-                rect[dim] = space - rect[size_dim] - margins[size_dim];
+                rect[k_size_dim] = Min(rect[k_size_dim], min_size);
+                rect[dim] = space - rect[k_size_dim] - margins[k_size_dim];
                 break;
             case flags::AnchorLeftAndRight: {
-                rect[size_dim] = min_size;
+                rect[k_size_dim] = min_size;
                 break;
             }
             default: {
-                rect[size_dim] = Min(rect[size_dim], min_size);
+                rect[k_size_dim] = Min(rect[k_size_dim], min_size);
                 break;
             }
         }
@@ -655,7 +655,7 @@ ArrangeOverlaySqueezedRange(Context& ctx, Id start_item_id, Id end_item_id, f32 
 
 template <u32 dim>
 NO_UBSAN static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id id) {
-    constexpr u32 size_dim = dim + 2;
+    constexpr u32 k_size_dim = dim + 2;
     auto* item = GetItem(ctx, id);
     auto offset = ctx.rects[ToInt(id)][dim];
 
@@ -674,7 +674,7 @@ NO_UBSAN static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id
             need_size = 0;
         }
         f32x4 const rect = ctx.rects[ToInt(child_id)];
-        f32 child_size = rect[dim] + rect[size_dim] + child->margins_ltrb[size_dim];
+        f32 child_size = rect[dim] + rect[k_size_dim] + child->margins_ltrb[k_size_dim];
         need_size = Max(need_size, child_size);
         child_id = child->next_sibling;
     }
@@ -682,7 +682,7 @@ NO_UBSAN static ALWAYS_INLINE f32 ArrangeWrappedOverlaySqueezed(Context& ctx, Id
     offset += need_size;
 
     // Add bottom/end padding for wrapping layouts in cross-axis
-    offset += item->container_padding_ltrb[size_dim];
+    offset += item->container_padding_ltrb[k_size_dim];
 
     return offset;
 }

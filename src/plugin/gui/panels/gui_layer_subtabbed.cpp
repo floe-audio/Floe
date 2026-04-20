@@ -1513,7 +1513,7 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                                 {
                                     Rect heading_r {
                                         .pos = {r.x + k_pad + 4, r.y + k_pad},
-                                        .size = {r.w - k_pad * 2, k_heading_h},
+                                        .size = {r.w - (k_pad * 2), k_heading_h},
                                     };
                                     g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
                                     g.imgui.draw_list->AddTextInRect(
@@ -1581,7 +1581,7 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                                     auto const root_y = grid_top + (4.0f * (cell_h + k_cell_gap));
                                     Rect root_r {
                                         .pos = {r.x + k_pad, root_y},
-                                        .size = {r.w - k_pad * 2, cell_h},
+                                        .size = {r.w - (k_pad * 2), cell_h},
                                     };
                                     g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
                                     g.imgui.draw_list->AddTextInRect(

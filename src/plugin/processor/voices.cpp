@@ -842,7 +842,7 @@ struct VoiceProcessor {
             if (is_fixed) {
                 auto position = (f64)ctrl.granular.position;
                 if (has_grain_pos_lfo)
-                    position = Clamp(position + (f64)lfo_amounts[0] * (f64)ctrl.lfo.amount * 0.5, 0.0, 1.0);
+                    position = Clamp(position + ((f64)lfo_amounts[0] * (f64)ctrl.lfo.amount * 0.5), 0.0, 1.0);
                 sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
             }
 
@@ -852,7 +852,7 @@ struct VoiceProcessor {
             for (auto const frame_index : Range(buffer.size)) {
                 if (is_fixed && has_grain_pos_lfo) {
                     auto position = Clamp((f64)ctrl.granular.position +
-                                              (f64)lfo_amounts[frame_index] * (f64)ctrl.lfo.amount * 0.5,
+                                              ((f64)lfo_amounts[frame_index] * (f64)ctrl.lfo.amount * 0.5),
                                           0.0,
                                           1.0);
                     sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
