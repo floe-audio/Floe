@@ -82,6 +82,7 @@ enum class LayerParamIndex : u16 {
     ArpAutoRate,
     ArpLength,
     ArpHumanise,
+    ArpOctaveMultiRate,
 
     Count,
 };
@@ -641,6 +642,21 @@ constexpr auto k_arp_note_order_strings = ArrayT<String>({
 });
 static_assert(k_arp_note_order_strings.size == ToInt(ArpNoteOrder::Count));
 
+enum class ArpOctaveMultiRate : u8 { // never reorder
+    Off,
+    Double,
+    ThreeToTwo,
+    FourToThree,
+    Count,
+};
+constexpr auto k_arp_octave_multi_rate_strings = ArrayT<String>({
+    "Off",
+    "Double",
+    "3:2",
+    "4:3",
+});
+static_assert(k_arp_octave_multi_rate_strings.size == ToInt(ArpOctaveMultiRate::Count));
+
 enum class ArpTriggerMode : u8 { // never reorder
     Free,
     Retrigger,
@@ -716,6 +732,7 @@ struct ParamDescriptor {
         ArpNoteOrder,
         ArpTriggerMode,
         ArpSyncedRate,
+        ArpOctaveMultiRate,
         Count,
     };
 
@@ -971,6 +988,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpNoteOrder: return k_arp_note_order_strings;
         case ParamDescriptor::MenuType::ArpTriggerMode: return k_arp_trigger_mode_strings;
         case ParamDescriptor::MenuType::ArpSyncedRate: return k_arp_synced_rate_strings;
+        case ParamDescriptor::MenuType::ArpOctaveMultiRate: return k_arp_octave_multi_rate_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -2678,6 +2696,19 @@ consteval auto CreateParams() {
             .gui_label = "Humanise"_s,
             .tooltip =
                 "Add random timing variation to note starts and velocity. Higher values create looser, more human-like performance"_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpOctaveMultiRate) = Args {
+            .id = id(region, 77), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpOctaveMultiRate,
+                .default_val = (u32)param_values::ArpOctaveMultiRate::Off,
+            }),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "Octave Multi-Rate"_s,
+            .gui_label = "Multi-Rate"_s,
+            .tooltip =
+                "Each octave plays at a different rate. Double means each octave up is 2x faster. 3:2 and 4:3 create polyrhythmic relationships between octaves"_s,
             .flags = {.experimental = true},
         };
     }

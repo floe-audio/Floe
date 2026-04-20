@@ -1867,9 +1867,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     if (!processor.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
     for (auto& layer : processor.layer_processors) {
-        if (!layer.peak_meter.Silent()) change_flags |= ProcessorListener::PeakMeterChanged;
-        if (layer.arp_state.audio.EffectivelyOn() && layer.arp_state.audio.any_notes_held)
-            change_flags |= ProcessorListener::PeakMeterChanged;
+        if (LayerHasAudioActivity(layer)) change_flags |= ProcessorListener::PeakMeterChanged;
     }
 
     if (change_flags) processor.listener.OnProcessorChange(change_flags);

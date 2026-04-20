@@ -182,78 +182,60 @@ struct VoiceProcessingController {
 
 struct VoicePool;
 
-// Cross-thread layout:
-//   - `steps` is shared. Each ArpStep is 8 bytes so Atomic<ArpStep> is lock-free; either thread may
-//     load/store any element. GUI writes user edits; audio reads on each trigger and Load/modify/Store
-//     `step.note` while recording.
-//   - `current_step_for_gui`, `recording`, `effectively_on_for_gui`, `resolved_rate_for_gui` are
-//     audio<->GUI atomics.
-//   - `audio` holds everything the audio thread mutates internally (timing, cached params, slice cache).
-//     Only the audio thread reads or writes inside `audio`. The GUI must use the published atomics or
-//     read directly from params/instrument.
 struct ArpeggiatorState {
-    // Shared GUI <-> audio. GUI writes when user edits steps. Audio reads on trigger and
-    // Load/modify/Stores step.note during recording.
     Array<Atomic<ArpStep>, k_arp_max_steps> steps {};
 
-    // Written by audio thread, read by GUI. k_arp_max_steps means not playing/recording.
+    // k_arp_max_steps means not playing/recording.
     Atomic<u32> current_step_for_gui {k_arp_max_steps};
 
     // Written by GUI to request recording (Fixed mode only); cleared by audio when recording finishes.
     Atomic<bool> recording {false};
 
-    // Audio publishes (slice_mode || on). GUI reads via EffectivelyOnForGui().
-    Atomic<bool> effectively_on_for_gui {false};
-
-    // Audio publishes the effective rate (= user rate, or auto-resolved in slice mode). GUI reads to
-    // display the active rate.
+    Atomic<bool> on_for_gui {false};
     Atomic<SyncedTimes> resolved_rate_for_gui {SyncedTimes::_1_8};
 
-    // Audio-thread-only state. No atomicity: only the audio thread touches anything inside.
+    // For supporting OctaveMultiRate modes.
+    static constexpr u32 k_octave_rate_num_playheads = 11;
+    static constexpr int k_octave_rate_base_octave = 5; // C3 = MIDI 60, octave 5 = 1x rate
+
     struct AudioOnly {
-        Array<Bitset<128>, 16> last_triggered_notes {};
+        struct Playhead {
+            u32 current_step {};
+            u32 frames_until_next_step {};
+            u32 frames_into_current_step {};
+            u32 frames_per_step {1};
+            u32 gate_off_frame {};
+            Array<Bitset<128>, 16> last_triggered_notes {};
+        };
 
-        u32 frames_until_next_step {};
-        u32 frames_into_current_step {};
-        u32 frames_per_step {1};
-        u32 current_step {};
+        union {
+            Playhead playhead; // Normal
+            Array<Playhead, k_octave_rate_num_playheads> octave_playheads; // For OctaveMultiRate modes.
+        };
+
         bool any_notes_held {};
-        u32 gate_off_frame {}; // frames into current step at which to release notes (0 = no pending release)
+        Bitset<k_octave_rate_num_playheads> prev_active_octaves {};
 
-        // Cached parameter values, refreshed in ProcessLayerChanges() from changed_params.
-        bool on {};
         param_values::ArpMode type {};
         param_values::ArpNoteOrder note_order {};
+        param_values::ArpOctaveMultiRate octave_multi_rate {};
         param_values::ArpTriggerMode trigger_mode {};
-        SyncedTimes user_rate {SyncedTimes::_1_8}; // From ArpRate param
-        SyncedTimes rate {SyncedTimes::_1_8}; // Effective rate (= user_rate, or auto-resolved in slice mode)
+        SyncedTimes user_rate {SyncedTimes::_1_8};
+        SyncedTimes rate {SyncedTimes::_1_8}; // user_rate or resolved auto-rate
         bool auto_rate {};
         u32 length {8};
         f32 humanise {};
 
-        // Slice-mode cache, set when the instrument changes. The user's `steps` are unaffected; tie is
-        // derived from step_to_slice_index, and interval/note are zeroed by the audio thread.
-        bool slice_mode {};
-        u32 slice_length {};
-        Array<u8, k_arp_max_steps> step_to_slice_index {};
-
         // Used to detect a GUI-initiated recording false->true transition so audio can reset
         // current_step itself (avoiding a cross-thread write race on it).
         bool was_recording_last_block {};
-
-        bool EffectivelyOn() const { return slice_mode || on; }
     } audio;
-
-    // GUI accessor: reads the published atomic. Audio code should use `audio.EffectivelyOn()` directly.
-    bool EffectivelyOnForGui() const { return effectively_on_for_gui.Load(LoadMemoryOrder::Relaxed); }
 
     // Clears audio-thread playback timing (not user's `steps`). Audio thread only.
     void ResetAudioPlayback() {
-        audio.last_triggered_notes = {};
-        audio.frames_until_next_step = 0;
-        audio.frames_into_current_step = 0;
-        audio.current_step = 0;
+        audio.octave_playheads = {};
         audio.any_notes_held = false;
+        audio.prev_active_octaves = {};
         current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
     }
 };
@@ -433,9 +415,6 @@ struct LayerProcessor {
 
     ArpeggiatorState arp_state {};
 
-    Optional<u32> pending_slice_start_frame {};
-    Optional<u32> pending_slice_end_frame {};
-
     int num_velocity_regions = 1;
     Bitset<4> active_velocity_regions {};
     CurveMap velocity_curve_map = {};
@@ -469,6 +448,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 bool start_fade_out);
 
 void ResetLayerAudioProcessing(LayerProcessor& layer);
+bool LayerHasAudioActivity(LayerProcessor const& layer);
 
 void ProcessLayerPreVoices(LayerProcessor& layer,
                            AudioProcessingContext const& context,

@@ -648,7 +648,8 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                     break;
                 case LayerPageType::Eq: result = params.BoolValue(layer_index, LayerParamIndex::EqOn); break;
                 case LayerPageType::Arp:
-                    result = g.engine.processor.layer_processors[layer_index].arp_state.EffectivelyOnForGui();
+                    result = g.engine.processor.layer_processors[layer_index].arp_state.on_for_gui.Load(
+                        LoadMemoryOrder::Relaxed);
                     break;
                 case LayerPageType::Main:
                 case LayerPageType::Playback:
@@ -2088,8 +2089,9 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         }
     }
 
-    // Row 2: Trigger (+ Order when note order is meaningful). Note Order is hidden in Fixed mode (where
-    // it's not meaningful) and shown greyed when arp is user-off. Editable in slice mode.
+    // Row 2: Trigger (+ Order when note order is meaningful) + Record button (Fixed mode).
+    // Note Order is hidden in Fixed mode (where it's not meaningful) and shown greyed when arp is
+    // user-off. Editable in slice mode.
     {
         auto const row = do_row();
         do_menu_param(row, LayerParamIndex::ArpTriggerMode, secondary_greyed);
@@ -2102,22 +2104,16 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                   });
             do_menu_param(row, LayerParamIndex::ArpNoteOrder, !edit.note_order);
         }
-    }
-
-    // Row 3: Humanise knob + Record button (Fixed mode)
-    {
-        auto const row = do_row();
-        DoKnobParameter(g,
-                        row,
-                        params.DescribedValue(layer_index, LayerParamIndex::ArpHumanise),
-                        {
-                            .width = k_knob_width,
-                            .style_system = GuiStyleSystem::MidPanel,
-                            .greyed_out = secondary_greyed,
-                        });
 
         // Record button only shown in Fixed mode with a user-controlled arp (not slice mode).
         if (is_fixed && edit.mode) {
+            // Spacer.
+            DoBox(g.builder,
+                  {
+                      .parent = row,
+                      .layout {.size = layout::k_fill_parent},
+                  });
+
             auto const is_recording = !secondary_greyed && arp_state.recording.Load(LoadMemoryOrder::Relaxed);
             auto const text_col = secondary_greyed ? LiveColStruct(UiColMap::MidTextDimmed)
                                                    : LiveColStruct(is_recording ? UiColMap::MidTextHot
@@ -2166,13 +2162,30 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                             arp_state.recording.Store(false, StoreMemoryOrder::Relaxed);
                             arp_state.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
                         } else {
-                            // Audio resets current_step on detecting the false->true transition;
-                            // GUI only flips the recording flag.
                             arp_state.recording.Store(true, StoreMemoryOrder::Relaxed);
                         }
                     }
                 }
         }
+    }
+
+    // Row 3: Humanise knob + Multi-Rate menu
+    {
+        auto const row = do_row();
+        DoKnobParameter(g,
+                        row,
+                        params.DescribedValue(layer_index, LayerParamIndex::ArpHumanise),
+                        {
+                            .width = k_knob_width,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = secondary_greyed,
+                        });
+        DoBox(g.builder,
+              {
+                  .parent = row,
+                  .layout {.size = layout::k_fill_parent},
+              });
+        do_menu_param(row, LayerParamIndex::ArpOctaveMultiRate, secondary_greyed);
     }
 }
 

@@ -84,3 +84,33 @@ constexpr f64 SyncedTimeToMs(f64 bpm, SyncedTimes t) {
 }
 
 constexpr f32 SyncedTimeToHz(f64 bpm, SyncedTimes t) { return MsToHz((f32)SyncedTimeToMs(bpm, t)); }
+
+constexpr SyncedTimes
+LargestSyncedTimeWithinTarget(f64 target_ms,
+                              f64 tempo,
+                              Optional<enum SyncedTimesType> preferred_type = k_nullopt) {
+    SyncedTimes best = SyncedTimes::_1_64T;
+    f64 best_ms = 0;
+    bool found_fitting = false;
+    SyncedTimes fastest = SyncedTimes::_1_64T;
+    f64 fastest_ms = 0;
+    bool found_any = false;
+    for (auto const i : Range(ToInt(SyncedTimes::Count))) {
+        auto const candidate = (SyncedTimes)i;
+        if (preferred_type && SyncedTimesType(candidate) != *preferred_type) continue;
+        auto const ms = SyncedTimeToMs(tempo, candidate);
+        if (ms <= 0) continue;
+        if (!found_any || ms < fastest_ms) {
+            fastest_ms = ms;
+            fastest = candidate;
+            found_any = true;
+        }
+        if (ms > target_ms) continue;
+        if (!found_fitting || ms > best_ms) {
+            best_ms = ms;
+            best = candidate;
+            found_fitting = true;
+        }
+    }
+    return found_fitting ? best : fastest;
+}
