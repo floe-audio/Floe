@@ -703,7 +703,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         if (pos % 2 == 0)
                             trigger_note(pos / 2);
                         else
-                            trigger_note((num_notes - 1) - pos / 2);
+                            trigger_note((num_notes - 1) - (pos / 2));
                     }
                     break;
                 }
@@ -714,9 +714,9 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         auto const mid = (num_notes - 1) / 2;
                         auto const pos = ctx.current_step % num_notes;
                         if (pos % 2 == 0)
-                            trigger_note(mid - pos / 2);
+                            trigger_note(mid - (pos / 2));
                         else
-                            trigger_note(mid + 1 + pos / 2);
+                            trigger_note(mid + 1 + (pos / 2));
                     }
                     break;
                 }
@@ -729,7 +729,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         if (pos % 2 == 0)
                             trigger_note(0);
                         else
-                            trigger_note(1 + pos / 2);
+                            trigger_note(1 + (pos / 2));
                     }
                     break;
                 }
@@ -882,7 +882,7 @@ static void ArpOctavePolyrateHandleNoteStartEnd(LayerProcessor& layer,
                 }
 
                 u64 const frames_elapsed =
-                    (u64)ref.current_step * ref.frames_per_step + ref.frames_into_current_step;
+                    ((u64)ref.current_step * ref.frames_per_step) + ref.frames_into_current_step;
 
                 newly_active.ForEachSetBit([&](usize oct) {
                     auto& head = arp.audio.octave_polyrate_playheads[oct];

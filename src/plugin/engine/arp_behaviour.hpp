@@ -80,7 +80,7 @@ PUBLIC ArpSliceMapping ComputeArpSliceMapping(Span<sample_lib::Region::Slice con
     ArpSliceMapping mapping {};
     if (!slices.size) return mapping;
 
-    u32 const num_slices = (u32)slices.size;
+    auto const num_slices = (u32)slices.size;
     u32 const effective_length = loop_length == 0 ? num_slices : Min((u32)loop_length, num_slices);
 
     u32 step_idx = 0;

@@ -155,7 +155,8 @@ void DoArpStepSequencer(GuiState& g,
                         vel = y_to_vel(mouse_pos.y);
                     } else {
                         auto const t = (f32)(s - lo) / (f32)(hi - lo);
-                        f32 lo_y, hi_y;
+                        f32 lo_y;
+                        f32 hi_y;
                         if (prev_sf <= curr_sf) {
                             lo_y = prev_drag_y;
                             hi_y = mouse_pos.y;
@@ -163,7 +164,7 @@ void DoArpStepSequencer(GuiState& g,
                             lo_y = mouse_pos.y;
                             hi_y = prev_drag_y;
                         }
-                        vel = y_to_vel(lo_y + t * (hi_y - lo_y));
+                        vel = y_to_vel(lo_y + (t * (hi_y - lo_y)));
                     }
                     set_vel_at(s, vel);
                 }
