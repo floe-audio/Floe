@@ -377,6 +377,15 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
             // If all regions never loop, then user-defined loops are not allowed.
             if (all_regions_never_loop) inst.loop_overview.user_defined_loops_allowed = false;
         }
+
+        if (inst.regions.size == 0)
+            inst.category = SamplerCategory::Empty;
+        else if (inst.regions.size == 1 && inst.regions[0].slices.size)
+            inst.category = SamplerCategory::Sliced;
+        else if (inst.regions.size == 1)
+            inst.category = SamplerCategory::SingleSample;
+        else
+            inst.category = SamplerCategory::Multisample;
     }
 
     for (auto [key, inst_ptr, _] : lib.insts_by_id) {

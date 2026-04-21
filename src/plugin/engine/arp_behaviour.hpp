@@ -104,8 +104,8 @@ PUBLIC ArpBehaviour ActualArpBehaviour(Parameters const& params,
     Span<sample_lib::Region::Slice const> slices {};
     if (auto s = inst.TryGetFromTag<InstrumentType::Sampler>()) {
         if (*s) {
-            auto const& regions = (*s)->instrument.regions;
-            if (regions.size == 1 && regions[0].slices.size) slices = regions[0].slices;
+            if ((*s)->instrument.category == sample_lib::SamplerCategory::Sliced)
+                slices = (*s)->instrument.regions[0].slices;
         }
     }
 

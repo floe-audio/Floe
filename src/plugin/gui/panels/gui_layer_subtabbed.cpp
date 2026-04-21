@@ -412,9 +412,9 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
             auto const& inst = layer_processor.instrument
                                    .Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
             auto const num_regions = inst->instrument.regions.size;
-            if (num_regions == 0) {
+            if (inst->instrument.category == sample_lib::SamplerCategory::Empty) {
                 dyn::Append(segments, "Empty instrument"_s);
-            } else if (num_regions == 1 && inst->instrument.regions[0].slices.size) {
+            } else if (inst->instrument.category == sample_lib::SamplerCategory::Sliced) {
                 dyn::Append(segments, "Sliced"_s);
                 auto const& smpl = *inst->audio_datas[0];
                 dyn::Append(
@@ -424,7 +424,7 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
                 dyn::Append(
                     segments,
                     fmt::Format(g.scratch_arena, "{.2} s", (f64)smpl.num_frames / (f64)smpl.sample_rate));
-            } else if (num_regions == 1) {
+            } else if (inst->instrument.category == sample_lib::SamplerCategory::SingleSample) {
                 dyn::Append(segments, "Single sample"_s);
                 auto const& smpl = *inst->audio_datas[0];
                 if (smpl.channels == 1) dyn::Append(segments, "Mono"_s);

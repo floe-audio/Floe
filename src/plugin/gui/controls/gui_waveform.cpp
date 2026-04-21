@@ -51,9 +51,8 @@ static u64 DebouncedWaveformHash(WaveformHashDebounce& state, u64 raw_hash) {
 }
 
 static bool IsMultisampledInstrument(LayerProcessor const& layer) {
-    if (layer.instrument.tag != InstrumentType::Sampler) return false;
     if (auto i = layer.instrument.TryGetFromTag<InstrumentType::Sampler>())
-        return (*i)->instrument.regions.size > 1;
+        return (*i)->instrument.category == sample_lib::SamplerCategory::Multisample;
     return false;
 }
 
@@ -893,7 +892,8 @@ void DoWaveformElement(GuiState& g,
             // Slice markers: thin vertical lines on the waveform at slice boundaries.
             if (auto inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
                 auto const& regions = (*inst)->instrument.regions;
-                if (regions.size == 1 && regions[0].slices.size && (*inst)->audio_datas.size) {
+                if ((*inst)->instrument.category == sample_lib::SamplerCategory::Sliced &&
+                    (*inst)->audio_datas.size) {
                     auto const num_frames = (*inst)->audio_datas[0]->num_frames;
                     if (num_frames > 0) {
                         auto const slice_col = LiveCol(UiColMap::WaveformSliceMarker);

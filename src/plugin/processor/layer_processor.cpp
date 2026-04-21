@@ -37,7 +37,7 @@ static void UpdateVolumeEnvelopeOn(LayerProcessor& layer, VoicePool& voice_pool)
 static Span<sample_lib::Region::Slice const> AudioThreadSlices(InstrumentUnwrapped const& inst) {
     if (auto p = inst.TryGet<sample_lib::LoadedInstrument const*>()) {
         auto const& i = **p;
-        if (i.instrument.regions.size == 1 && i.instrument.regions[0].slices.size)
+        if (i.instrument.category == sample_lib::SamplerCategory::Sliced)
             return i.instrument.regions[0].slices;
     }
     return {};

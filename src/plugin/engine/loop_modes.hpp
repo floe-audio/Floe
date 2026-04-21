@@ -144,7 +144,7 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
             auto const& sampled_inst = inst.GetFromTag<InstrumentType::Sampler>()->instrument;
             auto const loop_overview = sampled_inst.loop_overview;
 
-            if (sampled_inst.regions.size == 0) {
+            if (sampled_inst.category == sample_lib::SamplerCategory::Empty) {
                 return {
                     detail::Behaviour(LoopBehaviourId::NoLoop),
                     {},

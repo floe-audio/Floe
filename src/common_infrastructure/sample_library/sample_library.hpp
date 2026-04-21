@@ -158,6 +158,8 @@ struct NamedKeyRange {
     Range<u8> key_range {};
 };
 
+enum class SamplerCategory : u8 { Empty, Sliced, SingleSample, Multisample };
+
 struct Instrument {
     Library const& library;
 
@@ -174,6 +176,7 @@ struct Instrument {
 
     // IMPROVE: add options to always or never use Floe's volume envelope
 
+    SamplerCategory category {};
     LoopOverview loop_overview {}; // Cached info about the loops in the regions.
     bool uses_timbre_layering {};
     Array<Span<RoundRobinGroup>, ToInt(TriggerEvent::Count)> round_robin_sequence_groups {};

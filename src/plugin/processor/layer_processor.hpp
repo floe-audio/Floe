@@ -312,13 +312,22 @@ struct LayerProcessor {
                 auto const& s =
                     instrument.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>()
                         ->instrument;
-                if (s.regions.size == 0) return "Empty"_s;
-                if (s.regions.size == 1 && s.regions[0].slices.size) return "Sliced"_s;
-                if (s.regions.size == 1) return "Single sample"_s;
-                return "Multisample"_s;
+                switch (s.category) {
+                    case sample_lib::SamplerCategory::Empty: return "Empty"_s;
+                    case sample_lib::SamplerCategory::Sliced: return "Sliced"_s;
+                    case sample_lib::SamplerCategory::SingleSample: return "Single sample"_s;
+                    case sample_lib::SamplerCategory::Multisample: return "Multisample"_s;
+                }
             }
             case InstrumentType::None: return "None"_s;
         }
+    }
+
+    bool IsSliced() const {
+        ASSERT(g_is_logical_main_thread);
+        if (auto i = instrument.TryGetFromTag<InstrumentType::Sampler>())
+            return (*i)->instrument.category == sample_lib::SamplerCategory::Sliced;
+        return false;
     }
 
     bool UsesTimbreLayering() const {
