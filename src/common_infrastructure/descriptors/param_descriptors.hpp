@@ -633,6 +633,16 @@ enum class ArpNoteOrder : u8 { // never reorder
     Up,
     Down,
     UpDown,
+    DownUp,
+    Random,
+    RandomNoRepeat,
+    UpX2,
+    DownX2,
+    UpDownX2,
+    Converge,
+    Diverge,
+    Thumb,
+    UpPlus,
     Count,
 };
 constexpr auto k_arp_note_order_strings = ArrayT<String>({
@@ -640,6 +650,16 @@ constexpr auto k_arp_note_order_strings = ArrayT<String>({
     "Up",
     "Down",
     "Up/Down",
+    "Down/Up",
+    "Random",
+    "Random No Repeat",
+    "Up x2",
+    "Down x2",
+    "Up/Down x2",
+    "Converge",
+    "Diverge",
+    "Thumb",
+    "Up+",
 });
 static_assert(k_arp_note_order_strings.size == ToInt(ArpNoteOrder::Count));
 

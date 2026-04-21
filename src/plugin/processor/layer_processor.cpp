@@ -462,6 +462,7 @@ struct ArpStepContext {
     bool& one_shot_finished;
     u32 frames_per_step;
     Array<Bitset<128>, 16>& last_triggered_notes;
+    u32& last_random_note_index;
     param_values::ArpMode type;
     param_values::ArpNoteOrder note_order;
     bool publish_gui_step;
@@ -592,13 +593,14 @@ static void ArpExecuteStep(LayerProcessor& layer,
             break;
         }
         case param_values::ArpMode::Played: {
-            auto const trigger_note = [&](u32 idx) {
+            auto const trigger_note_transposed = [&](u32 idx, int extra_semitones) {
                 auto const note = notes[idx % num_notes];
                 auto const input_vel = context.midi_note_state.velocities[note.channel][note.note];
                 auto const vel =
                     humanise_velocity(step.Velocity01() * LinearInterpolate(0.5f, 1.0f, input_vel));
                 auto triggered_note = note;
-                triggered_note.note = (u7)Clamp((int)note.note + (int)step.interval, 0, 127);
+                triggered_note.note =
+                    (u7)Clamp((int)note.note + (int)step.interval + extra_semitones, 0, 127);
                 LayerHandleNoteOn(layer,
                                   context,
                                   voice_pool,
@@ -611,6 +613,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                                   });
                 ctx.last_triggered_notes[triggered_note.channel].Set(triggered_note.note);
             };
+            auto const trigger_note = [&](u32 idx) { trigger_note_transposed(idx, 0); };
 
             switch (ctx.note_order) {
                 case param_values::ArpNoteOrder::Chord: {
@@ -634,6 +637,109 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         auto const pos = ctx.current_step % cycle_len;
                         trigger_note(pos < num_notes ? pos : cycle_len - pos);
                     }
+                    break;
+                }
+                case param_values::ArpNoteOrder::DownUp: {
+                    if (num_notes <= 1) {
+                        trigger_note(0);
+                    } else {
+                        auto const cycle_len = 2 * (num_notes - 1);
+                        auto const pos = ctx.current_step % cycle_len;
+                        auto const up_index = pos < num_notes ? pos : cycle_len - pos;
+                        trigger_note((num_notes - 1) - up_index);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::Random: {
+                    if (voice_pool.master_random_seed) {
+                        auto const idx =
+                            RandomIntInRange<u32>(*voice_pool.master_random_seed, 0, num_notes - 1);
+                        trigger_note(idx);
+                    } else {
+                        trigger_note(0);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::RandomNoRepeat: {
+                    if (voice_pool.master_random_seed && num_notes > 1) {
+                        u32 idx;
+                        int attempts = 0;
+                        do {
+                            idx = RandomIntInRange<u32>(*voice_pool.master_random_seed, 0, num_notes - 1);
+                        } while (idx == ctx.last_random_note_index && ++attempts < 3);
+                        ctx.last_random_note_index = idx;
+                        trigger_note(idx);
+                    } else {
+                        trigger_note(0);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::UpX2: {
+                    auto const note_index = (ctx.current_step / 2) % num_notes;
+                    trigger_note(note_index);
+                    break;
+                }
+                case param_values::ArpNoteOrder::DownX2: {
+                    auto const note_index = (num_notes - 1) - ((ctx.current_step / 2) % num_notes);
+                    trigger_note(note_index);
+                    break;
+                }
+                case param_values::ArpNoteOrder::UpDownX2: {
+                    if (num_notes <= 1) {
+                        trigger_note(0);
+                    } else {
+                        auto const note_pos = ctx.current_step / 2;
+                        auto const cycle_len = 2 * (num_notes - 1);
+                        auto const pos = note_pos % cycle_len;
+                        trigger_note(pos < num_notes ? pos : cycle_len - pos);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::Converge: {
+                    if (num_notes <= 1) {
+                        trigger_note(0);
+                    } else {
+                        auto const pos = ctx.current_step % num_notes;
+                        if (pos % 2 == 0)
+                            trigger_note(pos / 2);
+                        else
+                            trigger_note((num_notes - 1) - pos / 2);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::Diverge: {
+                    if (num_notes <= 1) {
+                        trigger_note(0);
+                    } else {
+                        auto const mid = (num_notes - 1) / 2;
+                        auto const pos = ctx.current_step % num_notes;
+                        if (pos % 2 == 0)
+                            trigger_note(mid - pos / 2);
+                        else
+                            trigger_note(mid + 1 + pos / 2);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::Thumb: {
+                    if (num_notes <= 1) {
+                        trigger_note(0);
+                    } else {
+                        auto const cycle_len = 2 * (num_notes - 1);
+                        auto const pos = ctx.current_step % cycle_len;
+                        if (pos % 2 == 0)
+                            trigger_note(0);
+                        else
+                            trigger_note(1 + pos / 2);
+                    }
+                    break;
+                }
+                case param_values::ArpNoteOrder::UpPlus: {
+                    auto const cycle_len = num_notes + 1;
+                    auto const pos = ctx.current_step % cycle_len;
+                    if (pos < num_notes)
+                        trigger_note(pos);
+                    else
+                        trigger_note_transposed(num_notes - 1, 12);
                     break;
                 }
                 case param_values::ArpNoteOrder::Count: PanicIfReached(); break;
@@ -688,6 +794,7 @@ static void ArpTriggerStep(LayerProcessor& layer,
                        .one_shot_finished = arp.audio.playhead.one_shot_finished,
                        .frames_per_step = arp.audio.playhead.frames_per_step,
                        .last_triggered_notes = arp.audio.playhead.last_triggered_notes,
+                       .last_random_note_index = arp.audio.playhead.last_random_note_index,
                        .type = effective_type,
                        .note_order = arp.audio.note_order,
                        .publish_gui_step = true,
@@ -814,6 +921,7 @@ static void ArpOctavePolyrateHandleNoteStartEnd(LayerProcessor& layer,
                                    .one_shot_finished = head.one_shot_finished,
                                    .frames_per_step = head.frames_per_step,
                                    .last_triggered_notes = head.last_triggered_notes,
+                                   .last_random_note_index = head.last_random_note_index,
                                    .type = effective_type,
                                    .note_order = arp.audio.note_order,
                                    .publish_gui_step = (oct == gui_playhead_oct),

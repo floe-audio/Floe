@@ -210,6 +210,7 @@ struct ArpeggiatorState {
             u32 gate_off_frame {};
             bool one_shot_finished {};
             Array<Bitset<128>, 16> last_triggered_notes {};
+            u32 last_random_note_index {UINT32_MAX};
         };
 
         union {
