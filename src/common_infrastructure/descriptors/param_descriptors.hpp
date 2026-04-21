@@ -651,9 +651,9 @@ enum class ArpOctavePolyrate : u8 { // never reorder
 };
 constexpr auto k_arp_octave_polyrate_strings = ArrayT<String>({
     "Off",
-    "Double",
-    "3:2",
-    "4:3",
+    "Double at octaves",
+    "3:2 at octaves",
+    "4:3 at octaves",
 });
 static_assert(k_arp_octave_polyrate_strings.size == ToInt(ArpOctavePolyrate::Count));
 
