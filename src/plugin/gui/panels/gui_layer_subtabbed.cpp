@@ -2169,7 +2169,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         }
     }
 
-    // Row 3: Humanise knob + Multi-Rate menu
+    // Row 3: Humanise knob + Polyrate menu
     {
         auto const row = do_row();
         DoKnobParameter(g,
@@ -2185,7 +2185,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                   .parent = row,
                   .layout {.size = layout::k_fill_parent},
               });
-        do_menu_param(row, LayerParamIndex::ArpOctaveMultiRate, secondary_greyed);
+        do_menu_param(row, LayerParamIndex::ArpOctavePolyrate, secondary_greyed);
     }
 }
 

@@ -666,19 +666,19 @@ static void ArpTriggerStep(LayerProcessor& layer,
                    num_notes);
 }
 
-static f32 OctaveRateRatio(param_values::ArpOctaveMultiRate mode) {
+static f32 OctavePolyrateRatio(param_values::ArpOctavePolyrate mode) {
     switch (mode) {
-        case param_values::ArpOctaveMultiRate::Double: return 2.0f;
-        case param_values::ArpOctaveMultiRate::ThreeToTwo: return 1.5f;
-        case param_values::ArpOctaveMultiRate::FourToThree: return 4.0f / 3.0f;
-        case param_values::ArpOctaveMultiRate::Off:
-        case param_values::ArpOctaveMultiRate::Count: PanicIfReached(); break;
+        case param_values::ArpOctavePolyrate::Double: return 2.0f;
+        case param_values::ArpOctavePolyrate::ThreeToTwo: return 1.5f;
+        case param_values::ArpOctavePolyrate::FourToThree: return 4.0f / 3.0f;
+        case param_values::ArpOctavePolyrate::Off:
+        case param_values::ArpOctavePolyrate::Count: PanicIfReached(); break;
     }
     return 2.0f;
 }
 
-static u32 OctaveRateFramesPerStep(u32 base_frames_per_step, u32 octave_index, f32 ratio) {
-    auto const offset = (s32)octave_index - ArpeggiatorState::k_octave_rate_base_octave;
+static u32 OctavePolyrateFramesPerStep(u32 base_frames_per_step, u32 octave_index, f32 ratio) {
+    auto const offset = (s32)octave_index - ArpeggiatorState::k_octave_polyrate_base_octave;
     if (offset == 0) return base_frames_per_step;
     auto const multiplier = Pow(ratio, (f32)((offset > 0) ? offset : -offset));
     if (offset > 0)
@@ -687,10 +687,10 @@ static u32 OctaveRateFramesPerStep(u32 base_frames_per_step, u32 octave_index, f
         return (u32)((f32)base_frames_per_step * multiplier);
 }
 
-static void ArpOctaveMultiRateHandleNoteStartEnd(LayerProcessor& layer,
-                                                 AudioProcessingContext const& context,
-                                                 VoicePool& voice_pool,
-                                                 u32 num_frames) {
+static void ArpOctavePolyrateHandleNoteStartEnd(LayerProcessor& layer,
+                                                AudioProcessingContext const& context,
+                                                VoicePool& voice_pool,
+                                                u32 num_frames) {
     auto& arp = layer.arp_state;
 
     // Gather all held notes sorted by pitch.
@@ -707,15 +707,16 @@ static void ArpOctaveMultiRateHandleNoteStartEnd(LayerProcessor& layer,
     Sort(Span {all_notes.data, num_all_notes}, [](auto const& a, auto const& b) { return a.note < b.note; });
 
     // Determine which octaves have held notes.
-    Bitset<ArpeggiatorState::k_octave_rate_num_playheads> active_octaves {};
+    Bitset<ArpeggiatorState::k_octave_polyrate_num_playheads> active_octaves {};
     for (u32 i = 0; i < num_all_notes; i++)
         active_octaves.Set((u32)(all_notes[i].note / 12));
     u32 const gui_playhead_oct = num_all_notes ? (u32)(all_notes[0].note / 12) : 0;
 
     auto const base_frames = ArpFramesPerStep(arp.audio.rate, context);
-    auto const ratio = OctaveRateRatio(arp.audio.octave_multi_rate);
-    for (auto const oct : Range(ArpeggiatorState::k_octave_rate_num_playheads))
-        arp.audio.octave_playheads[oct].frames_per_step = OctaveRateFramesPerStep(base_frames, oct, ratio);
+    auto const ratio = OctavePolyrateRatio(arp.audio.octave_polyrate);
+    for (auto const oct : Range(ArpeggiatorState::k_octave_polyrate_num_playheads))
+        arp.audio.octave_polyrate_playheads[oct].frames_per_step =
+            OctavePolyrateFramesPerStep(base_frames, oct, ratio);
 
     auto const slices = AudioThreadSlices(layer.audio_thread_inst);
     auto const effective_type = slices.size ? param_values::ArpMode::Played : arp.audio.type;
@@ -725,15 +726,15 @@ static void ArpOctaveMultiRateHandleNoteStartEnd(LayerProcessor& layer,
     if (arp.audio.trigger_mode == param_values::ArpTriggerMode::Free) {
         auto const newly_active = active_octaves & ~arp.audio.prev_active_octaves;
         if (newly_active.AnyValuesSet()) {
-            u32 ref_oct = ArpeggiatorState::k_octave_rate_num_playheads;
-            for (auto const oct : Range(ArpeggiatorState::k_octave_rate_num_playheads))
+            u32 ref_oct = ArpeggiatorState::k_octave_polyrate_num_playheads;
+            for (auto const oct : Range(ArpeggiatorState::k_octave_polyrate_num_playheads))
                 if (arp.audio.prev_active_octaves.Get(oct)) {
                     ref_oct = oct;
                     break;
                 }
 
-            if (ref_oct < ArpeggiatorState::k_octave_rate_num_playheads) {
-                auto const& ref = arp.audio.octave_playheads[ref_oct];
+            if (ref_oct < ArpeggiatorState::k_octave_polyrate_num_playheads) {
+                auto const& ref = arp.audio.octave_polyrate_playheads[ref_oct];
                 u32 length = arp.audio.length;
                 if (slices.size) {
                     length = 0;
@@ -745,7 +746,7 @@ static void ArpOctaveMultiRateHandleNoteStartEnd(LayerProcessor& layer,
                     (u64)ref.current_step * ref.frames_per_step + ref.frames_into_current_step;
 
                 newly_active.ForEachSetBit([&](usize oct) {
-                    auto& head = arp.audio.octave_playheads[oct];
+                    auto& head = arp.audio.octave_polyrate_playheads[oct];
                     head.current_step = (u32)((frames_elapsed / head.frames_per_step) % length);
                     auto const remainder = (u32)(frames_elapsed % head.frames_per_step);
                     head.frames_into_current_step = remainder;
@@ -757,9 +758,9 @@ static void ArpOctaveMultiRateHandleNoteStartEnd(LayerProcessor& layer,
     arp.audio.prev_active_octaves = active_octaves;
 
     for (auto const i : Range(num_frames)) {
-        for (auto const oct : Range(ArpeggiatorState::k_octave_rate_num_playheads)) {
+        for (auto const oct : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
             if (!active_octaves.Get(oct)) continue;
-            auto& head = arp.audio.octave_playheads[oct];
+            auto& head = arp.audio.octave_polyrate_playheads[oct];
 
             if (head.frames_until_next_step == 0) {
                 // Filter notes to this octave.
@@ -836,10 +837,10 @@ static void ArpHandleNoteStartEnd(LayerProcessor& layer,
     if (!arp.audio.any_notes_held) return;
     if (num_frames == 0) return;
 
-    if (arp.audio.octave_multi_rate == param_values::ArpOctaveMultiRate::Off)
+    if (arp.audio.octave_polyrate == param_values::ArpOctavePolyrate::Off)
         ArpHandleRegularNoteStartEnd(layer, context, voice_pool, num_frames);
     else
-        ArpOctaveMultiRateHandleNoteStartEnd(layer, context, voice_pool, num_frames);
+        ArpOctavePolyrateHandleNoteStartEnd(layer, context, voice_pool, num_frames);
 }
 
 void ProcessLayerPreVoices(LayerProcessor& layer,
@@ -1244,19 +1245,19 @@ void ProcessLayerChanges(LayerProcessor& layer,
                                                                             LayerParamIndex::ArpNoteOrder))
             arp.audio.note_order = *p;
 
-        if (auto p = changes.changed_params.IntValue<param_values::ArpOctaveMultiRate>(
+        if (auto p = changes.changed_params.IntValue<param_values::ArpOctavePolyrate>(
                 layer.index,
-                LayerParamIndex::ArpOctaveMultiRate)) {
-            bool const was_on = arp.audio.octave_multi_rate != param_values::ArpOctaveMultiRate::Off;
-            bool const now_on = *p != param_values::ArpOctaveMultiRate::Off;
+                LayerParamIndex::ArpOctavePolyrate)) {
+            bool const was_on = arp.audio.octave_polyrate != param_values::ArpOctavePolyrate::Off;
+            bool const now_on = *p != param_values::ArpOctavePolyrate::Off;
             if (was_on != now_on) {
-                for (auto& head : arp.audio.octave_playheads)
+                for (auto& head : arp.audio.octave_polyrate_playheads)
                     ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
-                arp.audio.octave_playheads = {};
+                arp.audio.octave_polyrate_playheads = {};
                 arp.audio.prev_active_octaves = {};
                 arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, context);
             }
-            arp.audio.octave_multi_rate = *p;
+            arp.audio.octave_polyrate = *p;
         }
 
         if (auto p = changes.changed_params.IntValue<u32>(layer.index, LayerParamIndex::ArpLength))
@@ -1379,7 +1380,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
             if (note.type == NoteEvent::Type::On &&
                 arp.audio.trigger_mode == param_values::ArpTriggerMode::Retrigger) {
-                for (auto& head : arp.audio.octave_playheads) {
+                for (auto& head : arp.audio.octave_polyrate_playheads) {
                     ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
                     head.frames_until_next_step = 0;
                     head.current_step = 0;
@@ -1388,11 +1389,11 @@ void ProcessLayerChanges(LayerProcessor& layer,
         }
 
         if (!was_held && arp.audio.any_notes_held)
-            for (auto& head : arp.audio.octave_playheads)
+            for (auto& head : arp.audio.octave_polyrate_playheads)
                 head.frames_until_next_step = 0;
 
         if (was_held && !arp.audio.any_notes_held) {
-            for (auto& head : arp.audio.octave_playheads) {
+            for (auto& head : arp.audio.octave_polyrate_playheads) {
                 ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
                 head.current_step = 0;
             }

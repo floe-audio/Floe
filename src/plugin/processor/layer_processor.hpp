@@ -194,9 +194,9 @@ struct ArpeggiatorState {
     Atomic<bool> on_for_gui {false};
     Atomic<SyncedTimes> resolved_rate_for_gui {SyncedTimes::_1_8};
 
-    // For supporting OctaveMultiRate modes.
-    static constexpr u32 k_octave_rate_num_playheads = 11;
-    static constexpr int k_octave_rate_base_octave = 5; // C3 = MIDI 60, octave 5 = 1x rate
+    // For supporting OctavePolyrate modes.
+    static constexpr u32 k_octave_polyrate_num_playheads = 11;
+    static constexpr int k_octave_polyrate_base_octave = 5; // C3 = MIDI 60, octave 5 = 1x rate
 
     struct AudioOnly {
         struct Playhead {
@@ -210,15 +210,16 @@ struct ArpeggiatorState {
 
         union {
             Playhead playhead; // Normal
-            Array<Playhead, k_octave_rate_num_playheads> octave_playheads; // For OctaveMultiRate modes.
+            Array<Playhead, k_octave_polyrate_num_playheads>
+                octave_polyrate_playheads; // For OctavePolyrate modes.
         };
 
         bool any_notes_held {};
-        Bitset<k_octave_rate_num_playheads> prev_active_octaves {};
+        Bitset<k_octave_polyrate_num_playheads> prev_active_octaves {};
 
         param_values::ArpMode type {};
         param_values::ArpNoteOrder note_order {};
-        param_values::ArpOctaveMultiRate octave_multi_rate {};
+        param_values::ArpOctavePolyrate octave_polyrate {};
         param_values::ArpTriggerMode trigger_mode {};
         SyncedTimes user_rate {SyncedTimes::_1_8};
         SyncedTimes rate {SyncedTimes::_1_8}; // user_rate or resolved auto-rate
@@ -233,7 +234,7 @@ struct ArpeggiatorState {
 
     // Clears audio-thread playback timing (not user's `steps`). Audio thread only.
     void ResetAudioPlayback() {
-        audio.octave_playheads = {};
+        audio.octave_polyrate_playheads = {};
         audio.any_notes_held = false;
         audio.prev_active_octaves = {};
         current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
