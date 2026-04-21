@@ -204,6 +204,7 @@ struct ArpeggiatorState {
     struct AudioOnly {
         struct Playhead {
             u32 current_step {};
+            u32 note_index {}; // counts only steps that trigger a note (excludes tied/off steps)
             u32 frames_until_next_step {};
             u32 frames_into_current_step {};
             u32 frames_per_step {1};

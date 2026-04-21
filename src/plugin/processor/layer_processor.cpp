@@ -458,6 +458,7 @@ ReleaseNotes(Array<Bitset<128>, 16>& notes, VoicePool& voice_pool, VoiceProcessi
 
 struct ArpStepContext {
     u32& current_step;
+    u32& note_index;
     u32& gate_off_frame;
     bool& one_shot_finished;
     u32 frames_per_step;
@@ -518,6 +519,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
             return;
         }
         ctx.current_step = next % length;
+        if (ctx.current_step == 0) ctx.note_index = 0;
     };
 
     if (step.tie) {
@@ -622,11 +624,11 @@ static void ArpExecuteStep(LayerProcessor& layer,
                     break;
                 }
                 case param_values::ArpNoteOrder::Up: {
-                    trigger_note(ctx.current_step % num_notes);
+                    trigger_note(ctx.note_index % num_notes);
                     break;
                 }
                 case param_values::ArpNoteOrder::Down: {
-                    trigger_note((num_notes - 1) - (ctx.current_step % num_notes));
+                    trigger_note((num_notes - 1) - (ctx.note_index % num_notes));
                     break;
                 }
                 case param_values::ArpNoteOrder::UpDown: {
@@ -634,7 +636,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         trigger_note(0);
                     } else {
                         auto const cycle_len = 2 * (num_notes - 1);
-                        auto const pos = ctx.current_step % cycle_len;
+                        auto const pos = ctx.note_index % cycle_len;
                         trigger_note(pos < num_notes ? pos : cycle_len - pos);
                     }
                     break;
@@ -644,7 +646,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         trigger_note(0);
                     } else {
                         auto const cycle_len = 2 * (num_notes - 1);
-                        auto const pos = ctx.current_step % cycle_len;
+                        auto const pos = ctx.note_index % cycle_len;
                         auto const up_index = pos < num_notes ? pos : cycle_len - pos;
                         trigger_note((num_notes - 1) - up_index);
                     }
@@ -675,20 +677,18 @@ static void ArpExecuteStep(LayerProcessor& layer,
                     break;
                 }
                 case param_values::ArpNoteOrder::UpX2: {
-                    auto const note_index = (ctx.current_step / 2) % num_notes;
-                    trigger_note(note_index);
+                    trigger_note((ctx.note_index / 2) % num_notes);
                     break;
                 }
                 case param_values::ArpNoteOrder::DownX2: {
-                    auto const note_index = (num_notes - 1) - ((ctx.current_step / 2) % num_notes);
-                    trigger_note(note_index);
+                    trigger_note((num_notes - 1) - ((ctx.note_index / 2) % num_notes));
                     break;
                 }
                 case param_values::ArpNoteOrder::UpDownX2: {
                     if (num_notes <= 1) {
                         trigger_note(0);
                     } else {
-                        auto const note_pos = ctx.current_step / 2;
+                        auto const note_pos = ctx.note_index / 2;
                         auto const cycle_len = 2 * (num_notes - 1);
                         auto const pos = note_pos % cycle_len;
                         trigger_note(pos < num_notes ? pos : cycle_len - pos);
@@ -699,7 +699,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                     if (num_notes <= 1) {
                         trigger_note(0);
                     } else {
-                        auto const pos = ctx.current_step % num_notes;
+                        auto const pos = ctx.note_index % num_notes;
                         if (pos % 2 == 0)
                             trigger_note(pos / 2);
                         else
@@ -712,7 +712,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         trigger_note(0);
                     } else {
                         auto const mid = (num_notes - 1) / 2;
-                        auto const pos = ctx.current_step % num_notes;
+                        auto const pos = ctx.note_index % num_notes;
                         if (pos % 2 == 0)
                             trigger_note(mid - (pos / 2));
                         else
@@ -725,7 +725,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                         trigger_note(0);
                     } else {
                         auto const cycle_len = 2 * (num_notes - 1);
-                        auto const pos = ctx.current_step % cycle_len;
+                        auto const pos = ctx.note_index % cycle_len;
                         if (pos % 2 == 0)
                             trigger_note(0);
                         else
@@ -735,7 +735,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                 }
                 case param_values::ArpNoteOrder::UpPlus: {
                     auto const cycle_len = num_notes + 1;
-                    auto const pos = ctx.current_step % cycle_len;
+                    auto const pos = ctx.note_index % cycle_len;
                     if (pos < num_notes)
                         trigger_note(pos);
                     else
@@ -744,6 +744,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
                 }
                 case param_values::ArpNoteOrder::Count: PanicIfReached(); break;
             }
+            ctx.note_index++;
             break;
         }
         case param_values::ArpMode::Count: PanicIfReached();
@@ -790,6 +791,7 @@ static void ArpTriggerStep(LayerProcessor& layer,
                    frame_offset,
                    {
                        .current_step = arp.audio.playhead.current_step,
+                       .note_index = arp.audio.playhead.note_index,
                        .gate_off_frame = arp.audio.playhead.gate_off_frame,
                        .one_shot_finished = arp.audio.playhead.one_shot_finished,
                        .frames_per_step = arp.audio.playhead.frames_per_step,
@@ -917,6 +919,7 @@ static void ArpOctavePolyrateHandleNoteStartEnd(LayerProcessor& layer,
                                i,
                                {
                                    .current_step = head.current_step,
+                                   .note_index = head.note_index,
                                    .gate_off_frame = head.gate_off_frame,
                                    .one_shot_finished = head.one_shot_finished,
                                    .frames_per_step = head.frames_per_step,
@@ -1453,6 +1456,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
         bool const recording_now = arp.recording.Load(LoadMemoryOrder::Relaxed);
         if (recording_now && !arp.audio.was_recording_last_block) {
             arp.audio.playhead.current_step = 0;
+            arp.audio.playhead.note_index = 0;
             arp.audio.playhead.one_shot_finished = false;
             arp.current_step_for_gui.Store(0, StoreMemoryOrder::Relaxed);
         }
@@ -1492,7 +1496,14 @@ void ProcessLayerChanges(LayerProcessor& layer,
                         auto s = arp.steps[rec_step].Load(LoadMemoryOrder::Relaxed);
                         s.note = note.note.note;
                         arp.steps[rec_step].Store(s, StoreMemoryOrder::Relaxed);
-                        rec_step++;
+
+                        // Advance past the recorded step and any tied steps that follow
+                        // (tied steps are skipped during playback so shouldn't be recorded into).
+                        do {
+                            rec_step++;
+                        } while (rec_step < arp.audio.length &&
+                                 arp.steps[rec_step].Load(LoadMemoryOrder::Relaxed).tie);
+
                         if (rec_step >= arp.audio.length) {
                             arp.recording.Store(false, StoreMemoryOrder::Relaxed);
                             arp.audio.was_recording_last_block = false;
@@ -1537,6 +1548,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
                     ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
                     head.frames_until_next_step = 0;
                     head.current_step = 0;
+                    head.note_index = 0;
                     head.one_shot_finished = false;
                 }
             }
@@ -1552,6 +1564,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
             for (auto& head : arp.audio.octave_polyrate_playheads) {
                 ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
                 head.current_step = 0;
+                head.note_index = 0;
                 head.one_shot_finished = false;
             }
             arp.audio.prev_active_octaves = {};

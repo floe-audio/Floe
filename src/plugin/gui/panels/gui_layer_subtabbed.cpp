@@ -2334,6 +2334,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                             arp_state.recording.Store(false, StoreMemoryOrder::Relaxed);
                             arp_state.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
                         } else {
+                            arp_state.current_step_for_gui.Store(0, StoreMemoryOrder::Relaxed);
                             arp_state.recording.Store(true, StoreMemoryOrder::Relaxed);
                         }
                     }
