@@ -719,7 +719,7 @@ void DoWaveformElement(GuiState& g,
         auto const features = ({
             auto f =
                 options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
-            if (layer.arp_state.on_for_gui.Load(LoadMemoryOrder::Relaxed)) f.show_sample_offset = false;
+            if (layer.IsSliced()) f.show_sample_offset = false;
             f;
         });
 
