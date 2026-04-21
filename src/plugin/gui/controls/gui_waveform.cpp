@@ -555,7 +555,7 @@ static void DoWaveformControls(GuiState& g,
     // Offset.
     Rect offs_handle {};
     auto const offs_imgui_id = g.imgui.MakeId("offset");
-    {
+    if (features.show_sample_offset) {
         auto const sample_offset = params.LinearValue(layer.index, LayerParamIndex::SampleOffset);
         auto const param_id = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::SampleOffset);
         auto const& param = g.engine.processor.main_params.DescribedValue(param_id);
@@ -668,7 +668,7 @@ static void DoWaveformControls(GuiState& g,
         draw_handle(end_handle, end_id, HandleType::LoopEnd, false);
         if (draw_xfade) draw_handle(xfade_handle, xfade_id, HandleType::Xfade, draw_xfade_as_inactive);
     }
-    draw_handle(offs_handle, offs_imgui_id, HandleType::Offset, false);
+    if (features.show_sample_offset) draw_handle(offs_handle, offs_imgui_id, HandleType::Offset, false);
 
     // Text editor.
     if (g.param_text_editor_to_open) {
@@ -717,8 +717,12 @@ void DoWaveformElement(GuiState& g,
                                          });
     } else {
         auto const& params = g.engine.processor.main_params;
-        auto const features =
-            options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
+        auto const features = ({
+            auto f =
+                options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
+            if (layer.arp_state.on_for_gui.Load(LoadMemoryOrder::Relaxed)) f.show_sample_offset = false;
+            f;
+        });
 
         auto const is_multisample = IsMultisampledInstrument(layer);
 
