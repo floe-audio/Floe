@@ -194,6 +194,9 @@ struct ArpeggiatorState {
     Atomic<bool> on_for_gui {false};
     Atomic<SyncedTimes> resolved_rate_for_gui {SyncedTimes::_1_8};
 
+    Atomic<u8> slice_start_offset {0};
+    Atomic<u8> slice_loop_length {0}; // 0 = all remaining after start_offset
+
     // For supporting OctavePolyrate modes.
     static constexpr u32 k_octave_polyrate_num_playheads = 11;
     static constexpr int k_octave_polyrate_base_octave = 5; // C3 = MIDI 60, octave 5 = 1x rate

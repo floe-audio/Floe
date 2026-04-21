@@ -51,6 +51,12 @@ struct ArpStep {
     u7 note {60}; // for 'fixed sequence' mode
 };
 
+struct SliceArpConfig {
+    bool operator==(SliceArpConfig const&) const = default;
+    u8 start_offset {}; // First slice index to play (0 = beginning)
+    u8 loop_length {}; // Number of slices to loop (0 = all remaining after start_offset)
+};
+
 struct StateSnapshot {
     f32& LinearParam(ParamIndex index) { return param_values[ToInt(index)]; }
     f32 LinearParam(ParamIndex index) const { return param_values[ToInt(index)]; }
@@ -69,6 +75,7 @@ struct StateSnapshot {
     Array<CurveMap::Points, k_num_layers> velocity_curve_points {};
     Array<HarmonyIntervalsBitset, k_num_layers> harmony_intervals {};
     Array<Array<ArpStep, k_arp_max_steps>, k_num_layers> arp_steps {};
+    Array<SliceArpConfig, k_num_layers> slice_arp_configs {};
     MacroNames macro_names {};
     MacroDestinations macro_destinations {};
     InstanceConfig instance_config {};
@@ -207,6 +214,10 @@ PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
     for (auto layer_index : Range(k_num_layers))
         if (old_state.arp_steps[layer_index] != new_state.arp_steps[layer_index])
             fmt::Append(diff_desc, "Arp steps changed for layer {}\n"_s, layer_index);
+
+    for (auto layer_index : Range(k_num_layers))
+        if (old_state.slice_arp_configs[layer_index] != new_state.slice_arp_configs[layer_index])
+            fmt::Append(diff_desc, "Slice arp config changed for layer {}\n"_s, layer_index);
 
     for (auto macro_index : Range(k_num_macros))
         if (old_state.macro_names[macro_index] != new_state.macro_names[macro_index])

@@ -926,6 +926,125 @@ Box DoIntParameter(GuiState& g,
     return container;
 }
 
+Box DoPercentDraggerParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              PercentDraggerOptions const& options) {
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .id_extra = (u64)param.info.id,
+                                     .layout {
+                                         .size = layout::k_hug_contents,
+                                         .contents_gap = k_row_button_label_gap_y,
+                                         .contents_direction = layout::Direction::Column,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
+
+    auto const row = DoMidPanelPrevNextRow(g.builder, container, options.width);
+
+    auto const percent = (int)Round(param.LinearValue() * 100);
+    auto const display_string = fmt::Format(g.scratch_arena, "{}%", percent);
+    Optional<f32> new_val {};
+    Optional<imgui::TextInputResult> param_text_input_result {};
+
+    auto const dragger_box = DoBox(
+        g.builder,
+        {
+            .parent = row,
+            .text = display_string,
+            .text_colours = Colours {options.greyed_out ? LiveColStruct(UiColMap::MidTextDimmed)
+                                                        : LiveColStruct(UiColMap::MidText)},
+            .text_justification = TextJustification::CentredLeft,
+            .text_overflow = TextOverflowType::AllowOverflow,
+            .layout {
+                .size = {layout::k_fill_parent, k_mid_button_height},
+            },
+            .tooltip =
+                FunctionRef<String()> {[&]() -> String { return ParamTooltipText(param, g.builder.arena); }},
+        });
+
+    if (auto const viewport_r = BoxRect(g.builder, dragger_box)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+        auto val = (f32)percent;
+
+        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+            .rect_in_window_coords = window_r,
+            .id = dragger_box.imgui_id,
+            .text = display_string,
+            .min = 0,
+            .max = 100,
+            .value = val,
+            .default_value = Round(param.info.default_linear_value * 100),
+            .text_input_button_cfg {
+                .mouse_button = MouseButton::Left,
+                .event = MouseButtonEvent::DoubleClick,
+            },
+            .text_input_cfg {
+                .chars_decimal = true,
+                .tab_focuses_next_input = true,
+                .centre_align = false,
+                .escape_unfocuses = true,
+                .select_all_when_opening = true,
+            },
+            .slider_cfg {
+                .sensitivity = 15,
+                .slower_with_shift = true,
+                .default_on_modifer = true,
+            },
+        });
+
+        if (dragger_result.new_string_value) {
+            if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal))
+                new_val = Clamp((f32)o.Value(), 0.0f, 100.0f) / 100.0f;
+        }
+        if (dragger_result.value_changed) new_val = Round(val) / 100.0f;
+        param_text_input_result = dragger_result.text_input_result;
+
+        if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
+            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+        if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
+            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+        AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
+        OverlayMacroDestinationRegion(g, window_r, param.info.index);
+    }
+
+    auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
+    if (arrows.prev_fired || arrows.next_fired) {
+        auto val = Clamp((f32)(percent + (arrows.prev_fired ? -1 : 1)) / 100.0f, 0.0f, 1.0f);
+        SetParameterValue(g.engine.processor, param.info.index, val, {});
+    }
+
+    if (param_text_input_result) {
+        if (auto const rel_r = BoxRect(g.builder, dragger_box)) {
+            auto const r = g.builder.imgui.ViewportRectToWindowRect(*rel_r);
+            DrawParameterTextInput(g.builder.imgui, r, *param_text_input_result);
+        }
+    }
+
+    if (options.label)
+        DoBox(g.builder,
+              {
+                  .parent = container,
+                  .text = options.override_label.size ? options.override_label : param.info.gui_label,
+                  .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                     : Colours {LiveColStruct(UiColMap::MidText)},
+                  .text_justification = TextJustification::Centred,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+              });
+
+    return container;
+}
+
 constexpr imgui::ButtonConfig k_param_text_input_button_flags = {
     .mouse_button = MouseButton::Left,
     .event = MouseButtonEvent::DoubleClick,

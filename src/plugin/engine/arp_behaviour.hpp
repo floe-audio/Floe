@@ -74,10 +74,18 @@ struct ArpSliceMapping {
     Array<u8, k_arp_max_steps> step_to_slice_index {};
 };
 
-PUBLIC ArpSliceMapping ComputeArpSliceMapping(Span<sample_lib::Region::Slice const> slices) {
+PUBLIC ArpSliceMapping ComputeArpSliceMapping(Span<sample_lib::Region::Slice const> slices,
+                                              u8 start_offset,
+                                              u8 loop_length) {
     ArpSliceMapping mapping {};
+    if (!slices.size) return mapping;
+
+    u32 const num_slices = (u32)slices.size;
+    u32 const effective_length = loop_length == 0 ? num_slices : Min((u32)loop_length, num_slices);
+
     u32 step_idx = 0;
-    for (u32 slice_i = 0; slice_i < slices.size; slice_i++) {
+    for (u32 i = 0; i < effective_length; i++) {
+        u32 const slice_i = ((u32)start_offset + i) % num_slices;
         for (u32 j = 0; j < slices[slice_i].length_proportion; j++) {
             if (step_idx >= k_arp_max_steps) break;
             mapping.step_to_slice_index[step_idx] = (u8)slice_i;
@@ -113,7 +121,9 @@ PUBLIC ArpBehaviour ActualArpBehaviour(Parameters const& params,
         snapshot[i] = arp.steps[i].Load(LoadMemoryOrder::Relaxed);
 
     if (slices.size) {
-        auto mapping = ComputeArpSliceMapping(slices);
+        auto const start_offset = arp.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
+        auto const loop_length = arp.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
+        auto mapping = ComputeArpSliceMapping(slices, start_offset, loop_length);
         return {
             .value =
                 {

@@ -77,6 +77,18 @@ Box DoIntParameter(GuiState& g,
                    DescribedParamValue const& param,
                    IntParameterComponentOptions const& options);
 
+struct PercentDraggerOptions {
+    f32 width;
+    bool greyed_out = false;
+    bool label = true;
+    String override_label {};
+};
+
+Box DoPercentDraggerParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              PercentDraggerOptions const& options);
+
 struct MuteSoloButtonsOptions {
     bool vertical = false; // If true, buttons stack vertically (M on top, S on bottom).
 };

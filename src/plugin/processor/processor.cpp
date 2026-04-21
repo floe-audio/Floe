@@ -930,6 +930,12 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
         for (auto const step_index : Range(k_arp_max_steps))
             result.arp_steps[i][step_index] =
                 processor.layer_processors[i].arp_state.steps[step_index].Load(LoadMemoryOrder::Relaxed);
+        result.slice_arp_configs[i] = {
+            .start_offset =
+                processor.layer_processors[i].arp_state.slice_start_offset.Load(LoadMemoryOrder::Relaxed),
+            .loop_length =
+                processor.layer_processors[i].arp_state.slice_loop_length.Load(LoadMemoryOrder::Relaxed),
+        };
     }
 
     result.ir_id = processor.convo.ir_id;

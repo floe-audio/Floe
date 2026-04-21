@@ -526,6 +526,8 @@ enum class StateVersion : u16 {
 
     AddedArpeggiator,
 
+    AddedSliceArpConfig,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -746,6 +748,8 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             for (auto& s : layer_steps)
                 s = {};
     }
+
+    if (version < StateVersion::AddedSliceArpConfig) state.slice_arp_configs = {};
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so
@@ -1476,6 +1480,14 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                 }
                 if (coder.IsReading()) state.arp_steps[i] = steps;
             }
+
+            // Slice arp config.
+            {
+                auto config = state.slice_arp_configs[i];
+                TRY(coder.CodeNumber(config.start_offset, StateVersion::AddedSliceArpConfig));
+                TRY(coder.CodeNumber(config.loop_length, StateVersion::AddedSliceArpConfig));
+                if (coder.IsReading()) state.slice_arp_configs[i] = config;
+            }
         }
     }
 
@@ -1585,6 +1597,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                     for (auto& s : layer_steps)
                         s = {};
             }
+            if (coder.version < StateVersion::AddedSliceArpConfig) state.slice_arp_configs = {};
 
             // In commit e0b15326e9528ca33de7d3c8f905a3449a36d31a we introduced a bug where the LFO amount was
             // inverted prior to all previous versions. We have now fixed this, however, for presets that were
@@ -2184,6 +2197,11 @@ TEST_CASE(TestNewSerialisation) {
                 .reset_keyswitch = (u7)60,
                 .seed = 42,
             };
+
+            for (auto& config : state.slice_arp_configs) {
+                config.start_offset = RandomIntInRange<u8>(random_seed, 0, 10);
+                config.loop_length = RandomIntInRange<u8>(random_seed, 0, 20);
+            }
 
             if (source == StateSource::Daw) {
                 for (auto const param : Range(k_num_parameters)) {

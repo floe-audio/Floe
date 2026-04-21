@@ -181,6 +181,10 @@ void LayerApplyNewState(LayerProcessor& layer, StateSnapshot const& state, State
     auto& arp = layer.arp_state;
     for (auto const step_index : Range(k_arp_max_steps))
         arp.steps[step_index].Store(state.arp_steps[layer.index][step_index], StoreMemoryOrder::Relaxed);
+
+    auto const& slice_config = state.slice_arp_configs[layer.index];
+    arp.slice_start_offset.Store(slice_config.start_offset, StoreMemoryOrder::Relaxed);
+    arp.slice_loop_length.Store(slice_config.loop_length, StoreMemoryOrder::Relaxed);
 }
 
 //
@@ -477,9 +481,15 @@ static void ArpExecuteStep(LayerProcessor& layer,
     u32 slice_total_steps = 0;
     Array<u8, k_arp_max_steps> step_to_slice {};
     if (ctx.slices.size) {
-        for (u32 si = 0; si < ctx.slices.size; si++)
+        auto const start_offset = arp.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
+        auto const loop_length = arp.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
+        auto const num_slices = (u32)ctx.slices.size;
+        auto const effective_length = loop_length == 0 ? num_slices : Min((u32)loop_length, num_slices);
+        for (u32 i = 0; i < effective_length; i++) {
+            u32 const si = ((u32)start_offset + i) % num_slices;
             for (u32 j = 0; j < ctx.slices[si].length_proportion; j++)
                 step_to_slice[slice_total_steps++] = (u8)si;
+        }
     }
 
     auto const length = ctx.slices.size ? slice_total_steps : arp.audio.length;
@@ -900,6 +910,9 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer,
     // Update arp state
     {
         auto& arp = layer.arp_state;
+        arp.slice_start_offset.Store(0, StoreMemoryOrder::Relaxed);
+        arp.slice_loop_length.Store(0, StoreMemoryOrder::Relaxed);
+
         bool const arp_now_on = ArpIsOn(layer);
         arp.on_for_gui.Store(arp_now_on, StoreMemoryOrder::Relaxed);
 
