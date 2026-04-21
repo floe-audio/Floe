@@ -2048,6 +2048,91 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                      });
     };
 
+    auto const do_int_dragger = [&](Box col_parent,
+                                    String label,
+                                    int current,
+                                    int min_val,
+                                    int max_val,
+                                    String display_string,
+                                    u64 loc_hash = SourceLocationHash()) -> Optional<int> {
+        auto const row = do_labelled_row(col_parent, loc_hash);
+        DoBox(
+            g.builder,
+            {
+                .parent = row,
+                .id_extra = loc_hash,
+                .text = label,
+                .text_colours = LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                .text_justification = TextJustification::CentredRight,
+                .layout {.size = {k_menu_label_width, k_font_body_size}},
+            });
+        auto const prev_next_row = DoMidPanelPrevNextRow(g.builder, row, k_menu_width);
+
+        auto const dragger_box = DoBox(
+            g.builder,
+            {
+                .parent = prev_next_row,
+                .text = display_string,
+                .text_colours = LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                .text_justification = TextJustification::CentredLeft,
+                .text_overflow = TextOverflowType::AllowOverflow,
+                .layout {.size = {layout::k_fill_parent, k_mid_button_height}},
+            });
+
+        Optional<int> new_val {};
+        Optional<imgui::TextInputResult> text_input_result {};
+
+        if (auto const viewport_r = BoxRect(g.builder, dragger_box)) {
+            auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+            auto val = (f32)current;
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = dragger_box.imgui_id,
+                .text = display_string,
+                .min = (f32)min_val,
+                .max = (f32)max_val,
+                .value = val,
+                .default_value = (f32)min_val,
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg {
+                    .chars_decimal = true,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                },
+                .slider_cfg {
+                    .sensitivity = 15,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
+            if (dragger_result.new_string_value) {
+                if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal))
+                    new_val = Clamp((int)o.Value(), min_val, max_val);
+            }
+            if (dragger_result.value_changed) new_val = (int)val;
+            text_input_result = dragger_result.text_input_result;
+        }
+
+        auto const arrows =
+            DoMidPanelPrevNextButtons(g.builder, prev_next_row, {.greyed_out = secondary_greyed});
+        if (arrows.prev_fired || arrows.next_fired) {
+            auto val = current + (arrows.prev_fired ? -1 : 1);
+            new_val = Clamp(val, min_val, max_val);
+        }
+
+        if (text_input_result) {
+            if (auto const rel_r = BoxRect(g.builder, dragger_box)) {
+                auto const r = g.builder.imgui.ViewportRectToWindowRect(*rel_r);
+                DrawParameterTextInput(g.builder.imgui, r, *text_input_result);
+            }
+        }
+
+        return new_val;
+    };
+
     // Two-column layout for controls below the step sequencer.
     auto const columns_row = DoBox(g.builder,
                                    {
@@ -2144,38 +2229,15 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                 }
             }
             if (num_slices > 1) {
-                auto const row = do_labelled_row(col);
-                DoBox(g.builder,
-                      {
-                          .parent = row,
-                          .text = "Slice Offs"_s,
-                          .text_colours =
-                              LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                          .text_justification = TextJustification::CentredRight,
-                          .layout {.size = {k_menu_label_width, k_font_body_size}},
-                      });
-                auto const prev_next_row = DoMidPanelPrevNextRow(g.builder, row, k_menu_width);
-                auto const current = arp_state.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
-                DoBox(g.builder,
-                      {
-                          .parent = prev_next_row,
-                          .text = fmt::Format(g.scratch_arena, "{}", current),
-                          .text_colours =
-                              LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                          .text_justification = TextJustification::CentredLeft,
-                          .text_overflow = TextOverflowType::AllowOverflow,
-                          .layout {.size = {layout::k_fill_parent, k_mid_button_height}},
-                      });
-                if (!secondary_greyed) {
-                    auto const max_val = (u8)Min(num_slices - 1, (u32)255);
-                    auto const arrows =
-                        DoMidPanelPrevNextButtons(g.builder, prev_next_row, {.greyed_out = secondary_greyed});
-                    if (arrows.prev_fired || arrows.next_fired) {
-                        auto val = (int)current + (arrows.prev_fired ? -1 : 1);
-                        val = Clamp(val, 0, (int)max_val);
-                        arp_state.slice_start_offset.Store((u8)val, StoreMemoryOrder::Relaxed);
-                    }
-                }
+                auto const current = (int)arp_state.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
+                auto const new_val = do_int_dragger(col,
+                                                    "Slice Offs"_s,
+                                                    current,
+                                                    0,
+                                                    (int)Min(num_slices - 1, (u32)255),
+                                                    fmt::Format(g.scratch_arena, "{}", current));
+                if (new_val && !secondary_greyed)
+                    arp_state.slice_start_offset.Store((u8)*new_val, StoreMemoryOrder::Relaxed);
             }
         }
     }
@@ -2291,38 +2353,16 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                 }
             }
             if (num_slices > 1) {
-                auto const row = do_labelled_row(col);
-                DoBox(g.builder,
-                      {
-                          .parent = row,
-                          .text = "Slices"_s,
-                          .text_colours =
-                              LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                          .text_justification = TextJustification::CentredRight,
-                          .layout {.size = {k_menu_label_width, k_font_body_size}},
-                      });
-                auto const prev_next_row = DoMidPanelPrevNextRow(g.builder, row, k_menu_width);
-                auto const current = arp_state.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
-                DoBox(g.builder,
-                      {
-                          .parent = prev_next_row,
-                          .text = current ? (String)fmt::Format(g.scratch_arena, "{}", current) : "All"_s,
-                          .text_colours =
-                              LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                          .text_justification = TextJustification::CentredLeft,
-                          .text_overflow = TextOverflowType::AllowOverflow,
-                          .layout {.size = {layout::k_fill_parent, k_mid_button_height}},
-                      });
-                if (!secondary_greyed) {
-                    auto const max_val = (u8)Min(num_slices, (u32)255);
-                    auto const arrows =
-                        DoMidPanelPrevNextButtons(g.builder, prev_next_row, {.greyed_out = secondary_greyed});
-                    if (arrows.prev_fired || arrows.next_fired) {
-                        auto val = (int)current + (arrows.prev_fired ? -1 : 1);
-                        val = Clamp(val, 0, (int)max_val);
-                        arp_state.slice_loop_length.Store((u8)val, StoreMemoryOrder::Relaxed);
-                    }
-                }
+                auto const current = (int)arp_state.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
+                auto const new_val =
+                    do_int_dragger(col,
+                                   "Slices"_s,
+                                   current,
+                                   0,
+                                   (int)Min(num_slices, (u32)255),
+                                   current ? (String)fmt::Format(g.scratch_arena, "{}", current) : "All"_s);
+                if (new_val && !secondary_greyed)
+                    arp_state.slice_loop_length.Store((u8)*new_val, StoreMemoryOrder::Relaxed);
             }
         }
     }
