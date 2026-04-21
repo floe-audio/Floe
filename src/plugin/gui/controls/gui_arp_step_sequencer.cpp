@@ -10,6 +10,7 @@
 
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/layer_processor.hpp"
 
@@ -19,19 +20,6 @@ static void ModifyStep(ArpeggiatorState& s, u32 i, Mutate&& mutate) {
     auto step = s.steps[i].Load(LoadMemoryOrder::Relaxed);
     mutate(step);
     s.steps[i].Store(step, StoreMemoryOrder::Relaxed);
-}
-
-static void DrawArpStepScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
-    for (auto const& b : bars) {
-        if (!b) continue;
-        imgui.draw_list->AddRectFilled(b->strip, WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 40));
-        u32 handle_col = WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 140);
-        if (imgui.IsActive(b->id, MouseButton::Left))
-            handle_col = LiveCol(UiColMap::MidTextOn);
-        else if (imgui.IsHot(b->id))
-            handle_col = LiveCol(UiColMap::MidTextHot);
-        imgui.draw_list->AddRectFilled(b->handle, handle_col);
-    }
 }
 
 void DoArpStepSequencer(GuiState& g,
@@ -63,39 +51,48 @@ void DoArpStepSequencer(GuiState& g,
     // Background drawn on the parent viewport, so corner rounding covers the whole widget.
     imgui.draw_list->AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), WwToPixels(k_corner_rounding));
 
+    constexpr f32 k_gap = 2.0f;
+    constexpr u32 k_default_visible_steps = 16;
+    bool const needs_show_all = active_steps > k_default_visible_steps;
+    static bool show_all = false;
+    if (!needs_show_all) show_all = false;
+
+    auto const step_width =
+        show_all ? (rect.w - (k_gap * ((f32)active_steps - 1))) / (f32)active_steps
+                 : (rect.w - (k_gap * (k_default_visible_steps - 1))) / (f32)k_default_visible_steps;
+    auto const step_stride = step_width + k_gap;
+
     // Open a horizontally scrolling viewport. Steps beyond the 16 that fit in `rect.w` overflow and scroll.
     imgui.BeginViewport(
         {
             .positioning = imgui::ViewportPositioning::WindowAbsolute,
-            .draw_scrollbars = DrawArpStepScrollbars,
-            .scrollbar_width = WwToPixels(3.0f),
-            .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Auto,
+            .draw_scrollbars = DrawMidPanelScrollbars,
+            .scrollbar_width = WwToPixels(6.0f),
+            .scrollbar_visibility = {show_all ? imgui::ViewportScrollbarVisibility::Never
+                                              : imgui::ViewportScrollbarVisibility::Auto,
                                      imgui::ViewportScrollbarVisibility::Never},
         },
         rect,
         "arp-steps");
-    DEFER { imgui.EndViewport(); };
 
     auto& draw_list = *imgui.draw_list;
-
-    // Step width: each step is 1/16 of the outer width so 16 steps fit exactly; extras scroll.
-    constexpr f32 k_gap = 2.0f;
-    constexpr u32 k_default_visible_steps = 16;
-    auto const step_width = (rect.w - (k_gap * (k_default_visible_steps - 1))) / (f32)k_default_visible_steps;
-    auto const step_stride = step_width + k_gap;
 
     auto const label_pad = WwToPixels(2.0f);
     auto const row_height = WwToPixels(10.0f) + (label_pad * 2);
     auto const knob_size = WwToPixels(12.0f);
-
-    // Visible footer rows: step number always shown; note/tie rows only when their edit flag is true.
-    u32 num_footer_rows = 1; // step number / on toggle row
-    if (show_note_row) num_footer_rows++;
-    if (show_tie_row) num_footer_rows++;
-    auto const footer_rows_height = row_height * (f32)num_footer_rows;
-    auto const footer_height = footer_rows_height + knob_size + (label_pad * 2);
     auto const content_h = imgui.CurrentVpHeight();
-    auto const bar_area_height = content_h - footer_height;
+
+    f32 bar_area_height;
+    if (show_all) {
+        bar_area_height = content_h - row_height;
+    } else {
+        u32 num_footer_rows = 1;
+        if (show_note_row) num_footer_rows++;
+        if (show_tie_row) num_footer_rows++;
+        auto const footer_rows_height = row_height * (f32)num_footer_rows;
+        auto const footer_height = footer_rows_height + knob_size + (label_pad * 2);
+        bar_area_height = content_h - footer_height;
+    }
 
     auto const total_content_w = (step_stride * (f32)active_steps) - k_gap;
 
@@ -179,6 +176,7 @@ void DoArpStepSequencer(GuiState& g,
         }
     }
 
+    u32 last_overview_label = 0;
     for (u32 i = 0; i < k_arp_max_steps; ++i) {
         if (i >= active_steps) continue;
 
@@ -237,6 +235,30 @@ void DoArpStepSequencer(GuiState& g,
                                                   : WithAlphaU8(LiveCol(UiColMap::CurveMapPointHover), 40));
                 draw_list.AddRectFilled(hl_rect, hl_col);
             }
+        }
+
+        if (show_all) {
+            // Overview mode: same step number row as edit mode but without interaction,
+            // only at non-tied steps spaced at least 4 apart.
+            if (!is_tied && (i == 0 || (i - last_overview_label) >= 4)) {
+                last_overview_label = i;
+                auto const label_rect = imgui.ViewportRectToWindowRect({
+                    .x = x_vp,
+                    .y = bar_area_height + label_pad,
+                    .w = step_width,
+                    .h = row_height - (label_pad * 2),
+                });
+                auto const text_col = dim(step_off ? WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 60)
+                                                   : LiveCol(UiColMap::MidTextDimmed));
+                draw_list.AddTextInRect(label_rect,
+                                        text_col,
+                                        fmt::Format(g.scratch_arena, "{}", i + 1),
+                                        {
+                                            .justification = TextJustification::Centred,
+                                            .font_scaling = 0.85f,
+                                        });
+            }
+            continue;
         }
 
         auto const footer_y_vp = bar_area_height;
@@ -444,4 +466,71 @@ void DoArpStepSequencer(GuiState& g,
             draw_list.PathStroke(fill_col, false, WwToPixels(1.5f));
         }
     }
+
+    // Floating expand/compress toggle inside the viewport but positioned relative to the visible
+    // bounds so it doesn't scroll. Uses is_non_viewport_content so SetHot checks hovered_viewport
+    // (which includes scrollbar/padding area) rather than hovered_viewport_content.
+    if (needs_show_all) {
+        auto const btn_margin = WwToPixels(3.0f);
+        auto const btn_h = WwToPixels(14.0f);
+        auto const icon_size = WwToPixels(k_font_icons_size * 0.75f);
+        auto const gap = WwToPixels(2.0f);
+
+        g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
+        auto const text_w = g.fonts.CalcTextSize("OVERVIEW"_s, {}).x;
+        g.fonts.Pop();
+        auto const btn_w = icon_size + gap + text_w;
+
+        auto const visible = imgui.curr_viewport->visible_bounds;
+        auto const btn_rect = Rect {
+            .x = visible.Right() - btn_w - btn_margin,
+            .y = visible.y + btn_margin,
+            .w = btn_w,
+            .h = btn_h,
+        };
+
+        auto const btn_id = imgui.MakeId(SourceLocationHash());
+        if (imgui.ButtonBehaviour(btn_rect,
+                                  btn_id,
+                                  {
+                                      .is_non_viewport_content = true,
+                                  }))
+            show_all = !show_all;
+
+        auto const btn_hot = imgui.IsHot(btn_id);
+        auto const btn_active = imgui.IsActive(btn_id, MouseButton::Left);
+
+        // Toggle icon (same style as DoToggleIcon / DoButtonParameter).
+        auto const icon_col = show_all     ? LiveCol(UiColMap::MidTextOn)
+                              : btn_hot    ? LiveCol(UiColMap::MidTextHot)
+                              : btn_active ? LiveCol(UiColMap::MidTextOn)
+                                           : LiveCol(UiColMap::MidIcon);
+        auto const icon_rect = Rect {.x = btn_rect.x, .y = btn_rect.y, .w = icon_size, .h = btn_h};
+        g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
+        draw_list.AddTextInRect(icon_rect,
+                                icon_col,
+                                show_all ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF,
+                                {
+                                    .justification = TextJustification::Centred,
+                                    .font_scaling = 0.75f,
+                                });
+        g.fonts.Pop();
+
+        // Text label.
+        auto const text_col = btn_hot      ? LiveCol(UiColMap::MidTextHot)
+                              : btn_active ? LiveCol(UiColMap::MidTextHot)
+                                           : LiveCol(UiColMap::MidText);
+        auto const text_rect =
+            Rect {.x = btn_rect.x + icon_size + gap, .y = btn_rect.y, .w = text_w, .h = btn_h};
+        g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
+        draw_list.AddTextInRect(text_rect,
+                                text_col,
+                                "OVERVIEW"_s,
+                                {
+                                    .justification = TextJustification::CentredLeft,
+                                });
+        g.fonts.Pop();
+    }
+
+    imgui.EndViewport();
 }
