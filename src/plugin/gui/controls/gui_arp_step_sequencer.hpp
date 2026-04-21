@@ -14,4 +14,5 @@ void DoArpStepSequencer(GuiState& g,
                         ArpeggiatorState& arp_state,
                         Rect rect,
                         ArpBehaviour::Value const& behaviour,
-                        u32 playing_step);
+                        u32 playing_step,
+                        bool& show_all);

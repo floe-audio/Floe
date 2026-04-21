@@ -26,7 +26,8 @@ void DoArpStepSequencer(GuiState& g,
                         ArpeggiatorState& arp_state,
                         Rect rect,
                         ArpBehaviour::Value const& behaviour,
-                        u32 playing_step) {
+                        u32 playing_step,
+                        bool& show_all) {
     auto& imgui = g.imgui;
 
     imgui.PushId((uintptr)&arp_state);
@@ -54,7 +55,6 @@ void DoArpStepSequencer(GuiState& g,
     constexpr f32 k_gap = 2.0f;
     constexpr u32 k_default_visible_steps = 16;
     bool const needs_show_all = active_steps > k_default_visible_steps;
-    static bool show_all = false;
     if (!needs_show_all) show_all = false;
 
     auto const step_width =

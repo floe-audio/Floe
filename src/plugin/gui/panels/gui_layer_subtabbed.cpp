@@ -1981,7 +1981,12 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         if (auto const r = BoxRect(g.builder, seq_box)) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
             auto const playing = arp_state.current_step_for_gui.Load(LoadMemoryOrder::Relaxed);
-            DoArpStepSequencer(g, arp_state, window_r, bval, playing);
+            DoArpStepSequencer(g,
+                               arp_state,
+                               window_r,
+                               bval,
+                               playing,
+                               g.layer_panel_states[layer_index].arp_step_sequencer_show_all);
         }
     }
 
