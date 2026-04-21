@@ -410,14 +410,23 @@ void StartVoice(VoicePool& pool,
                 s.pitch_ratio_smoother.Reset();
 
                 if (sampler.slice_start_frame) {
-                    auto const start =
-                        Min((f64)*sampler.slice_start_frame, (f64)(s_sampler.data->num_frames - 1));
-                    s_sampler.slice_end_frame = sampler.slice_end_frame;
+                    auto const num_frames = s_sampler.data->num_frames;
+                    auto slice_start = Min(*sampler.slice_start_frame, num_frames - 1);
+                    auto slice_end = sampler.slice_end_frame.ValueOr(num_frames);
+
+                    if (voice_controller.reverse) {
+                        auto const inv_start = num_frames - slice_end;
+                        auto const inv_end = num_frames - slice_start;
+                        slice_start = inv_start;
+                        slice_end = inv_end;
+                    }
+
+                    s_sampler.slice_end_frame = slice_end;
                     ResetPlayhead(s_sampler.playhead,
-                                  start,
+                                  (f64)slice_start,
                                   k_nullopt,
                                   voice_controller.reverse,
-                                  s_sampler.data->num_frames);
+                                  num_frames);
                 } else if (voice_controller.play_mode == param_values::PlayMode::GranularFixed &&
                            s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff) {
                     // GranularFixed ignores loops and sample offset; position is user-controlled.
