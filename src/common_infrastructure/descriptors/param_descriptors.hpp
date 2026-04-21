@@ -83,6 +83,7 @@ enum class LayerParamIndex : u16 {
     ArpLength,
     ArpHumanise,
     ArpOctavePolyrate,
+    ArpOneShot,
 
     Count,
 };
@@ -2709,6 +2710,16 @@ consteval auto CreateParams() {
             .gui_label = "Polyrate"_s,
             .tooltip =
                 "Each octave plays at a different rate. Double means each octave up is 2x faster. 3:2 and 4:3 create polyrhythmic relationships between octaves"_s,
+            .flags = {.experimental = true},
+        };
+        lp(ArpOneShot) = Args {
+            .id = id(region, 78), // never change
+            .value_config = val_config_helpers::Bool({.default_state = false}),
+            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .name = "One Shot"_s,
+            .gui_label = "One Shot"_s,
+            .tooltip =
+                "When enabled, the arpeggiator plays through the sequence once and then stops instead of looping"_s,
             .flags = {.experimental = true},
         };
     }

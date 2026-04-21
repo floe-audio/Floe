@@ -208,6 +208,7 @@ struct ArpeggiatorState {
             u32 frames_into_current_step {};
             u32 frames_per_step {1};
             u32 gate_off_frame {};
+            bool one_shot_finished {};
             Array<Bitset<128>, 16> last_triggered_notes {};
         };
 
@@ -227,6 +228,7 @@ struct ArpeggiatorState {
         SyncedTimes user_rate {SyncedTimes::_1_8};
         SyncedTimes rate {SyncedTimes::_1_8}; // user_rate or resolved auto-rate
         bool auto_rate {};
+        bool one_shot {};
         u32 length {8};
         f32 humanise {};
 

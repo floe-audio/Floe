@@ -459,11 +459,13 @@ ReleaseNotes(Array<Bitset<128>, 16>& notes, VoicePool& voice_pool, VoiceProcessi
 struct ArpStepContext {
     u32& current_step;
     u32& gate_off_frame;
+    bool& one_shot_finished;
     u32 frames_per_step;
     Array<Bitset<128>, 16>& last_triggered_notes;
     param_values::ArpMode type;
     param_values::ArpNoteOrder note_order;
     bool publish_gui_step;
+    bool one_shot;
     Span<sample_lib::Region::Slice const> const& slices;
 };
 
@@ -477,6 +479,7 @@ static void ArpExecuteStep(LayerProcessor& layer,
     auto& arp = layer.arp_state;
 
     if (num_notes == 0) return;
+    if (ctx.one_shot_finished) return;
 
     u32 slice_total_steps = 0;
     Array<u8, k_arp_max_steps> step_to_slice {};
@@ -508,11 +511,22 @@ static void ArpExecuteStep(LayerProcessor& layer,
 
     auto const advance_step = [&]() {
         if (ctx.publish_gui_step) arp.current_step_for_gui.Store(ctx.current_step, StoreMemoryOrder::Relaxed);
-        ctx.current_step = (ctx.current_step + 1) % length;
+        auto const next = ctx.current_step + 1;
+        if (ctx.one_shot && next >= length) {
+            ctx.one_shot_finished = true;
+            return;
+        }
+        ctx.current_step = next % length;
     };
 
     if (step.tie) {
         advance_step();
+        if (ctx.one_shot_finished) {
+            ReleaseNotes(ctx.last_triggered_notes, voice_pool, layer.voice_controller);
+            ctx.gate_off_frame = 0;
+            if (ctx.publish_gui_step)
+                arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+        }
         return;
     }
 
@@ -520,6 +534,8 @@ static void ArpExecuteStep(LayerProcessor& layer,
 
     if (!step.on) {
         advance_step();
+        if (ctx.one_shot_finished && ctx.publish_gui_step)
+            arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
         return;
     }
 
@@ -628,10 +644,14 @@ static void ArpExecuteStep(LayerProcessor& layer,
     }
 
     // Schedule gate-off if gate < 1 and next step is not tied.
+    // For one-shot on the last step, always schedule gate-off since there's no next step to release.
+    auto const is_last_one_shot_step = ctx.one_shot && (ctx.current_step + 1) >= length;
     auto const next_step_index = ctx.current_step % length;
-    bool const next_is_tied = step_at(next_step_index).tie;
+    bool const next_is_tied = !is_last_one_shot_step && step_at(next_step_index).tie;
     auto const gate_01 = step.Gate01();
-    if (gate_01 < 1.0f && !next_is_tied)
+    if (is_last_one_shot_step)
+        ctx.gate_off_frame = Max(1u, (u32)((f32)ctx.frames_per_step * gate_01));
+    else if (gate_01 < 1.0f && !next_is_tied)
         ctx.gate_off_frame = Max(1u, (u32)((f32)ctx.frames_per_step * gate_01));
     else
         ctx.gate_off_frame = 0;
@@ -665,11 +685,13 @@ static void ArpTriggerStep(LayerProcessor& layer,
                    {
                        .current_step = arp.audio.playhead.current_step,
                        .gate_off_frame = arp.audio.playhead.gate_off_frame,
+                       .one_shot_finished = arp.audio.playhead.one_shot_finished,
                        .frames_per_step = arp.audio.playhead.frames_per_step,
                        .last_triggered_notes = arp.audio.playhead.last_triggered_notes,
                        .type = effective_type,
                        .note_order = arp.audio.note_order,
                        .publish_gui_step = true,
+                       .one_shot = arp.audio.one_shot,
                        .slices = slices,
                    },
                    Span<MidiChannelNote const> {notes.data, num_notes},
@@ -772,7 +794,7 @@ static void ArpOctavePolyrateHandleNoteStartEnd(LayerProcessor& layer,
             if (!active_octaves.Get(oct)) continue;
             auto& head = arp.audio.octave_polyrate_playheads[oct];
 
-            if (head.frames_until_next_step == 0) {
+            if (!head.one_shot_finished && head.frames_until_next_step == 0) {
                 // Filter notes to this octave.
                 Array<MidiChannelNote, 128 * 16> oct_notes;
                 u32 num_oct_notes = 0;
@@ -789,11 +811,13 @@ static void ArpOctavePolyrateHandleNoteStartEnd(LayerProcessor& layer,
                                {
                                    .current_step = head.current_step,
                                    .gate_off_frame = head.gate_off_frame,
+                                   .one_shot_finished = head.one_shot_finished,
                                    .frames_per_step = head.frames_per_step,
                                    .last_triggered_notes = head.last_triggered_notes,
                                    .type = effective_type,
                                    .note_order = arp.audio.note_order,
                                    .publish_gui_step = (oct == gui_playhead_oct),
+                                   .one_shot = arp.audio.one_shot,
                                    .slices = slices,
                                },
                                Span<MidiChannelNote const> {oct_notes.data, num_oct_notes},
@@ -806,6 +830,8 @@ static void ArpOctavePolyrateHandleNoteStartEnd(LayerProcessor& layer,
             if (head.gate_off_frame > 0 && head.frames_into_current_step == head.gate_off_frame) {
                 ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
                 head.gate_off_frame = 0;
+                if (head.one_shot_finished)
+                    arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
             }
 
             --head.frames_until_next_step;
@@ -821,7 +847,7 @@ static void ArpHandleRegularNoteStartEnd(LayerProcessor& layer,
     auto& arp = layer.arp_state;
     auto& playhead = arp.audio.playhead;
     for (auto const i : Range(num_frames)) {
-        if (playhead.frames_until_next_step == 0) {
+        if (!playhead.one_shot_finished && playhead.frames_until_next_step == 0) {
             ArpTriggerStep(layer, context, voice_pool, i);
             playhead.frames_until_next_step = playhead.frames_per_step;
             playhead.frames_into_current_step = 0;
@@ -831,6 +857,8 @@ static void ArpHandleRegularNoteStartEnd(LayerProcessor& layer,
         if (playhead.gate_off_frame > 0 && playhead.frames_into_current_step == playhead.gate_off_frame) {
             ReleaseNotes(playhead.last_triggered_notes, voice_pool, layer.voice_controller);
             playhead.gate_off_frame = 0;
+            if (playhead.one_shot_finished)
+                arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
         }
 
         --playhead.frames_until_next_step;
@@ -1294,6 +1322,9 @@ void ProcessLayerChanges(LayerProcessor& layer,
             }
         }
 
+        if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::ArpOneShot))
+            arp.audio.one_shot = *p;
+
         if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::ArpHumanise))
             arp.audio.humanise = *p;
 
@@ -1314,6 +1345,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
         bool const recording_now = arp.recording.Load(LoadMemoryOrder::Relaxed);
         if (recording_now && !arp.audio.was_recording_last_block) {
             arp.audio.playhead.current_step = 0;
+            arp.audio.playhead.one_shot_finished = false;
             arp.current_step_for_gui.Store(0, StoreMemoryOrder::Relaxed);
         }
         arp.audio.was_recording_last_block = recording_now;
@@ -1397,18 +1429,22 @@ void ProcessLayerChanges(LayerProcessor& layer,
                     ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
                     head.frames_until_next_step = 0;
                     head.current_step = 0;
+                    head.one_shot_finished = false;
                 }
             }
         }
 
         if (!was_held && arp.audio.any_notes_held)
-            for (auto& head : arp.audio.octave_polyrate_playheads)
+            for (auto& head : arp.audio.octave_polyrate_playheads) {
                 head.frames_until_next_step = 0;
+                head.one_shot_finished = false;
+            }
 
         if (was_held && !arp.audio.any_notes_held) {
             for (auto& head : arp.audio.octave_polyrate_playheads) {
                 ReleaseNotes(head.last_triggered_notes, voice_pool, layer.voice_controller);
                 head.current_step = 0;
+                head.one_shot_finished = false;
             }
             arp.audio.prev_active_octaves = {};
             arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);

@@ -2102,6 +2102,15 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         // Trigger
         do_menu_param(col, LayerParamIndex::ArpTriggerMode, secondary_greyed);
 
+        // One Shot
+        DoButtonParameter(g,
+                          col,
+                          params.DescribedValue(layer_index, LayerParamIndex::ArpOneShot),
+                          {
+                              .width = layout::k_hug_contents,
+                              .greyed_out = secondary_greyed,
+                          });
+
         // Humanise
         {
             auto const row = do_labelled_row(col);
