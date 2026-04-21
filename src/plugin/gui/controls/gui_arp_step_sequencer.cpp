@@ -479,7 +479,8 @@ void DoArpStepSequencer(GuiState& g,
         g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
         auto const text_w = g.fonts.CalcTextSize("OVERVIEW"_s, {}).x;
         g.fonts.Pop();
-        auto const btn_w = icon_size + gap + text_w;
+        auto const btn_pad_x = WwToPixels(4.0f);
+        auto const btn_w = btn_pad_x + icon_size + gap + text_w + btn_pad_x;
 
         auto const visible = imgui.curr_viewport->visible_bounds;
         auto const btn_rect = Rect {
@@ -500,12 +501,16 @@ void DoArpStepSequencer(GuiState& g,
         auto const btn_hot = imgui.IsHot(btn_id);
         auto const btn_active = imgui.IsActive(btn_id, MouseButton::Left);
 
+        // Subtle dark background so the button is visible over the step bars.
+        draw_list.AddRectFilled(btn_rect, LiveCol(UiColMap::EnvelopeBack), WwToPixels(k_corner_rounding));
+
         // Toggle icon (same style as DoToggleIcon / DoButtonParameter).
         auto const icon_col = show_all     ? LiveCol(UiColMap::MidTextOn)
                               : btn_hot    ? LiveCol(UiColMap::MidTextHot)
                               : btn_active ? LiveCol(UiColMap::MidTextOn)
                                            : LiveCol(UiColMap::MidIcon);
-        auto const icon_rect = Rect {.x = btn_rect.x, .y = btn_rect.y, .w = icon_size, .h = btn_h};
+        auto const icon_rect =
+            Rect {.x = btn_rect.x + btn_pad_x, .y = btn_rect.y, .w = icon_size, .h = btn_h};
         g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
         draw_list.AddTextInRect(icon_rect,
                                 icon_col,
@@ -521,7 +526,7 @@ void DoArpStepSequencer(GuiState& g,
                               : btn_active ? LiveCol(UiColMap::MidTextHot)
                                            : LiveCol(UiColMap::MidText);
         auto const text_rect =
-            Rect {.x = btn_rect.x + icon_size + gap, .y = btn_rect.y, .w = text_w, .h = btn_h};
+            Rect {.x = btn_rect.x + btn_pad_x + icon_size + gap, .y = btn_rect.y, .w = text_w, .h = btn_h};
         g.fonts.Push(g.fonts.atlas[ToInt(FontType::Heading3)]);
         draw_list.AddTextInRect(text_rect,
                                 text_col,
