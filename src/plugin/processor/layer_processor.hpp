@@ -10,6 +10,7 @@
 
 #include "atomic_bitset.hpp"
 #include "clap/host.h"
+#include "engine/arpeggiator.hpp"
 #include "param.hpp"
 #include "processing_utils/adsr.hpp"
 #include "processing_utils/audio_processing_context.hpp"
@@ -181,72 +182,6 @@ struct VoiceProcessingController {
 };
 
 struct VoicePool;
-
-struct ArpeggiatorState {
-    Array<Atomic<ArpStep>, k_arp_max_steps> steps {};
-
-    // k_arp_max_steps means not playing/recording.
-    Atomic<u32> current_step_for_gui {k_arp_max_steps};
-
-    // Written by GUI to request recording (Fixed mode only); cleared by audio when recording finishes.
-    Atomic<bool> recording {false};
-
-    Atomic<bool> on_for_gui {false};
-    Atomic<SyncedTimes> resolved_rate_for_gui {SyncedTimes::_1_8};
-
-    Atomic<u8> slice_start_offset {0};
-    Atomic<u8> slice_loop_length {0}; // 0 = all remaining after start_offset
-
-    // For supporting OctavePolyrate modes.
-    static constexpr u32 k_octave_polyrate_num_playheads = 11;
-    static constexpr int k_octave_polyrate_base_octave = 5; // C3 = MIDI 60, octave 5 = 1x rate
-
-    struct AudioOnly {
-        struct Playhead {
-            u32 current_step {};
-            u32 note_index {}; // counts only steps that trigger a note (excludes tied/off steps)
-            u32 frames_until_next_step {};
-            u32 frames_into_current_step {};
-            u32 frames_per_step {1};
-            u32 gate_off_frame {};
-            bool one_shot_finished {};
-            Array<Bitset<128>, 16> last_triggered_notes {};
-            u32 last_random_note_index {UINT32_MAX};
-        };
-
-        union {
-            Playhead playhead; // Normal
-            Array<Playhead, k_octave_polyrate_num_playheads>
-                octave_polyrate_playheads; // For OctavePolyrate modes.
-        };
-
-        bool any_notes_held {};
-        Bitset<k_octave_polyrate_num_playheads> prev_active_octaves {};
-
-        param_values::ArpMode type {};
-        param_values::ArpNoteOrder note_order {};
-        param_values::ArpOctavePolyrate octave_polyrate {};
-        param_values::ArpTriggerMode trigger_mode {};
-        SyncedTimes user_rate {SyncedTimes::_1_8};
-        SyncedTimes rate {SyncedTimes::_1_8}; // user_rate or resolved auto-rate
-        bool auto_rate {};
-        bool one_shot {};
-        u32 length {8};
-        f32 humanise {};
-
-        // Used to detect a GUI-initiated recording false->true transition so audio can reset
-        // current_step itself (avoiding a cross-thread write race on it).
-        bool was_recording_last_block {};
-    } audio;
-
-    // Clears audio-thread playback timing (not user's `steps`). Audio thread only.
-    void ResetAudioPlayback() {
-        audio.octave_polyrate_playheads = {};
-        audio.any_notes_held = false;
-        audio.prev_active_octaves = {};
-        current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
-    }
-};
 
 constexpr auto k_default_velocity_curve_points = Array {
     CurveMap::Point {0.0f, 0.3f, 0.0f},

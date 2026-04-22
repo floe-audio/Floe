@@ -1585,6 +1585,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
     lib.addCSourceFiles(.{
         .root = src_root,
         .files = &(.{
+            "engine/arpeggiator.cpp",
             "engine/check_for_update.cpp",
             "engine/engine.cpp",
             "engine/favourite_items.cpp",

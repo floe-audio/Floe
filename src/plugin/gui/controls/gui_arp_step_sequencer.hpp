@@ -5,7 +5,7 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
-#include "engine/arp_behaviour.hpp"
+#include "engine/arpeggiator.hpp"
 #include "gui/core/gui_fwd.hpp"
 
 struct ArpeggiatorState;
@@ -13,6 +13,6 @@ struct ArpeggiatorState;
 void DoArpStepSequencer(GuiState& g,
                         ArpeggiatorState& arp_state,
                         Rect rect,
-                        ArpBehaviour::Value const& behaviour,
+                        ArpGuiSnapshot const& snapshot,
                         u32 playing_step,
                         bool& show_all);

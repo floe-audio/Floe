@@ -35,8 +35,7 @@ struct Bitset {
         return result;
     }
 
-    template <typename Function>
-    void ForEachSetBit(Function&& function) const {
+    void ForEachSetBit(auto&& function) const {
         for (auto const element_index : Range(k_num_elements)) {
             auto element = elements[element_index];
             while (element) {

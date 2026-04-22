@@ -113,3 +113,41 @@ LargestSyncedTimeWithinTarget(f64 target_ms,
     }
     return found_fitting ? best : fastest;
 }
+
+// Remapping enum values like this allows us to separate values that cannot ever change (the parameter value),
+// with values that we have more control over (DSP code). It helps make things explicit when things change and
+// we need to maintain perfect backwards compatibility.
+template <typename Type>
+PUBLIC SyncedTimes SyncedTimesFromParam(Type param_rate) {
+    switch (param_rate) {
+        case Type::_1_64T: return SyncedTimes::_1_64T;
+        case Type::_1_64: return SyncedTimes::_1_64;
+        case Type::_1_64D: return SyncedTimes::_1_64D;
+        case Type::_1_32T: return SyncedTimes::_1_32T;
+        case Type::_1_32: return SyncedTimes::_1_32;
+        case Type::_1_32D: return SyncedTimes::_1_32D;
+        case Type::_1_16T: return SyncedTimes::_1_16T;
+        case Type::_1_16: return SyncedTimes::_1_16;
+        case Type::_1_16D: return SyncedTimes::_1_16D;
+        case Type::_1_8T: return SyncedTimes::_1_8T;
+        case Type::_1_8: return SyncedTimes::_1_8;
+        case Type::_1_8D: return SyncedTimes::_1_8D;
+        case Type::_1_4T: return SyncedTimes::_1_4T;
+        case Type::_1_4: return SyncedTimes::_1_4;
+        case Type::_1_4D: return SyncedTimes::_1_4D;
+        case Type::_1_2T: return SyncedTimes::_1_2T;
+        case Type::_1_2: return SyncedTimes::_1_2;
+        case Type::_1_2D: return SyncedTimes::_1_2D;
+        case Type::_1_1T: return SyncedTimes::_1_1T;
+        case Type::_1_1: return SyncedTimes::_1_1;
+        case Type::_1_1D: return SyncedTimes::_1_1D;
+        case Type::_2_1T: return SyncedTimes::_2_1T;
+        case Type::_2_1: return SyncedTimes::_2_1;
+        case Type::_2_1D: return SyncedTimes::_2_1D;
+        case Type::_4_1T: return SyncedTimes::_4_1T;
+        case Type::_4_1: return SyncedTimes::_4_1;
+        case Type::_4_1D: return SyncedTimes::_4_1D;
+        case Type::Count: PanicIfReached(); break;
+    }
+    return SyncedTimes::_1_8;
+}

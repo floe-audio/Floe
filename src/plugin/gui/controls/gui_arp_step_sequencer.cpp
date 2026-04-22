@@ -25,7 +25,7 @@ static void ModifyStep(ArpeggiatorState& s, u32 i, Mutate&& mutate) {
 void DoArpStepSequencer(GuiState& g,
                         ArpeggiatorState& arp_state,
                         Rect rect,
-                        ArpBehaviour::Value const& behaviour,
+                        ArpGuiSnapshot const& snapshot,
                         u32 playing_step,
                         bool& show_all) {
     auto& imgui = g.imgui;
@@ -33,12 +33,10 @@ void DoArpStepSequencer(GuiState& g,
     imgui.PushId((uintptr)&arp_state);
     DEFER { imgui.PopId(); };
 
-    auto const& edit = behaviour.edit;
-    auto const active_steps = behaviour.length;
-    auto const arp_type = behaviour.type;
-    bool const is_sliced = behaviour.id == ArpBehaviourId::ForcedBySlicing;
-    // Read the effective step (user fields merged with slice-imposed overrides).
-    auto const step_at = [&](u32 i) { return behaviour.StepAt(i); };
+    auto const& edit = snapshot.edit;
+    auto const active_steps = snapshot.length;
+    auto const arp_type = snapshot.type;
+    bool const is_sliced = snapshot.activation == ArpGuiSnapshot::Activation::ForcedBySlicing;
 
     // Visibility rules: non-editable aspects are HIDDEN in slice mode (where they're irrelevant), but SHOWN
     // greyed when the arp is simply user-off (so the user can see what's there).
@@ -133,7 +131,7 @@ void DoArpStepSequencer(GuiState& g,
                 return Clamp(1.0f - ((y - bar_rect.y) / bar_area_height), 0.0f, 1.0f);
             };
             auto const set_vel_at = [&](u32 step_index, f32 vel) {
-                while (step_index > 0 && step_at(step_index).tie)
+                while (step_index > 0 && snapshot.StepAt(step_index).tie)
                     --step_index;
                 ModifyStep(arp_state, step_index, [vel](ArpStep& s) { s.velocity = ArpStep::From01(vel); });
             };
@@ -182,7 +180,7 @@ void DoArpStepSequencer(GuiState& g,
         if (i >= active_steps) continue;
 
         auto const x_vp = (f32)i * step_stride;
-        auto const step = step_at(i);
+        auto const step = snapshot.StepAt(i);
         auto const is_recording = arp_state.recording.Load(LoadMemoryOrder::Relaxed);
         auto const playing = !is_recording && i == playing_step;
         auto const recording =
@@ -197,7 +195,7 @@ void DoArpStepSequencer(GuiState& g,
             if (!is_tied) {
                 u32 num_tied_following = 0;
                 for (u32 j = i + 1; j < active_steps; ++j) {
-                    if (!step_at(j).tie) break;
+                    if (!snapshot.StepAt(j).tie) break;
                     ++num_tied_following;
                 }
                 auto const chain_width = step_width + ((f32)num_tied_following * step_stride);

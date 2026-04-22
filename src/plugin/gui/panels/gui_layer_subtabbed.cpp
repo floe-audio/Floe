@@ -5,7 +5,7 @@
 
 #include <IconsFontAwesome6.h>
 
-#include "engine/arp_behaviour.hpp"
+#include "engine/arpeggiator.hpp"
 #include "engine/engine.hpp"
 #include "engine/engine_prefs.hpp"
 #include "engine/loop_modes.hpp"
@@ -1909,14 +1909,13 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer_proc = g.engine.processor.layer_processors[layer_index];
     auto& arp_state = layer_proc.arp_state;
 
-    auto const behaviour = ActualArpBehaviour(params, layer_index, arp_state, layer_proc.instrument);
-    auto const& bval = behaviour.value;
-    auto const& edit = bval.edit;
-    bool const is_fixed = bval.type == param_values::ArpMode::Fixed;
-    bool const is_sliced = bval.id == ArpBehaviourId::ForcedBySlicing;
+    auto const snapshot = CreateArpGuiSnapshot(params, layer_index, arp_state, layer_proc.instrument);
+    auto const& edit = snapshot.edit;
+    bool const is_fixed = snapshot.type == param_values::ArpMode::Fixed;
+    bool const is_sliced = snapshot.activation == ArpGuiSnapshot::Activation::ForcedBySlicing;
 
     // Humanise/Rate/TriggerMode stay editable when arp is effectively on (including slice mode).
-    bool const secondary_greyed = !bval.on;
+    bool const secondary_greyed = !snapshot.on;
 
     // Whether a control that's non-editable should be shown anyway. In slice mode we hide irrelevant
     // controls; in user-off mode we show everything greyed.
@@ -1949,24 +1948,28 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                                            },
                                        });
 
-        if (edit.mode) {
-            DoMenuParameter(g,
-                            heading_row,
-                            params.DescribedValue(layer_index, LayerParamIndex::ArpMode),
-                            {.width = layout::k_fill_parent, .label = false});
-        } else {
-            // Non-interactive label showing the forced mode (e.g. "Sliced"). Tooltip explains why.
-            auto const tooltip_text =
-                String(fmt::Format(g.scratch_arena, "{} {}", bval.description, behaviour.reason));
-            DoBox(g.builder,
-                  {
-                      .parent = heading_row,
-                      .text = bval.short_name,
-                      .text_colours = LiveColStruct(UiColMap::MidTextHot),
-                      .text_justification = TextJustification::CentredLeft,
-                      .layout {.size = {layout::k_fill_parent, k_font_body_size}},
-                      .tooltip = tooltip_text,
-                  });
+        switch (snapshot.activation) {
+            case ArpGuiSnapshot::Activation::UserDefined: {
+                DoMenuParameter(g,
+                                heading_row,
+                                params.DescribedValue(layer_index, LayerParamIndex::ArpMode),
+                                {.width = layout::k_fill_parent, .label = false});
+                break;
+            }
+            case ArpGuiSnapshot::Activation::ForcedBySlicing: {
+                DoBox(
+                    g.builder,
+                    {
+                        .parent = heading_row,
+                        .text = "Sliced instrument",
+                        .text_colours = LiveColStruct(UiColMap::MidText),
+                        .text_justification = TextJustification::CentredLeft,
+                        .layout {.size = {layout::k_fill_parent, k_font_body_size}},
+                        .tooltip =
+                            "This instrument has slice markers and so is always driven by the arpeggiator."_s,
+                    });
+                break;
+            }
         }
     }
 
@@ -1984,7 +1987,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
             DoArpStepSequencer(g,
                                arp_state,
                                window_r,
-                               bval,
+                               snapshot,
                                playing,
                                g.layer_panel_states[layer_index].arp_step_sequencer_show_all);
         }
@@ -2285,7 +2288,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
             do_menu_param(col, LayerParamIndex::ArpNoteOrder, !edit.note_order);
 
         // Record button (Fixed mode only, user-controlled arp)
-        if (is_fixed && edit.mode) {
+        if (is_fixed) {
             auto const is_recording = !secondary_greyed && arp_state.recording.Load(LoadMemoryOrder::Relaxed);
             auto const text_col = secondary_greyed ? LiveColStruct(UiColMap::MidTextDimmed)
                                                    : LiveColStruct(is_recording ? UiColMap::MidTextHot
