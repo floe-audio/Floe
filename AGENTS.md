@@ -25,6 +25,7 @@ Here are some notable subdirectories, though there are plenty more.
 - `src/foundation/`: our 'standard library' with data structures and core utilities. All code depends on this. A single `#include "foundation/foundation.hpp"` includes ALL headers from the foundation.
 - `src/os/`: OS abstraction layer.
 - `src/utils/`: more specific utilities that are not necessary Floe-specific, building on OS and foundation.
+- `src/plugin/gui_framework/gui_builder.hpp`, `src/plugin/gui_framework/layout.hpp` and `src/plugin/gui_framework/gui_imgui.hpp` are the most important for understanding how to write GUI code featuring extensive documentation in the headers.
 - `src/common_infrastructure/`: Floe-specific code that's used by the plugin and also installers and other tools.
 - `src/plugin/`: the actual plugin code, including audio processing and GUI.
 - `website/`: Docusaurus website source code.
@@ -41,6 +42,14 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 - No C++ STL/standard library.
 - We write in a Zig-like style: closer to modern C than C++.
 - See `.clang-tidy`'s readability-identifier-naming section for naming conventions.
+- When working with enums use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed.
+- Keep comments to a minimum. Use them more as section markers and notes. Never explain what is evident from reading the code. Prefer renaming variables/functions to be clearer/longer rather than augmenting them with comments.
+- Where needed, use Clang/GCC 'statement expressions' to initialise a variable to a const to avoid function-wide mutability and unclear encapsulation.
+- Always use `auto` type where possible.
+- Prefer `Range` over C-style for loops: `for (auto index : Range(10))`.
+- Prefer names such as `step_index` over `i` or `j`.
+- Look for natural places to utilise pure functions, reducing the number of functions that mutate state.
+- Consider using the 'options/args/context struct' pattern along with designated initialiser syntax instead of lots of function arguments.
 
 # Github Issues
 We extensively use Github issues to track work. Use `gh` to query and manage issues. Our issues often include lots of details and design.

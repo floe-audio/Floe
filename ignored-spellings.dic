@@ -214,6 +214,7 @@ codecov
 codesigning
 color
 config
+const
 copyable
 cpp
 cppcheck
@@ -237,6 +238,7 @@ dropdown
 dropdowns
 dubstep
 enum
+enums
 expandability
 extensibility
 faq
@@ -271,9 +273,11 @@ html
 hyperfine
 iframe
 img
+imgui
 impactful
 incrementing
 ini
+initialiser
 installable
 intel
 interoperable
@@ -355,6 +359,7 @@ src
 srcset
 stacktraces
 staticData
+struct
 structs
 subdirectories
 subdirectory
