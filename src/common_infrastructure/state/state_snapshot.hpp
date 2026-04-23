@@ -10,6 +10,7 @@
 #include "common_infrastructure/tags.hpp"
 
 #include "instrument.hpp"
+#include "plugin/processing_utils/arpeggiator.hpp"
 #include "plugin/processing_utils/curve_map.hpp"
 
 struct StateMetadata {
@@ -33,28 +34,6 @@ struct InstanceConfig {
     bool reset_on_transport {true};
     Optional<u7> reset_keyswitch {}; // MIDI note that triggers a reset, or nullopt for disabled
     u8 seed {0}; // 0-99, determines what the master PRNG resets to
-};
-
-struct ArpStep {
-    bool operator==(ArpStep const&) const = default;
-
-    static constexpr f32 k_u16_max = 65535.0f;
-    f32 Velocity01() const { return (f32)velocity / k_u16_max; }
-    f32 Gate01() const { return (f32)gate / k_u16_max; }
-    static u16 From01(f32 v) { return (u16)Round(Clamp(v, 0.0f, 1.0f) * k_u16_max); }
-
-    u16 velocity {52428}; // ~0.8 of u16 max
-    u16 gate {65535}; // fraction of step duration the note plays (u16 max == 1.0)
-    bool on {true};
-    bool tie {false}; // fuse with previous step to create a larger unified step
-    s8 interval {0}; // for 'played input notes' mode
-    u7 note {60}; // for 'fixed sequence' mode
-};
-
-struct SliceArpConfig {
-    bool operator==(SliceArpConfig const&) const = default;
-    u8 start_offset {}; // First slice index to play (0 = beginning)
-    u8 loop_length {}; // Number of slices to loop (0 = all remaining after start_offset)
 };
 
 struct StateSnapshot {

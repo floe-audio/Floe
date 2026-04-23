@@ -4,18 +4,41 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-#include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
-#include "common_infrastructure/state/state_snapshot.hpp"
 
-#include "processing_utils/audio_processing_context.hpp"
-#include "processing_utils/synced_timings.hpp"
+#include "audio_processing_context.hpp"
+#include "synced_timings.hpp"
 
 struct Parameters;
 struct ChangedParams;
+struct StateSnapshot;
 
 static_assert(k_arp_max_steps <= LargestRepresentableValue<u8>());
+
+// Designed to fit in an Atomic<>.
+struct ArpStep {
+    bool operator==(ArpStep const&) const = default;
+
+    static constexpr f32 k_max = LargestRepresentableValue<u16>();
+
+    f32 Velocity01() const { return (f32)velocity / k_max; }
+    f32 Gate01() const { return (f32)gate / k_max; }
+    static u16 From01(f32 v) { return (u16)Round(Clamp(v, 0.0f, 1.0f) * k_max); }
+
+    u16 velocity {(u16)(k_max * 0.8f)};
+    u16 gate {(u16)k_max}; // fraction of step duration the note plays (u16 max == 1.0)
+    bool on {true};
+    bool tie {false}; // fuse with previous step to create a larger unified step
+    s8 interval {0}; // for 'played input notes' mode
+    u7 note {60}; // for 'fixed sequence' mode
+};
+
+struct SliceArpConfig {
+    bool operator==(SliceArpConfig const&) const = default;
+    u8 start_offset {}; // First slice index to play (0 = beginning)
+    u8 loop_length {}; // Number of slices to loop (0 = all remaining after start_offset)
+};
 
 struct ArpeggiatorState {
     Array<Atomic<ArpStep>, k_arp_max_steps> steps {};

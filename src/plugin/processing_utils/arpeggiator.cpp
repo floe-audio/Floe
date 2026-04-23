@@ -1,7 +1,9 @@
 // Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "engine/arpeggiator.hpp"
+#include "arpeggiator.hpp"
+
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "processor/param.hpp"
 

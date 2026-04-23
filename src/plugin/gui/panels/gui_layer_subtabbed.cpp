@@ -5,7 +5,6 @@
 
 #include <IconsFontAwesome6.h>
 
-#include "engine/arpeggiator.hpp"
 #include "engine/engine.hpp"
 #include "engine/engine_prefs.hpp"
 #include "engine/loop_modes.hpp"
@@ -21,6 +20,7 @@
 #include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "processing_utils/arpeggiator.hpp"
 #include "processor/granular.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"

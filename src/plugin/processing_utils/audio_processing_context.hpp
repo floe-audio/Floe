@@ -5,8 +5,8 @@
 #include "foundation/foundation.hpp"
 
 #include "clap/host.h"
-#include "processing_utils/midi.hpp"
-#include "processor/param.hpp"
+#include "plugin/processing_utils/midi.hpp"
+#include "plugin/processor/param.hpp"
 
 struct MidiNoteState {
     void NoteOn(MidiChannelNote note, f32 velocity) {

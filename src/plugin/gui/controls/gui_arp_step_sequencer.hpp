@@ -5,8 +5,8 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
-#include "engine/arpeggiator.hpp"
 #include "gui/core/gui_fwd.hpp"
+#include "processing_utils/arpeggiator.hpp"
 
 struct ArpeggiatorState;
 

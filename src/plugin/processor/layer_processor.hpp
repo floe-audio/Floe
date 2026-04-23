@@ -10,9 +10,9 @@
 
 #include "atomic_bitset.hpp"
 #include "clap/host.h"
-#include "engine/arpeggiator.hpp"
 #include "param.hpp"
 #include "processing_utils/adsr.hpp"
+#include "processing_utils/arpeggiator.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/curve_map.hpp"
 #include "processing_utils/filters.hpp"
