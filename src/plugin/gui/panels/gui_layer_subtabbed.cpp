@@ -1909,7 +1909,17 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer_proc = g.engine.processor.layer_processors[layer_index];
     auto& arp_state = layer_proc.arp_state;
 
-    auto const snapshot = CreateArpGuiSnapshot(params, layer_index, arp_state, layer_proc.instrument);
+    auto const slices = ({
+        Span<sample_lib::Region::Slice const> s {};
+        if (auto sm = layer_proc.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
+            if (*sm) {
+                if ((*sm)->instrument.category == sample_lib::SamplerCategory::Sliced)
+                    s = (*sm)->instrument.regions[0].slices;
+            }
+        }
+        s;
+    });
+    auto const snapshot = CreateArpGuiSnapshot(params, layer_index, arp_state, slices);
     auto const& edit = snapshot.edit;
     bool const is_fixed = snapshot.type == param_values::ArpMode::Fixed;
     bool const is_sliced = snapshot.activation == ArpGuiSnapshot::Activation::ForcedBySlicing;

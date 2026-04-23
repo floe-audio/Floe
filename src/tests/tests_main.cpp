@@ -12,6 +12,7 @@
 #define TEST_REGISTER_FUNCTIONS                                                                              \
     X(RegisterAlgorithmTests)                                                                                \
     X(RegisterAllocatorTests)                                                                                \
+    X(RegisterArpeggiatorTests)                                                                              \
     X(RegisterAssertFTests)                                                                                  \
     X(RegisterAtomicQueueTests)                                                                              \
     X(RegisterAtomicRefListTests)                                                                            \

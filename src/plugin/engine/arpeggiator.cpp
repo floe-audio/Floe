@@ -4,44 +4,45 @@
 #include "engine/arpeggiator.hpp"
 
 #include "processor/param.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
-ArpSliceMapping
+static ArpSliceMapping
 ComputeArpSliceMapping(Span<sample_lib::Region::Slice const> slices, u8 start_offset, u8 loop_length) {
     if (!slices.size) return {};
 
     auto const num_slices = (u32)slices.size;
     auto const effective_length = loop_length == 0 ? num_slices : Min((u32)loop_length, num_slices);
 
-    u32 step_idx = 0;
     ArpSliceMapping mapping {};
     for (auto const i : Range(effective_length)) {
         auto const slice_i = ((u32)start_offset + i) % num_slices;
         for (auto const _ : Range(slices[slice_i].length_proportion)) {
-            if (step_idx >= k_arp_max_steps) break;
-            mapping.step_to_slice_index[step_idx] = (u8)slice_i;
-            step_idx++;
+            if (mapping.size >= k_arp_max_steps) break;
+            dyn::Append(mapping, (u8)slice_i);
         }
     }
-    mapping.length = step_idx;
     return mapping;
+}
+
+inline ArpStep ArpStepAt(u32 i, ArpStep raw_step, Span<u8 const> slice_mapping) {
+    if (slice_mapping.size) {
+        raw_step.tie = (i > 0) && slice_mapping[i] == slice_mapping[i - 1];
+        raw_step.interval = 0;
+        raw_step.note = 0;
+    }
+    return raw_step;
+}
+
+ArpStep ArpGuiSnapshot::StepAt(u32 i) const {
+    ASSERT(g_is_logical_main_thread);
+
+    return ArpStepAt(i, user_steps[i], slice_mapping);
 }
 
 ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
                                     u8 layer_index,
                                     ArpeggiatorState const& arp,
-                                    Instrument const& inst) {
-    // Detect slice mode from the loaded instrument (main thread view).
-    auto const slices = ({
-        Span<sample_lib::Region::Slice const> s {};
-        if (auto sm = inst.TryGetFromTag<InstrumentType::Sampler>()) {
-            if (*sm) {
-                if ((*sm)->instrument.category == sample_lib::SamplerCategory::Sliced)
-                    s = (*sm)->instrument.regions[0].slices;
-            }
-        }
-        s;
-    });
+                                    Span<sample_lib::Region::Slice const> slices) {
+    ASSERT(g_is_logical_main_thread);
 
     auto const param_note_order =
         params.IntValue<param_values::ArpNoteOrder>(layer_index, LayerParamIndex::ArpNoteOrder);
@@ -58,16 +59,15 @@ ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
     if (slices.size) {
         auto const start_offset = arp.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
         auto const loop_length = arp.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
-        auto mapping = ComputeArpSliceMapping(slices, start_offset, loop_length);
+        auto const mapping = ComputeArpSliceMapping(slices, start_offset, loop_length);
         return {
             .activation = ArpGuiSnapshot::Activation::ForcedBySlicing,
             .on = true,
             .type = param_values::ArpMode::Played,
             .note_order = param_note_order, // User-selectable even in slice mode
-            .length = mapping.length,
+            .length = (u32)mapping.size,
             .user_steps = snapshot,
-            .step_to_slice_index = mapping.step_to_slice_index,
-            .slice_index_length = mapping.length,
+            .slice_mapping = mapping,
             .edit =
                 {
                     .length = false,
@@ -95,8 +95,7 @@ ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
         .note_order = param_note_order,
         .length = param_length,
         .user_steps = snapshot,
-        .step_to_slice_index = {},
-        .slice_index_length = 0,
+        .slice_mapping = {},
         .edit =
             {
                 .length = all_editable,
@@ -111,20 +110,24 @@ ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
     };
 }
 
+void ArpApplyNewState(ArpeggiatorState& arp, StateSnapshot const& state, u8 layer_index) {
+    ASSERT(g_is_logical_main_thread);
+
+    for (auto const step_index : Range(k_arp_max_steps))
+        arp.steps[step_index].Store(state.arp_steps[layer_index][step_index], StoreMemoryOrder::Relaxed);
+
+    auto const& slice_config = state.slice_arp_configs[layer_index];
+    arp.slice_start_offset.Store(slice_config.start_offset, StoreMemoryOrder::Relaxed);
+    arp.slice_loop_length.Store(slice_config.loop_length, StoreMemoryOrder::Relaxed);
+}
+
 // Audio-thread functions
 // =========================================================================================================
 
-static Span<sample_lib::Region::Slice const> ArpSlices(InstrumentUnwrapped const& inst) {
-    if (auto p = inst.TryGet<sample_lib::LoadedInstrument const*>()) {
-        auto const& i = **p;
-        if (i.instrument.category == sample_lib::SamplerCategory::Sliced)
-            return i.instrument.regions[0].slices;
-    }
-    return {};
-}
-
-bool ArpIsOn(param_values::ArpMode mode, InstrumentUnwrapped const& inst) {
-    return mode != param_values::ArpMode::Off || ArpSlices(inst).size;
+bool ArpIsOn(param_values::ArpMode mode, sample_lib::Region const* sliced_region) {
+    ASSERT_HOT(!sliced_region ||
+               (sliced_region->slices.size && sliced_region->loop_beats && sliced_region->native_bpm > 0));
+    return mode != param_values::ArpMode::Off || sliced_region;
 }
 
 u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context) {
@@ -133,28 +136,10 @@ u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context) {
 }
 
 void ResetArpAudioPlayback(ArpeggiatorState& arp) {
-    arp.audio.octave_polyrate_playheads = {};
+    arp.audio.playheads = {};
     arp.audio.any_notes_held = false;
     arp.audio.prev_active_octaves = {};
     arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
-}
-
-Optional<SyncedTimes> AutoSyncedTimeForLayer(InstrumentUnwrapped const& inst,
-                                             AudioProcessingContext const& context) {
-    auto const* inst_ptr = inst.TryGet<sample_lib::LoadedInstrument const*>();
-    if (!inst_ptr || !*inst_ptr) return k_nullopt;
-    auto const& regions = (*inst_ptr)->instrument.regions;
-    if (regions.size != 1) return k_nullopt;
-    auto const& region = regions[0];
-    if (!region.slices.size || !region.loop_beats || region.native_bpm <= 0) return k_nullopt;
-
-    u32 total_prop = 0;
-    for (auto const& s : region.slices)
-        total_prop += s.length_proportion;
-    if (!total_prop) return k_nullopt;
-
-    auto const native_step_ms = ((f64)region.loop_beats * 60000.0 / (f64)region.native_bpm) / (f64)total_prop;
-    return LargestSyncedTimeWithinTarget(native_step_ms, context.tempo, SyncedTimesType::Straight);
 }
 
 static void EmitReleaseNotes(Array<Bitset<128>, 16>& notes, ArpNoteCommands& out_commands) {
@@ -162,11 +147,13 @@ static void EmitReleaseNotes(Array<Bitset<128>, 16>& notes, ArpNoteCommands& out
         notes[chan].ForEachSetBit([&](usize bit) {
             dyn::Append(out_commands,
                         ArpNoteCommand {
-                            .type = ArpNoteCommand::Type::NoteOff,
-                            .note = {.note = (u7)bit, .channel = (u4)chan},
-                            .velocity = 0,
-                            .offset = 0,
-                            .slice = k_nullopt,
+                            {
+                                .velocity = 0,
+                                .offset = 0,
+                                .note = {.note = (u7)bit, .channel = (u4)chan},
+                                .type = NoteEvent::Type::Off,
+                            },
+                            k_nullopt,
                         });
         });
     notes = {};
@@ -190,19 +177,20 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
     auto& head = args.playhead;
     if (head.one_shot_finished) return;
 
-    ArpSliceMapping slice_mapping {};
-    if (args.slices.size) {
-        auto const start_offset = arp.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
-        auto const loop_length = arp.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
-        slice_mapping = ComputeArpSliceMapping(args.slices, start_offset, loop_length);
-    }
+    auto const slice_mapping = ({
+        ArpSliceMapping m {};
+        if (args.slices.size) {
+            auto const start_offset = arp.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
+            auto const loop_length = arp.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
+            m = ComputeArpSliceMapping(args.slices, start_offset, loop_length);
+        }
+        m;
+    });
 
-    auto const length = slice_mapping.length ? slice_mapping.length : arp.audio.length;
+    auto const length = slice_mapping.size ? (u32)slice_mapping.size : arp.audio.length;
 
     auto const step_at = [&](u32 step_index) {
-        return ArpStepAt(step_index,
-                         arp.steps[step_index].Load(LoadMemoryOrder::Relaxed),
-                         slice_mapping.AsSpan());
+        return ArpStepAt(step_index, arp.steps[step_index].Load(LoadMemoryOrder::Relaxed), slice_mapping);
     };
 
     auto const step = step_at(head.current_step % length);
@@ -210,12 +198,13 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
     auto const advance_step = [&]() {
         if (args.publish_gui_step)
             arp.current_step_for_gui.Store(head.current_step, StoreMemoryOrder::Relaxed);
-        auto const next = head.current_step + 1;
+        auto const next = (u32)head.current_step + 1;
         if (arp.audio.one_shot && next >= length) {
             head.one_shot_finished = true;
             return;
         }
-        head.current_step = next % length;
+        head.current_step = (u8)(next % length);
+        ASSERT_HOT(head.current_step < k_arp_max_steps);
         if (head.current_step == 0) head.note_index = 0;
     };
 
@@ -242,7 +231,7 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
     auto const slice = ({
         Optional<SliceRange> s {};
         if (args.slices.size) {
-            auto const slice_idx = slice_mapping.step_to_slice_index[head.current_step % length];
+            auto const slice_idx = slice_mapping[head.current_step % length];
             s = SliceRange {
                 .start_frame = args.slices[slice_idx].start_frame,
                 .end_frame = (slice_idx + 1 < args.slices.size)
@@ -264,29 +253,33 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
     };
 
     auto const emit_note_on = [&](MidiChannelNote note, f32 velocity) {
-        dyn::Append(
-            out_commands,
-            ArpNoteCommand {
-                .type = ArpNoteCommand::Type::NoteOn,
-                .note = note,
-                .velocity = velocity,
-                .offset = args.frame_offset + ({
-                              u32 humanise_delay = 0;
-                              if (arp.audio.humanise > 0) {
-                                  constexpr f32 k_max_ms = 80;
-                                  constexpr f32 k_max_fraction_of_rate = 0.2f;
-                                  auto const max_delay_frames =
-                                      args.context.sample_rate * (k_max_ms / 1000.0f);
-                                  auto const max_delay_humanise_param =
-                                      (f32)head.frames_per_step * k_max_fraction_of_rate * arp.audio.humanise;
-                                  auto const max_delay = (u32)Min(max_delay_frames, max_delay_humanise_param);
-                                  if (max_delay)
-                                      humanise_delay = RandomIntInRange<u32>(args.random_seed, 0, max_delay);
-                              }
-                              humanise_delay;
-                          }),
-                .slice = slice,
-            });
+        dyn::Append(out_commands,
+                    ArpNoteCommand {
+                        {
+                            .velocity = velocity,
+                            .offset = args.frame_offset + ({
+                                          u32 humanise_delay = 0;
+                                          if (arp.audio.humanise > 0) {
+                                              constexpr f32 k_max_ms = 80;
+                                              constexpr f32 k_max_fraction_of_rate = 0.2f;
+                                              auto const max_delay_frames =
+                                                  args.context.sample_rate * (k_max_ms / 1000.0f);
+                                              auto const max_delay_humanise_param =
+                                                  (f32)head.frames_per_step * k_max_fraction_of_rate *
+                                                  arp.audio.humanise;
+                                              auto const max_delay =
+                                                  (u32)Min(max_delay_frames, max_delay_humanise_param);
+                                              if (max_delay)
+                                                  humanise_delay =
+                                                      RandomIntInRange<u32>(args.random_seed, 0, max_delay);
+                                          }
+                                          humanise_delay;
+                                      }),
+                            .note = note,
+                            .type = NoteEvent::Type::On,
+                        },
+                        slice,
+                    });
         head.last_triggered_notes[note.channel].Set(note.note);
     };
 
@@ -352,10 +345,10 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
                 }
                 case param_values::ArpNoteOrder::RandomNoRepeat: {
                     if (num_notes > 1) {
-                        u32 idx;
+                        u8 idx;
                         auto attempts = 0;
                         do {
-                            idx = RandomIntInRange<u32>(args.random_seed, 0, num_notes - 1);
+                            idx = RandomIntInRange<u8>(args.random_seed, 0, (u8)(num_notes - 1));
                         } while (idx == head.last_random_note_index && ++attempts < 3);
                         head.last_random_note_index = idx;
                         trigger_note(idx);
@@ -453,7 +446,7 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
     advance_step();
 }
 
-struct ArpSharedBlockData {
+struct ArpProcessBlockData {
     DynamicArrayBounded<MidiChannelNote, 128 * 16> held_notes;
     Span<sample_lib::Region::Slice const> slices;
     param_values::ArpMode effective_type;
@@ -483,7 +476,7 @@ static u32 OctavePolyrateFramesPerStep(u32 base_frames_per_step, u32 octave_inde
 static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
                                     AudioProcessingContext const& context,
                                     u64& random_seed,
-                                    ArpSharedBlockData const& block,
+                                    ArpProcessBlockData const& block,
                                     u32 num_frames,
                                     ArpNoteCommands& out_commands) {
     // Determine which octaves have held notes.
@@ -499,8 +492,7 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
     auto const base_frames = ArpFramesPerStep(arp.audio.rate, context);
     auto const ratio = OctavePolyrateRatio(arp.audio.octave_polyrate);
     for (auto const oct : Range(ArpeggiatorState::k_octave_polyrate_num_playheads))
-        arp.audio.octave_polyrate_playheads[oct].frames_per_step =
-            OctavePolyrateFramesPerStep(base_frames, oct, ratio);
+        arp.audio.playheads[oct].frames_per_step = OctavePolyrateFramesPerStep(base_frames, oct, ratio);
 
     // In Free mode, sync newly-active octaves to existing playback position so they join in phase.
     if (arp.audio.trigger_mode == param_values::ArpTriggerMode::Free) {
@@ -517,7 +509,7 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
             });
 
             if (ref_oct) {
-                auto const& ref = arp.audio.octave_polyrate_playheads[*ref_oct];
+                auto const& ref = arp.audio.playheads[*ref_oct];
                 auto const length = ({
                     u32 l = arp.audio.length;
                     if (block.slices.size) {
@@ -532,8 +524,9 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
                     ((u64)ref.current_step * ref.frames_per_step) + ref.frames_into_current_step;
 
                 newly_active.ForEachSetBit([&](usize oct) {
-                    auto& head = arp.audio.octave_polyrate_playheads[oct];
-                    head.current_step = (u32)((frames_elapsed / head.frames_per_step) % length);
+                    auto& head = arp.audio.playheads[oct];
+                    head.current_step = (u8)((frames_elapsed / head.frames_per_step) % length);
+                    ASSERT_HOT(head.current_step < k_arp_max_steps);
                     auto const remainder = (u32)(frames_elapsed % head.frames_per_step);
                     head.frames_into_current_step = remainder;
                     head.frames_until_next_step = head.frames_per_step - remainder;
@@ -543,10 +536,18 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
     }
     arp.audio.prev_active_octaves = active_octaves;
 
+    // In one-shot polyrate mode, all octaves keep looping until the slowest (lowest) octave
+    // completes, then everything stops together.
+    auto const slowest_active_oct = ({
+        Optional<u32> s {};
+        if (arp.audio.one_shot) s = (u32)active_octaves.FirstSetBit();
+        s;
+    });
+
     for (auto const frame_index : Range(num_frames)) {
         for (auto const oct : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
             if (!active_octaves.Get(oct)) continue;
-            auto& head = arp.audio.octave_polyrate_playheads[oct];
+            auto& head = arp.audio.playheads[oct];
 
             if (!head.one_shot_finished && head.frames_until_next_step == 0) {
                 auto const oct_notes = ({
@@ -573,6 +574,12 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
                                },
                                out_commands);
 
+                if (slowest_active_oct && head.one_shot_finished && oct != *slowest_active_oct) {
+                    head.one_shot_finished = false;
+                    head.current_step = 0;
+                    head.note_index = 0;
+                }
+
                 head.frames_until_next_step = head.frames_per_step;
                 head.frames_into_current_step = 0;
             }
@@ -584,6 +591,17 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
                     arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
             }
 
+            if (slowest_active_oct && oct == *slowest_active_oct && head.one_shot_finished &&
+                head.gate_off_frame == 0) {
+                for (auto const o : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
+                    if (o == oct || !active_octaves.Get(o)) continue;
+                    EmitReleaseNotes(arp.audio.playheads[o].last_triggered_notes, out_commands);
+                    arp.audio.playheads[o].one_shot_finished = true;
+                    arp.audio.playheads[o].gate_off_frame = 0;
+                }
+                return;
+            }
+
             --head.frames_until_next_step;
             ++head.frames_into_current_step;
         }
@@ -593,7 +611,7 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
 static void ArpProcessBlockRegular(ArpeggiatorState& arp,
                                    AudioProcessingContext const& context,
                                    u64& random_seed,
-                                   ArpSharedBlockData const& block,
+                                   ArpProcessBlockData const& block,
                                    u32 num_frames,
                                    ArpNoteCommands& out_commands) {
     auto& playhead = arp.audio.playhead;
@@ -630,16 +648,16 @@ static void ArpProcessBlockRegular(ArpeggiatorState& arp,
 
 void ArpProcessBlock(ArpeggiatorState& arp,
                      AudioProcessingContext const& context,
-                     InstrumentUnwrapped const& inst,
+                     sample_lib::Region const* sliced_region,
                      u64& random_seed,
                      u32 num_frames,
                      ArpNoteCommands& out_commands) {
-    if (!ArpIsOn(arp.audio.type, inst)) return;
+    if (!ArpIsOn(arp.audio.type, sliced_region)) return;
     if (!arp.audio.any_notes_held) return;
     if (num_frames == 0) return;
 
     auto const block = ({
-        ArpSharedBlockData b {};
+        ArpProcessBlockData b {};
         for (auto const chan : Range<u8>(16)) {
             auto const held = context.midi_note_state.NotesHeldIncludingSustained((u4)chan);
             held.ForEachSetBit([&](usize bit) {
@@ -647,7 +665,7 @@ void ArpProcessBlock(ArpeggiatorState& arp,
             });
         }
         Sort(b.held_notes, [](auto const& a, auto const& b) { return a.note < b.note; });
-        b.slices = ArpSlices(inst);
+        if (sliced_region) b.slices = sliced_region->slices;
         b.effective_type = b.slices.size ? param_values::ArpMode::Played : arp.audio.type;
         b;
     });
@@ -657,3 +675,299 @@ void ArpProcessBlock(ArpeggiatorState& arp,
     else
         ArpProcessBlockPolyrate(arp, context, random_seed, block, num_frames, out_commands);
 }
+
+static SyncedTimes AutoSyncedTimeForSlicedRegion(sample_lib::Region const& sliced_region,
+                                                 AudioProcessingContext const& context) {
+    u32 total_prop = 0;
+    for (auto const& s : sliced_region.slices)
+        total_prop += s.length_proportion;
+
+    ASSERT_HOT(total_prop);
+    ASSERT_HOT(sliced_region.loop_beats);
+    ASSERT_HOT(sliced_region.native_bpm > 0);
+
+    auto const native_step_ms =
+        ((f64)sliced_region.loop_beats * 60000.0 / (f64)sliced_region.native_bpm) / (f64)total_prop;
+
+    return LargestSyncedTimeWithinTarget(native_step_ms, context.tempo, SyncedTimesType::Straight);
+}
+
+static void ArpUpdateRate(ArpeggiatorState& arp,
+                          sample_lib::Region const* sliced_region,
+                          AudioProcessingContext const& context) {
+    arp.audio.rate = arp.audio.user_rate;
+
+    if (sliced_region && arp.audio.auto_rate)
+        arp.audio.rate = AutoSyncedTimeForSlicedRegion(*sliced_region, context);
+
+    arp.resolved_rate_for_gui.Store(arp.audio.rate, StoreMemoryOrder::Relaxed);
+}
+
+void ArpHandleInstrumentChange(ArpeggiatorState& arp,
+                               ArpInstrumentChangeArgs const& args,
+                               ArpNoteCommands& out_commands) {
+    arp.slice_start_offset.Store(0, StoreMemoryOrder::Relaxed);
+    arp.slice_loop_length.Store(0, StoreMemoryOrder::Relaxed);
+
+    auto const was_on = ArpIsOn(arp.audio.type, args.old_sliced_region);
+    auto const now_on = ArpIsOn(arp.audio.type, args.new_sliced_region);
+
+    arp.on_for_gui.Store(now_on, StoreMemoryOrder::Relaxed);
+
+    if (arp.audio.auto_rate) ArpUpdateRate(arp, args.new_sliced_region, args.context);
+
+    if (!now_on && was_on) {
+        EmitReleaseNotes(arp.audio.playhead.last_triggered_notes, out_commands);
+        ResetArpAudioPlayback(arp);
+    } else if (now_on) {
+        arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+    }
+}
+
+ArpNoteHandling
+ArpOnBlockChanges(ArpeggiatorState& arp, ArpBlockChangesArgs const& args, ArpNoteCommands& out_commands) {
+    // Update params.
+    // =======================================================================================================
+    bool rate_changed = false;
+
+    if (auto const p =
+            args.changed_params.IntValue<param_values::ArpMode>(args.layer_index, LayerParamIndex::ArpMode)) {
+        if (*p != arp.audio.type) {
+            bool const on_before = ArpIsOn(arp.audio.type, args.sliced_region);
+            arp.audio.type = *p;
+            bool const on_after = ArpIsOn(arp.audio.type, args.sliced_region);
+            if (on_before != on_after) {
+                arp.on_for_gui.Store(on_after, StoreMemoryOrder::Relaxed);
+                if (on_after) {
+                    arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+                } else {
+                    EmitReleaseNotes(arp.audio.playhead.last_triggered_notes, out_commands);
+                    ResetArpAudioPlayback(arp);
+                }
+            }
+        }
+    }
+
+    if (auto const p =
+            args.changed_params.IntValue<param_values::ArpNoteOrder>(args.layer_index,
+                                                                     LayerParamIndex::ArpNoteOrder))
+        arp.audio.note_order = *p;
+
+    if (auto const p = args.changed_params.IntValue<param_values::ArpOctavePolyrate>(
+            args.layer_index,
+            LayerParamIndex::ArpOctavePolyrate)) {
+        bool const was_on = arp.audio.octave_polyrate != param_values::ArpOctavePolyrate::Off;
+        bool const now_on = *p != param_values::ArpOctavePolyrate::Off;
+        if (was_on != now_on) {
+            for (auto& head : arp.audio.playheads)
+                EmitReleaseNotes(head.last_triggered_notes, out_commands);
+            arp.audio.playheads = {};
+            arp.audio.prev_active_octaves = {};
+            arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+        }
+        arp.audio.octave_polyrate = *p;
+    }
+
+    if (auto const p = args.changed_params.IntValue<u32>(args.layer_index, LayerParamIndex::ArpLength))
+        arp.audio.length = Clamp(*p, 1u, (u32)k_arp_max_steps);
+
+    if (auto const p =
+            args.changed_params.IntValue<param_values::ArpTriggerMode>(args.layer_index,
+                                                                       LayerParamIndex::ArpTriggerMode))
+        arp.audio.trigger_mode = *p;
+
+    if (auto const p = args.changed_params.IntValue<param_values::ArpSyncedRate>(args.layer_index,
+                                                                                 LayerParamIndex::ArpRate)) {
+        arp.audio.user_rate = SyncedTimesFromParam(*p);
+        rate_changed = true;
+    }
+
+    if (auto const p = args.changed_params.BoolValue(args.layer_index, LayerParamIndex::ArpAutoRate)) {
+        if (*p != arp.audio.auto_rate) {
+            arp.audio.auto_rate = *p;
+            rate_changed = true;
+        }
+    }
+
+    if (auto const p = args.changed_params.BoolValue(args.layer_index, LayerParamIndex::ArpOneShot))
+        arp.audio.one_shot = *p;
+
+    if (auto const p = args.changed_params.ProjectedValue(args.layer_index, LayerParamIndex::ArpHumanise))
+        arp.audio.humanise = *p;
+
+    if (rate_changed || args.tempo_changed) {
+        ArpUpdateRate(arp, args.sliced_region, args.context);
+        arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+    }
+
+    // Recording.
+    // =======================================================================================================
+    {
+        bool const recording_now = arp.recording.Load(LoadMemoryOrder::Relaxed);
+        if (recording_now && !arp.audio.was_recording_last_block) {
+            arp.audio.playhead.current_step = 0;
+            arp.audio.playhead.note_index = 0;
+            arp.audio.playhead.one_shot_finished = false;
+            arp.current_step_for_gui.Store(0, StoreMemoryOrder::Relaxed);
+        }
+        arp.audio.was_recording_last_block = recording_now;
+    }
+
+    bool const is_recording = arp.recording.Load(LoadMemoryOrder::Relaxed);
+
+    auto const handling = (ArpIsOn(arp.audio.type, args.sliced_region) && !is_recording)
+                              ? ArpNoteHandling::ArpHandlesNotes
+                              : ArpNoteHandling::LayerHandlesNotes;
+
+    // Record notes into steps (notes still play normally via the layer).
+    if (is_recording) {
+        for (auto const& note : args.note_events) {
+            if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != args.layer_index) continue;
+            if (note.type != NoteEvent::Type::On) continue;
+            if (arp.audio.playhead.current_step >= arp.audio.length) continue;
+
+            auto& rec_step = arp.audio.playhead.current_step;
+            auto s = arp.steps[rec_step].Load(LoadMemoryOrder::Relaxed);
+            s.note = note.note.note;
+            arp.steps[rec_step].Store(s, StoreMemoryOrder::Relaxed);
+
+            do {
+                rec_step++;
+            } while (rec_step < arp.audio.length && arp.steps[rec_step].Load(LoadMemoryOrder::Relaxed).tie);
+
+            if (rec_step >= arp.audio.length) {
+                arp.recording.Store(false, StoreMemoryOrder::Relaxed);
+                arp.audio.was_recording_last_block = false;
+                arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+            } else {
+                arp.current_step_for_gui.Store(rec_step, StoreMemoryOrder::Relaxed);
+            }
+        }
+    }
+
+    if (handling == ArpNoteHandling::ArpHandlesNotes) {
+        bool const was_held = arp.audio.any_notes_held;
+
+        arp.audio.any_notes_held = ({
+            bool b = false;
+            for (auto const chan : Range<u8>(16))
+                if (args.context.midi_note_state.NotesHeldIncludingSustained((u4)chan).AnyValuesSet()) {
+                    b = true;
+                    break;
+                }
+            b;
+        });
+
+        for (auto const& note : args.note_events) {
+            if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != args.layer_index) continue;
+
+            if (note.type == NoteEvent::Type::On &&
+                arp.audio.trigger_mode == param_values::ArpTriggerMode::Retrigger) {
+                for (auto& head : arp.audio.playheads) {
+                    EmitReleaseNotes(head.last_triggered_notes, out_commands);
+                    head.frames_until_next_step = 0;
+                    head.current_step = 0;
+                    head.note_index = 0;
+                    head.one_shot_finished = false;
+                }
+            }
+        }
+
+        if (!was_held && arp.audio.any_notes_held)
+            for (auto& head : arp.audio.playheads) {
+                head.frames_until_next_step = 0;
+                head.one_shot_finished = false;
+            }
+
+        if (was_held && !arp.audio.any_notes_held) {
+            for (auto& head : arp.audio.playheads) {
+                EmitReleaseNotes(head.last_triggered_notes, out_commands);
+                head.current_step = 0;
+                head.note_index = 0;
+                head.one_shot_finished = false;
+            }
+            arp.audio.prev_active_octaves = {};
+            arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+        }
+    }
+
+    return handling;
+}
+
+// Tests
+// =============================================================================================================
+
+#include "tests/framework.hpp"
+
+static clap_host_t const k_test_host {
+    .clap_version = CLAP_VERSION,
+    .host_data = nullptr,
+    .name = "Test",
+    .vendor = "Test",
+    .url = "",
+    .version = "1",
+    .get_extension = [](clap_host_t const*, char const*) -> void const* { return nullptr; },
+    .request_restart = [](clap_host_t const*) {},
+    .request_process = [](clap_host_t const*) {},
+    .request_callback = [](clap_host_t const*) {},
+};
+
+TEST_CASE(TestArpOneShotPolyrateWaitsForSlowest) {
+    sample_lib::Region const* const no_sliced_region = nullptr;
+
+    ArpeggiatorState arp {.audio {
+        .any_notes_held = true,
+        .type = param_values::ArpMode::Played,
+        .note_order = param_values::ArpNoteOrder::Up,
+        .octave_polyrate = param_values::ArpOctavePolyrate::Double,
+        .rate = SyncedTimes::_1_4,
+        .one_shot = true,
+        .length = 2,
+    }};
+
+    AudioProcessingContext context {
+        .sample_rate = 44100,
+        .process_block_size_max = 512,
+        .tempo = 120,
+        .host = k_test_host,
+    };
+
+    // Hold C3 (MIDI 60, octave 5 = base) and C4 (MIDI 72, octave 6 = 2x speed).
+    context.midi_note_state.NoteOn({.note = 60, .channel = 0}, 0.8f);
+    context.midi_note_state.NoteOn({.note = 72, .channel = 0}, 0.8f);
+
+    auto const base_step_frames = ArpFramesPerStep(arp.audio.rate, context);
+    // Octave 5 = base, octave 6 = base/2 (Double ratio means higher octaves are faster).
+    auto const oct5_step_frames = OctavePolyrateFramesPerStep(base_step_frames, 5, 2.0f);
+    auto const oct6_step_frames = OctavePolyrateFramesPerStep(base_step_frames, 6, 2.0f);
+    REQUIRE_EQ(oct5_step_frames, base_step_frames);
+    REQUIRE_EQ(oct6_step_frames, base_step_frames / 2);
+
+    // Step 0 fires at frame 0, step 1 (the last) fires at frame fps. So oct6 fires its last step
+    // at frame oct6_step_frames and oct5 fires its last step at frame oct5_step_frames.
+    REQUIRE(oct6_step_frames < oct5_step_frames);
+
+    u64 random_seed = 1;
+    ArpNoteCommands commands {};
+
+    // Process to a point after octave 6's last step but before octave 5's last step.
+    auto const mid_point = oct6_step_frames + ((oct5_step_frames - oct6_step_frames) / 2);
+    ArpProcessBlock(arp, context, no_sliced_region, random_seed, mid_point, commands);
+
+    // Octave 6 should NOT be finished - it should keep looping until the slowest (octave 5) is done.
+    REQUIRE(!arp.audio.playheads[6].one_shot_finished);
+    REQUIRE(!arp.audio.playheads[5].one_shot_finished);
+
+    // Process well past when octave 5's gate-off fires (last step at oct5_step_frames + gate duration of
+    // oct5_step_frames). The stop-all triggers when the slowest octave's gate-off completes.
+    commands = {};
+    ArpProcessBlock(arp, context, no_sliced_region, random_seed, (oct5_step_frames * 2) + 1, commands);
+
+    // Now all playheads should be finished.
+    REQUIRE(arp.audio.playheads[5].one_shot_finished);
+    REQUIRE(arp.audio.playheads[6].one_shot_finished);
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterArpeggiatorTests) { REGISTER_TEST(TestArpOneShotPolyrateWaitsForSlowest); }

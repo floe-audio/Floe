@@ -50,6 +50,7 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 - Prefer names such as `step_index` over `i` or `j`.
 - Look for natural places to utilise pure functions, reducing the number of functions that mutate state.
 - Consider using the 'options/args/context struct' pattern along with designated initialiser syntax instead of lots of function arguments.
+- Liberally use ASSERT macros (or ASSERT_HOT if the codepath is known to be hot).
 
 # Github Issues
 We extensively use Github issues to track work. Use `gh` to query and manage issues. Our issues often include lots of details and design.

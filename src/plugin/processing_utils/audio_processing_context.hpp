@@ -67,9 +67,12 @@ struct NoteEvent {
     s8 exclusively_for_layer = -1;
 };
 
+// IMPROVE: it would be nice to not have this limitation even though rare.
+constexpr usize k_max_note_events = 100;
+
 struct ProcessBlockChanges {
     ChangedParams changed_params;
     bool tempo_changed;
     Bitset<16> pitchwheel_changed;
-    DynamicArrayBounded<NoteEvent, 100> note_events;
+    DynamicArrayBounded<NoteEvent, k_max_note_events> note_events;
 };

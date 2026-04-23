@@ -6,21 +6,22 @@
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
-#include "common_infrastructure/state/instrument.hpp"
+#include "common_infrastructure/sample_library/sample_library.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "processing_utils/audio_processing_context.hpp"
-#include "processing_utils/midi.hpp"
 #include "processing_utils/synced_timings.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 struct Parameters;
+struct ChangedParams;
+
+static_assert(k_arp_max_steps <= LargestRepresentableValue<u8>());
 
 struct ArpeggiatorState {
     Array<Atomic<ArpStep>, k_arp_max_steps> steps {};
 
     // k_arp_max_steps means not playing/recording.
-    Atomic<u32> current_step_for_gui {k_arp_max_steps};
+    Atomic<u8> current_step_for_gui {k_arp_max_steps};
 
     // Written by GUI to request recording (Fixed mode only); cleared by audio when recording finishes.
     Atomic<bool> recording {false};
@@ -37,21 +38,23 @@ struct ArpeggiatorState {
 
     struct AudioOnly {
         struct Playhead {
-            u32 current_step {};
             u32 note_index {}; // counts only steps that trigger a note (excludes tied/off steps)
             u32 frames_until_next_step {};
             u32 frames_into_current_step {};
             u32 frames_per_step {1};
             u32 gate_off_frame {};
-            bool one_shot_finished {};
             Array<Bitset<128>, 16> last_triggered_notes {};
-            u32 last_random_note_index {LargestRepresentableValue<u32>()};
+            u8 current_step {};
+            u8 last_random_note_index {LargestRepresentableValue<u8>()};
+            bool one_shot_finished {};
         };
 
+        // We have multiple playheads to support the polyrate behaviour. With this union we can conveniently
+        // access the array or just the single playhead used in 'normal' mode whilst simultaneously being able
+        // to loop through all playheads (normal or polyrate).
         union {
-            Playhead playhead; // Normal
-            Array<Playhead, k_octave_polyrate_num_playheads>
-                octave_polyrate_playheads; // For OctavePolyrate modes.
+            Playhead playhead;
+            Array<Playhead, k_octave_polyrate_num_playheads> playheads {};
         };
 
         bool any_notes_held {};
@@ -74,24 +77,7 @@ struct ArpeggiatorState {
     } audio;
 };
 
-struct ArpSliceMapping {
-    u32 length {};
-    Array<u8, k_arp_max_steps> step_to_slice_index {};
-
-    Span<u8 const> AsSpan() const { return {step_to_slice_index.data, length}; }
-};
-
-ArpSliceMapping
-ComputeArpSliceMapping(Span<sample_lib::Region::Slice const> slices, u8 start_offset, u8 loop_length);
-
-inline ArpStep ArpStepAt(u32 i, ArpStep raw_step, Span<u8 const> slice_mapping) {
-    if (slice_mapping.size) {
-        raw_step.tie = (i > 0) && slice_mapping[i] == slice_mapping[i - 1];
-        raw_step.interval = 0;
-        raw_step.note = 0;
-    }
-    return raw_step;
-}
+using ArpSliceMapping = DynamicArrayBounded<u8, k_arp_max_steps>;
 
 // Helper for the GUI to understand what needs to be shown/editable.
 struct ArpGuiSnapshot {
@@ -100,6 +86,8 @@ struct ArpGuiSnapshot {
         ForcedBySlicing, // Instrument has slice markers; arp runs in a locked slice mode
     };
 
+    ArpStep StepAt(u32 i) const;
+
     Activation activation;
     bool on;
     param_values::ArpMode type;
@@ -107,8 +95,7 @@ struct ArpGuiSnapshot {
 
     u32 length;
     Array<ArpStep, k_arp_max_steps> user_steps;
-    Array<u8, k_arp_max_steps> step_to_slice_index;
-    u32 slice_index_length;
+    ArpSliceMapping slice_mapping;
 
     struct {
         bool length;
@@ -120,16 +107,12 @@ struct ArpGuiSnapshot {
         bool step_tie;
         bool step_note;
     } edit;
-
-    ArpStep StepAt(u32 i) const {
-        return ArpStepAt(i, user_steps[i], {step_to_slice_index.data, slice_index_length});
-    }
 };
 
 ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
                                     u8 layer_index,
                                     ArpeggiatorState const& arp,
-                                    Instrument const& inst);
+                                    Span<sample_lib::Region::Slice const> slices);
 
 // Audio-thread types and functions
 // =========================================================================================================
@@ -139,30 +122,54 @@ struct SliceRange {
     Optional<u32> end_frame; // nullopt = play to end of sample
 };
 
-struct ArpNoteCommand {
-    enum class Type : u8 { NoteOn, NoteOff };
-    Type type;
-    MidiChannelNote note;
-    f32 velocity;
-    u32 offset;
+struct ArpNoteCommand : NoteEvent {
     Optional<SliceRange> slice;
 };
 
-constexpr u32 k_max_arp_commands = 200;
-using ArpNoteCommands = DynamicArrayBounded<ArpNoteCommand, k_max_arp_commands>;
+using ArpNoteCommands = DynamicArrayBounded<ArpNoteCommand, k_max_note_events>;
 
-bool ArpIsOn(param_values::ArpMode mode, InstrumentUnwrapped const& inst);
+bool ArpIsOn(param_values::ArpMode mode, sample_lib::Region const* sliced_region);
 
 u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context);
 
 void ArpProcessBlock(ArpeggiatorState& arp,
                      AudioProcessingContext const& context,
-                     InstrumentUnwrapped const& inst,
+                     sample_lib::Region const* sliced_region,
                      u64& random_seed,
                      u32 num_frames,
                      ArpNoteCommands& out_commands);
 
-Optional<SyncedTimes> AutoSyncedTimeForLayer(InstrumentUnwrapped const& inst,
-                                             AudioProcessingContext const& context);
-
 void ResetArpAudioPlayback(ArpeggiatorState& arp);
+
+void ArpApplyNewState(ArpeggiatorState& arp, StateSnapshot const& state, u8 layer_index);
+
+struct ArpInstrumentChangeArgs {
+    sample_lib::Region const* old_sliced_region;
+    sample_lib::Region const* new_sliced_region;
+    AudioProcessingContext const& context;
+};
+
+void ArpHandleInstrumentChange(ArpeggiatorState& arp,
+                               ArpInstrumentChangeArgs const& args,
+                               ArpNoteCommands& out_commands);
+
+enum class ArpNoteHandling : u8 {
+    LayerHandlesNotes,
+    ArpHandlesNotes,
+};
+
+struct ArpBlockChangesArgs {
+    ChangedParams const& changed_params;
+    u8 layer_index;
+
+    // When provided, this activates the arpeggiator's sliced playback mode, playing the slices of the region
+    // as the arpeggiator steps.
+    sample_lib::Region const* sliced_region;
+
+    AudioProcessingContext const& context;
+    bool tempo_changed;
+    Span<NoteEvent const> note_events;
+};
+
+ArpNoteHandling
+ArpOnBlockChanges(ArpeggiatorState& arp, ArpBlockChangesArgs const& args, ArpNoteCommands& out_commands);

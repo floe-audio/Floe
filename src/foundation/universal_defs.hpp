@@ -421,7 +421,7 @@ PanicIfReached(SourceLocation loc = SourceLocation::Current()) {
 
 // ================================================================================================
 template <Integral T>
-consteval T LargestRepresentableValue() {
+constexpr T LargestRepresentableValue() {
     if constexpr (SignedInt<T>)
         return (1ull << ((sizeof(T) * 8ull) - 1ull)) - 1;
     else if constexpr (UnsignedInt<T>)
@@ -432,7 +432,7 @@ consteval T LargestRepresentableValue() {
 }
 
 template <Integral T>
-consteval T SmallestRepresentableValue() {
+constexpr T SmallestRepresentableValue() {
     if constexpr (SignedInt<T>)
         return (T)(-(1ull << ((sizeof(T) * 8ull) - 1)));
     else if constexpr (UnsignedInt<T>)

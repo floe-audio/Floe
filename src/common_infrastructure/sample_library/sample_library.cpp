@@ -299,6 +299,8 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                 u32 total_proportion = 0;
                 for (auto const& slice : region.slices)
                     total_proportion += slice.length_proportion;
+                ASSERT(total_proportion);
+
                 if (total_proportion > k_arp_max_steps)
                     return String(fmt::Format(
                         scratch_arena,
@@ -380,9 +382,11 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
 
         if (inst.regions.size == 0)
             inst.category = SamplerCategory::Empty;
-        else if (inst.regions.size == 1 && inst.regions[0].slices.size)
+        else if (inst.regions.size == 1 && inst.regions[0].slices.size) {
             inst.category = SamplerCategory::Sliced;
-        else if (inst.regions.size == 1)
+            ASSERT(inst.regions[0].native_bpm > 0);
+            ASSERT(inst.regions[0].loop_beats);
+        } else if (inst.regions.size == 1)
             inst.category = SamplerCategory::SingleSample;
         else
             inst.category = SamplerCategory::Multisample;
