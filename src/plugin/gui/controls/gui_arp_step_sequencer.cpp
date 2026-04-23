@@ -36,12 +36,6 @@ void DoArpStepSequencer(GuiState& g,
     auto const& edit = snapshot.edit;
     auto const active_steps = snapshot.length;
     auto const arp_type = snapshot.type;
-    bool const is_sliced = snapshot.activation == ArpGuiSnapshot::Activation::ForcedBySlicing;
-
-    // Visibility rules: non-editable aspects are HIDDEN in slice mode (where they're irrelevant), but SHOWN
-    // greyed when the arp is simply user-off (so the user can see what's there).
-    bool const show_tie_row = edit.step_tie || !is_sliced;
-    bool const show_note_row = edit.step_note || !is_sliced;
 
     // Global "dim" for visuals. True when no step-level editing is possible (user-off or slice-mode locked).
     bool const anything_editable = edit.step_velocity || edit.step_gate || edit.step_on;
@@ -86,8 +80,8 @@ void DoArpStepSequencer(GuiState& g,
     } else {
         constexpr f32 k_row_gap = 1;
         u32 num_footer_rows = 1;
-        if (show_note_row) num_footer_rows++;
-        if (show_tie_row) num_footer_rows++;
+        if (edit.step_note) num_footer_rows++;
+        if (edit.step_tie) num_footer_rows++;
         auto const footer_rows_height = row_height * (f32)num_footer_rows;
         auto const num_gaps = num_footer_rows + 1;
         auto const footer_height =
@@ -333,9 +327,8 @@ void DoArpStepSequencer(GuiState& g,
         }
         row_y_vp += row_height + k_row_gap;
 
-        // Row: Note/interval display + drag to edit (hidden when show_note_row is false, skipped for tied
-        // steps)
-        if (show_note_row && !is_tied) {
+        // Row: Note/interval display + drag to edit
+        if (edit.step_note && !is_tied) {
             auto const note_click_rect = imgui.RegisterAndConvertRect({
                 .x = x_vp,
                 .y = row_y_vp,
@@ -349,38 +342,36 @@ void DoArpStepSequencer(GuiState& g,
                 .h = row_height - (label_pad * 2),
             });
 
-            bool note_hot = false;
-            if (edit.step_note) {
-                imgui.PushId((u64)(i + k_arp_max_steps));
-                auto const note_id = imgui.MakeId(SourceLocationHash());
+            imgui.PushId((u64)(i + k_arp_max_steps));
+            DEFER { imgui.PopId(); };
 
-                f32 frac = arp_type == param_values::ArpMode::Fixed ? (f32)step.note / 127.0f
-                                                                    : (f32)(step.interval + 48) / 96.0f;
-                if (imgui.SliderBehaviourFraction({
-                        .rect_in_window_coords = note_click_rect,
-                        .id = note_id,
-                        .fraction = frac,
-                        .default_fraction = arp_type == param_values::ArpMode::Fixed ? 60.0f / 127.0f : 0.5f,
-                        .cfg =
-                            {
-                                .sensitivity = 300,
-                                .slower_with_shift = true,
-                                .default_on_modifer = true,
-                            },
-                    })) {
-                    if (arp_type == param_values::ArpMode::Fixed)
-                        ModifyStep(arp_state, i, [frac](ArpStep& s) {
-                            s.note = (u7)Clamp((int)((frac * 127.0f) + 0.5f), 0, 127);
-                        });
-                    else
-                        ModifyStep(arp_state, i, [frac](ArpStep& s) {
-                            s.interval = (s8)Clamp((int)((frac * 96.0f) - 48.0f + 0.5f), -48, 48);
-                        });
-                }
+            auto const note_id = imgui.MakeId(SourceLocationHash());
 
-                note_hot = imgui.IsHot(note_id);
-                imgui.PopId();
+            f32 frac = arp_type == param_values::ArpMode::Fixed ? (f32)step.note / 127.0f
+                                                                : (f32)(step.interval + 48) / 96.0f;
+            if (imgui.SliderBehaviourFraction({
+                    .rect_in_window_coords = note_click_rect,
+                    .id = note_id,
+                    .fraction = frac,
+                    .default_fraction = arp_type == param_values::ArpMode::Fixed ? 60.0f / 127.0f : 0.5f,
+                    .cfg =
+                        {
+                            .sensitivity = 300,
+                            .slower_with_shift = true,
+                            .default_on_modifer = true,
+                        },
+                })) {
+                if (arp_type == param_values::ArpMode::Fixed)
+                    ModifyStep(arp_state, i, [frac](ArpStep& s) {
+                        s.note = (u7)Clamp((int)((frac * 127.0f) + 0.5f), 0, 127);
+                    });
+                else
+                    ModifyStep(arp_state, i, [frac](ArpStep& s) {
+                        s.interval = (s8)Clamp((int)((frac * 96.0f) - 48.0f + 0.5f), -48, 48);
+                    });
             }
+
+            auto note_hot = imgui.IsHot(note_id);
 
             String note_str;
             if (arp_type == param_values::ArpMode::Fixed)
@@ -403,10 +394,10 @@ void DoArpStepSequencer(GuiState& g,
                                         .font_scaling = 0.85f,
                                     });
         }
-        if (show_note_row) row_y_vp += row_height + k_row_gap;
+        if (edit.step_note) row_y_vp += row_height + k_row_gap;
 
         // Row: Tie toggle (hidden when show_tie_row is false, not on first step)
-        if (show_tie_row && i > 0) {
+        if (edit.step_tie && i > 0) {
             auto const tie_click_rect = imgui.RegisterAndConvertRect({
                 .x = x_vp,
                 .y = row_y_vp,
@@ -443,7 +434,7 @@ void DoArpStepSequencer(GuiState& g,
                                     });
             g.fonts.Pop();
         }
-        if (show_tie_row) row_y_vp += row_height + k_row_gap;
+        if (edit.step_tie) row_y_vp += row_height + k_row_gap;
 
         // Row: Gate knob (always shown, skipped for tied steps)
         if (!is_tied) {

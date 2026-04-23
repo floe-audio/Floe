@@ -34,6 +34,9 @@ struct ArpStep {
     u7 note {60}; // for 'fixed sequence' mode
 };
 
+// These 2 values are not typical audio parameters because they are not designed to be automated and we want
+// to reset/change every time the instrument change. Simpler to not involve plugin->host communication for
+// this type of value.
 struct SliceArpConfig {
     bool operator==(SliceArpConfig const&) const = default;
     u8 start_offset {}; // First slice index to play (0 = beginning)
@@ -94,8 +97,8 @@ struct ArpeggiatorState {
         u32 length {8};
         f32 humanise {};
 
-        // Used to detect a GUI-initiated recording false->true transition so audio can reset
-        // current_step itself (avoiding a cross-thread write race on it).
+        // Used to detect a GUI-initiated recording false->true transition so audio can reset current_step
+        // itself (avoiding a cross-thread write race on it).
         bool was_recording_last_block {};
     } audio;
 };
@@ -136,9 +139,6 @@ ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
                                     u8 layer_index,
                                     ArpeggiatorState const& arp,
                                     Span<sample_lib::Region::Slice const> slices);
-
-// Audio-thread types and functions
-// =========================================================================================================
 
 struct SliceRange {
     u32 start_frame;
