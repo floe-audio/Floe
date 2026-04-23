@@ -211,6 +211,7 @@ cli
 cmd
 codebase
 codecov
+codepath
 codesigning
 color
 config
@@ -377,6 +378,7 @@ timbral
 toolchain
 tooltip
 tooltips
+u8
 ub
 ul
 umami

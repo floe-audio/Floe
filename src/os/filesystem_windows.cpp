@@ -294,7 +294,7 @@ static bool CreateDirectoryWithAttributes(WCHAR* path, DWORD attributes) {
     return true;
 }
 
-static DWORD AttributesForDir(WCHAR* path, usize path_size, CreateDirectoryOptions options) {
+static DWORD AttributesForDir(WCHAR const* path, usize path_size, CreateDirectoryOptions options) {
     ASSERT(path_size);
     ASSERT(path);
     ASSERT_EQ(path[path_size], L'\0');

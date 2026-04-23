@@ -90,7 +90,8 @@ void DoArpStepSequencer(GuiState& g,
         if (show_tie_row) num_footer_rows++;
         auto const footer_rows_height = row_height * (f32)num_footer_rows;
         auto const num_gaps = num_footer_rows + 1;
-        auto const footer_height = footer_rows_height + knob_size + (label_pad * 2) + (k_row_gap * (f32)num_gaps);
+        auto const footer_height =
+            footer_rows_height + knob_size + (label_pad * 2) + (k_row_gap * (f32)num_gaps);
         bar_area_height = content_h - footer_height;
     }
 
@@ -298,10 +299,16 @@ void DoArpStepSequencer(GuiState& g,
             if (anything_editable) {
                 if (label_hot) {
                     draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextHot), 20));
-                    draw_list.AddNonAABox(label_rect.Min(), label_rect.Max(), WithAlphaU8(LiveCol(UiColMap::MidTextHot), 120), 1);
+                    draw_list.AddNonAABox(label_rect.Min(),
+                                          label_rect.Max(),
+                                          WithAlphaU8(LiveCol(UiColMap::MidTextHot), 120),
+                                          1);
                 } else if (!step_off) {
                     draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 15));
-                    draw_list.AddNonAABox(label_rect.Min(), label_rect.Max(), WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 80), 1);
+                    draw_list.AddNonAABox(label_rect.Min(),
+                                          label_rect.Max(),
+                                          WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 80),
+                                          1);
                 } else {
                     draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 10));
                 }
