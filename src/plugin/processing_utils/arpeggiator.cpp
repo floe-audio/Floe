@@ -435,7 +435,7 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
 
     // Schedule gate-off if gate < 1 and next step is not tied.
     auto const is_last_one_shot_step = arp.audio.one_shot && (head.current_step + 1) >= length;
-    auto const next_step_index = head.current_step % length;
+    auto const next_step_index = (head.current_step + 1) % length;
     auto const next_is_tied = !is_last_one_shot_step && step_at(next_step_index).tie;
     auto const gate_01 = step.Gate01();
     if (is_last_one_shot_step)
@@ -758,16 +758,14 @@ ArpOnBlockChanges(ArpeggiatorState& arp, ArpBlockChangesArgs const& args, ArpNot
     if (auto const p = args.changed_params.IntValue<param_values::ArpOctavePolyrate>(
             args.layer_index,
             LayerParamIndex::ArpOctavePolyrate)) {
-        bool const was_on = arp.audio.octave_polyrate != param_values::ArpOctavePolyrate::Off;
-        bool const now_on = *p != param_values::ArpOctavePolyrate::Off;
-        if (was_on != now_on) {
+        if (*p != arp.audio.octave_polyrate) {
             for (auto& head : arp.audio.playheads)
                 EmitReleaseNotes(head.last_triggered_notes, out_commands);
             arp.audio.playheads = {};
             arp.audio.prev_active_octaves = {};
             arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+            arp.audio.octave_polyrate = *p;
         }
-        arp.audio.octave_polyrate = *p;
     }
 
     if (auto const p = args.changed_params.IntValue<u32>(args.layer_index, LayerParamIndex::ArpLength))
