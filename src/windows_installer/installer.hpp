@@ -7,7 +7,7 @@
 
 #include "resources.h"
 
-enum class ComponentTypes : u32 {
+enum class ComponentTypes : u8 {
     Clap,
 #ifdef VST3_PLUGIN_BINARY_NAME
     VST3,

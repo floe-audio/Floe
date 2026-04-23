@@ -10,7 +10,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 struct AutosaveState {
-    enum class State { Idle, SaveRequested, Saved };
+    enum class State : u8 { Idle, SaveRequested, Saved };
     Atomic<u16> max_autosaves_per_instance {};
     Atomic<u16> autosave_delete_after_days {};
     Atomic<bool> write_experimental_params {};

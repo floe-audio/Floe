@@ -357,7 +357,7 @@ ErrorCodeOr<void> WriteWaveFile(String filename, ArenaAllocator& scratch_arena, 
     return k_success;
 }
 
-enum class StateProperties : u32 {
+enum class StateProperties : u8 {
     Ir = 1 << 0,
     Sine = 1 << 1,
     WhiteNoise = 1 << 2,

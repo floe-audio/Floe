@@ -9,7 +9,7 @@
 // Waveform
 // ================================================================================================
 
-enum class WaveformType : u32 {
+enum class WaveformType : u8 {
     Sine,
     WhiteNoiseMono,
     WhiteNoiseStereo,
@@ -26,7 +26,7 @@ static_assert(k_waveform_type_names.size == ToInt(WaveformType::Count));
 // Instrument
 // ================================================================================================
 
-enum class InstrumentType : u32 {
+enum class InstrumentType : u8 {
     None,
     WaveformSynth,
     Sampler,

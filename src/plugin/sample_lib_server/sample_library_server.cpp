@@ -596,7 +596,7 @@ static void CancelLoadingAudioForInstrumentIfPossible(ListedInstrument const* i,
 }
 
 struct PendingResource {
-    enum class State {
+    enum class State : u8 {
         AwaitingLibrary,
         AwaitingAudio,
         Cancelled,

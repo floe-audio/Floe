@@ -88,7 +88,7 @@ TEST_CASE(TestParseCommandLineArgs) {
     }
 
     SUBCASE("parsing") {
-        enum class ArgId {
+        enum class ArgId : u8 {
             A,
             B,
             C,

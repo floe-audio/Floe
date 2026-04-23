@@ -6,7 +6,7 @@
 
 struct Allocator;
 
-enum class CloneType {
+enum class CloneType : u8 {
     // NOTE: if the object is a Span of a fundamental type then Shallow or Deep will do the same thing.
 
     // Only clones the top-level object, not its children.

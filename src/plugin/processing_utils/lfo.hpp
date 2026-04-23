@@ -6,7 +6,7 @@
 #include "foundation/foundation.hpp"
 
 struct LFO {
-    enum class Waveform { None, Sine, Triangle, Sawtooth, Square, RandomSteps, RandomGlide };
+    enum class Waveform : u8 { None, Sine, Triangle, Sawtooth, Square, RandomSteps, RandomGlide };
 
     // Scalar xorshift32 (Marsaglia 2003) on random_state. Returns a value in [-1, 1].
     f32 NextRandomBipolar() {

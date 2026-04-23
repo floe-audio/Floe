@@ -548,7 +548,7 @@ void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannel
 }
 
 struct VoiceProcessor {
-    enum class VoiceBlockResult {
+    enum class VoiceBlockResult : u8 {
         Continue,
         End,
     };

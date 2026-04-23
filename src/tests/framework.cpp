@@ -116,7 +116,7 @@ void* CreateOrFetchFixturePointer(Tester& tester,
 
 struct TestResults {
     struct Case {
-        enum class Result { Passed, Failed, Error };
+        enum class Result : u8 { Passed, Failed, Error };
         String name;
         String classname;
         usize num_assertions;

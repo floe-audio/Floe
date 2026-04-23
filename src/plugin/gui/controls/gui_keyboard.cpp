@@ -10,9 +10,9 @@
 #include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/key_range.hpp"
 
-enum class NoteEdge { Left, Right };
+enum class NoteEdge : u8 { Left, Right };
 
-enum class DisplayType { Minimal, Full };
+enum class DisplayType : u8 { Minimal, Full };
 
 struct TopDisplayOptions {
     f32x2 start_pos;

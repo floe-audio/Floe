@@ -7,7 +7,7 @@
 
 #include "tracy_wrapped.hpp"
 
-enum class StacktraceError {
+enum class StacktraceError : u8 {
     NotInitialised,
 };
 
@@ -26,7 +26,7 @@ struct StacktracePrintOptions {
 
 enum class ProgramCounter : uintptr {};
 enum class StacktraceFrames : u32 {};
-enum class StacktraceSkipType { Frames, UntilProgramCounter };
+enum class StacktraceSkipType : u8 { Frames, UntilProgramCounter };
 using StacktraceSkipOptions = TaggedUnion<StacktraceSkipType,
                                           TypeAndTag<ProgramCounter, StacktraceSkipType::UntilProgramCounter>,
                                           TypeAndTag<StacktraceFrames, StacktraceSkipType::Frames>>;

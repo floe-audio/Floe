@@ -5,7 +5,7 @@
 #include "foundation/foundation.hpp"
 
 struct VolumeFade {
-    enum class State {
+    enum class State : u8 {
         FullVolume,
         Silent,
         FadeIn,

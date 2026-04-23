@@ -4,7 +4,7 @@
 
 #include "foundation/foundation.hpp"
 
-enum class GuiStyleSystem {
+enum class GuiStyleSystem : u8 {
     MidPanel, // On top of an image background, uses transparent black/white shades often.
     Overlay, // Modals and popups, often light-mode and bold.
     TopBottomPanels, // Dark-mode, bold.

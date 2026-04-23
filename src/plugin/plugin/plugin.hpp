@@ -149,7 +149,7 @@ struct FloeClapTestingExtension {
     bool (*state_change_is_pending)(clap_plugin const* plugin) = nullptr;
 };
 
-enum class IsThreadResult { No, Yes, Unknown };
+enum class IsThreadResult : u8 { No, Yes, Unknown };
 
 inline IsThreadResult IsMainThread(clap_host const& host) {
     // Whilst the CLAP-wrapper does support thread-check, it's untrustworthy. We only trust the value of

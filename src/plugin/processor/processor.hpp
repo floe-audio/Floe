@@ -78,7 +78,7 @@ struct ParamChange {
         payload.Store(p, StoreMemoryOrder::Release);
     }
 
-    enum class GuiGestureType { Begin, End };
+    enum class GuiGestureType : u8 { Begin, End };
 
     // Main thread.
     // Additive approach (see above).
@@ -143,7 +143,7 @@ struct MacroDestinationUpdate {
 
 using Flags = u32;
 
-enum : u32 {
+enum : u8 {
     // IMPORTANT: this is actually multiple bits - one for each layer index. Set using
     // LayerInstrumentChanged << layer_index.
     LayerInstrumentChanged = 1 << 0,
@@ -179,7 +179,7 @@ f32 AdjustedLinearValue(Parameters const& params,
                         ParamIndex param_index);
 
 struct ProcessorListener {
-    enum : u32 {
+    enum : u8 {
         None = 0,
         StatusChanged = 1 << 1,
         InstrumentChanged = 1 << 2,
@@ -214,7 +214,7 @@ struct AudioProcessor {
 
     Atomic<OptionalIndex<s32>> midi_learn_param_index {};
 
-    enum class FadeType { None, OutAndIn, OutAndRestartVoices };
+    enum class FadeType : u8 { None, OutAndIn, OutAndRestartVoices };
     FadeType whole_engine_volume_fade_type {};
     VolumeFade whole_engine_volume_fade {};
 
@@ -300,7 +300,7 @@ struct AudioProcessor {
 
 extern PluginCallbacks<AudioProcessor> const g_processor_callbacks;
 
-enum class ProcessorSetting {
+enum class ProcessorSetting : u8 {
     DefaultCcParamMappings,
 };
 

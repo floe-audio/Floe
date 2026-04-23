@@ -15,7 +15,7 @@
 enum class TextOverflowType : u8 { AllowOverflow, ShowDotsOnRight, ShowDotsOnLeft, Count };
 enum class TextAlignment : u8 { Left, Centre, Right };
 
-enum class TextJustification {
+enum class TextJustification : u8 {
     Left = 1,
     Right = 2,
     VerticallyCentred = 4,

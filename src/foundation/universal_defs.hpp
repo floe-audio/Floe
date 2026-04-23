@@ -79,7 +79,7 @@ using u8x4 = __attribute__((ext_vector_type(4))) u8;
 using b8x2 = __attribute__((ext_vector_type(2))) u8;
 
 // ==========================================================================================================
-enum class Arch {
+enum class Arch : u8 {
     X86_64, // NOLINT(readability-identifier-naming)
     Aarch64,
 };
@@ -91,7 +91,7 @@ constexpr auto k_arch = Arch::X86_64;
 #error "Unsupported architecture"
 #endif
 
-enum class Endianness {
+enum class Endianness : u8 {
     Little,
     Big,
 };

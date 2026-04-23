@@ -625,7 +625,7 @@ PUBLIC constexpr bool IsSpaceU32(u32 c) {
     return false;
 }
 
-enum class ParseIntBase { Decimal, Hexadecimal };
+enum class ParseIntBase : u8 { Decimal, Hexadecimal };
 
 PUBLIC constexpr Optional<s64>
 ParseInt(String str, ParseIntBase base, usize* num_chars_read = nullptr, bool trim_whitespace = true) {

@@ -40,7 +40,7 @@ struct LicensePayload {
     DynamicArrayBounded<char, k_max_email_size> email;
 };
 
-enum class LicenseError {
+enum class LicenseError : u8 {
     InvalidFormat,
     InvalidBase64,
     InvalidPayload,

@@ -189,7 +189,7 @@ enum class CursorType : u8 {
 };
 
 struct FilePickerDialogOptions {
-    enum class Type { SaveFile, OpenFile, SelectFolder };
+    enum class Type : u8 { SaveFile, OpenFile, SelectFolder };
 
     struct FileFilter {
         FileFilter Clone(Allocator& a, CloneType t = CloneType::Deep) const {
@@ -223,7 +223,7 @@ struct FilePickerDialogOptions {
 
 // Fill this struct every frame to instruct the framework about the application's needs.
 struct GuiFrameOutput {
-    enum class UpdateInterval {
+    enum class UpdateInterval : u8 {
         // 1. GUI will sleep until there's user interaction, a timed wakeup fired or the global 'request
         // update' bool is set.
         Sleep,

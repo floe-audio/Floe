@@ -109,7 +109,7 @@ struct Subcase {
     bool entered;
 };
 
-enum class FailureAction { FailAndExitTest, FailAndContinue, LogWarningAndContinue };
+enum class FailureAction : u8 { FailAndExitTest, FailAndContinue, LogWarningAndContinue };
 
 class PassedSubcaseStacks {
   public:

@@ -169,7 +169,7 @@ struct LuaState {
     [[maybe_unused]] LuaState &ctx, [[maybe_unused]] void *obj, [[maybe_unused]] const struct FieldInfo &info
 #define FIELD_OBJ (*(Type*)obj)
 
-enum class InterpretedTypes : u32 {
+enum class InterpretedTypes : u8 {
     Library,
     Instrument,
     ImpulseResponse,
@@ -260,7 +260,7 @@ concept InterpretableType = requires {
     // There's other requirements too but this will do for now.
 };
 
-enum class UserdataTypes : u32 { Library, Instrument, SoundSource, Ir, Count };
+enum class UserdataTypes : u8 { Library, Instrument, SoundSource, Ir, Count };
 static constexpr char const* k_userdata_type_names[] = {
     "library",
     "instrument",
@@ -417,7 +417,7 @@ template <>
 struct TableFields<ImpulseResponse::AudioProperties> {
     using Type = ImpulseResponse::AudioProperties;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         GainDb,
         Count,
     };
@@ -444,7 +444,7 @@ template <>
 struct TableFields<Region::AudioProperties> {
     using Type = Region::AudioProperties;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         GainDb,
         StartOffsetFrames,
         TuneCents,
@@ -520,7 +520,7 @@ template <>
 struct TableFields<Region::Playback> {
     using Type = Region::Playback;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         KeytrackRequirement,
         Count,
     };
@@ -555,7 +555,7 @@ template <>
 struct TableFields<Region::TimbreLayering> {
     using Type = Region::TimbreLayering;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         LayerRange,
         Count,
     };
@@ -596,7 +596,7 @@ template <>
 struct TableFields<Region::Slice> {
     using Type = Region::Slice;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         StartFrame,
         IntendedLength,
         Count,
@@ -644,7 +644,7 @@ template <>
 struct TableFields<Region::TriggerCriteria> {
     using Type = Region::TriggerCriteria;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Event,
         KeyRange,
         VelocityRange,
@@ -823,7 +823,7 @@ template <>
 struct TableFields<BuiltinLoop> {
     using Type = BuiltinLoop;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Start,
         End,
         Crossfade,
@@ -920,7 +920,7 @@ template <>
 struct TableFields<Region::Loop> {
     using Type = Region::Loop;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         BuiltinLoop,
         LoopRequirement,
         Count,
@@ -990,7 +990,7 @@ struct TableFields<Region> {
     static_assert(ArraySize(k_trigger_event_names) == ToInt(TriggerEvent::Count) + 1);
     static_assert(ArraySize(k_trigger_event_descriptions) == ToInt(TriggerEvent::Count) + 1);
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Path,
         RootKey,
         TriggerCriteria,
@@ -1161,7 +1161,7 @@ template <>
 struct TableFields<FileAttribution> {
     using Type = FileAttribution;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Title,
         LicenseName,
         LicenseUrl,
@@ -1228,7 +1228,7 @@ template <>
 struct TableFields<NamedKeyRange> {
     using Type = NamedKeyRange;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         KeyRange,
         Count,
@@ -1307,7 +1307,7 @@ template <>
 struct TableFields<ImpulseResponse> {
     using Type = ImpulseResponse;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         Id,
         Path,
@@ -1432,7 +1432,7 @@ template <>
 struct TableFields<Instrument> {
     using Type = Instrument;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         Id,
         Folder,
@@ -1551,7 +1551,7 @@ template <>
 struct TableFields<Library> {
     using Type = Library;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         Tagline,
         LibraryUrl,
@@ -2397,7 +2397,7 @@ WordWrap(String string, Writer writer, u32 width, Optional<String> line_prefix =
 }
 
 struct LuaCodePrinter {
-    enum PrintModeFlags : u32 {
+    enum PrintModeFlags : u8 {
         PrintModeFlagsDocumentedExample = 1,
         PrintModeFlagsPlaceholderFieldValue = 2,
         PrintModeFlagsPlaceholderFieldKey = 4,
@@ -2806,8 +2806,8 @@ struct LuaCodePrinter {
             if (!(mode.placeholder_field_index.type == field.type &&
                   mode.placeholder_field_index.index == field.index)) {
                 // if the given field doesn't match the placeholder then unset the placeholder bits
-                flags &= ~PrintModeFlagsPlaceholderFieldKey;
-                flags &= ~PrintModeFlagsPlaceholderFieldValue;
+                flags &= (u32)~PrintModeFlagsPlaceholderFieldKey;
+                flags &= (u32)~PrintModeFlagsPlaceholderFieldValue;
             }
             flags;
         });
@@ -2952,7 +2952,7 @@ ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments
     TRY(printer.PrintWholeLua(
         writer,
         {
-            .mode_flags = include_comments ? LuaCodePrinter::PrintModeFlagsDocumentedExample : 0,
+            .mode_flags = include_comments ? LuaCodePrinter::PrintModeFlagsDocumentedExample : 0u,
         }));
     return k_success;
 }

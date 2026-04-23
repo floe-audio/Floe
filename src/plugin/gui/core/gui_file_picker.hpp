@@ -16,7 +16,7 @@ struct AddScanFolderFilePickerState {
     bool set_as_install_folder {};
 };
 
-enum class FilePickerStateType {
+enum class FilePickerStateType : u8 {
     None,
     AddScanFolder,
     InstallPackage,

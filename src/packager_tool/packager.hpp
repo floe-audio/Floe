@@ -3,7 +3,7 @@
 #pragma once
 #include "utils/cli_arg_parse.hpp"
 
-enum class PackagerCliArgId : u32 {
+enum class PackagerCliArgId : u8 {
     LibraryFolder,
     PresetFolder,
     InputPackages,

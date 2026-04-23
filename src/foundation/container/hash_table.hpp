@@ -25,7 +25,7 @@ using LessThanFunction = bool (*)(KeyType const&, ValueType const&, KeyType cons
 
 u64 NoHash(u64 const&);
 
-enum HashTableOrdering { Unordered, Ordered };
+enum HashTableOrdering : u8 { Unordered, Ordered };
 
 template <TriviallyCopyable KeyType_,
           TriviallyCopyableOrDummy ValueType_,

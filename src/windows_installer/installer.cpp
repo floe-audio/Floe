@@ -24,7 +24,7 @@
 #include "gui.hpp"
 #include "registry.hpp"
 
-enum class Pages : u32 {
+enum class Pages : u8 {
     Configuration,
     Installing,
     Summary,

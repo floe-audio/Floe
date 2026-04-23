@@ -210,7 +210,7 @@ struct LoadedIr {
     AudioData const* audio_data;
 };
 
-enum class FileFormat { Mdata, Lua };
+enum class FileFormat : u8 { Mdata, Lua };
 
 struct MdataSpecifics {
     HashTable<String, mdata::FileInfo const*> files_by_path;
@@ -319,7 +319,7 @@ struct IrId {
     DynamicArrayBounded<char, k_max_ir_id_size> ir_id;
 };
 
-enum class LuaErrorCode {
+enum class LuaErrorCode : u8 {
     Memory,
     Syntax,
     Runtime,

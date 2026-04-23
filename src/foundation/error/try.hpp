@@ -4,7 +4,7 @@
 #pragma once
 
 struct SuccessType {
-    enum class Construct { Token };
+    enum class Construct : u8 { Token };
     explicit constexpr SuccessType(Construct) {}
 };
 inline constexpr SuccessType k_success {SuccessType::Construct::Token};

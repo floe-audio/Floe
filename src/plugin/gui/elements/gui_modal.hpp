@@ -55,16 +55,18 @@ Box DoModalDivider(GuiBuilder& builder,
                    DividerOptions options,
                    u64 id_extra = SourceLocationHash());
 
+using ModalTabIndex = u8;
+
 struct ModalTabConfig {
     Optional<String> icon;
     String text;
-    u32 index;
+    ModalTabIndex index;
 };
 
 struct ModalTabBarConfig {
     Box parent;
     Span<ModalTabConfig const> tabs;
-    u32& current_tab_index;
+    ModalTabIndex& current_tab_index;
 };
 
 // Creates a tab bar with configurable tabs
@@ -74,7 +76,7 @@ struct ModalConfig {
     String title;
     bool* modeless {};
     Span<ModalTabConfig const> tabs;
-    u32& current_tab_index;
+    ModalTabIndex& current_tab_index;
 };
 
 // High-level function that creates a complete modal layout within an already open modal window.

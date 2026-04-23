@@ -5,7 +5,7 @@
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
 
-enum class PathOrMemoryType { File, Memory };
+enum class PathOrMemoryType : u8 { File, Memory };
 using PathOrMemory = TaggedUnion<PathOrMemoryType,
                                  TypeAndTag<String, PathOrMemoryType::File>,
                                  TypeAndTag<Span<u8 const>, PathOrMemoryType::Memory>>;

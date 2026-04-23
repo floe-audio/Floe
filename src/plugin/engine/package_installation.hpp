@@ -49,7 +49,7 @@ struct ComponentInstallConfig {
 };
 
 struct InstallJob {
-    enum class State {
+    enum class State : u8 {
         Installing, // worker owns all data
         AwaitingUserInput, // worker thread is not running, user input needed
         AwaitingLicenseKey, // worker thread is not running, license key paste needed
@@ -57,14 +57,14 @@ struct InstallJob {
         DoneError, // worker thread is not running, packages install failed
     };
 
-    enum class UserDecision {
+    enum class UserDecision : u8 {
         Unknown,
         Overwrite,
         Skip,
         InstallCopy,
     };
 
-    enum class InstallDestinationType {
+    enum class InstallDestinationType : u8 {
         FolderNonExistent,
         FolderOverwritable,
         FileOverwritable,

@@ -522,7 +522,7 @@ NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhea
     return result;
 }
 
-enum class WaveformAudioSourceType { AudioData, Sine, WhiteNoise };
+enum class WaveformAudioSourceType : u8 { AudioData, Sine, WhiteNoise };
 
 using WaveformAudioSource =
     TaggedUnion<WaveformAudioSourceType, TypeAndTag<AudioData const*, WaveformAudioSourceType::AudioData>>;

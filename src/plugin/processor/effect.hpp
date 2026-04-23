@@ -49,7 +49,7 @@ struct EffectWetDryHelper {
     OnePoleLowPassFilter<f32> dry_smoother {};
 };
 
-enum class EffectProcessResult {
+enum class EffectProcessResult : u8 {
     Done, // no more processing needed
     ProcessingTail, // processing needed
 };

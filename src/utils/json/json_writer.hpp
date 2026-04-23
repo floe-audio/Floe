@@ -6,7 +6,7 @@
 
 namespace json {
 
-enum class WrittenType {
+enum class WrittenType : u8 {
     None,
     OpenContainer,
     CloseContainer,

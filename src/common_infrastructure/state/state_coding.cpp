@@ -151,7 +151,7 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
     return {};
 }
 
-enum class ParamProjection {
+enum class ParamProjection : u8 {
     WasPercentNowFraction, // [-100, 100] to [-1, 1] or [0, 100] to [0, 1]
     WasDbNowAmp,
     WasOldBoolNowNewBool, // old: >= 0.5 == true, new: !0 == true
@@ -205,7 +205,7 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
 
 class JsonStateParser {
   public:
-    enum class ParamValueType { None, Float, String };
+    enum class ParamValueType : u8 { None, Float, String };
     using ParamValue = TaggedUnion<ParamValueType,
                                    TypeAndTag<f32, ParamValueType::Float>,
                                    TypeAndTag<String, ParamValueType::String>>;
@@ -479,6 +479,7 @@ class JsonStateParser {
     usize m_inst_index = 0;
 };
 
+// NOLINTNEXTLINE: performance-enum-size
 enum class StateVersion : u16 {
     Initial = 1,
 

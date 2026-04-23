@@ -21,7 +21,7 @@ constexpr auto k_browser_spacing = 7.0f;
 
 constexpr auto k_untagged_tag_name = "<untagged>"_s;
 
-enum class SearchDirection { Forward, Backward };
+enum class SearchDirection : u8 { Forward, Backward };
 
 enum class FilterMode : u8 {
     Single, // Only one filter can be selected at a time.
@@ -167,7 +167,7 @@ struct BrowserKeyboardNavigation {
     Input input {};
 };
 
-enum class BrowserFilter : usize {
+enum class BrowserFilter : u8 {
     Library,
     LibraryAuthor,
     Folder,
@@ -455,7 +455,7 @@ struct BrowserSection {
     u8 is_box_init : 1 = 0;
 };
 
-enum class ItemIconType { None, Image, Font };
+enum class ItemIconType : u8 { None, Image, Font };
 using ItemIcon = TaggedUnion<ItemIconType,
                              TypeAndTag<String, ItemIconType::Font>,
                              TypeAndTag<ImageID, ItemIconType::Image>>;

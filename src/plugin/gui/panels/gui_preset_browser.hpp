@@ -41,7 +41,7 @@ struct PresetBrowserContext {
     PresetServerReadHandle preset_read_handle;
 };
 
-enum class PresetBrowserFilter : usize {
+enum class PresetBrowserFilter : u8 {
     Author = (usize)BrowserFilter::CommonCount,
     PresetType,
     Count,

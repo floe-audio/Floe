@@ -81,7 +81,7 @@ struct Box {
 struct BoxViewportConfig {
     using RunFunction = TrivialFunctionRef<void(GuiBuilder&)>;
 
-    enum class BoundsType { Box, Rect };
+    enum class BoundsType : u8 { Box, Rect };
 
     using Bounds =
         TaggedUnion<BoundsType, TypeAndTag<Box, BoundsType::Box>, TypeAndTag<Rect, BoundsType::Rect>>;
@@ -106,12 +106,12 @@ struct BoxViewportConfig {
     String debug_name {}; // Recommended but optional.
 };
 
-enum class GuiBuilderPass {
+enum class GuiBuilderPass : u8 {
     LayoutBoxes,
     HandleInputAndRender,
 };
 
-enum class TooltipJustification { AboveOrBelow, LeftOrRight };
+enum class TooltipJustification : u8 { AboveOrBelow, LeftOrRight };
 
 struct DrawTooltipArgs {
     Rect r; // The rect that opened the tooltip.
@@ -191,9 +191,9 @@ constexpr f32 k_no_wrap = 0;
 constexpr f32 k_wrap_to_parent = -1; // You should additionally set size_from_text = true.
 constexpr f32 k_default_font_size = 0;
 
-enum class BackgroundShape : u32 { Rectangle, Circle, Count };
+enum class BackgroundShape : u8 { Rectangle, Circle, Count };
 
-enum class TooltipStringType { None, Function, String };
+enum class TooltipStringType : u8 { None, Function, String };
 
 using TooltipString = TaggedUnion<TooltipStringType,
                                   TypeAndTag<NulloptType, TooltipStringType::None>,

@@ -83,7 +83,7 @@ struct Filter {
     Coeffs coeffs;
 };
 
-enum class Type {
+enum class Type : u8 {
     LowPass,
     HighPass,
     BandPassCsg,
@@ -448,7 +448,7 @@ class SmoothedCoefficients {
 
 namespace sv_filter {
 
-enum class Type {
+enum class Type : u8 {
     Lowpass,
     Bandpass,
     Highpass,

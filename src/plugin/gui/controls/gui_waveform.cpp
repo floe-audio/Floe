@@ -194,8 +194,8 @@ static void DoWaveformControls(GuiState& g,
     auto const extra_grabbing_room_towards_centre = r.h / 3;
     auto const extra_grabbing_room_away_from_centre = r.h / 6;
 
-    enum class HandleType { LoopStart, LoopEnd, Offset, Xfade };
-    enum class HandleDirection { Left, Right };
+    enum class HandleType : u8 { LoopStart, LoopEnd, Offset, Xfade };
+    enum class HandleDirection : u8 { Left, Right };
 
     // Loop points and crossfade.
     Rect start_line;

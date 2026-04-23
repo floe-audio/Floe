@@ -16,7 +16,7 @@ namespace path {
 
 constexpr usize k_max = IS_WINDOWS ? ((32767 * 3) + 1) : 4096;
 
-enum class Format {
+enum class Format : u8 {
     Windows,
     Posix,
     Native = IS_WINDOWS ? Windows : Posix,
@@ -42,7 +42,7 @@ PUBLIC constexpr Optional<usize> FindLastDirectorySeparator(String path, Format 
 }
 
 struct WindowsPathInfo {
-    enum class Type { Drive, NetworkShare, Relative };
+    enum class Type : u8 { Drive, NetworkShare, Relative };
     Type type;
     bool is_abs;
     String drive;

@@ -258,7 +258,7 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
     ZoneScoped;
     ASSERT(g_is_logical_main_thread);
 
-    enum class Source : u32 { OneOff, PartOfPendingStateChange, LastInPendingStateChange, Count };
+    enum class Source : u8 { OneOff, PartOfPendingStateChange, LastInPendingStateChange, Count };
 
     auto const source = ({
         Source s {Source::OneOff};

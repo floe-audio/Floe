@@ -232,7 +232,7 @@ class PageAllocator final : public Allocator {
     }
 };
 
-enum class StdStream { Out, Err };
+enum class StdStream : u8 { Out, Err };
 
 // Unbuffered, signal-safe on Unix
 ErrorCodeOr<void> StdPrint(StdStream stream, String str);

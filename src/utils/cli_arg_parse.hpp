@@ -117,7 +117,7 @@ PUBLIC Span<String> ArgsToStringsSpan(ArenaAllocator& arena, ArgsCstr args, bool
 // "-a", "-a=value", "--arg value", "--arg=value", "--arg value1 value2"
 PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena, Span<String const> args) {
     DynamicHashTable<String, Span<String>> result {arena};
-    enum class ArgType { Short, Long, None };
+    enum class ArgType : u8 { Short, Long, None };
     auto const arg_type = [](String arg) {
         if (arg[0] == '-' && IsAlphanum(arg[1])) return ArgType::Short;
         if (arg.size > 2) {
@@ -177,7 +177,7 @@ PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena
     return ArgsToKeyValueTable(arena, ArgsToStringsSpan(arena, args, false));
 }
 
-enum class CliError {
+enum class CliError : u8 {
     InvalidArguments,
     HelpRequested,
     VersionRequested,

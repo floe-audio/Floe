@@ -9,7 +9,7 @@
 #include "gui/core/gui_fwd.hpp"
 #include "processor/layer_processor.hpp"
 
-enum class GuiEnvelopeType { Volume, Filter, Count };
+enum class GuiEnvelopeType : u8 { Volume, Filter, Count };
 
 constexpr usize k_num_adsr_params = 4;
 

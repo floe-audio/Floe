@@ -9,7 +9,7 @@
 #include "gui_framework/gui_frame.hpp"
 #include "gui_framework/image.hpp"
 
-enum class LibraryImageType { Icon, Background };
+enum class LibraryImageType : u8 { Icon, Background };
 
 static String FilenameForLibraryImageType(LibraryImageType type) {
     switch (type) {

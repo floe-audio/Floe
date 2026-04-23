@@ -27,16 +27,16 @@ struct AppConfig {
     String description;
 };
 
-enum class Orientation { Vertical, Horizontal };
-enum class Alignment { Start, End };
-enum class TextAlignment { Left, Right, Centre };
-enum class LabelStyle { Regular, DullColour, Bold, Heading };
-enum class ButtonStyle { Push, ExpandCollapseToggle };
+enum class Orientation : u8 { Vertical, Horizontal };
+enum class Alignment : u8 { Start, End };
+enum class TextAlignment : u8 { Left, Right, Centre };
+enum class LabelStyle : u8 { Regular, DullColour, Bold, Heading };
+enum class ButtonStyle : u8 { Push, ExpandCollapseToggle };
 struct WidgetMargins {
     u16 l {}, r {}, t {}, b {};
 };
 
-enum class WidgetType {
+enum class WidgetType : u8 {
     None,
     ProgressBar,
     ReadOnlyTextbox,
@@ -92,7 +92,7 @@ struct WidgetOptions {
     };
     struct Container {
         // If Tabs, create it and then add pages to it using CreateStackLayoutWidget()
-        enum class Type { StackLayout, Frame, Tabs };
+        enum class Type : u8 { StackLayout, Frame, Tabs };
         Type type {Type::StackLayout};
         int spacing = 0;
         Orientation orientation {Orientation::Vertical};
@@ -121,7 +121,7 @@ u32 CreateWidget(GuiFramework& framework, u32 parent, WidgetOptions options);
 void RecalculateLayout(GuiFramework&);
 
 struct UserInteraction {
-    enum class Type {
+    enum class Type : u8 {
         ButtonPressed,
         RadioButtonSelected,
         TextInputChanged,

@@ -4,7 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-enum class FinalBinaryType {
+enum class FinalBinaryType : u8 {
     Clap,
     Standalone,
     Vst3,

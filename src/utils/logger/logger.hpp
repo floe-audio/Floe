@@ -12,7 +12,7 @@
 //   and only ever non-personal external state. For example, never log a filepath. It could contain a
 //   username. On the other hand, information about the CPU is fine because it's not personal.
 
-enum class LogLevel { Debug, Info, Warning, Error };
+enum class LogLevel : u8 { Debug, Info, Warning, Error };
 
 struct WriteLogLineOptions {
     bool ansi_colors = false;
@@ -46,7 +46,7 @@ struct LogRingBuffer {
     u16 read {};
 };
 
-enum class ModuleName {
+enum class ModuleName : u8 {
     Global,
     Main,
     Package,
@@ -91,7 +91,7 @@ ErrorCodeOr<void> WriteLogLine(Writer writer,
                                WriteLogLineOptions options);
 
 struct LogConfig {
-    enum class Destination { Stderr, File };
+    enum class Destination : u8 { Stderr, File };
     Destination destination = Destination::Stderr;
     LogLevel min_level_allowed = PRODUCTION_BUILD ? LogLevel::Info : LogLevel::Debug;
 };

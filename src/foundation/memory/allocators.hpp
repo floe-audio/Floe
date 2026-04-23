@@ -10,7 +10,7 @@
 #include "foundation/utils/linked_list.hpp"
 #include "foundation/utils/memory.hpp"
 
-enum class AllocatorCommand {
+enum class AllocatorCommand : u8 {
     Allocate,
     Free,
     Resize,

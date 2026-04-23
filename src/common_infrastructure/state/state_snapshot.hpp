@@ -81,7 +81,7 @@ struct StateSnapshot {
     InstanceConfig instance_config {};
 };
 
-enum class StateSource { PresetFile, Daw };
+enum class StateSource : u8 { PresetFile, Daw };
 
 struct StateSnapshotName {
     StateSnapshotName Clone(Allocator& a, CloneType clone_type = CloneType::Shallow) const {

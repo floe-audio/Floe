@@ -134,7 +134,7 @@ struct ThreadsafeErrorNotifications {
         return true;
     }
 
-    enum class ItemIterationResult {
+    enum class ItemIterationResult : u8 {
         Continue,
         Stop,
         Remove,

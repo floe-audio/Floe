@@ -12,7 +12,7 @@
 #include "sample_lib_server/sample_library_server.hpp"
 
 struct PreferencesPanelState {
-    enum class Tab : u32 {
+    enum class Tab : u8 {
         General,
         Folders,
         Packages,

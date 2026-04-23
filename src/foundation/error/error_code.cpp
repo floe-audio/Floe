@@ -3,7 +3,7 @@
 
 #include "tests/framework.hpp"
 
-enum class TestErrors {
+enum class TestErrors : u8 {
     Error1,
     Error2,
 };

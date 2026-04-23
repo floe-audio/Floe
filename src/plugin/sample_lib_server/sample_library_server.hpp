@@ -43,7 +43,7 @@ namespace sample_lib_server {
 // ==========================================================================================================
 using RequestId = u64;
 
-enum class LoadRequestType { Instrument, Ir };
+enum class LoadRequestType : u8 { Instrument, Ir };
 
 struct LoadRequestInstrumentIdWithLayer {
     sample_lib::InstrumentId id;
@@ -56,7 +56,7 @@ using LoadRequest = TaggedUnion<LoadRequestType,
 
 // Result
 // ==========================================================================================================
-enum class RefCountChange { Retain, Release };
+enum class RefCountChange : u8 { Retain, Release };
 
 // A reference counted handle to a resource. This object is just like a pointer really. The resource will stay
 // valid for as long as you are between Retain/Release pairs. The server gives you one of these with a Retain
@@ -124,7 +124,7 @@ using Resource =
                 TypeAndTag<ResourcePointer<sample_lib::LoadedIr>, LoadRequestType::Ir>>;
 
 struct LoadResult {
-    enum class ResultType { Success, Error, Cancelled };
+    enum class ResultType : u8 { Success, Error, Cancelled };
     using Result = TaggedUnion<ResultType,
                                TypeAndTag<Resource, ResultType::Success>,
                                TypeAndTag<ErrorCode, ResultType::Error>>;
@@ -174,7 +174,7 @@ struct AsyncCommsChannel {
 // ==========================================================================================================
 namespace detail {
 
-enum class FileLoadingState : u32 {
+enum class FileLoadingState : u8 {
     PendingLoad,
     PendingCancel,
     Loading,

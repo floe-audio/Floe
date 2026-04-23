@@ -6,7 +6,7 @@
 
 #include "common_infrastructure/audio_utils.hpp"
 
-enum class SyncedTimes {
+enum class SyncedTimes : u8 {
     // NOLINTBEGIN(readability-identifier-naming)
     // clang-format off
     _1_64T, _1_64, _1_64D,
@@ -24,7 +24,7 @@ enum class SyncedTimes {
     Count,
 };
 
-enum class SyncedTimesType { Straight, Dotted, Triplet };
+enum class SyncedTimesType : u8 { Straight, Dotted, Triplet };
 
 constexpr SyncedTimesType SyncedTimesType(SyncedTimes t) {
     switch (t) {

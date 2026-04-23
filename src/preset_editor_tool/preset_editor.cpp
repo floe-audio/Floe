@@ -16,7 +16,7 @@
 
 // IMPROVE: export a Lua LSP def file for the preset table.
 
-enum class CliArgId : u32 {
+enum class CliArgId : u8 {
     PresetFile,
     ScriptFile,
     Count,

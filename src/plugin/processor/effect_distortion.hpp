@@ -7,7 +7,7 @@
 #include "effect.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 
-enum DistFunction {
+enum DistFunction : u8 {
     DistFunctionTubeLog,
     DistFunctionTubeAsym3,
     DistFunctionSinFunc,

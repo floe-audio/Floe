@@ -10,10 +10,11 @@
 
 ---
 Checks: '-*,
+  bugprone-dynamic-static-initializers,
   bugprone-integer-division,
+  bugprone-reserved-identifier,
   bugprone-signal-handler,
   bugprone-undefined-memory-manipulation,
-  bugprone-reserved-identifier,
   clang-analyzer-core.BitwiseShift
   clang-analyzer-core.CallAndMessage
   clang-analyzer-core.DivideZero
@@ -22,19 +23,19 @@ Checks: '-*,
   clang-analyzer-deadcode.DeadStores
   clang-analyzer-optin.cplusplus.UninitializedObject
   clang-analyzer-optin.cplusplus.VirtualCall
+  concurrency-mt-unsafe,
+  cppcoreguidelines-interfaces-global-init,
   misc-unused-using-decls,
   modernize-use-auto,
   modernize-use-nullptr,
   modernize-use-using,
+  performance-enum-size,
   readability-convert-member-functions-to-static,
   readability-identifier-naming,
   readability-isolate-declaration,
   readability-math-missing-parentheses,
   readability-redundant-casting,
   readability-redundant-inline-specifier,
-  cppcoreguidelines-interfaces-global-init,
-  bugprone-dynamic-static-initializers,
-  concurrency-mt-unsafe,
 '
 
 # IMPROVE: use readibility-identifier-length

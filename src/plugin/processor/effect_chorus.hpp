@@ -171,7 +171,7 @@ class Chorus final : public Effect {
         m_wet_dry.Reset();
     }
 
-    enum class ChorusIndexes : u32 { First, Second, Count };
+    enum class ChorusIndexes : u8 { First, Second, Count };
 
     rbj_filter::Coeffs m_lowpass_filter_coeffs {};
     rbj_filter::SmoothedCoefficients m_highpass_filter_coeffs {};

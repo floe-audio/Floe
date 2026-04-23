@@ -6,7 +6,7 @@
 #include "foundation/universal_defs.hpp"
 
 struct NulloptType {
-    enum class Construct { Token };
+    enum class Construct : u8 { Token };
     explicit constexpr NulloptType(Construct) noexcept {}
     constexpr operator bool() const { return false; }
 };

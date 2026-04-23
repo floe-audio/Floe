@@ -1153,7 +1153,7 @@ void ShutdownJobs(InstallJobs& jobs) {
 // Tests
 // ==========================================================================================================
 
-enum class LibFolder { Regular, Extra };
+enum class LibFolder : u8 { Regular, Extra };
 
 static MutableString FullTestLibraryPath(tests::Tester& tester, LibFolder folder, String lib_folder_name) {
     return path::Join(tester.scratch_arena,

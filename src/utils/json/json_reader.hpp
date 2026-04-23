@@ -11,7 +11,7 @@
 
 namespace json {
 
-enum class EventType {
+enum class EventType : u8 {
     String,
     Double,
     Int,
@@ -108,7 +108,7 @@ static inline char const* SkipWhitespace(char const* p, char const* end) {
     return p;
 }
 
-enum class TokenType {
+enum class TokenType : u8 {
     Invalid,
 
     Colon,

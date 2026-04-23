@@ -4,7 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-enum class CommonError {
+enum class CommonError : u8 {
     InvalidFileFormat,
     CorruptFile,
     PluginHostError,

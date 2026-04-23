@@ -6,7 +6,7 @@
 
 #include "common_infrastructure/constants.hpp"
 
-enum class LayerParamIndex : u16 {
+enum class LayerParamIndex : u8 {
     Volume,
     Mute,
     Solo,
@@ -1263,7 +1263,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     constexpr u32 k_ids_per_region = 160; // never change
 
-    enum class IdRegion {
+    enum class IdRegion : u8 {
         Master = 0, // never change
         Layer1 = 1, // never change
         Layer2 = 2, // never change
@@ -2852,7 +2852,7 @@ Type ParamToInt(f32 value) {
     return (Type)i;
 }
 
-enum class NoLongerExistingParam : u16 {
+enum class NoLongerExistingParam : u8 {
     ConvolutionLegacyMirageIrName,
 
     Layer1LoopOnSwitch,
@@ -2908,7 +2908,7 @@ enum class NoLongerExistingParam : u16 {
     Count,
 };
 
-enum class ParamExistance {
+enum class ParamExistance : u8 {
     StillExists,
     NoLongerExists,
 };

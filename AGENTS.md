@@ -42,7 +42,7 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 - No C++ STL/standard library.
 - We write in a Zig-like style: closer to modern C than C++.
 - See `.clang-tidy`'s readability-identifier-naming section for naming conventions.
-- When working with enums use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed.
+- When working with enums use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed. When defining enums, specify the size type (typically ` : u8`).
 - Keep comments to a minimum. Use them more as section markers and notes. Never explain what is evident from reading the code. Prefer renaming variables/functions to be clearer/longer rather than augmenting them with comments.
 - Where needed, use Clang/GCC 'statement expressions' to initialise a variable to a const to avoid function-wide mutability and unclear encapsulation.
 - Always use `auto` type where possible.

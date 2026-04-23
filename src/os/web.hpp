@@ -3,7 +3,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-enum class WebError : u32 {
+enum class WebError : u8 {
     ApiError,
     NetworkError,
     Non200Response,

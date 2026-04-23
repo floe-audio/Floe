@@ -148,7 +148,7 @@ constexpr usize k_max_audio_buffer_frames = 8192;
 
 // Controls audio thread access to the plugin instance. The main thread transitions through these
 // states to safely hand off and reclaim the plugin instance without races.
-enum class PluginInstanceState : u32 {
+enum class PluginInstanceState : u8 {
     // No plugin loaded. Audio thread outputs silence.
     Inactive,
     // Plugin is loaded and active. Audio thread calls process().
@@ -168,7 +168,7 @@ struct Standalone {
 
     // Audio/MIDI devices persist across reloads
     Array<Span<f32>, 2> audio_buffers {};
-    enum class AudioStreamState { Closed, Open, CloseRequested };
+    enum class AudioStreamState : u8 { Closed, Open, CloseRequested };
     Atomic<AudioStreamState> audio_stream_state {AudioStreamState::Closed};
     PortMidiStream* midi_stream {};
     Optional<ma_device> audio_device {};
@@ -496,7 +496,7 @@ ErrorCodeCategory const pugl_error_category {
 };
 inline ErrorCodeCategory const& ErrorCategoryForEnum(PuglStatus) { return pugl_error_category; }
 
-enum class StandaloneError {
+enum class StandaloneError : u8 {
     DeviceError,
     PluginInterfaceError,
 };
@@ -933,7 +933,7 @@ static int Main(ArgsCstr args) {
     });
     DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
 
-    enum class CommandLineArgId : u32 {
+    enum class CommandLineArgId : u8 {
         ClapPluginPath,
         ForceMidiChannelZero,
         Count,

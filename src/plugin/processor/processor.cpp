@@ -323,7 +323,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
         set_param(p, float_gen.GetRandomInRange(seed, p.info.linear_range.min, p.info.linear_range.max));
     };
 
-    enum class BiasType {
+    enum class BiasType : u8 {
         Normal,
         Strong,
     };
@@ -1563,7 +1563,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
         if (flags & audio_thread_inbox::ResetAudioProcessing) AudioThreadReset(processor);
 
         for (auto const layer_index : Range(k_num_layers))
-            if (flags & (audio_thread_inbox::LayerInstrumentChanged << layer_index))
+            if (flags & ((u32)audio_thread_inbox::LayerInstrumentChanged << layer_index))
                 layers_changed.Set(layer_index);
     }
 

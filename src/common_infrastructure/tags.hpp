@@ -30,7 +30,7 @@ enum class TagCategory : u8 {
     Count,
 };
 
-enum class TagType : u16 {
+enum class TagType : u8 {
     Acoustic,
     FieldRecording,
     FoundSounds,
@@ -226,7 +226,7 @@ enum class TagType : u16 {
 
 using TagsBitset = Bitset<ToInt(TagType::Count)>;
 
-enum class TagCategoryImportance {
+enum class TagCategoryImportance : u8 {
     Primary,
     Secondary,
 };

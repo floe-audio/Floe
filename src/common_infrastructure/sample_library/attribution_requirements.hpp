@@ -27,7 +27,7 @@ struct AttributionsStore {
         Optional<String> attribution_url;
     };
 
-    enum class Mode { Read, Write };
+    enum class Mode : u8 { Read, Write };
 
     bool SerialiseNumber(Integral auto& value) {
         if (mode == Mode::Read) {

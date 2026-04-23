@@ -39,7 +39,7 @@ enum class ComponentType : u8 { Library, Presets, Count };
 
 String ComponentTypeString(ComponentType type);
 
-enum class PackageError {
+enum class PackageError : u8 {
     FileCorrupted,
     NotFloePackage,
     InvalidLibrary,

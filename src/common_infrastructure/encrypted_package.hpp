@@ -52,7 +52,7 @@ inline bool HasEncryptedPackageExtension(String path) {
 // nonce = first 16 bytes of seed || chunk_index as little-endian u64
 void DeriveChunkNonce(u8* nonce_out, u8 const* nonce_seed, u64 chunk_index);
 
-enum class EncryptedPackageError {
+enum class EncryptedPackageError : u8 {
     InvalidHeader,
     DecryptionFailed,
 };

@@ -93,7 +93,7 @@ concept TypeWithCustomValueToString =
     requires(T value, Writer writer, FormatOptions options) { CustomValueToString(writer, value, options); };
 
 struct IntToStringOptions {
-    enum class Base { Decimal, Hexadecimal, Base32 };
+    enum class Base : u8 { Decimal, Hexadecimal, Base32 };
     Base base = Base::Decimal;
     bool include_sign = false;
     bool capitalize = false;

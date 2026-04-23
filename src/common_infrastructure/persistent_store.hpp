@@ -70,7 +70,7 @@ struct Store : StoreTable {
     bool store_valid = false;
 };
 
-enum class GetResult {
+enum class GetResult : u8 {
     Found,
     NotFound,
     StoreInaccessible,

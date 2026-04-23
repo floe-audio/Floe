@@ -9,7 +9,7 @@
 #define FLOE_PRESET_FILE_EXTENSION ".floe-preset"
 
 struct CodeStateArguments {
-    enum class Mode { Decode, Encode };
+    enum class Mode : u8 { Decode, Encode };
 
     Mode mode;
     FunctionRef<ErrorCodeOr<void>(void* data, usize bytes)> read_or_write_data;

@@ -15,7 +15,7 @@
 struct VoicePool;
 
 struct InfoPanelState {
-    enum class Tab : u32 {
+    enum class Tab : u8 {
         Libraries,
         About,
         Metrics,

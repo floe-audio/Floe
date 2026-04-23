@@ -37,7 +37,7 @@
 
 // Logging is non-realtime only. We don't log in the audio thread.
 // Some main-thread CLAP functions are called very frequently, so we only log them at a certain level.
-enum class ClapFunctionType {
+enum class ClapFunctionType : u8 {
     NonRecurring,
     Any,
 };

@@ -487,7 +487,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
     };
 
     FilterItemInfo const waveform_info = {
-        .num_used_in_items_lists = state.common_state.HasFilters() ? 0 : ToInt(WaveformType::Count),
+        .num_used_in_items_lists = state.common_state.HasFilters() ? 0u : ToInt(WaveformType::Count),
         .total_available = ToInt(WaveformType::Count),
     };
 

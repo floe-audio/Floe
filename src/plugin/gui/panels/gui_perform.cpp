@@ -170,7 +170,7 @@ static void
 DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto& params = g.engine.processor.main_params;
 
-    enum class RandomScope { Folder, Library, Any };
+    enum class RandomScope : u8 { Folder, Library, Any };
 
     auto const load_random = [&](LayerProcessor& target_layer, RandomScope scope) {
         InstBrowserState ephemeral_state {.id = HashFnv1a("dummy-inst-browser")};

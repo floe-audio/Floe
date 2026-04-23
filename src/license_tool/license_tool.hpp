@@ -3,7 +3,7 @@
 #pragma once
 #include "utils/cli_arg_parse.hpp"
 
-enum class LicenseToolCliArgId : u32 {
+enum class LicenseToolCliArgId : u8 {
     GenerateKeypair,
     SignLicense,
     SecretKeyHex,

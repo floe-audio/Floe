@@ -9,7 +9,7 @@
 
 constexpr String k_raw_16_bit_stereo_44100_format_ext = ".r16";
 
-enum class AudioFileError {
+enum class AudioFileError : u8 {
     FileHasInvalidData,
     NotFlacOrWav,
     NotMonoOrStereo,

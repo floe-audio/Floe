@@ -20,7 +20,7 @@ void ReportError(sentry::Error&& error, Optional<u64> error_id);
 bool ErrorSentBefore(u64 error_id);
 } // namespace detail
 
-enum class ErrorLevel { Debug, Info, Warning, Error, Fatal };
+enum class ErrorLevel : u8 { Debug, Info, Warning, Error, Fatal };
 
 // Thread-safe. Not signal-safe. Works even if InitBackgroundErrorReporting() was not called.
 template <typename... Args>
@@ -51,7 +51,7 @@ ReportError(ErrorLevel level, Optional<u64> error_id, String format, Args const&
     detail::ReportError(Move(error), error_id);
 }
 
-enum class ReportFeedbackReturnCode {
+enum class ReportFeedbackReturnCode : u8 {
     Success,
     InvalidEmail,
     Busy,

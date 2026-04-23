@@ -167,6 +167,7 @@ pub const ClangTidyStep = struct {
             .argv = args.items,
             .progress_node = options.progress_node,
             .cwd = step.owner.build_root.path, // compile_commands.json paths are relative to build root.
+            .max_output_bytes = 10 * 1024 * 1024,
         }) catch |err| {
             return step.fail("failed to run clang-tidy: {s}", .{@errorName(err)});
         };

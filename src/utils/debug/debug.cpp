@@ -168,7 +168,7 @@ struct TypeDescriptor {
     u16 info;
     char name[1];
 
-    enum Kind { TkInteger = 0x0000, TkFloat = 0x0001, TkUnknown = 0xffff };
+    enum Kind : u16 { TkInteger = 0x0000, TkFloat = 0x0001, TkUnknown = 0xffff };
 };
 
 struct Value {

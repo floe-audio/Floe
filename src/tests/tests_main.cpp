@@ -115,7 +115,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
 
     tests::Tester tester;
 
-    enum class CommandLineArgId : u32 {
+    enum class CommandLineArgId : u8 {
         Filter,
         List,
         LogLevel,

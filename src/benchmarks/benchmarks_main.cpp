@@ -24,7 +24,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
 
     benchmarks::Benchmarker benchmarker;
 
-    enum class CommandLineArgId : u32 {
+    enum class CommandLineArgId : u8 {
         Filter,
         List,
         Count,

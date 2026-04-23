@@ -55,7 +55,7 @@ struct AppWindow {
     NativeAppWindowState* native_state;
 };
 
-enum class AppWindowErrorCode {
+enum class AppWindowErrorCode : u8 {
     UnknownError,
     Unsupported,
     BackendFailed,

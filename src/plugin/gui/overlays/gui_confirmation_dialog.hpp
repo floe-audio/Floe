@@ -6,7 +6,7 @@
 
 #include "gui/core/gui_fwd.hpp"
 
-enum class ConfirmationDialogResult {
+enum class ConfirmationDialogResult : u8 {
     Cancel,
     Ok,
 };
