@@ -84,11 +84,13 @@ void DoArpStepSequencer(GuiState& g,
     if (show_all) {
         bar_area_height = content_h - row_height;
     } else {
+        constexpr f32 k_row_gap = 1;
         u32 num_footer_rows = 1;
         if (show_note_row) num_footer_rows++;
         if (show_tie_row) num_footer_rows++;
         auto const footer_rows_height = row_height * (f32)num_footer_rows;
-        auto const footer_height = footer_rows_height + knob_size + (label_pad * 2);
+        auto const num_gaps = num_footer_rows + 1;
+        auto const footer_height = footer_rows_height + knob_size + (label_pad * 2) + (k_row_gap * (f32)num_gaps);
         bar_area_height = content_h - footer_height;
     }
 
@@ -260,18 +262,27 @@ void DoArpStepSequencer(GuiState& g,
             continue;
         }
 
-        auto const footer_y_vp = bar_area_height;
+        constexpr f32 k_row_gap = 1;
+        auto const footer_y_vp = bar_area_height + k_row_gap;
         f32 row_y_vp = footer_y_vp;
 
-        // Row: Step number + on/off toggle (always shown)
+        // Row: Step number + on/off toggle (always shown, spans tie chain)
         if (!is_tied) {
+            u32 num_tied_following = 0;
+            for (u32 j = i + 1; j < active_steps; ++j) {
+                if (!snapshot.StepAt(j).tie) break;
+                ++num_tied_following;
+            }
+            auto const chain_width = step_width + ((f32)num_tied_following * step_stride);
+            auto const btn_height = row_height + label_pad;
+
             auto const label_click_rect =
-                imgui.RegisterAndConvertRect({.x = x_vp, .y = row_y_vp, .w = step_width, .h = row_height});
+                imgui.RegisterAndConvertRect({.x = x_vp, .y = row_y_vp, .w = chain_width, .h = btn_height});
             auto const label_rect = imgui.ViewportRectToWindowRect({
                 .x = x_vp,
-                .y = row_y_vp + label_pad,
-                .w = step_width,
-                .h = row_height - (label_pad * 2),
+                .y = row_y_vp,
+                .w = chain_width,
+                .h = btn_height,
             });
 
             bool label_hot = false;
@@ -284,10 +295,28 @@ void DoArpStepSequencer(GuiState& g,
                 imgui.PopId();
             }
 
+            if (anything_editable) {
+                if (label_hot) {
+                    draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextHot), 20));
+                    draw_list.AddNonAABox(label_rect.Min(), label_rect.Max(), WithAlphaU8(LiveCol(UiColMap::MidTextHot), 120), 1);
+                } else if (!step_off) {
+                    draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 15));
+                    draw_list.AddNonAABox(label_rect.Min(), label_rect.Max(), WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 80), 1);
+                } else {
+                    draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 10));
+                }
+            }
+
+            auto const text_rect = imgui.ViewportRectToWindowRect({
+                .x = x_vp,
+                .y = row_y_vp,
+                .w = step_width,
+                .h = btn_height,
+            });
             auto const text_col = dim(label_hot  ? LiveCol(UiColMap::MidTextHot)
                                       : step_off ? WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 60)
                                                  : LiveCol(UiColMap::MidTextDimmed));
-            draw_list.AddTextInRect(label_rect,
+            draw_list.AddTextInRect(text_rect,
                                     text_col,
                                     fmt::Format(g.scratch_arena, "{}", i + 1),
                                     {
@@ -295,7 +324,7 @@ void DoArpStepSequencer(GuiState& g,
                                         .font_scaling = 0.85f,
                                     });
         }
-        row_y_vp += row_height;
+        row_y_vp += row_height + k_row_gap;
 
         // Row: Note/interval display + drag to edit (hidden when show_note_row is false, skipped for tied
         // steps)
@@ -367,7 +396,7 @@ void DoArpStepSequencer(GuiState& g,
                                         .font_scaling = 0.85f,
                                     });
         }
-        if (show_note_row) row_y_vp += row_height;
+        if (show_note_row) row_y_vp += row_height + k_row_gap;
 
         // Row: Tie toggle (hidden when show_tie_row is false, not on first step)
         if (show_tie_row && i > 0) {
@@ -407,7 +436,7 @@ void DoArpStepSequencer(GuiState& g,
                                     });
             g.fonts.Pop();
         }
-        if (show_tie_row) row_y_vp += row_height;
+        if (show_tie_row) row_y_vp += row_height + k_row_gap;
 
         // Row: Gate knob (always shown, skipped for tied steps)
         if (!is_tied) {
