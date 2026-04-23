@@ -317,7 +317,7 @@ TryGrowingInPlace(Span<u8> stack, usize& cursor, ResizeCommand const& cmd) {
     return k_nullopt;
 }
 
-static constexpr void HandleBumpFree(Span<u8> data_to_free, u8* stack_data, usize& cursor) {
+static constexpr void HandleBumpFree(Span<u8> data_to_free, u8 const* stack_data, usize& cursor) {
     if (data_to_free.data && End(data_to_free) == (stack_data + cursor)) {
         if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
             // fill the memory with a pattern to help catch use-after-free bugs

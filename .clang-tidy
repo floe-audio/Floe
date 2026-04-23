@@ -30,12 +30,16 @@ Checks: '-*,
   modernize-use-nullptr,
   modernize-use-using,
   performance-enum-size,
+  performance-unnecessary-copy-initialization,
+  performance-unnecessary-value-param,
   readability-convert-member-functions-to-static,
   readability-identifier-naming,
   readability-isolate-declaration,
   readability-math-missing-parentheses,
+  readability-non-const-parameter,
   readability-redundant-casting,
   readability-redundant-inline-specifier,
+  readability-redundant-parentheses,
 '
 
 # IMPROVE: use readibility-identifier-length

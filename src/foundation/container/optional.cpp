@@ -28,7 +28,7 @@ struct AllocedString {
 };
 
 static int TestValue(int) { return 10; }
-static AllocedString TestValue(AllocedString) { return "abc"_s; }
+static AllocedString TestValue(AllocedString const&) { return "abc"_s; }
 
 template <typename Type>
 TEST_CASE(TestOptional) {
@@ -47,7 +47,7 @@ TEST_CASE(TestOptional) {
         REQUIRE(*o == TestValue(Type()));
 
         SUBCASE("copy construct") {
-            Optional<Type> other {o};
+            Optional<Type> other {o}; // NOLINT: performance-unnecessary-copy-initialization
             REQUIRE(other.HasValue());
             REQUIRE(other.Value() == TestValue(Type()));
         }
