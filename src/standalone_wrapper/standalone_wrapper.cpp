@@ -177,6 +177,7 @@ struct Standalone {
     PuglView* gui_view {};
     bool view_realized {};
 
+    bool force_midi_channel_zero = false;
     bool quit = false;
 
     // Plugin instance access is controlled by plugin_instance_state. The pointer is only valid
@@ -268,7 +269,9 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
                     .port_index = 0,
                     .data =
                         {
-                            (u8)Pm_MessageStatus(events.events[i].message),
+                            (u8)(standalone->force_midi_channel_zero
+                                     ? (Pm_MessageStatus(events.events[i].message) & 0b11110000)
+                                     : Pm_MessageStatus(events.events[i].message)),
                             (u8)Pm_MessageData1(events.events[i].message),
                             (u8)Pm_MessageData2(events.events[i].message),
                         },
@@ -764,8 +767,15 @@ static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, A
     LogInfo(ModuleName::Standalone, "Hot-reload: plugin reloaded successfully");
 }
 
-static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
+struct RunOptions {
+    Optional<String> dso_path;
+    bool force_midi_channel_zero;
+};
+
+static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
+    auto const& dso_path = options.dso_path;
     Standalone standalone {};
+    standalone.force_midi_channel_zero = options.force_midi_channel_zero;
 
     // Modify detection if given a plugin path.
     bool const is_external_plugin = dso_path.HasValue();
@@ -925,6 +935,7 @@ static int Main(ArgsCstr args) {
 
     enum class CommandLineArgId : u32 {
         ClapPluginPath,
+        ForceMidiChannelZero,
         Count,
     };
 
@@ -938,6 +949,14 @@ static int Main(ArgsCstr args) {
             .required = false,
             .num_values = 1,
         },
+        {
+            .id = (u32)CommandLineArgId::ForceMidiChannelZero,
+            .key = "force-midi-channel-zero",
+            .description = "Rewrite all incoming MIDI messages to channel 0.",
+            .value_type = {},
+            .required = false,
+            .num_values = 0,
+        },
     });
 
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -945,7 +964,12 @@ static int Main(ArgsCstr args) {
     if (cli_args_outcome.HasError()) return cli_args_outcome.Error();
     auto const cli_args = cli_args_outcome.ReleaseValue();
 
-    auto const o = Run(cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(), arena);
+    auto const o = Run(
+        {
+            .dso_path = cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(),
+            .force_midi_channel_zero = cli_args[ToInt(CommandLineArgId::ForceMidiChannelZero)].was_provided,
+        },
+        arena);
     if (o.HasError()) {
         LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());
         return 1;
