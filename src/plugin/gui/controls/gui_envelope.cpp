@@ -129,6 +129,9 @@ static void DrawEnvelopeVoiceMarkers(GuiState& g,
                             bottom_left.x,
                             line,
                             {});
+
+        auto const dot_col = ChangeAlpha(LiveCol(UiColMap::WaveformLoopVoiceMarkers), 0.5f);
+        imgui.draw_list->AddCircleFilled(f32x2 {cursor_x, cursor_y}, WwToPixels(2.5f), dot_col);
     }
 }
 
