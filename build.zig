@@ -1594,6 +1594,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/controls/gui_arp_step_sequencer.cpp",
             "gui/controls/gui_curve_map.cpp",
             "gui/controls/gui_envelope.cpp",
+            "gui/controls/gui_eq.cpp",
             "gui/controls/gui_keyboard.cpp",
             "gui/controls/gui_waveform.cpp",
             "gui/core/gui_actions.cpp",

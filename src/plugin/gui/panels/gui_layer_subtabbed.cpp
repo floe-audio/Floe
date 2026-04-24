@@ -11,6 +11,7 @@
 #include "gui/controls/gui_arp_step_sequencer.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
+#include "gui/controls/gui_eq.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -929,6 +930,9 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
     auto& params = g.engine.processor.main_params;
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::EqOn);
 
+    constexpr f32 k_small_knob_w = 24.0f;
+    constexpr f32 k_small_knob_gap = 12.0f;
+
     auto const page = DoBox(g.builder,
                             {
                                 .parent = parent,
@@ -950,119 +954,119 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
 
     DoWhitespace(g.builder, page, 8);
 
-    // Container for all EQ band rows with consistent gap
+    // Visual EQ at top.
+    {
+        auto const vis_box = DoBox(g.builder,
+                                   {
+                                       .parent = page,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, 140},
+                                       },
+                                   });
+        if (auto const r = BoxRect(g.builder, vis_box)) DoEqVisualizer(g, layer_index, *r, greyed_out);
+    }
+
+    DoWhitespace(g.builder, page, 22);
+
+    // Compact band control rows at the bottom.
     auto const bands_container = DoBox(g.builder,
                                        {
                                            .parent = page,
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_gap = 26,
+                                               .contents_gap = 8,
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                            },
                                        });
 
-    // EQ band helper - adds menu row and knobs row to bands_container
-    auto const do_eq_band = [&](LayerParamIndex type_param,
-                                LayerParamIndex freq_param,
-                                LayerParamIndex reso_param,
-                                LayerParamIndex gain_param,
-                                u8 band_number) {
-        auto const band = DoBox(g.builder,
-                                {
-                                    .parent = bands_container,
-                                    .id_extra = band_number,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_gap = 10,
-                                        .contents_direction = layout::Direction::Column,
+    auto const do_eq_band_row = [&](LayerParamIndex type_param,
+                                    LayerParamIndex freq_param,
+                                    LayerParamIndex reso_param,
+                                    LayerParamIndex gain_param,
+                                    u8 band_number) {
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = bands_container,
+                                   .id_extra = band_number,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_gap = k_small_knob_gap,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_align = layout::Alignment::Middle,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
 
-                                    },
-                                });
-
-        // Type menu
-        auto const menu_row = DoBox(g.builder,
-                                    {
-                                        .parent = band,
-                                        .layout {
-                                            .size = layout::k_hug_contents,
-                                            .contents_gap = 6,
-                                            .contents_direction = layout::Direction::Row,
-                                            .contents_align = layout::Alignment::Middle,
-                                        },
-                                    });
+        auto const label_and_menu = DoBox(g.builder,
+                                          {
+                                              .parent = row,
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_gap = 3,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
 
         DoBox(g.builder,
               {
-                  .parent = menu_row,
-                  .text = fmt::Format(g.scratch_arena, "Band {}", band_number),
+                  .parent = label_and_menu,
+                  .text = fmt::Format(g.scratch_arena, "{}", band_number),
                   .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                  .text_justification = TextJustification::CentredRight,
+                  .text_justification = TextJustification::CentredLeft,
                   .layout {
-                      .size = {50, k_font_body_size},
+                      .size = {8, k_font_body_size},
                   },
               });
+
         DoMenuParameter(g,
-                        menu_row,
+                        label_and_menu,
                         params.DescribedValue(layer_index, type_param),
                         {
-                            .width = 130,
+                            .width = 90,
                             .greyed_out = greyed_out,
                             .label = false,
                         });
 
-        // Knobs row
-        auto const knobs_row = DoBox(g.builder,
-                                     {
-                                         .parent = band,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .contents_gap = 24,
-                                             .contents_direction = layout::Direction::Row,
-                                             .contents_align = layout::Alignment::Middle,
-                                         },
-                                     });
-
         DoKnobParameter(g,
-                        knobs_row,
+                        row,
                         params.DescribedValue(layer_index, freq_param),
                         {
-                            .width = k_knob_width,
+                            .width = k_small_knob_w,
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
         DoKnobParameter(g,
-                        knobs_row,
+                        row,
                         params.DescribedValue(layer_index, reso_param),
                         {
-                            .width = k_knob_width,
+                            .width = k_small_knob_w,
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
         DoKnobParameter(g,
-                        knobs_row,
+                        row,
                         params.DescribedValue(layer_index, gain_param),
                         {
-                            .width = k_knob_width,
+                            .width = k_small_knob_w,
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                             .bidirectional = true,
                         });
     };
 
-    // Band 1
-    do_eq_band(LayerParamIndex::EqType1,
-               LayerParamIndex::EqFreq1,
-               LayerParamIndex::EqResonance1,
-               LayerParamIndex::EqGain1,
-               1);
+    do_eq_band_row(LayerParamIndex::EqType1,
+                   LayerParamIndex::EqFreq1,
+                   LayerParamIndex::EqResonance1,
+                   LayerParamIndex::EqGain1,
+                   1);
 
-    // Band 2
-    do_eq_band(LayerParamIndex::EqType2,
-               LayerParamIndex::EqFreq2,
-               LayerParamIndex::EqResonance2,
-               LayerParamIndex::EqGain2,
-               2);
+    do_eq_band_row(LayerParamIndex::EqType2,
+                   LayerParamIndex::EqFreq2,
+                   LayerParamIndex::EqResonance2,
+                   LayerParamIndex::EqGain2,
+                   2);
 }
 
 static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
