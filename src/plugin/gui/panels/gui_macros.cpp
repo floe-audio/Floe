@@ -358,21 +358,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
         auto const name_input = DoBox(builder,
                                       {
                                           .parent = container,
-                                          .background_fill_colours =
-                                              ColSet {
-                                                  .base = {},
-                                                  .hot = {},
-                                                  .active = {.c = Col::Background2, .dark_mode = true},
-                                              },
-                                          .border_colours =
-                                              ColSet {
-                                                  .base = {.c = Col::Overlay0, .dark_mode = true},
-                                                  .hot = {.c = Col::Overlay1, .dark_mode = true},
-                                                  .active = {.c = Col::Blue, .dark_mode = true},
-                                              },
-                                          .round_background_corners = 0b1111,
                                           .layout {
-                                              .size = {100, k_font_body_size},
+                                              .size = {100, k_font_body_size + 6},
                                           },
                                       });
 
@@ -397,6 +384,21 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                         .event = MouseButtonEvent::Up,
                     },
             });
+
+            bool const focused = builder.imgui.TextInputHasFocus(name_input.imgui_id);
+            bool const hot = builder.imgui.IsHot(name_input.imgui_id);
+            auto const rounding = WwToPixels(k_corner_rounding);
+
+            if (focused) {
+                builder.imgui.draw_list->AddRectFilled(window_r,
+                                                       ToU32({.c = Col::Background2, .dark_mode = true}),
+                                                       rounding);
+            }
+
+            auto const border_col = focused ? Col {.c = Col::Overlay2, .dark_mode = true}
+                                    : hot   ? Col {.c = Col::Overlay1, .dark_mode = true}
+                                            : Col {.c = Col::Surface1, .dark_mode = true};
+            builder.imgui.draw_list->AddRect(window_r, ToU32(border_col), rounding);
 
             DrawTextInput(builder.imgui,
                           result,
