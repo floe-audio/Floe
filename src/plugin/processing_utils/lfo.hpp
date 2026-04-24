@@ -50,10 +50,21 @@ struct LFO {
         return (output + 1.0f) - 1.0f;
     }
 
-    void SetRate(f32 sample_rate, f32 new_rate_hz) {
+    void SetRate(f32 new_sample_rate, f32 new_rate_hz) {
+        sample_rate = new_sample_rate;
+        rate_hz = new_rate_hz;
+        RecomputePhaseIncrement();
+    }
+
+    void RecomputePhaseIncrement() {
+        if (sample_rate <= 0) {
+            phase_increment_per_tick = 0;
+            return;
+        }
+        auto effective_rate_hz = rate_hz;
         // The random modes feel too slow relative to the other modes.
-        if (waveform == Waveform::RandomSteps || waveform == Waveform::RandomGlide) new_rate_hz *= 2;
-        phase_increment_per_tick = (u32)((256.0f * new_rate_hz / sample_rate) * (f32)(1 << 24));
+        if (waveform == Waveform::RandomSteps || waveform == Waveform::RandomGlide) effective_rate_hz *= 2;
+        phase_increment_per_tick = (u32)((256.0f * effective_rate_hz / sample_rate) * (f32)(1 << 24));
     }
 
     void SetWaveform(Waveform w) {
@@ -93,9 +104,12 @@ struct LFO {
             case Waveform::None: break;
         }
         waveform = w;
+        RecomputePhaseIncrement();
     }
 
     Waveform waveform {Waveform::None};
+    f32 sample_rate = 0;
+    f32 rate_hz = 0;
     u32 phase = 0;
     u32 phase_increment_per_tick = 0;
     u32 random_state = 1; // xorshift32 state for random waveforms; must be non-zero
