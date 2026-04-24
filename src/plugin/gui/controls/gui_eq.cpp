@@ -234,6 +234,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
             ParameterJustStoppedMoving(engine.processor, gain_index);
         }
 
+        imgui.ConsumeScrollAtRect(grabber_window_r);
         if (imgui.IsHot(interaction_id)) {
             auto const scroll = GuiIo().in.mouse_scroll_delta_in_lines;
             if (scroll != 0) {

@@ -859,7 +859,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
         if (auto const r = BoxRect(g.builder, vis_box)) DoFilterVisualizer(g, layer_index, *r, greyed_out);
     }
 
-    DoWhitespace(g.builder, page, 22);
+    DoWhitespace(g.builder, page, 12);
 
     // Envelope and controls side by side.
     auto const bottom_row = DoBox(g.builder,
@@ -873,31 +873,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                       },
                                   });
 
-    // Narrower envelope on the left.
-    {
-        auto const envelope_box = DoBox(g.builder,
-                                        {
-                                            .parent = bottom_row,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, 60},
-                                            },
-                                        });
-
-        bool const env_greyed_out =
-            greyed_out || (params.LinearValue(layer_index, LayerParamIndex::FilterEnvAmount) == 0);
-        if (auto const r = BoxRect(g.builder, envelope_box))
-            DoEnvelopeGui(g,
-                          layer,
-                          *r,
-                          env_greyed_out,
-                          {LayerParamIndex::FilterAttack,
-                           LayerParamIndex::FilterDecay,
-                           LayerParamIndex::FilterSustain,
-                           LayerParamIndex::FilterRelease},
-                          GuiEnvelopeType::Filter);
-    }
-
-    // Type menu + compact knobs on the right.
+    // Type menu + compact knobs.
     {
         auto const controls_col = DoBox(g.builder,
                                         {
@@ -910,6 +886,15 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                             },
                                         });
+
+        DoMenuParameter(g,
+                        controls_col,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterType),
+                        {
+                            .width = 120,
+                            .greyed_out = greyed_out,
+                            .label = false,
+                        });
 
         auto const knobs_row = DoBox(g.builder,
                                      {
@@ -948,15 +933,30 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                             .greyed_out = greyed_out,
                             .bidirectional = true,
                         });
+    }
 
-        DoMenuParameter(g,
-                        controls_col,
-                        params.DescribedValue(layer_index, LayerParamIndex::FilterType),
-                        {
-                            .width = 120,
-                            .greyed_out = greyed_out,
-                            .label = false,
-                        });
+    // Narrower envelope.
+    {
+        auto const envelope_box = DoBox(g.builder,
+                                        {
+                                            .parent = bottom_row,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, 60},
+                                            },
+                                        });
+
+        bool const env_greyed_out =
+            greyed_out || (params.LinearValue(layer_index, LayerParamIndex::FilterEnvAmount) == 0);
+        if (auto const r = BoxRect(g.builder, envelope_box))
+            DoEnvelopeGui(g,
+                          layer,
+                          *r,
+                          env_greyed_out,
+                          {LayerParamIndex::FilterAttack,
+                           LayerParamIndex::FilterDecay,
+                           LayerParamIndex::FilterSustain,
+                           LayerParamIndex::FilterRelease},
+                          GuiEnvelopeType::Filter);
     }
 }
 

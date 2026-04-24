@@ -557,7 +557,14 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     }
     dyn::Clear(sorted_viewports);
 
-    if (frame_input.mouse_scroll_delta_in_lines != 0 && hovered_viewport) {
+    bool scroll_consumed_by_widget = false;
+    for (auto const& r : scroll_consumer_rects_last_frame)
+        if (r.Contains(frame_input.cursor_pos)) {
+            scroll_consumed_by_widget = true;
+            break;
+        }
+
+    if (frame_input.mouse_scroll_delta_in_lines != 0 && hovered_viewport && !scroll_consumed_by_widget) {
         Viewport* viewport = hovered_viewport;
         Viewport* final_viewport = nullptr;
         while (true) {
@@ -634,8 +641,16 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
                   "ApplicationViewport");
 }
 
+void Context::ConsumeScrollAtRect(Rect rect_in_window_coords) {
+    if (scroll_consumer_rects.size < scroll_consumer_rects.Capacity())
+        dyn::Append(scroll_consumer_rects, rect_in_window_coords);
+}
+
 void Context::EndFrame() {
     EndViewport(); // k_root_viewport_id
+
+    scroll_consumer_rects_last_frame = scroll_consumer_rects;
+    dyn::Clear(scroll_consumer_rects);
 
     ASSERT_EQ(viewport_stack.size, 0u); // All BeginViewport calls must have an EndViewport.
     ASSERT_EQ(current_popup_stack.size, 0u);

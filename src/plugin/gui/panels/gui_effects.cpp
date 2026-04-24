@@ -10,6 +10,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/controls/gui_filter_visualizer.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -664,6 +665,17 @@ static void DoEffectParams(GuiState& g,
 
         case EffectType::FilterEffect: {
             bool const using_gain = engine.processor.filter_effect.IsUsingGainParam(params);
+
+            // Visualiser takes up its own row (full width of the param container).
+            auto const vis_box = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = {250, 90},
+                                           },
+                                       });
+            if (auto const r = BoxRect(g.builder, vis_box)) DoEffectFilterVisualizer(g, *r, greyed_out);
+
             DoMenuParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::FilterType),

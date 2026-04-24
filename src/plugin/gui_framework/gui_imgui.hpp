@@ -668,6 +668,11 @@ struct Context {
     void CloseTopPopupOnly();
     bool DidPopupMenuJustOpen(Id id);
 
+    // Tell the framework that if the cursor is in this rect next frame, it should not apply the
+    // default viewport scroll behaviour to mouse-wheel events. Used for widgets that repurpose the
+    // scroll wheel (e.g. to adjust a parameter). Call every frame from the widget.
+    void ConsumeScrollAtRect(Rect rect_in_window_coords);
+
     //
     // Modal viewports
     //
@@ -801,6 +806,11 @@ struct Context {
     ActiveItem active_item_last_frame = {};
     Id hot_item_last_frame = k_null_id;
     Id hovered_item_last_frame = k_null_id;
+
+    // Filled during a frame by widgets that want to eat mouse scroll. Checked at the start of the
+    // next frame before applying scroll to a viewport.
+    DynamicArrayBounded<Rect, 16> scroll_consumer_rects = {};
+    DynamicArrayBounded<Rect, 16> scroll_consumer_rects_last_frame = {};
 
     Id hot_item = k_null_id;
     Id temp_hot_item = k_null_id;
