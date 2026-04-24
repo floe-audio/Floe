@@ -361,14 +361,14 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                           .background_fill_colours =
                                               ColSet {
                                                   .base = {},
-                                                  .hot = {.c = Col::Background0, .dark_mode = true},
-                                                  .active = {.c = Col::Background0, .dark_mode = true},
+                                                  .hot = {},
+                                                  .active = {.c = Col::Background2, .dark_mode = true},
                                               },
                                           .border_colours =
                                               ColSet {
-                                                  .base = {},
+                                                  .base = {.c = Col::Overlay0, .dark_mode = true},
                                                   .hot = {.c = Col::Overlay1, .dark_mode = true},
-                                                  .active = {.c = Col::Subtext0, .dark_mode = true},
+                                                  .active = {.c = Col::Blue, .dark_mode = true},
                                               },
                                           .round_background_corners = 0b1111,
                                           .layout {
