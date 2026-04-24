@@ -2303,7 +2303,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
             auto const length_current = (int)arp_state.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
             auto const length_new = do_int_dragger_cell(
                 row,
-                "Slices"_s,
+                "Length"_s,
                 length_current,
                 0,
                 (int)Min(num_slices, (u32)255),

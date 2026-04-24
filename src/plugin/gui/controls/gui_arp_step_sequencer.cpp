@@ -45,16 +45,17 @@ void DoArpStepSequencer(GuiState& g,
     imgui.draw_list->AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), WwToPixels(k_corner_rounding));
 
     constexpr f32 k_gap = 2.0f;
-    constexpr u32 k_default_visible_steps = 16;
+    auto const k_default_visible_steps =
+        snapshot.activation == ArpGuiSnapshot::Activation::ForcedBySlicing ? 16u : 12u;
     bool const needs_show_all = active_steps > k_default_visible_steps;
     if (!needs_show_all) show_all = false;
 
     auto const step_width =
         show_all ? (rect.w - (k_gap * ((f32)active_steps - 1))) / (f32)active_steps
-                 : (rect.w - (k_gap * (k_default_visible_steps - 1))) / (f32)k_default_visible_steps;
+                 : (rect.w - (k_gap * ((f32)k_default_visible_steps - 1))) / (f32)k_default_visible_steps;
     auto const step_stride = step_width + k_gap;
 
-    // Open a horizontally scrolling viewport. Steps beyond the 16 that fit in `rect.w` overflow and scroll.
+    // Open a horizontally scrolling viewport. Steps beyond those that fit in `rect.w` overflow and scroll.
     imgui.BeginViewport(
         {
             .positioning = imgui::ViewportPositioning::WindowAbsolute,
@@ -349,6 +350,8 @@ void DoArpStepSequencer(GuiState& g,
 
             f32 frac = arp_type == param_values::ArpMode::Fixed ? (f32)step.note / 127.0f
                                                                 : (f32)(step.interval + 48) / 96.0f;
+            constexpr f32 k_px_per_increment = 10.0f;
+            auto const num_increments = arp_type == param_values::ArpMode::Fixed ? 127.0f : 96.0f;
             if (imgui.SliderBehaviourFraction({
                     .rect_in_window_coords = note_click_rect,
                     .id = note_id,
@@ -356,7 +359,7 @@ void DoArpStepSequencer(GuiState& g,
                     .default_fraction = arp_type == param_values::ArpMode::Fixed ? 60.0f / 127.0f : 0.5f,
                     .cfg =
                         {
-                            .sensitivity = 300,
+                            .sensitivity = k_px_per_increment * num_increments,
                             .slower_with_shift = true,
                             .default_on_modifer = true,
                         },
