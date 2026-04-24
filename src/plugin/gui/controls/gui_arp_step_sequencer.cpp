@@ -130,7 +130,9 @@ void DoArpStepSequencer(GuiState& g,
         imgui.OpenPopupMenu(step_popup_id_for(clicked_step), bar_id);
     }
 
-    if (edit.step_velocity) {
+    // Velocity drag + tooltip. Always interactive — edit.step_velocity only controls visual dimming
+    // via anything_editable, not interactivity.
+    {
         // fired captures the mouse-down on the same frame; IsActive only goes true the frame after.
         auto const fired = imgui.ButtonBehaviour(bar_rect,
                                                  bar_id,
@@ -371,7 +373,7 @@ void DoArpStepSequencer(GuiState& g,
             });
 
             bool label_hot = false;
-            if (edit.step_on) {
+            {
                 imgui.PushId((u64)i);
                 auto const toggle_id = imgui.MakeId(SourceLocationHash());
                 if (imgui.ButtonBehaviour(label_click_rect, toggle_id, {}))
@@ -427,22 +429,20 @@ void DoArpStepSequencer(GuiState& g,
                 imgui.PopId();
             }
 
-            if (anything_editable) {
-                if (label_hot) {
-                    draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextHot), 20));
-                    draw_list.AddNonAABox(label_rect.Min(),
-                                          label_rect.Max(),
-                                          WithAlphaU8(LiveCol(UiColMap::MidTextHot), 120),
-                                          1);
-                } else if (!step_off) {
-                    draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 15));
-                    draw_list.AddNonAABox(label_rect.Min(),
-                                          label_rect.Max(),
-                                          WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 80),
-                                          1);
-                } else {
-                    draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 10));
-                }
+            if (label_hot) {
+                draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextHot), 20));
+                draw_list.AddNonAABox(label_rect.Min(),
+                                      label_rect.Max(),
+                                      WithAlphaU8(LiveCol(UiColMap::MidTextHot), 120),
+                                      1);
+            } else if (!step_off) {
+                draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 15));
+                draw_list.AddNonAABox(label_rect.Min(),
+                                      label_rect.Max(),
+                                      WithAlphaU8(LiveCol(UiColMap::CurveMapLine), 80),
+                                      1);
+            } else {
+                draw_list.AddRectFilled(label_rect, WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 10));
             }
 
             auto const text_rect = imgui.ViewportRectToWindowRect({
@@ -662,7 +662,7 @@ void DoArpStepSequencer(GuiState& g,
 
             bool knob_hot = false;
             Optional<imgui::TextInputResult> gate_text_input_result {};
-            if (edit.step_gate) {
+            {
                 imgui.PushId((u64)(i + (k_arp_max_steps * 3)));
                 auto const knob_id = imgui.MakeId(SourceLocationHash());
 
