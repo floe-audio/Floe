@@ -99,7 +99,9 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     for (auto const i : Range(k_lfo_curve_points)) {
         auto const t = (f32)i / (f32)(k_lfo_curve_points - 1);
         auto const phase = t * (f32)k_cycles_to_draw;
-        auto const value = LfoShapeValue(shape, phase) * amount;
+        // The DSP negates the raw LFO output before applying to parameters; mirror that here so
+        // the visual matches what's audible.
+        auto const value = -LfoShapeValue(shape, phase) * amount;
         auto const x = viewport_r.x + (t * viewport_r.w);
         auto const y = centre_y - (value * half_h);
         dyn::Append(curve_points, imgui.ViewportPosToWindowPos({x, y}));
