@@ -12,6 +12,7 @@
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_eq.hpp"
+#include "gui/controls/gui_filter_visualizer.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -825,6 +826,8 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
     bool const filter_on = params.BoolValue(layer_index, LayerParamIndex::FilterOn);
     bool const greyed_out = !filter_on;
 
+    constexpr f32 k_small_knob_w = 24.0f;
+
     auto const page = DoBox(g.builder,
                             {
                                 .parent = parent,
@@ -833,81 +836,50 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                     .margins = {.t = 15},
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                 },
                             });
 
-    // Heading row: FilterOn toggle + FilterType menu
+    DoButtonParameter(g,
+                      page,
+                      params.DescribedValue(layer_index, LayerParamIndex::FilterOn),
+                      {.width = layout::k_fill_parent});
+
+    DoWhitespace(g.builder, page, 8);
+
+    // Visual filter at top.
     {
-        auto const heading_row = DoBox(g.builder,
-                                       {
-                                           .parent = page,
-                                           .layout {
-                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .margins = {.b = 15},
-                                               .contents_gap = 12,
-                                               .contents_direction = layout::Direction::Row,
-                                           },
-                                       });
-
-        DoButtonParameter(g,
-                          heading_row,
-                          params.DescribedValue(layer_index, LayerParamIndex::FilterOn),
-                          {.width = layout::k_hug_contents});
-
-        DoMenuParameter(g,
-                        heading_row,
-                        params.DescribedValue(layer_index, LayerParamIndex::FilterType),
-                        {.width = layout::k_fill_parent, .greyed_out = greyed_out, .label = false});
+        auto const vis_box = DoBox(g.builder,
+                                   {
+                                       .parent = page,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, 80},
+                                       },
+                                   });
+        if (auto const r = BoxRect(g.builder, vis_box)) DoFilterVisualizer(g, layer_index, *r, greyed_out);
     }
 
-    // Knobs row: Cutoff, Resonance, EnvAmount
-    {
-        auto const knobs_row = DoBox(g.builder,
-                                     {
-                                         .parent = page,
-                                         .layout {
-                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                             .margins = {.b = 20},
-                                             .contents_gap = 22.6f,
-                                             .contents_direction = layout::Direction::Row,
-                                             .contents_align = layout::Alignment::Middle,
-                                         },
-                                     });
+    DoWhitespace(g.builder, page, 22);
 
-        DoKnobParameter(g,
-                        knobs_row,
-                        params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff),
-                        {
-                            .width = k_knob_width,
-                            .style_system = GuiStyleSystem::MidPanel,
-                            .greyed_out = greyed_out,
-                        });
-        DoKnobParameter(g,
-                        knobs_row,
-                        params.DescribedValue(layer_index, LayerParamIndex::FilterResonance),
-                        {
-                            .width = k_knob_width,
-                            .style_system = GuiStyleSystem::MidPanel,
-                            .greyed_out = greyed_out,
-                        });
-        DoKnobParameter(g,
-                        knobs_row,
-                        params.DescribedValue(layer_index, LayerParamIndex::FilterEnvAmount),
-                        {
-                            .width = k_knob_width,
-                            .style_system = GuiStyleSystem::MidPanel,
-                            .greyed_out = greyed_out,
-                            .bidirectional = true,
-                        });
-    }
+    // Envelope and controls side by side.
+    auto const bottom_row = DoBox(g.builder,
+                                  {
+                                      .parent = page,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_gap = 12,
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                  });
 
-    // Filter envelope
+    // Narrower envelope on the left.
     {
         auto const envelope_box = DoBox(g.builder,
                                         {
-                                            .parent = page,
+                                            .parent = bottom_row,
                                             .layout {
-                                                .size = {layout::k_fill_parent, 80},
+                                                .size = {layout::k_fill_parent, 60},
                                             },
                                         });
 
@@ -923,6 +895,68 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                            LayerParamIndex::FilterSustain,
                            LayerParamIndex::FilterRelease},
                           GuiEnvelopeType::Filter);
+    }
+
+    // Type menu + compact knobs on the right.
+    {
+        auto const controls_col = DoBox(g.builder,
+                                        {
+                                            .parent = bottom_row,
+                                            .layout {
+                                                .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                                .contents_gap = 8,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                            },
+                                        });
+
+        auto const knobs_row = DoBox(g.builder,
+                                     {
+                                         .parent = controls_col,
+                                         .layout {
+                                             .size = layout::k_hug_contents,
+                                             .contents_gap = 12,
+                                             .contents_direction = layout::Direction::Row,
+                                             .contents_align = layout::Alignment::Middle,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                         },
+                                     });
+
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff),
+                        {
+                            .width = k_small_knob_w,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                        });
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterResonance),
+                        {
+                            .width = k_small_knob_w,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                        });
+        DoKnobParameter(g,
+                        knobs_row,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterEnvAmount),
+                        {
+                            .width = k_small_knob_w,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .greyed_out = greyed_out,
+                            .bidirectional = true,
+                        });
+
+        DoMenuParameter(g,
+                        controls_col,
+                        params.DescribedValue(layer_index, LayerParamIndex::FilterType),
+                        {
+                            .width = 120,
+                            .greyed_out = greyed_out,
+                            .label = false,
+                        });
     }
 }
 

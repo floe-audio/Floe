@@ -2200,7 +2200,7 @@ consteval auto CreateParams() {
             .value_config = val_config_helpers::Filter({.default_hz = 6000}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Cutoff Frequency"_s,
-            .gui_label = "Cutoff"_s,
+            .gui_label = "Cut"_s,
             .tooltip = "The frequency at which the filter should take effect"_s,
         };
         lp(FilterResonance) = Args {
@@ -2208,7 +2208,7 @@ consteval auto CreateParams() {
             .value_config = val_config_helpers::Percent({.default_percent = 25}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Resonance"_s,
-            .gui_label = "Reso"_s,
+            .gui_label = "Res"_s,
             .tooltip = "The intensity of the volume peak at the cutoff frequency"_s,
         };
         lp(FilterType) = Args {
@@ -2230,7 +2230,7 @@ consteval auto CreateParams() {
             }),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Envelope Amount"_s,
-            .gui_label = "Envelope"_s,
+            .gui_label = "Env"_s,
             .tooltip = "How strongly the envelope should control the filter cutoff"_s,
         };
         lp(FilterAttack) = Args {
