@@ -9,8 +9,10 @@
 #include "common_infrastructure/constants.hpp"
 
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/layer_processor.hpp"
 
@@ -107,17 +109,37 @@ void DoArpStepSequencer(GuiState& g,
     // tells the viewport about the full content width so it can show a scrollbar when needed.
     auto const bar_rect =
         imgui.RegisterAndConvertRect(Rect {.x = 0, .y = 0, .w = total_content_w, .h = bar_area_height});
+    auto const bar_id = imgui.MakeId(SourceLocationHash());
+
+    // Per-step popup ids for the right-click step context menu. XORed from bar_id + a fixed salt so
+    // the right-click handler and the per-step render loop agree on the id without any PushId dance.
+    auto const step_popup_id_for = [&](u32 step) -> imgui::Id {
+        return bar_id ^ SourceLocationHash() ^ (imgui::Id)step;
+    };
+
+    // Right-click anywhere on the bar strip opens a per-step context menu.
+    if (imgui.ButtonBehaviour(bar_rect,
+                              bar_id,
+                              {
+                                  .mouse_button = MouseButton::Right,
+                                  .event = MouseButtonEvent::Up,
+                              })) {
+        auto const& io = GuiIo().in;
+        auto const clicked_step =
+            (u32)Clamp((io.cursor_pos.x - bar_rect.x) / step_stride, 0.0f, (f32)active_steps - 1.0f);
+        imgui.OpenPopupMenu(step_popup_id_for(clicked_step), bar_id);
+    }
+
     if (edit.step_velocity) {
-        auto const drag_id = imgui.MakeId(SourceLocationHash());
         // fired captures the mouse-down on the same frame; IsActive only goes true the frame after.
         auto const fired = imgui.ButtonBehaviour(bar_rect,
-                                                 drag_id,
+                                                 bar_id,
                                                  {
                                                      .mouse_button = MouseButton::Left,
                                                      .event = MouseButtonEvent::Down,
                                                  });
 
-        if (fired || imgui.IsActive(drag_id, MouseButton::Left)) {
+        if (fired || imgui.IsActive(bar_id, MouseButton::Left)) {
             auto const& io = GuiIo().in;
             auto const pos_to_step = [&](f32 x) {
                 return Clamp((x - bar_rect.x) / step_stride, 0.0f, (f32)active_steps - 1.0f);
@@ -151,7 +173,94 @@ void DoArpStepSequencer(GuiState& g,
                 }
             }
         }
+
+        Tooltip(
+            g,
+            bar_id,
+            bar_rect,
+            "Step velocity. Click and drag to set. How velocity translates to volume is shaped by the curve on the CONFIG tab. Right-click for more options"_s,
+            {});
     }
+
+    // Right-click context menu for step draggers (note and gate). Must be called while the dragger's
+    // PushId scope is active so MakeId(SourceLocationHash()) gives a unique popup id per step/control.
+    auto const do_step_dragger_context_menu = [&](imgui::Id dragger_id,
+                                                  Rect dragger_rect,
+                                                  String display_text,
+                                                  String reset_tooltip,
+                                                  String reset_all_tooltip,
+                                                  auto&& on_reset,
+                                                  auto&& on_apply_to_all,
+                                                  auto&& on_reset_all) {
+        auto const popup_id = imgui.MakeId(SourceLocationHash());
+
+        if (imgui.ButtonBehaviour(dragger_rect,
+                                  dragger_id,
+                                  {
+                                      .mouse_button = MouseButton::Right,
+                                      .event = MouseButtonEvent::Up,
+                                  }))
+            imgui.OpenPopupMenu(popup_id, dragger_id);
+
+        if (imgui.IsPopupMenuOpen(popup_id))
+            DoBoxViewport(g.builder,
+                          {
+                              .run =
+                                  [&](GuiBuilder&) {
+                                      auto const root =
+                                          DoBox(g.builder,
+                                                {
+                                                    .layout {
+                                                        .size = layout::k_hug_contents,
+                                                        .contents_direction = layout::Direction::Column,
+                                                        .contents_align = layout::Alignment::Start,
+                                                    },
+                                                });
+                                      if (MenuItem(g.builder,
+                                                   root,
+                                                   {
+                                                       .text = "Reset Value"_s,
+                                                       .tooltip = reset_tooltip,
+                                                       .no_icon_gap = true,
+                                                   })
+                                              .button_fired)
+                                          on_reset();
+
+                                      if (MenuItem(g.builder,
+                                                   root,
+                                                   {
+                                                       .text = "Enter Value"_s,
+                                                       .tooltip = "Open a text input to enter a value"_s,
+                                                       .no_icon_gap = true,
+                                                   })
+                                              .button_fired)
+                                          imgui.SetTextInputFocus(dragger_id, display_text, false);
+
+                                      if (MenuItem(g.builder,
+                                                   root,
+                                                   {
+                                                       .text = "Apply to All Steps"_s,
+                                                       .tooltip = "Set every other step to this same value"_s,
+                                                       .no_icon_gap = true,
+                                                   })
+                                              .button_fired)
+                                          on_apply_to_all();
+
+                                      if (MenuItem(g.builder,
+                                                   root,
+                                                   {
+                                                       .text = "Reset All Steps"_s,
+                                                       .tooltip = reset_all_tooltip,
+                                                       .no_icon_gap = true,
+                                                   })
+                                              .button_fired)
+                                          on_reset_all();
+                                  },
+                              .bounds = dragger_rect,
+                              .imgui_id = popup_id,
+                              .viewport_config = k_default_popup_menu_viewport,
+                          });
+    };
 
     u32 last_overview_label = 0;
     for (u32 i = 0; i < k_arp_max_steps; ++i) {
@@ -268,6 +377,53 @@ void DoArpStepSequencer(GuiState& g,
                 if (imgui.ButtonBehaviour(label_click_rect, toggle_id, {}))
                     ModifyStep(arp_state, i, [](ArpStep& s) { s.on = !s.on; });
                 label_hot = imgui.IsHot(toggle_id);
+                Tooltip(
+                    g,
+                    toggle_id,
+                    label_click_rect,
+                    "Click to enable or disable this step. Disabled steps stay silent but keep their settings. Right-click for more options"_s,
+                    {});
+
+                auto const popup_id = imgui.MakeId(SourceLocationHash());
+                if (imgui.ButtonBehaviour(label_click_rect,
+                                          toggle_id,
+                                          {
+                                              .mouse_button = MouseButton::Right,
+                                              .event = MouseButtonEvent::Up,
+                                          }))
+                    imgui.OpenPopupMenu(popup_id, toggle_id);
+
+                if (imgui.IsPopupMenuOpen(popup_id))
+                    DoBoxViewport(
+                        g.builder,
+                        {
+                            .run =
+                                [&](GuiBuilder&) {
+                                    auto const root =
+                                        DoBox(g.builder,
+                                              {
+                                                  .layout {
+                                                      .size = layout::k_hug_contents,
+                                                      .contents_direction = layout::Direction::Column,
+                                                      .contents_align = layout::Alignment::Start,
+                                                  },
+                                              });
+                                    if (MenuItem(g.builder,
+                                                 root,
+                                                 {
+                                                     .text = "Reset All Steps"_s,
+                                                     .tooltip = "Enable every step"_s,
+                                                     .no_icon_gap = true,
+                                                 })
+                                            .button_fired)
+                                        for (u32 j = 0; j < active_steps; ++j)
+                                            ModifyStep(arp_state, j, [](ArpStep& s) { s.on = true; });
+                                },
+                            .bounds = label_click_rect,
+                            .imgui_id = popup_id,
+                            .viewport_config = k_default_popup_menu_viewport,
+                        });
+
                 imgui.PopId();
             }
 
@@ -367,6 +523,38 @@ void DoArpStepSequencer(GuiState& g,
                 },
             });
 
+            do_step_dragger_context_menu(
+                note_id,
+                note_click_rect,
+                note_str,
+                is_fixed ? "Reset this note to C4 (60)"_s : "Reset this pitch offset to 0"_s,
+                is_fixed ? "Reset every step's note to C4 (60)"_s : "Reset every step's pitch offset to 0"_s,
+                [&]() {
+                    if (is_fixed)
+                        ModifyStep(arp_state, i, [](ArpStep& s) { s.note = 60; });
+                    else
+                        ModifyStep(arp_state, i, [](ArpStep& s) { s.interval = 0; });
+                },
+                [&]() {
+                    auto const this_step = snapshot.StepAt(i);
+                    for (u32 j = 0; j < active_steps; ++j) {
+                        if (j == i) continue;
+                        if (is_fixed)
+                            ModifyStep(arp_state, j, [n = this_step.note](ArpStep& s) { s.note = n; });
+                        else
+                            ModifyStep(arp_state, j, [iv = this_step.interval](ArpStep& s) {
+                                s.interval = iv;
+                            });
+                    }
+                },
+                [&]() {
+                    for (u32 j = 0; j < active_steps; ++j)
+                        if (is_fixed)
+                            ModifyStep(arp_state, j, [](ArpStep& s) { s.note = 60; });
+                        else
+                            ModifyStep(arp_state, j, [](ArpStep& s) { s.interval = 0; });
+                });
+
             if (dragger_result.value_changed) {
                 if (is_fixed)
                     ModifyStep(arp_state, i, [val](ArpStep& s) {
@@ -392,6 +580,15 @@ void DoArpStepSequencer(GuiState& g,
             }
 
             auto note_hot = imgui.IsHot(note_id);
+
+            Tooltip(
+                g,
+                note_id,
+                note_click_rect,
+                is_fixed
+                    ? "Note played at this step. Drag to change, double-click to type a note name"_s
+                    : "Pitch offset from the incoming note, in semitones. Drag to change, double-click to type a value"_s,
+                {});
 
             auto const note_col = dim(note_hot   ? LiveCol(UiColMap::MidTextHot)
                                       : step_off ? WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 60)
@@ -431,6 +628,11 @@ void DoArpStepSequencer(GuiState& g,
                 if (imgui.ButtonBehaviour(tie_click_rect, tie_id, {}))
                     ModifyStep(arp_state, i, [](ArpStep& s) { s.tie = !s.tie; });
                 tie_hot = imgui.IsHot(tie_id);
+                Tooltip(g,
+                        tie_id,
+                        tie_click_rect,
+                        "Tie this step to the previous one so they play as a single, longer note"_s,
+                        {});
                 imgui.PopId();
             }
 
@@ -492,6 +694,25 @@ void DoArpStepSequencer(GuiState& g,
                     },
                 });
 
+                do_step_dragger_context_menu(
+                    knob_id,
+                    knob_rect,
+                    gate_str,
+                    "Reset gate to 100%"_s,
+                    "Reset every step's gate to 100%"_s,
+                    [&]() { ModifyStep(arp_state, i, [](ArpStep& s) { s.gate = ArpStep::From01(1.0f); }); },
+                    [&]() {
+                        auto const this_gate = snapshot.StepAt(i).gate;
+                        for (u32 j = 0; j < active_steps; ++j) {
+                            if (j == i) continue;
+                            ModifyStep(arp_state, j, [g = this_gate](ArpStep& s) { s.gate = g; });
+                        }
+                    },
+                    [&]() {
+                        for (u32 j = 0; j < active_steps; ++j)
+                            ModifyStep(arp_state, j, [](ArpStep& s) { s.gate = ArpStep::From01(1.0f); });
+                    });
+
                 if (dragger_result.value_changed) {
                     auto const new_gate = Clamp(gate_pct / 100.0f, 0.05f, 1.0f);
                     ModifyStep(arp_state, i, [new_gate](ArpStep& s) { s.gate = ArpStep::From01(new_gate); });
@@ -507,6 +728,12 @@ void DoArpStepSequencer(GuiState& g,
                 gate_text_input_result = dragger_result.text_input_result;
 
                 knob_hot = imgui.IsHotOrActive(knob_id, MouseButton::Left);
+                Tooltip(
+                    g,
+                    knob_id,
+                    knob_rect,
+                    "Gate: note length as a percentage of the step. 100% is legato, lower values are staccato. Drag to change, double-click to type a value"_s,
+                    {});
                 imgui.PopId();
             }
 
@@ -531,6 +758,90 @@ void DoArpStepSequencer(GuiState& g,
             draw_list.PathStroke(fill_col, false, WwToPixels(1.5f));
 
             if (gate_text_input_result) DrawParameterTextInput(imgui, knob_rect, *gate_text_input_result);
+        }
+
+        // Per-step right-click context menu (opened from the global bar right-click handler above).
+        {
+            auto const step_popup_id = step_popup_id_for(i);
+            if (imgui.IsPopupMenuOpen(step_popup_id)) {
+                auto const step_window_rect = imgui.ViewportRectToWindowRect({
+                    .x = x_vp,
+                    .y = 0,
+                    .w = step_width,
+                    .h = bar_area_height,
+                });
+                DoBoxViewport(
+                    g.builder,
+                    {
+                        .run =
+                            [&](GuiBuilder&) {
+                                auto const root =
+                                    DoBox(g.builder,
+                                          {
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_direction = layout::Direction::Column,
+                                                  .contents_align = layout::Alignment::Start,
+                                              },
+                                          });
+
+                                MenuItem(g.builder,
+                                         root,
+                                         {
+                                             .text = fmt::Format(g.scratch_arena, "Step {}", i + 1),
+                                             .mode = MenuItemOptions::Mode::Disabled,
+                                             .no_icon_gap = true,
+                                         });
+
+                                if (MenuItem(g.builder,
+                                             root,
+                                             {
+                                                 .text = "Reset Step"_s,
+                                                 .tooltip = "Reset all values of this step to defaults"_s,
+                                                 .no_icon_gap = true,
+                                             })
+                                        .button_fired)
+                                    ModifyStep(arp_state, i, [](ArpStep& s) { s = {}; });
+
+                                if (MenuItem(
+                                        g.builder,
+                                        root,
+                                        {
+                                            .text = "Apply Step to All Steps"_s,
+                                            .tooltip =
+                                                "Copy every value of this step to all other steps (except tie)"_s,
+                                            .no_icon_gap = true,
+                                        })
+                                        .button_fired) {
+                                    auto const this_step = snapshot.StepAt(i);
+                                    for (u32 j = 0; j < active_steps; ++j) {
+                                        if (j == i) continue;
+                                        ModifyStep(arp_state, j, [this_step](ArpStep& s) {
+                                            s.velocity = this_step.velocity;
+                                            s.gate = this_step.gate;
+                                            s.on = this_step.on;
+                                            s.interval = this_step.interval;
+                                            s.note = this_step.note;
+                                        });
+                                    }
+                                }
+
+                                if (MenuItem(g.builder,
+                                             root,
+                                             {
+                                                 .text = "Reset All Steps"_s,
+                                                 .tooltip = "Reset every step to its defaults"_s,
+                                                 .no_icon_gap = true,
+                                             })
+                                        .button_fired)
+                                    for (u32 j = 0; j < active_steps; ++j)
+                                        ModifyStep(arp_state, j, [](ArpStep& s) { s = {}; });
+                            },
+                        .bounds = step_window_rect,
+                        .imgui_id = step_popup_id,
+                        .viewport_config = k_default_popup_menu_viewport,
+                    });
+            }
         }
     }
 
@@ -567,6 +878,12 @@ void DoArpStepSequencer(GuiState& g,
 
         auto const btn_hot = imgui.IsHot(btn_id);
         auto const btn_active = imgui.IsActive(btn_id, MouseButton::Left);
+
+        Tooltip(g,
+                btn_id,
+                btn_rect,
+                show_all ? "Return to per-step editing"_s : "Show a compact overview of all steps"_s,
+                {});
 
         // Subtle dark background so the button is visible over the step bars.
         draw_list.AddRectFilled(btn_rect, LiveCol(UiColMap::EnvelopeBack), WwToPixels(k_corner_rounding));

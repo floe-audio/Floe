@@ -47,8 +47,8 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
         if (MenuItem(g.builder,
                      root,
                      {
-                         .text = "Set to Default Value",
-                         .tooltip = "Set the parameter to its default value"_s,
+                         .text = "Reset Value",
+                         .tooltip = "Reset the parameter to its default value"_s,
                      })
                 .button_fired) {
             SetParameterValue(g.engine.processor,
