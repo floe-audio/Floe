@@ -1500,6 +1500,7 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
             "sentry/sentry.cpp",
             "state/macros.cpp",
             "state/state_coding.cpp",
+            "state/state_snapshot.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
             .all_warnings = true,

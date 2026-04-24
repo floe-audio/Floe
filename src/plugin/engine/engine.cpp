@@ -328,7 +328,7 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
     engine.host.request_callback(&engine.host);
 }
 
-static StateSnapshot CurrentStateSnapshot(Engine& engine) {
+StateSnapshot CurrentStateSnapshot(Engine& engine) {
     StateSnapshot snapshot = engine.pending_state_change ? engine.pending_state_change->snapshot.state
                                                          : MakeStateSnapshot(engine.processor);
     snapshot.metadata = engine.state_metadata;

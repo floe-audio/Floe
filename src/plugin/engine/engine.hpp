@@ -119,6 +119,8 @@ String IrName(Engine const& engine);
 
 usize MegabytesUsedBySamples(Engine const& engine);
 
+StateSnapshot CurrentStateSnapshot(Engine& engine);
+
 bool StateChangedSinceLastSnapshot(Engine& engine);
 
 void LoadPresetFromFile(Engine& engine, String path);

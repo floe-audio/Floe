@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "engine/engine.hpp"
 #include "gui/controls/gui_envelope.hpp"
@@ -106,6 +107,12 @@ struct GuiState : EngineListener {
     GuiEnvelopeCursor envelope_voice_cursors[ToInt(GuiEnvelopeType::Count)][k_num_voices] {};
 
     Optional<ParamIndex> param_text_editor_to_open {};
+
+    struct CopiedSection {
+        StateSnapshot snapshot;
+        StateSnapshotSelector selector;
+    };
+    Optional<CopiedSection> snapshot_clipboard {};
 
     TimePoint redraw_counter = {};
 

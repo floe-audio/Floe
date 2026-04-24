@@ -183,11 +183,6 @@ struct VoiceProcessingController {
 
 struct VoicePool;
 
-constexpr auto k_default_velocity_curve_points = Array {
-    CurveMap::Point {0.0f, 0.3f, 0.0f},
-    CurveMap::Point {1.0f, 1.0f, 0.0f},
-};
-
 struct LayerProcessor {
     LayerProcessor(u8 index, clap_host const& host, SharedLayerParams& shared_params)
         : host(host)

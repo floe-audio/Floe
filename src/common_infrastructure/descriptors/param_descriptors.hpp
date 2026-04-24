@@ -222,14 +222,17 @@ enum class ParameterModule : u8 {
     Master,
     Macro,
 
-    Lfo,
-    Loop,
-    Filter,
+    Main,
     Playback,
-    Granular,
+    Lfo,
     Eq,
+    Config,
+    Arp,
+
     VolEnv,
-    Arpeggiator,
+    Filter,
+    Loop,
+    Granular,
 
     Distortion,
     Reverb,
@@ -258,14 +261,17 @@ constexpr String k_parameter_module_strings[] = {
     "Master",
     "Macro",
 
-    "LFO",
-    "Loop",
-    "Filter",
+    "Main",
     "Playback",
-    "Granular",
+    "LFO",
     "EQ",
+    "Config",
+    "Arp",
+
     "Volume Envelope",
-    "Arpeggiator",
+    "Filter",
+    "Loop",
+    "Granular",
 
     "Distortion",
     "Reverb",
@@ -284,6 +290,25 @@ constexpr String k_parameter_module_strings[] = {
 static_assert(ArraySize(k_parameter_module_strings) == ToInt(ParameterModule::Count));
 
 using ParamModules = Array<ParameterModule, 4>;
+
+constexpr Optional<u8> LayerIndexFromModule(ParameterModule m) {
+    switch (m) {
+        case ParameterModule::Layer1: return (u8)0;
+        case ParameterModule::Layer2: return (u8)1;
+        case ParameterModule::Layer3: return (u8)2;
+        default: return k_nullopt;
+    }
+}
+
+constexpr ParameterModule LayerModuleFromIndex(u8 layer_index) {
+    switch (layer_index) {
+        case 0: return ParameterModule::Layer1;
+        case 1: return ParameterModule::Layer2;
+        case 2: return ParameterModule::Layer3;
+    }
+    PanicIfReached();
+    return ParameterModule::None;
+}
 
 namespace param_values {
 
@@ -929,10 +954,7 @@ struct ParamDescriptor {
     Optional<DynamicArrayBounded<char, 128>> LinearValueToString(f32 linear_value) const;
 
     constexpr bool IsEffectParam() const { return module_parts[0] == ParameterModule::Effect; }
-    constexpr bool IsLayerParam() const {
-        return module_parts[0] == ParameterModule::Layer1 || module_parts[0] == ParameterModule::Layer2 ||
-               module_parts[0] == ParameterModule::Layer3;
-    }
+    constexpr bool IsLayerParam() const { return LayerIndexFromModule(module_parts[0]).HasValue(); }
 
     DynamicArrayBounded<char, 128> ModuleString(String separator = "/") const {
         DynamicArrayBounded<char, 128> result {};
@@ -964,6 +986,27 @@ struct ParamDescriptor {
 
 constexpr ParamIndex ParamIndexFromLayerParamIndex(u32 layer_index, LayerParamIndex layer_param_index) {
     return ParamIndex((layer_index * (u32)LayerParamIndex::Count) + (u32)layer_param_index);
+}
+
+constexpr Optional<u8> MacroIndexFromParamIndex(ParamIndex p) {
+    switch (p) {
+        case ParamIndex::Macro1: return (u8)0;
+        case ParamIndex::Macro2: return (u8)1;
+        case ParamIndex::Macro3: return (u8)2;
+        case ParamIndex::Macro4: return (u8)3;
+        default: return k_nullopt;
+    }
+}
+
+constexpr ParamIndex ParamIndexFromMacroIndex(u8 macro_index) {
+    switch (macro_index) {
+        case 0: return ParamIndex::Macro1;
+        case 1: return ParamIndex::Macro2;
+        case 2: return ParamIndex::Macro3;
+        case 3: return ParamIndex::Macro4;
+    }
+    PanicIfReached();
+    return ParamIndex::Macro1;
 }
 
 constexpr bool IsLayerParamOfSpecificType(ParamIndex global_index, LayerParamIndex layer_index) {
@@ -2054,7 +2097,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::LoopMode,
                 .default_val = (u32)LoopMode::InstrumentDefault,
             }),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Loop Mode"_s,
             .gui_label = "Loop"_s,
             .tooltip = "The mode for looping the samples"_s,
@@ -2062,7 +2105,7 @@ consteval auto CreateParams() {
         lp(LoopStart) = Args {
             .id = id(region, 7), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Start"_s,
             .gui_label = "Start"_s,
             .tooltip = "Loop-start"_s,
@@ -2070,7 +2113,7 @@ consteval auto CreateParams() {
         lp(LoopEnd) = Args {
             .id = id(region, 8), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 100}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "End"_s,
             .gui_label = "End"_s,
             .tooltip = "Loop-end"_s,
@@ -2078,7 +2121,7 @@ consteval auto CreateParams() {
         lp(LoopCrossfade) = Args {
             .id = id(region, 9), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 1}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Crossfade Size"_s,
             .gui_label = "XFade"_s,
             .tooltip = "Crossfade length; this smooths the transition from the loop-end to the loop-start"_s,
@@ -2086,7 +2129,7 @@ consteval auto CreateParams() {
         lp(SampleOffset) = Args {
             .id = id(region, 11), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Sample Start Offset"_s,
             .gui_label = "Start"_s,
             .tooltip = "Change the starting point of the sample"_s,
@@ -2094,7 +2137,7 @@ consteval auto CreateParams() {
         lp(Reverse) = Args {
             .id = id(region, 12), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Reverse On"_s,
             .gui_label = "Reverse"_s,
             .tooltip = "Play the sound in reverse"_s,
@@ -2104,7 +2147,7 @@ consteval auto CreateParams() {
         lp(VolEnvOn) = Args {
             .id = id(region, 13), // never change
             .value_config = val_config_helpers::Bool({.default_state = true}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "On"_s,
             .gui_label = "Volume Envelope"_s,
             .tooltip =
@@ -2113,7 +2156,7 @@ consteval auto CreateParams() {
         lp(VolumeAttack) = Args {
             .id = id(region, 14), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 0}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Attack"_s,
             .gui_label = "Attack"_s,
             .tooltip = "Volume fade-in length"_s,
@@ -2121,7 +2164,7 @@ consteval auto CreateParams() {
         lp(VolumeDecay) = Args {
             .id = id(region, 15), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 1000}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Decay"_s,
             .gui_label = "Decay"_s,
             .tooltip = "Volume ramp-down length (after the attack)"_s,
@@ -2129,7 +2172,7 @@ consteval auto CreateParams() {
         lp(VolumeSustain) = Args {
             .id = id(region, 16), // never change
             .value_config = val_config_helpers::Sustain({.default_db = 0}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Sustain"_s,
             .gui_label = "Sustain"_s,
             .tooltip = "Volume level to sustain (after decay)"_s,
@@ -2137,7 +2180,7 @@ consteval auto CreateParams() {
         lp(VolumeRelease) = Args {
             .id = id(region, 17), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 800}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Release"_s,
             .gui_label = "Release"_s,
             .tooltip = "Volume fade-out length (after the note is released)"_s,
@@ -2147,7 +2190,7 @@ consteval auto CreateParams() {
         lp(FilterOn) = Args {
             .id = id(region, 18), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "On"_s,
             .gui_label = "Filter"_s,
             .tooltip = "Enable/disable the filter"_s,
@@ -2155,7 +2198,7 @@ consteval auto CreateParams() {
         lp(FilterCutoff) = Args {
             .id = id(region, 19), // never change
             .value_config = val_config_helpers::Filter({.default_hz = 6000}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Cutoff Frequency"_s,
             .gui_label = "Cutoff"_s,
             .tooltip = "The frequency at which the filter should take effect"_s,
@@ -2163,7 +2206,7 @@ consteval auto CreateParams() {
         lp(FilterResonance) = Args {
             .id = id(region, 20), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 25}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Resonance"_s,
             .gui_label = "Reso"_s,
             .tooltip = "The intensity of the volume peak at the cutoff frequency"_s,
@@ -2174,7 +2217,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::LayerFilterType,
                 .default_val = (u32)LayerFilterType::Lowpass,
             }),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Type"_s,
             .gui_label = "Type"_s,
             .tooltip = "Filter type"_s,
@@ -2185,7 +2228,7 @@ consteval auto CreateParams() {
                 .default_percent = 0,
                 .display_format = ParamDisplayFormat::Percent,
             }),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Envelope Amount"_s,
             .gui_label = "Envelope"_s,
             .tooltip = "How strongly the envelope should control the filter cutoff"_s,
@@ -2193,7 +2236,7 @@ consteval auto CreateParams() {
         lp(FilterAttack) = Args {
             .id = id(region, 23), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 0}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Attack"_s,
             .gui_label = "Attack"_s,
             .tooltip = "Length of initial ramp-up"_s,
@@ -2201,7 +2244,7 @@ consteval auto CreateParams() {
         lp(FilterDecay) = Args {
             .id = id(region, 24), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 1000}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Decay"_s,
             .gui_label = "Decay"_s,
             .tooltip = "Length ramp-down after attack"_s,
@@ -2209,7 +2252,7 @@ consteval auto CreateParams() {
         lp(FilterSustain) = Args {
             .id = id(region, 25), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 100}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Sustain"_s,
             .gui_label = "Sustain"_s,
             .tooltip = "Level to sustain after decay has completed"_s,
@@ -2217,7 +2260,7 @@ consteval auto CreateParams() {
         lp(FilterRelease) = Args {
             .id = id(region, 26), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 800}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Release"_s,
             .gui_label = "Release"_s,
             .tooltip = "Length of ramp-down after note is released"_s,
@@ -2416,7 +2459,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::VelocityMappingMode,
                 .default_val = (u32)VelocityMappingMode::None,
             }),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Legacy Velocity Mapping"_s,
             .gui_label = "Velocity Mapping"_s,
             .tooltip =
@@ -2426,7 +2469,7 @@ consteval auto CreateParams() {
         lp(Keytrack) = Args {
             .id = id(region, 45), // never change
             .value_config = val_config_helpers::Bool({.default_state = true}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Keytrack On"_s,
             .gui_label = "Keytrack"_s,
             .tooltip =
@@ -2435,7 +2478,7 @@ consteval auto CreateParams() {
         lp(LegacyMonophonicBool) = Args {
             .id = id(region, 46), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Legacy Monophonic On"_s,
             .gui_label = "Monophonic"_s,
             .tooltip = "Only allow one voice of each sound to play at a time"_s,
@@ -2447,7 +2490,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::MonophonicMode,
                 .default_val = (u32)MonophonicMode::Off,
             }),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Monophonic Mode"_s,
             .gui_label = "Monophonic"_s,
             .tooltip =
@@ -2456,7 +2499,7 @@ consteval auto CreateParams() {
         lp(MidiTranspose) = Args {
             .id = id(region, 48), // never change
             .value_config = val_config_helpers::Int({.range = {-36, 36}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "MIDI Transpose On"_s,
             .gui_label = "Transpose"_s,
             .tooltip =
@@ -2465,7 +2508,7 @@ consteval auto CreateParams() {
         lp(KeyRangeLow) = Args {
             .id = id(region, 50), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range Low"_s,
             .gui_label = "Key Range Low"_s,
             .tooltip =
@@ -2474,7 +2517,7 @@ consteval auto CreateParams() {
         lp(KeyRangeHigh) = Args {
             .id = id(region, 51), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 127}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range High"_s,
             .gui_label = "Key Range High"_s,
             .tooltip =
@@ -2483,7 +2526,7 @@ consteval auto CreateParams() {
         lp(KeyRangeLowFade) = Args {
             .id = id(region, 52), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range Low Fade"_s,
             .gui_label = "Key Range Low Fade"_s,
             .tooltip = "The length of the volume fade-in at the low end of the key range"_s,
@@ -2491,7 +2534,7 @@ consteval auto CreateParams() {
         lp(KeyRangeHighFade) = Args {
             .id = id(region, 53), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range High Fade"_s,
             .gui_label = "Key Range High Fade"_s,
             .tooltip = "The length of the volume fade-out at the high end of the key range"_s,
@@ -2499,7 +2542,7 @@ consteval auto CreateParams() {
         lp(PitchBendRange) = Args {
             .id = id(region, 54), // never change
             .value_config = val_config_helpers::Int({.range = {0, 60}, .default_val = 2}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Pitch Bend Range"_s,
             .gui_label = "Pitch Bend Range"_s,
             .tooltip = "The pitch range in semitones of the MIDI pitch wheel"_s,
@@ -2534,7 +2577,7 @@ consteval auto CreateParams() {
                     .display_format = ParamDisplayFormat::Percent,
                 };
             }),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Speed"_s,
             .gui_label = "Speed"_s,
             .tooltip = "How fast the grain position moves through the sample"_s,
@@ -2543,7 +2586,7 @@ consteval auto CreateParams() {
         lp(GranularPosition) = Args {
             .id = id(region, 59), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Position"_s,
             .gui_label = "Position"_s,
             .tooltip = "Where in the sample grains are sourced from"_s,
@@ -2552,7 +2595,7 @@ consteval auto CreateParams() {
         lp(GranularDensity) = Args {
             .id = id(region, 60), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Density"_s,
             .gui_label = "Density"_s,
             .tooltip =
@@ -2562,7 +2605,7 @@ consteval auto CreateParams() {
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
             .value_config = val_config_helpers::Ms({.projection = {{5, 1000}, 1.5f}, .default_ms = 200}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Duration of each grain snippet"_s,
@@ -2581,7 +2624,7 @@ consteval auto CreateParams() {
                     .display_format = ParamDisplayFormat::Percent,
                 };
             }),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Spread"_s,
             .gui_label = "Spread"_s,
             .tooltip =
@@ -2591,7 +2634,7 @@ consteval auto CreateParams() {
         lp(GranularSmoothing) = Args {
             .id = id(region, 62), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Smoothing"_s,
             .gui_label = "Smooth"_s,
             .tooltip =
@@ -2601,7 +2644,7 @@ consteval auto CreateParams() {
         lp(GranularRandomPan) = Args {
             .id = id(region, 63), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 20}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Random Pan"_s,
             .gui_label = "Pan"_s,
             .tooltip =
@@ -2611,7 +2654,7 @@ consteval auto CreateParams() {
         lp(GranularRandomDetune) = Args {
             .id = id(region, 64), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Random Detune"_s,
             .gui_label = "Detune"_s,
             .tooltip =
@@ -2621,7 +2664,7 @@ consteval auto CreateParams() {
         lp(GranularRandomDirection) = Args {
             .id = id(region, 65), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Random Direction"_s,
             .gui_label = "Direction"_s,
             .tooltip =
@@ -2631,7 +2674,7 @@ consteval auto CreateParams() {
         lp(GranularHarmony) = Args {
             .id = id(region, 66), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Harmony"_s,
             .gui_label = "Harmony"_s,
             .tooltip =
@@ -2647,7 +2690,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::ArpMode,
                 .default_val = (u32)param_values::ArpMode::Off,
             }),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Arpeggiator"_s,
             .gui_label = "Arpeggiator"_s,
             .tooltip = "Arpeggiator mode - Off disables the arpeggiator"_s,
@@ -2659,7 +2702,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::ArpNoteOrder,
                 .default_val = (u32)param_values::ArpNoteOrder::Up,
             }),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Note Order"_s,
             .gui_label = "Order"_s,
             .tooltip = "Order in which held notes are played"_s,
@@ -2671,7 +2714,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::ArpTriggerMode,
                 .default_val = (u32)param_values::ArpTriggerMode::Free,
             }),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Trigger"_s,
             .gui_label = "Trigger"_s,
             .tooltip =
@@ -2684,7 +2727,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::ArpSyncedRate,
                 .default_val = (u32)param_values::ArpSyncedRate::_1_8,
             }),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Rate"_s,
             .gui_label = "Rate"_s,
             .tooltip = "Arpeggiator rate (synced to host tempo)"_s,
@@ -2693,7 +2736,7 @@ consteval auto CreateParams() {
         lp(ArpAutoRate) = Args {
             .id = id(region, 76), // never change
             .value_config = val_config_helpers::Bool({.default_state = true}),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Auto Rate"_s,
             .gui_label = "Auto Rate"_s,
             .tooltip =
@@ -2703,7 +2746,7 @@ consteval auto CreateParams() {
         lp(ArpLength) = Args {
             .id = id(region, 73), // never change
             .value_config = val_config_helpers::Int({.range = {1, k_arp_max_steps}, .default_val = 8}),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Number of active steps in the arpeggiator pattern"_s,
@@ -2712,7 +2755,7 @@ consteval auto CreateParams() {
         lp(ArpHumanise) = Args {
             .id = id(region, 75), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 5}),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Humanise"_s,
             .gui_label = "Humanise"_s,
             .tooltip =
@@ -2725,7 +2768,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::ArpOctavePolyrate,
                 .default_val = (u32)param_values::ArpOctavePolyrate::Off,
             }),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "Oct Polyrate"_s,
             .gui_label = "Polyrate"_s,
             .tooltip =
@@ -2735,7 +2778,7 @@ consteval auto CreateParams() {
         lp(ArpOneShot) = Args {
             .id = id(region, 78), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Arpeggiator},
+            .modules = {layer_module, ParameterModule::Arp},
             .name = "One Shot"_s,
             .gui_label = "One Shot"_s,
             .tooltip =

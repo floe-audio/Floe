@@ -29,6 +29,103 @@ constexpr f32 k_page_row_gap_y = 7;
 constexpr f32 k_page_row_gap_x = 7;
 constexpr f32 k_knob_width = 36;
 
+static void DoTabRightClickMenu(GuiState& g,
+                                Box tab_button,
+                                u8 layer_index,
+                                ParameterModule tab_module,
+                                String tab_name,
+                                u64 id_extra) {
+    auto const right_click_id = SourceLocationHash() + id_extra;
+
+    auto const r = BoxRect(g.builder, tab_button);
+    if (!r) return;
+
+    auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+    if (g.imgui.ButtonBehaviour(window_r,
+                                tab_button.imgui_id,
+                                {
+                                    .mouse_button = MouseButton::Right,
+                                    .event = MouseButtonEvent::Up,
+                                })) {
+        g.imgui.OpenPopupMenu(right_click_id, tab_button.imgui_id);
+    }
+
+    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
+
+    DoBoxViewport(
+        g.builder,
+        {
+            .run =
+                [&](GuiBuilder&) {
+                    auto const root = DoBox(g.builder,
+                                            {
+                                                .layout {
+                                                    .size = layout::k_hug_contents,
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
+
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = fmt::Format(g.scratch_arena, "Copy {}"_s, tab_name),
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired) {
+                        g.snapshot_clipboard = GuiState::CopiedSection {
+                            .snapshot = CurrentStateSnapshot(g.engine),
+                            .selector = {.modules = {LayerModuleFromIndex(layer_index), tab_module}},
+                        };
+                    }
+
+                    auto const can_paste =
+                        g.snapshot_clipboard.HasValue() &&
+                        LayerIndexFromModule(g.snapshot_clipboard->selector.modules[0]).HasValue() &&
+                        g.snapshot_clipboard->selector.modules[1] == tab_module;
+
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = fmt::Format(g.scratch_arena, "Paste {}"_s, tab_name),
+                                     .mode = can_paste ? MenuItemOptions::Mode::Active
+                                                       : MenuItemOptions::Mode::Disabled,
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired &&
+                        can_paste) {
+                        auto const current = CurrentStateSnapshot(g.engine);
+                        auto const new_snapshot = OverlaySection(
+                            {.snapshot = current,
+                             .selector = {.modules = {LayerModuleFromIndex(layer_index), tab_module}}},
+                            {.snapshot = g.snapshot_clipboard->snapshot,
+                             .selector = g.snapshot_clipboard->selector});
+                        ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
+                    }
+
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = fmt::Format(g.scratch_arena, "Reset {}"_s, tab_name),
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired) {
+                        auto const current = CurrentStateSnapshot(g.engine);
+                        StateSnapshotSelector const selector {
+                            .modules = {LayerModuleFromIndex(layer_index), tab_module},
+                        };
+                        auto const new_snapshot =
+                            OverlaySection({.snapshot = current, .selector = selector},
+                                           {.snapshot = DefaultStateSnapshot(), .selector = selector});
+                        ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
+                    }
+                },
+            .bounds = window_r,
+            .imgui_id = right_click_id,
+            .viewport_config = k_default_popup_menu_viewport,
+        });
+}
+
 static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     auto& params = g.engine.processor.main_params;
     auto const param = params.DescribedValue(layer.index, LayerParamIndex::LoopMode);
@@ -685,6 +782,21 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                                          (u64)i);
 
         if (tab_btn.button_fired) layer_state.selected_page = page_type;
+
+        auto const tab_module = ({
+            ParameterModule m {};
+            switch (page_type) {
+                case LayerPageType::Main: m = ParameterModule::Main; break;
+                case LayerPageType::Playback: m = ParameterModule::Playback; break;
+                case LayerPageType::Lfo: m = ParameterModule::Lfo; break;
+                case LayerPageType::Eq: m = ParameterModule::Eq; break;
+                case LayerPageType::Config: m = ParameterModule::Config; break;
+                case LayerPageType::Arp: m = ParameterModule::Arp; break;
+                case LayerPageType::Count: PanicIfReached();
+            }
+            m;
+        });
+        DoTabRightClickMenu(g, tab_btn, layer_index, tab_module, name, (u64)i + (u64)layer_index * 16);
     }
 
     // Auto-switch tab when a macro destination knob is being interacted
@@ -696,12 +808,12 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             Optional<LayerPageType> new_page {};
             if (k_desc.module_parts.size >= 2) {
                 switch (k_desc.module_parts[1]) {
-                    case ParameterModule::Loop:
-                    case ParameterModule::VolEnv: new_page = LayerPageType::Main; break;
+                    case ParameterModule::Main: new_page = LayerPageType::Main; break;
+                    case ParameterModule::Playback: new_page = LayerPageType::Playback; break;
                     case ParameterModule::Lfo: new_page = LayerPageType::Lfo; break;
-                    case ParameterModule::Filter: new_page = LayerPageType::Main; break;
-                    case ParameterModule::Playback: new_page = LayerPageType::Config; break;
                     case ParameterModule::Eq: new_page = LayerPageType::Eq; break;
+                    case ParameterModule::Config: new_page = LayerPageType::Config; break;
+                    case ParameterModule::Arp: new_page = LayerPageType::Arp; break;
                     default: break;
                 }
             }

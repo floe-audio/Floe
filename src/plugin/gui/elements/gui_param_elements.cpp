@@ -6,6 +6,7 @@
 #include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
+#include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -123,6 +124,64 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                     else
                         UnpinCcFromParam(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
                 }
+            }
+        }
+
+        if (auto const macro_index = MacroIndexFromParamIndex(param_index)) {
+            DoModalDivider(g.builder, root, {.horizontal = true});
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Copy Macro"_s,
+                             .tooltip = "Copy this macro's value, name and destinations"_s,
+                         })
+                    .button_fired) {
+                g.snapshot_clipboard = GuiState::CopiedSection {
+                    .snapshot = CurrentStateSnapshot(g.engine),
+                    .selector = {.modules = {ParameterModule::Macro}, .macro_index = *macro_index},
+                };
+            }
+
+            auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                                   g.snapshot_clipboard->selector.modules[0] == ParameterModule::Macro;
+
+            if (MenuItem(
+                    g.builder,
+                    root,
+                    {
+                        .text = "Paste Macro"_s,
+                        .tooltip = "Overwrite this macro with the previously copied macro"_s,
+                        .mode = can_paste ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                    })
+                    .button_fired &&
+                can_paste) {
+                auto const current = CurrentStateSnapshot(g.engine);
+                auto const new_snapshot = OverlaySection(
+                    {.snapshot = current,
+                     .selector = {.modules = {ParameterModule::Macro}, .macro_index = *macro_index}},
+                    {.snapshot = g.snapshot_clipboard->snapshot, .selector = g.snapshot_clipboard->selector});
+                g.engine.macro_names = new_snapshot.macro_names;
+                ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
+            }
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Reset Macro"_s,
+                             .tooltip = "Reset this macro's value, name and destinations to defaults"_s,
+                         })
+                    .button_fired) {
+                auto const current = CurrentStateSnapshot(g.engine);
+                StateSnapshotSelector const selector {
+                    .modules = {ParameterModule::Macro},
+                    .macro_index = *macro_index,
+                };
+                auto const new_snapshot =
+                    OverlaySection({.snapshot = current, .selector = selector},
+                                   {.snapshot = DefaultStateSnapshot(), .selector = selector});
+                g.engine.macro_names = new_snapshot.macro_names;
+                ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
             }
         }
 
