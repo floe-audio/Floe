@@ -116,12 +116,8 @@ void DoArpStepSequencer(GuiState& g,
                                   .event = MouseButtonEvent::Down,
                               });
 
-        static f32 prev_drag_x = 0;
-        static f32 prev_drag_y = 0;
-        static bool has_prev_drag = false;
-
         if (imgui.IsActive(drag_id, MouseButton::Left)) {
-            auto const mouse_pos = GuiIo().in.cursor_pos;
+            auto const& io = GuiIo().in;
             auto const pos_to_step = [&](f32 x) {
                 return Clamp((x - bar_rect.x) / step_stride, 0.0f, (f32)active_steps - 1.0f);
             };
@@ -134,42 +130,29 @@ void DoArpStepSequencer(GuiState& g,
                 ModifyStep(arp_state, step_index, [vel](ArpStep& s) { s.velocity = ArpStep::From01(vel); });
             };
 
-            if (!has_prev_drag) {
-                set_vel_at((u32)pos_to_step(mouse_pos.x), y_to_vel(mouse_pos.y));
-                prev_drag_x = mouse_pos.x;
-                prev_drag_y = mouse_pos.y;
-                has_prev_drag = true;
+            auto const curr_sf = pos_to_step(io.cursor_pos.x);
+
+            // cursor_pos_prev is reset to cursor_pos early in each frame, so use cursor_delta to
+            // reconstruct the last frame's cursor. On the first active frame there's no meaningful
+            // prior cursor, so just set the step under the current cursor.
+            if (imgui.WasJustActivated(drag_id, MouseButton::Left)) {
+                set_vel_at((u32)curr_sf, y_to_vel(io.cursor_pos.y));
             } else {
-                auto const prev_sf = pos_to_step(prev_drag_x);
-                auto const curr_sf = pos_to_step(mouse_pos.x);
-                auto const lo = (u32)Min(prev_sf, curr_sf);
-                auto const hi = (u32)Max(prev_sf, curr_sf);
+                auto const prev_cursor = io.cursor_pos - io.cursor_delta;
+                auto const prev_sf = pos_to_step(prev_cursor.x);
+                auto const lo_sf = Min(prev_sf, curr_sf);
+                auto const hi_sf = Max(prev_sf, curr_sf);
+                auto const lo_y = (prev_sf <= curr_sf) ? prev_cursor.y : io.cursor_pos.y;
+                auto const hi_y = (prev_sf <= curr_sf) ? io.cursor_pos.y : prev_cursor.y;
+                auto const lo = (u32)lo_sf;
+                auto const hi = (u32)hi_sf;
+                auto const span = hi_sf - lo_sf;
 
                 for (u32 s = lo; s <= hi; ++s) {
-                    f32 vel;
-                    if (lo == hi) {
-                        vel = y_to_vel(mouse_pos.y);
-                    } else {
-                        auto const t = (f32)(s - lo) / (f32)(hi - lo);
-                        f32 lo_y;
-                        f32 hi_y;
-                        if (prev_sf <= curr_sf) {
-                            lo_y = prev_drag_y;
-                            hi_y = mouse_pos.y;
-                        } else {
-                            lo_y = mouse_pos.y;
-                            hi_y = prev_drag_y;
-                        }
-                        vel = y_to_vel(lo_y + (t * (hi_y - lo_y)));
-                    }
-                    set_vel_at(s, vel);
+                    auto const t = span > 0.0f ? Clamp(((f32)s - lo_sf) / span, 0.0f, 1.0f) : 1.0f;
+                    set_vel_at(s, y_to_vel(lo_y + (t * (hi_y - lo_y))));
                 }
-
-                prev_drag_x = mouse_pos.x;
-                prev_drag_y = mouse_pos.y;
             }
-        } else {
-            has_prev_drag = false;
         }
     }
 
