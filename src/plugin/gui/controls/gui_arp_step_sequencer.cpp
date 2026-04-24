@@ -109,14 +109,15 @@ void DoArpStepSequencer(GuiState& g,
         imgui.RegisterAndConvertRect(Rect {.x = 0, .y = 0, .w = total_content_w, .h = bar_area_height});
     if (edit.step_velocity) {
         auto const drag_id = imgui.MakeId(SourceLocationHash());
-        imgui.ButtonBehaviour(bar_rect,
-                              drag_id,
-                              {
-                                  .mouse_button = MouseButton::Left,
-                                  .event = MouseButtonEvent::Down,
-                              });
+        // fired captures the mouse-down on the same frame; IsActive only goes true the frame after.
+        auto const fired = imgui.ButtonBehaviour(bar_rect,
+                                                 drag_id,
+                                                 {
+                                                     .mouse_button = MouseButton::Left,
+                                                     .event = MouseButtonEvent::Down,
+                                                 });
 
-        if (imgui.IsActive(drag_id, MouseButton::Left)) {
+        if (fired || imgui.IsActive(drag_id, MouseButton::Left)) {
             auto const& io = GuiIo().in;
             auto const pos_to_step = [&](f32 x) {
                 return Clamp((x - bar_rect.x) / step_stride, 0.0f, (f32)active_steps - 1.0f);
@@ -132,7 +133,7 @@ void DoArpStepSequencer(GuiState& g,
 
             auto const curr_sf = pos_to_step(io.cursor_pos.x);
 
-            if (imgui.WasJustActivated(drag_id, MouseButton::Left)) {
+            if (fired) {
                 set_vel_at((u32)curr_sf, y_to_vel(io.cursor_pos.y));
             } else {
                 auto const prev_sf = pos_to_step(io.cursor_pos_prev.x);
@@ -326,37 +327,10 @@ void DoArpStepSequencer(GuiState& g,
             DEFER { imgui.PopId(); };
 
             auto const note_id = imgui.MakeId(SourceLocationHash());
-
-            f32 frac = arp_type == param_values::ArpMode::Fixed ? (f32)step.note / 127.0f
-                                                                : (f32)(step.interval + 48) / 96.0f;
-            constexpr f32 k_px_per_increment = 10.0f;
-            auto const num_increments = arp_type == param_values::ArpMode::Fixed ? 127.0f : 96.0f;
-            if (imgui.SliderBehaviourFraction({
-                    .rect_in_window_coords = note_click_rect,
-                    .id = note_id,
-                    .fraction = frac,
-                    .default_fraction = arp_type == param_values::ArpMode::Fixed ? 60.0f / 127.0f : 0.5f,
-                    .cfg =
-                        {
-                            .sensitivity = k_px_per_increment * num_increments,
-                            .slower_with_shift = true,
-                            .default_on_modifer = true,
-                        },
-                })) {
-                if (arp_type == param_values::ArpMode::Fixed)
-                    ModifyStep(arp_state, i, [frac](ArpStep& s) {
-                        s.note = (u7)Clamp((int)((frac * 127.0f) + 0.5f), 0, 127);
-                    });
-                else
-                    ModifyStep(arp_state, i, [frac](ArpStep& s) {
-                        s.interval = (s8)Clamp((int)((frac * 96.0f) - 48.0f + 0.5f), -48, 48);
-                    });
-            }
-
-            auto note_hot = imgui.IsHot(note_id);
+            auto const is_fixed = arp_type == param_values::ArpMode::Fixed;
 
             String note_str;
-            if (arp_type == param_values::ArpMode::Fixed)
+            if (is_fixed)
                 note_str = g.scratch_arena.Clone(NoteName(step.note));
             else if (step.interval == 0)
                 note_str = "0"_s;
@@ -364,6 +338,60 @@ void DoArpStepSequencer(GuiState& g,
                 note_str = fmt::Format(g.scratch_arena, "+{}", step.interval);
             else
                 note_str = fmt::Format(g.scratch_arena, "{}", step.interval);
+
+            constexpr f32 k_px_per_increment = 10.0f;
+            auto val = is_fixed ? (f32)step.note : (f32)step.interval;
+            auto const dragger_result = imgui.DraggerBehaviour({
+                .rect_in_window_coords = note_click_rect,
+                .id = note_id,
+                .text = note_str,
+                .min = is_fixed ? 0.0f : -48.0f,
+                .max = is_fixed ? 127.0f : 48.0f,
+                .value = val,
+                .default_value = is_fixed ? 60.0f : 0.0f,
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg {
+                    .chars_decimal = !is_fixed,
+                    .chars_note_names = is_fixed,
+                    .centre_align = true,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                },
+                .slider_cfg {
+                    .sensitivity = k_px_per_increment,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
+
+            if (dragger_result.value_changed) {
+                if (is_fixed)
+                    ModifyStep(arp_state, i, [val](ArpStep& s) {
+                        s.note = (u7)Clamp((int)(val + 0.5f), 0, 127);
+                    });
+                else
+                    ModifyStep(arp_state, i, [val](ArpStep& s) {
+                        s.interval = (s8)Clamp((int)Round(val), -48, 48);
+                    });
+            }
+            if (dragger_result.new_string_value) {
+                if (is_fixed) {
+                    if (auto const midi_note = MidiNoteFromName(*dragger_result.new_string_value))
+                        ModifyStep(arp_state, i, [n = *midi_note](ArpStep& s) { s.note = n; });
+                } else {
+                    if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal))
+                        ModifyStep(arp_state,
+                                   i,
+                                   [v = (s8)Clamp((s64)o.Value(), (s64)-48, (s64)48)](ArpStep& s) {
+                                       s.interval = v;
+                                   });
+                }
+            }
+
+            auto note_hot = imgui.IsHot(note_id);
 
             auto const note_col = dim(note_hot   ? LiveCol(UiColMap::MidTextHot)
                                       : step_off ? WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 60)
@@ -375,6 +403,9 @@ void DoArpStepSequencer(GuiState& g,
                                         .justification = TextJustification::Centred,
                                         .font_scaling = 0.85f,
                                     });
+
+            if (dragger_result.text_input_result)
+                DrawParameterTextInput(imgui, note_click_rect, *dragger_result.text_input_result);
         }
         if (edit.step_note) row_y_vp += row_height + k_row_gap;
 
@@ -428,26 +459,52 @@ void DoArpStepSequencer(GuiState& g,
             });
 
             bool knob_hot = false;
+            Optional<imgui::TextInputResult> gate_text_input_result {};
             if (edit.step_gate) {
                 imgui.PushId((u64)(i + (k_arp_max_steps * 3)));
                 auto const knob_id = imgui.MakeId(SourceLocationHash());
 
-                f32 gate_frac = step.Gate01();
-                if (imgui.SliderBehaviourFraction({
-                        .rect_in_window_coords = knob_rect,
-                        .id = knob_id,
-                        .fraction = gate_frac,
-                        .default_fraction = 1.0f,
-                        .cfg =
-                            {
-                                .sensitivity = 200,
-                                .slower_with_shift = true,
-                                .default_on_modifer = true,
-                            },
-                    })) {
-                    auto const new_gate = Clamp(gate_frac, 0.05f, 1.0f);
+                auto gate_pct = step.Gate01() * 100.0f;
+                auto const gate_str = fmt::Format(g.scratch_arena, "{}%", (int)Round(gate_pct));
+
+                auto const dragger_result = imgui.DraggerBehaviour({
+                    .rect_in_window_coords = knob_rect,
+                    .id = knob_id,
+                    .text = gate_str,
+                    .min = 5.0f,
+                    .max = 100.0f,
+                    .value = gate_pct,
+                    .default_value = 100.0f,
+                    .text_input_button_cfg {
+                        .mouse_button = MouseButton::Left,
+                        .event = MouseButtonEvent::DoubleClick,
+                    },
+                    .text_input_cfg {
+                        .chars_decimal = true,
+                        .centre_align = true,
+                        .escape_unfocuses = true,
+                        .select_all_when_opening = true,
+                    },
+                    .slider_cfg {
+                        .sensitivity = 200.0f / 95.0f,
+                        .slower_with_shift = true,
+                        .default_on_modifer = true,
+                    },
+                });
+
+                if (dragger_result.value_changed) {
+                    auto const new_gate = Clamp(gate_pct / 100.0f, 0.05f, 1.0f);
                     ModifyStep(arp_state, i, [new_gate](ArpStep& s) { s.gate = ArpStep::From01(new_gate); });
                 }
+                if (dragger_result.new_string_value) {
+                    if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal)) {
+                        auto const new_gate = Clamp((f32)o.Value() / 100.0f, 0.05f, 1.0f);
+                        ModifyStep(arp_state, i, [new_gate](ArpStep& s) {
+                            s.gate = ArpStep::From01(new_gate);
+                        });
+                    }
+                }
+                gate_text_input_result = dragger_result.text_input_result;
 
                 knob_hot = imgui.IsHotOrActive(knob_id, MouseButton::Left);
                 imgui.PopId();
@@ -472,6 +529,8 @@ void DoArpStepSequencer(GuiState& g,
             draw_list.PathClear();
             draw_list.PathArcTo(center, radius, k_start_angle, value_angle, 12);
             draw_list.PathStroke(fill_col, false, WwToPixels(1.5f));
+
+            if (gate_text_input_result) DrawParameterTextInput(imgui, knob_rect, *gate_text_input_result);
         }
     }
 
