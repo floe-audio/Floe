@@ -1385,8 +1385,10 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
     auto const& font = *it.imgui.draw_list->fonts.Current();
 
+    f32 x_offset = 0;
+
     if (!it.pos) {
-        // First call.
+        // First call: walk to selection_start, tracking the current line's start so we can compute x_offset.
         it.pos = text.data;
         auto line_start = it.pos;
 
@@ -1399,46 +1401,17 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
                 it.pos = IncrementUTF8Characters(it.pos, 1);
             }
         }
-        auto const start_pos = it.pos;
-        auto const start_line_start = line_start;
-        auto const start_line_index = it.line_index;
-
+        x_offset =
+            font.CalcTextSize({line_start, (usize)(it.pos - line_start)}, {.font_size = font.font_size}).x;
         it.remaining_chars = (u32)(selection_end - selection_start);
-
-        // We have the start of the selection and the line index. To complete this rect we need to iterate
-        // until either the end of the line or the end of the selection.
-        for (auto _ : Range(it.remaining_chars)) {
-            ASSERT(it.remaining_chars);
-            --it.remaining_chars;
-
-            if (*it.pos == '\n') {
-                line_start = it.pos + 1;
-                it.line_index++;
-                ++it.pos;
-                break;
-            }
-            it.pos = IncrementUTF8Characters(it.pos, 1);
-        }
-
-        char const* end_pos = it.pos;
-
-        Rect const result = {
-            .x = text_pos.x + font.CalcTextSize({start_line_start, (usize)(start_pos - start_line_start)},
-                                                {.font_size = font.font_size})
-                                  .x,
-            .y = text_pos.y - 2 + (start_line_index * font.font_size),
-            .w =
-                font.CalcTextSize({start_pos, (usize)(end_pos - start_pos)}, {.font_size = font.font_size}).x,
-            .h = font.font_size + 4};
-
-        return result;
+    } else if (it.remaining_chars == 0) {
+        return k_nullopt;
     }
-
-    if (it.remaining_chars == 0) return k_nullopt;
 
     auto const start_pos = it.pos;
     auto const start_line_index = it.line_index;
 
+    // Walk until end-of-line or end-of-selection.
     for (auto _ : Range(it.remaining_chars)) {
         ASSERT(it.remaining_chars);
         --it.remaining_chars;
@@ -1454,10 +1427,10 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
     auto const end_pos = it.pos;
 
     return Rect {
-        .x = text_pos.x,
-        .y = text_pos.y - 2 + (start_line_index * font.font_size),
+        .x = text_pos.x + x_offset,
+        .y = text_pos.y + (start_line_index * font.font_size),
         .w = font.CalcTextSize({start_pos, (usize)(end_pos - start_pos)}, {.font_size = font.font_size}).x,
-        .h = font.font_size + 4};
+        .h = font.font_size};
 }
 
 Context::PopupMenuButtonBehaviourResult
