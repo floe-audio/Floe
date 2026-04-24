@@ -37,6 +37,7 @@ struct MenuParameterComponentOptions {
     f32 width = layout::k_hug_contents;
     bool greyed_out = false;
     bool label = true;
+    bool allow_text_overflow = false;
     String override_tooltip {};
     String override_label {};
     String override_button_text {}; // If non-empty, shown on the button instead of the menu item text.

@@ -1931,9 +1931,6 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
     // controls; in user-off mode we show everything greyed.
     auto const show_if_non_editable = [&](bool editable) { return editable || !is_sliced; };
 
-    constexpr f32 k_menu_width = 80;
-    constexpr f32 k_menu_label_width = 35;
-
     auto const page = DoBox(g.builder,
                             {
                                 .parent = parent,
@@ -1946,41 +1943,12 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-    // Heading row: ArpMode menu (Off / Played / Fixed), or a static label when forced by slicing.
-    {
-        auto const heading_row = DoBox(g.builder,
-                                       {
-                                           .parent = page,
-                                           .layout {
-                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                               .contents_gap = 12,
-                                               .contents_direction = layout::Direction::Row,
-                                           },
-                                       });
-
-        switch (snapshot.activation) {
-            case ArpGuiSnapshot::Activation::UserDefined: {
-                DoMenuParameter(g,
-                                heading_row,
-                                params.DescribedValue(layer_index, LayerParamIndex::ArpMode),
-                                {.width = layout::k_fill_parent, .label = false});
-                break;
-            }
-            case ArpGuiSnapshot::Activation::ForcedBySlicing: {
-                DoBox(
-                    g.builder,
-                    {
-                        .parent = heading_row,
-                        .text = "Sliced instrument",
-                        .text_colours = LiveColStruct(UiColMap::MidText),
-                        .text_justification = TextJustification::CentredLeft,
-                        .layout {.size = {layout::k_fill_parent, k_font_body_size}},
-                        .tooltip =
-                            "This instrument has slice markers and so is always driven by the arpeggiator."_s,
-                    });
-                break;
-            }
-        }
+    // Heading row: ArpMode menu (Off / Played / Fixed). Hidden for sliced instruments.
+    if (snapshot.activation == ArpGuiSnapshot::Activation::UserDefined) {
+        DoMenuParameter(g,
+                        page,
+                        params.DescribedValue(layer_index, LayerParamIndex::ArpMode),
+                        {.width = layout::k_fill_parent, .label = false});
     }
 
     // Step sequencer
@@ -1988,7 +1956,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         auto const seq_box = DoBox(g.builder,
                                    {
                                        .parent = page,
-                                       .layout {.size = {layout::k_fill_parent, 155}},
+                                       .layout {.size = {layout::k_fill_parent, 120}},
                                    });
 
         if (auto const r = BoxRect(g.builder, seq_box)) {
@@ -2005,92 +1973,163 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
 
     if (!is_fixed) arp_state.recording.Store(false, StoreMemoryOrder::Relaxed);
 
-    DoWhitespace(g.builder, page, 2);
+    // Controls below the step sequencer, laid out in granular-tab style:
+    // sections with headings, controls in horizontal rows with labels below.
 
-    auto const do_menu_param = [&](Box col_parent,
-                                   LayerParamIndex param_index,
-                                   bool is_grey,
-                                   String override_button_text = {},
-                                   u64 loc_hash = SourceLocationHash()) {
-        auto const param = params.DescribedValue(layer_index, param_index);
+    constexpr f32 k_control_width = 68;
 
-        auto const row = DoBox(g.builder,
-                               {
-                                   .parent = col_parent,
-                                   .id_extra = loc_hash,
-                                   .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_gap = 4,
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                   },
-                               });
+    auto const controls = DoBox(g.builder,
+                                {
+                                    .parent = page,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_gap = 12,
+                                        .contents_direction = layout::Direction::Column,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                    },
+                                });
 
+    auto const do_heading = [&](Box parent, String text, u64 loc_hash = SourceLocationHash()) {
         DoBox(g.builder,
               {
-                  .parent = row,
-                  .id_extra = ToInt(param_index),
-                  .text = param.info.gui_label,
-                  .text_colours = LiveColStruct(is_grey ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                  .text_justification = TextJustification::CentredRight,
-                  .layout {.size = {k_menu_label_width, k_font_body_size}},
+                  .parent = parent,
+                  .id_extra = loc_hash,
+                  .text = text,
+                  .size_from_text = true,
+                  .font = FontType::Heading3,
+                  .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                  .text_justification = TextJustification::CentredLeft,
               });
-
-        DoMenuParameter(g,
-                        row,
-                        param,
-                        {
-                            .width = k_menu_width,
-                            .greyed_out = is_grey,
-                            .label = false,
-                            .override_button_text = override_button_text,
-                        });
     };
 
-    auto const do_labelled_row = [&](Box col_parent, u64 loc_hash = SourceLocationHash()) {
+    auto const do_section = [&](Box parent, u64 loc_hash = SourceLocationHash()) {
         return DoBox(g.builder,
                      {
-                         .parent = col_parent,
+                         .parent = parent,
                          .id_extra = loc_hash,
                          .layout {
-                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                             .size = layout::k_hug_contents,
                              .contents_gap = 4,
+                             .contents_direction = layout::Direction::Column,
+                             .contents_align = layout::Alignment::Start,
+                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                         },
+                     });
+    };
+
+    auto const do_control_row = [&](Box parent, u64 loc_hash = SourceLocationHash()) {
+        return DoBox(g.builder,
+                     {
+                         .parent = parent,
+                         .id_extra = loc_hash,
+                         .layout {
+                             .size = layout::k_hug_contents,
+                             .margins = {.l = 2},
+                             .contents_gap = 6,
                              .contents_direction = layout::Direction::Row,
+                             .contents_align = layout::Alignment::Start,
+                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                         },
+                     });
+    };
+
+    auto const do_label = [&](Box parent, String text, bool grey, u64 loc_hash = SourceLocationHash()) {
+        DoBox(g.builder,
+              {
+                  .parent = parent,
+                  .id_extra = loc_hash,
+                  .text = text,
+                  .text_colours = LiveColStruct(grey ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                  .text_justification = TextJustification::Centred,
+                  .layout {.size = {k_control_width, k_font_body_size}},
+              });
+    };
+
+    auto const do_cell = [&](Box parent, u64 loc_hash = SourceLocationHash()) {
+        return DoBox(g.builder,
+                     {
+                         .parent = parent,
+                         .id_extra = loc_hash,
+                         .layout {
+                             .size = layout::k_hug_contents,
+                             .contents_gap = 2,
+                             .contents_direction = layout::Direction::Column,
+                             .contents_align = layout::Alignment::Middle,
                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                          },
                      });
     };
 
-    auto const do_int_dragger = [&](Box col_parent,
-                                    String label,
-                                    int current,
-                                    int min_val,
-                                    int max_val,
-                                    String display_string,
-                                    u64 loc_hash = SourceLocationHash()) -> Optional<int> {
-        auto const row = do_labelled_row(col_parent, loc_hash);
-        DoBox(
-            g.builder,
-            {
-                .parent = row,
-                .id_extra = loc_hash,
-                .text = label,
-                .text_colours = LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                .text_justification = TextJustification::CentredRight,
-                .layout {.size = {k_menu_label_width, k_font_body_size}},
-            });
-        auto const prev_next_row = DoMidPanelPrevNextRow(g.builder, row, k_menu_width);
+    auto const do_toggle_cell =
+        [&](Box control_row, LayerParamIndex param_index, bool grey, u64 loc_hash = SourceLocationHash()) {
+            auto const cell = do_cell(control_row, loc_hash);
+            auto const param = params.DescribedValue(layer_index, param_index);
+            bool const state = param.BoolValue();
 
-        auto const dragger_box = DoBox(
-            g.builder,
-            {
-                .parent = prev_next_row,
-                .text = display_string,
-                .text_colours = LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                .text_justification = TextJustification::CentredLeft,
-                .text_overflow = TextOverflowType::AllowOverflow,
-                .layout {.size = {layout::k_fill_parent, k_mid_button_height}},
-            });
+            auto const btn = DoBox(g.builder,
+                                   {
+                                       .parent = cell,
+                                       .layout {
+                                           .size = {k_control_width, k_mid_button_height},
+                                           .contents_align = layout::Alignment::Middle,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                       .tooltip = FunctionRef<String()> {[&]() -> String {
+                                           return ParamTooltipText(param, g.builder.arena);
+                                       }},
+                                       .button_behaviour = imgui::ButtonConfig {},
+                                   });
+
+            DoToggleIcon(g.builder, btn, {.state = state, .greyed_out = grey});
+
+            if (btn.button_fired)
+                SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
+
+            AddParamContextMenuBehaviour(g, btn, param);
+            do_label(cell, param.info.gui_label, grey, loc_hash + 1);
+        };
+
+    auto const do_menu_cell = [&](Box control_row,
+                                  LayerParamIndex param_index,
+                                  bool grey,
+                                  bool allow_text_overflow = false,
+                                  u64 loc_hash = SourceLocationHash()) {
+        auto const cell = do_cell(control_row, loc_hash);
+        auto const param = params.DescribedValue(layer_index, param_index);
+        DoMenuParameter(g,
+                        cell,
+                        param,
+                        {
+                            .width = k_control_width,
+                            .greyed_out = grey,
+                            .label = false,
+                            .allow_text_overflow = allow_text_overflow,
+                        });
+        do_label(cell, param.info.gui_label, grey, loc_hash);
+    };
+
+    auto const do_int_dragger_cell = [&](Box control_row,
+                                         String label,
+                                         int current,
+                                         int min_val,
+                                         int max_val,
+                                         String display_string,
+                                         bool grey,
+                                         u64 loc_hash = SourceLocationHash()) -> Optional<int> {
+        auto const cell = do_cell(control_row, loc_hash);
+
+        auto const prev_next_row = DoMidPanelPrevNextRow(g.builder, cell, k_control_width);
+
+        auto const dragger_box =
+            DoBox(g.builder,
+                  {
+                      .parent = prev_next_row,
+                      .text = display_string,
+                      .text_colours = LiveColStruct(grey ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                      .text_justification = TextJustification::CentredLeft,
+                      .text_overflow = TextOverflowType::AllowOverflow,
+                      .layout {.size = {layout::k_fill_parent, k_mid_button_height}},
+                  });
 
         Optional<int> new_val {};
         Optional<imgui::TextInputResult> text_input_result {};
@@ -2129,8 +2168,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
             text_input_result = dragger_result.text_input_result;
         }
 
-        auto const arrows =
-            DoMidPanelPrevNextButtons(g.builder, prev_next_row, {.greyed_out = secondary_greyed});
+        auto const arrows = DoMidPanelPrevNextButtons(g.builder, prev_next_row, {.greyed_out = grey});
         if (arrows.prev_fired || arrows.next_fired) {
             auto val = current + (arrows.prev_fired ? -1 : 1);
             new_val = Clamp(val, min_val, max_val);
@@ -2143,241 +2181,136 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
             }
         }
 
+        do_label(cell, label, grey, loc_hash + 1);
         return new_val;
-    };
-
-    // Two-column layout for controls below the step sequencer.
-    auto const columns_row = DoBox(g.builder,
-                                   {
-                                       .parent = page,
-                                       .layout {
-                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_padding = {.lr = 8},
-                                           .contents_direction = layout::Direction::Row,
-                                       },
-                                   });
-
-    auto const make_column = [&](u64 loc_hash = SourceLocationHash()) {
-        return DoBox(g.builder,
-                     {
-                         .parent = columns_row,
-                         .id_extra = loc_hash,
-                         .layout {
-                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                             .contents_gap = k_page_row_gap_y,
-                             .contents_direction = layout::Direction::Column,
-                         },
-                     });
     };
 
     bool const auto_rate_on =
         edit.auto_rate_visible && params.BoolValue(layer_index, LayerParamIndex::ArpAutoRate);
 
-    // Left column
+    // SEQUENCE section
     {
-        auto const col = make_column();
-        // Auto Rate toggle (slice mode only). Rate itself is in the right column.
-        if (edit.auto_rate_visible) {
-            String auto_rate_label {};
-            if (auto_rate_on) {
-                auto const resolved_idx =
-                    (usize)ToInt(arp_state.resolved_rate_for_gui.Load(LoadMemoryOrder::Relaxed));
-                if (resolved_idx < param_values::k_arp_synced_rate_strings.size)
-                    auto_rate_label = fmt::Format(g.scratch_arena,
-                                                  "Auto: {}",
-                                                  param_values::k_arp_synced_rate_strings[resolved_idx]);
-            }
-            DoButtonParameter(g,
-                              col,
-                              params.DescribedValue(layer_index, LayerParamIndex::ArpAutoRate),
-                              {
-                                  .width = layout::k_hug_contents,
-                                  .greyed_out = secondary_greyed,
-                                  .override_label = auto_rate_label,
-                              });
+        auto const section = do_section(controls);
+        do_heading(section, "SEQUENCE"_s);
+        auto const row = do_control_row(section);
+
+        if (edit.auto_rate_visible) do_toggle_cell(row, LayerParamIndex::ArpAutoRate, secondary_greyed);
+
+        do_menu_cell(row, LayerParamIndex::ArpRate, secondary_greyed || auto_rate_on, true);
+
+        if (!is_sliced && show_if_non_editable(edit.length)) {
+            auto const cell = do_cell(row);
+            DoIntParameter(g,
+                           cell,
+                           params.DescribedValue(layer_index, LayerParamIndex::ArpLength),
+                           {
+                               .width = k_control_width,
+                               .greyed_out = !edit.length,
+                               .label = false,
+                           });
+            do_label(cell, "Length"_s, !edit.length);
         }
 
-        // Trigger
-        do_menu_param(col, LayerParamIndex::ArpTriggerMode, secondary_greyed);
+        if (!is_fixed && show_if_non_editable(edit.note_order))
+            do_menu_cell(row, LayerParamIndex::ArpNoteOrder, !edit.note_order);
 
-        // One Shot
-        DoButtonParameter(g,
-                          col,
-                          params.DescribedValue(layer_index, LayerParamIndex::ArpOneShot),
-                          {
-                              .width = layout::k_hug_contents,
-                              .greyed_out = secondary_greyed,
-                          });
-
-        // Humanise
         {
-            auto const row = do_labelled_row(col);
-            auto const humanise_param = params.DescribedValue(layer_index, LayerParamIndex::ArpHumanise);
-            DoBox(g.builder,
-                  {
-                      .parent = row,
-                      .text = humanise_param.info.gui_label,
-                      .text_colours =
-                          LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                      .text_justification = TextJustification::CentredRight,
-                      .layout {.size = {k_menu_label_width, k_font_body_size}},
-                  });
+            auto const cell = do_cell(row);
             DoPercentDraggerParameter(g,
-                                      row,
-                                      humanise_param,
+                                      cell,
+                                      params.DescribedValue(layer_index, LayerParamIndex::ArpHumanise),
                                       {
-                                          .width = k_menu_width,
+                                          .width = k_control_width,
                                           .greyed_out = secondary_greyed,
                                           .label = false,
                                       });
+            do_label(cell, "Humanise"_s, secondary_greyed);
         }
+    }
 
-        // Slice start offset (slice mode only)
-        if (is_sliced) {
-            u32 num_slices = 0;
-            if (auto s = layer_proc.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
-                if (*s) {
-                    auto const& regions = (*s)->instrument.regions;
-                    if (regions.size == 1) num_slices = (u32)regions[0].slices.size;
-                }
+    // CONFIG section
+    {
+        auto const section = do_section(controls);
+        do_heading(section, "CONFIG"_s);
+        auto const row = do_control_row(section);
+
+        do_menu_cell(row, LayerParamIndex::ArpTriggerMode, secondary_greyed);
+        do_menu_cell(row, LayerParamIndex::ArpOctavePolyrate, secondary_greyed);
+        do_toggle_cell(row, LayerParamIndex::ArpOneShot, secondary_greyed);
+
+        if (is_fixed) {
+            auto const is_recording = !secondary_greyed && arp_state.recording.Load(LoadMemoryOrder::Relaxed);
+
+            auto const cell = do_cell(row);
+            auto const rec_btn = DoBox(g.builder,
+                                       {
+                                           .parent = cell,
+                                           .layout {
+                                               .size = {k_control_width, k_mid_button_height},
+                                               .contents_align = layout::Alignment::Middle,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                           },
+                                           .tooltip = "Record a fixed note sequence by playing keys"_s,
+                                           .button_behaviour = imgui::ButtonConfig {},
+                                       });
+
+            if (auto const r = BoxRect(g.builder, rec_btn)) {
+                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+                auto const col = is_recording ? ToU32(Col {.c = Col::Coral, .alpha = 255})
+                                              : ToU32(Col {.c = Col::White, .alpha = 60});
+                g.imgui.draw_list->AddCircleFilled(window_r.Centre(), WwToPixels(5.5f), col);
             }
-            if (num_slices > 1) {
-                auto const current = (int)arp_state.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
-                auto const new_val = do_int_dragger(col,
-                                                    "Slice Offs"_s,
-                                                    current,
-                                                    0,
-                                                    (int)Min(num_slices - 1, (u32)255),
-                                                    fmt::Format(g.scratch_arena, "{}", current));
-                if (new_val && !secondary_greyed)
-                    arp_state.slice_start_offset.Store((u8)*new_val, StoreMemoryOrder::Relaxed);
+
+            do_label(cell, is_recording ? "Recording..."_s : "Record"_s, secondary_greyed && !is_recording);
+
+            if (!secondary_greyed && rec_btn.button_fired) {
+                if (is_recording) {
+                    arp_state.recording.Store(false, StoreMemoryOrder::Relaxed);
+                    arp_state.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+                } else {
+                    arp_state.current_step_for_gui.Store(0, StoreMemoryOrder::Relaxed);
+                    arp_state.recording.Store(true, StoreMemoryOrder::Relaxed);
+                }
             }
         }
     }
 
-    // Right column
-    {
-        auto const col = make_column();
+    // SLICING section (slice mode only)
+    if (is_sliced) {
+        auto const section = do_section(controls);
+        do_heading(section, "SLICING"_s);
+        auto const row = do_control_row(section);
 
-        // Rate menu. Hidden when auto-rate is on, with a placeholder to maintain layout.
-        if (edit.auto_rate_visible && auto_rate_on) {
-            DoBox(g.builder,
-                  {
-                      .parent = col,
-                      .layout {.size = {layout::k_fill_parent, k_mid_button_height}},
-                  });
-        } else {
-            do_menu_param(col, LayerParamIndex::ArpRate, secondary_greyed);
-        }
-
-        // Length (hidden in slice mode, shown greyed when arp is user-off)
-        if (show_if_non_editable(edit.length)) {
-            auto const row = do_labelled_row(col);
-            auto const length_param = params.DescribedValue(layer_index, LayerParamIndex::ArpLength);
-            DoBox(
-                g.builder,
-                {
-                    .parent = row,
-                    .text = length_param.info.gui_label,
-                    .text_colours = LiveColStruct(!edit.length ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                    .text_justification = TextJustification::CentredRight,
-                    .layout {.size = {k_menu_label_width, k_font_body_size}},
-                });
-            DoIntParameter(g,
-                           row,
-                           length_param,
-                           {
-                               .width = k_menu_width,
-                               .greyed_out = !edit.length,
-                               .label = false,
-                           });
-        }
-
-        // Note Order (hidden in Fixed mode, shown greyed when arp is user-off)
-        if (!is_fixed && show_if_non_editable(edit.note_order))
-            do_menu_param(col, LayerParamIndex::ArpNoteOrder, !edit.note_order);
-
-        // Record button (Fixed mode only, user-controlled arp)
-        if (is_fixed) {
-            auto const is_recording = !secondary_greyed && arp_state.recording.Load(LoadMemoryOrder::Relaxed);
-            auto const text_col = secondary_greyed ? LiveColStruct(UiColMap::MidTextDimmed)
-                                                   : LiveColStruct(is_recording ? UiColMap::MidTextHot
-                                                                                : UiColMap::MidTextDimmed);
-
-            auto const rec_btn = DoBox(g.builder,
-                                       {
-                                           .parent = col,
-                                           .parent_dictates_hot_and_active = true,
-                                           .corner_rounding = 3,
-                                           .layout {
-                                               .size = layout::k_hug_contents,
-                                               .contents_padding = {.lr = 6, .tb = 3},
-                                               .contents_gap = 4,
-                                               .contents_direction = layout::Direction::Row,
-                                               .contents_align = layout::Alignment::Middle,
-                                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                           },
-                                       });
-
-            DoBox(g.builder,
-                  {
-                      .parent = rec_btn,
-                      .text = ICON_FA_CIRCLE,
-                      .size_from_text = true,
-                      .font = FontType::Icons,
-                      .text_colours = is_recording ? Col {.c = Col::Coral, .alpha = 255} : text_col,
-                      .parent_dictates_hot_and_active = true,
-                  });
-
-            DoBox(g.builder,
-                  {
-                      .parent = rec_btn,
-                      .text = is_recording ? "Recording..."_s : "Record"_s,
-                      .size_from_text = true,
-                      .text_colours = text_col,
-                      .parent_dictates_hot_and_active = true,
-                  });
-
-            if (!secondary_greyed)
-                if (auto const r = BoxRect(g.builder, rec_btn)) {
-                    auto const wr = g.imgui.ViewportRectToWindowRect(*r);
-                    auto const btn_id = g.imgui.MakeId(SourceLocationHash());
-                    if (g.imgui.ButtonBehaviour(wr, btn_id, {})) {
-                        if (is_recording) {
-                            arp_state.recording.Store(false, StoreMemoryOrder::Relaxed);
-                            arp_state.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
-                        } else {
-                            arp_state.current_step_for_gui.Store(0, StoreMemoryOrder::Relaxed);
-                            arp_state.recording.Store(true, StoreMemoryOrder::Relaxed);
-                        }
-                    }
-                }
-        }
-
-        // Polyrate
-        do_menu_param(col, LayerParamIndex::ArpOctavePolyrate, secondary_greyed);
-
-        // Slice loop length (slice mode only)
-        if (is_sliced) {
-            u32 num_slices = 0;
-            if (auto s = layer_proc.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
-                if (*s) {
-                    auto const& regions = (*s)->instrument.regions;
-                    if (regions.size == 1) num_slices = (u32)regions[0].slices.size;
-                }
+        u32 num_slices = 0;
+        if (auto s = layer_proc.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
+            if (*s) {
+                auto const& regions = (*s)->instrument.regions;
+                if (regions.size == 1) num_slices = (u32)regions[0].slices.size;
             }
-            if (num_slices > 1) {
-                auto const current = (int)arp_state.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
-                auto const new_val =
-                    do_int_dragger(col,
-                                   "Slices"_s,
-                                   current,
-                                   0,
-                                   (int)Min(num_slices, (u32)255),
-                                   current ? (String)fmt::Format(g.scratch_arena, "{}", current) : "All"_s);
-                if (new_val && !secondary_greyed)
-                    arp_state.slice_loop_length.Store((u8)*new_val, StoreMemoryOrder::Relaxed);
-            }
+        }
+        if (num_slices > 1) {
+            auto const offset_current = (int)arp_state.slice_start_offset.Load(LoadMemoryOrder::Relaxed);
+            auto const offset_new = do_int_dragger_cell(row,
+                                                        "Offset"_s,
+                                                        offset_current,
+                                                        0,
+                                                        (int)Min(num_slices - 1, (u32)255),
+                                                        fmt::Format(g.scratch_arena, "{}", offset_current),
+                                                        secondary_greyed);
+            if (offset_new && !secondary_greyed)
+                arp_state.slice_start_offset.Store((u8)*offset_new, StoreMemoryOrder::Relaxed);
+
+            auto const length_current = (int)arp_state.slice_loop_length.Load(LoadMemoryOrder::Relaxed);
+            auto const length_new = do_int_dragger_cell(
+                row,
+                "Slices"_s,
+                length_current,
+                0,
+                (int)Min(num_slices, (u32)255),
+                length_current ? (String)fmt::Format(g.scratch_arena, "{}", length_current) : "All"_s,
+                secondary_greyed);
+            if (length_new && !secondary_greyed)
+                arp_state.slice_loop_length.Store((u8)*length_new, StoreMemoryOrder::Relaxed);
         }
     }
 }

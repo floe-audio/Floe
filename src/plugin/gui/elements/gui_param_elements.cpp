@@ -268,7 +268,8 @@ Box DoMenuParameter(GuiState& g,
                                                      .active = LiveColStruct(UiColMap::MidTextHot),
                                                  }},
             .text_justification = TextJustification::CentredLeft,
-            .text_overflow = TextOverflowType::ShowDotsOnRight,
+            .text_overflow = options.allow_text_overflow ? TextOverflowType::AllowOverflow
+                                                         : TextOverflowType::ShowDotsOnRight,
             .layout {
                 .size = {menu_btn_width, k_mid_button_height},
             },
