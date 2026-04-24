@@ -13,6 +13,7 @@
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_eq.hpp"
 #include "gui/controls/gui_filter_visualizer.hpp"
+#include "gui/controls/gui_lfo_display.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -1130,7 +1131,21 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                           .width = layout::k_fill_parent,
                       });
 
-    DoWhitespace(g.builder, page, 2);
+    DoWhitespace(g.builder, page, 6);
+
+    // Visual display of the LFO shape scaled by amount.
+    {
+        auto const vis_box = DoBox(g.builder,
+                                   {
+                                       .parent = page,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, 70},
+                                       },
+                                   });
+        if (auto const r = BoxRect(g.builder, vis_box)) DoLfoDisplay(g, layer_index, *r, greyed_out);
+    }
+
+    DoWhitespace(g.builder, page, 10);
 
     // Menu + label rows
     auto const do_menu_label_row = [&](LayerParamIndex param_index, u64 loc_hash = SourceLocationHash()) {
