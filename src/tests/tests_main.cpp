@@ -68,7 +68,6 @@
     X(RegisterSamplePlayheadTests)                                                                           \
     X(RegisterSentryTests)                                                                                   \
     X(RegisterStateCodingTests)                                                                              \
-    X(RegisterStateSnapshotTests)                                                                            \
     X(RegisterStringTests)                                                                                   \
     X(RegisterTaggedUnionTests)                                                                              \
     X(RegisterThreadPoolTests)                                                                               \

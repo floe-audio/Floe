@@ -20,6 +20,7 @@
 #include "engine/engine_prefs.hpp"
 #include "engine/favourite_items.hpp"
 #include "plugin/plugin.hpp"
+#include "processing_utils/arpeggiator.hpp"
 #include "processor/layer_processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
@@ -336,6 +337,153 @@ StateSnapshot CurrentStateSnapshot(Engine& engine) {
     snapshot.fx_visible = engine.fx_visible;
     snapshot.instance_id = InstanceId(engine.autosave_state);
     return snapshot;
+}
+
+static usize ParamModulesLength(ParamModules const& m) {
+    usize n = 0;
+    for (auto p : m) {
+        if (p == ParameterModule::None) break;
+        ++n;
+    }
+    return n;
+}
+
+static void CopyLayerArpState(Engine& engine, StateSnapshot const& source, u8 src_layer, u8 dst_layer) {
+    StateSnapshot s {};
+    s.arp_steps[dst_layer] = source.arp_steps[src_layer];
+    s.slice_arp_configs[dst_layer] = source.slice_arp_configs[src_layer];
+    ArpApplyNewState(engine.processor.layer_processors[dst_layer].arp_state, s, dst_layer);
+}
+
+static void SendMacroDestination(AudioProcessor& processor, u8 macro_index, u8 dest_index) {
+    auto const& dest = processor.main_macro_destinations[macro_index].items[dest_index];
+    auto& event = processor.macro_dest_inbox[macro_index][dest_index];
+    event.Produce(!dest.param_index
+                      ? audio_thread_inbox::MacroDestinationUpdate::ProduceOptions {.clear = true}
+                      : audio_thread_inbox::MacroDestinationUpdate::ProduceOptions {
+                            .new_value = dest.value,
+                            .new_param_index = dest.param_index,
+                        });
+}
+
+static void ApplyModulesSection(Engine& engine,
+                                StateSnapshot const& source,
+                                ParamModules const& src_modules,
+                                ParamModules const& dst_modules) {
+    auto const src_len = ParamModulesLength(src_modules);
+    auto const dst_len = ParamModulesLength(dst_modules);
+    if (src_len == 0 || src_len != dst_len) return;
+
+    for (auto const i : Range(src_len)) {
+        if (src_modules[i] == dst_modules[i]) continue;
+        if (i != 0) return;
+        if (!LayerIndexFromModule(src_modules[0]) || !LayerIndexFromModule(dst_modules[0])) return;
+    }
+
+    auto const src_layer = LayerIndexFromModule(src_modules[0]);
+    auto const dst_layer = LayerIndexFromModule(dst_modules[0]);
+
+    for (auto const i : Range(k_num_parameters)) {
+        auto const& parts = k_param_descriptors[i].module_parts;
+        if (parts.size < src_len) continue;
+
+        bool matches = true;
+        for (auto const j : Range(src_len)) {
+            if (parts[j] != src_modules[j]) {
+                matches = false;
+                break;
+            }
+        }
+        if (!matches) continue;
+
+        ParamIndex dst_param;
+        if (src_layer && dst_layer) {
+            auto const info = LayerParamIndexAndLayerFor((ParamIndex)i);
+            if (!info) continue;
+            dst_param = ParamIndexFromLayerParamIndex(*dst_layer, info->param);
+        } else {
+            dst_param = (ParamIndex)i;
+        }
+
+        SetParameterValue(engine.processor, dst_param, source.param_values[i], {});
+    }
+
+    if (!src_layer || !dst_layer) return;
+
+    auto const copy_arp = [&] { CopyLayerArpState(engine, source, *src_layer, *dst_layer); };
+    auto const copy_velocity = [&] {
+        engine.processor.layer_processors[*dst_layer].velocity_curve_map.SetNewPoints(
+            source.velocity_curve_points[*src_layer]);
+    };
+    auto const copy_harmony = [&] {
+        engine.processor.layer_processors[*dst_layer].harmony_intervals.AssignBlockwise(
+            source.harmony_intervals[*src_layer]);
+    };
+    auto const copy_instrument = [&] { LoadInstrument(engine, *dst_layer, source.inst_ids[*src_layer]); };
+
+    if (src_len == 1) {
+        copy_arp();
+        copy_velocity();
+        copy_harmony();
+        copy_instrument();
+    } else {
+        switch (src_modules[1]) {
+            case ParameterModule::Arp: copy_arp(); break;
+            case ParameterModule::Config: copy_velocity(); break;
+            case ParameterModule::Playback: copy_harmony(); break;
+            default: break;
+        }
+    }
+}
+
+void ApplySection(Engine& engine,
+                  StateSnapshot const& source,
+                  StateSnapshotSelector const& source_selector,
+                  StateSnapshotSelector const& target_selector) {
+    ASSERT(g_is_logical_main_thread);
+    if (source_selector.tag != target_selector.tag) return;
+
+    switch (source_selector.tag) {
+        case SelectorKind::Modules: {
+            ApplyModulesSection(engine,
+                                source,
+                                source_selector.Get<ParamModules>(),
+                                target_selector.Get<ParamModules>());
+            break;
+        }
+        case SelectorKind::Macro: {
+            auto const src = source_selector.Get<MacroSelector>().macro_index;
+            auto const dst = target_selector.Get<MacroSelector>().macro_index;
+            ASSERT(src < k_num_macros && dst < k_num_macros);
+
+            SetParameterValue(engine.processor,
+                              ParamIndexFromMacroIndex(dst),
+                              source.param_values[ToInt(ParamIndexFromMacroIndex(src))],
+                              {});
+
+            engine.macro_names[dst] = source.macro_names[src];
+            engine.processor.main_macro_destinations[dst] = source.macro_destinations[src];
+            for (auto const d : Range<u8>(k_max_macro_destinations))
+                SendMacroDestination(engine.processor, dst, d);
+            break;
+        }
+        case SelectorKind::Instrument: {
+            auto const src = source_selector.Get<InstrumentSelector>().layer_index;
+            auto const dst = target_selector.Get<InstrumentSelector>().layer_index;
+            ASSERT(src < k_num_layers && dst < k_num_layers);
+            LoadInstrument(engine, dst, source.inst_ids[src]);
+            break;
+        }
+        case SelectorKind::Param: {
+            auto const src = source_selector.Get<ParamSelector>().param;
+            auto const dst = target_selector.Get<ParamSelector>().param;
+            SetParameterValue(engine.processor, dst, source.param_values[ToInt(src)], {});
+            break;
+        }
+    }
+
+    NotifyListener(engine);
+    engine.host.request_callback(&engine.host);
 }
 
 bool StateChangedSinceLastSnapshot(Engine& engine) {

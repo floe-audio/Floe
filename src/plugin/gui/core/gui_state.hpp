@@ -110,7 +110,7 @@ struct GuiState : EngineListener {
 
     struct CopiedSection {
         StateSnapshot snapshot;
-        StateSnapshotSelector selector;
+        StateSnapshotSelector selector {ParamModules {}};
     };
     Optional<CopiedSection> snapshot_clipboard {};
 

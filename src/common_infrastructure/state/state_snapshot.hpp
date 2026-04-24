@@ -107,16 +107,32 @@ void AssignDiffDescription(DynArrayT& diff_desc,
                            StateSnapshot const& old_state,
                            StateSnapshot const& new_state);
 
-struct StateSnapshotSelector {
-    ParamModules modules {};
-    u8 macro_index {0};
+struct MacroSelector {
+    bool operator==(MacroSelector const&) const = default;
+    u8 macro_index;
 };
 
-struct StateSnapshotView {
-    StateSnapshot const& snapshot;
-    StateSnapshotSelector selector;
+struct InstrumentSelector {
+    bool operator==(InstrumentSelector const&) const = default;
+    u8 layer_index;
 };
 
-StateSnapshot OverlaySection(StateSnapshotView target, StateSnapshotView source);
+struct ParamSelector {
+    bool operator==(ParamSelector const&) const = default;
+    ParamIndex param;
+};
+
+enum class SelectorKind : u8 {
+    Modules,
+    Macro,
+    Instrument,
+    Param,
+};
+
+using StateSnapshotSelector = TaggedUnion<SelectorKind,
+                                          TypeAndTag<ParamModules, SelectorKind::Modules>,
+                                          TypeAndTag<MacroSelector, SelectorKind::Macro>,
+                                          TypeAndTag<InstrumentSelector, SelectorKind::Instrument>,
+                                          TypeAndTag<ParamSelector, SelectorKind::Param>>;
 
 StateSnapshot const& DefaultStateSnapshot();

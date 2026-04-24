@@ -130,6 +130,8 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
         if (auto const macro_index = MacroIndexFromParamIndex(param_index)) {
             DoModalDivider(g.builder, root, {.horizontal = true});
 
+            StateSnapshotSelector const target_selector {MacroSelector {*macro_index}};
+
             if (MenuItem(g.builder,
                          root,
                          {
@@ -139,12 +141,12 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                     .button_fired) {
                 g.snapshot_clipboard = GuiState::CopiedSection {
                     .snapshot = CurrentStateSnapshot(g.engine),
-                    .selector = {.modules = {ParameterModule::Macro}, .macro_index = *macro_index},
+                    .selector = target_selector,
                 };
             }
 
-            auto const can_paste = g.snapshot_clipboard.HasValue() &&
-                                   g.snapshot_clipboard->selector.modules[0] == ParameterModule::Macro;
+            auto const can_paste =
+                g.snapshot_clipboard.HasValue() && g.snapshot_clipboard->selector.tag == SelectorKind::Macro;
 
             if (MenuItem(
                     g.builder,
@@ -156,13 +158,10 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                     })
                     .button_fired &&
                 can_paste) {
-                auto const current = CurrentStateSnapshot(g.engine);
-                auto const new_snapshot = OverlaySection(
-                    {.snapshot = current,
-                     .selector = {.modules = {ParameterModule::Macro}, .macro_index = *macro_index}},
-                    {.snapshot = g.snapshot_clipboard->snapshot, .selector = g.snapshot_clipboard->selector});
-                g.engine.macro_names = new_snapshot.macro_names;
-                ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
+                ApplySection(g.engine,
+                             g.snapshot_clipboard->snapshot,
+                             g.snapshot_clipboard->selector,
+                             target_selector);
             }
 
             if (MenuItem(g.builder,
@@ -172,16 +171,7 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                              .tooltip = "Reset this macro's value, name and destinations to defaults"_s,
                          })
                     .button_fired) {
-                auto const current = CurrentStateSnapshot(g.engine);
-                StateSnapshotSelector const selector {
-                    .modules = {ParameterModule::Macro},
-                    .macro_index = *macro_index,
-                };
-                auto const new_snapshot =
-                    OverlaySection({.snapshot = current, .selector = selector},
-                                   {.snapshot = DefaultStateSnapshot(), .selector = selector});
-                g.engine.macro_names = new_snapshot.macro_names;
-                ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
+                ApplySection(g.engine, DefaultStateSnapshot(), target_selector, target_selector);
             }
         }
 

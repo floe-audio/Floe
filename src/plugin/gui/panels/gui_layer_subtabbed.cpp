@@ -66,6 +66,8 @@ static void DoTabRightClickMenu(GuiState& g,
                                                 },
                                             });
 
+                    ParamModules const target_modules {LayerModuleFromIndex(layer_index), tab_module};
+
                     if (MenuItem(g.builder,
                                  root,
                                  {
@@ -75,14 +77,14 @@ static void DoTabRightClickMenu(GuiState& g,
                             .button_fired) {
                         g.snapshot_clipboard = GuiState::CopiedSection {
                             .snapshot = CurrentStateSnapshot(g.engine),
-                            .selector = {.modules = {LayerModuleFromIndex(layer_index), tab_module}},
+                            .selector = ParamModules {LayerModuleFromIndex(layer_index), tab_module},
                         };
                     }
 
                     auto const can_paste =
                         g.snapshot_clipboard.HasValue() &&
-                        LayerIndexFromModule(g.snapshot_clipboard->selector.modules[0]).HasValue() &&
-                        g.snapshot_clipboard->selector.modules[1] == tab_module;
+                        g.snapshot_clipboard->selector.tag == SelectorKind::Modules &&
+                        g.snapshot_clipboard->selector.Get<ParamModules>()[1] == tab_module;
 
                     if (MenuItem(g.builder,
                                  root,
@@ -94,13 +96,10 @@ static void DoTabRightClickMenu(GuiState& g,
                                  })
                             .button_fired &&
                         can_paste) {
-                        auto const current = CurrentStateSnapshot(g.engine);
-                        auto const new_snapshot = OverlaySection(
-                            {.snapshot = current,
-                             .selector = {.modules = {LayerModuleFromIndex(layer_index), tab_module}}},
-                            {.snapshot = g.snapshot_clipboard->snapshot,
-                             .selector = g.snapshot_clipboard->selector});
-                        ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
+                        ApplySection(g.engine,
+                                     g.snapshot_clipboard->snapshot,
+                                     g.snapshot_clipboard->selector,
+                                     StateSnapshotSelector {target_modules});
                     }
 
                     if (MenuItem(g.builder,
@@ -110,14 +109,8 @@ static void DoTabRightClickMenu(GuiState& g,
                                      .no_icon_gap = true,
                                  })
                             .button_fired) {
-                        auto const current = CurrentStateSnapshot(g.engine);
-                        StateSnapshotSelector const selector {
-                            .modules = {LayerModuleFromIndex(layer_index), tab_module},
-                        };
-                        auto const new_snapshot =
-                            OverlaySection({.snapshot = current, .selector = selector},
-                                           {.snapshot = DefaultStateSnapshot(), .selector = selector});
-                        ApplyNewState(g.engine.processor, new_snapshot, StateSource::Daw);
+                        StateSnapshotSelector const selector {target_modules};
+                        ApplySection(g.engine, DefaultStateSnapshot(), selector, selector);
                     }
                 },
             .bounds = window_r,

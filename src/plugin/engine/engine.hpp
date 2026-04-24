@@ -121,6 +121,11 @@ usize MegabytesUsedBySamples(Engine const& engine);
 
 StateSnapshot CurrentStateSnapshot(Engine& engine);
 
+void ApplySection(Engine& engine,
+                  StateSnapshot const& source,
+                  StateSnapshotSelector const& source_selector,
+                  StateSnapshotSelector const& target_selector);
+
 bool StateChangedSinceLastSnapshot(Engine& engine);
 
 void LoadPresetFromFile(Engine& engine, String path);
