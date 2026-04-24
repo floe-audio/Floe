@@ -132,18 +132,14 @@ void DoArpStepSequencer(GuiState& g,
 
             auto const curr_sf = pos_to_step(io.cursor_pos.x);
 
-            // cursor_pos_prev is reset to cursor_pos early in each frame, so use cursor_delta to
-            // reconstruct the last frame's cursor. On the first active frame there's no meaningful
-            // prior cursor, so just set the step under the current cursor.
             if (imgui.WasJustActivated(drag_id, MouseButton::Left)) {
                 set_vel_at((u32)curr_sf, y_to_vel(io.cursor_pos.y));
             } else {
-                auto const prev_cursor = io.cursor_pos - io.cursor_delta;
-                auto const prev_sf = pos_to_step(prev_cursor.x);
+                auto const prev_sf = pos_to_step(io.cursor_pos_prev.x);
                 auto const lo_sf = Min(prev_sf, curr_sf);
                 auto const hi_sf = Max(prev_sf, curr_sf);
-                auto const lo_y = (prev_sf <= curr_sf) ? prev_cursor.y : io.cursor_pos.y;
-                auto const hi_y = (prev_sf <= curr_sf) ? io.cursor_pos.y : prev_cursor.y;
+                auto const lo_y = (prev_sf <= curr_sf) ? io.cursor_pos_prev.y : io.cursor_pos.y;
+                auto const hi_y = (prev_sf <= curr_sf) ? io.cursor_pos.y : io.cursor_pos_prev.y;
                 auto const lo = (u32)lo_sf;
                 auto const hi = (u32)hi_sf;
                 auto const span = hi_sf - lo_sf;

@@ -455,7 +455,6 @@ static void BeginFrame(GuiFrameInput& frame_state) {
     } else {
         frame_state.cursor_delta = frame_state.cursor_pos - frame_state.cursor_pos_prev;
     }
-    frame_state.cursor_pos_prev = frame_state.cursor_pos;
 
     frame_state.current_time = TimePoint::Now();
 
@@ -463,6 +462,10 @@ static void BeginFrame(GuiFrameInput& frame_state) {
         frame_state.delta_time = (f32)(frame_state.current_time - frame_state.time_prev);
     else
         frame_state.delta_time = 0;
+}
+
+static void EndFrame(GuiFrameInput& frame_state) {
+    frame_state.cursor_pos_prev = frame_state.cursor_pos;
     frame_state.time_prev = frame_state.current_time;
 }
 
@@ -629,6 +632,8 @@ static void UpdateAndRender(AppWindow& window) {
 
             GuiUpdate(*window.gui);
         }
+
+        EndFrame(window.frame_state);
 
         // Clear the state ready for new events, and to ensure they're only processed once.
         ClearImpermanentState(window.frame_state);
