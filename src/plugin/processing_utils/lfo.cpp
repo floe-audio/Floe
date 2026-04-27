@@ -58,8 +58,16 @@ TEST_CASE(TestLFO) {
         REQUIRE(seen_neg);
     }
 
-    SUBCASE("Triangle and Sawtooth stay in range") {
-        for (auto const waveform : Array {LFO::Waveform::Triangle, LFO::Waveform::Sawtooth}) {
+    SUBCASE("All deterministic waveforms stay in range") {
+        for (auto const waveform : Array {
+                 LFO::Waveform::Triangle,
+                 LFO::Waveform::Sawtooth,
+                 LFO::Waveform::Pluck,
+                 LFO::Waveform::PluckSharp,
+                 LFO::Waveform::PulseNarrow,
+                 LFO::Waveform::PulseWide,
+                 LFO::Waveform::Trapezoid,
+             }) {
             LFO lfo;
             lfo.SetWaveform(waveform);
             lfo.SetRate(k_sample_rate, 3.0f);
@@ -68,6 +76,50 @@ TEST_CASE(TestLFO) {
                 REQUIRE(v >= -1.0f);
                 REQUIRE(v <= 1.0f);
             }
+        }
+    }
+
+    SUBCASE("Pluck shapes start near -1 and rise toward +1 (DSP negates for audible decay)") {
+        for (auto const waveform : Array {LFO::Waveform::Pluck, LFO::Waveform::PluckSharp}) {
+            LFO lfo;
+            lfo.SetWaveform(waveform);
+            lfo.SetRate(k_sample_rate, 1.0f);
+
+            // The first tick happens at phase 0 → table[0] which should be very close to -1.
+            auto const first = lfo.Tick();
+            REQUIRE(first < -0.95f);
+
+            // Tick through most of a cycle; the value should approach +1.
+            f32 last = first;
+            for (auto const _ : Range(40000))
+                last = lfo.Tick();
+            REQUIRE(last > 0.5f);
+        }
+    }
+
+    SUBCASE("Pulse shapes have the expected audible duty cycle") {
+        // Tables are negated by the DSP before being applied, so the named "narrow"/"wide"
+        // refers to the audible high portion. Negate raw output here to measure that.
+        struct Case {
+            LFO::Waveform waveform;
+            f32 expected_audible_high_fraction;
+        };
+        for (auto const c : Array {
+                 Case {LFO::Waveform::PulseNarrow, 0.25f},
+                 Case {LFO::Waveform::PulseWide, 0.75f},
+             }) {
+            LFO lfo;
+            lfo.SetWaveform(c.waveform);
+            lfo.SetRate(k_sample_rate, 5.0f);
+
+            u32 audible_high_count = 0;
+            constexpr u32 total = 44100; // 5 full cycles
+            for (auto const _ : Range(total)) {
+                auto const audible = -lfo.Tick();
+                if (audible > 0.0f) ++audible_high_count;
+            }
+            auto const measured = (f32)audible_high_count / (f32)total;
+            REQUIRE(Fabs(measured - c.expected_audible_high_fraction) < 0.02f);
         }
     }
 

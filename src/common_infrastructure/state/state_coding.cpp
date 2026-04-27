@@ -538,6 +538,11 @@ enum class StateVersion : u16 {
     // parameter is now hidden and kept only for DAW automation backwards compatibility.
     AddedLinearFilterGain,
 
+    // Expanded LFO shape parameter with new percussive and pulse waveforms (Pluck, Pluck Sharp, Pulse
+    // Narrow, Pulse Wide, Trapezoid). The previous LfoShape parameter is now hidden as
+    // LegacyLfoShapeV2 and kept only for DAW automation backwards compatibility.
+    ExpandedLfoShapeParameter,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -573,7 +578,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 245,
+    static_assert(k_num_non_experimental_parameters == 248,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -849,6 +854,14 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             arp_on = 1.0f;
             arp_mode -= 1.0f;
         }
+    }
+
+    if (version < StateVersion::ExpandedLfoShapeParameter) {
+        MigrateLegacyEnumLayerParam(state,
+                                    source,
+                                    LayerParamIndex::LegacyLfoShapeV2,
+                                    LayerParamIndex::LfoShape,
+                                    param_values::k_legacy_lfo_shape_v2_to_current);
     }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's

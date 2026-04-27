@@ -6,21 +6,22 @@
 #include "tests/framework.hpp"
 
 TEST_CASE(TestEnumParamWithLegacies) {
-    // These might not actually be real legacy remapping, but it doesn't matter for the test.
     auto const legacy_v1 = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyLfoShape);
-    auto const legacy_v2 = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LfoShape);
-    auto const current = ParamIndexFromLayerParamIndex(1, LayerParamIndex::LfoShape);
+    auto const legacy_v2 = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyLfoShapeV2);
+    auto const current = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LfoShape);
 
     EnumParamWithLegacies<param_values::LfoShape, 2> p {
         .current_idx = current,
-        .legacies = {{{
-                          .idx = legacy_v1,
-                          .remap_table = param_values::k_legacy_lfo_shape_to_current,
-                      },
-                      {
-                          .idx = legacy_v2,
-                          .remap_table = param_values::k_legacy_lfo_shape_to_current,
-                      }}},
+        .legacies = {{
+            {
+                .idx = legacy_v1,
+                .remap_table = param_values::k_legacy_lfo_shape_to_current,
+            },
+            {
+                .idx = legacy_v2,
+                .remap_table = param_values::k_legacy_lfo_shape_v2_to_current,
+            },
+        }},
     };
 
     {

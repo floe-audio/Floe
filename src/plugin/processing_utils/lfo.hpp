@@ -6,7 +6,20 @@
 #include "foundation/foundation.hpp"
 
 struct LFO {
-    enum class Waveform : u8 { None, Sine, Triangle, Sawtooth, Square, RandomSteps, RandomGlide };
+    enum class Waveform : u8 {
+        None,
+        Sine,
+        Triangle,
+        Sawtooth,
+        Square,
+        RandomSteps,
+        RandomGlide,
+        Pluck,
+        PluckSharp,
+        PulseNarrow,
+        PulseWide,
+        Trapezoid,
+    };
 
     // Scalar xorshift32 (Marsaglia 2003) on random_state. Returns a value in [-1, 1].
     f32 NextRandomBipolar() {
@@ -98,6 +111,51 @@ struct LFO {
                     table[i] = 1.0f;
                     table[i + 128] = -1.0f;
                 }
+                table[256] = 1.0f;
+                break;
+            }
+            case Waveform::Pluck:
+            case Waveform::PluckSharp: {
+                // Inverted exponential rising from -1 → +1; matches the sawtooth's table
+                // direction so that after the DSP's negation the audible/visual shape is a
+                // plucky exponential decay from +1 → -1. Smaller tau = sharper transient.
+                f32 const tau = w == Waveform::PluckSharp ? 0.05f : 0.15f;
+                for (u32 i = 0; i <= 256; i++) {
+                    auto const t = (f32)i / 256.0f;
+                    table[i] = 1.0f - (2.0f * Exp(-t / tau));
+                }
+                break;
+            }
+            case Waveform::PulseNarrow: {
+                // Audible/visual: high for 25% of the cycle (narrow positive pulse). Table is
+                // inverted because the DSP negates the LFO output before applying.
+                for (u32 i = 0; i < 64; i++)
+                    table[i] = -1.0f;
+                for (u32 i = 64; i < 256; i++)
+                    table[i] = 1.0f;
+                table[256] = -1.0f;
+                break;
+            }
+            case Waveform::PulseWide: {
+                // Audible/visual: high for 75% of the cycle (wide positive pulse).
+                for (u32 i = 0; i < 192; i++)
+                    table[i] = -1.0f;
+                for (u32 i = 192; i < 256; i++)
+                    table[i] = 1.0f;
+                table[256] = -1.0f;
+                break;
+            }
+            case Waveform::Trapezoid: {
+                // Square with linear sloped edges (16-sample ramps inside a 256-sample cycle).
+                constexpr u32 ramp = 16;
+                for (u32 i = 0; i < 128 - ramp; i++)
+                    table[i] = 1.0f;
+                for (u32 i = 0; i < ramp; i++)
+                    table[(128 - ramp) + i] = 1.0f - (2.0f * (f32)i / (f32)ramp);
+                for (u32 i = 128; i < 256 - ramp; i++)
+                    table[i] = -1.0f;
+                for (u32 i = 0; i < ramp; i++)
+                    table[(256 - ramp) + i] = -1.0f + (2.0f * (f32)i / (f32)ramp);
                 table[256] = 1.0f;
                 break;
             }

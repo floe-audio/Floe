@@ -86,6 +86,11 @@ void UpdateLFOWaveform(Voice& v) {
         case param_values::LfoShape::Square: waveform = LFO::Waveform::Square; break;
         case param_values::LfoShape::RandomSteps: waveform = LFO::Waveform::RandomSteps; break;
         case param_values::LfoShape::RandomGlide: waveform = LFO::Waveform::RandomGlide; break;
+        case param_values::LfoShape::Pluck: waveform = LFO::Waveform::Pluck; break;
+        case param_values::LfoShape::PluckSharp: waveform = LFO::Waveform::PluckSharp; break;
+        case param_values::LfoShape::PulseNarrow: waveform = LFO::Waveform::PulseNarrow; break;
+        case param_values::LfoShape::PulseWide: waveform = LFO::Waveform::PulseWide; break;
+        case param_values::LfoShape::Trapezoid: waveform = LFO::Waveform::Trapezoid; break;
         case param_values::LfoShape::Count: PanicIfReached(); break;
     }
     if (waveform != v.lfo.waveform) v.lfo.SetWaveform(waveform);

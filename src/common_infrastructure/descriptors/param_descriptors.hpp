@@ -42,6 +42,7 @@ enum class LayerParamIndex : u8 {
     LfoRateTempoSynced,
     LfoRateHz,
     LfoSyncSwitch,
+    LegacyLfoShapeV2,
     LfoShape,
     LfoDestination,
     EqOn,
@@ -456,6 +457,25 @@ constexpr auto k_legacy_lfo_shape_strings = ArrayT<String>({
 });
 static_assert(k_legacy_lfo_shape_strings.size == ToInt(LegacyLfoShape::Count));
 
+enum class LegacyLfoShapeV2 : u8 { // never reorder
+    Sine,
+    Triangle,
+    Sawtooth,
+    Square,
+    RandomSteps,
+    RandomGlide,
+    Count,
+};
+constexpr auto k_legacy_lfo_shape_v2_strings = ArrayT<String>({
+    "Sine",
+    "Triangle",
+    "Sawtooth",
+    "Square",
+    "Random Steps",
+    "Random Glide",
+});
+static_assert(k_legacy_lfo_shape_v2_strings.size == ToInt(LegacyLfoShapeV2::Count));
+
 enum class LfoShape : u8 { // never reorder
     Sine,
     Triangle,
@@ -463,6 +483,11 @@ enum class LfoShape : u8 { // never reorder
     Square,
     RandomSteps,
     RandomGlide,
+    Pluck,
+    PluckSharp,
+    PulseNarrow,
+    PulseWide,
+    Trapezoid,
     Count,
 };
 constexpr auto k_lfo_shape_strings = ArrayT<String>({
@@ -472,6 +497,11 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
     "Square",
     "Random Steps",
     "Random Glide",
+    "Pluck",
+    "Pluck Sharp",
+    "Pulse Narrow",
+    "Pulse Wide",
+    "Trapezoid",
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
 
@@ -482,6 +512,16 @@ constexpr auto k_legacy_lfo_shape_to_current = ArrayT<LfoShape>({
     LfoShape::Square,
 });
 static_assert(k_legacy_lfo_shape_to_current.size == ToInt(LegacyLfoShape::Count));
+
+constexpr auto k_legacy_lfo_shape_v2_to_current = ArrayT<LfoShape>({
+    LfoShape::Sine,
+    LfoShape::Triangle,
+    LfoShape::Sawtooth,
+    LfoShape::Square,
+    LfoShape::RandomSteps,
+    LfoShape::RandomGlide,
+});
+static_assert(k_legacy_lfo_shape_v2_to_current.size == ToInt(LegacyLfoShapeV2::Count));
 
 enum class LayerFilterType : u8 { // never reorder
     Lowpass,
@@ -769,6 +809,7 @@ struct ParamDescriptor {
         LegacyLfoDestination,
         LfoDestination,
         LegacyLfoShape,
+        LegacyLfoShapeV2,
         LfoShape,
         LayerFilterType,
         EffectFilterType,
@@ -1050,6 +1091,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::LegacyLfoDestination: return k_legacy_lfo_destination_strings;
         case ParamDescriptor::MenuType::LfoDestination: return k_lfo_destination_strings;
         case ParamDescriptor::MenuType::LegacyLfoShape: return k_legacy_lfo_shape_strings;
+        case ParamDescriptor::MenuType::LegacyLfoShapeV2: return k_legacy_lfo_shape_v2_strings;
         case ParamDescriptor::MenuType::LfoShape: return k_lfo_shape_strings;
         case ParamDescriptor::MenuType::LayerFilterType: return k_layer_filter_type_strings;
         case ParamDescriptor::MenuType::EffectFilterType: return k_effect_filter_type_strings;
@@ -2387,8 +2429,21 @@ consteval auto CreateParams() {
             .gui_label = "Sync"_s,
             .tooltip = "Sync the LFO speed to the host"_s,
         };
-        lp(LfoShape) = Args {
+        lp(LegacyLfoShapeV2) = Args {
             .id = id(region, 67), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyLfoShapeV2,
+                .default_val = (u32)LegacyLfoShapeV2::Sine,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Legacy Shape V2"_s,
+            .gui_label = "Shape"_s,
+            .tooltip =
+                "Legacy LFO shape parameter (v2). Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(LfoShape) = Args {
+            .id = id(region, 82), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LfoShape,
                 .default_val = (u32)LfoShape::Sine,
@@ -2396,7 +2451,7 @@ consteval auto CreateParams() {
             .modules = {layer_module, ParameterModule::Lfo},
             .name = "Shape"_s,
             .gui_label = "Shape"_s,
-            .tooltip = "Oscillator shape, including random waveforms"_s,
+            .tooltip = "Oscillator shape, including random and percussive waveforms"_s,
         };
         lp(LfoDestination) = Args {
             .id = id(region, 68), // never change

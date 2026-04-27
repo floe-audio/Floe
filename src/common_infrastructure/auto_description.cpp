@@ -411,7 +411,12 @@ GenerateAutoDescription(StateSnapshot const& state,
         bool const smooth_shape = lfo_shape && (*lfo_shape == param_values::LfoShape::Sine ||
                                                 *lfo_shape == param_values::LfoShape::Triangle);
         bool const harsh_shape = lfo_shape && (*lfo_shape == param_values::LfoShape::Sawtooth ||
-                                               *lfo_shape == param_values::LfoShape::Square);
+                                               *lfo_shape == param_values::LfoShape::Square ||
+                                               *lfo_shape == param_values::LfoShape::Pluck ||
+                                               *lfo_shape == param_values::LfoShape::PluckSharp ||
+                                               *lfo_shape == param_values::LfoShape::PulseNarrow ||
+                                               *lfo_shape == param_values::LfoShape::PulseWide ||
+                                               *lfo_shape == param_values::LfoShape::Trapezoid);
         f32 const lfo_salience = 0.4f + (lfo_rate * 0.3f);
         switch (*lfo_dest) {
             case param_values::LfoDestination::Volume:

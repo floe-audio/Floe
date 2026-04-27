@@ -202,10 +202,16 @@ struct LayerProcessor {
           })
         , lfo_shape({
               .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoShape),
-              .legacies = {{{
-                  .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShape),
-                  .remap_table = param_values::k_legacy_lfo_shape_to_current,
-              }}},
+              .legacies = {{
+                  {
+                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShape),
+                      .remap_table = param_values::k_legacy_lfo_shape_to_current,
+                  },
+                  {
+                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShapeV2),
+                      .remap_table = param_values::k_legacy_lfo_shape_v2_to_current,
+                  },
+              }},
           })
         , lfo_dest({
               .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoDestination),
@@ -364,7 +370,7 @@ struct LayerProcessor {
     param_values::LfoSyncedRate lfo_synced_time {};
     f32 lfo_unsynced_hz {};
     bool lfo_is_synced {};
-    EnumParamWithLegacies<param_values::LfoShape> lfo_shape {};
+    EnumParamWithLegacies<param_values::LfoShape, 2> lfo_shape {};
     EnumParamWithLegacies<param_values::LfoDestination> lfo_dest {};
 
     EqBands eq_bands;
