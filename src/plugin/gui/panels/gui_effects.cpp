@@ -10,7 +10,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
-#include "gui/controls/gui_filter_visualizer.hpp"
+#include "gui/controls/gui_filter_visualiser.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"

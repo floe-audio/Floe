@@ -1596,7 +1596,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/controls/gui_curve_map.cpp",
             "gui/controls/gui_envelope.cpp",
             "gui/controls/gui_eq.cpp",
-            "gui/controls/gui_filter_visualizer.cpp",
+            "gui/controls/gui_filter_visualiser.cpp",
             "gui/controls/gui_keyboard.cpp",
             "gui/controls/gui_lfo_display.cpp",
             "gui/controls/gui_waveform.cpp",

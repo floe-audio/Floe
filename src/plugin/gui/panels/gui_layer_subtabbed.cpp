@@ -12,7 +12,7 @@
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_eq.hpp"
-#include "gui/controls/gui_filter_visualizer.hpp"
+#include "gui/controls/gui_filter_visualiser.hpp"
 #include "gui/controls/gui_lfo_display.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"

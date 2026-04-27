@@ -1,7 +1,7 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/controls/gui_filter_visualizer.hpp"
+#include "gui/controls/gui_filter_visualiser.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
