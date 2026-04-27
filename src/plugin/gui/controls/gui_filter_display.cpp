@@ -14,7 +14,7 @@ namespace filter_display {
 constexpr usize k_curve_points = 160;
 
 f32 DbToY(f32 db, Rect viewport_r) {
-    auto const t = MapTo01(Clamp(db, k_min_db, k_max_db), k_min_db, k_max_db);
+    auto const t = MapTo01(db, k_min_db, k_max_db);
     return viewport_r.Bottom() - (t * viewport_r.h);
 }
 
@@ -46,32 +46,24 @@ void DrawResponseCurve(imgui::Context& imgui,
                        TrivialFunctionRef<f32(f32 freq_hz)> magnitude_db,
                        ParamDescriptor const& freq_param_info,
                        bool greyed_out) {
-    struct CurvePoint {
-        f32x2 pos_window;
-        bool in_range; // true if the unclamped dB value falls within [k_min_db, k_max_db]
-    };
-    DynamicArrayBounded<CurvePoint, k_curve_points> curve_points;
-
+    DynamicArrayBounded<f32x2, k_curve_points> curve_points;
     for (auto const i : Range(k_curve_points)) {
         auto const t = (f32)i / (f32)(k_curve_points - 1);
         auto const x = viewport_r.x + (t * viewport_r.w);
         auto const freq_hz = freq_param_info.ProjectValue(t);
-
-        auto const total_db = magnitude_db(freq_hz);
-
-        bool const in_range = total_db >= k_min_db && total_db <= k_max_db;
-        auto const y = DbToY(total_db, viewport_r);
-        dyn::Append(curve_points, CurvePoint {imgui.ViewportPosToWindowPos({x, y}), in_range});
+        auto const y = DbToY(magnitude_db(freq_hz), viewport_r);
+        dyn::Append(curve_points, imgui.ViewportPosToWindowPos({x, y}));
     }
 
-    // Area fill: per-segment quads between zero line and curve, using the clamped Y so the
-    // fill still covers the out-of-range regions up to the display edges. AA disabled to
-    // avoid seams between the translucent quads.
+    auto const window_rect = imgui.ViewportRectToWindowRect(viewport_r);
+    imgui.draw_list->PushClipRect(window_rect.Min(), window_rect.Max(), true);
+    DEFER { imgui.draw_list->PopClipRect(); };
+
     auto const zero_y_window = imgui.ViewportPosToWindowPos({viewport_r.x, DbToY(0.0f, viewport_r)}).y;
     auto const area_col = LiveCol(UiColMap::EqArea);
     for (auto const i : Range(curve_points.size - 1)) {
-        auto const p0 = curve_points[i].pos_window;
-        auto const p1 = curve_points[i + 1].pos_window;
+        auto const p0 = curve_points[i];
+        auto const p1 = curve_points[i + 1];
         f32x2 const verts[] = {
             f32x2 {p0.x, zero_y_window},
             p0,
@@ -81,19 +73,8 @@ void DrawResponseCurve(imgui::Context& imgui,
         imgui.draw_list->AddConvexPolyFilled(verts, area_col, false);
     }
 
-    // Polyline: draw consecutive in-range runs as separate polylines.
     auto const line_col = greyed_out ? LiveCol(UiColMap::EqLineGreyedOut) : LiveCol(UiColMap::EqLine);
-    DynamicArrayBounded<f32x2, k_curve_points> run;
-    auto flush_run = [&]() {
-        if (run.size >= 2) imgui.draw_list->AddPolyline(run, line_col, false, 1.5f, true);
-        dyn::Clear(run);
-    };
-    for (auto const& p : curve_points)
-        if (p.in_range)
-            dyn::Append(run, p.pos_window);
-        else
-            flush_run();
-    flush_run();
+    imgui.draw_list->AddPolyline(curve_points, line_col, false, 1.5f, true);
 }
 
 void DrawHandle(imgui::Context& imgui,
