@@ -534,6 +534,10 @@ enum class StateVersion : u16 {
     // compatibility.
     AddedLinearFilterResonance,
 
+    // Added new filter gain parameter where the value equals the audible gain. The legacy FilterGain
+    // parameter is now hidden and kept only for DAW automation backwards compatibility.
+    AddedLinearFilterGain,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -569,7 +573,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 244,
+    static_assert(k_num_non_experimental_parameters == 245,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -811,6 +815,25 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                 legacy_val = legacy_default;
                 state.LinearParam(current_pi) = new_val;
             }
+        }
+    }
+
+    if (version < StateVersion::AddedLinearFilterGain) {
+        auto const legacy_pi = ParamIndex::LegacyFilterGain;
+        auto const current_pi = ParamIndex::FilterGain;
+        auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
+        auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
+        if (source == StateSource::Daw) {
+            state.LinearParam(current_pi) = current_default;
+        } else {
+            // Old: DSP used legacy value as peak_gain directly; two passes → audible = 2× legacy.
+            // New: FilterGain = audible gain; DSP uses FilterGain/2 per pass → audible = FilterGain.
+            auto& legacy_val = state.LinearParam(legacy_pi);
+            auto const old_db = k_param_descriptors[ToInt(legacy_pi)].ProjectValue(legacy_val);
+            auto const new_db = old_db * 2;
+            legacy_val = legacy_default;
+            state.LinearParam(current_pi) =
+                k_param_descriptors[ToInt(current_pi)].LineariseValue(new_db, true).ValueOr(current_default);
         }
     }
 

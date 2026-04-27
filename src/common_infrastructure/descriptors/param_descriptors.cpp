@@ -349,7 +349,7 @@ constexpr auto k_non_layer_params = ArrayT<NonLayerParamId>({
     {"FlOn", ParamIndex::FilterOn},
     {"FlCut", ParamIndex::FilterCutoff},
     {"FlRes", ParamIndex::FilterResonance},
-    {"FlGain", ParamIndex::FilterGain},
+    {"FlGain", ParamIndex::LegacyFilterGain},
     {"FlType", ParamIndex::FilterType},
     {"SterWd", ParamIndex::StereoWidenWidth},
     {"SterOn", ParamIndex::StereoWidenOn},

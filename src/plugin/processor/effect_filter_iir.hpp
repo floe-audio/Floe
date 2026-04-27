@@ -39,14 +39,21 @@ class FilterEffect final : public Effect {
             m_filter_params.q =
                 (legacy_linear != legacy_default)
                     ? MapFrom01Skew(legacy_linear, 0.5f, 2, 5)
-                    : MapFrom01Skew(changes.changed_params.params.LinearValue(ParamIndex::FilterResonance),
-                                    0.5f,
-                                    2,
-                                    2);
+                    : rbj_filter::EffectFilterResonanceToQ(
+                          changes.changed_params.params.LinearValue(ParamIndex::FilterResonance));
             set_params = true;
         }
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterGain)) {
-            m_filter_params.peak_gain = *p;
+        if (changes.changed_params.Changed(ParamIndex::LegacyFilterGain) ||
+            changes.changed_params.Changed(ParamIndex::FilterGain)) {
+            auto const legacy_idx = ParamIndex::LegacyFilterGain;
+            auto const legacy_linear = changes.changed_params.params.LinearValue(legacy_idx);
+            auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
+            m_filter_params.peak_gain =
+                (legacy_linear != legacy_default)
+                    ? k_param_descriptors[ToInt(legacy_idx)].ProjectValue(legacy_linear)
+                    : k_param_descriptors[ToInt(ParamIndex::FilterGain)].ProjectValue(
+                          changes.changed_params.params.LinearValue(ParamIndex::FilterGain)) /
+                          2;
             set_params = true;
         }
         if (auto p =

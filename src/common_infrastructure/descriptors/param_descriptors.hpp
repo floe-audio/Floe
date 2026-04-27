@@ -125,6 +125,7 @@ enum class ParamIndex : u16 {
     FilterCutoff,
     LegacyFilterResonance,
     FilterResonance,
+    LegacyFilterGain,
     FilterGain,
     FilterType,
 
@@ -1572,13 +1573,22 @@ consteval auto CreateParams() {
         .gui_label = "Reso"_s,
         .tooltip = "The intensity of the volume peak at the cutoff frequency"_s,
     };
-    mp(FilterGain) = Args {
+    mp(LegacyFilterGain) = Args {
         .id = id(IdRegion::Master, 19), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Legacy gain parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.hidden = true},
+    };
+    mp(FilterGain) = Args {
+        .id = id(IdRegion::Master, 30), // never change
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Gain"_s,
         .gui_label = "Gain"_s,
-        .tooltip = "Volume gain of shelf filter"_s,
+        .tooltip = "Volume gain of shelf/peak filter"_s,
     };
     mp(FilterType) = Args {
         .id = id(IdRegion::Master, 20), // never change
