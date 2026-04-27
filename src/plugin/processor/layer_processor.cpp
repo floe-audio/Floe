@@ -606,8 +606,16 @@ void ProcessLayerChanges(LayerProcessor& layer,
                                                          0.1f);
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::FilterCutoff))
         vmst.sv_filter_cutoff_linear = sv_filter::HzToLinear(*p);
-    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::FilterResonance))
-        vmst.sv_filter_resonance = sv_filter::SkewResonance(*p);
+    if (changes.changed_params.Changed(layer.index, LayerParamIndex::LegacyFilterResonance) ||
+        changes.changed_params.Changed(layer.index, LayerParamIndex::FilterResonance)) {
+        auto const legacy_idx =
+            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LegacyFilterResonance);
+        auto const current_idx = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::FilterResonance);
+        vmst.sv_filter_resonance =
+            sv_filter::ResolveSkewedResonance(changes.changed_params.params.LinearValue(legacy_idx),
+                                              k_param_descriptors[ToInt(legacy_idx)].default_linear_value,
+                                              changes.changed_params.params.LinearValue(current_idx));
+    }
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::FilterOn))
         vmst.filter_on = *p;
     if (auto p =

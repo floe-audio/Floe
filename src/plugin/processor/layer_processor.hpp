@@ -39,11 +39,13 @@ struct EqBand {
 
     void OnParamChange(ChangedParams changed_params, u8 layer_index, f32 sample_rate, u32 band_num) {
         auto freq_param = LayerParamIndex::EqFreq1;
+        auto legacy_reso_param = LayerParamIndex::LegacyEqResonance1;
         auto reso_param = LayerParamIndex::EqResonance1;
         auto gain_param = LayerParamIndex::EqGain1;
         auto type_param = LayerParamIndex::EqType1;
         if (band_num == 1) {
             freq_param = LayerParamIndex::EqFreq2;
+            legacy_reso_param = LayerParamIndex::LegacyEqResonance2;
             reso_param = LayerParamIndex::EqResonance2;
             gain_param = LayerParamIndex::EqGain2;
             type_param = LayerParamIndex::EqType2;
@@ -57,9 +59,19 @@ struct EqBand {
             eq_params.fc = *p;
             changed = true;
         }
-        if (auto p = changed_params.ProjectedValue(layer_index, reso_param)) {
+        if (changed_params.Changed(layer_index, legacy_reso_param) ||
+            changed_params.Changed(layer_index, reso_param)) {
+            auto const legacy_idx = ParamIndexFromLayerParamIndex(layer_index, legacy_reso_param);
+            auto const legacy_linear = changed_params.params.LinearValue(legacy_idx);
+            auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
             eq_params.fs = sample_rate;
-            eq_params.q = MapFrom01Skew(*p, 0.5f, 8, 5);
+            eq_params.q = (legacy_linear != legacy_default)
+                              ? MapFrom01Skew(legacy_linear, 0.5f, 8, 5)
+                              : MapFrom01Skew(changed_params.params.LinearValue(
+                                                  ParamIndexFromLayerParamIndex(layer_index, reso_param)),
+                                              0.5f,
+                                              8,
+                                              2);
             changed = true;
         }
         if (auto p = changed_params.ProjectedValue(layer_index, gain_param)) {

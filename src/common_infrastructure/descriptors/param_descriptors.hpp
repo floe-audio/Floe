@@ -26,6 +26,7 @@ enum class LayerParamIndex : u8 {
     VolumeRelease,
     FilterOn,
     FilterCutoff,
+    LegacyFilterResonance,
     FilterResonance,
     FilterType,
     FilterEnvAmount,
@@ -45,10 +46,12 @@ enum class LayerParamIndex : u8 {
     LfoDestination,
     EqOn,
     EqFreq1,
+    LegacyEqResonance1,
     EqResonance1,
     EqGain1,
     EqType1,
     EqFreq2,
+    LegacyEqResonance2,
     EqResonance2,
     EqGain2,
     EqType2,
@@ -120,6 +123,7 @@ enum class ParamIndex : u16 {
 
     FilterOn,
     FilterCutoff,
+    LegacyFilterResonance,
     FilterResonance,
     FilterGain,
     FilterType,
@@ -1544,9 +1548,18 @@ consteval auto CreateParams() {
         .gui_label = "Cutoff"_s,
         .tooltip = "Frequency of filter effect"_s,
     };
-    mp(FilterResonance) = Args {
+    mp(LegacyFilterResonance) = Args {
         .id = id(IdRegion::Master, 18), // never change
         .value_config = val_config_helpers::Percent({.default_percent = 30}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.hidden = true},
+    };
+    mp(FilterResonance) = Args {
+        .id = id(IdRegion::Master, 29), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Resonance"_s,
         .gui_label = "Reso"_s,
@@ -2203,9 +2216,18 @@ consteval auto CreateParams() {
             .gui_label = "Cut"_s,
             .tooltip = "The frequency at which the filter should take effect"_s,
         };
-        lp(FilterResonance) = Args {
+        lp(LegacyFilterResonance) = Args {
             .id = id(region, 20), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 25}),
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
+            .name = "Legacy Resonance"_s,
+            .gui_label = "Res"_s,
+            .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.hidden = true},
+        };
+        lp(FilterResonance) = Args {
+            .id = id(region, 69), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Resonance"_s,
             .gui_label = "Res"_s,
@@ -2389,8 +2411,17 @@ consteval auto CreateParams() {
             .gui_label = "Freq"_s,
             .tooltip = "Band 1: frequency of this band"_s,
         };
-        lp(EqResonance1) = Args {
+        lp(LegacyEqResonance1) = Args {
             .id = id(region, 37), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
+            .name = "Legacy Resonance"_s,
+            .gui_label = "Reso"_s,
+            .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.hidden = true},
+        };
+        lp(EqResonance1) = Args {
+            .id = id(region, 79), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Resonance"_s,
@@ -2424,8 +2455,17 @@ consteval auto CreateParams() {
             .gui_label = "Freq"_s,
             .tooltip = "Band 2: frequency of this band"_s,
         };
-        lp(EqResonance2) = Args {
+        lp(LegacyEqResonance2) = Args {
             .id = id(region, 41), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
+            .name = "Legacy Resonance"_s,
+            .gui_label = "Reso"_s,
+            .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.hidden = true},
+        };
+        lp(EqResonance2) = Args {
+            .id = id(region, 80), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Resonance"_s,

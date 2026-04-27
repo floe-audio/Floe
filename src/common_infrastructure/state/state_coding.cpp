@@ -529,6 +529,11 @@ enum class StateVersion : u16 {
 
     AddedSliceArpConfig,
 
+    // Added new filter resonance parameter with a linear skew curve (better spread across knob range).
+    // The legacy FilterResonance parameter is now hidden and kept only for DAW automation backwards
+    // compatibility.
+    AddedLinearFilterResonance,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -564,7 +569,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 234,
+    static_assert(k_num_non_experimental_parameters == 244,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -751,6 +756,63 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     }
 
     if (version < StateVersion::AddedSliceArpConfig) state.slice_arp_configs = {};
+
+    if (version < StateVersion::AddedLinearFilterResonance) {
+        // Layer filter: old x^4 skew → new linear skew. Convert: new = old^4.
+        for (auto const layer_index : Range(k_num_layers)) {
+            auto const legacy_pi =
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyFilterResonance);
+            auto const current_pi =
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance);
+            auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
+            auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
+            if (source == StateSource::Daw) {
+                state.LinearParam(current_pi) = current_default;
+            } else {
+                auto& legacy_val = state.LinearParam(legacy_pi);
+                auto const new_val = Clamp(Pow(legacy_val, 4.0f), 0.0f, 1.0f);
+                legacy_val = legacy_default;
+                state.LinearParam(current_pi) = new_val;
+            }
+        }
+
+        // EQ bands: old x^5 skew → new x^2 skew. Convert: new = old^2.5.
+        for (auto const layer_index : Range(k_num_layers)) {
+            for (auto const [legacy_idx_enum, current_idx_enum] :
+                 Array<Pair<LayerParamIndex, LayerParamIndex>, 2> {
+                     {{LayerParamIndex::LegacyEqResonance1, LayerParamIndex::EqResonance1},
+                      {LayerParamIndex::LegacyEqResonance2, LayerParamIndex::EqResonance2}}}) {
+                auto const legacy_pi = ParamIndexFromLayerParamIndex(layer_index, legacy_idx_enum);
+                auto const current_pi = ParamIndexFromLayerParamIndex(layer_index, current_idx_enum);
+                auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
+                auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
+                if (source == StateSource::Daw) {
+                    state.LinearParam(current_pi) = current_default;
+                } else {
+                    auto& legacy_val = state.LinearParam(legacy_pi);
+                    auto const new_val = Clamp(Pow(legacy_val, 2.5f), 0.0f, 1.0f);
+                    legacy_val = legacy_default;
+                    state.LinearParam(current_pi) = new_val;
+                }
+            }
+        }
+
+        // Effect filter: old x^5 skew → new x^2 skew. Convert: new = old^2.5.
+        {
+            auto const legacy_pi = ParamIndex::LegacyFilterResonance;
+            auto const current_pi = ParamIndex::FilterResonance;
+            auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
+            auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
+            if (source == StateSource::Daw) {
+                state.LinearParam(current_pi) = current_default;
+            } else {
+                auto& legacy_val = state.LinearParam(legacy_pi);
+                auto const new_val = Clamp(Pow(legacy_val, 2.5f), 0.0f, 1.0f);
+                legacy_val = legacy_default;
+                state.LinearParam(current_pi) = new_val;
+            }
+        }
+    }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so

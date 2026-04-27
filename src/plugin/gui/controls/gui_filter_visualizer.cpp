@@ -120,6 +120,7 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     biquad_display::DrawBackground(imgui, viewport_r, freq_info);
 
     auto const cutoff_param = params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff);
+    auto const legacy_reso_param = params.DescribedValue(layer_index, LayerParamIndex::LegacyFilterResonance);
     auto const reso_param = params.DescribedValue(layer_index, LayerParamIndex::FilterResonance);
     auto const type_param = params.DescribedValue(layer_index, LayerParamIndex::FilterType);
 
@@ -134,8 +135,10 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
 
     auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
     // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
-    auto const q_adj =
-        sv_filter::ResonanceToQ(sv_filter::SkewResonance(Clamp(reso_adj_linear, 0.0f, 0.9999f)));
+    auto const q_adj = sv_filter::ResonanceToQ(
+        sv_filter::ResolveSkewedResonance(Clamp(legacy_reso_param.LinearValue(), 0.0f, 0.9999f),
+                                          legacy_reso_param.info.default_linear_value,
+                                          Clamp(reso_adj_linear, 0.0f, 0.9999f)));
 
     auto const coeffs = rbj_filter::Coefficients({
         .type = vis_state.rbj_type,
@@ -320,6 +323,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     biquad_display::DrawBackground(imgui, viewport_r, freq_info);
 
     auto const cutoff_param = params.DescribedValue(ParamIndex::FilterCutoff);
+    auto const legacy_reso_param = params.DescribedValue(ParamIndex::LegacyFilterResonance);
     auto const reso_param = params.DescribedValue(ParamIndex::FilterResonance);
     auto const gain_param = params.DescribedValue(ParamIndex::FilterGain);
     auto const type_param = params.DescribedValue(ParamIndex::FilterType);
@@ -337,7 +341,12 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
         AdjustedLinearValue(params, macro_dests, gain_param.LinearValue(), gain_param.info.index);
 
     auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
-    auto const q_adj = MapFrom01Skew(Clamp01(reso_adj_linear), 0.5f, 2.0f, 5.0f);
+    auto const q_adj = ({
+        auto const legacy_linear = legacy_reso_param.LinearValue();
+        (legacy_linear != legacy_reso_param.info.default_linear_value)
+            ? MapFrom01Skew(Clamp01(legacy_linear), 0.5f, 2.0f, 5.0f)
+            : MapFrom01Skew(Clamp01(reso_adj_linear), 0.5f, 2.0f, 2.0f);
+    });
     auto const gain_adj_db = uses_gain ? gain_param.info.ProjectValue(gain_adj_linear) : 0.0f;
 
     auto const coeffs = rbj_filter::Coefficients({

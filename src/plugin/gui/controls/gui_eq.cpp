@@ -24,6 +24,7 @@ constexpr f32 k_grabber_radius_ww = 12.0f;
 struct BandParams {
     LayerParamIndex type;
     LayerParamIndex freq;
+    LayerParamIndex legacy_reso;
     LayerParamIndex reso;
     LayerParamIndex gain;
 };
@@ -31,10 +32,12 @@ struct BandParams {
 static constexpr Array<BandParams, k_num_bands> k_band_params = {{
     {LayerParamIndex::EqType1,
      LayerParamIndex::EqFreq1,
+     LayerParamIndex::LegacyEqResonance1,
      LayerParamIndex::EqResonance1,
      LayerParamIndex::EqGain1},
     {LayerParamIndex::EqType2,
      LayerParamIndex::EqFreq2,
+     LayerParamIndex::LegacyEqResonance2,
      LayerParamIndex::EqResonance2,
      LayerParamIndex::EqGain2},
 }};
@@ -137,6 +140,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
         auto const& bp = k_band_params[band_idx];
 
         auto const freq_param = params.DescribedValue(layer_index, bp.freq);
+        auto const legacy_reso_param = params.DescribedValue(layer_index, bp.legacy_reso);
         auto const reso_param = params.DescribedValue(layer_index, bp.reso);
         auto const gain_param = params.DescribedValue(layer_index, bp.gain);
         auto const type_param = params.DescribedValue(layer_index, bp.type);
@@ -150,7 +154,12 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
 
         auto const freq_adj_hz = freq_param.info.ProjectValue(freq_adj_linear);
         auto const gain_adj_db = gain_param.info.ProjectValue(gain_adj_linear);
-        auto const q_adj = MapFrom01Skew(reso_adj_linear, 0.5f, 8.0f, 5.0f);
+        auto const q_adj = ({
+            auto const legacy_linear = legacy_reso_param.LinearValue();
+            (legacy_linear != legacy_reso_param.info.default_linear_value)
+                ? MapFrom01Skew(legacy_linear, 0.5f, 8.0f, 5.0f)
+                : MapFrom01Skew(reso_adj_linear, 0.5f, 8.0f, 2.0f);
+        });
 
         b.coeffs = rbj_filter::Coefficients({
             .type = EqTypeToRbjType(type_param.IntValue<param_values::EqType>()),

@@ -31,8 +31,18 @@ class FilterEffect final : public Effect {
             m_filter_params.fc = *p;
             set_params = true;
         }
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterResonance)) {
-            m_filter_params.q = MapFrom01Skew(*p, 0.5f, 2, 5);
+        if (changes.changed_params.Changed(ParamIndex::LegacyFilterResonance) ||
+            changes.changed_params.Changed(ParamIndex::FilterResonance)) {
+            auto const legacy_idx = ParamIndex::LegacyFilterResonance;
+            auto const legacy_linear = changes.changed_params.params.LinearValue(legacy_idx);
+            auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
+            m_filter_params.q =
+                (legacy_linear != legacy_default)
+                    ? MapFrom01Skew(legacy_linear, 0.5f, 2, 5)
+                    : MapFrom01Skew(changes.changed_params.params.LinearValue(ParamIndex::FilterResonance),
+                                    0.5f,
+                                    2,
+                                    2);
             set_params = true;
         }
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterGain)) {
