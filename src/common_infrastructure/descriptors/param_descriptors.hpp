@@ -1924,7 +1924,7 @@ consteval auto CreateParams() {
 
     mp(ReverbLowShelfCutoff) = Args {
         .id = id(IdRegion::Master, 72), // never change
-        .value_config = val_config_helpers::Semitones({.default_val = 128}),
+        .value_config = val_config_helpers::Semitones({.default_val = 40}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Low Cutoff"_s,
         .gui_label = "Lo-Shelf"_s,
