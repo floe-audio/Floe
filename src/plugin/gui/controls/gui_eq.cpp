@@ -10,6 +10,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -56,7 +57,7 @@ static void DoEqBandRightClickMenu(GuiState& g,
                                    Rect window_r,
                                    imgui::Id interaction_id,
                                    u8 layer_index,
-                                   LayerParamIndex type_param,
+                                   BandParams const& bp,
                                    u8 band_number) {
     auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)layer_index << 8) ^ band_number);
 
@@ -71,14 +72,17 @@ static void DoEqBandRightClickMenu(GuiState& g,
 
     if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
 
-    auto const param = g.engine.processor.main_params.DescribedValue(layer_index, type_param);
+    auto const param = g.engine.processor.main_params.DescribedValue(layer_index, bp.type);
     auto const current_type = param.IntValue<param_values::EqType>();
-    auto const param_index = ParamIndexFromLayerParamIndex(layer_index, type_param);
+    auto const type_index = ParamIndexFromLayerParamIndex(layer_index, bp.type);
+    auto const freq_index = ParamIndexFromLayerParamIndex(layer_index, bp.freq);
+    auto const reso_index = ParamIndexFromLayerParamIndex(layer_index, bp.reso);
+    auto const gain_index = ParamIndexFromLayerParamIndex(layer_index, bp.gain);
 
     DoBoxViewport(g.builder,
                   {
                       .run =
-                          [current_type, param_index, &g](GuiBuilder&) {
+                          [current_type, type_index, freq_index, reso_index, gain_index, &g](GuiBuilder&) {
                               auto const root = DoBox(g.builder,
                                                       {
                                                           .layout {
@@ -98,7 +102,27 @@ static void DoEqBandRightClickMenu(GuiState& g,
                                                              },
                                                              (u64)i);
                                   if (item.button_fired && type_val != current_type)
-                                      SetParameterValue(g.engine.processor, param_index, (f32)i, {});
+                                      SetParameterValue(g.engine.processor, type_index, (f32)i, {});
+                              }
+
+                              DoModalDivider(g.builder, root, {.horizontal = true});
+
+                              if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
+                                  SetParameterValue(
+                                      g.engine.processor,
+                                      freq_index,
+                                      k_param_descriptors[ToInt(freq_index)].default_linear_value,
+                                      {});
+                                  SetParameterValue(
+                                      g.engine.processor,
+                                      reso_index,
+                                      k_param_descriptors[ToInt(reso_index)].default_linear_value,
+                                      {});
+                                  SetParameterValue(
+                                      g.engine.processor,
+                                      gain_index,
+                                      k_param_descriptors[ToInt(gain_index)].default_linear_value,
+                                      {});
                               }
                           },
                       .bounds = window_r,
@@ -254,7 +278,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
             }
         }
 
-        DoEqBandRightClickMenu(g, grabber_window_r, interaction_id, layer_index, bp.type, (u8)(band_idx + 1));
+        DoEqBandRightClickMenu(g, grabber_window_r, interaction_id, layer_index, bp, (u8)(band_idx + 1));
 
         ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 

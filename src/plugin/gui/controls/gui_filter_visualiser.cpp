@@ -9,6 +9,7 @@
 #include "gui/controls/gui_biquad_display.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "processing_utils/filters.hpp"
@@ -68,7 +69,7 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
         g.builder,
         {
             .run =
-                [current_type, param_index, &g](GuiBuilder&) {
+                [current_type, param_index, layer_index, &g](GuiBuilder&) {
                     auto const root = DoBox(g.builder,
                                             {
                                                 .layout {
@@ -92,6 +93,24 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
                                                    (u64)i);
                         if (item.button_fired && type_val != current_type)
                             SetParameterValue(g.engine.processor, param_index, (f32)i, {});
+                    }
+
+                    DoModalDivider(g.builder, root, {.horizontal = true});
+
+                    auto const cutoff_idx =
+                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterCutoff);
+                    auto const reso_idx =
+                        ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance);
+
+                    if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
+                        SetParameterValue(g.engine.processor,
+                                          cutoff_idx,
+                                          k_param_descriptors[ToInt(cutoff_idx)].default_linear_value,
+                                          {});
+                        SetParameterValue(g.engine.processor,
+                                          reso_idx,
+                                          k_param_descriptors[ToInt(reso_idx)].default_linear_value,
+                                          {});
                     }
                 },
             .bounds = window_r,
@@ -299,6 +318,26 @@ static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::
                                                    (u64)i);
                         if (item.button_fired && type_val != current_type)
                             SetParameterValue(g.engine.processor, ParamIndex::FilterType, (f32)i, {});
+                    }
+
+                    DoModalDivider(g.builder, root, {.horizontal = true});
+
+                    if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
+                        SetParameterValue(
+                            g.engine.processor,
+                            ParamIndex::FilterCutoff,
+                            k_param_descriptors[ToInt(ParamIndex::FilterCutoff)].default_linear_value,
+                            {});
+                        SetParameterValue(
+                            g.engine.processor,
+                            ParamIndex::FilterResonance,
+                            k_param_descriptors[ToInt(ParamIndex::FilterResonance)].default_linear_value,
+                            {});
+                        SetParameterValue(
+                            g.engine.processor,
+                            ParamIndex::FilterGain,
+                            k_param_descriptors[ToInt(ParamIndex::FilterGain)].default_linear_value,
+                            {});
                     }
                 },
             .bounds = window_r,
