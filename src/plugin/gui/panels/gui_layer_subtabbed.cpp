@@ -1038,7 +1038,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                               .parent = row,
                                               .layout {
                                                   .size = layout::k_hug_contents,
-                                                  .contents_gap = 3,
+                                                  .contents_gap = 5,
                                                   .contents_direction = layout::Direction::Row,
                                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                               },
@@ -1059,7 +1059,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                         label_and_menu,
                         params.DescribedValue(layer_index, type_param),
                         {
-                            .width = 90,
+                            .width = 110,
                             .greyed_out = greyed_out,
                             .label = false,
                         });
