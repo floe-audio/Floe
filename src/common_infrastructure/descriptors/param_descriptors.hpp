@@ -1013,6 +1013,13 @@ constexpr ParamIndex ParamIndexFromMacroIndex(u8 macro_index) {
     return ParamIndex::Macro1;
 }
 
+// A hidden (legacy) param is "overriding" when it has been set to a non-default value by a DAW
+// automation lane, meaning it takes precedence over the modern equivalent param.
+inline bool IsLegacyParamOverridingModern(ParamDescriptor const& desc, f32 linear_value) {
+    ASSERT(desc.flags.hidden);
+    return linear_value != desc.default_linear_value;
+}
+
 constexpr bool IsLayerParamOfSpecificType(ParamIndex global_index, LayerParamIndex layer_index) {
     for (auto const i : Range(k_num_layers))
         if (global_index == ParamIndexFromLayerParamIndex(i, layer_index)) return true;
