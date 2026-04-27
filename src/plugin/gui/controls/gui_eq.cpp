@@ -9,8 +9,8 @@
 #include "gui/controls/gui_biquad_display.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
-#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_modal.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -79,56 +79,54 @@ static void DoEqBandRightClickMenu(GuiState& g,
     auto const reso_index = ParamIndexFromLayerParamIndex(layer_index, bp.reso);
     auto const gain_index = ParamIndexFromLayerParamIndex(layer_index, bp.gain);
 
-    DoBoxViewport(g.builder,
-                  {
-                      .run =
-                          [current_type, type_index, freq_index, reso_index, gain_index, &g](GuiBuilder&) {
-                              auto const root = DoBox(g.builder,
-                                                      {
-                                                          .layout {
-                                                              .size = layout::k_hug_contents,
-                                                              .contents_direction = layout::Direction::Column,
-                                                              .contents_align = layout::Alignment::Start,
-                                                          },
-                                                      });
+    DoBoxViewport(
+        g.builder,
+        {
+            .run =
+                [current_type, type_index, freq_index, reso_index, gain_index, &g](GuiBuilder&) {
+                    auto const root = DoBox(g.builder,
+                                            {
+                                                .layout {
+                                                    .size = layout::k_hug_contents,
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
 
-                              for (auto const i : Range(ToInt(param_values::EqType::Count))) {
-                                  auto const type_val = (param_values::EqType)i;
-                                  auto const item = MenuItem(g.builder,
-                                                             root,
-                                                             {
-                                                                 .text = param_values::k_eq_type_strings[i],
-                                                                 .is_selected = type_val == current_type,
-                                                             },
-                                                             (u64)i);
-                                  if (item.button_fired && type_val != current_type)
-                                      SetParameterValue(g.engine.processor, type_index, (f32)i, {});
-                              }
+                    for (auto const i : Range(ToInt(param_values::EqType::Count))) {
+                        auto const type_val = (param_values::EqType)i;
+                        auto const item = MenuItem(g.builder,
+                                                   root,
+                                                   {
+                                                       .text = param_values::k_eq_type_strings[i],
+                                                       .is_selected = type_val == current_type,
+                                                   },
+                                                   (u64)i);
+                        if (item.button_fired && type_val != current_type)
+                            SetParameterValue(g.engine.processor, type_index, (f32)i, {});
+                    }
 
-                              DoModalDivider(g.builder, root, {.horizontal = true});
+                    DoModalDivider(g.builder, root, {.horizontal = true});
 
-                              if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
-                                  SetParameterValue(
-                                      g.engine.processor,
-                                      freq_index,
-                                      k_param_descriptors[ToInt(freq_index)].default_linear_value,
-                                      {});
-                                  SetParameterValue(
-                                      g.engine.processor,
-                                      reso_index,
-                                      k_param_descriptors[ToInt(reso_index)].default_linear_value,
-                                      {});
-                                  SetParameterValue(
-                                      g.engine.processor,
-                                      gain_index,
-                                      k_param_descriptors[ToInt(gain_index)].default_linear_value,
-                                      {});
-                              }
-                          },
-                      .bounds = window_r,
-                      .imgui_id = right_click_id,
-                      .viewport_config = k_default_popup_menu_viewport,
-                  });
+                    if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
+                        SetParameterValue(g.engine.processor,
+                                          freq_index,
+                                          k_param_descriptors[ToInt(freq_index)].default_linear_value,
+                                          {});
+                        SetParameterValue(g.engine.processor,
+                                          reso_index,
+                                          k_param_descriptors[ToInt(reso_index)].default_linear_value,
+                                          {});
+                        SetParameterValue(g.engine.processor,
+                                          gain_index,
+                                          k_param_descriptors[ToInt(gain_index)].default_linear_value,
+                                          {});
+                    }
+                },
+            .bounds = window_r,
+            .imgui_id = right_click_id,
+            .viewport_config = k_default_popup_menu_viewport,
+        });
 }
 
 void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
