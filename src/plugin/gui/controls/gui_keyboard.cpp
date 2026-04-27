@@ -357,18 +357,23 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
                                                  face_top,
                                                  face_bot,
                                                  face_bot);
-        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, face_bot_y},
-                                       f32x2 {key_r.Right(), key_r.y + key_r.h},
-                                       rim_bot);
         if (is_down) {
             auto highlight = FromU32(col_pressed_accent);
             highlight.a = 0;
             imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, key_r.y},
-                                                     f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                                     f32x2 {key_r.Right(), face_bot_y},
                                                      ToU32(highlight),
                                                      ToU32(highlight),
                                                      col_pressed_accent,
                                                      col_pressed_accent);
+        }
+        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, face_bot_y},
+                                       f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                       rim_bot);
+        if (is_down) {
+            imgui.draw_list->AddRectFilled(f32x2 {key_r.x, face_bot_y},
+                                           f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                           WithAlphaU8(col_pressed_accent, 190));
         }
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardSharpVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, true);

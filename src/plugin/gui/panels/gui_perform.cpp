@@ -306,7 +306,7 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                                            .text = icon,
                                            .font = FontType::Icons,
                                            .font_size = k_font_icons_size * 0.95f,
-                                           .text_colours = grey ? Colours{LiveColStruct(UiColMap::MidIconDimmed)} : ColSet {
+                                           .text_colours = grey ? Colours{Col{.c = Col::White, .alpha = 60}} : ColSet {
         .base = LiveColStruct(UiColMap::MidIcon),
         .hot = LiveColStruct(UiColMap::MidTextHot),
         .active = LiveColStruct(UiColMap::MidTextOn),
