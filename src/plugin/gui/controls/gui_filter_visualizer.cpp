@@ -8,11 +8,9 @@
 #include "engine/engine.hpp"
 #include "gui/controls/gui_biquad_display.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
-#include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/filters.hpp"
 #include "processor/processor.hpp"
 
@@ -314,7 +312,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const handle_radius = WwToPixels(k_handle_radius_ww);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
-    imgui.PushId((u64)SourceLocationHash());
+    imgui.PushId(SourceLocationHash());
     DEFER { imgui.PopId(); };
 
     auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];

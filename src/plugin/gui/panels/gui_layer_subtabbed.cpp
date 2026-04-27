@@ -792,7 +792,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             }
             m;
         });
-        DoTabRightClickMenu(g, tab_btn, layer_index, tab_module, name, (u64)i + (u64)layer_index * 16);
+        DoTabRightClickMenu(g, tab_btn, layer_index, tab_module, name, (u64)(i + (layer_index * 16)));
     }
 
     // Auto-switch tab when a macro destination knob is being interacted
