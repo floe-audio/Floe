@@ -777,3 +777,125 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
         HandleShowingTextEditorForParams(g, edit_r, all_indices);
     }
 }
+
+// ===============================================================================
+// Delay filter visualiser.
+//
+// The delay's filter is a bandpass: LP at midiToHz(cutoff + radius), HP at midiToHz(cutoff -
+// radius), where radius = spread * 8 octaves. We draw the same idealised 4th-order shape used by
+// the reverb pre-filter and let the user drag a single centre handle for cutoff plus scroll for
+// spread.
+
+void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
+    auto& imgui = g.imgui;
+    auto& engine = g.engine;
+    auto& params = engine.processor.main_params;
+    auto const& macro_dests = engine.processor.main_macro_destinations;
+
+    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
+
+    imgui.PushId(SourceLocationHash());
+    DEFER { imgui.PopId(); };
+
+    auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
+    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+
+    auto const cutoff_param = params.DescribedValue(ParamIndex::DelayFilterCutoffSemitones);
+    auto const spread_param = params.DescribedValue(ParamIndex::DelayFilterSpread);
+
+    auto const cutoff_adj_sem = cutoff_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index));
+    auto const spread_adj = spread_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, spread_param.LinearValue(), spread_param.info.index));
+
+    constexpr f32 k_spread_octaves = 8;
+    auto const radius_sem = spread_adj * k_spread_octaves * 12.0f;
+    auto const lp_fc_hz = SemitonesToHz(cutoff_adj_sem + radius_sem);
+    auto const hp_fc_hz = SemitonesToHz(cutoff_adj_sem - radius_sem);
+
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
+        freq_info,
+        greyed_out);
+
+    // Handle X = cutoff (frequency), Y = spread (0 = bottom, 1 = top of viewport).
+    auto const cutoff_hz = SemitonesToHz(cutoff_param.LinearValue());
+    auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
+    auto const node_x = viewport_r.x + (x_lin * viewport_r.w);
+    auto const node_y = viewport_r.Bottom() - (spread_param.LinearValue() * viewport_r.h);
+    f32x2 const node_pos_viewport {node_x, node_y};
+
+    auto const interaction_id = imgui.MakeId(SourceLocationHash());
+
+    Rect const grabber_viewport_r {.xywh {node_pos_viewport.x - grabber_radius,
+                                          node_pos_viewport.y - grabber_radius,
+                                          grabber_radius * 2,
+                                          grabber_radius * 2}};
+    auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
+
+    static f32x2 rel_click_pos;
+    if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
+        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+
+    if (imgui.ButtonBehaviour(grabber_window_r,
+                              interaction_id,
+                              {
+                                  .mouse_button = MouseButton::Left,
+                                  .event = MouseButtonEvent::DoubleClick,
+                              }))
+        g.param_text_editor_to_open = ParamIndex::DelayFilterCutoffSemitones;
+
+    if (imgui.WasJustActivated(interaction_id, MouseButton::Left)) {
+        ParameterJustStartedMoving(engine.processor, ParamIndex::DelayFilterCutoffSemitones);
+        ParameterJustStartedMoving(engine.processor, ParamIndex::DelayFilterSpread);
+    }
+
+    if (imgui.IsActive(interaction_id, MouseButton::Left)) {
+        auto const min_x = imgui.ViewportPosToWindowPos({viewport_r.x, 0}).x;
+        auto const max_x = imgui.ViewportPosToWindowPos({viewport_r.Right(), 0}).x;
+        auto const min_y = imgui.ViewportPosToWindowPos({0, viewport_r.y}).y;
+        auto const max_y = imgui.ViewportPosToWindowPos({0, viewport_r.Bottom()}).y;
+        auto const cursor = GuiIo().in.cursor_pos - rel_click_pos;
+
+        auto const x_clamped = Clamp(cursor.x, min_x, max_x);
+        auto const x_t = MapTo01(x_clamped, min_x, max_x);
+        auto const target_hz = freq_info.ProjectValue(x_t);
+        auto const semitones = Clamp(FrequencyToMidiNote(target_hz),
+                                     cutoff_param.info.linear_range.min,
+                                     cutoff_param.info.linear_range.max);
+        SetParameterValue(engine.processor, ParamIndex::DelayFilterCutoffSemitones, semitones, {});
+
+        auto const y_clamped = Clamp(cursor.y, min_y, max_y);
+        auto const new_spread = 1.0f - MapTo01(y_clamped, min_y, max_y);
+        SetParameterValue(engine.processor, ParamIndex::DelayFilterSpread, new_spread, {});
+    }
+
+    if (imgui.WasJustDeactivated(interaction_id, MouseButton::Left)) {
+        ParameterJustStoppedMoving(engine.processor, ParamIndex::DelayFilterCutoffSemitones);
+        ParameterJustStoppedMoving(engine.processor, ParamIndex::DelayFilterSpread);
+    }
+
+    DescribedParamValue const* params_arr[] = {&cutoff_param, &spread_param};
+    ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
+
+    auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
+    filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+
+    if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
+        GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+
+    OverlayMacroDestinationRegion(g, grabber_window_r, ParamIndex::DelayFilterCutoffSemitones);
+
+    if (g.param_text_editor_to_open) {
+        Array<ParamIndex, 2> const all_indices {
+            ParamIndex::DelayFilterCutoffSemitones,
+            ParamIndex::DelayFilterSpread,
+        };
+        auto const cut = viewport_r.w / 3;
+        Rect const edit_r {.xywh {viewport_r.x + cut, viewport_r.y, viewport_r.w - (cut * 2), viewport_r.h}};
+        HandleShowingTextEditorForParams(g, edit_r, all_indices);
+    }
+}

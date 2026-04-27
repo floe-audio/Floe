@@ -1000,8 +1000,14 @@ static void DoEffectParams(GuiState& g,
                                      .size = layout::k_hug_contents,
                                      .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
                                      .contents_direction = layout::Direction::Row,
+                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                  },
                              });
+            constexpr f32 k_delay_vis_w = 200;
+            constexpr f32 k_delay_vis_h = 70;
+            auto const filter_vis =
+                DoBox(g.builder, {.parent = sub, .layout {.size = {k_delay_vis_w, k_delay_vis_h}}});
+            if (auto const r = BoxRect(g.builder, filter_vis)) DoDelayFilterVisualizer(g, *r, greyed_out);
             auto const cutoff_knob = DoKnobParameter(
                 g,
                 sub,

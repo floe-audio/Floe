@@ -20,3 +20,8 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out);
 // Reverb post-shelf visualiser: combined low-shelf + high-shelf response. Two grabbers, one per
 // shelf, draggable on X (cutoff) and Y (gain, 0 dB to -24 dB).
 void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out);
+
+// Delay filter visualiser: bandpass centred on `DelayFilterCutoffSemitones`, width controlled by
+// `DelayFilterSpread` (radius in octaves = spread * 8). Single grabber: drag X = cutoff; drag
+// Y = spread (handle Y position tracks spread, top of viewport = max spread).
+void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out);
