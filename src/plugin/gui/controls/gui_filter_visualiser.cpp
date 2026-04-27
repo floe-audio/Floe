@@ -3,6 +3,7 @@
 
 #include "gui/controls/gui_filter_visualiser.hpp"
 
+#include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
@@ -483,6 +484,293 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
             ParamIndex::FilterResonance,
             ParamIndex::FilterGain,
             ParamIndex::FilterType,
+        };
+        auto const cut = viewport_r.w / 3;
+        Rect const edit_r {.xywh {viewport_r.x + cut, viewport_r.y, viewport_r.w - (cut * 2), viewport_r.h}};
+        HandleShowingTextEditorForParams(g, edit_r, all_indices);
+    }
+}
+
+// ===============================================================================
+// Reverb pre-filter and post-shelf visualisers.
+//
+// We draw idealised symmetric curves rather than the exact one-pole difference topology used by
+// the DSP — that real shape is gentle and asymmetric and reads poorly. The user-facing model is
+// "LP cascaded with HP" for the pre-filter and "low-shelf cascaded with high-shelf" for the post,
+// each with a 24 dB/octave (4th order) rolloff so handle movement is clearly visible.
+//
+// X-axis uses ParamIndex::FilterCutoff's descriptor (Hz, log-ish) because the reverb cutoffs are
+// stored in MIDI semitones and don't carry an Hz projection.
+
+static f32 SemitonesToHz(f32 semitones) { return 440.0f * Exp2((semitones - 69.0f) / 12.0f); }
+
+constexpr s32 k_reverb_filter_order = 4;
+
+static f32 ButterworthMagDb(f32 ratio) {
+    auto const r2 = ratio * ratio;
+    auto const r2n = Pow(r2, (f32)k_reverb_filter_order);
+    return -10.0f * Log10(1.0f + r2n);
+}
+
+static f32 LpMagDb(f32 freq_hz, f32 fc_hz) { return ButterworthMagDb(freq_hz / fc_hz); }
+static f32 HpMagDb(f32 freq_hz, f32 fc_hz) { return ButterworthMagDb(fc_hz / freq_hz); }
+
+// Shelf with attenuation only: at the shelf-side limit it sits at gain_db, at the other limit at 0 dB.
+static f32 LowShelfMagDb(f32 freq_hz, f32 fc_hz, f32 gain_db) {
+    auto const r = freq_hz / fc_hz;
+    auto const r2 = r * r;
+    auto const r2n = Pow(r2, (f32)k_reverb_filter_order);
+    return gain_db / (1.0f + r2n);
+}
+
+static f32 HighShelfMagDb(f32 freq_hz, f32 fc_hz, f32 gain_db) {
+    auto const r = fc_hz / freq_hz;
+    auto const r2 = r * r;
+    auto const r2n = Pow(r2, (f32)k_reverb_filter_order);
+    return gain_db / (1.0f + r2n);
+}
+
+void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
+    auto& imgui = g.imgui;
+    auto& engine = g.engine;
+    auto& params = engine.processor.main_params;
+    auto const& macro_dests = engine.processor.main_macro_destinations;
+
+    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
+
+    imgui.PushId(SourceLocationHash());
+    DEFER { imgui.PopId(); };
+
+    auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
+    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+
+    auto const lp_param = params.DescribedValue(ParamIndex::ReverbPreLowPassCutoff);
+    auto const hp_param = params.DescribedValue(ParamIndex::ReverbPreHighPassCutoff);
+
+    auto const lp_fc_hz = SemitonesToHz(lp_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, lp_param.LinearValue(), lp_param.info.index)));
+    auto const hp_fc_hz = SemitonesToHz(hp_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, hp_param.LinearValue(), hp_param.info.index)));
+
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
+        freq_info,
+        greyed_out);
+
+    auto const handle_y = filter_display::DbToY(0.0f, viewport_r);
+
+    struct Grabber {
+        ParamIndex index;
+        DescribedParamValue const& param;
+        u64 seed;
+    };
+    Grabber const grabbers[] = {
+        {ParamIndex::ReverbPreLowPassCutoff, lp_param, 0},
+        {ParamIndex::ReverbPreHighPassCutoff, hp_param, 1},
+    };
+
+    static f32x2 rel_click_pos;
+
+    for (auto const& gr : grabbers) {
+        auto const cutoff_hz = SemitonesToHz(gr.param.LinearValue());
+        auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
+        auto const node_x = viewport_r.x + (x_lin * viewport_r.w);
+        f32x2 const node_pos_viewport {node_x, handle_y};
+
+        auto const interaction_id = imgui.MakeId(SourceLocationHash() ^ gr.seed);
+
+        Rect const grabber_viewport_r {.xywh {node_pos_viewport.x - grabber_radius,
+                                              node_pos_viewport.y - grabber_radius,
+                                              grabber_radius * 2,
+                                              grabber_radius * 2}};
+        auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
+
+        if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
+            rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+
+        if (imgui.ButtonBehaviour(grabber_window_r,
+                                  interaction_id,
+                                  {
+                                      .mouse_button = MouseButton::Left,
+                                      .event = MouseButtonEvent::DoubleClick,
+                                  }))
+            g.param_text_editor_to_open = gr.index;
+
+        if (imgui.WasJustActivated(interaction_id, MouseButton::Left))
+            ParameterJustStartedMoving(engine.processor, gr.index);
+
+        if (imgui.IsActive(interaction_id, MouseButton::Left)) {
+            auto const min_x = imgui.ViewportPosToWindowPos({viewport_r.x, 0}).x;
+            auto const max_x = imgui.ViewportPosToWindowPos({viewport_r.Right(), 0}).x;
+            auto const cursor_x = GuiIo().in.cursor_pos.x - rel_click_pos.x;
+            auto const x_clamped = Clamp(cursor_x, min_x, max_x);
+            auto const x_t = MapTo01(x_clamped, min_x, max_x);
+            auto const target_hz = freq_info.ProjectValue(x_t);
+            auto const semitones = Clamp(FrequencyToMidiNote(target_hz),
+                                         gr.param.info.linear_range.min,
+                                         gr.param.info.linear_range.max);
+            SetParameterValue(engine.processor, gr.index, semitones, {});
+        }
+
+        if (imgui.WasJustDeactivated(interaction_id, MouseButton::Left))
+            ParameterJustStoppedMoving(engine.processor, gr.index);
+
+        DescribedParamValue const* params_arr[] = {&gr.param};
+        ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
+
+        auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
+        filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+
+        if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
+            GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
+
+        OverlayMacroDestinationRegion(g, grabber_window_r, gr.index);
+    }
+
+    if (g.param_text_editor_to_open) {
+        Array<ParamIndex, 2> const all_indices {
+            ParamIndex::ReverbPreLowPassCutoff,
+            ParamIndex::ReverbPreHighPassCutoff,
+        };
+        auto const cut = viewport_r.w / 3;
+        Rect const edit_r {.xywh {viewport_r.x + cut, viewport_r.y, viewport_r.w - (cut * 2), viewport_r.h}};
+        HandleShowingTextEditorForParams(g, edit_r, all_indices);
+    }
+}
+
+void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
+    auto& imgui = g.imgui;
+    auto& engine = g.engine;
+    auto& params = engine.processor.main_params;
+    auto const& macro_dests = engine.processor.main_macro_destinations;
+
+    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
+
+    imgui.PushId(SourceLocationHash());
+    DEFER { imgui.PopId(); };
+
+    auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
+    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+
+    auto const lo_cut_param = params.DescribedValue(ParamIndex::ReverbLowShelfCutoff);
+    auto const lo_gain_param = params.DescribedValue(ParamIndex::ReverbLowShelfGain);
+    auto const hi_cut_param = params.DescribedValue(ParamIndex::ReverbHighShelfCutoff);
+    auto const hi_gain_param = params.DescribedValue(ParamIndex::ReverbHighShelfGain);
+
+    auto const projected_adj = [&](DescribedParamValue const& p) {
+        return p.info.ProjectValue(AdjustedLinearValue(params, macro_dests, p.LinearValue(), p.info.index));
+    };
+    auto const lo_fc_hz = SemitonesToHz(projected_adj(lo_cut_param));
+    auto const hi_fc_hz = SemitonesToHz(projected_adj(hi_cut_param));
+    auto const lo_gain_db = projected_adj(lo_gain_param);
+    auto const hi_gain_db = projected_adj(hi_gain_param);
+
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) {
+            return LowShelfMagDb(hz, lo_fc_hz, lo_gain_db) + HighShelfMagDb(hz, hi_fc_hz, hi_gain_db);
+        },
+        freq_info,
+        greyed_out);
+
+    struct Shelf {
+        ParamIndex cutoff_idx;
+        ParamIndex gain_idx;
+        DescribedParamValue const& cutoff_param;
+        DescribedParamValue const& gain_param;
+        u64 seed;
+    };
+    Shelf const shelves[] = {
+        {ParamIndex::ReverbLowShelfCutoff, ParamIndex::ReverbLowShelfGain, lo_cut_param, lo_gain_param, 0},
+        {ParamIndex::ReverbHighShelfCutoff, ParamIndex::ReverbHighShelfGain, hi_cut_param, hi_gain_param, 1},
+    };
+
+    static f32x2 rel_click_pos;
+
+    for (auto const& sh : shelves) {
+        auto const cutoff_hz = SemitonesToHz(sh.cutoff_param.LinearValue());
+        auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
+        auto const node_x = viewport_r.x + (x_lin * viewport_r.w);
+        auto const node_y = filter_display::DbToY(
+            Clamp(sh.gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
+            viewport_r);
+        f32x2 const node_pos_viewport {node_x, node_y};
+
+        auto const interaction_id = imgui.MakeId(SourceLocationHash() ^ sh.seed);
+
+        Rect const grabber_viewport_r {.xywh {node_pos_viewport.x - grabber_radius,
+                                              node_pos_viewport.y - grabber_radius,
+                                              grabber_radius * 2,
+                                              grabber_radius * 2}};
+        auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
+
+        if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
+            rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+
+        if (imgui.ButtonBehaviour(grabber_window_r,
+                                  interaction_id,
+                                  {
+                                      .mouse_button = MouseButton::Left,
+                                      .event = MouseButtonEvent::DoubleClick,
+                                  }))
+            g.param_text_editor_to_open = sh.cutoff_idx;
+
+        if (imgui.WasJustActivated(interaction_id, MouseButton::Left)) {
+            ParameterJustStartedMoving(engine.processor, sh.cutoff_idx);
+            ParameterJustStartedMoving(engine.processor, sh.gain_idx);
+        }
+
+        if (imgui.IsActive(interaction_id, MouseButton::Left)) {
+            auto const min_x = imgui.ViewportPosToWindowPos({viewport_r.x, 0}).x;
+            auto const max_x = imgui.ViewportPosToWindowPos({viewport_r.Right(), 0}).x;
+            auto const min_y = imgui.ViewportPosToWindowPos({0, viewport_r.y}).y;
+            auto const max_y = imgui.ViewportPosToWindowPos({0, viewport_r.Bottom()}).y;
+            auto const cursor = GuiIo().in.cursor_pos - rel_click_pos;
+
+            auto const x_clamped = Clamp(cursor.x, min_x, max_x);
+            auto const x_t = MapTo01(x_clamped, min_x, max_x);
+            auto const target_hz = freq_info.ProjectValue(x_t);
+            auto const semitones = Clamp(FrequencyToMidiNote(target_hz),
+                                         sh.cutoff_param.info.linear_range.min,
+                                         sh.cutoff_param.info.linear_range.max);
+            SetParameterValue(engine.processor, sh.cutoff_idx, semitones, {});
+
+            auto const y_clamped = Clamp(cursor.y, min_y, max_y);
+            auto const y_t = 1.0f - MapTo01(y_clamped, min_y, max_y);
+            auto const new_gain_db =
+                Clamp(MapFrom01(y_t, filter_display::k_min_db, filter_display::k_max_db), -24.0f, 0.0f);
+            auto const gain_lin = sh.gain_param.info.LineariseValue(new_gain_db, true).ValueOr(0.0f);
+            SetParameterValue(engine.processor, sh.gain_idx, gain_lin, {});
+        }
+
+        if (imgui.WasJustDeactivated(interaction_id, MouseButton::Left)) {
+            ParameterJustStoppedMoving(engine.processor, sh.cutoff_idx);
+            ParameterJustStoppedMoving(engine.processor, sh.gain_idx);
+        }
+
+        DescribedParamValue const* params_arr[] = {&sh.cutoff_param, &sh.gain_param};
+        ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
+
+        auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
+        filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+
+        if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
+            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+
+        OverlayMacroDestinationRegion(g, grabber_window_r, sh.cutoff_idx);
+    }
+
+    if (g.param_text_editor_to_open) {
+        Array<ParamIndex, 4> const all_indices {
+            ParamIndex::ReverbLowShelfCutoff,
+            ParamIndex::ReverbLowShelfGain,
+            ParamIndex::ReverbHighShelfCutoff,
+            ParamIndex::ReverbHighShelfGain,
         };
         auto const cut = viewport_r.w / 3;
         Rect const edit_r {.xywh {viewport_r.x + cut, viewport_r.y, viewport_r.w - (cut * 2), viewport_r.h}};

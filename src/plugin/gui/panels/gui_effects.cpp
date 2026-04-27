@@ -31,11 +31,6 @@ constexpr f32 k_fx_heading_h = 18;
 constexpr f32 k_fx_heading_text_pad_lr = 8;
 constexpr f32 k_fx_icon_width = 20.5f;
 
-constexpr auto k_reverb_params = ComptimeParamSearch<ComptimeParamSearchOptions {
-    .modules = {ParameterModule::Effect, ParameterModule::Reverb},
-    .skip = ParamIndex::ReverbOn,
-}>();
-
 constexpr auto k_phaser_params = ComptimeParamSearch<ComptimeParamSearchOptions {
     .modules = {ParameterModule::Effect, ParameterModule::Phaser},
     .skip = ParamIndex::PhaserOn,
@@ -749,50 +744,149 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::Reverb: {
-            Optional<Box> group_container {};
-            u8 previous_group = 0;
-            Box prev_knob {};
-            for (auto const i : Range(k_reverb_params.size)) {
-                auto const& info = k_param_descriptors[ToInt(k_reverb_params[i])];
-                auto knob_parent = param_container;
-                if (info.grouping_within_module != 0) {
-                    if (!group_container || info.grouping_within_module != previous_group) {
-                        group_container =
-                            DoBox(g.builder,
-                                  {
-                                      .parent = param_container,
-                                      .id_extra = (u64)i,
-                                      .layout {
-                                          .size = layout::k_hug_contents,
-                                          .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
-                                          .contents_direction = layout::Direction::Row,
-                                      },
-                                  });
-                    }
-                    knob_parent = *group_container;
-                    if (info.grouping_within_module == previous_group) {
-                        auto const knob = DoKnobParameter(g,
-                                                          knob_parent,
-                                                          params.DescribedValue(k_reverb_params[i]),
-                                                          {.width = k_knob_w,
-                                                           .knob_highlight_col = highlight_col,
-                                                           .greyed_out = greyed_out});
-                        DoKnobJoiningLine(g, prev_knob, knob);
-                        prev_knob = knob;
-                        previous_group = info.grouping_within_module;
-                        continue;
-                    }
-                    previous_group = info.grouping_within_module;
-                } else {
-                    group_container = {};
-                    previous_group = 0;
-                }
-                prev_knob = DoKnobParameter(
-                    g,
-                    knob_parent,
-                    params.DescribedValue(k_reverb_params[i]),
-                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            constexpr f32 k_reverb_vis_w = 250;
+            constexpr f32 k_reverb_vis_h = 90;
+            constexpr f32 k_reverb_pair_gap = 16;
+
+            ParameterComponentOptions const knob_opts {
+                .width = k_knob_w,
+                .knob_highlight_col = highlight_col,
+                .greyed_out = greyed_out,
+            };
+
+            auto const reverb_root = DoBox(g.builder,
+                                           {
+                                               .parent = param_container,
+                                               .layout {
+                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                   .contents_gap = {0, k_fx_controls_gap_y * 2},
+                                                   .contents_direction = layout::Direction::Column,
+                                                   .contents_align = layout::Alignment::Start,
+                                               },
+                                           });
+
+            auto const vis_row = DoBox(g.builder,
+                                       {
+                                           .parent = reverb_root,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = {k_fx_controls_gap_x, 0},
+                                               .contents_direction = layout::Direction::Row,
+                                           },
+                                       });
+
+            // Pre-filter group: visualiser + Pre LP / Pre HP stacked vertically.
+            auto const pre_group = DoBox(g.builder,
+                                         {
+                                             .parent = vis_row,
+                                             .layout {
+                                                 .size = layout::k_hug_contents,
+                                                 .contents_gap = {k_reverb_pair_gap, 0},
+                                                 .contents_direction = layout::Direction::Row,
+                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                             },
+                                         });
+            auto const pre_vis =
+                DoBox(g.builder, {.parent = pre_group, .layout {.size = {k_reverb_vis_w, k_reverb_vis_h}}});
+            if (auto const r = BoxRect(g.builder, pre_vis)) DoReverbPreFilterVisualizer(g, *r, greyed_out);
+            auto const pre_knobs = DoBox(g.builder,
+                                         {
+                                             .parent = pre_group,
+                                             .layout {
+                                                 .size = layout::k_hug_contents,
+                                                 .contents_gap = {0, k_fx_controls_gap_y},
+                                                 .contents_direction = layout::Direction::Column,
+                                             },
+                                         });
+            DoKnobParameter(g,
+                            pre_knobs,
+                            params.DescribedValue(ParamIndex::ReverbPreLowPassCutoff),
+                            knob_opts);
+            DoKnobParameter(g,
+                            pre_knobs,
+                            params.DescribedValue(ParamIndex::ReverbPreHighPassCutoff),
+                            knob_opts);
+
+            // Post-shelf group: visualiser + 2x2 grid (Lo-Shelf,Lo-Gain / Hi-Shelf,Hi-Gain).
+            auto const post_group = DoBox(g.builder,
+                                          {
+                                              .parent = vis_row,
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_gap = {k_reverb_pair_gap, 0},
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
+            auto const post_vis =
+                DoBox(g.builder, {.parent = post_group, .layout {.size = {k_reverb_vis_w, k_reverb_vis_h}}});
+            if (auto const r = BoxRect(g.builder, post_vis)) DoReverbPostShelfVisualizer(g, *r, greyed_out);
+            auto const post_grid = DoBox(g.builder,
+                                         {
+                                             .parent = post_group,
+                                             .layout {
+                                                 .size = layout::k_hug_contents,
+                                                 .contents_gap = {0, k_fx_controls_gap_y},
+                                                 .contents_direction = layout::Direction::Column,
+                                             },
+                                         });
+            for (auto const row_pair : Array<Array<ParamIndex, 2>, 2> {{
+                     {ParamIndex::ReverbLowShelfCutoff, ParamIndex::ReverbLowShelfGain},
+                     {ParamIndex::ReverbHighShelfCutoff, ParamIndex::ReverbHighShelfGain},
+                 }}) {
+                auto const row = DoBox(g.builder,
+                                       {
+                                           .parent = post_grid,
+                                           .id_extra = (u64)row_pair[0],
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = {k_fx_controls_gap_x, 0},
+                                               .contents_direction = layout::Direction::Row,
+                                           },
+                                       });
+                auto const k0 = DoKnobParameter(g, row, params.DescribedValue(row_pair[0]), knob_opts);
+                auto const k1 = DoKnobParameter(g, row, params.DescribedValue(row_pair[1]), knob_opts);
+                DoKnobJoiningLine(g, k0, k1);
             }
+
+            // Bottom row: remaining reverb knobs.
+            auto const knob_row = DoBox(g.builder,
+                                        {
+                                            .parent = reverb_root,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                                .contents_direction = layout::Direction::Row,
+                                                .contents_multiline = true,
+                                                .contents_align = layout::Alignment::Middle,
+                                            },
+                                        });
+
+            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbDecayTimeMs), knob_opts);
+            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbSize), knob_opts);
+            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbDelay), knob_opts);
+
+            auto const chorus_box = DoBox(g.builder,
+                                          {
+                                              .parent = knob_row,
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .margins = {.l = 8},
+                                                  .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                                  .contents_direction = layout::Direction::Row,
+                                              },
+                                          });
+            auto const mod_rate = DoKnobParameter(g,
+                                                  chorus_box,
+                                                  params.DescribedValue(ParamIndex::ReverbChorusFrequency),
+                                                  knob_opts);
+            auto const depth = DoKnobParameter(g,
+                                               chorus_box,
+                                               params.DescribedValue(ParamIndex::ReverbChorusAmount),
+                                               knob_opts);
+            DoKnobJoiningLine(g, mod_rate, depth);
+
+            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbMix), knob_opts);
             break;
         }
 
