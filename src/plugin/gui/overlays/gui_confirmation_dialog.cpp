@@ -6,22 +6,11 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 
-static void ConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
-    auto const root = DoModalRootBox(builder);
-
-    DoModalHeader(builder,
-                  {
-                      .parent = root,
-                      .title = state.title,
-                  });
-
-    DoModalDivider(builder, root, {.horizontal = true});
-
+static void ConfirmationDialogContent(GuiBuilder& builder, ConfirmationDialogState& state) {
     auto const panel = DoBox(builder,
                              {
-                                 .parent = root,
                                  .layout {
-                                     .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                     .size = layout::k_fill_parent,
                                      .contents_padding = {.lrtb = k_default_spacing},
                                      .contents_gap = k_default_spacing,
                                      .contents_direction = layout::Direction::Column,
@@ -61,13 +50,39 @@ static void ConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& sta
     }
 }
 
+static void ConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
+    auto const root = DoModalRootBox(builder);
+
+    DoModalHeader(builder,
+                  {
+                      .parent = root,
+                      .title = state.title,
+                  });
+
+    DoModalDivider(builder, root, {.horizontal = true});
+
+    DoBoxViewport(builder,
+                  {
+                      .run = [&state](GuiBuilder& b) { ConfirmationDialogContent(b, state); },
+                      .bounds = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          },
+                                      }),
+                      .imgui_id = builder.imgui.MakeId("ConfirmDialogContent"),
+                      .viewport_config = k_default_modal_subviewport,
+                  });
+}
+
 void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
     if (!builder.imgui.IsModalOpen(state.k_id)) return;
     DoBoxViewport(builder,
                   {
                       .run = [&state](GuiBuilder& b) { ConfirmationDialog(b, state); },
                       .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          WwToPixels(f32x2 {300.0f, 220.0f})),
+                          WwToPixels(f32x2 {380.0f, 300.0f})),
                       .imgui_id = state.k_id,
                       .viewport_config = k_default_modal_viewport,
                   });

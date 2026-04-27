@@ -451,7 +451,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
     // Set all params to a random value
     for (auto const param_index : Range(k_num_parameters)) {
         auto p = processor.main_params.DescribedValue((ParamIndex)param_index);
-        if ((!only_effects || (only_effects && p.info.IsEffectParam())) && !p.info.flags.hidden)
+        if ((!only_effects || (only_effects && p.info.IsEffectParam())) && !p.info.flags.legacy)
             set_any_random(p);
     }
 

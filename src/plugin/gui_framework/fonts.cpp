@@ -421,6 +421,7 @@ GlyphRanges FontAtlas::GetGlyphRangesDefaultAudioPlugin() {
                     GlyphRange {0x2019, 0x2019}, // Apostrophe
                     GlyphRange {0x2026, 0x2026}, // Ellipsis
                     GlyphRange {0x203A, 0x203A}, // Single Right-Pointing Angle Quotation Mark
+                    GlyphRange {0x2014, 0x2014}, // Em Dash
                 });
     return ranges;
 }

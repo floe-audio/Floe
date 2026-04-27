@@ -12,6 +12,7 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
+#include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/param.hpp"
@@ -273,6 +274,74 @@ static void DoParamMenuItems(GuiState& g, ParamIndex param_index) {
     }
 }
 
+// Draws a clickable warning badge in the top-right corner of the control's rect when a legacy
+// parameter is currently overriding `modern_param_index`. Clicking opens a confirmation dialog
+// that lets the user clear the override.
+static void DoLegacyOverrideOverlay(GuiState& g, Rect window_r, ParamIndex modern_param_index) {
+    auto const legacy_idx = LegacyOverridingParam(g.engine.processor.main_params, modern_param_index);
+    if (!legacy_idx) return;
+
+    auto const badge_size = k_font_icons_size;
+    Rect const badge_r {
+        .x = window_r.Right() - badge_size,
+        .y = window_r.y,
+        .w = badge_size,
+        .h = badge_size,
+    };
+
+    auto const imgui_id =
+        (imgui::Id)(SourceLocationHash() ^ g.imgui.MakeId((u64)ToInt(modern_param_index) | 0x10000ull));
+
+    if (g.imgui.ButtonBehaviour(badge_r,
+                                imgui_id,
+                                {
+                                    .mouse_button = MouseButton::Left,
+                                    .event = MouseButtonEvent::Up,
+                                })) {
+        auto const& legacy_desc = k_param_descriptors[ToInt(*legacy_idx)];
+        auto const& modern_desc = k_param_descriptors[ToInt(modern_param_index)];
+
+        dyn::AssignFitInCapacity(g.confirmation_dialog_state.title, "Legacy Parameter Override");
+        fmt::Assign(
+            g.confirmation_dialog_state.body_text,
+            "{} ({}) is being driven by an older legacy version of this parameter. While the override is in effect, the on-screen control will not respond.\n\nThis happens when plugin state is loaded from a DAW project. The legacy value is preserved in case your DAW project automates it — clearing it could break that automation. If you've checked your project and nothing references the legacy parameter, click OK to clear the override.",
+            modern_desc.name,
+            modern_desc.ModuleString(" › "));
+
+        g.confirmation_dialog_state.callback =
+            [&processor = g.engine.processor,
+             legacy = *legacy_idx,
+             default_val = legacy_desc.default_linear_value](ConfirmationDialogResult result) {
+                if (result == ConfirmationDialogResult::Ok)
+                    SetParameterValue(processor, legacy, default_val, {});
+            };
+
+        g.imgui.OpenModalViewport(g.confirmation_dialog_state.k_id);
+    }
+
+    Tooltip(g, imgui_id, badge_r, "Overridden by a legacy parameter — click for details"_s, {});
+
+    auto const clip_rect = g.imgui.draw_list->clip_rect_stack.Back();
+    g.imgui.overlay_draw_list->PushClipRect(clip_rect.xy, clip_rect.zw);
+    DEFER { g.imgui.overlay_draw_list->PopClipRect(); };
+
+    g.fonts.Push(ToInt(FontType::Icons));
+    DEFER { g.fonts.Pop(); };
+
+    auto const icon_col =
+        g.imgui.IsHotOrActive(imgui_id, MouseButton::Left)
+            ? ChangeBrightness(ToU32({.c = g.imgui.IsHot(imgui_id) ? Col::White : Col::Yellow}), 1.3f)
+            : ToU32({.c = Col::Yellow});
+    g.imgui.overlay_draw_list->AddTextInRect(badge_r,
+                                             icon_col,
+                                             ICON_FA_TRIANGLE_EXCLAMATION,
+                                             {
+                                                 .justification = TextJustification::Centred,
+                                                 .overflow_type = TextOverflowType::AllowOverflow,
+                                                 .font_scaling = 0.85f,
+                                             });
+}
+
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
@@ -384,6 +453,7 @@ Box DoMenuParameter(GuiState& g,
             ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
         AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     // Label.
@@ -484,6 +554,7 @@ Box DoKnobParameter(GuiState& g,
 
         AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
         OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     // Focus the text input if requested.
@@ -646,6 +717,7 @@ Box DoVerticalSliderParameter(GuiState& g,
 
         AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
         OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     // Drawing.
@@ -933,6 +1005,7 @@ Box DoIntParameter(GuiState& g,
 
         AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
         OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
@@ -1063,6 +1136,7 @@ Box DoPercentDraggerParameter(GuiState& g,
 
         AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
         OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});

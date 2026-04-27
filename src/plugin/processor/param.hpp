@@ -130,6 +130,48 @@ struct ChangedParams {
     Bitset<k_num_parameters> changed;
 };
 
+// Returns the index of a legacy parameter that is currently overriding `modern`, or k_nullopt if none.
+// Only covers params that have a clean 1:1 legacy → modern relationship; params whose legacy form
+// migrates into something other than a single linear value (e.g. velocity → curves) are excluded.
+inline Optional<ParamIndex> LegacyOverridingParam(Parameters const& params, ParamIndex modern) {
+    auto const check = [&params](ParamIndex legacy) -> Optional<ParamIndex> {
+        if (IsLegacyParamOverridingModern(k_param_descriptors[ToInt(legacy)], params.LinearValue(legacy)))
+            return legacy;
+        return k_nullopt;
+    };
+
+    if (auto const lp = LayerParamIndexAndLayerFor(modern)) {
+        Optional<LayerParamIndex> legacy_layer_param;
+        switch (lp->param) {
+            case LayerParamIndex::FilterResonance:
+                legacy_layer_param = LayerParamIndex::LegacyFilterResonance;
+                break;
+            case LayerParamIndex::EqResonance1:
+                legacy_layer_param = LayerParamIndex::LegacyEqResonance1;
+                break;
+            case LayerParamIndex::EqResonance2:
+                legacy_layer_param = LayerParamIndex::LegacyEqResonance2;
+                break;
+            case LayerParamIndex::LfoShape: legacy_layer_param = LayerParamIndex::LegacyLfoShape; break;
+            case LayerParamIndex::LfoDestination:
+                legacy_layer_param = LayerParamIndex::LegacyLfoDestination;
+                break;
+            case LayerParamIndex::MonophonicMode:
+                legacy_layer_param = LayerParamIndex::LegacyMonophonicBool;
+                break;
+            default: break;
+        }
+        if (!legacy_layer_param) return k_nullopt;
+        return check(ParamIndexFromLayerParamIndex(lp->layer_num, *legacy_layer_param));
+    }
+
+    switch (modern) {
+        case ParamIndex::FilterResonance: return check(ParamIndex::LegacyFilterResonance);
+        case ParamIndex::FilterGain: return check(ParamIndex::LegacyFilterGain);
+        default: return k_nullopt;
+    }
+}
+
 // Makes dealing with enum parameters that have legacy versions easier.
 template <typename CurrentEnum, usize MaxLegacies = 1>
 struct EnumParamWithLegacies {

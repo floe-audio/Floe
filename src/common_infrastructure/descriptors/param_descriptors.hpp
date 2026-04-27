@@ -208,7 +208,7 @@ enum class ParamValueType : u8 {
 
 struct ParamFlags {
     u8 not_automatable : 1;
-    u8 hidden : 1;
+    u8 legacy : 1;
     // Experimental params may be removed or changed in future versions without breaking compatibility, they
     // don't require a StateVersion bump, and are defaulted on load if not present in the file. We store
     // params as {id, value} pairs - unknown IDs are skipped on load, so removed experimental params are
@@ -1017,7 +1017,7 @@ constexpr ParamIndex ParamIndexFromMacroIndex(u8 macro_index) {
 // A hidden (legacy) param is "overriding" when it has been set to a non-default value by a DAW
 // automation lane, meaning it takes precedence over the modern equivalent param.
 inline bool IsLegacyParamOverridingModern(ParamDescriptor const& desc, f32 linear_value) {
-    ASSERT(desc.flags.hidden);
+    ASSERT(desc.flags.legacy);
     return linear_value != desc.default_linear_value;
 }
 
@@ -1369,7 +1369,7 @@ consteval auto CreateParams() {
         .gui_label = "Velo"_s,
         .tooltip =
             "The amount that the MIDI velocity affects the volume of notes; 100% means notes will be silent when the velocity is very soft, and 0% means that notes will play full volume regardless of the velocity"_s,
-        .flags = {.hidden = true},
+        .flags = {.legacy = true},
     };
     mp(MasterTimbre) = Args {
         .id = id(IdRegion::Master, 2), // never change
@@ -1563,7 +1563,7 @@ consteval auto CreateParams() {
         .name = "Legacy Resonance"_s,
         .gui_label = "Reso"_s,
         .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
-        .flags = {.hidden = true},
+        .flags = {.legacy = true},
     };
     mp(FilterResonance) = Args {
         .id = id(IdRegion::Master, 29), // never change
@@ -1580,7 +1580,7 @@ consteval auto CreateParams() {
         .name = "Legacy Gain"_s,
         .gui_label = "Gain"_s,
         .tooltip = "Legacy gain parameter. Kept for backwards-compatibility with DAW automation"_s,
-        .flags = {.hidden = true},
+        .flags = {.legacy = true},
     };
     mp(FilterGain) = Args {
         .id = id(IdRegion::Master, 30), // never change
@@ -2240,7 +2240,7 @@ consteval auto CreateParams() {
             .name = "Legacy Resonance"_s,
             .gui_label = "Res"_s,
             .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(FilterResonance) = Args {
             .id = id(region, 69), // never change
@@ -2324,7 +2324,7 @@ consteval auto CreateParams() {
             .name = "Legacy Shape"_s,
             .gui_label = "Shape"_s,
             .tooltip = "Legacy LFO shape parameter. Kept for backwards-compatibility with DAW automation"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(LfoRestart) = Args {
             .id = id(region, 29), // never change
@@ -2359,7 +2359,7 @@ consteval auto CreateParams() {
             .name = "Target (Legacy)"_s,
             .gui_label = "Target"_s,
             .tooltip = "Legacy LFO target parameter. Kept for backwards-compatibility with DAW automation"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(LfoRateTempoSynced) = Args {
             .id = id(region, 32), // never change
@@ -2435,7 +2435,7 @@ consteval auto CreateParams() {
             .name = "Legacy Resonance"_s,
             .gui_label = "Reso"_s,
             .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(EqResonance1) = Args {
             .id = id(region, 79), // never change
@@ -2479,7 +2479,7 @@ consteval auto CreateParams() {
             .name = "Legacy Resonance"_s,
             .gui_label = "Reso"_s,
             .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(EqResonance2) = Args {
             .id = id(region, 80), // never change
@@ -2521,7 +2521,7 @@ consteval auto CreateParams() {
             .gui_label = "Velocity Mapping"_s,
             .tooltip =
                 "Choose how MIDI velocity should affect the volume of this layer. There are 6 modes that can be selected for this parameter via the buttons on the GUI. By setting one layer to be quiet at high velocities and another layer to be quiet at low velocities you can create an instrument that sounds different based on how hard the notes are played. (0) Ignore velocity, always play full volume. (1) Loudest at high velocity, quietist at low velocity (2) Loudest at low velocity, quietist at high velocity (3) Loudest at high velocity, quietist at middle velocity and below (4) Loudest at middle velocity, quietist at both high and low velocities (5) Loudest at bottom velocity, quietist at middle velocity and above,"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(Keytrack) = Args {
             .id = id(region, 45), // never change
@@ -2539,7 +2539,7 @@ consteval auto CreateParams() {
             .name = "Legacy Monophonic On"_s,
             .gui_label = "Monophonic"_s,
             .tooltip = "Only allow one voice of each sound to play at a time"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(MonophonicMode) = Args {
             .id = id(region, 55), // never change
