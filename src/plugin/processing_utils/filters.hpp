@@ -436,6 +436,9 @@ class SmoothedCoefficients {
     rbj_filter::Coeffs m_coeffs = {};
 };
 
+inline f32 EqResonanceToQ(f32 linear) { return MapFrom01Skew(linear, 0.5f, 8.0f, 2.0f); }
+inline f32 EffectFilterResonanceToQ(f32 linear) { return MapFrom01Skew(linear, 0.5f, 2.0f, 2.0f); }
+
 } // namespace rbj_filter
 
 // ===============================================================================

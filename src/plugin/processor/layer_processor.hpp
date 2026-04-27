@@ -67,11 +67,8 @@ struct EqBand {
             eq_params.fs = sample_rate;
             eq_params.q = (legacy_linear != legacy_default)
                               ? MapFrom01Skew(legacy_linear, 0.5f, 8, 5)
-                              : MapFrom01Skew(changed_params.params.LinearValue(
-                                                  ParamIndexFromLayerParamIndex(layer_index, reso_param)),
-                                              0.5f,
-                                              8,
-                                              2);
+                              : rbj_filter::EqResonanceToQ(changed_params.params.LinearValue(
+                                    ParamIndexFromLayerParamIndex(layer_index, reso_param)));
             changed = true;
         }
         if (auto p = changed_params.ProjectedValue(layer_index, gain_param)) {
