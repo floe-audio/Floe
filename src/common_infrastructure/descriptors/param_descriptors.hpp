@@ -78,6 +78,7 @@ enum class LayerParamIndex : u8 {
     GranularRandomDirection,
     GranularHarmony,
 
+    ArpOn,
     ArpMode,
     ArpNoteOrder,
     ArpTriggerMode,
@@ -646,15 +647,13 @@ constexpr auto k_play_mode_strings = ArrayT<String>({
 static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
 
 enum class ArpMode : u8 { // never reorder
-    Off,
     Played,
     Fixed,
     Count,
 };
 constexpr auto k_arp_type_strings = ArrayT<String>({
-    "Arpeggiator Off",
-    "Arpeggiator On",
-    "Arpeggiator On - Fixed Notes",
+    "Played Notes",
+    "Fixed Notes",
 });
 static_assert(k_arp_type_strings.size == ToInt(ArpMode::Count));
 
@@ -2741,16 +2740,25 @@ consteval auto CreateParams() {
 
         // Arpeggiator
         // =================================================================================================
+        lp(ArpOn) = Args {
+            .id = id(region, 81), // never change
+            .value_config = val_config_helpers::Bool({.default_state = false}),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Arpeggiator"_s,
+            .gui_label = "Arpeggiator"_s,
+            .tooltip = "Enable/disable the arpeggiator"_s,
+            .flags = {.experimental = true},
+        };
         lp(ArpMode) = Args {
             .id = id(region, 74), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::ArpMode,
-                .default_val = (u32)param_values::ArpMode::Off,
+                .default_val = (u32)param_values::ArpMode::Played,
             }),
             .modules = {layer_module, ParameterModule::Arp},
-            .name = "Arpeggiator"_s,
-            .gui_label = "Arpeggiator"_s,
-            .tooltip = "Arpeggiator mode - Off disables the arpeggiator"_s,
+            .name = "Arpeggiator Mode"_s,
+            .gui_label = "Mode"_s,
+            .tooltip = "Played Notes: arpeggiates held notes. Fixed Notes: plays a recorded note sequence"_s,
             .flags = {.experimental = true},
         };
         lp(ArpNoteOrder) = Args {

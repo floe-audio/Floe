@@ -87,6 +87,7 @@ struct ArpeggiatorState {
         Bitset<k_octave_polyrate_num_playheads> prev_active_octaves {};
 
         param_values::ArpMode type {};
+        bool on {};
         param_values::ArpNoteOrder note_order {};
         param_values::ArpOctavePolyrate octave_polyrate {};
         param_values::ArpTriggerMode trigger_mode {};
@@ -151,7 +152,7 @@ struct ArpNoteCommand : NoteEvent {
 
 using ArpNoteCommands = DynamicArrayBounded<ArpNoteCommand, k_max_note_events>;
 
-bool ArpIsOn(param_values::ArpMode mode, sample_lib::Region const* sliced_region);
+bool ArpIsOn(bool on, sample_lib::Region const* sliced_region);
 
 u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context);
 

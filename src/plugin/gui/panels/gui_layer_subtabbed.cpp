@@ -2101,12 +2101,25 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-    // Heading row: ArpMode menu (Off / Played / Fixed). Hidden for sliced instruments.
+    // Heading row: ArpOn toggle + ArpMode menu. Hidden for sliced instruments.
     if (snapshot.activation == ArpGuiSnapshot::Activation::UserDefined) {
+        auto const heading_row = DoBox(g.builder,
+                                       {
+                                           .parent = page,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Start,
+                                           },
+                                       });
+        DoButtonParameter(g,
+                          heading_row,
+                          params.DescribedValue(layer_index, LayerParamIndex::ArpOn),
+                          {.width = layout::k_fill_parent});
         DoMenuParameter(g,
-                        page,
+                        heading_row,
                         params.DescribedValue(layer_index, LayerParamIndex::ArpMode),
-                        {.width = layout::k_fill_parent, .label = false});
+                        {.width = 140, .greyed_out = !snapshot.on, .label = false});
     }
 
     // Step sequencer

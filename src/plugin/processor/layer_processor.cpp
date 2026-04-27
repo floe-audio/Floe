@@ -43,7 +43,7 @@ static sample_lib::Region const* SlicesForInstrument(InstrumentUnwrapped const& 
 }
 
 static bool ArpIsOnForLayer(LayerProcessor const& layer) {
-    return ArpIsOn(layer.arp_state.audio.type, SlicesForInstrument(layer.audio_thread_inst));
+    return ArpIsOn(layer.arp_state.audio.on, SlicesForInstrument(layer.audio_thread_inst));
 }
 
 bool LayerHasAudioActivity(LayerProcessor const& layer) {

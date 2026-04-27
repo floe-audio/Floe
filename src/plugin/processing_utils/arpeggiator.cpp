@@ -85,10 +85,10 @@ ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
     }
 
     // Normal user-driven mode.
+    auto const param_on = params.BoolValue(layer_index, LayerParamIndex::ArpOn);
     auto const param_mode = params.IntValue<param_values::ArpMode>(layer_index, LayerParamIndex::ArpMode);
     auto const param_length =
         Clamp(params.IntValue<u32>(layer_index, LayerParamIndex::ArpLength), 1u, (u32)k_arp_max_steps);
-    auto const param_on = param_mode != param_values::ArpMode::Off;
     auto const all_editable = param_on;
     return {
         .activation = ArpGuiSnapshot::Activation::UserDefined,
@@ -126,10 +126,10 @@ void ArpApplyNewState(ArpeggiatorState& arp, StateSnapshot const& state, u8 laye
 // Audio-thread functions
 // =========================================================================================================
 
-bool ArpIsOn(param_values::ArpMode mode, sample_lib::Region const* sliced_region) {
+bool ArpIsOn(bool on, sample_lib::Region const* sliced_region) {
     ASSERT_HOT(!sliced_region ||
                (sliced_region->slices.size && sliced_region->loop_beats && sliced_region->native_bpm > 0));
-    return mode != param_values::ArpMode::Off || sliced_region;
+    return on || sliced_region;
 }
 
 u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context) {
@@ -286,7 +286,6 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
     };
 
     switch (args.type) {
-        case param_values::ArpMode::Off: PanicIfReached(); break;
         case param_values::ArpMode::Fixed: {
             MidiChannelNote note {.note = step.note, .channel = 0};
             emit_note_on(note, humanise_velocity(step.Velocity01()));
@@ -654,7 +653,7 @@ void ArpProcessBlock(ArpeggiatorState& arp,
                      u64& random_seed,
                      u32 num_frames,
                      ArpNoteCommands& out_commands) {
-    if (!ArpIsOn(arp.audio.type, sliced_region)) return;
+    if (!ArpIsOn(arp.audio.on, sliced_region)) return;
     if (!arp.audio.any_notes_held) return;
     if (num_frames == 0) return;
 
@@ -711,8 +710,8 @@ void ArpHandleInstrumentChange(ArpeggiatorState& arp,
     arp.slice_start_offset.Store(0, StoreMemoryOrder::Relaxed);
     arp.slice_loop_length.Store(0, StoreMemoryOrder::Relaxed);
 
-    auto const was_on = ArpIsOn(arp.audio.type, args.old_sliced_region);
-    auto const now_on = ArpIsOn(arp.audio.type, args.new_sliced_region);
+    auto const was_on = ArpIsOn(arp.audio.on, args.old_sliced_region);
+    auto const now_on = ArpIsOn(arp.audio.on, args.new_sliced_region);
 
     arp.on_for_gui.Store(now_on, StoreMemoryOrder::Relaxed);
 
@@ -733,11 +732,14 @@ ArpOnBlockChanges(ArpeggiatorState& arp, ArpBlockChangesArgs const& args, ArpNot
     bool rate_changed = false;
 
     if (auto const p =
-            args.changed_params.IntValue<param_values::ArpMode>(args.layer_index, LayerParamIndex::ArpMode)) {
-        if (*p != arp.audio.type) {
-            bool const on_before = ArpIsOn(arp.audio.type, args.sliced_region);
-            arp.audio.type = *p;
-            bool const on_after = ArpIsOn(arp.audio.type, args.sliced_region);
+            args.changed_params.IntValue<param_values::ArpMode>(args.layer_index, LayerParamIndex::ArpMode))
+        arp.audio.type = *p;
+
+    if (auto const p = args.changed_params.BoolValue(args.layer_index, LayerParamIndex::ArpOn)) {
+        if (*p != arp.audio.on) {
+            bool const on_before = ArpIsOn(arp.audio.on, args.sliced_region);
+            arp.audio.on = *p;
+            bool const on_after = ArpIsOn(arp.audio.on, args.sliced_region);
             if (on_before != on_after) {
                 arp.on_for_gui.Store(on_after, StoreMemoryOrder::Relaxed);
                 if (on_after) {
@@ -815,7 +817,7 @@ ArpOnBlockChanges(ArpeggiatorState& arp, ArpBlockChangesArgs const& args, ArpNot
 
     bool const is_recording = arp.recording.Load(LoadMemoryOrder::Relaxed);
 
-    auto const handling = (ArpIsOn(arp.audio.type, args.sliced_region) && !is_recording)
+    auto const handling = (ArpIsOn(arp.audio.on, args.sliced_region) && !is_recording)
                               ? ArpNoteHandling::ArpHandlesNotes
                               : ArpNoteHandling::LayerHandlesNotes;
 
