@@ -1829,6 +1829,8 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
 
         if (viewport->has_scrollbar.y && !auto_height && !no_scroll_y) {
             if (scrollbar_inside_padding) {
+                ASSERT(viewport->cfg.padding.r > 0,
+                       "scrollbar_inside_padding requires non-zero right padding");
                 viewport->cfg.scrollbar_width = viewport->cfg.padding.r;
                 viewport->cfg.scrollbar_padding = 0;
             }
@@ -1854,6 +1856,8 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
 
         if (viewport->has_scrollbar.x && !auto_width && !no_scroll_x) {
             if (scrollbar_inside_padding) {
+                ASSERT(viewport->cfg.padding.b > 0,
+                       "scrollbar_inside_padding requires non-zero bottom padding");
                 viewport->cfg.scrollbar_width = viewport->cfg.padding.b;
                 viewport->cfg.scrollbar_padding = 0;
             }
