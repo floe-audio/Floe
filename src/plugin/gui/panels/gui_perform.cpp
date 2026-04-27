@@ -26,18 +26,6 @@
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
 
-static Colours MidIconButtonColours(bool greyed_out) {
-    if (greyed_out)
-        return ColSet {
-            .base = LiveColStruct(UiColMap::MidIconDimmed),
-        };
-    return ColSet {
-        .base = LiveColStruct(UiColMap::MidIcon),
-        .hot = LiveColStruct(UiColMap::MidTextHot),
-        .active = LiveColStruct(UiColMap::MidTextOn),
-    };
-}
-
 static void
 DoSectionLabel(GuiBuilder& builder, Box parent, String text, u64 loc_hash = SourceLocationHash()) {
     DoBox(builder,
@@ -318,7 +306,11 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                                            .text = icon,
                                            .font = FontType::Icons,
                                            .font_size = k_font_icons_size * 0.95f,
-                                           .text_colours = MidIconButtonColours(grey),
+                                           .text_colours = grey ? Colours{LiveColStruct(UiColMap::MidIconDimmed)} : ColSet {
+        .base = LiveColStruct(UiColMap::MidIcon),
+        .hot = LiveColStruct(UiColMap::MidTextHot),
+        .active = LiveColStruct(UiColMap::MidTextOn),
+                                           },
                                            .text_justification = TextJustification::Centred,
                                            .background_fill_colours = Col {.c = Col::None},
                                            .round_background_corners = corners,
