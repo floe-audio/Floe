@@ -8,8 +8,8 @@
 #include "engine/engine.hpp"
 #include "gui/controls/gui_biquad_display.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_modal.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "processing_utils/filters.hpp"
@@ -153,11 +153,13 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     auto const vis_state = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
 
     auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
-    // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
-    auto const q_adj = sv_filter::ResonanceToQ(
-        sv_filter::ResolveSkewedResonance(Clamp(legacy_reso_param.LinearValue(), 0.0f, 0.9999f),
-                                          legacy_reso_param.info.default_linear_value,
-                                          Clamp(reso_adj_linear, 0.0f, 0.9999f)));
+    // Legacy param used a quartic skew (x^4); current is linear. Both scale by 0.95 to keep
+    // the output below 1.0, and we clamp to 0.9999 to avoid a divide-by-zero in ResonanceToQ.
+    auto const legacy_reso_linear = legacy_reso_param.LinearValue();
+    auto const skewed_reso = IsLegacyParamOverridingModern(legacy_reso_param.info, legacy_reso_linear)
+                                 ? Pow(Clamp(legacy_reso_linear, 0.0f, 0.9999f), 4.0f) * 0.95f
+                                 : sv_filter::SkewResonance(Clamp(reso_adj_linear, 0.0f, 0.9999f));
+    auto const q_adj = sv_filter::ResonanceToQ(skewed_reso);
 
     auto const coeffs = rbj_filter::Coefficients({
         .type = vis_state.rbj_type,

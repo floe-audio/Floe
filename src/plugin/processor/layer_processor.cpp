@@ -610,11 +610,14 @@ void ProcessLayerChanges(LayerProcessor& layer,
         changes.changed_params.Changed(layer.index, LayerParamIndex::FilterResonance)) {
         auto const legacy_idx =
             ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LegacyFilterResonance);
+        auto const legacy_linear = changes.changed_params.params.LinearValue(legacy_idx);
         auto const current_idx = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::FilterResonance);
+        // Legacy param used a quartic skew (x^4); current is linear. Both scale by 0.95 to
+        // keep the output below 1.0 and avoid a divide-by-zero in ResonanceToQ.
         vmst.sv_filter_resonance =
-            sv_filter::ResolveSkewedResonance(changes.changed_params.params.LinearValue(legacy_idx),
-                                              k_param_descriptors[ToInt(legacy_idx)].default_linear_value,
-                                              changes.changed_params.params.LinearValue(current_idx));
+            IsLegacyParamOverridingModern(k_param_descriptors[ToInt(legacy_idx)], legacy_linear)
+                ? Pow(legacy_linear, 4.0f) * 0.95f
+                : sv_filter::SkewResonance(changes.changed_params.params.LinearValue(current_idx));
     }
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::FilterOn))
         vmst.filter_on = *p;

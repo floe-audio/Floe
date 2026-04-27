@@ -469,19 +469,7 @@ inline f32 ResonanceToQ(f32 resonance) {
     return 1.0f / (2.0f * (1.0f - resonance));
 }
 
-inline f32 LegacySkewResonance(f32 percent) {
-    constexpr f32 k_multiplier = 0.95f;
-    return Pow(percent, 4.0f) * k_multiplier;
-}
-
 inline f32 SkewResonance(f32 percent) { return percent * 0.95f; }
-
-// Resolves the effective skewed resonance value, giving priority to the legacy param when it
-// differs from its default (preserving DAW automation backward-compatibility).
-inline f32 ResolveSkewedResonance(f32 legacy_linear, f32 legacy_default, f32 current_linear) {
-    if (legacy_linear != legacy_default) return LegacySkewResonance(legacy_linear);
-    return SkewResonance(current_linear);
-}
 
 struct CachedHelpers {
     void Update(f32 sample_rate, f32 cutoff, f32 res, f32 shelf_gain = 2.0f) {
