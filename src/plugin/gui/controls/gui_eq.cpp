@@ -6,7 +6,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
-#include "gui/controls/gui_biquad_display.hpp"
+#include "gui/controls/gui_filter_display.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_modal.hpp"
@@ -143,7 +143,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
     auto const& freq_info =
         k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::EqFreq1))];
 
-    biquad_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r, freq_info);
 
     // Node handle sits at the base (user-set) value; the drawn curve reflects macro modulation.
     struct BandState {
@@ -176,21 +176,31 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
 
         b.coeffs = rbj_filter::Coefficients({
             .type = EqTypeToRbjType(type_param.IntValue<param_values::EqType>()),
-            .fs = biquad_display::k_sample_rate,
-            .fc = Clamp(freq_adj_hz, 15.0f, biquad_display::k_sample_rate * 0.49f),
+            .fs = filter_display::k_sample_rate,
+            .fc = Clamp(freq_adj_hz, 15.0f, filter_display::k_sample_rate * 0.49f),
             .q = q_adj,
             .peak_gain = gain_adj_db,
         });
 
         auto const node_x = viewport_r.x + (freq_param.LinearValue() * viewport_r.w);
-        auto const node_y = biquad_display::DbToY(gain_param.ProjectedValue(), viewport_r);
+        auto const node_y = filter_display::DbToY(gain_param.ProjectedValue(), viewport_r);
         b.node_pos_viewport = {node_x, node_y};
     }
 
     Array<rbj_filter::Coeffs, k_num_bands> coeffs_list;
     for (auto const i : Range(k_num_bands))
         coeffs_list[i] = bands[i].coeffs;
-    biquad_display::DrawResponseCurve(imgui, viewport_r, coeffs_list, freq_info, greyed_out);
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) {
+            f32 db = 0;
+            for (auto const& c : coeffs_list)
+                db += rbj_filter::MagnitudeDb(c, hz, filter_display::k_sample_rate);
+            return db;
+        },
+        freq_info,
+        greyed_out);
 
     for (auto const band_idx : Range(k_num_bands)) {
         auto const& b = bands[band_idx];
@@ -244,7 +254,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
 
             auto const y_clamped = Clamp(cursor.y, min_y, max_y);
             auto const y_t = 1.0f - MapTo01(y_clamped, min_y, max_y);
-            auto const new_gain_db = MapFrom01(y_t, biquad_display::k_min_db, biquad_display::k_max_db);
+            auto const new_gain_db = MapFrom01(y_t, filter_display::k_min_db, filter_display::k_max_db);
             auto const gain_linear = gain_param.info.LineariseValue(new_gain_db, true).ValueOr(0.0f);
 
             SetParameterValue(engine.processor, freq_index, new_freq_linear, {});
@@ -272,7 +282,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
         ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
         auto const handle_pos = imgui.ViewportPosToWindowPos(b.node_pos_viewport);
-        biquad_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+        filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
 
         if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;

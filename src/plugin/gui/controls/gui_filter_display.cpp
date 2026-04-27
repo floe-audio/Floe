@@ -1,7 +1,7 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/controls/gui_biquad_display.hpp"
+#include "gui/controls/gui_filter_display.hpp"
 
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -9,27 +9,9 @@
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-namespace biquad_display {
+namespace filter_display {
 
 constexpr usize k_curve_points = 160;
-
-f32 MagnitudeDb(rbj_filter::Coeffs const& c, f32 frequency_hz) {
-    auto const w = 2.0 * k_pi<f64> * (f64)frequency_hz / (f64)k_sample_rate;
-    auto const cos_w = Cos(w);
-    auto const cos_2w = Cos(2.0 * w);
-    auto const b0 = (f64)c.b0;
-    auto const b1 = (f64)c.b1;
-    auto const b2 = (f64)c.b2;
-    auto const a1 = (f64)c.a1;
-    auto const a2 = (f64)c.a2;
-    auto const num = (b0 * b0) + (b1 * b1) + (b2 * b2) + (2.0 * ((b0 * b1) + (b1 * b2)) * cos_w) +
-                     (2.0 * b0 * b2 * cos_2w);
-    auto const den = 1.0 + (a1 * a1) + (a2 * a2) + (2.0 * (a1 + (a1 * a2)) * cos_w) + (2.0 * a2 * cos_2w);
-    if (den <= 0) return 0;
-    auto const mag2 = num / den;
-    if (mag2 <= 0) return k_min_db;
-    return (f32)(10.0 * Log10(mag2));
-}
 
 f32 DbToY(f32 db, Rect viewport_r) {
     auto const t = MapTo01(Clamp(db, k_min_db, k_max_db), k_min_db, k_max_db);
@@ -61,7 +43,7 @@ void DrawBackground(imgui::Context& imgui, Rect viewport_r, ParamDescriptor cons
 
 void DrawResponseCurve(imgui::Context& imgui,
                        Rect viewport_r,
-                       Span<rbj_filter::Coeffs const> coeffs,
+                       TrivialFunctionRef<f32(f32 freq_hz)> magnitude_db,
                        ParamDescriptor const& freq_param_info,
                        bool greyed_out) {
     struct CurvePoint {
@@ -75,9 +57,7 @@ void DrawResponseCurve(imgui::Context& imgui,
         auto const x = viewport_r.x + (t * viewport_r.w);
         auto const freq_hz = freq_param_info.ProjectValue(t);
 
-        f32 total_db = 0;
-        for (auto const& c : coeffs)
-            total_db += MagnitudeDb(c, freq_hz);
+        auto const total_db = magnitude_db(freq_hz);
 
         bool const in_range = total_db >= k_min_db && total_db <= k_max_db;
         auto const y = DbToY(total_db, viewport_r);
@@ -131,4 +111,4 @@ void DrawHandle(imgui::Context& imgui,
     imgui.draw_list->AddCircleFilled(pos_in_window, radius, col);
 }
 
-} // namespace biquad_display
+} // namespace filter_display

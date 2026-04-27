@@ -6,7 +6,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
-#include "gui/controls/gui_biquad_display.hpp"
+#include "gui/controls/gui_filter_display.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -18,32 +18,25 @@
 constexpr f32 k_handle_radius_ww = 5.0f;
 constexpr f32 k_grabber_radius_ww = 12.0f;
 
-// Peak / band-shelving have no user gain parameter, so we use a fixed boost for visualisation
-// so the user can see the shape.
-constexpr f32 k_display_peak_gain_db = 12.0f;
-
-struct FilterVisState {
-    rbj_filter::Type rbj_type;
+struct LayerSvfMapping {
+    sv_filter::Type type;
     bool valid; // false for types we can't nicely visualise (e.g. Allpass)
-    f32 peak_gain_db;
 };
 
-static FilterVisState MapLayerFilterType(param_values::LayerFilterType t) {
+static LayerSvfMapping MapLayerFilterType(param_values::LayerFilterType t) {
     switch (t) {
-        case param_values::LayerFilterType::Lowpass: return {rbj_filter::Type::LowPass, true, 0};
-        case param_values::LayerFilterType::Bandpass: return {rbj_filter::Type::BandPassCzpg, true, 0};
-        case param_values::LayerFilterType::Highpass: return {rbj_filter::Type::HighPass, true, 0};
+        case param_values::LayerFilterType::Lowpass: return {sv_filter::Type::Lowpass, true};
+        case param_values::LayerFilterType::Bandpass: return {sv_filter::Type::Bandpass, true};
+        case param_values::LayerFilterType::Highpass: return {sv_filter::Type::Highpass, true};
         case param_values::LayerFilterType::UnitGainBandpass:
-            return {rbj_filter::Type::BandPassCzpg, true, 0};
-        case param_values::LayerFilterType::BandShelving:
-            return {rbj_filter::Type::Peaking, true, k_display_peak_gain_db};
-        case param_values::LayerFilterType::Notch: return {rbj_filter::Type::Notch, true, 0};
-        case param_values::LayerFilterType::Allpass: return {rbj_filter::Type::AllPass, false, 0};
-        case param_values::LayerFilterType::Peak:
-            return {rbj_filter::Type::Peaking, true, k_display_peak_gain_db};
+            return {sv_filter::Type::UnitGainBandpass, true};
+        case param_values::LayerFilterType::BandShelving: return {sv_filter::Type::BandShelving, true};
+        case param_values::LayerFilterType::Notch: return {sv_filter::Type::Notch, true};
+        case param_values::LayerFilterType::Allpass: return {sv_filter::Type::Allpass, false};
+        case param_values::LayerFilterType::Peak: return {sv_filter::Type::Peak, true};
         case param_values::LayerFilterType::Count: break;
     }
-    return {rbj_filter::Type::LowPass, true, 0};
+    return {sv_filter::Type::Lowpass, true};
 }
 
 static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, u8 layer_index) {
@@ -136,7 +129,7 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     auto const& freq_info =
         k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterCutoff))];
 
-    biquad_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r, freq_info);
 
     auto const cutoff_param = params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff);
     auto const reso_param = params.DescribedValue(layer_index, LayerParamIndex::FilterResonance);
@@ -151,27 +144,31 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
 
     auto const vis_state = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
 
-    auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
+    auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
+                                     15.0f,
+                                     filter_display::k_sample_rate * 0.49f);
     // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
-    auto const q_adj = sv_filter::ResonanceToQ(Clamp(reso_adj_linear, 0.0f, 0.9999f));
-
-    auto const coeffs = rbj_filter::Coefficients({
-        .type = vis_state.rbj_type,
-        .fs = biquad_display::k_sample_rate,
-        .fc = Clamp(cutoff_adj_hz, 15.0f, biquad_display::k_sample_rate * 0.49f),
-        .q = q_adj,
-        .peak_gain = vis_state.peak_gain_db,
-    });
+    auto const res_adj = Clamp(reso_adj_linear, 0.0f, 0.9999f);
 
     if (vis_state.valid) {
-        rbj_filter::Coeffs const coeffs_list[] = {coeffs};
-        biquad_display::DrawResponseCurve(imgui, viewport_r, coeffs_list, freq_info, greyed_out);
+        filter_display::DrawResponseCurve(
+            imgui,
+            viewport_r,
+            [&](f32 hz) {
+                return sv_filter::MagnitudeDb(vis_state.type,
+                                              cutoff_adj_hz,
+                                              filter_display::k_sample_rate,
+                                              res_adj,
+                                              hz);
+            },
+            freq_info,
+            greyed_out);
     }
 
     // Node position: X = cutoff (base value). Y stays pinned to the 0dB line regardless of the
     // curve shape — the curve itself reflects resonance.
     auto const node_x = viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w);
-    auto const node_y = biquad_display::DbToY(0.0f, viewport_r);
+    auto const node_y = filter_display::DbToY(0.0f, viewport_r);
     f32x2 const node_pos_viewport {node_x, node_y};
 
     auto const cutoff_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterCutoff);
@@ -231,7 +228,7 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
     auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
-    biquad_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+    filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
@@ -355,7 +352,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
     auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
 
-    biquad_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r, freq_info);
 
     auto const cutoff_param = params.DescribedValue(ParamIndex::FilterCutoff);
     auto const reso_param = params.DescribedValue(ParamIndex::FilterResonance);
@@ -381,25 +378,28 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
     auto const coeffs = rbj_filter::Coefficients({
         .type = EffectFilterTypeToRbjType(filter_type),
-        .fs = biquad_display::k_sample_rate,
-        .fc = Clamp(cutoff_adj_hz, 15.0f, biquad_display::k_sample_rate * 0.49f),
+        .fs = filter_display::k_sample_rate,
+        .fc = Clamp(cutoff_adj_hz, 15.0f, filter_display::k_sample_rate * 0.49f),
         .q = q_adj,
         .peak_gain = gain_adj_db,
     });
 
-    // The DSP runs two biquad passes in series, so the audible response is |H|². We model this
-    // in the display by feeding the same coefficients twice (dB values add).
-    rbj_filter::Coeffs const coeffs_list[] = {coeffs, coeffs};
-    biquad_display::DrawResponseCurve(imgui, viewport_r, coeffs_list, freq_info, greyed_out);
+    // The DSP runs two biquad passes in series, so the audible response is |H|² (dB doubles).
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) { return 2.0f * rbj_filter::MagnitudeDb(coeffs, hz, filter_display::k_sample_rate); },
+        freq_info,
+        greyed_out);
 
     // Node position: X = cutoff (base). Y = gain (base) for gain-using types, else pinned to 0dB.
     auto const node_x = viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w);
     auto const node_y =
         uses_gain
-            ? biquad_display::DbToY(
-                  Clamp(gain_param.ProjectedValue(), biquad_display::k_min_db, biquad_display::k_max_db),
+            ? filter_display::DbToY(
+                  Clamp(gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
                   viewport_r)
-            : biquad_display::DbToY(0.0f, viewport_r);
+            : filter_display::DbToY(0.0f, viewport_r);
     f32x2 const node_pos_viewport {node_x, node_y};
 
     DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param, &gain_param};
@@ -443,7 +443,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
             auto const max_y = imgui.ViewportPosToWindowPos({0, viewport_r.Bottom()}).y;
             auto const y_clamped = Clamp(cursor.y, min_y, max_y);
             auto const y_t = 1.0f - MapTo01(y_clamped, min_y, max_y);
-            auto const new_gain_db = MapFrom01(y_t, biquad_display::k_min_db, biquad_display::k_max_db);
+            auto const new_gain_db = MapFrom01(y_t, filter_display::k_min_db, filter_display::k_max_db);
             auto const gain_linear = gain_param.info.LineariseValue(new_gain_db, true).ValueOr(0.0f);
             SetParameterValue(engine.processor, ParamIndex::FilterGain, gain_linear, {});
         }
@@ -470,7 +470,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
     auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
-    biquad_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+    filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = uses_gain ? CursorType::AllArrows : CursorType::HorizontalArrows;
