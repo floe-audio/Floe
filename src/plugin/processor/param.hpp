@@ -153,9 +153,9 @@ struct EnumParamWithLegacies {
         // panel') and therefore it's likely that the value comes from DAW automation - we need to maintain
         // compatibility with that.
         for (auto const& leg : legacies) {
-            auto const val = (s64)Trunc(cp.params.LinearValue(leg.idx));
-            auto const default_val = (s64)Trunc(k_param_descriptors[ToInt(leg.idx)].default_linear_value);
-            if (val != default_val) {
+            auto const linear_val = cp.params.LinearValue(leg.idx);
+            if (IsLegacyParamOverridingModern(k_param_descriptors[ToInt(leg.idx)], linear_val)) {
+                auto const val = (s64)Trunc(linear_val);
                 ASSERT(val >= 0 && (usize)val < leg.remap_table.size);
                 return leg.remap_table[(usize)val];
             }
