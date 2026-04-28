@@ -920,6 +920,7 @@ TEST_CASE(TestArpOneShotPolyrateWaitsForSlowest) {
     ArpeggiatorState arp {.audio {
         .any_notes_held = true,
         .type = param_values::ArpMode::Played,
+        .on = true,
         .note_order = param_values::ArpNoteOrder::Up,
         .octave_polyrate = param_values::ArpOctavePolyrate::Double,
         .rate = SyncedTimes::_1_4,
