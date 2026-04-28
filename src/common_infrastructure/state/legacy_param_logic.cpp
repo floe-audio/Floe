@@ -21,8 +21,8 @@ f32 FrequencyRemap(ParamIndex legacy, ParamIndex modern, f32 legacy_linear) {
 }
 
 f32 FilterGainRemap(ParamIndex legacy, ParamIndex modern, f32 legacy_linear) {
-    // Old: DSP used legacy value as peak_gain directly; two passes → audible = 2× legacy.
-    // New: FilterGain = audible gain; DSP uses FilterGain/2 per pass → audible = FilterGain.
+    // In the past the peak_gain was incorrectly used in the 2-passes of the filter, resulting in 2x the dB
+    // change.
     auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
     auto const& modern_desc = k_param_descriptors[ToInt(modern)];
     auto const new_db = legacy_desc.ProjectValue(legacy_linear) * 2;
@@ -140,6 +140,50 @@ Optional<ParamIndex> ModernCounterpartOf(ParamIndex legacy) {
     auto const m = ModerniseLegacyValue(legacy, 0.0f);
     if (!m) return k_nullopt;
     return m->modern_param;
+}
+
+Optional<ParamIndex> LegacyCounterpartOf(ParamIndex modern) {
+    if (auto const lp = LayerParamIndexAndLayerFor(modern)) {
+        Optional<LayerParamIndex> legacy_layer_param;
+        switch (lp->param) {
+            case LayerParamIndex::FilterCutoff:
+                legacy_layer_param = LayerParamIndex::LegacyFilterCutoff;
+                break;
+            case LayerParamIndex::FilterResonance:
+                legacy_layer_param = LayerParamIndex::LegacyFilterResonance;
+                break;
+            case LayerParamIndex::EqFreq1: legacy_layer_param = LayerParamIndex::LegacyEqFreq1; break;
+            case LayerParamIndex::EqFreq2: legacy_layer_param = LayerParamIndex::LegacyEqFreq2; break;
+            case LayerParamIndex::EqFreq3: legacy_layer_param = LayerParamIndex::LegacyEqFreq3; break;
+            case LayerParamIndex::EqResonance1:
+                legacy_layer_param = LayerParamIndex::LegacyEqResonance1;
+                break;
+            case LayerParamIndex::EqResonance2:
+                legacy_layer_param = LayerParamIndex::LegacyEqResonance2;
+                break;
+            case LayerParamIndex::EqType1: legacy_layer_param = LayerParamIndex::LegacyEqType1; break;
+            case LayerParamIndex::EqType2: legacy_layer_param = LayerParamIndex::LegacyEqType2; break;
+            case LayerParamIndex::LfoShape: legacy_layer_param = LayerParamIndex::LegacyLfoShape; break;
+            case LayerParamIndex::LfoDestination:
+                legacy_layer_param = LayerParamIndex::LegacyLfoDestination;
+                break;
+            case LayerParamIndex::MonophonicMode:
+                legacy_layer_param = LayerParamIndex::LegacyMonophonicBool;
+                break;
+            default: return k_nullopt;
+        }
+        return ParamIndexFromLayerParamIndex(lp->layer_num, *legacy_layer_param);
+    }
+
+    switch (modern) {
+        case ParamIndex::FilterCutoff: return ParamIndex::LegacyFilterCutoff;
+        case ParamIndex::FilterResonance: return ParamIndex::LegacyFilterResonance;
+        case ParamIndex::FilterGain: return ParamIndex::LegacyFilterGain;
+        case ParamIndex::FilterType: return ParamIndex::LegacyFilterType;
+        case ParamIndex::ChorusHighpass: return ParamIndex::LegacyChorusHighpass;
+        case ParamIndex::ConvolutionReverbHighpass: return ParamIndex::LegacyConvolutionReverbHighpass;
+        default: return k_nullopt;
+    }
 }
 
 void ModerniseMacroDestinations(StateSnapshot& state, ParamIndex legacy, ParamIndex modern) {

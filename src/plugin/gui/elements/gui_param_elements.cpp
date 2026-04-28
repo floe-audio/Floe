@@ -279,7 +279,7 @@ static void DoParamMenuItems(GuiState& g, ParamIndex param_index) {
 // parameter is currently overriding `modern_param_index`. Clicking opens a confirmation dialog
 // that lets the user clear the override.
 static void DoLegacyOverrideOverlay(GuiState& g, Rect window_r, ParamIndex modern_param_index) {
-    auto const legacy_idx = LegacyOverridingParam(g.engine.processor.main_params, modern_param_index);
+    auto const legacy_idx = LegacyOverridingParam(modern_param_index, g.engine.processor.main_params.values);
     if (!legacy_idx) return;
 
     auto const badge_size = k_font_icons_size;
@@ -332,7 +332,7 @@ Box DoMenuParameter(GuiState& g,
     ASSERT(param.info.value_type == ParamValueType::Menu);
 
     bool const legacy_override =
-        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+        LegacyOverridingParam(param.info.index, g.engine.processor.main_params.values).HasValue();
     if (legacy_override) options.greyed_out = true;
 
     auto const container = DoBox(g.builder,
@@ -471,7 +471,7 @@ Box DoKnobParameter(GuiState& g,
     ASSERT(param.info.value_type == ParamValueType::Float);
 
     bool const legacy_override =
-        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+        LegacyOverridingParam(param.info.index, g.engine.processor.main_params.values).HasValue();
     if (legacy_override) options.greyed_out = true;
 
     auto container = DoBox(g.builder,
@@ -663,7 +663,7 @@ Box DoVerticalSliderParameter(GuiState& g,
     ASSERT(param.info.value_type == ParamValueType::Float);
 
     bool const legacy_override =
-        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+        LegacyOverridingParam(param.info.index, g.engine.processor.main_params.values).HasValue();
     if (legacy_override) options.greyed_out = true;
 
     auto container = DoBox(g.builder,
@@ -759,7 +759,7 @@ Box DoButtonParameter(GuiState& g,
     bool const state = param.BoolValue();
 
     bool const legacy_override =
-        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+        LegacyOverridingParam(param.info.index, g.engine.processor.main_params.values).HasValue();
     if (legacy_override) options.greyed_out = true;
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
@@ -916,7 +916,7 @@ Box DoIntParameter(GuiState& g,
     ASSERT(param.info.value_type == ParamValueType::Int);
 
     bool const legacy_override =
-        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+        LegacyOverridingParam(param.info.index, g.engine.processor.main_params.values).HasValue();
     if (legacy_override) options.greyed_out = true;
 
     auto const container = DoBox(g.builder,
@@ -1073,7 +1073,7 @@ Box DoPercentDraggerParameter(GuiState& g,
                               DescribedParamValue const& param,
                               PercentDraggerOptions options) {
     bool const legacy_override =
-        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+        LegacyOverridingParam(param.info.index, g.engine.processor.main_params.values).HasValue();
     if (legacy_override) options.greyed_out = true;
 
     auto const container = DoBox(g.builder,

@@ -115,3 +115,20 @@ void ModerniseMacroDestinations(StateSnapshot& state, ParamIndex legacy, ParamIn
 // strength then scales y values down toward x=0 so low-velocity notes get quieter.
 CurveMap::Points ModerniseVelocityToCurve(param_values::VelocityMappingMode mode,
                                           f32 velocity_volume_strength);
+
+// Returns the legacy parameter that supersedes a given modern one, or nullopt if `modern` has no
+// 1:1 legacy counterpart (e.g. velocity, which folds into curves rather than a single param).
+// Inverse of ModernCounterpartOf. Doesn't read any parameter values — combine with
+// IsLegacyParamOverridingModern to check whether the legacy is currently overriding.
+Optional<ParamIndex> LegacyCounterpartOf(ParamIndex modern);
+
+// Returns the legacy parameter that is currently overriding `modern`, or nullopt if there is no
+// counterpart or it isn't overriding. `all_linear_values` is the full param-value array (e.g.
+// `Parameters::values` in the audio processor, or `StateSnapshot::param_values`).
+inline Optional<ParamIndex> LegacyOverridingParam(ParamIndex modern, Span<f32 const> all_linear_values) {
+    auto const legacy = LegacyCounterpartOf(modern);
+    if (!legacy) return k_nullopt;
+    auto const& legacy_desc = k_param_descriptors[ToInt(*legacy)];
+    if (IsLegacyParamOverridingModern(legacy_desc, all_linear_values[ToInt(*legacy)])) return legacy;
+    return k_nullopt;
+}
