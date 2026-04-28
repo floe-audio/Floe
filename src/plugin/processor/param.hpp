@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/legacy_param_logic.hpp"
 
 // It's sometimes very useful to pass around a parameter value with its descriptor.
 struct DescribedParamValue {

@@ -31,7 +31,7 @@ struct ParameterComponentOptions {
 Box DoKnobParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    ParameterComponentOptions const& options = {});
+                    ParameterComponentOptions options = {});
 
 struct MenuParameterComponentOptions {
     f32 width = layout::k_hug_contents;
@@ -46,7 +46,7 @@ struct MenuParameterComponentOptions {
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    MenuParameterComponentOptions const& options = {});
+                    MenuParameterComponentOptions options = {});
 
 struct ButtonParameterComponentOptions {
     f32 width = layout::k_hug_contents;
@@ -61,7 +61,7 @@ struct ButtonParameterComponentOptions {
 Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
-                      ButtonParameterComponentOptions const& options = {});
+                      ButtonParameterComponentOptions options = {});
 
 struct IntParameterComponentOptions {
     f32 width; // Required, no auto-width.
@@ -76,7 +76,7 @@ struct IntParameterComponentOptions {
 Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
-                   IntParameterComponentOptions const& options);
+                   IntParameterComponentOptions options);
 
 struct PercentDraggerOptions {
     f32 width;
@@ -88,7 +88,7 @@ struct PercentDraggerOptions {
 Box DoPercentDraggerParameter(GuiState& g,
                               Box parent,
                               DescribedParamValue const& param,
-                              PercentDraggerOptions const& options);
+                              PercentDraggerOptions options);
 
 struct MuteSoloButtonsOptions {
     bool vertical = false; // If true, buttons stack vertically (M on top, S on bottom).
@@ -114,7 +114,7 @@ struct VerticalSliderParameterOptions {
 Box DoVerticalSliderParameter(GuiState& g,
                               Box parent,
                               DescribedParamValue const& param,
-                              VerticalSliderParameterOptions const& options);
+                              VerticalSliderParameterOptions options);
 
 String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out = false);
 

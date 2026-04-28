@@ -216,6 +216,28 @@ void RemoveMacroDestination(AudioProcessor& processor, RemoveMacroDestinationCon
     processor.host.request_process(&processor.host);
 }
 
+void RetargetMacroDestinations(AudioProcessor& processor, ParamIndex from, ParamIndex to) {
+    ASSERT(g_is_logical_main_thread);
+
+    bool any_changed = false;
+    for (auto const macro_index : Range(k_num_macros)) {
+        auto& dests = processor.main_macro_destinations[macro_index];
+        for (auto const dest_index : Range(k_max_macro_destinations)) {
+            auto& dest = dests.items[dest_index];
+            if (!dest.param_index) break;
+            if (*dest.param_index != from) continue;
+            dest.param_index = to;
+            processor.macro_dest_inbox[macro_index][dest_index].Produce({
+                .new_value = dest.value,
+                .new_param_index = to,
+            });
+            any_changed = true;
+        }
+    }
+
+    if (any_changed) processor.host.request_process(&processor.host);
+}
+
 void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChangedConfig config) {
     ASSERT(g_is_logical_main_thread);
 

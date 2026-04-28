@@ -238,13 +238,51 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 if (builder.imgui.IsHotOrActive(imgui_id, MouseButton::Left)) {
                     dyn::Append(g.macros_gui_state.draw_overlays, [&dest, r = knob_r](GuiState& g) {
                         auto const& descriptor = k_param_descriptors[ToInt(*dest.param_index)];
-                        auto const str = fmt::Format(g.builder.arena,
-                                                     "{}\n{}\n{.0}%",
-                                                     descriptor.gui_label,
-                                                     descriptor.ModuleString(" › "_s),
-                                                     dest.ProjectedValue() * 100);
+                        auto const str =
+                            fmt::Format(g.builder.arena,
+                                        "{}\n{}\n{.0}%{}",
+                                        descriptor.gui_label,
+                                        descriptor.ModuleString(" › "_s),
+                                        dest.ProjectedValue() * 100,
+                                        descriptor.flags.legacy ? "\n(legacy parameter)"_s : ""_s);
                         DrawPopupTextbox(g, str, r);
                     });
+                }
+
+                if (k_param_descriptors[ToInt(*dest.param_index)].flags.legacy) {
+                    auto const badge_size = knob_r.w * 0.55f;
+                    Rect const badge_r {
+                        .x = knob_r.Right() - badge_size * 0.85f,
+                        .y = knob_r.y - badge_size * 0.15f,
+                        .w = badge_size,
+                        .h = badge_size,
+                    };
+
+                    auto const badge_imgui_id = builder.imgui.MakeId("legacy-dest-badge"_s);
+                    Tooltip(
+                        g,
+                        badge_imgui_id,
+                        badge_r,
+                        "Targets a legacy parameter — kept for DAW automation. Macro modulation will only be audible while the legacy override is active."_s,
+                        {});
+
+                    builder.imgui.overlay_draw_list->AddCircleFilled(
+                        badge_r.Centre(),
+                        badge_r.w * 0.5f,
+                        ToU32(Col {.c = Col::Background0, .dark_mode = true}),
+                        12);
+
+                    builder.fonts.Push(ToInt(FontType::Icons));
+                    DEFER { builder.fonts.Pop(); };
+                    builder.imgui.overlay_draw_list->AddTextInRect(
+                        badge_r,
+                        ToU32({.c = Col::Yellow}),
+                        ICON_FA_TRIANGLE_EXCLAMATION,
+                        {
+                            .justification = TextJustification::Centred,
+                            .overflow_type = TextOverflowType::AllowOverflow,
+                            .font_scaling = 0.7f,
+                        });
                 }
 
                 {

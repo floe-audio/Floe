@@ -12,8 +12,12 @@
 #include "gui_framework/gui_live_edit.hpp"
 
 static ColSet MidIconButtonColours(bool greyed_out) {
+    if (greyed_out) {
+        auto const dimmed = LiveColStruct(UiColMap::MidIconDimmed);
+        return {.base = dimmed, .hot = dimmed, .active = dimmed};
+    }
     return {
-        .base = LiveColStruct(greyed_out ? UiColMap::MidIconDimmed : UiColMap::MidIcon),
+        .base = LiveColStruct(UiColMap::MidIcon),
         .hot = LiveColStruct(UiColMap::MidTextHot),
         .active = LiveColStruct(UiColMap::MidTextOn),
     };

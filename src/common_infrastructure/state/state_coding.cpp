@@ -17,6 +17,7 @@
 #include "common_infrastructure/sample_library/mdata.hpp"
 
 #include "config.h"
+#include "legacy_param_logic.hpp"
 #include "state_snapshot.hpp"
 
 using namespace json;
@@ -559,31 +560,32 @@ enum class StateVersion : u16 {
     Latest = LatestPlusOne - 1,
 };
 
-template <typename CurrentEnum, usize N>
-static void MigrateLegacyEnumLayerParam(StateSnapshot& state,
-                                        StateSource source,
-                                        LayerParamIndex legacy_idx,
-                                        LayerParamIndex current_idx,
-                                        Array<CurrentEnum, N> const& mapping) {
-    for (auto const layer_index : Range(k_num_layers)) {
-        auto const legacy_pi = ParamIndexFromLayerParamIndex(layer_index, legacy_idx);
-        auto const current_pi = ParamIndexFromLayerParamIndex(layer_index, current_idx);
-        auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
-        auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
-        if (source == StateSource::Daw) {
-            // We maintain DAW backwards compatibility by retaining the legacy parameter value and default the
-            // newer version. Our audio-processing code will correctly select the true 'effective' value. See
-            // EnumParamWithLegacies.
-            state.LinearParam(current_pi) = current_default;
-        } else {
-            // Remap from old to new and clear out the old.
-            auto& legacy_val = state.LinearParam(legacy_pi);
-            auto const legacy_int = (usize)Trunc(legacy_val);
-            legacy_val = legacy_default;
-            state.LinearParam(current_pi) =
-                (legacy_int < mapping.size) ? (f32)mapping[legacy_int] : current_default;
+// Modernise the legacy parameter `legacy_pi` for state load. For DAW state we leave the legacy
+// value intact (so DAW automation continues to drive the audio) and seed the modern parameter
+// with the audibly-equivalent value of legacy_default — that's what the engine reads during the
+// brief moments when DAW automation crosses through legacy_default and the override drops out
+// (see IsLegacyParamOverridingModern). For preset state we modernise the legacy value onto the
+// modern parameter and clear the legacy slot, since presets carry no automation lanes that could
+// be referencing the legacy parameter.
+static void ModerniseLegacyParamOnLoad(StateSnapshot& state, ParamIndex legacy_pi, StateSource source) {
+    auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
+    if (source == StateSource::Daw) {
+        if (auto const m = ModerniseLegacyValue(legacy_pi, legacy_default))
+            state.LinearParam(m->modern_param) = m->modern_linear;
+    } else {
+        auto& legacy_val = state.LinearParam(legacy_pi);
+        if (auto const m = ModerniseLegacyValue(legacy_pi, legacy_val)) {
+            state.LinearParam(m->modern_param) = m->modern_linear;
+            ModerniseMacroDestinations(state, legacy_pi, m->modern_param);
         }
+        legacy_val = legacy_default;
     }
+}
+
+static void
+ModerniseLegacyLayerParamOnLoad(StateSnapshot& state, LayerParamIndex legacy_idx, StateSource source) {
+    for (auto const layer_index : Range(k_num_layers))
+        ModerniseLegacyParamOnLoad(state, ParamIndexFromLayerParamIndex(layer_index, legacy_idx), source);
 }
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
@@ -602,92 +604,25 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
         if (source == StateSource::Daw) {
             // We don't want to adapt parameters from the DAW because there might be automation on them.
-            // We disable the velocity curve by setting it to a 100% straight line.
-            for (auto const layer_index : Range(k_num_layers)) {
-                dyn::AssignAssumingAlreadyEmpty(state.velocity_curve_points[layer_index],
-                                                Array {
-                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                });
-            }
+            // Disable the velocity curve by setting it to a flat-1 straight line — the audio engine
+            // still applies the legacy LegacyVelocityMapping + MasterVelocity params on top.
+            for (auto const layer_index : Range(k_num_layers))
+                state.velocity_curve_points[layer_index] =
+                    ModerniseVelocityToCurve(param_values::VelocityMappingMode::None, 0);
         } else {
-            // Adapt LayerParamIndex::VelocityMapping to the new curve and clear out the old param.
+            auto& master_val = state.LinearParam(ParamIndex::MasterVelocity);
+            ASSERT(master_val >= 0.0f && master_val <= 1.0f);
+            auto const velocity_volume_strength = master_val;
+            master_val = 0.0f;
+
             for (auto const layer_index : Range(k_num_layers)) {
                 auto& val = state.LinearParam(
                     ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping));
-                auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
-
-                // We don't use this param anymore.
+                auto const mode = (param_values::VelocityMappingMode)Round(val);
                 val = (f32)param_values::VelocityMappingMode::None;
 
-                auto& points = state.velocity_curve_points[layer_index];
-                switch (velocity_mapping_mode) {
-                    case param_values::VelocityMappingMode::None:
-                        // Flat at max volume.
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::TopToBottom:
-                        // Linear
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::BottomToTop:
-                        // Inverse linear
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::TopToMiddle:
-                        // Flat until middle, then linear ramp-up to end
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::MiddleOutwards:
-                        // Linear ramp-up to middle, then linear ramp-down to end
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                            CurveMap::Point {0.5f, 1.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::MiddleToBottom:
-                        // Linear ramp-down to middle, then flat to end
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::Count: break;
-                }
-            }
-
-            // Adapt MasterVelocity to the new curves and clear out the old param.
-            auto& val = state.LinearParam(ParamIndex::MasterVelocity);
-            ASSERT(val >= 0.0f && val <= 1.0f);
-            auto const velocity_volume_strength = val;
-            val = 0.0f; // We don't use this param anymore, so set it to 0.
-
-            for (auto& points : state.velocity_curve_points) {
-                // Now, we must scale y values in a linear fashion. The stronger the velocity-volume value,
-                // the more we should bring down the y values of the points nearer to x=0.
-                for (auto& point : points)
-                    point.y = Max(point.y - (point.y * (1.0f - point.x) * velocity_volume_strength), 0.0f);
+                state.velocity_curve_points[layer_index] =
+                    ModerniseVelocityToCurve(mode, velocity_volume_strength);
             }
         }
     }
@@ -718,80 +653,19 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         }
     }
 
-    if (version < StateVersion::AddedMonophonicModeParameter) {
-        if (source == StateSource::Daw) {
-            // We don't want to adapt parameters from the DAW because there might be automation on the bool.
-            // Set new param to default (Off/polyphonic)
-            for (auto const layer_index : Range(k_num_layers)) {
-                state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode)) =
-                    (f32)param_values::MonophonicMode::Off;
-            }
-        } else {
-            // Adapt legacy Monophonic bool to new MonophonicMode enum
-            for (auto const layer_index : Range(k_num_layers)) {
-                auto& bool_val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyMonophonicBool));
+    if (version < StateVersion::AddedMonophonicModeParameter)
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyMonophonicBool, source);
 
-                auto const was_monophonic = bool_val >= 0.5f; // Bool params use 0.0f/1.0f
+    if (version < StateVersion::AddedNewLfoShapeParameter)
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyLfoShape, source);
 
-                // Clear the legacy parameter
-                bool_val = 0.0f;
-
-                // Set new parameter: false -> Off, true -> Retrigger (preserve old behaviour)
-                auto& mode_val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode));
-                mode_val = was_monophonic ? (f32)param_values::MonophonicMode::Retrigger
-                                          : (f32)param_values::MonophonicMode::Off;
-            }
-        }
-    }
-
-    if (version < StateVersion::AddedNewLfoShapeParameter) {
-        MigrateLegacyEnumLayerParam(state,
-                                    source,
-                                    LayerParamIndex::LegacyLfoShape,
-                                    LayerParamIndex::LfoShape,
-                                    param_values::k_legacy_lfo_shape_to_current);
-    }
-
-    if (version < StateVersion::AddedNewLfoDestinationParameter) {
-        MigrateLegacyEnumLayerParam(state,
-                                    source,
-                                    LayerParamIndex::LegacyLfoDestination,
-                                    LayerParamIndex::LfoDestination,
-                                    param_values::k_legacy_lfo_destination_to_current);
-    }
+    if (version < StateVersion::AddedNewLfoDestinationParameter)
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyLfoDestination, source);
 
     if (version < StateVersion::AddedExtraFilterTypes) {
-        MigrateLegacyEnumLayerParam(state,
-                                    source,
-                                    LayerParamIndex::LegacyEqType1,
-                                    LayerParamIndex::EqType1,
-                                    param_values::k_legacy_eq_type_to_current);
-        MigrateLegacyEnumLayerParam(state,
-                                    source,
-                                    LayerParamIndex::LegacyEqType2,
-                                    LayerParamIndex::EqType2,
-                                    param_values::k_legacy_eq_type_to_current);
-
-        {
-            auto const legacy_pi = ParamIndex::LegacyFilterType;
-            auto const current_pi = ParamIndex::FilterType;
-            auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
-            auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
-            if (source == StateSource::Daw) {
-                state.LinearParam(current_pi) = current_default;
-            } else {
-                auto& legacy_val = state.LinearParam(legacy_pi);
-                auto const legacy_int = (usize)Trunc(legacy_val);
-                legacy_val = legacy_default;
-                state.LinearParam(current_pi) =
-                    (legacy_int < param_values::k_legacy_effect_filter_type_to_current.size)
-                        ? (f32)param_values::k_legacy_effect_filter_type_to_current[legacy_int]
-                        : current_default;
-            }
-        }
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqType1, source);
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqType2, source);
+        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterType, source);
     }
 
     if (version < StateVersion::AddedEffectVisibility) {
@@ -810,113 +684,23 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     if (version < StateVersion::AddedSliceArpConfig) state.slice_arp_configs = {};
 
     if (version < StateVersion::AddedLinearFilterResonance) {
-        // Layer filter: old x^4 skew → new linear skew. Convert: new = old^4.
-        for (auto const layer_index : Range(k_num_layers)) {
-            auto const legacy_pi =
-                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyFilterResonance);
-            auto const current_pi =
-                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance);
-            auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
-            auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
-            if (source == StateSource::Daw) {
-                state.LinearParam(current_pi) = current_default;
-            } else {
-                auto& legacy_val = state.LinearParam(legacy_pi);
-                auto const new_val = Clamp(Pow(legacy_val, 4.0f), 0.0f, 1.0f);
-                legacy_val = legacy_default;
-                state.LinearParam(current_pi) = new_val;
-            }
-        }
-
-        // EQ bands: old x^5 skew → new x^2 skew. Convert: new = old^2.5.
-        for (auto const layer_index : Range(k_num_layers)) {
-            for (auto const [legacy_idx_enum, current_idx_enum] :
-                 Array<Pair<LayerParamIndex, LayerParamIndex>, 2> {
-                     {{LayerParamIndex::LegacyEqResonance1, LayerParamIndex::EqResonance1},
-                      {LayerParamIndex::LegacyEqResonance2, LayerParamIndex::EqResonance2}}}) {
-                auto const legacy_pi = ParamIndexFromLayerParamIndex(layer_index, legacy_idx_enum);
-                auto const current_pi = ParamIndexFromLayerParamIndex(layer_index, current_idx_enum);
-                auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
-                auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
-                if (source == StateSource::Daw) {
-                    state.LinearParam(current_pi) = current_default;
-                } else {
-                    auto& legacy_val = state.LinearParam(legacy_pi);
-                    auto const new_val = Clamp(Pow(legacy_val, 2.5f), 0.0f, 1.0f);
-                    legacy_val = legacy_default;
-                    state.LinearParam(current_pi) = new_val;
-                }
-            }
-        }
-
-        // Effect filter: old x^5 skew → new x^2 skew. Convert: new = old^2.5.
-        {
-            auto const legacy_pi = ParamIndex::LegacyFilterResonance;
-            auto const current_pi = ParamIndex::FilterResonance;
-            auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
-            auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
-            if (source == StateSource::Daw) {
-                state.LinearParam(current_pi) = current_default;
-            } else {
-                auto& legacy_val = state.LinearParam(legacy_pi);
-                auto const new_val = Clamp(Pow(legacy_val, 2.5f), 0.0f, 1.0f);
-                legacy_val = legacy_default;
-                state.LinearParam(current_pi) = new_val;
-            }
-        }
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyFilterResonance, source);
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqResonance1, source);
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqResonance2, source);
+        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterResonance, source);
     }
 
-    if (version < StateVersion::AddedLinearFilterGain) {
-        auto const legacy_pi = ParamIndex::LegacyFilterGain;
-        auto const current_pi = ParamIndex::FilterGain;
-        auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
-        auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
-        if (source == StateSource::Daw) {
-            state.LinearParam(current_pi) = current_default;
-        } else {
-            // Old: DSP used legacy value as peak_gain directly; two passes → audible = 2× legacy.
-            // New: FilterGain = audible gain; DSP uses FilterGain/2 per pass → audible = FilterGain.
-            auto& legacy_val = state.LinearParam(legacy_pi);
-            auto const old_db = k_param_descriptors[ToInt(legacy_pi)].ProjectValue(legacy_val);
-            auto const new_db = old_db * 2;
-            legacy_val = legacy_default;
-            state.LinearParam(current_pi) =
-                k_param_descriptors[ToInt(current_pi)].LineariseValue(new_db, true).ValueOr(current_default);
-        }
-    }
+    if (version < StateVersion::AddedLinearFilterGain)
+        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterGain, source);
 
     if (version < StateVersion::AddedLogFrequencyParams) {
-        // Convert old pow-skewed linear values to the new log-skewed linear values by routing
-        // through Hz: project via the legacy descriptor, then linearise via the new descriptor.
-        auto const migrate_freq = [&](ParamIndex legacy_pi, ParamIndex current_pi) {
-            auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
-            auto const& current_desc = k_param_descriptors[ToInt(current_pi)];
-            if (source == StateSource::Daw) {
-                state.LinearParam(current_pi) = current_desc.default_linear_value;
-            } else {
-                auto& legacy_val = state.LinearParam(legacy_pi);
-                auto const hz = legacy_desc.ProjectValue(legacy_val);
-                legacy_val = legacy_desc.default_linear_value;
-                state.LinearParam(current_pi) =
-                    current_desc.LineariseValue(hz, true).ValueOr(current_desc.default_linear_value);
-            }
-        };
-
-        for (auto const layer_index : Range(k_num_layers)) {
-            for (auto const [legacy_idx_enum, current_idx_enum] :
-                 Array<Pair<LayerParamIndex, LayerParamIndex>, 4> {
-                     {{LayerParamIndex::LegacyFilterCutoff, LayerParamIndex::FilterCutoff},
-                      {LayerParamIndex::LegacyEqFreq1, LayerParamIndex::EqFreq1},
-                      {LayerParamIndex::LegacyEqFreq2, LayerParamIndex::EqFreq2},
-                      {LayerParamIndex::LegacyEqFreq3, LayerParamIndex::EqFreq3}}}) {
-                migrate_freq(ParamIndexFromLayerParamIndex(layer_index, legacy_idx_enum),
-                             ParamIndexFromLayerParamIndex(layer_index, current_idx_enum));
-            }
-        }
-
-        migrate_freq(ParamIndex::LegacyFilterCutoff, ParamIndex::FilterCutoff);
-        migrate_freq(ParamIndex::LegacyChorusHighpass, ParamIndex::ChorusHighpass);
-        migrate_freq(ParamIndex::LegacyConvolutionReverbHighpass, ParamIndex::ConvolutionReverbHighpass);
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyFilterCutoff, source);
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqFreq1, source);
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqFreq2, source);
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqFreq3, source);
+        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterCutoff, source);
+        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyChorusHighpass, source);
+        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyConvolutionReverbHighpass, source);
     }
 
     // During a brief in-development period, ArpMode was a 3-value menu: Off=0, Played=1, Fixed=2.
@@ -933,13 +717,8 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         }
     }
 
-    if (version < StateVersion::ExpandedLfoShapeParameter) {
-        MigrateLegacyEnumLayerParam(state,
-                                    source,
-                                    LayerParamIndex::LegacyLfoShapeV2,
-                                    LayerParamIndex::LfoShape,
-                                    param_values::k_legacy_lfo_shape_v2_to_current);
-    }
+    if (version < StateVersion::ExpandedLfoShapeParameter)
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyLfoShapeV2, source);
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so

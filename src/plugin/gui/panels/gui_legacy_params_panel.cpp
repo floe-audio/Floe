@@ -6,6 +6,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/legacy_param_logic.hpp"
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
@@ -14,14 +15,49 @@
 #include "gui/elements/gui_param_elements.hpp"
 #include "processor/processor.hpp"
 
-static void DrawDarkModeModalBackground(imgui::Context const& imgui) {
-    imgui.draw_list->PushClipRectFullScreen();
-    imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x6c0f0d0d);
-    imgui.draw_list->PopClipRect();
-
+static void DrawDarkModePanelBackground(imgui::Context const& imgui) {
     auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
+    DrawDropShadow(imgui, r, rounding);
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
+}
+
+static bool IsVelocityLegacyParam(ParamIndex p) {
+    if (auto const lp = LayerParamIndexAndLayerFor(p))
+        return lp->param == LayerParamIndex::LegacyVelocityMapping;
+    return p == ParamIndex::MasterVelocity;
+}
+
+// The legacy velocity system is a per-layer mode + a global master strength that combine into the
+// modern per-layer velocity curve points. Modernising it touches all layers + the master at
+// once, regardless of which row the user clicked.
+static void ModerniseLegacyVelocity(AudioProcessor& processor) {
+    auto const strength = processor.main_params.LinearValue(ParamIndex::MasterVelocity);
+
+    for (auto const layer_index : Range<u8>(k_num_layers)) {
+        auto const legacy_pi =
+            ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping);
+        auto const mode =
+            (param_values::VelocityMappingMode)Round(processor.main_params.LinearValue(legacy_pi));
+        auto const points = ModerniseVelocityToCurve(mode, strength);
+        processor.layer_processors[layer_index].velocity_curve_map.SetNewPoints(points);
+        SetParameterValue(processor, legacy_pi, (f32)param_values::VelocityMappingMode::None, {});
+    }
+
+    SetParameterValue(processor, ParamIndex::MasterVelocity, 0, {});
+}
+
+static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
+    if (IsVelocityLegacyParam(legacy)) {
+        ModerniseLegacyVelocity(processor);
+        return;
+    }
+    auto const legacy_value = processor.main_params.LinearValue(legacy);
+    auto const m = ModerniseLegacyValue(legacy, legacy_value);
+    if (!m) return;
+    SetParameterValue(processor, m->modern_param, m->modern_linear, {});
+    SetParameterValue(processor, legacy, k_param_descriptors[ToInt(legacy)].default_linear_value, {});
+    RetargetMacroDestinations(processor, legacy, m->modern_param);
 }
 
 static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor const& desc, Box parent) {
@@ -31,8 +67,6 @@ static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor con
     auto const row = DoBox(builder,
                            {
                                .parent = parent,
-                               .border_colours = Col {.c = Col::Overlay0, .dark_mode = true},
-                               .round_background_corners = 0b1111,
                                .layout {
                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                    .contents_padding = {.lr = 8, .tb = 6},
@@ -119,36 +153,187 @@ static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor con
         }
     }
 
-    auto const reset_btn =
+    auto const reset_btn = DoBox(
+        builder,
+        {
+            .parent = right_group,
+            .text = ICON_FA_WAND_MAGIC_SPARKLES,
+            .size_from_text = true,
+            .font = FontType::Icons,
+            .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+            .background_fill_auto_hot_active_overlay = true,
+            .round_background_corners = 0b1111,
+            .tooltip =
+                "Modernise: hand control over to the modern parameter, copying across the audibly-equivalent value so the sound doesn't change."_s,
+            .button_behaviour = imgui::ButtonConfig {},
+            .extra_margin_for_mouse_events = 4,
+        });
+
+    if (reset_btn.button_fired) ModerniseLegacyParam(g.engine.processor, desc.index);
+}
+
+static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
+    auto const panel = DoBox(builder,
+                             {
+                                 .layout {
+                                     .size = layout::k_fill_parent,
+                                     .contents_padding = {.lrtb = k_default_spacing},
+                                     .contents_gap = k_default_spacing,
+                                     .contents_direction = layout::Direction::Column,
+                                     .contents_align = layout::Alignment::Start,
+                                     .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                 },
+                             });
+
+    bool const any_overriding = ({
+        bool found = false;
+        for (auto const& desc : k_param_descriptors) {
+            if (!desc.flags.legacy) continue;
+            if (IsLegacyParamOverridingModern(desc, g.engine.processor.main_params.LinearValue(desc.index))) {
+                found = true;
+                break;
+            }
+        }
+        found;
+    });
+
+    // TL;DR / at-a-glance summary.
+    {
+        auto const tldr_box =
+            DoBox(builder,
+                  {
+                      .parent = panel,
+                      .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
+                      .round_background_corners = 0b1111,
+                      .corner_rounding = k_corner_rounding,
+                      .layout {
+                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                          .contents_padding = {.lrtb = 10},
+                          .contents_gap = 4,
+                          .contents_direction = layout::Direction::Column,
+                          .contents_align = layout::Alignment::Start,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                      },
+                  });
+
         DoBox(builder,
               {
-                  .parent = right_group,
-                  .text = ICON_FA_ROTATE_LEFT,
+                  .parent = tldr_box,
+                  .text = "At a glance",
                   .size_from_text = true,
-                  .font = FontType::Icons,
-                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
-                  .background_fill_auto_hot_active_overlay = true,
-                  .round_background_corners = 0b1111,
-                  .tooltip = "Disable this legacy override and restore the modern parameter"_s,
-                  .button_behaviour = imgui::ButtonConfig {},
-                  .extra_margin_for_mouse_events = 4,
+                  .font = FontType::Heading2,
+                  .text_colours = Col {.c = Col::Text, .dark_mode = true},
               });
 
-    if (reset_btn.button_fired)
-        SetParameterValue(g.engine.processor, desc.index, desc.default_linear_value, {});
+        DoBox(
+            builder,
+            {
+                .parent = tldr_box,
+                .text =
+                    any_overriding
+                        ? "Older versions of some parameters are currently driving Floe instead of the modern controls on the main UI. Your project sounds exactly as it did when saved. If you don't automate these parameters in your DAW, click 'Modernise all' to switch over to the modern controls — your sound won't change. If you do automate them in your DAW, leave them alone, or remove the automation first."_s
+                        : "No legacy parameters are currently overriding modern controls. Nothing for you to do here."_s,
+                .wrap_width = k_wrap_to_parent,
+                .size_from_text = true,
+                .font = FontType::Body,
+                .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+            });
+    }
+
+    // Modernise all button (only when there's something to modernise).
+    if (any_overriding) {
+        auto const modernise_btn = DoBox(
+            builder,
+            {
+                .parent = panel,
+                .background_fill_colours = Col {.c = Col::Surface1, .dark_mode = true},
+                .background_fill_auto_hot_active_overlay = true,
+                .round_background_corners = 0b1111,
+                .corner_rounding = k_corner_rounding,
+                .layout =
+                    {
+                        .size = layout::k_hug_contents,
+                        .contents_padding = {.lr = 10, .tb = 6},
+                        .contents_gap = 6,
+                        .contents_direction = layout::Direction::Row,
+                        .contents_align = layout::Alignment::Start,
+                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                    },
+                .tooltip =
+                    "Modernise every overriding parameter: hand control over to the modern controls, copying across the audibly-equivalent values so the sound doesn't change. Only do this if you've checked your DAW for automation on these parameters."_s,
+                .button_behaviour = imgui::ButtonConfig {},
+            });
+
+        DoBox(builder,
+              {
+                  .parent = modernise_btn,
+                  .text = ICON_FA_WAND_MAGIC_SPARKLES,
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours = Col {.c = Col::Text, .dark_mode = true},
+                  .parent_dictates_hot_and_active = true,
+              });
+
+        DoBox(builder,
+              {
+                  .parent = modernise_btn,
+                  .text = "Modernise all"_s,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+                  .text_colours = Col {.c = Col::Text, .dark_mode = true},
+                  .parent_dictates_hot_and_active = true,
+              });
+
+        if (modernise_btn.button_fired) {
+            for (auto const& desc : k_param_descriptors) {
+                if (!desc.flags.legacy) continue;
+                if (!IsLegacyParamOverridingModern(desc,
+                                                   g.engine.processor.main_params.LinearValue(desc.index)))
+                    continue;
+                ModerniseLegacyParam(g.engine.processor, desc.index);
+            }
+        }
+    }
+
+    // Full explanation.
+    DoBox(
+        builder,
+        {
+            .parent = panel,
+            .text =
+                "Floe never deletes parameters: when one needs to change, the old version is kept as a 'legacy' parameter so existing DAW automation keeps working exactly as before. Presets are modernised automatically when loaded — but DAW projects can't be, since Floe can't tell which parameters your DAW is automating.\n\nWhile a legacy override is active, the corresponding modern control is greyed out and disabled, marked with a yellow warning badge that opens this panel. Its knob position and any visualisers (filter response, EQ curve, envelope shape, etc.) reflect the modern parameter's underlying value, not the legacy value actually driving the audio — the sound is correct, but the on-screen display is not.\n\nModernising hands control over to the modern parameter and copies across an audibly-equivalent value so the sound doesn't change. Floe decides whether a legacy parameter is overriding purely by checking whether its value is at the default, so if you modernise while DAW automation is still writing to the legacy parameter, the override will re-engage the moment automation moves the value off default. Remove or re-create the automation in your DAW first.",
+            .wrap_width = k_wrap_to_parent,
+            .size_from_text = true,
+            .font = FontType::Body,
+            .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+        });
+
+    // Param list.
+    if (any_overriding) {
+        auto const list = DoBox(builder,
+                                {
+                                    .parent = panel,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_gap = 2,
+                                        .contents_direction = layout::Direction::Column,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                    },
+                                });
+
+        for (auto const& desc : k_param_descriptors) {
+            if (!desc.flags.legacy) continue;
+            auto const linear_value = g.engine.processor.main_params.LinearValue(desc.index);
+            if (!IsLegacyParamOverridingModern(desc, linear_value)) continue;
+            LegacyParamRow(builder, g, desc, list);
+        }
+    }
 }
 
 static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
-    auto const root = DoBox(builder,
-                            {
-                                .layout {
-                                    .size = layout::k_fill_parent,
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
+    auto const root = DoModalRootBox(builder);
 
-    // Header
     {
         auto const title_container = DoBox(builder,
                                            {
@@ -190,76 +375,51 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
               });
     }
 
-    // Divider
-    {
-        auto const one_pixel = PixelsToWw(1.0f);
-        DoBox(builder,
-              {
-                  .parent = root,
-                  .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
-                  .layout {
-                      .size = {layout::k_fill_parent, one_pixel},
-                  },
-              });
-    }
+    DoModalDivider(builder, root, {.horizontal = true, .dark_mode = true});
 
-    DoBox(
-        builder,
-        {
-            .parent = root,
-            .text =
-                "Legacy parameters are superseded by the main GUI but kept for backwards compatibility with existing DAW automation. Only parameters that are currently overriding their modern equivalents are shown. Reset a parameter to disable its override. Learn more on the documentation website.",
-            .wrap_width = k_wrap_to_parent,
-            .size_from_text = true,
-            .font = FontType::Body,
-            .text_colours = Col {.c = Col::White, .alpha = 120},
-            .layout =
-                {
-                    .margins = {.t = 5, .lr = k_default_spacing},
-                },
-        });
-
-    auto const list = DoBox(builder,
-                            {
-                                .parent = root,
-                                .layout {
-                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                    .contents_padding = {.lrtb = k_default_spacing},
-                                    .contents_gap = 6,
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                },
-                            });
-
-    bool any_overriding = false;
-    for (auto const& desc : k_param_descriptors) {
-        if (!desc.flags.legacy) continue;
-        auto const linear_value = g.engine.processor.main_params.LinearValue(desc.index);
-        if (!IsLegacyParamOverridingModern(desc, linear_value)) continue;
-
-        any_overriding = true;
-        LegacyParamRow(builder, g, desc, list);
-    }
-
-    if (!any_overriding) {
-        DoBox(builder,
-              {
-                  .parent = list,
-                  .text = "No legacy parameters are currently overriding modern parameters."_s,
-                  .wrap_width = k_wrap_to_parent,
-                  .size_from_text = true,
-                  .font = FontType::BodyItalic,
-                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
-              });
-    }
+    DoBoxViewport(builder,
+                  {
+                      .run = [&g](GuiBuilder& b) { LegacyParamsPanelContent(b, g); },
+                      .bounds = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                          },
+                                      }),
+                      .imgui_id = builder.imgui.MakeId("LegacyParamsContent"),
+                      .viewport_config = ({
+                          auto cfg = k_default_modal_subviewport;
+                          cfg.draw_scrollbars = DrawModalScrollbarsDarkMode;
+                          cfg;
+                      }),
+                  });
 }
 
 void DoLegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
     if (!builder.imgui.IsModalOpen(k_legacy_params_panel_id)) return;
 
+    // TEMP DEV: on first open, randomise legacy params so the GUI legacy-override badges are
+    // visible without having to load an old DAW project. Remove before merging.
+    {
+        static bool s_randomised = false;
+        if (!s_randomised) {
+            s_randomised = true;
+            u64 seed = (u64)TimePoint::Now().Raw();
+            for (auto const param_index : Range(k_num_parameters)) {
+                auto const& desc = k_param_descriptors[param_index];
+                if (!desc.flags.legacy) continue;
+                auto const val = RandomFloatInRange<f32>(seed, desc.linear_range.min, desc.linear_range.max);
+                SetParameterValue(g.engine.processor, (ParamIndex)param_index, val, {});
+            }
+        }
+    }
+
     auto viewport_config = k_default_modal_viewport;
-    viewport_config.draw_background = DrawDarkModeModalBackground;
+    viewport_config.draw_background = DrawDarkModePanelBackground;
+    viewport_config.exclusive_focus = false;
+    viewport_config.close_on_click_outside = false;
+    viewport_config.close_on_escape = false;
 
     auto const window_size = GuiIo().in.window_size.ToFloat2();
     auto const panel_size = WwToPixels(f32x2 {520, 480});

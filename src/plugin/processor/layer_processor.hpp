@@ -262,11 +262,11 @@ struct LayerProcessor {
               .legacies = {{
                   {
                       .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShape),
-                      .remap_table = param_values::k_legacy_lfo_shape_to_current,
+                      .remap_table = k_legacy_lfo_shape_to_current,
                   },
                   {
                       .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShapeV2),
-                      .remap_table = param_values::k_legacy_lfo_shape_v2_to_current,
+                      .remap_table = k_legacy_lfo_shape_v2_to_current,
                   },
               }},
           })
@@ -274,7 +274,7 @@ struct LayerProcessor {
               .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoDestination),
               .legacies = {{{
                   .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoDestination),
-                  .remap_table = param_values::k_legacy_lfo_destination_to_current,
+                  .remap_table = k_legacy_lfo_destination_to_current,
               }}},
           })
         , eq_types({{
@@ -282,14 +282,14 @@ struct LayerProcessor {
                   .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType1),
                   .legacies = {{{
                       .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyEqType1),
-                      .remap_table = param_values::k_legacy_eq_type_to_current,
+                      .remap_table = k_legacy_eq_type_to_current,
                   }}},
               },
               {
                   .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType2),
                   .legacies = {{{
                       .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyEqType2),
-                      .remap_table = param_values::k_legacy_eq_type_to_current,
+                      .remap_table = k_legacy_eq_type_to_current,
                   }}},
               },
               {

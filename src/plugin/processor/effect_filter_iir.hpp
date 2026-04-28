@@ -51,7 +51,7 @@ class FilterEffect final : public Effect {
               .current_idx = ParamIndex::FilterType,
               .legacies = {{{
                   .idx = ParamIndex::LegacyFilterType,
-                  .remap_table = param_values::k_legacy_effect_filter_type_to_current,
+                  .remap_table = k_legacy_effect_filter_type_to_current,
               }}},
           }) {}
 

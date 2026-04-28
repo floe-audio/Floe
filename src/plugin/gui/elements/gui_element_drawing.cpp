@@ -140,7 +140,8 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
             LiveCol(mid_panel_colours ? UiColMap::KnobMidInnerArcGreyedOut : UiColMap::KnobInnerArcGreyedOut);
     }
     auto line_col = options.line_col;
-    if (!options.is_fake && (imgui.IsHot(id) || imgui.IsActive(id, MouseButton::Left))) {
+    if (!options.is_fake && !options.greyed_out &&
+        (imgui.IsHot(id) || imgui.IsActive(id, MouseButton::Left))) {
         inner_arc_col =
             LiveCol(mid_panel_colours ? UiColMap::KnobMidInnerArcHover : UiColMap::KnobInnerArcHover);
         line_col = LiveCol(mid_panel_colours ? UiColMap::KnobMidLineHover : UiColMap::KnobLineHover);

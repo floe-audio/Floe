@@ -15,11 +15,11 @@ TEST_CASE(TestEnumParamWithLegacies) {
         .legacies = {{
             {
                 .idx = legacy_v1,
-                .remap_table = param_values::k_legacy_lfo_shape_to_current,
+                .remap_table = k_legacy_lfo_shape_to_current,
             },
             {
                 .idx = legacy_v2,
-                .remap_table = param_values::k_legacy_lfo_shape_v2_to_current,
+                .remap_table = k_legacy_lfo_shape_v2_to_current,
             },
         }},
     };

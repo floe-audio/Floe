@@ -13,6 +13,7 @@
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
+#include "gui/panels/gui_legacy_params_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/param.hpp"
@@ -298,32 +299,14 @@ static void DoLegacyOverrideOverlay(GuiState& g, Rect window_r, ParamIndex moder
                                     .mouse_button = MouseButton::Left,
                                     .event = MouseButtonEvent::Up,
                                 })) {
-        auto const& legacy_desc = k_param_descriptors[ToInt(*legacy_idx)];
-        auto const& modern_desc = k_param_descriptors[ToInt(modern_param_index)];
-
-        dyn::AssignFitInCapacity(g.confirmation_dialog_state.title, "Legacy Parameter Override");
-        fmt::Assign(
-            g.confirmation_dialog_state.body_text,
-            "{} ({}) is being driven by an older legacy version of this parameter. While the override is in effect, the on-screen control will not respond.\n\nThis happens when plugin state is loaded from a DAW project. The legacy value is preserved in case your DAW project automates it — clearing it could break that automation. If you've checked your project and nothing references the legacy parameter, click OK to clear the override.",
-            modern_desc.name,
-            modern_desc.ModuleString(" › "));
-
-        g.confirmation_dialog_state.callback =
-            [&processor = g.engine.processor,
-             legacy = *legacy_idx,
-             default_val = legacy_desc.default_linear_value](ConfirmationDialogResult result) {
-                if (result == ConfirmationDialogResult::Ok)
-                    SetParameterValue(processor, legacy, default_val, {});
-            };
-
-        g.imgui.OpenModalViewport(g.confirmation_dialog_state.k_id);
+        g.imgui.OpenModalViewport(k_legacy_params_panel_id);
     }
 
-    Tooltip(g, imgui_id, badge_r, "Overridden by a legacy parameter — click for details"_s, {});
-
-    auto const clip_rect = g.imgui.draw_list->clip_rect_stack.Back();
-    g.imgui.overlay_draw_list->PushClipRect(clip_rect.xy, clip_rect.zw);
-    DEFER { g.imgui.overlay_draw_list->PopClipRect(); };
+    Tooltip(g,
+            imgui_id,
+            badge_r,
+            "Overridden by a legacy parameter — click to open the Legacy Parameters panel"_s,
+            {});
 
     g.fonts.Push(ToInt(FontType::Icons));
     DEFER { g.fonts.Pop(); };
@@ -332,21 +315,25 @@ static void DoLegacyOverrideOverlay(GuiState& g, Rect window_r, ParamIndex moder
         g.imgui.IsHotOrActive(imgui_id, MouseButton::Left)
             ? ChangeBrightness(ToU32({.c = g.imgui.IsHot(imgui_id) ? Col::White : Col::Yellow}), 1.3f)
             : ToU32({.c = Col::Yellow});
-    g.imgui.overlay_draw_list->AddTextInRect(badge_r,
-                                             icon_col,
-                                             ICON_FA_TRIANGLE_EXCLAMATION,
-                                             {
-                                                 .justification = TextJustification::Centred,
-                                                 .overflow_type = TextOverflowType::AllowOverflow,
-                                                 .font_scaling = 0.85f,
-                                             });
+    g.imgui.draw_list->AddTextInRect(badge_r,
+                                     icon_col,
+                                     ICON_FA_TRIANGLE_EXCLAMATION,
+                                     {
+                                         .justification = TextJustification::Centred,
+                                         .overflow_type = TextOverflowType::AllowOverflow,
+                                         .font_scaling = 0.85f,
+                                     });
 }
 
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    MenuParameterComponentOptions const& options) {
+                    MenuParameterComponentOptions options) {
     ASSERT(param.info.value_type == ParamValueType::Menu);
+
+    bool const legacy_override =
+        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+    if (legacy_override) options.greyed_out = true;
 
     auto const container = DoBox(g.builder,
                                  {
@@ -412,7 +399,7 @@ Box DoMenuParameter(GuiState& g,
                       });
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
-    if (arrows.prev_fired || arrows.next_fired) {
+    if (!legacy_override && (arrows.prev_fired || arrows.next_fired)) {
         auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
         if (val < param.info.linear_range.min) val = param.info.linear_range.max;
         if (val > param.info.linear_range.max) val = param.info.linear_range.min;
@@ -424,35 +411,38 @@ Box DoMenuParameter(GuiState& g,
     if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left)) {
-            slider_value_changed_during_interaction = false;
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+        if (!legacy_override) {
+            if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left)) {
+                slider_value_changed_during_interaction = false;
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+            }
+
+            auto const initial_int_val = param.IntValue<int>();
+            auto current = param.LinearValue();
+            if (g.builder.imgui.SliderBehaviourRange({
+                    .rect_in_window_coords = window_r,
+                    .id = menu_btn.imgui_id,
+                    .min = param.info.linear_range.min,
+                    .max = param.info.linear_range.max,
+                    .value = current,
+                    .default_value = param.info.default_linear_value,
+                    .cfg = {.sensitivity = 20},
+                })) {
+                new_val = current;
+                if ((int)current != initial_int_val) slider_value_changed_during_interaction = true;
+            }
+
+            if (menu_btn.button_fired && !slider_value_changed_during_interaction)
+                g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
         }
 
-        auto const initial_int_val = param.IntValue<int>();
-        auto current = param.LinearValue();
-        if (g.builder.imgui.SliderBehaviourRange({
-                .rect_in_window_coords = window_r,
-                .id = menu_btn.imgui_id,
-                .min = param.info.linear_range.min,
-                .max = param.info.linear_range.max,
-                .value = current,
-                .default_value = param.info.default_linear_value,
-                .cfg = {.sensitivity = 20},
-            })) {
-            new_val = current;
-            if ((int)current != initial_int_val) slider_value_changed_during_interaction = true;
-        }
-
-        if (menu_btn.button_fired && !slider_value_changed_during_interaction)
-            g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
-
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-
-        if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
-
-        AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
         DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
@@ -477,8 +467,12 @@ Box DoMenuParameter(GuiState& g,
 Box DoKnobParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    ParameterComponentOptions const& options) {
+                    ParameterComponentOptions options) {
     ASSERT(param.info.value_type == ParamValueType::Float);
+
+    bool const legacy_override =
+        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+    if (legacy_override) options.greyed_out = true;
 
     auto container = DoBox(g.builder,
                            {
@@ -505,55 +499,58 @@ Box DoKnobParameter(GuiState& g,
     if (auto const viewport_r = BoxRect(g.builder, container)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
-            .rect_in_window_coords = window_r,
-            .id = container.imgui_id,
-            .text = options.is_fake ? ""_s : (String)display_string,
-            .min = param.info.linear_range.min,
-            .max = param.info.linear_range.max,
-            .value = val,
-            .default_value = param.info.default_linear_value,
-            .text_input_button_cfg {
-                .mouse_button = MouseButton::Left,
-                .event = MouseButtonEvent::DoubleClick,
-            },
-            .text_input_cfg {
-                .x_padding = WwToPixels(4.0f),
-                .centre_align = true,
-                .escape_unfocuses = true,
-                .select_all_when_opening = true,
-            },
-            .slider_cfg {
-                .sensitivity = 256 / param.info.linear_range.Delta(),
-                .slower_with_shift = true,
-                .default_on_modifer = true,
-            },
-        });
+        if (!legacy_override) {
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = container.imgui_id,
+                .text = options.is_fake ? ""_s : (String)display_string,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = val,
+                .default_value = param.info.default_linear_value,
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg {
+                    .x_padding = WwToPixels(4.0f),
+                    .centre_align = true,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                },
+                .slider_cfg {
+                    .sensitivity = 256 / param.info.linear_range.Delta(),
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
 
-        container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
-        container.is_hot = g.imgui.IsHot(container.imgui_id);
+            container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
+            container.is_hot = g.imgui.IsHot(container.imgui_id);
 
-        if (dragger_result.new_string_value) {
-            if (auto v = param.info.StringToLinearValue(*dragger_result.new_string_value)) {
-                new_val = v;
-                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+            if (dragger_result.new_string_value) {
+                if (auto v = param.info.StringToLinearValue(*dragger_result.new_string_value)) {
+                    new_val = v;
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+                }
             }
+            if (dragger_result.value_changed) new_val = val;
+            param_text_input_result = dragger_result.text_input_result;
+
+            if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            ParameterValuePopup(g, param, container.imgui_id, window_r);
+
+            AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
         }
-        if (dragger_result.value_changed) new_val = val;
-        param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
-
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-
-        if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
-
-        ParameterValuePopup(g, param, container.imgui_id, window_r);
-
-        AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
-        OverlayMacroDestinationRegion(g, window_r, param.info.index);
         DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
@@ -662,8 +659,12 @@ Box DoKnobParameter(GuiState& g,
 Box DoVerticalSliderParameter(GuiState& g,
                               Box parent,
                               DescribedParamValue const& param,
-                              VerticalSliderParameterOptions const& options) {
+                              VerticalSliderParameterOptions options) {
     ASSERT(param.info.value_type == ParamValueType::Float);
+
+    bool const legacy_override =
+        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+    if (legacy_override) options.greyed_out = true;
 
     auto container = DoBox(g.builder,
                            {
@@ -685,38 +686,41 @@ Box DoVerticalSliderParameter(GuiState& g,
     if (auto const viewport_r = BoxRect(g.builder, container)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
-            .rect_in_window_coords = window_r,
-            .id = container.imgui_id,
-            .text = ""_s,
-            .min = param.info.linear_range.min,
-            .max = param.info.linear_range.max,
-            .value = val,
-            .default_value = param.info.default_linear_value,
-            .slider_cfg {
-                .sensitivity = 256 / param.info.linear_range.Delta(),
-                .slower_with_shift = true,
-                .default_on_modifer = true,
-            },
-        });
+        if (!legacy_override) {
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = container.imgui_id,
+                .text = ""_s,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = val,
+                .default_value = param.info.default_linear_value,
+                .slider_cfg {
+                    .sensitivity = 256 / param.info.linear_range.Delta(),
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
 
-        container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
-        container.is_hot = g.imgui.IsHot(container.imgui_id);
+            container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
+            container.is_hot = g.imgui.IsHot(container.imgui_id);
 
-        if (dragger_result.value_changed) new_val = val;
+            if (dragger_result.value_changed) new_val = val;
 
-        if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
+            if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
 
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
 
-        if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+            if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
 
-        ParameterValuePopup(g, param, container.imgui_id, window_r);
+            ParameterValuePopup(g, param, container.imgui_id, window_r);
 
-        AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
-        OverlayMacroDestinationRegion(g, window_r, param.info.index);
+            AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        }
+
         DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
@@ -751,8 +755,12 @@ Box DoVerticalSliderParameter(GuiState& g,
 Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
-                      ButtonParameterComponentOptions const& options) {
+                      ButtonParameterComponentOptions options) {
     bool const state = param.BoolValue();
+
+    bool const legacy_override =
+        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+    if (legacy_override) options.greyed_out = true;
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
 
@@ -805,11 +813,15 @@ Box DoButtonParameter(GuiState& g,
           });
 
     // Toggle behaviour.
-    if (container.button_fired)
+    if (!legacy_override && container.button_fired)
         SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
 
-    // Right-click menu.
-    AddParamContextMenuBehaviour(g, container, param);
+    if (!legacy_override) AddParamContextMenuBehaviour(g, container, param);
+
+    if (auto const viewport_r = BoxRect(g.builder, container)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
+    }
 
     return container;
 }
@@ -900,8 +912,12 @@ void DoMuteSoloButtons(GuiState& g,
 Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
-                   IntParameterComponentOptions const& options) {
+                   IntParameterComponentOptions options) {
     ASSERT(param.info.value_type == ParamValueType::Int);
+
+    bool const legacy_override =
+        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+    if (legacy_override) options.greyed_out = true;
 
     auto const container = DoBox(g.builder,
                                  {
@@ -951,65 +967,68 @@ Box DoIntParameter(GuiState& g,
     if (auto const viewport_r = BoxRect(g.builder, dragger_box)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        auto val = (f32)param.IntValue<int>();
+        if (!legacy_override) {
+            auto val = (f32)param.IntValue<int>();
 
-        imgui::TextInputConfig const text_input_cfg = {
-            .chars_decimal = !options.midi_note_names,
-            .chars_note_names = options.midi_note_names,
-            .tab_focuses_next_input = true,
-            .centre_align = false,
-            .escape_unfocuses = true,
-            .select_all_when_opening = true,
-        };
+            imgui::TextInputConfig const text_input_cfg = {
+                .chars_decimal = !options.midi_note_names,
+                .chars_note_names = options.midi_note_names,
+                .tab_focuses_next_input = true,
+                .centre_align = false,
+                .escape_unfocuses = true,
+                .select_all_when_opening = true,
+            };
 
-        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
-            .rect_in_window_coords = window_r,
-            .id = dragger_box.imgui_id,
-            .text = display_string,
-            .min = param.info.linear_range.min,
-            .max = param.info.linear_range.max,
-            .value = val,
-            .default_value = param.info.default_linear_value,
-            .text_input_button_cfg {
-                .mouse_button = MouseButton::Left,
-                .event = MouseButtonEvent::DoubleClick,
-            },
-            .text_input_cfg = text_input_cfg,
-            .slider_cfg {
-                .sensitivity = 15,
-                .slower_with_shift = true,
-                .default_on_modifer = true,
-            },
-        });
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = dragger_box.imgui_id,
+                .text = display_string,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = val,
+                .default_value = param.info.default_linear_value,
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg = text_input_cfg,
+                .slider_cfg {
+                    .sensitivity = 15,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
 
-        if (dragger_result.new_string_value) {
-            if (options.midi_note_names) {
-                if (auto const midi_note = MidiNoteFromName(*dragger_result.new_string_value))
-                    new_val = (f32)midi_note.Value();
-            } else if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal)) {
-                new_val = (f32)Clamp((int)o.Value(),
-                                     (int)param.info.linear_range.min,
-                                     (int)param.info.linear_range.max);
+            if (dragger_result.new_string_value) {
+                if (options.midi_note_names) {
+                    if (auto const midi_note = MidiNoteFromName(*dragger_result.new_string_value))
+                        new_val = (f32)midi_note.Value();
+                } else if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal)) {
+                    new_val = (f32)Clamp((int)o.Value(),
+                                         (int)param.info.linear_range.min,
+                                         (int)param.info.linear_range.max);
+                }
             }
+            if (dragger_result.value_changed) new_val = (f32)(int)val;
+            param_text_input_result = dragger_result.text_input_result;
+
+            if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
         }
-        if (dragger_result.value_changed) new_val = (f32)(int)val;
-        param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
-
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-
-        if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
-
-        AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
-        OverlayMacroDestinationRegion(g, window_r, param.info.index);
         DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
-    if (arrows.prev_fired || arrows.next_fired) {
+    if (!legacy_override && (arrows.prev_fired || arrows.next_fired)) {
         auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
         val = Clamp(val, param.info.linear_range.min, param.info.linear_range.max);
         SetParameterValue(g.engine.processor, param.info.index, val, {});
@@ -1052,7 +1071,11 @@ Box DoIntParameter(GuiState& g,
 Box DoPercentDraggerParameter(GuiState& g,
                               Box parent,
                               DescribedParamValue const& param,
-                              PercentDraggerOptions const& options) {
+                              PercentDraggerOptions options) {
+    bool const legacy_override =
+        LegacyOverridingParam(g.engine.processor.main_params, param.info.index).HasValue();
+    if (legacy_override) options.greyed_out = true;
+
     auto const container = DoBox(g.builder,
                                  {
                                      .parent = parent,
@@ -1091,56 +1114,59 @@ Box DoPercentDraggerParameter(GuiState& g,
     if (auto const viewport_r = BoxRect(g.builder, dragger_box)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        auto val = (f32)percent;
+        if (!legacy_override) {
+            auto val = (f32)percent;
 
-        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
-            .rect_in_window_coords = window_r,
-            .id = dragger_box.imgui_id,
-            .text = display_string,
-            .min = 0,
-            .max = 100,
-            .value = val,
-            .default_value = Round(param.info.default_linear_value * 100),
-            .text_input_button_cfg {
-                .mouse_button = MouseButton::Left,
-                .event = MouseButtonEvent::DoubleClick,
-            },
-            .text_input_cfg {
-                .chars_decimal = true,
-                .tab_focuses_next_input = true,
-                .centre_align = false,
-                .escape_unfocuses = true,
-                .select_all_when_opening = true,
-            },
-            .slider_cfg {
-                .sensitivity = 15,
-                .slower_with_shift = true,
-                .default_on_modifer = true,
-            },
-        });
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = dragger_box.imgui_id,
+                .text = display_string,
+                .min = 0,
+                .max = 100,
+                .value = val,
+                .default_value = Round(param.info.default_linear_value * 100),
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg {
+                    .chars_decimal = true,
+                    .tab_focuses_next_input = true,
+                    .centre_align = false,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                },
+                .slider_cfg {
+                    .sensitivity = 15,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
 
-        if (dragger_result.new_string_value) {
-            if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal))
-                new_val = Clamp((f32)o.Value(), 0.0f, 100.0f) / 100.0f;
+            if (dragger_result.new_string_value) {
+                if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal))
+                    new_val = Clamp((f32)o.Value(), 0.0f, 100.0f) / 100.0f;
+            }
+            if (dragger_result.value_changed) new_val = Round(val) / 100.0f;
+            param_text_input_result = dragger_result.text_input_result;
+
+            if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
         }
-        if (dragger_result.value_changed) new_val = Round(val) / 100.0f;
-        param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
-
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-
-        if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
-
-        AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
-        OverlayMacroDestinationRegion(g, window_r, param.info.index);
         DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
-    if (arrows.prev_fired || arrows.next_fired) {
+    if (!legacy_override && (arrows.prev_fired || arrows.next_fired)) {
         auto val = Clamp((f32)(percent + (arrows.prev_fired ? -1 : 1)) / 100.0f, 0.0f, 1.0f);
         SetParameterValue(g.engine.processor, param.info.index, val, {});
     }

@@ -371,13 +371,6 @@ constexpr auto k_eq_type_strings = ArrayT<String>({
 });
 static_assert(k_eq_type_strings.size == ToInt(EqType::Count));
 
-constexpr auto k_legacy_eq_type_to_current = ArrayT<EqType>({
-    EqType::Peak,
-    EqType::LowShelf,
-    EqType::HighShelf,
-});
-static_assert(k_legacy_eq_type_to_current.size == ToInt(LegacyEqType::Count));
-
 constexpr bool EqTypeUsesGain(EqType t) {
     return t == EqType::Peak || t == EqType::LowShelf || t == EqType::HighShelf;
 }
@@ -483,15 +476,6 @@ constexpr auto k_lfo_destination_strings = ArrayT<String>({
 });
 static_assert(k_lfo_destination_strings.size == ToInt(LfoDestination::Count));
 
-// Remap legacy to new params. We do this pattern so that param values can be safely re-arranged.
-constexpr auto k_legacy_lfo_destination_to_current = ArrayT<LfoDestination>({
-    LfoDestination::Volume,
-    LfoDestination::Filter,
-    LfoDestination::Pan,
-    LfoDestination::Pitch,
-});
-static_assert(k_legacy_lfo_destination_to_current.size == ToInt(LegacyLfoDestination::Count));
-
 enum class LegacyLfoShape : u8 { // never reorder
     Sine,
     Triangle,
@@ -554,24 +538,6 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
     "Trapezoid",
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
-
-constexpr auto k_legacy_lfo_shape_to_current = ArrayT<LfoShape>({
-    LfoShape::Sine,
-    LfoShape::Triangle,
-    LfoShape::Sawtooth,
-    LfoShape::Square,
-});
-static_assert(k_legacy_lfo_shape_to_current.size == ToInt(LegacyLfoShape::Count));
-
-constexpr auto k_legacy_lfo_shape_v2_to_current = ArrayT<LfoShape>({
-    LfoShape::Sine,
-    LfoShape::Triangle,
-    LfoShape::Sawtooth,
-    LfoShape::Square,
-    LfoShape::RandomSteps,
-    LfoShape::RandomGlide,
-});
-static_assert(k_legacy_lfo_shape_v2_to_current.size == ToInt(LegacyLfoShapeV2::Count));
 
 enum class LayerFilterType : u8 { // never reorder
     Lowpass,
@@ -641,19 +607,6 @@ constexpr auto k_effect_filter_type_strings = ArrayT<String>({
     "High-shelf",
 });
 static_assert(k_effect_filter_type_strings.size == ToInt(EffectFilterType::Count));
-
-// Legacy LowPass/HighPass (which were 24dB due to the 2-pass DSP topology) map to the new *24
-// variants so existing presets keep their audible response.
-constexpr auto k_legacy_effect_filter_type_to_current = ArrayT<EffectFilterType>({
-    EffectFilterType::LowPass24,
-    EffectFilterType::HighPass24,
-    EffectFilterType::BandPass,
-    EffectFilterType::Notch,
-    EffectFilterType::Peak,
-    EffectFilterType::LowShelf,
-    EffectFilterType::HighShelf,
-});
-static_assert(k_legacy_effect_filter_type_to_current.size == ToInt(LegacyEffectFilterType::Count));
 
 constexpr bool EffectFilterTypeUsesGain(EffectFilterType t) {
     return t == EffectFilterType::Peak || t == EffectFilterType::LowShelf || t == EffectFilterType::HighShelf;
@@ -1179,13 +1132,6 @@ constexpr ParamIndex ParamIndexFromMacroIndex(u8 macro_index) {
     }
     PanicIfReached();
     return ParamIndex::Macro1;
-}
-
-// A hidden (legacy) param is "overriding" when it has been set to a non-default value by a DAW
-// automation lane, meaning it takes precedence over the modern equivalent param.
-inline bool IsLegacyParamOverridingModern(ParamDescriptor const& desc, f32 linear_value) {
-    ASSERT(desc.flags.legacy);
-    return linear_value != desc.default_linear_value;
 }
 
 constexpr bool IsLayerParamOfSpecificType(ParamIndex global_index, LayerParamIndex layer_index) {

@@ -364,3 +364,8 @@ struct MacroDestinationValueChangedConfig {
 
 // Doesn't actually change the value, just sends the event to the audio thread.
 void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChangedConfig config);
+
+// Retargets any macro destinations currently pointing at `from` to instead point at `to`. Used by
+// the modernise action so macros that were modulating a legacy parameter continue to modulate the
+// modern equivalent after the legacy override is cleared.
+void RetargetMacroDestinations(AudioProcessor& processor, ParamIndex from, ParamIndex to);
