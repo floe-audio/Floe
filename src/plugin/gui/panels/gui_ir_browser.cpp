@@ -183,6 +183,7 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
                 .id = folder_hash,
                 .parent = root,
                 .folder = folder,
+                .skip_heading = IsSingleFolderFilterSelected(state.common_state),
             };
         }
 

@@ -238,6 +238,20 @@ struct CommonBrowserState {
     BrowserKeyboardNavigation keyboard_navigation {};
 };
 
+inline bool IsSingleFolderFilterSelected(CommonBrowserState const& state) {
+    auto const& folder_filter = state.Filter(BrowserFilter::Folder);
+    if (folder_filter.data.tag != FilterSelection::Type::Hashes) return false;
+    if (folder_filter.data.Get<FilterSelection::HashesData>().items.size != 1) return false;
+
+    // In OR mode with other active filters, items may match those filters but live outside the folder,
+    // so the folder heading is still informative.
+    if (state.filter_mode == FilterMode::MultipleOr) {
+        for (auto const [index, filter] : Enumerate(state.filters))
+            if (index != (usize)BrowserFilter::Folder && filter.HasSelected()) return false;
+    }
+    return true;
+}
+
 // Returns true if the item should be hidden. matches_filter(index, filter) should return true if the item
 // matches that filter. AND mode: skip if any active filter doesn't match. OR mode: skip if no active filter
 // matches.
@@ -445,6 +459,7 @@ struct BrowserSection {
     bool bigger_contents_gap {false};
     bool default_collapsed {false};
     bool skip_root_folder {};
+    bool skip_heading {};
     bool dark_mode {};
     RightClickMenuState::Function right_click_menu {};
     persistent_store::Store* store {};

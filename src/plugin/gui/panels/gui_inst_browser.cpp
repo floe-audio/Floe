@@ -309,6 +309,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
                 .id = folder_hash,
                 .parent = root,
                 .folder = folder,
+                .skip_heading = IsSingleFolderFilterSelected(common_state),
             };
         }
 

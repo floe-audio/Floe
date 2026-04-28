@@ -1273,10 +1273,14 @@ Box DoFilterCard(GuiBuilder& builder,
 
 BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
     if (!init) {
-        auto& toggled_ids =
-            default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
-        if (store) LoadCollapseStateFromStore(*store, toggled_ids, id);
-        is_collapsed = Contains(toggled_ids, id) != default_collapsed;
+        if (skip_heading) {
+            is_collapsed = 0;
+        } else {
+            auto& toggled_ids =
+                default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
+            if (store) LoadCollapseStateFromStore(*store, toggled_ids, id);
+            is_collapsed = Contains(toggled_ids, id) != default_collapsed;
+        }
         init = true;
     } else {
         if (is_collapsed) return State::Collapsed;
@@ -1301,7 +1305,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                       },
               });
 
-    if (heading || folder) {
+    if (!skip_heading && (heading || folder)) {
         auto const heading_container =
             DoBox(builder,
                   {
