@@ -30,15 +30,18 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
         switch ((BrowserFilter)index) {
             case BrowserFilter::Favourites:
                 return IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(ir));
-            case BrowserFilter::Folder: {
-                bool any_match = false;
-                filter.ForEachSelected([&](String, u64 key) {
-                    if (IsInsideFolder(ir.folder, key)) any_match = true;
+            case BrowserFilter::Folder:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    return IsInsideFolder(ir.folder, key);
                 });
-                return any_match;
-            }
-            case BrowserFilter::Library: return filter.Contains(ir.library.id);
-            case BrowserFilter::LibraryAuthor: return filter.Contains(ir.library.author_hash);
+            case BrowserFilter::Library:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    return ir.library.id == key;
+                });
+            case BrowserFilter::LibraryAuthor:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    return ir.library.author_hash == key;
+                });
             case BrowserFilter::Tags:
                 return ItemMatchesTagFilter(filter, ir.tags, state.common_state.filter_mode);
             case BrowserFilter::CommonCount: break;

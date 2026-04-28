@@ -64,33 +64,23 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
         switch ((BrowserFilter)index) {
             case BrowserFilter::Favourites:
                 return IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
-            case BrowserFilter::Folder: {
-                bool any_match = false;
-                filter.ForEachSelected([&](String, u64 key) {
-                    if (IsInsideFolder(&folder, key)) any_match = true;
+            case BrowserFilter::Folder:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    return IsInsideFolder(&folder, key);
                 });
-                return any_match;
-            }
-            case BrowserFilter::Library: {
-                bool any_match = false;
-                filter.ForEachSelected([&](String, u64 key) {
-                    if (preset.used_libraries.ContainsSkipKeyCheck(key)) any_match = true;
+            case BrowserFilter::Library:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    return preset.used_libraries.ContainsSkipKeyCheck(key);
                 });
-                return any_match;
-            }
-            case BrowserFilter::LibraryAuthor: {
-                bool any_match = false;
-                for (auto [lib_id, _] : preset.used_libraries) {
-                    auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
-                    if (!maybe_lib) continue;
-                    auto const& lib = *maybe_lib;
-                    if (filter.Contains(lib->author_hash)) {
-                        any_match = true;
-                        break;
+            case BrowserFilter::LibraryAuthor:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    for (auto [lib_id, _] : preset.used_libraries) {
+                        auto const maybe_lib = context.frame_context.lib_table.Find(lib_id);
+                        if (!maybe_lib) continue;
+                        if ((*maybe_lib)->author_hash == key) return true;
                     }
-                }
-                return any_match;
-            }
+                    return false;
+                });
             case BrowserFilter::Tags:
                 return ItemMatchesTagFilter(filter, preset.metadata.tags, state.common_state.filter_mode);
             case BrowserFilter::CommonCount: break;
@@ -98,12 +88,15 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
 
         // Preset-specific filters (by index beyond CommonCount).
         switch ((PresetBrowserFilter)index) {
-            case PresetBrowserFilter::PresetType: return filter.Contains(ToInt(preset.file_format));
-            case PresetBrowserFilter::Author: {
-                auto const author_hash = preset.author_hash;
-                return filter.Contains(author_hash) ||
-                       (preset.metadata.author.size == 0 && filter.Contains(k_no_preset_author_hash));
-            }
+            case PresetBrowserFilter::PresetType:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    return key == ToInt(preset.file_format);
+                });
+            case PresetBrowserFilter::Author:
+                return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
+                    return key == preset.author_hash ||
+                           (preset.metadata.author.size == 0 && key == k_no_preset_author_hash);
+                });
             case PresetBrowserFilter::Count: PanicIfReached();
         }
 

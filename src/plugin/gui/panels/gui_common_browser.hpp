@@ -23,6 +23,8 @@ constexpr auto k_untagged_tag_name = "<untagged>"_s;
 
 enum class SearchDirection : u8 { Forward, Backward };
 
+enum class LoopControl : u8 { Continue, Break };
+
 enum class FilterMode : u8 {
     Single, // Only one filter can be selected at a time.
     MultipleAnd, // AKA "match all", AND
@@ -73,17 +75,23 @@ struct FilterSelection {
     void Clear();
     void ClearToOne();
 
-    // Calls f(String display_name, u64 key) for each selected item.
-    template <typename F>
+    // Calls f(String display_name, u64 key) for each selected item. The callback must return LoopControl;
+    // returning Break stops iteration.
+    template <FunctionWithSignature<LoopControl, String, u64> F>
     void ForEachSelected(F&& f) const {
         switch (data.tag) {
             case Type::Hashes:
                 for (auto const& h : data.Get<HashesData>().items)
-                    f((String)h.display_name, h.hash);
+                    if (f((String)h.display_name, h.hash) == LoopControl::Break) return;
                 break;
             case Type::Tags: {
                 auto& tags = data.Get<TagsData>();
-                tags.bitset.ForEachSetBit([&](usize bit) { f(GetTagInfo((TagType)bit).name, (u64)bit); });
+                bool stop = false;
+                tags.bitset.ForEachSetBit([&](usize bit) {
+                    if (stop) return;
+                    if (f(GetTagInfo((TagType)bit).name, (u64)bit) == LoopControl::Break) stop = true;
+                });
+                if (stop) return;
                 if (tags.selected_untagged) f(k_untagged_tag_name, HashFnv1a("untagged"));
                 break;
             }
@@ -250,6 +258,29 @@ inline bool IsSingleFolderFilterSelected(CommonBrowserState const& state) {
             if (index != (usize)BrowserFilter::Folder && filter.HasSelected()) return false;
     }
     return true;
+}
+
+// Combines per-value matches according to the filter mode: AND requires all selected values to match,
+// OR requires any. Single mode only has one selected value, so either policy works.
+template <typename Predicate>
+bool MatchesFilterValues(FilterSelection const& filter, FilterMode mode, Predicate&& matches_value) {
+    // OR: start false, flip to true on the first match, then stop.
+    // AND: start true, flip to false on the first non-match, then stop.
+    bool const is_or = mode == FilterMode::MultipleOr;
+    bool result = !is_or;
+    filter.ForEachSelected([&](String name, u64 key) {
+        bool const matched = matches_value(name, key);
+        if (is_or && matched) {
+            result = true;
+            return LoopControl::Break;
+        }
+        if (!is_or && !matched) {
+            result = false;
+            return LoopControl::Break;
+        }
+        return LoopControl::Continue;
+    });
+    return result;
 }
 
 // Returns true if the item should be hidden. matches_filter(index, filter) should return true if the item

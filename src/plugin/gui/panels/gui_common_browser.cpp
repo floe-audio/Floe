@@ -2542,6 +2542,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     filter.ForEachSelected([&](String display_name, u64 key) {
                         if (do_item(filter.name, display_name, context.state.filter_mode, key))
                             filter.Remove(key);
+                        return LoopControl::Continue;
                     });
                 }
 

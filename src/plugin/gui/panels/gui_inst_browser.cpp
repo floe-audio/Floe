@@ -43,15 +43,18 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
         switch ((BrowserFilter)index) {
             case BrowserFilter::Favourites:
                 return IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst));
-            case BrowserFilter::Folder: {
-                bool any_match = false;
-                filter.ForEachSelected([&](String, u64 key) {
-                    if (IsInsideFolder(inst.folder, key)) any_match = true;
+            case BrowserFilter::Folder:
+                return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
+                    return IsInsideFolder(inst.folder, key);
                 });
-                return any_match;
-            }
-            case BrowserFilter::Library: return filter.Contains(inst.library.id);
-            case BrowserFilter::LibraryAuthor: return filter.Contains(inst.library.author_hash);
+            case BrowserFilter::Library:
+                return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
+                    return inst.library.id == key;
+                });
+            case BrowserFilter::LibraryAuthor:
+                return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
+                    return inst.library.author_hash == key;
+                });
             case BrowserFilter::Tags:
                 return ItemMatchesTagFilter(filter, inst.tags, common_state.filter_mode);
             case BrowserFilter::CommonCount: break;
