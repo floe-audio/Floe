@@ -399,22 +399,6 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
 void DoLegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
     if (!builder.imgui.IsModalOpen(k_legacy_params_panel_id)) return;
 
-    // TEMP DEV: on first open, randomise legacy params so the GUI legacy-override badges are
-    // visible without having to load an old DAW project. Remove before merging.
-    {
-        static bool s_randomised = false;
-        if (!s_randomised) {
-            s_randomised = true;
-            u64 seed = (u64)TimePoint::Now().Raw();
-            for (auto const param_index : Range(k_num_parameters)) {
-                auto const& desc = k_param_descriptors[param_index];
-                if (!desc.flags.legacy) continue;
-                auto const val = RandomFloatInRange<f32>(seed, desc.linear_range.min, desc.linear_range.max);
-                SetParameterValue(g.engine.processor, (ParamIndex)param_index, val, {});
-            }
-        }
-    }
-
     auto viewport_config = k_default_modal_viewport;
     viewport_config.draw_background = DrawDarkModePanelBackground;
     viewport_config.exclusive_focus = false;
