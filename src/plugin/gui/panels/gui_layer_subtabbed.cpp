@@ -2127,7 +2127,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         auto const seq_box = DoBox(g.builder,
                                    {
                                        .parent = page,
-                                       .layout {.size = {layout::k_fill_parent, 120}},
+                                       .layout {.size = {layout::k_fill_parent, is_sliced ? 120.0f : 165.0f}},
                                    });
 
         if (auto const r = BoxRect(g.builder, seq_box)) {
