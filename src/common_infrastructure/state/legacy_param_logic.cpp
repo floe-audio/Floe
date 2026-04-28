@@ -67,6 +67,12 @@ ModerniseLayerParam(LayerParamIndex legacy_layer, u32 layer_num, f32 legacy_line
             return make(LayerParamIndex::LfoDestination,
                         EnumLookup(k_legacy_lfo_destination_to_current, legacy_linear, modern_default));
         }
+        case LayerParamIndex::LegacyFilterType: {
+            auto const modern_pi = ParamIndexFromLayerParamIndex(layer_num, LayerParamIndex::FilterType);
+            auto const modern_default = k_param_descriptors[ToInt(modern_pi)].default_linear_value;
+            return make(LayerParamIndex::FilterType,
+                        EnumLookup(k_legacy_layer_filter_type_to_current, legacy_linear, modern_default));
+        }
         case LayerParamIndex::LegacyEqType1: {
             auto const modern_pi = ParamIndexFromLayerParamIndex(layer_num, LayerParamIndex::EqType1);
             auto const modern_default = k_param_descriptors[ToInt(modern_pi)].default_linear_value;
@@ -163,6 +169,7 @@ Optional<ParamIndex> LegacyCounterpartOf(ParamIndex modern) {
                 break;
             case LayerParamIndex::EqType1: legacy_layer_param = LayerParamIndex::LegacyEqType1; break;
             case LayerParamIndex::EqType2: legacy_layer_param = LayerParamIndex::LegacyEqType2; break;
+            case LayerParamIndex::FilterType: legacy_layer_param = LayerParamIndex::LegacyFilterType; break;
             case LayerParamIndex::LfoShape: legacy_layer_param = LayerParamIndex::LegacyLfoShape; break;
             case LayerParamIndex::LfoDestination:
                 legacy_layer_param = LayerParamIndex::LegacyLfoDestination;

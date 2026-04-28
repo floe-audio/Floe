@@ -621,22 +621,15 @@ void ProcessLayerChanges(LayerProcessor& layer,
     }
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::FilterOn))
         vmst.filter_on = *p;
-    if (auto p =
-            changes.changed_params.IntValue<param_values::LayerFilterType>(layer.index,
-                                                                           LayerParamIndex::FilterType)) {
+    if (auto p = layer.filter_type.Poll(changes.changed_params)) {
         sv_filter::Type sv_type {};
-        // Remapping enum values like this allows us to separate values that cannot change (the parameter
-        // value), with values that we have more control over (DSP code)
         switch (*p) {
             case param_values::LayerFilterType::Lowpass: sv_type = sv_filter::Type::Lowpass; break;
-            case param_values::LayerFilterType::Bandpass: sv_type = sv_filter::Type::Bandpass; break;
             case param_values::LayerFilterType::Highpass: sv_type = sv_filter::Type::Highpass; break;
-            case param_values::LayerFilterType::UnitGainBandpass:
-                sv_type = sv_filter::Type::UnitGainBandpass;
-                break;
+            case param_values::LayerFilterType::Bandpass: sv_type = sv_filter::Type::UnitGainBandpass; break;
+            case param_values::LayerFilterType::BandpassResonant: sv_type = sv_filter::Type::Bandpass; break;
             case param_values::LayerFilterType::BandShelving: sv_type = sv_filter::Type::BandShelving; break;
             case param_values::LayerFilterType::Notch: sv_type = sv_filter::Type::Notch; break;
-            case param_values::LayerFilterType::Allpass: sv_type = sv_filter::Type::Allpass; break;
             case param_values::LayerFilterType::Peak: sv_type = sv_filter::Type::Peak; break;
             case param_values::LayerFilterType::Count: PanicIfReached(); break;
         }

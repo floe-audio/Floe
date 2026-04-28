@@ -48,6 +48,21 @@ constexpr auto k_legacy_lfo_shape_v2_to_current = ArrayT<param_values::LfoShape>
 });
 static_assert(k_legacy_lfo_shape_v2_to_current.size == ToInt(param_values::LegacyLfoShapeV2::Count));
 
+// Allpass is removed in the modern enum; map it to the modern default (Lowpass) so old presets
+// using it land on a sensible audible filter rather than nothing.
+constexpr auto k_legacy_layer_filter_type_to_current = ArrayT<param_values::LayerFilterType>({
+    param_values::LayerFilterType::Lowpass,
+    param_values::LayerFilterType::BandpassResonant,
+    param_values::LayerFilterType::Highpass,
+    param_values::LayerFilterType::Bandpass,
+    param_values::LayerFilterType::BandShelving,
+    param_values::LayerFilterType::Notch,
+    param_values::LayerFilterType::Lowpass,
+    param_values::LayerFilterType::Peak,
+});
+static_assert(k_legacy_layer_filter_type_to_current.size ==
+              ToInt(param_values::LegacyLayerFilterType::Count));
+
 // Legacy LowPass/HighPass (which were 24dB due to the 2-pass DSP topology) map to the new *24
 // variants so existing presets keep their audible response.
 constexpr auto k_legacy_effect_filter_type_to_current = ArrayT<param_values::EffectFilterType>({

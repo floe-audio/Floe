@@ -257,6 +257,13 @@ struct LayerProcessor {
         , voice_controller({
               .layer_index = index,
           })
+        , filter_type({
+              .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::FilterType),
+              .legacies = {{{
+                  .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyFilterType),
+                  .remap_table = k_legacy_layer_filter_type_to_current,
+              }}},
+          })
         , lfo_shape({
               .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoShape),
               .legacies = {{
@@ -446,6 +453,7 @@ struct LayerProcessor {
     param_values::LfoSyncedRate lfo_synced_time {};
     f32 lfo_unsynced_hz {};
     bool lfo_is_synced {};
+    EnumParamWithLegacies<param_values::LayerFilterType> filter_type {};
     EnumParamWithLegacies<param_values::LfoShape, 2> lfo_shape {};
     EnumParamWithLegacies<param_values::LfoDestination> lfo_dest {};
 

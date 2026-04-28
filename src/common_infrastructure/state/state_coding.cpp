@@ -112,16 +112,16 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
         });
         return k_types.Items();
 
-    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::FilterType)) {
+    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyFilterType)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::LayerFilterType::Lowpass, {"Lowpass", "Low-pass"}},
-            {(f32)param_values::LayerFilterType::Bandpass, {"Bandpass", "Band-pass A"}},
-            {(f32)param_values::LayerFilterType::Highpass, {"Highpass", "High-pass"}},
-            {(f32)param_values::LayerFilterType::UnitGainBandpass, {"UnitGainBandpass", "Band-pass B"}},
-            {(f32)param_values::LayerFilterType::BandShelving, {"BandShelving", "Band-shelving"}},
-            {(f32)param_values::LayerFilterType::Notch, {"Notch", "Notch"}},
-            {(f32)param_values::LayerFilterType::Allpass, {"Allpass", "All-pass (Legacy)"}},
-            {(f32)param_values::LayerFilterType::Peak, {"Peak", "Peak"}},
+            {(f32)param_values::LegacyLayerFilterType::Lowpass, {"Lowpass", "Low-pass"}},
+            {(f32)param_values::LegacyLayerFilterType::Bandpass, {"Bandpass", "Band-pass A"}},
+            {(f32)param_values::LegacyLayerFilterType::Highpass, {"Highpass", "High-pass"}},
+            {(f32)param_values::LegacyLayerFilterType::UnitGainBandpass, {"UnitGainBandpass", "Band-pass B"}},
+            {(f32)param_values::LegacyLayerFilterType::BandShelving, {"BandShelving", "Band-shelving"}},
+            {(f32)param_values::LegacyLayerFilterType::Notch, {"Notch", "Notch"}},
+            {(f32)param_values::LegacyLayerFilterType::Allpass, {"Allpass", "All-pass (Legacy)"}},
+            {(f32)param_values::LegacyLayerFilterType::Peak, {"Peak", "Peak"}},
         });
         return k_types.Items();
 
@@ -556,6 +556,12 @@ enum class StateVersion : u16 {
     // hidden and kept only for DAW automation backwards compatibility.
     AddedLogFrequencyParams,
 
+    // Reworked the layer filter type menu: removed the All-pass option and renamed the two
+    // band-pass variants ("Band-pass A"/"Band-pass B") to clearer names. The previous FilterType
+    // parameter is now hidden as LegacyFilterType and kept only for DAW automation backwards
+    // compatibility.
+    ReworkedLayerFilterTypeMenu,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -592,7 +598,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 282,
+    static_assert(k_num_non_experimental_parameters == 285,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -719,6 +725,9 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
     if (version < StateVersion::ExpandedLfoShapeParameter)
         ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyLfoShapeV2, source);
+
+    if (version < StateVersion::ReworkedLayerFilterTypeMenu)
+        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyFilterType, source);
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so

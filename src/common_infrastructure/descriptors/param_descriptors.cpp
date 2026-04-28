@@ -295,7 +295,7 @@ constexpr auto k_layer_params = ArrayT<LayerParamId>({
     {"FlOn", LayerParamIndex::FilterOn},
     {"FlCut", LayerParamIndex::FilterCutoff},
     {"FfRes", LayerParamIndex::FilterResonance},
-    {"FlTy", LayerParamIndex::FilterType},
+    {"FlTy", LayerParamIndex::LegacyFilterType},
     {"FlAm", LayerParamIndex::FilterEnvAmount},
     {"FlAtt", LayerParamIndex::FilterAttack},
     {"FLDec", LayerParamIndex::FilterDecay},

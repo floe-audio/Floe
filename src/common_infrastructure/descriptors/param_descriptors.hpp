@@ -29,6 +29,7 @@ enum class LayerParamIndex : u8 {
     FilterCutoff,
     LegacyFilterResonance,
     FilterResonance,
+    LegacyFilterType,
     FilterType,
     FilterEnvAmount,
     FilterAttack,
@@ -539,7 +540,7 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
 
-enum class LayerFilterType : u8 { // never reorder
+enum class LegacyLayerFilterType : u8 { // never reorder
     Lowpass,
     Bandpass,
     Highpass,
@@ -550,14 +551,35 @@ enum class LayerFilterType : u8 { // never reorder
     Peak,
     Count,
 };
-constexpr auto k_layer_filter_type_strings = ArrayT<String>({
+constexpr auto k_legacy_layer_filter_type_strings = ArrayT<String>({
     "Low-pass",
     "Band-pass A",
     "High-pass",
     "Band-pass B",
     "Band-shelving",
     "Notch",
-    "All-pass (Legacy)", // TODO: remove this
+    "All-pass",
+    "Peak",
+});
+static_assert(k_legacy_layer_filter_type_strings.size == ToInt(LegacyLayerFilterType::Count));
+
+enum class LayerFilterType : u8 { // never reorder
+    Lowpass,
+    Highpass,
+    Bandpass,
+    BandpassResonant,
+    BandShelving,
+    Notch,
+    Peak,
+    Count,
+};
+constexpr auto k_layer_filter_type_strings = ArrayT<String>({
+    "Low-pass",
+    "High-pass",
+    "Band-pass",
+    "Band-pass (resonant)",
+    "Band-shelving",
+    "Notch",
     "Peak",
 });
 static_assert(k_layer_filter_type_strings.size == ToInt(LayerFilterType::Count));
@@ -857,6 +879,7 @@ struct ParamDescriptor {
         LegacyLfoShape,
         LegacyLfoShapeV2,
         LfoShape,
+        LegacyLayerFilterType,
         LayerFilterType,
         LegacyEffectFilterType,
         EffectFilterType,
@@ -1172,6 +1195,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::LegacyLfoShape: return k_legacy_lfo_shape_strings;
         case ParamDescriptor::MenuType::LegacyLfoShapeV2: return k_legacy_lfo_shape_v2_strings;
         case ParamDescriptor::MenuType::LfoShape: return k_lfo_shape_strings;
+        case ParamDescriptor::MenuType::LegacyLayerFilterType: return k_legacy_layer_filter_type_strings;
         case ParamDescriptor::MenuType::LayerFilterType: return k_layer_filter_type_strings;
         case ParamDescriptor::MenuType::LegacyEffectFilterType: return k_legacy_effect_filter_type_strings;
         case ParamDescriptor::MenuType::EffectFilterType: return k_effect_filter_type_strings;
@@ -2422,8 +2446,20 @@ consteval auto CreateParams() {
             .gui_label = "Res"_s,
             .tooltip = "The intensity of the volume peak at the cutoff frequency"_s,
         };
-        lp(FilterType) = Args {
+        lp(LegacyFilterType) = Args {
             .id = id(region, 21), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyLayerFilterType,
+                .default_val = (u32)LegacyLayerFilterType::Lowpass,
+            }),
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
+            .name = "Legacy Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Legacy filter type parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(FilterType) = Args {
+            .id = id(region, 94), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LayerFilterType,
                 .default_val = (u32)LayerFilterType::Lowpass,

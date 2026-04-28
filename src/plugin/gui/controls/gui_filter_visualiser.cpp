@@ -20,25 +20,18 @@
 constexpr f32 k_handle_radius_ww = 5.0f;
 constexpr f32 k_grabber_radius_ww = 12.0f;
 
-struct LayerSvfMapping {
-    sv_filter::Type type;
-    bool valid; // false for types we can't nicely visualise (e.g. Allpass)
-};
-
-static LayerSvfMapping MapLayerFilterType(param_values::LayerFilterType t) {
+static sv_filter::Type MapLayerFilterType(param_values::LayerFilterType t) {
     switch (t) {
-        case param_values::LayerFilterType::Lowpass: return {sv_filter::Type::Lowpass, true};
-        case param_values::LayerFilterType::Bandpass: return {sv_filter::Type::Bandpass, true};
-        case param_values::LayerFilterType::Highpass: return {sv_filter::Type::Highpass, true};
-        case param_values::LayerFilterType::UnitGainBandpass:
-            return {sv_filter::Type::UnitGainBandpass, true};
-        case param_values::LayerFilterType::BandShelving: return {sv_filter::Type::BandShelving, true};
-        case param_values::LayerFilterType::Notch: return {sv_filter::Type::Notch, true};
-        case param_values::LayerFilterType::Allpass: return {sv_filter::Type::Allpass, false};
-        case param_values::LayerFilterType::Peak: return {sv_filter::Type::Peak, true};
+        case param_values::LayerFilterType::Lowpass: return sv_filter::Type::Lowpass;
+        case param_values::LayerFilterType::Highpass: return sv_filter::Type::Highpass;
+        case param_values::LayerFilterType::Bandpass: return sv_filter::Type::UnitGainBandpass;
+        case param_values::LayerFilterType::BandpassResonant: return sv_filter::Type::Bandpass;
+        case param_values::LayerFilterType::BandShelving: return sv_filter::Type::BandShelving;
+        case param_values::LayerFilterType::Notch: return sv_filter::Type::Notch;
+        case param_values::LayerFilterType::Peak: return sv_filter::Type::Peak;
         case param_values::LayerFilterType::Count: break;
     }
-    return {sv_filter::Type::Lowpass, true};
+    return sv_filter::Type::Lowpass;
 }
 
 static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, u8 layer_index) {
@@ -76,9 +69,6 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
 
                     for (auto const i : Range(ToInt(param_values::LayerFilterType::Count))) {
                         auto const type_val = (param_values::LayerFilterType)i;
-                        // Hide the legacy allpass from the visualiser picker.
-                        if (type_val == param_values::LayerFilterType::Allpass && type_val != current_type)
-                            continue;
                         auto const item = MenuItem(g.builder,
                                                    root,
                                                    {
@@ -200,7 +190,7 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     auto const reso_adj_linear =
         AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index);
 
-    auto const vis_state = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
+    auto const sv_type = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
 
     auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
                                      15.0f,
@@ -208,20 +198,14 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
     auto const res_adj = Clamp(reso_adj_linear, 0.0f, 0.9999f);
 
-    if (vis_state.valid) {
-        filter_display::DrawResponseCurve(
-            imgui,
-            viewport_r,
-            [&](f32 hz) {
-                return sv_filter::MagnitudeDb(vis_state.type,
-                                              cutoff_adj_hz,
-                                              filter_display::k_sample_rate,
-                                              res_adj,
-                                              hz);
-            },
-            cutoff_param.info,
-            greyed_out);
-    }
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) {
+            return sv_filter::MagnitudeDb(sv_type, cutoff_adj_hz, filter_display::k_sample_rate, res_adj, hz);
+        },
+        cutoff_param.info,
+        greyed_out);
 
     DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param};
     ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
