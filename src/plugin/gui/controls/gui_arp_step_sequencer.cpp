@@ -39,9 +39,8 @@ void DoArpStepSequencer(GuiState& g,
     auto const active_steps = snapshot.length;
     auto const arp_type = snapshot.type;
 
-    // Global "dim" for visuals. True when no step-level editing is possible (user-off or slice-mode locked).
-    bool const anything_editable = edit.step_velocity || edit.step_gate || edit.step_on;
-    auto const dim = [&](u32 col) -> u32 { return anything_editable ? col : WithAlphaU8(col, 60); };
+    // Global "dim" for visuals. True when the arp is off so step controls read as inactive.
+    auto const dim = [&](u32 col) -> u32 { return snapshot.on ? col : WithAlphaU8(col, 60); };
 
     // Background drawn on the parent viewport, so corner rounding covers the whole widget.
     imgui.draw_list->AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), WwToPixels(k_corner_rounding));

@@ -103,11 +103,11 @@ ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
                 .length = all_editable,
                 .note_order = all_editable,
                 .auto_rate_visible = false, // Not useful without slices
-                .step_velocity = all_editable,
-                .step_gate = all_editable,
-                .step_on = all_editable,
-                .step_tie = all_editable,
-                .step_note = all_editable,
+                .step_velocity = true,
+                .step_gate = true,
+                .step_on = true,
+                .step_tie = true,
+                .step_note = true,
             },
     };
 }
