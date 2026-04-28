@@ -744,8 +744,8 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::Reverb: {
-            constexpr f32 k_reverb_vis_w = 250;
-            constexpr f32 k_reverb_vis_h = 90;
+            constexpr f32 k_reverb_vis_w = 200;
+            constexpr f32 k_reverb_vis_h = 70;
             constexpr f32 k_reverb_pair_gap = 16;
 
             ParameterComponentOptions const knob_opts {

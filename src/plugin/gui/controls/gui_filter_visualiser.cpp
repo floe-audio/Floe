@@ -495,7 +495,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
 static f32 SemitonesToHz(f32 semitones) { return 440.0f * Exp2((semitones - 69.0f) / 12.0f); }
 
-constexpr s32 k_reverb_filter_order = 4;
+constexpr s32 k_reverb_filter_order = 2;
 
 static f32 ButterworthMagDb(f32 ratio) {
     auto const r2 = ratio * ratio;
