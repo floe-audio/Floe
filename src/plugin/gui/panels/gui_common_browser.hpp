@@ -233,6 +233,7 @@ struct CommonBrowserState {
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<char, 100> filter_search {};
     FilterMode filter_mode = FilterMode::Single;
+    bool scroll_items_to_start {};
     RightClickMenuState right_click_menu_state {};
     BrowserKeyboardNavigation keyboard_navigation {};
 };

@@ -661,6 +661,7 @@ static void HandleFilterButtonClick(GuiBuilder& builder,
         case FilterMode::Single: {
             state.ClearAll();
             if (!options.is_selected) options.filter.Add(options.clicked_key, display_name);
+            state.scroll_items_to_start = true;
             break;
         }
         case FilterMode::MultipleAnd: {
@@ -2242,7 +2243,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     cfg.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                                                 imgui::ViewportScrollbarVisibility::Auto};
                     cfg.padding = {.lr = k_browser_spacing};
-                    cfg.scroll_line_size = k_browser_item_height;
+                    cfg.scroll_line_size = k_browser_item_height * 1.5f;
                     cfg;
                 }),
                 .debug_name = "filters",
@@ -2546,6 +2547,11 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
             }
         }
 
+        auto const rhs_viewport_id = builder.imgui.MakeId("rhs");
+        if (Exchange(context.state.scroll_items_to_start, false)) {
+            if (auto w = builder.imgui.FindViewport(rhs_viewport_id)) builder.imgui.SetYScroll(w, 0.0f);
+        }
+
         DoBoxViewport(builder,
                       {
                           .run = [&](GuiBuilder& builder) { options.rhs_do_items(builder); },
@@ -2556,7 +2562,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                                   .size = layout::k_fill_parent,
                                               },
                                           }),
-                          .imgui_id = builder.imgui.MakeId("rhs"),
+                          .imgui_id = rhs_viewport_id,
                           .viewport_config = ({
                               auto cfg = k_default_modal_subviewport;
                               cfg.scrollbar_inside_padding = true;
