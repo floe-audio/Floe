@@ -2617,7 +2617,7 @@ consteval auto CreateParams() {
         };
         lp(EqFreq1) = Args {
             .id = id(region, 91), // never change
-            .value_config = val_config_helpers::Filter({.default_hz = 8000}),
+            .value_config = val_config_helpers::Filter({.default_hz = 100}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Frequency"_s,
             .gui_label = "Freq"_s,
@@ -2634,7 +2634,7 @@ consteval auto CreateParams() {
         };
         lp(EqResonance1) = Args {
             .id = id(region, 79), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Resonance"_s,
             .gui_label = "Reso"_s,
@@ -2664,7 +2664,7 @@ consteval auto CreateParams() {
             .id = id(region, 84), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
-                .default_val = (u32)EqType::Peak,
+                .default_val = (u32)EqType::LowShelf,
             }),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Type"_s,
@@ -2683,7 +2683,7 @@ consteval auto CreateParams() {
         };
         lp(EqFreq2) = Args {
             .id = id(region, 92), // never change
-            .value_config = val_config_helpers::Filter({.default_hz = 500}),
+            .value_config = val_config_helpers::Filter({.default_hz = 1000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Frequency"_s,
             .gui_label = "Freq"_s,
@@ -2749,7 +2749,7 @@ consteval auto CreateParams() {
         };
         lp(EqFreq3) = Args {
             .id = id(region, 93), // never change
-            .value_config = val_config_helpers::Filter({.default_hz = 2000}),
+            .value_config = val_config_helpers::Filter({.default_hz = 10000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
             .name = "Frequency"_s,
             .gui_label = "Freq"_s,
@@ -2757,7 +2757,7 @@ consteval auto CreateParams() {
         };
         lp(EqResonance3) = Args {
             .id = id(region, 87), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
             .name = "Resonance"_s,
             .gui_label = "Reso"_s,
@@ -2775,7 +2775,7 @@ consteval auto CreateParams() {
             .id = id(region, 89), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
-                .default_val = (u32)EqType::Peak,
+                .default_val = (u32)EqType::HighShelf,
             }),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
             .name = "Type"_s,
