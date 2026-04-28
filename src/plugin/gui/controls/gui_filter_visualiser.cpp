@@ -127,10 +127,7 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     imgui.PushId(push_id);
     DEFER { imgui.PopId(); };
 
-    auto const& freq_info =
-        k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterCutoff))];
-
-    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r);
 
     auto const cutoff_param = params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff);
     auto const reso_param = params.DescribedValue(layer_index, LayerParamIndex::FilterResonance);
@@ -139,11 +136,9 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     auto const cutoff_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterCutoff);
     auto const reso_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance);
 
-    // Node position: X = cutoff (base value). Y stays pinned to the 0dB line regardless of the
-    // curve shape — the curve itself reflects resonance. cutoff_param holds a live reference to
-    // the values array, so reads after SetParameterValue below see the updated value.
     auto const node_pos_viewport = [&] {
-        return f32x2 {viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w),
+        auto const cutoff_hz = cutoff_param.info.ProjectValue(cutoff_param.LinearValue());
+        return f32x2 {viewport_r.x + (filter_display::HzToX01(cutoff_hz) * viewport_r.w),
                       filter_display::DbToY(0.0f, viewport_r)};
     };
 
@@ -177,7 +172,9 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
 
         auto const cursor_x = GuiIo().in.cursor_pos.x - rel_click_pos.x;
         auto const x_clamped = Clamp(cursor_x, min_x, max_x);
-        auto const new_cutoff_linear = MapTo01(x_clamped, min_x, max_x);
+        auto const x_t = MapTo01(x_clamped, min_x, max_x);
+        auto const target_hz = filter_display::X01ToHz(x_t);
+        auto const new_cutoff_linear = cutoff_param.info.LineariseValue(target_hz, true).ValueOr(0.0f);
 
         SetParameterValue(engine.processor, cutoff_index, new_cutoff_linear, {});
     }
@@ -224,7 +221,6 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
                                               res_adj,
                                               hz);
             },
-            freq_info,
             greyed_out);
     }
 
@@ -357,25 +353,21 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     imgui.PushId(SourceLocationHash());
     DEFER { imgui.PopId(); };
 
-    auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
-
-    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r);
 
     auto const cutoff_param = params.DescribedValue(ParamIndex::FilterCutoff);
     auto const reso_param = params.DescribedValue(ParamIndex::FilterResonance);
     auto const gain_param = params.DescribedValue(ParamIndex::FilterGain);
     auto const type_param = params.DescribedValue(ParamIndex::FilterType);
 
-    // type_param/cutoff_param/etc hold live refs to the values array, so reads after
-    // SetParameterValue below see the updated values.
     auto const uses_gain = [&] {
         return EffectFilterTypeUsesGain(type_param.IntValue<param_values::EffectFilterType>());
     };
 
-    // Node position: X = cutoff (base). Y = gain (base) for gain-using types, else pinned to 0dB.
     auto const node_pos_viewport = [&] {
+        auto const cutoff_hz = cutoff_param.info.ProjectValue(cutoff_param.LinearValue());
         return f32x2 {
-            viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w),
+            viewport_r.x + (filter_display::HzToX01(cutoff_hz) * viewport_r.w),
             uses_gain()
                 ? filter_display::DbToY(
                       Clamp(gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
@@ -416,7 +408,9 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
         auto const cursor = GuiIo().in.cursor_pos - rel_click_pos;
         auto const x_clamped = Clamp(cursor.x, min_x, max_x);
-        auto const new_cutoff_linear = MapTo01(x_clamped, min_x, max_x);
+        auto const x_t = MapTo01(x_clamped, min_x, max_x);
+        auto const target_hz = filter_display::X01ToHz(x_t);
+        auto const new_cutoff_linear = cutoff_param.info.LineariseValue(target_hz, true).ValueOr(0.0f);
         SetParameterValue(engine.processor, ParamIndex::FilterCutoff, new_cutoff_linear, {});
 
         if (uses_gain()) {
@@ -475,7 +469,6 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
         imgui,
         viewport_r,
         [&](f32 hz) { return 2.0f * rbj_filter::MagnitudeDb(coeffs, hz, filter_display::k_sample_rate); },
-        freq_info,
         greyed_out);
 
     DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param, &gain_param};
@@ -556,8 +549,7 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
     imgui.PushId(SourceLocationHash());
     DEFER { imgui.PopId(); };
 
-    auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
-    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r);
 
     auto const lp_param = params.DescribedValue(ParamIndex::ReverbPreLowPassCutoff);
     auto const hp_param = params.DescribedValue(ParamIndex::ReverbPreHighPassCutoff);
@@ -576,8 +568,7 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
 
     auto const node_pos_viewport = [&](Grabber const& gr) {
         auto const cutoff_hz = SemitonesToHz(gr.param.LinearValue());
-        auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
-        return f32x2 {viewport_r.x + (x_lin * viewport_r.w), handle_y};
+        return f32x2 {viewport_r.x + (filter_display::HzToX01(cutoff_hz) * viewport_r.w), handle_y};
     };
 
     struct GrabberFrame {
@@ -623,7 +614,7 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
             auto const cursor_x = GuiIo().in.cursor_pos.x - rel_click_pos.x;
             auto const x_clamped = Clamp(cursor_x, min_x, max_x);
             auto const x_t = MapTo01(x_clamped, min_x, max_x);
-            auto const target_hz = freq_info.ProjectValue(x_t);
+            auto const target_hz = filter_display::X01ToHz(x_t);
             auto const semitones = Clamp(FrequencyToMidiNote(target_hz),
                                          gr.param.info.linear_range.min,
                                          gr.param.info.linear_range.max);
@@ -643,7 +634,6 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
         imgui,
         viewport_r,
         [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
-        freq_info,
         greyed_out);
 
     for (auto const i : Range(ArraySize(grabbers))) {
@@ -689,8 +679,7 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
     imgui.PushId(SourceLocationHash());
     DEFER { imgui.PopId(); };
 
-    auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
-    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r);
 
     auto const lo_cut_param = params.DescribedValue(ParamIndex::ReverbLowShelfCutoff);
     auto const lo_gain_param = params.DescribedValue(ParamIndex::ReverbLowShelfGain);
@@ -711,9 +700,8 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
 
     auto const node_pos_viewport = [&](Shelf const& sh) {
         auto const cutoff_hz = SemitonesToHz(sh.cutoff_param.LinearValue());
-        auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
         return f32x2 {
-            viewport_r.x + (x_lin * viewport_r.w),
+            viewport_r.x + (filter_display::HzToX01(cutoff_hz) * viewport_r.w),
             filter_display::DbToY(
                 Clamp(sh.gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
                 viewport_r),
@@ -768,7 +756,7 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
 
             auto const x_clamped = Clamp(cursor.x, min_x, max_x);
             auto const x_t = MapTo01(x_clamped, min_x, max_x);
-            auto const target_hz = freq_info.ProjectValue(x_t);
+            auto const target_hz = filter_display::X01ToHz(x_t);
             auto const semitones = Clamp(FrequencyToMidiNote(target_hz),
                                          sh.cutoff_param.info.linear_range.min,
                                          sh.cutoff_param.info.linear_range.max);
@@ -802,7 +790,6 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
         [&](f32 hz) {
             return LowShelfMagDb(hz, lo_fc_hz, lo_gain_db) + HighShelfMagDb(hz, hi_fc_hz, hi_gain_db);
         },
-        freq_info,
         greyed_out);
 
     for (auto const i : Range(ArraySize(shelves))) {
@@ -858,18 +845,14 @@ void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     imgui.PushId(SourceLocationHash());
     DEFER { imgui.PopId(); };
 
-    auto const& freq_info = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
-    filter_display::DrawBackground(imgui, viewport_r, freq_info);
+    filter_display::DrawBackground(imgui, viewport_r);
 
     auto const cutoff_param = params.DescribedValue(ParamIndex::DelayFilterCutoffSemitones);
     auto const spread_param = params.DescribedValue(ParamIndex::DelayFilterSpread);
 
-    // Handle X = cutoff (frequency), Y = spread (0 = bottom, 1 = top of viewport).
-    // cutoff_param/spread_param hold live refs, so reads after SetParameterValue see updates.
     auto const node_pos_viewport = [&] {
         auto const cutoff_hz = SemitonesToHz(cutoff_param.LinearValue());
-        auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
-        return f32x2 {viewport_r.x + (x_lin * viewport_r.w),
+        return f32x2 {viewport_r.x + (filter_display::HzToX01(cutoff_hz) * viewport_r.w),
                       viewport_r.Bottom() - (spread_param.LinearValue() * viewport_r.h)};
     };
 
@@ -908,7 +891,7 @@ void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
         auto const x_clamped = Clamp(cursor.x, min_x, max_x);
         auto const x_t = MapTo01(x_clamped, min_x, max_x);
-        auto const target_hz = freq_info.ProjectValue(x_t);
+        auto const target_hz = filter_display::X01ToHz(x_t);
         auto const semitones = Clamp(FrequencyToMidiNote(target_hz),
                                      cutoff_param.info.linear_range.min,
                                      cutoff_param.info.linear_range.max);
@@ -938,7 +921,6 @@ void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
         imgui,
         viewport_r,
         [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
-        freq_info,
         greyed_out);
 
     DescribedParamValue const* params_arr[] = {&cutoff_param, &spread_param};
