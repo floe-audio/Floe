@@ -29,7 +29,7 @@ struct SharedLayerParams {
     f32 velocity_to_volume_01 {};
 };
 
-constexpr u32 k_num_layer_eq_bands = 2;
+constexpr u32 k_num_layer_eq_bands = 3;
 
 constexpr u32 k_max_eq_band_stages = 2;
 
@@ -79,17 +79,29 @@ struct EqBand {
                        f32 sample_rate,
                        u32 band_num,
                        Optional<param_values::EqType> new_type) {
-        auto freq_param = LayerParamIndex::EqFreq1;
-        auto legacy_reso_param = LayerParamIndex::LegacyEqResonance1;
-        auto reso_param = LayerParamIndex::EqResonance1;
-        auto gain_param = LayerParamIndex::EqGain1;
-        if (band_num == 1) {
-            freq_param = LayerParamIndex::EqFreq2;
-            legacy_reso_param = LayerParamIndex::LegacyEqResonance2;
-            reso_param = LayerParamIndex::EqResonance2;
-            gain_param = LayerParamIndex::EqGain2;
-        } else if (band_num != 0) {
-            PanicIfReached();
+        LayerParamIndex freq_param {};
+        Optional<LayerParamIndex> legacy_reso_param {};
+        LayerParamIndex reso_param {};
+        LayerParamIndex gain_param {};
+        switch (band_num) {
+            case 0:
+                freq_param = LayerParamIndex::EqFreq1;
+                legacy_reso_param = LayerParamIndex::LegacyEqResonance1;
+                reso_param = LayerParamIndex::EqResonance1;
+                gain_param = LayerParamIndex::EqGain1;
+                break;
+            case 1:
+                freq_param = LayerParamIndex::EqFreq2;
+                legacy_reso_param = LayerParamIndex::LegacyEqResonance2;
+                reso_param = LayerParamIndex::EqResonance2;
+                gain_param = LayerParamIndex::EqGain2;
+                break;
+            case 2:
+                freq_param = LayerParamIndex::EqFreq3;
+                reso_param = LayerParamIndex::EqResonance3;
+                gain_param = LayerParamIndex::EqGain3;
+                break;
+            default: PanicIfReached();
         }
 
         bool changed = false;
@@ -98,16 +110,19 @@ struct EqBand {
             eq_params.fc = *p;
             changed = true;
         }
-        if (changed_params.Changed(layer_index, legacy_reso_param) ||
-            changed_params.Changed(layer_index, reso_param)) {
-            auto const legacy_idx = ParamIndexFromLayerParamIndex(layer_index, legacy_reso_param);
-            auto const legacy_linear = changed_params.params.LinearValue(legacy_idx);
-            auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
+        bool reso_changed = changed_params.Changed(layer_index, reso_param);
+        if (legacy_reso_param && changed_params.Changed(layer_index, *legacy_reso_param)) reso_changed = true;
+        if (reso_changed) {
+            f32 q = rbj_filter::EqResonanceToQ(
+                changed_params.params.LinearValue(ParamIndexFromLayerParamIndex(layer_index, reso_param)));
+            if (legacy_reso_param) {
+                auto const legacy_idx = ParamIndexFromLayerParamIndex(layer_index, *legacy_reso_param);
+                auto const legacy_linear = changed_params.params.LinearValue(legacy_idx);
+                auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
+                if (legacy_linear != legacy_default) q = MapFrom01Skew(legacy_linear, 0.5f, 8, 5);
+            }
             eq_params.fs = sample_rate;
-            eq_params.q = (legacy_linear != legacy_default)
-                              ? MapFrom01Skew(legacy_linear, 0.5f, 8, 5)
-                              : rbj_filter::EqResonanceToQ(changed_params.params.LinearValue(
-                                    ParamIndexFromLayerParamIndex(layer_index, reso_param)));
+            eq_params.q = q;
             changed = true;
         }
         if (auto p = changed_params.ProjectedValue(layer_index, gain_param)) {
@@ -276,6 +291,9 @@ struct LayerProcessor {
                       .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyEqType2),
                       .remap_table = param_values::k_legacy_eq_type_to_current,
                   }}},
+              },
+              {
+                  .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType3),
               },
           }})
         , eq_bands() {

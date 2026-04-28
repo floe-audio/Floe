@@ -582,7 +582,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 254,
+    static_assert(k_num_non_experimental_parameters == 266,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "

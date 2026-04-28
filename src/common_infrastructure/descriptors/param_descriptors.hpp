@@ -58,6 +58,10 @@ enum class LayerParamIndex : u8 {
     EqGain2,
     LegacyEqType2,
     EqType2,
+    EqFreq3,
+    EqResonance3,
+    EqGain3,
+    EqType3,
     LegacyVelocityMapping,
     Keytrack,
     LegacyMonophonicBool,
@@ -255,6 +259,7 @@ enum class ParameterModule : u8 {
 
     Band1,
     Band2,
+    Band3,
 
     Count
 };
@@ -294,6 +299,7 @@ constexpr String k_parameter_module_strings[] = {
 
     "Band 1",
     "Band 2",
+    "Band 3",
 };
 
 static_assert(ArraySize(k_parameter_module_strings) == ToInt(ParameterModule::Count));
@@ -2623,6 +2629,41 @@ consteval auto CreateParams() {
             .name = "Type"_s,
             .gui_label = "Type"_s,
             .tooltip = "Band 2: type of EQ band"_s,
+        };
+        lp(EqFreq3) = Args {
+            .id = id(region, 86), // never change
+            .value_config = val_config_helpers::Filter({.default_hz = 2000}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip = "Band 3: frequency of this band"_s,
+        };
+        lp(EqResonance3) = Args {
+            .id = id(region, 87), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Resonance"_s,
+            .gui_label = "Reso"_s,
+            .tooltip = "Band 3: sharpness of the peak"_s,
+        };
+        lp(EqGain3) = Args {
+            .id = id(region, 88), // never change
+            .value_config = val_config_helpers::Gain({.default_db = 0}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Gain"_s,
+            .gui_label = "Gain"_s,
+            .tooltip = "Band 3: volume gain at the frequency"_s,
+        };
+        lp(EqType3) = Args {
+            .id = id(region, 89), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::EqType,
+                .default_val = (u32)EqType::Peak,
+            }),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Band 3: type of EQ band"_s,
         };
 
         // =================================================================================================

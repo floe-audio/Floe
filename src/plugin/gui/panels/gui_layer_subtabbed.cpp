@@ -1104,6 +1104,12 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                    LayerParamIndex::EqResonance2,
                    LayerParamIndex::EqGain2,
                    2);
+
+    do_eq_band_row(LayerParamIndex::EqType3,
+                   LayerParamIndex::EqFreq3,
+                   LayerParamIndex::EqResonance3,
+                   LayerParamIndex::EqGain3,
+                   3);
 }
 
 static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {

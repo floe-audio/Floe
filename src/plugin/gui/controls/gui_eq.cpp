@@ -18,7 +18,7 @@
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
 
-constexpr u8 k_num_bands = 2;
+constexpr u8 k_num_bands = 3;
 constexpr f32 k_handle_radius_ww = 5.0f;
 constexpr f32 k_grabber_radius_ww = 12.0f;
 
@@ -38,6 +38,10 @@ static constexpr Array<BandParams, k_num_bands> k_band_params = {{
      LayerParamIndex::EqFreq2,
      LayerParamIndex::EqResonance2,
      LayerParamIndex::EqGain2},
+    {LayerParamIndex::EqType3,
+     LayerParamIndex::EqFreq3,
+     LayerParamIndex::EqResonance3,
+     LayerParamIndex::EqGain3},
 }};
 
 static void DoEqBandRightClickMenu(GuiState& g,

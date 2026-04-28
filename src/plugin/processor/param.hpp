@@ -188,7 +188,7 @@ struct EnumParamWithLegacies {
     Optional<CurrentEnum> Poll(ChangedParams const& cp) const {
         bool changed = cp.Changed(current_idx);
         for (auto const& leg : legacies)
-            if (cp.Changed(leg.idx)) changed = true;
+            if (leg.remap_table.size && cp.Changed(leg.idx)) changed = true;
         if (!changed) return k_nullopt;
 
         // One of the parameters changed. Now we need to find out which of the legacy or current values we
@@ -197,6 +197,7 @@ struct EnumParamWithLegacies {
         // panel') and therefore it's likely that the value comes from DAW automation - we need to maintain
         // compatibility with that.
         for (auto const& leg : legacies) {
+            if (!leg.remap_table.size) continue;
             auto const linear_val = cp.params.LinearValue(leg.idx);
             if (IsLegacyParamOverridingModern(k_param_descriptors[ToInt(leg.idx)], linear_val)) {
                 auto const val = (s64)Trunc(linear_val);
