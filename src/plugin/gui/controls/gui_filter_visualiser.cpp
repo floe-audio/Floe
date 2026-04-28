@@ -136,57 +136,29 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
     auto const reso_param = params.DescribedValue(layer_index, LayerParamIndex::FilterResonance);
     auto const type_param = params.DescribedValue(layer_index, LayerParamIndex::FilterType);
 
-    auto const& macro_dests = engine.processor.main_macro_destinations;
-
-    auto const cutoff_adj_linear =
-        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
-    auto const reso_adj_linear =
-        AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index);
-
-    auto const vis_state = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
-
-    auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
-                                     15.0f,
-                                     filter_display::k_sample_rate * 0.49f);
-    // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
-    auto const res_adj = Clamp(reso_adj_linear, 0.0f, 0.9999f);
-
-    if (vis_state.valid) {
-        filter_display::DrawResponseCurve(
-            imgui,
-            viewport_r,
-            [&](f32 hz) {
-                return sv_filter::MagnitudeDb(vis_state.type,
-                                              cutoff_adj_hz,
-                                              filter_display::k_sample_rate,
-                                              res_adj,
-                                              hz);
-            },
-            freq_info,
-            greyed_out);
-    }
-
-    // Node position: X = cutoff (base value). Y stays pinned to the 0dB line regardless of the
-    // curve shape — the curve itself reflects resonance.
-    auto const node_x = viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w);
-    auto const node_y = filter_display::DbToY(0.0f, viewport_r);
-    f32x2 const node_pos_viewport {node_x, node_y};
-
     auto const cutoff_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterCutoff);
     auto const reso_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance);
-    DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param};
+
+    // Node position: X = cutoff (base value). Y stays pinned to the 0dB line regardless of the
+    // curve shape — the curve itself reflects resonance. cutoff_param holds a live reference to
+    // the values array, so reads after SetParameterValue below see the updated value.
+    auto const node_pos_viewport = [&] {
+        return f32x2 {viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w),
+                      filter_display::DbToY(0.0f, viewport_r)};
+    };
 
     auto const interaction_id = imgui.MakeId(SourceLocationHash());
 
-    auto const grabber_viewport_r = Rect {.xywh {node_pos_viewport.x - grabber_radius,
-                                                 node_pos_viewport.y - grabber_radius,
+    auto const grabber_viewport_r = Rect {.xywh {node_pos_viewport().x - grabber_radius,
+                                                 node_pos_viewport().y - grabber_radius,
                                                  grabber_radius * 2,
                                                  grabber_radius * 2}};
     auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
 
+    // Process input before drawing the curve/handle so they reflect this frame's changes.
     static f32x2 rel_click_pos;
     if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
-        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport());
 
     if (imgui.ButtonBehaviour(grabber_window_r,
                               interaction_id,
@@ -226,10 +198,44 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
 
     DoFilterTypeRightClickMenu(g, grabber_window_r, interaction_id, layer_index);
 
+    auto const& macro_dests = engine.processor.main_macro_destinations;
+
+    auto const cutoff_adj_linear =
+        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
+    auto const reso_adj_linear =
+        AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index);
+
+    auto const vis_state = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
+
+    auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
+                                     15.0f,
+                                     filter_display::k_sample_rate * 0.49f);
+    // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
+    auto const res_adj = Clamp(reso_adj_linear, 0.0f, 0.9999f);
+
+    if (vis_state.valid) {
+        filter_display::DrawResponseCurve(
+            imgui,
+            viewport_r,
+            [&](f32 hz) {
+                return sv_filter::MagnitudeDb(vis_state.type,
+                                              cutoff_adj_hz,
+                                              filter_display::k_sample_rate,
+                                              res_adj,
+                                              hz);
+            },
+            freq_info,
+            greyed_out);
+    }
+
+    DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param};
     ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
-    auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
-    filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+    filter_display::DrawHandle(imgui,
+                               imgui.ViewportPosToWindowPos(node_pos_viewport()),
+                               handle_radius,
+                               interaction_id,
+                               greyed_out);
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
@@ -360,62 +366,36 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const gain_param = params.DescribedValue(ParamIndex::FilterGain);
     auto const type_param = params.DescribedValue(ParamIndex::FilterType);
 
-    auto const filter_type = type_param.IntValue<param_values::EffectFilterType>();
-    auto const uses_gain = EffectFilterTypeUsesGain(filter_type);
-
-    auto const& macro_dests = engine.processor.main_macro_destinations;
-
-    auto const cutoff_adj_linear =
-        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
-    auto const reso_adj_linear =
-        AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index);
-    auto const gain_adj_linear =
-        AdjustedLinearValue(params, macro_dests, gain_param.LinearValue(), gain_param.info.index);
-
-    auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
-    auto const q_adj = rbj_filter::EffectFilterResonanceToQ(Clamp01(reso_adj_linear));
-    // FilterGain stores the audible gain; DSP uses half per pass so two passes → audible = FilterGain.
-    auto const gain_adj_db = uses_gain ? gain_param.info.ProjectValue(gain_adj_linear) / 2 : 0.0f;
-
-    auto const coeffs = rbj_filter::Coefficients({
-        .type = EffectFilterTypeToRbjType(filter_type),
-        .fs = filter_display::k_sample_rate,
-        .fc = Clamp(cutoff_adj_hz, 15.0f, filter_display::k_sample_rate * 0.49f),
-        .q = q_adj,
-        .peak_gain = gain_adj_db,
-    });
-
-    // The DSP runs two biquad passes in series, so the audible response is |H|² (dB doubles).
-    filter_display::DrawResponseCurve(
-        imgui,
-        viewport_r,
-        [&](f32 hz) { return 2.0f * rbj_filter::MagnitudeDb(coeffs, hz, filter_display::k_sample_rate); },
-        freq_info,
-        greyed_out);
+    // type_param/cutoff_param/etc hold live refs to the values array, so reads after
+    // SetParameterValue below see the updated values.
+    auto const uses_gain = [&] {
+        return EffectFilterTypeUsesGain(type_param.IntValue<param_values::EffectFilterType>());
+    };
 
     // Node position: X = cutoff (base). Y = gain (base) for gain-using types, else pinned to 0dB.
-    auto const node_x = viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w);
-    auto const node_y =
-        uses_gain
-            ? filter_display::DbToY(
-                  Clamp(gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
-                  viewport_r)
-            : filter_display::DbToY(0.0f, viewport_r);
-    f32x2 const node_pos_viewport {node_x, node_y};
-
-    DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param, &gain_param};
+    auto const node_pos_viewport = [&] {
+        return f32x2 {
+            viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w),
+            uses_gain()
+                ? filter_display::DbToY(
+                      Clamp(gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
+                      viewport_r)
+                : filter_display::DbToY(0.0f, viewport_r),
+        };
+    };
 
     auto const interaction_id = imgui.MakeId(SourceLocationHash());
 
-    auto const grabber_viewport_r = Rect {.xywh {node_pos_viewport.x - grabber_radius,
-                                                 node_pos_viewport.y - grabber_radius,
+    auto const grabber_viewport_r = Rect {.xywh {node_pos_viewport().x - grabber_radius,
+                                                 node_pos_viewport().y - grabber_radius,
                                                  grabber_radius * 2,
                                                  grabber_radius * 2}};
     auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
 
+    // Process input before drawing the curve/handle so they reflect this frame's changes.
     static f32x2 rel_click_pos;
     if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
-        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport());
 
     if (imgui.ButtonBehaviour(grabber_window_r,
                               interaction_id,
@@ -427,7 +407,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
     if (imgui.WasJustActivated(interaction_id, MouseButton::Left)) {
         ParameterJustStartedMoving(engine.processor, ParamIndex::FilterCutoff);
-        if (uses_gain) ParameterJustStartedMoving(engine.processor, ParamIndex::FilterGain);
+        if (uses_gain()) ParameterJustStartedMoving(engine.processor, ParamIndex::FilterGain);
     }
 
     if (imgui.IsActive(interaction_id, MouseButton::Left)) {
@@ -439,7 +419,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
         auto const new_cutoff_linear = MapTo01(x_clamped, min_x, max_x);
         SetParameterValue(engine.processor, ParamIndex::FilterCutoff, new_cutoff_linear, {});
 
-        if (uses_gain) {
+        if (uses_gain()) {
             auto const min_y = imgui.ViewportPosToWindowPos({0, viewport_r.y}).y;
             auto const max_y = imgui.ViewportPosToWindowPos({0, viewport_r.Bottom()}).y;
             auto const y_clamped = Clamp(cursor.y, min_y, max_y);
@@ -452,7 +432,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
     if (imgui.WasJustDeactivated(interaction_id, MouseButton::Left)) {
         ParameterJustStoppedMoving(engine.processor, ParamIndex::FilterCutoff);
-        if (uses_gain) ParameterJustStoppedMoving(engine.processor, ParamIndex::FilterGain);
+        if (uses_gain()) ParameterJustStoppedMoving(engine.processor, ParamIndex::FilterGain);
     }
 
     imgui.ConsumeScrollAtRect(grabber_window_r);
@@ -468,13 +448,47 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
     DoEffectFilterTypeRightClickMenu(g, grabber_window_r, interaction_id);
 
+    auto const& macro_dests = engine.processor.main_macro_destinations;
+
+    auto const cutoff_adj_linear =
+        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
+    auto const reso_adj_linear =
+        AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index);
+    auto const gain_adj_linear =
+        AdjustedLinearValue(params, macro_dests, gain_param.LinearValue(), gain_param.info.index);
+
+    auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
+    auto const q_adj = rbj_filter::EffectFilterResonanceToQ(Clamp01(reso_adj_linear));
+    // FilterGain stores the audible gain; DSP uses half per pass so two passes → audible = FilterGain.
+    auto const gain_adj_db = uses_gain() ? gain_param.info.ProjectValue(gain_adj_linear) / 2 : 0.0f;
+
+    auto const coeffs = rbj_filter::Coefficients({
+        .type = EffectFilterTypeToRbjType(type_param.IntValue<param_values::EffectFilterType>()),
+        .fs = filter_display::k_sample_rate,
+        .fc = Clamp(cutoff_adj_hz, 15.0f, filter_display::k_sample_rate * 0.49f),
+        .q = q_adj,
+        .peak_gain = gain_adj_db,
+    });
+
+    // The DSP runs two biquad passes in series, so the audible response is |H|² (dB doubles).
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) { return 2.0f * rbj_filter::MagnitudeDb(coeffs, hz, filter_display::k_sample_rate); },
+        freq_info,
+        greyed_out);
+
+    DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param, &gain_param};
     ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
-    auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
-    filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+    filter_display::DrawHandle(imgui,
+                               imgui.ViewportPosToWindowPos(node_pos_viewport()),
+                               handle_radius,
+                               interaction_id,
+                               greyed_out);
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
-        GuiIo().out.wants.cursor_type = uses_gain ? CursorType::AllArrows : CursorType::HorizontalArrows;
+        GuiIo().out.wants.cursor_type = uses_gain() ? CursorType::AllArrows : CursorType::HorizontalArrows;
 
     OverlayMacroDestinationRegion(g, grabber_window_r, ParamIndex::FilterCutoff);
 
@@ -548,18 +562,6 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
     auto const lp_param = params.DescribedValue(ParamIndex::ReverbPreLowPassCutoff);
     auto const hp_param = params.DescribedValue(ParamIndex::ReverbPreHighPassCutoff);
 
-    auto const lp_fc_hz = SemitonesToHz(lp_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, lp_param.LinearValue(), lp_param.info.index)));
-    auto const hp_fc_hz = SemitonesToHz(hp_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, hp_param.LinearValue(), hp_param.info.index)));
-
-    filter_display::DrawResponseCurve(
-        imgui,
-        viewport_r,
-        [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
-        freq_info,
-        greyed_out);
-
     auto const handle_y = filter_display::DbToY(0.0f, viewport_r);
 
     struct Grabber {
@@ -572,24 +574,37 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
         {ParamIndex::ReverbPreHighPassCutoff, hp_param, 1},
     };
 
-    static f32x2 rel_click_pos;
-
-    for (auto const& gr : grabbers) {
+    auto const node_pos_viewport = [&](Grabber const& gr) {
         auto const cutoff_hz = SemitonesToHz(gr.param.LinearValue());
         auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
-        auto const node_x = viewport_r.x + (x_lin * viewport_r.w);
-        f32x2 const node_pos_viewport {node_x, handle_y};
+        return f32x2 {viewport_r.x + (x_lin * viewport_r.w), handle_y};
+    };
 
-        auto const interaction_id = imgui.MakeId(SourceLocationHash() ^ gr.seed);
+    struct GrabberFrame {
+        imgui::Id interaction_id;
+        Rect window_r;
+    };
+    GrabberFrame frames[ArraySize(grabbers)];
+    for (auto const i : Range(ArraySize(grabbers))) {
+        auto const& gr = grabbers[i];
+        auto const pos = node_pos_viewport(gr);
+        Rect const grabber_viewport_r {
+            .xywh {pos.x - grabber_radius, pos.y - grabber_radius, grabber_radius * 2, grabber_radius * 2}};
+        frames[i] = {
+            .interaction_id = imgui.MakeId(SourceLocationHash() ^ gr.seed),
+            .window_r = imgui.RegisterAndConvertRect(grabber_viewport_r),
+        };
+    }
 
-        Rect const grabber_viewport_r {.xywh {node_pos_viewport.x - grabber_radius,
-                                              node_pos_viewport.y - grabber_radius,
-                                              grabber_radius * 2,
-                                              grabber_radius * 2}};
-        auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
+    // Process input before drawing the curve/handles so they reflect this frame's changes.
+    static f32x2 rel_click_pos;
+    for (auto const i : Range(ArraySize(grabbers))) {
+        auto const& gr = grabbers[i];
+        auto const interaction_id = frames[i].interaction_id;
+        auto const grabber_window_r = frames[i].window_r;
 
         if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
-            rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+            rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport(gr));
 
         if (imgui.ButtonBehaviour(grabber_window_r,
                                   interaction_id,
@@ -617,12 +632,33 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
 
         if (imgui.WasJustDeactivated(interaction_id, MouseButton::Left))
             ParameterJustStoppedMoving(engine.processor, gr.index);
+    }
+
+    auto const lp_fc_hz = SemitonesToHz(lp_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, lp_param.LinearValue(), lp_param.info.index)));
+    auto const hp_fc_hz = SemitonesToHz(hp_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, hp_param.LinearValue(), hp_param.info.index)));
+
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
+        freq_info,
+        greyed_out);
+
+    for (auto const i : Range(ArraySize(grabbers))) {
+        auto const& gr = grabbers[i];
+        auto const interaction_id = frames[i].interaction_id;
+        auto const grabber_window_r = frames[i].window_r;
 
         DescribedParamValue const* params_arr[] = {&gr.param};
         ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
-        auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
-        filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+        filter_display::DrawHandle(imgui,
+                                   imgui.ViewportPosToWindowPos(node_pos_viewport(gr)),
+                                   handle_radius,
+                                   interaction_id,
+                                   greyed_out);
 
         if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
@@ -661,23 +697,6 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
     auto const hi_cut_param = params.DescribedValue(ParamIndex::ReverbHighShelfCutoff);
     auto const hi_gain_param = params.DescribedValue(ParamIndex::ReverbHighShelfGain);
 
-    auto const projected_adj = [&](DescribedParamValue const& p) {
-        return p.info.ProjectValue(AdjustedLinearValue(params, macro_dests, p.LinearValue(), p.info.index));
-    };
-    auto const lo_fc_hz = SemitonesToHz(projected_adj(lo_cut_param));
-    auto const hi_fc_hz = SemitonesToHz(projected_adj(hi_cut_param));
-    auto const lo_gain_db = projected_adj(lo_gain_param);
-    auto const hi_gain_db = projected_adj(hi_gain_param);
-
-    filter_display::DrawResponseCurve(
-        imgui,
-        viewport_r,
-        [&](f32 hz) {
-            return LowShelfMagDb(hz, lo_fc_hz, lo_gain_db) + HighShelfMagDb(hz, hi_fc_hz, hi_gain_db);
-        },
-        freq_info,
-        greyed_out);
-
     struct Shelf {
         ParamIndex cutoff_idx;
         ParamIndex gain_idx;
@@ -690,27 +709,42 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
         {ParamIndex::ReverbHighShelfCutoff, ParamIndex::ReverbHighShelfGain, hi_cut_param, hi_gain_param, 1},
     };
 
-    static f32x2 rel_click_pos;
-
-    for (auto const& sh : shelves) {
+    auto const node_pos_viewport = [&](Shelf const& sh) {
         auto const cutoff_hz = SemitonesToHz(sh.cutoff_param.LinearValue());
         auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
-        auto const node_x = viewport_r.x + (x_lin * viewport_r.w);
-        auto const node_y = filter_display::DbToY(
-            Clamp(sh.gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
-            viewport_r);
-        f32x2 const node_pos_viewport {node_x, node_y};
+        return f32x2 {
+            viewport_r.x + (x_lin * viewport_r.w),
+            filter_display::DbToY(
+                Clamp(sh.gain_param.ProjectedValue(), filter_display::k_min_db, filter_display::k_max_db),
+                viewport_r),
+        };
+    };
 
-        auto const interaction_id = imgui.MakeId(SourceLocationHash() ^ sh.seed);
+    struct ShelfFrame {
+        imgui::Id interaction_id;
+        Rect window_r;
+    };
+    ShelfFrame frames[ArraySize(shelves)];
+    for (auto const i : Range(ArraySize(shelves))) {
+        auto const& sh = shelves[i];
+        auto const pos = node_pos_viewport(sh);
+        Rect const grabber_viewport_r {
+            .xywh {pos.x - grabber_radius, pos.y - grabber_radius, grabber_radius * 2, grabber_radius * 2}};
+        frames[i] = {
+            .interaction_id = imgui.MakeId(SourceLocationHash() ^ sh.seed),
+            .window_r = imgui.RegisterAndConvertRect(grabber_viewport_r),
+        };
+    }
 
-        Rect const grabber_viewport_r {.xywh {node_pos_viewport.x - grabber_radius,
-                                              node_pos_viewport.y - grabber_radius,
-                                              grabber_radius * 2,
-                                              grabber_radius * 2}};
-        auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
+    // Process input before drawing the curve/handles so they reflect this frame's changes.
+    static f32x2 rel_click_pos;
+    for (auto const i : Range(ArraySize(shelves))) {
+        auto const& sh = shelves[i];
+        auto const interaction_id = frames[i].interaction_id;
+        auto const grabber_window_r = frames[i].window_r;
 
         if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
-            rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+            rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport(sh));
 
         if (imgui.ButtonBehaviour(grabber_window_r,
                                   interaction_id,
@@ -752,12 +786,38 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
             ParameterJustStoppedMoving(engine.processor, sh.cutoff_idx);
             ParameterJustStoppedMoving(engine.processor, sh.gain_idx);
         }
+    }
+
+    auto const projected_adj = [&](DescribedParamValue const& p) {
+        return p.info.ProjectValue(AdjustedLinearValue(params, macro_dests, p.LinearValue(), p.info.index));
+    };
+    auto const lo_fc_hz = SemitonesToHz(projected_adj(lo_cut_param));
+    auto const hi_fc_hz = SemitonesToHz(projected_adj(hi_cut_param));
+    auto const lo_gain_db = projected_adj(lo_gain_param);
+    auto const hi_gain_db = projected_adj(hi_gain_param);
+
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) {
+            return LowShelfMagDb(hz, lo_fc_hz, lo_gain_db) + HighShelfMagDb(hz, hi_fc_hz, hi_gain_db);
+        },
+        freq_info,
+        greyed_out);
+
+    for (auto const i : Range(ArraySize(shelves))) {
+        auto const& sh = shelves[i];
+        auto const interaction_id = frames[i].interaction_id;
+        auto const grabber_window_r = frames[i].window_r;
 
         DescribedParamValue const* params_arr[] = {&sh.cutoff_param, &sh.gain_param};
         ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
-        auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
-        filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+        filter_display::DrawHandle(imgui,
+                                   imgui.ViewportPosToWindowPos(node_pos_viewport(sh)),
+                                   handle_radius,
+                                   interaction_id,
+                                   greyed_out);
 
         if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
@@ -804,41 +864,27 @@ void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const cutoff_param = params.DescribedValue(ParamIndex::DelayFilterCutoffSemitones);
     auto const spread_param = params.DescribedValue(ParamIndex::DelayFilterSpread);
 
-    auto const cutoff_adj_sem = cutoff_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index));
-    auto const spread_adj = spread_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, spread_param.LinearValue(), spread_param.info.index));
-
-    constexpr f32 k_spread_octaves = 8;
-    auto const radius_sem = spread_adj * k_spread_octaves * 12.0f;
-    auto const lp_fc_hz = SemitonesToHz(cutoff_adj_sem + radius_sem);
-    auto const hp_fc_hz = SemitonesToHz(cutoff_adj_sem - radius_sem);
-
-    filter_display::DrawResponseCurve(
-        imgui,
-        viewport_r,
-        [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
-        freq_info,
-        greyed_out);
-
     // Handle X = cutoff (frequency), Y = spread (0 = bottom, 1 = top of viewport).
-    auto const cutoff_hz = SemitonesToHz(cutoff_param.LinearValue());
-    auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
-    auto const node_x = viewport_r.x + (x_lin * viewport_r.w);
-    auto const node_y = viewport_r.Bottom() - (spread_param.LinearValue() * viewport_r.h);
-    f32x2 const node_pos_viewport {node_x, node_y};
+    // cutoff_param/spread_param hold live refs, so reads after SetParameterValue see updates.
+    auto const node_pos_viewport = [&] {
+        auto const cutoff_hz = SemitonesToHz(cutoff_param.LinearValue());
+        auto const x_lin = freq_info.LineariseValue(cutoff_hz, true).ValueOr(0.0f);
+        return f32x2 {viewport_r.x + (x_lin * viewport_r.w),
+                      viewport_r.Bottom() - (spread_param.LinearValue() * viewport_r.h)};
+    };
 
     auto const interaction_id = imgui.MakeId(SourceLocationHash());
 
-    Rect const grabber_viewport_r {.xywh {node_pos_viewport.x - grabber_radius,
-                                          node_pos_viewport.y - grabber_radius,
+    Rect const grabber_viewport_r {.xywh {node_pos_viewport().x - grabber_radius,
+                                          node_pos_viewport().y - grabber_radius,
                                           grabber_radius * 2,
                                           grabber_radius * 2}};
     auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
 
+    // Process input before drawing the curve/handle so they reflect this frame's changes.
     static f32x2 rel_click_pos;
     if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
-        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport);
+        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport());
 
     if (imgui.ButtonBehaviour(grabber_window_r,
                               interaction_id,
@@ -878,11 +924,31 @@ void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
         ParameterJustStoppedMoving(engine.processor, ParamIndex::DelayFilterSpread);
     }
 
+    auto const cutoff_adj_sem = cutoff_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index));
+    auto const spread_adj = spread_param.info.ProjectValue(
+        AdjustedLinearValue(params, macro_dests, spread_param.LinearValue(), spread_param.info.index));
+
+    constexpr f32 k_spread_octaves = 8;
+    auto const radius_sem = spread_adj * k_spread_octaves * 12.0f;
+    auto const lp_fc_hz = SemitonesToHz(cutoff_adj_sem + radius_sem);
+    auto const hp_fc_hz = SemitonesToHz(cutoff_adj_sem - radius_sem);
+
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
+        freq_info,
+        greyed_out);
+
     DescribedParamValue const* params_arr[] = {&cutoff_param, &spread_param};
     ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
 
-    auto const handle_pos = imgui.ViewportPosToWindowPos(node_pos_viewport);
-    filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
+    filter_display::DrawHandle(imgui,
+                               imgui.ViewportPosToWindowPos(node_pos_viewport()),
+                               handle_radius,
+                               interaction_id,
+                               greyed_out);
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
