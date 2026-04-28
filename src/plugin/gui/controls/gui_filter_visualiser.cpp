@@ -12,7 +12,6 @@
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui/panels/gui_macros.hpp"
 #include "processing_utils/filters.hpp"
 #include "processor/effect_filter_iir.hpp"
 #include "processor/processor.hpp"
@@ -218,8 +217,6 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
-
-    OverlayMacroDestinationRegion(g, grabber_window_r, cutoff_index);
 
     if (g.param_text_editor_to_open) {
         Array<ParamIndex, 3> const all_indices {
@@ -451,8 +448,6 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = uses_gain() ? CursorType::AllArrows : CursorType::HorizontalArrows;
 
-    OverlayMacroDestinationRegion(g, grabber_window_r, ParamIndex::FilterCutoff);
-
     if (g.param_text_editor_to_open) {
         Array<ParamIndex, 4> const all_indices {
             ParamIndex::FilterCutoff,
@@ -623,8 +618,6 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
 
         if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
-
-        OverlayMacroDestinationRegion(g, grabber_window_r, gr.index);
     }
 
     if (g.param_text_editor_to_open) {
@@ -782,8 +775,6 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
 
         if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
-
-        OverlayMacroDestinationRegion(g, grabber_window_r, sh.cutoff_idx);
     }
 
     if (g.param_text_editor_to_open) {
@@ -890,8 +881,6 @@ void DoConvolutionReverbHighpassVisualizer(GuiState& g, Rect viewport_r, bool gr
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
-
-    OverlayMacroDestinationRegion(g, grabber_window_r, ParamIndex::ConvolutionReverbHighpass);
 
     if (g.param_text_editor_to_open) {
         Array<ParamIndex, 1> const all_indices {ParamIndex::ConvolutionReverbHighpass};
@@ -1013,8 +1002,6 @@ void DoDelayFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
 
     if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
-
-    OverlayMacroDestinationRegion(g, grabber_window_r, ParamIndex::DelayFilterCutoffSemitones);
 
     if (g.param_text_editor_to_open) {
         Array<ParamIndex, 2> const all_indices {
