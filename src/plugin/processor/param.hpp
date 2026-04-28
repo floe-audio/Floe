@@ -170,6 +170,7 @@ inline Optional<ParamIndex> LegacyOverridingParam(Parameters const& params, Para
     switch (modern) {
         case ParamIndex::FilterResonance: return check(ParamIndex::LegacyFilterResonance);
         case ParamIndex::FilterGain: return check(ParamIndex::LegacyFilterGain);
+        case ParamIndex::FilterType: return check(ParamIndex::LegacyFilterType);
         default: return k_nullopt;
     }
 }

@@ -135,6 +135,7 @@ enum class ParamIndex : u16 {
     FilterResonance,
     LegacyFilterGain,
     FilterGain,
+    LegacyFilterType,
     FilterType,
 
     StereoWidenWidth,
@@ -588,7 +589,7 @@ constexpr auto k_layer_filter_type_strings = ArrayT<String>({
 });
 static_assert(k_layer_filter_type_strings.size == ToInt(LayerFilterType::Count));
 
-enum class EffectFilterType : u8 { // never reorder
+enum class LegacyEffectFilterType : u8 { // never reorder
     LowPass,
     HighPass,
     BandPass,
@@ -598,7 +599,7 @@ enum class EffectFilterType : u8 { // never reorder
     HighShelf,
     Count,
 };
-constexpr auto k_effect_filter_type_strings = ArrayT<String>({
+constexpr auto k_legacy_effect_filter_type_strings = ArrayT<String>({
     "Low-pass",
     "High-pass",
     "Band-pass",
@@ -607,7 +608,49 @@ constexpr auto k_effect_filter_type_strings = ArrayT<String>({
     "Low-shelf",
     "High-shelf",
 });
+static_assert(k_legacy_effect_filter_type_strings.size == ToInt(LegacyEffectFilterType::Count));
+
+enum class EffectFilterType : u8 { // never reorder
+    LowPass12,
+    LowPass24,
+    HighPass12,
+    HighPass24,
+    BandPass,
+    Notch,
+    Peak,
+    LowShelf,
+    HighShelf,
+    Count,
+};
+constexpr auto k_effect_filter_type_strings = ArrayT<String>({
+    "Low-pass 12dB",
+    "Low-pass 24dB",
+    "High-pass 12dB",
+    "High-pass 24dB",
+    "Band-pass",
+    "Notch",
+    "Peak",
+    "Low-shelf",
+    "High-shelf",
+});
 static_assert(k_effect_filter_type_strings.size == ToInt(EffectFilterType::Count));
+
+// Legacy LowPass/HighPass (which were 24dB due to the 2-pass DSP topology) map to the new *24
+// variants so existing presets keep their audible response.
+constexpr auto k_legacy_effect_filter_type_to_current = ArrayT<EffectFilterType>({
+    EffectFilterType::LowPass24,
+    EffectFilterType::HighPass24,
+    EffectFilterType::BandPass,
+    EffectFilterType::Notch,
+    EffectFilterType::Peak,
+    EffectFilterType::LowShelf,
+    EffectFilterType::HighShelf,
+});
+static_assert(k_legacy_effect_filter_type_to_current.size == ToInt(LegacyEffectFilterType::Count));
+
+constexpr bool EffectFilterTypeUsesGain(EffectFilterType t) {
+    return t == EffectFilterType::Peak || t == EffectFilterType::LowShelf || t == EffectFilterType::HighShelf;
+}
 
 enum class DistortionType : u8 { // never reorder
     TubeLog,
@@ -855,6 +898,7 @@ struct ParamDescriptor {
         LegacyLfoShapeV2,
         LfoShape,
         LayerFilterType,
+        LegacyEffectFilterType,
         EffectFilterType,
         DistortionType,
         DelaySyncedTime,
@@ -1138,6 +1182,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::LegacyLfoShapeV2: return k_legacy_lfo_shape_v2_strings;
         case ParamDescriptor::MenuType::LfoShape: return k_lfo_shape_strings;
         case ParamDescriptor::MenuType::LayerFilterType: return k_layer_filter_type_strings;
+        case ParamDescriptor::MenuType::LegacyEffectFilterType: return k_legacy_effect_filter_type_strings;
         case ParamDescriptor::MenuType::EffectFilterType: return k_effect_filter_type_strings;
         case ParamDescriptor::MenuType::DistortionType: return k_distortion_type_strings;
         case ParamDescriptor::MenuType::DelaySyncedTime: return k_delay_synced_time_strings;
@@ -1675,11 +1720,23 @@ consteval auto CreateParams() {
         .gui_label = "Gain"_s,
         .tooltip = "Volume gain of shelf/peak filter"_s,
     };
-    mp(FilterType) = Args {
+    mp(LegacyFilterType) = Args {
         .id = id(IdRegion::Master, 20), // never change
         .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::LegacyEffectFilterType,
+            .default_val = (u32)LegacyEffectFilterType::LowPass,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Legacy type parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(FilterType) = Args {
+        .id = id(IdRegion::Master, 105), // never change
+        .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::EffectFilterType,
-            .default_val = (u32)EffectFilterType::LowPass,
+            .default_val = (u32)EffectFilterType::LowPass24,
         }),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Type"_s,

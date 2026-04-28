@@ -5,18 +5,59 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "effect.hpp"
+#include "param.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 #include "processing_utils/filters.hpp"
 
+constexpr u32 EffectFilterStageCount(param_values::EffectFilterType t) {
+    switch (t) {
+        case param_values::EffectFilterType::LowPass12:
+        case param_values::EffectFilterType::HighPass12: return 1;
+        case param_values::EffectFilterType::LowPass24:
+        case param_values::EffectFilterType::HighPass24:
+        case param_values::EffectFilterType::BandPass:
+        case param_values::EffectFilterType::Notch:
+        case param_values::EffectFilterType::Peak:
+        case param_values::EffectFilterType::LowShelf:
+        case param_values::EffectFilterType::HighShelf: return 2;
+        case param_values::EffectFilterType::Count: break;
+    }
+    PanicIfReached();
+    return 2;
+}
+
+constexpr rbj_filter::Type EffectFilterTypeToRbjType(param_values::EffectFilterType t) {
+    switch (t) {
+        case param_values::EffectFilterType::LowPass12:
+        case param_values::EffectFilterType::LowPass24: return rbj_filter::Type::LowPass;
+        case param_values::EffectFilterType::HighPass12:
+        case param_values::EffectFilterType::HighPass24: return rbj_filter::Type::HighPass;
+        case param_values::EffectFilterType::BandPass: return rbj_filter::Type::BandPassCzpg;
+        case param_values::EffectFilterType::Notch: return rbj_filter::Type::Notch;
+        case param_values::EffectFilterType::Peak: return rbj_filter::Type::Peaking;
+        case param_values::EffectFilterType::LowShelf: return rbj_filter::Type::LowShelf;
+        case param_values::EffectFilterType::HighShelf: return rbj_filter::Type::HighShelf;
+        case param_values::EffectFilterType::Count: break;
+    }
+    PanicIfReached();
+    return rbj_filter::Type::LowPass;
+}
+
 class FilterEffect final : public Effect {
   public:
-    FilterEffect() : Effect(EffectType::FilterEffect) {}
+    FilterEffect()
+        : Effect(EffectType::FilterEffect)
+        , m_filter_type({
+              .current_idx = ParamIndex::FilterType,
+              .legacies = {{{
+                  .idx = ParamIndex::LegacyFilterType,
+                  .remap_table = param_values::k_legacy_effect_filter_type_to_current,
+              }}},
+          }) {}
 
     static bool IsUsingGainParam(Parameters const& params) {
-        auto const filter_type = params.IntValue<param_values::EffectFilterType>(ParamIndex::FilterType);
-        return filter_type == param_values::EffectFilterType::HighShelf ||
-               filter_type == param_values::EffectFilterType::LowShelf ||
-               filter_type == param_values::EffectFilterType::Peak;
+        return param_values::EffectFilterTypeUsesGain(
+            params.IntValue<param_values::EffectFilterType>(ParamIndex::FilterType));
     }
 
   private:
@@ -56,28 +97,9 @@ class FilterEffect final : public Effect {
                           2;
             set_params = true;
         }
-        if (auto p =
-                changes.changed_params.IntValue<param_values::EffectFilterType>(ParamIndex::FilterType)) {
-            rbj_filter::Type filter_type {};
-            switch (*p) {
-                case param_values::EffectFilterType::LowPass: filter_type = rbj_filter::Type::LowPass; break;
-                case param_values::EffectFilterType::HighPass:
-                    filter_type = rbj_filter::Type::HighPass;
-                    break;
-                case param_values::EffectFilterType::BandPass:
-                    filter_type = rbj_filter::Type::BandPassCzpg;
-                    break;
-                case param_values::EffectFilterType::Notch: filter_type = rbj_filter::Type::Notch; break;
-                case param_values::EffectFilterType::Peak: filter_type = rbj_filter::Type::Peaking; break;
-                case param_values::EffectFilterType::LowShelf:
-                    filter_type = rbj_filter::Type::LowShelf;
-                    break;
-                case param_values::EffectFilterType::HighShelf:
-                    filter_type = rbj_filter::Type::HighShelf;
-                    break;
-                case param_values::EffectFilterType::Count: PanicIfReached(); break;
-            }
-            m_filter_params.type = filter_type;
+        if (auto p = m_filter_type.Poll(changes.changed_params)) {
+            m_filter_params.type = EffectFilterTypeToRbjType(*p);
+            m_num_stages = EffectFilterStageCount(*p);
             set_params = true;
         }
 
@@ -90,7 +112,10 @@ class FilterEffect final : public Effect {
             frames,
             [&](f32x2 in) {
                 auto const [coeffs, filter_mix] = m_smoothed_coeffs.Value();
-                return Process(m_filter2, coeffs, Process(m_filter1, coeffs, in * filter_mix));
+                f32x2 out = in * filter_mix;
+                out = Process(m_filter1, coeffs, out);
+                if (m_num_stages == 2) out = Process(m_filter2, coeffs, out);
+                return out;
             },
             context);
     }
@@ -101,8 +126,10 @@ class FilterEffect final : public Effect {
         m_smoothed_coeffs.ResetSmoothing();
     }
 
+    EnumParamWithLegacies<param_values::EffectFilterType> const m_filter_type;
     rbj_filter::SmoothedCoefficients m_smoothed_coeffs {};
     rbj_filter::StereoData m_filter1 {};
     rbj_filter::StereoData m_filter2 {};
     rbj_filter::Params m_filter_params = {};
+    u32 m_num_stages = 2;
 };

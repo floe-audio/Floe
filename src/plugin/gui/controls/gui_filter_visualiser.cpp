@@ -14,6 +14,7 @@
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "processing_utils/filters.hpp"
+#include "processor/effect_filter_iir.hpp"
 #include "processor/processor.hpp"
 
 constexpr f32 k_handle_radius_ww = 5.0f;
@@ -253,25 +254,6 @@ void DoFilterVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greye
 // ===============================================================================
 // Effect filter visualiser.
 
-static rbj_filter::Type EffectFilterTypeToRbjType(param_values::EffectFilterType t) {
-    switch (t) {
-        case param_values::EffectFilterType::LowPass: return rbj_filter::Type::LowPass;
-        case param_values::EffectFilterType::HighPass: return rbj_filter::Type::HighPass;
-        case param_values::EffectFilterType::BandPass: return rbj_filter::Type::BandPassCzpg;
-        case param_values::EffectFilterType::Notch: return rbj_filter::Type::Notch;
-        case param_values::EffectFilterType::Peak: return rbj_filter::Type::Peaking;
-        case param_values::EffectFilterType::LowShelf: return rbj_filter::Type::LowShelf;
-        case param_values::EffectFilterType::HighShelf: return rbj_filter::Type::HighShelf;
-        case param_values::EffectFilterType::Count: break;
-    }
-    return rbj_filter::Type::LowPass;
-}
-
-static bool EffectFilterTypeUsesGain(param_values::EffectFilterType t) {
-    return t == param_values::EffectFilterType::Peak || t == param_values::EffectFilterType::LowShelf ||
-           t == param_values::EffectFilterType::HighShelf;
-}
-
 static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id) {
     auto const right_click_id = (imgui::Id)SourceLocationHash();
 
@@ -361,7 +343,12 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const type_param = params.DescribedValue(ParamIndex::FilterType);
 
     auto const uses_gain = [&] {
-        return EffectFilterTypeUsesGain(type_param.IntValue<param_values::EffectFilterType>());
+        return param_values::EffectFilterTypeUsesGain(
+            type_param.IntValue<param_values::EffectFilterType>());
+    };
+
+    auto const num_stages = [&] {
+        return EffectFilterStageCount(type_param.IntValue<param_values::EffectFilterType>());
     };
 
     auto const node_pos_viewport = [&] {
@@ -456,6 +443,7 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
     // FilterGain stores the audible gain; DSP uses half per pass so two passes → audible = FilterGain.
     auto const gain_adj_db = uses_gain() ? gain_param.info.ProjectValue(gain_adj_linear) / 2 : 0.0f;
 
+    auto const stages = num_stages();
     auto const coeffs = rbj_filter::Coefficients({
         .type = EffectFilterTypeToRbjType(type_param.IntValue<param_values::EffectFilterType>()),
         .fs = filter_display::k_sample_rate,
@@ -464,11 +452,12 @@ void DoEffectFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
         .peak_gain = gain_adj_db,
     });
 
-    // The DSP runs two biquad passes in series, so the audible response is |H|² (dB doubles).
     filter_display::DrawResponseCurve(
         imgui,
         viewport_r,
-        [&](f32 hz) { return 2.0f * rbj_filter::MagnitudeDb(coeffs, hz, filter_display::k_sample_rate); },
+        [&](f32 hz) {
+            return (f32)stages * rbj_filter::MagnitudeDb(coeffs, hz, filter_display::k_sample_rate);
+        },
         greyed_out);
 
     DescribedParamValue const* params_arr[] = {&cutoff_param, &reso_param, &gain_param};

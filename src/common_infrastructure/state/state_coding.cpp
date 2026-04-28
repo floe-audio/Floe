@@ -47,12 +47,12 @@ static f32 FindMenuValue(Span<MenuNameMapping const> mappings, String search_nam
 }
 
 static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
-    if (IsLayerParamOfSpecificType(index, LayerParamIndex::EqType1) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::EqType2)) {
+    if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqType1) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqType2)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::EqType::Peak, {"Peaking", "Peak"}},
-            {(f32)param_values::EqType::LowShelf, {"Low Shelf", "Low-shelf"}},
-            {(f32)param_values::EqType::HighShelf, {"High Shelf", "High-shelf"}},
+            {(f32)param_values::LegacyEqType::Peak, {"Peaking", "Peak"}},
+            {(f32)param_values::LegacyEqType::LowShelf, {"Low Shelf", "Low-shelf"}},
+            {(f32)param_values::LegacyEqType::HighShelf, {"High Shelf", "High-shelf"}},
         });
         return k_types.Items();
     } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LfoRateTempoSynced)) {
@@ -124,15 +124,15 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
         });
         return k_types.Items();
 
-    } else if (index == ParamIndex::FilterType) {
+    } else if (index == ParamIndex::LegacyFilterType) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::EffectFilterType::LowPass, {"Low Pass", "Low-pass"}},
-            {(f32)param_values::EffectFilterType::HighPass, {"High Pass", "High-pass"}},
-            {(f32)param_values::EffectFilterType::BandPass, {"Band Pass", "Band-pass"}},
-            {(f32)param_values::EffectFilterType::Notch, {"Notch", "Notch"}},
-            {(f32)param_values::EffectFilterType::Peak, {"Peak", "Peak"}},
-            {(f32)param_values::EffectFilterType::LowShelf, {"Low Shelf", "Low-shelf"}},
-            {(f32)param_values::EffectFilterType::HighShelf, {"High Shelf", "High-shelf"}},
+            {(f32)param_values::LegacyEffectFilterType::LowPass, {"Low Pass", "Low-pass"}},
+            {(f32)param_values::LegacyEffectFilterType::HighPass, {"High Pass", "High-pass"}},
+            {(f32)param_values::LegacyEffectFilterType::BandPass, {"Band Pass", "Band-pass"}},
+            {(f32)param_values::LegacyEffectFilterType::Notch, {"Notch", "Notch"}},
+            {(f32)param_values::LegacyEffectFilterType::Peak, {"Peak", "Peak"}},
+            {(f32)param_values::LegacyEffectFilterType::LowShelf, {"Low Shelf", "Low-shelf"}},
+            {(f32)param_values::LegacyEffectFilterType::HighShelf, {"High Shelf", "High-shelf"}},
         });
         return k_types.Items();
 
@@ -543,9 +543,11 @@ enum class StateVersion : u16 {
     // LegacyLfoShapeV2 and kept only for DAW automation backwards compatibility.
     ExpandedLfoShapeParameter,
 
-    // Added EQ band types: Notch, LowPass12, LowPass24, HighPass12, HighPass24. The legacy EqType1/2
-    // parameters are now hidden and kept only for DAW automation backwards compatibility.
-    AddedEqLowHighPassTypes,
+    // Added new filter type variants: per-band 12dB/24dB low-/high-pass and notch on the EQ, plus
+    // 12dB/24dB low-/high-pass on the effect filter. A third EQ band per layer was also added. The
+    // legacy EqType1/2 and FilterType parameters are now hidden and kept only for DAW automation
+    // backwards compatibility.
+    AddedExtraFilterTypes,
 
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
@@ -582,7 +584,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 266,
+    static_assert(k_num_non_experimental_parameters == 267,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -755,7 +757,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                                     param_values::k_legacy_lfo_destination_to_current);
     }
 
-    if (version < StateVersion::AddedEqLowHighPassTypes) {
+    if (version < StateVersion::AddedExtraFilterTypes) {
         MigrateLegacyEnumLayerParam(state,
                                     source,
                                     LayerParamIndex::LegacyEqType1,
@@ -766,6 +768,24 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                                     LayerParamIndex::LegacyEqType2,
                                     LayerParamIndex::EqType2,
                                     param_values::k_legacy_eq_type_to_current);
+
+        {
+            auto const legacy_pi = ParamIndex::LegacyFilterType;
+            auto const current_pi = ParamIndex::FilterType;
+            auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
+            auto const current_default = k_param_descriptors[ToInt(current_pi)].default_linear_value;
+            if (source == StateSource::Daw) {
+                state.LinearParam(current_pi) = current_default;
+            } else {
+                auto& legacy_val = state.LinearParam(legacy_pi);
+                auto const legacy_int = (usize)Trunc(legacy_val);
+                legacy_val = legacy_default;
+                state.LinearParam(current_pi) =
+                    (legacy_int < param_values::k_legacy_effect_filter_type_to_current.size)
+                        ? (f32)param_values::k_legacy_effect_filter_type_to_current[legacy_int]
+                        : current_default;
+            }
+        }
     }
 
     if (version < StateVersion::AddedEffectVisibility) {
