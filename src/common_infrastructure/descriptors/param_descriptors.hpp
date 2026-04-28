@@ -959,8 +959,13 @@ struct ParamDescriptor {
             throw "";
         }
 
-        template <f32 (*pow_fn)(f32, f32)>
         constexpr f32 LineariseValue(Range linear_range_, f32 projected_value) const {
+            auto const pow_fn = [](f32 base, f32 exp) {
+                if consteval {
+                    return constexpr_math::Powf(base, exp);
+                }
+                return Pow(base, exp);
+            };
             switch (type) {
                 case Type::Log: {
                     auto const log2 = [](f32 x) {
@@ -1070,7 +1075,7 @@ struct ParamDescriptor {
         else if (projected_value < projection_range.min || projected_value > projection_range.max)
             return k_nullopt;
 
-        if (projection) return projection->LineariseValue<Pow<f32>>(linear_range, projected_value);
+        if (projection) return projection->LineariseValue(linear_range, projected_value);
 
         return projected_value;
     }
@@ -1302,8 +1307,7 @@ constexpr ValConfig Volume(VolumeOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = p,
-        .default_linear_value =
-            p.LineariseValue<constexpr_math::Powf>(linear_range, DbToAmp(opts.default_db)),
+        .default_linear_value = p.LineariseValue(linear_range, DbToAmp(opts.default_db)),
         .display_format = ParamDisplayFormat::VolumeAmp,
     };
 }
@@ -1328,8 +1332,7 @@ constexpr ValConfig Gain(GainOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = projection,
-        .default_linear_value =
-            projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_db),
+        .default_linear_value = projection.LineariseValue(linear_range, opts.default_db),
         .display_format = ParamDisplayFormat::VolumeDbRange,
     };
 }
@@ -1343,8 +1346,7 @@ constexpr ValConfig Ms(MsOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = opts.projection,
-        .default_linear_value =
-            opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_ms),
+        .default_linear_value = opts.projection.LineariseValue(linear_range, opts.default_ms),
         .display_format = ParamDisplayFormat::Ms,
     };
 }
@@ -1382,8 +1384,7 @@ constexpr ValConfig Hz(HzOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = opts.projection,
-        .default_linear_value =
-            opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_hz),
+        .default_linear_value = opts.projection.LineariseValue(linear_range, opts.default_hz),
         .display_format = ParamDisplayFormat::Hz,
     };
 }
@@ -1428,8 +1429,7 @@ constexpr ValConfig CustomProjected(CustomProjectedOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = opts.projection,
-        .default_linear_value =
-            opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_val),
+        .default_linear_value = opts.projection.LineariseValue(linear_range, opts.default_val),
         .display_format = opts.display_format,
     };
 }
@@ -2904,7 +2904,7 @@ consteval auto CreateParams() {
                 val_config_helpers::ValConfig {
                     .linear_range = linear_range,
                     .projection = projection,
-                    .default_linear_value = projection.LineariseValue<constexpr_math::Powf>(linear_range, 1),
+                    .default_linear_value = projection.LineariseValue(linear_range, 1),
                     .display_format = ParamDisplayFormat::Percent,
                 };
             }),
@@ -2950,8 +2950,7 @@ consteval auto CreateParams() {
                 val_config_helpers::ValConfig {
                     .linear_range = linear_range,
                     .projection = projection,
-                    .default_linear_value =
-                        projection.LineariseValue<constexpr_math::Powf>(linear_range, 0.05f),
+                    .default_linear_value = projection.LineariseValue(linear_range, 0.05f),
                     .display_format = ParamDisplayFormat::Percent,
                 };
             }),
