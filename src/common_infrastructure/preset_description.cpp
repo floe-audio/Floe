@@ -1,7 +1,7 @@
 // Copyright 2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "auto_description.hpp"
+#include "preset_description.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
@@ -208,8 +208,7 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
 DynamicArrayBounded<char, 200>
 GenerateAutoDescription(StateSnapshot const& state,
                         Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
-                        u64 random_seed,
-                        s32 max_items) {
+                        u64 random_seed) {
     DynamicArrayBounded<char, 200> result {};
 
     auto const lp = [&](u32 layer, LayerParamIndex p) -> f32 {
@@ -346,8 +345,7 @@ GenerateAutoDescription(StateSnapshot const& state,
     struct Phrase {
         PhraseKind kind;
         f32 salience;
-        // Index into fx_entries (below) if this phrase mentions an FX, else -1. Used to recount FX mentions
-        // after capping by max_items.
+        // Index into fx_entries (below) if this phrase mentions an FX, else -1.
         s32 fx_entry_index = -1;
     };
     DynamicArrayBounded<Phrase, 16> phrases {};
@@ -535,27 +533,12 @@ GenerateAutoDescription(StateSnapshot const& state,
     // Sort all phrases by salience (highest first)
     Sort(phrases, [](Phrase const& a, Phrase const& b) { return a.salience > b.salience; });
 
-    // Cap items. Priority: instrument name first, then phrases by salience, then FX summary.
-    bool const has_inst_name_item = is_stacked || (num_layers == 1 && first_inst_name.size);
-    if (max_items >= 0) {
-        s32 const phrase_budget = Max(0, max_items - (has_inst_name_item ? 1 : 0));
-        if (phrases.size > (usize)phrase_budget) phrases.size = (usize)phrase_budget;
-    }
-
-    // Recount FX mentions among surviving phrases.
-    mentioned_fx = 0;
-    for (auto const& p : phrases)
-        if (p.fx_entry_index >= 0) mentioned_fx++;
-
-    // Show trailing FX summary if there are unmentioned FX and we have budget for it.
     auto const unmentioned_fx = num_fx - mentioned_fx;
-    bool show_trailing_fx_line = unmentioned_fx > 0;
-    if (show_trailing_fx_line && max_items >= 0) {
-        s32 const used = (has_inst_name_item ? 1 : 0) + (s32)phrases.size;
-        if (used >= max_items) show_trailing_fx_line = false;
-    }
+    bool const show_trailing_fx_line = unmentioned_fx > 0;
 
-    // Assemble: first phrase as descriptor, rest as "with modifier, modifier and modifier"
+    // Assemble. The "short" portion is the instrument name plus the most salient phrase descriptor; we
+    // terminate it with a full stop so SplitPresetDescriptionForTopPanel finds a natural boundary. The rest
+    // (additional phrases, FX summary) follows as a second sentence.
     if (is_stacked)
         fmt::Append(result, "layered {}", first_inst_name);
     else if (num_layers == 1 && first_inst_name.size)
@@ -564,33 +547,35 @@ GenerateAutoDescription(StateSnapshot const& state,
     if (phrases.size) {
         if (result.size) dyn::AppendSpan(result, ", ");
         dyn::AppendSpan(result, ResolvePhraseText(phrases[0].kind, random_seed).descriptor);
+    }
 
-        if (phrases.size > 1) {
-            dyn::AppendSpan(result, ", with ");
-            for (usize i = 1; i < phrases.size; i++) {
-                if (i > 1) {
-                    if (i == phrases.size - 1)
-                        dyn::AppendSpan(result, " and ");
-                    else
-                        dyn::AppendSpan(result, ", ");
-                }
-                dyn::AppendSpan(result, ResolvePhraseText(phrases[i].kind, random_seed).modifier);
+    if (!result.size) return result;
+
+    dyn::AppendSpan(result, "."_s);
+
+    if (phrases.size > 1) {
+        dyn::AppendSpan(result, " With "_s);
+        for (usize i = 1; i < phrases.size; i++) {
+            if (i > 1) {
+                if (i == phrases.size - 1)
+                    dyn::AppendSpan(result, " and "_s);
+                else
+                    dyn::AppendSpan(result, ", "_s);
             }
+            dyn::AppendSpan(result, ResolvePhraseText(phrases[i].kind, random_seed).modifier);
         }
+        dyn::AppendSpan(result, "."_s);
     }
 
     if (show_trailing_fx_line) {
-        if (mentioned_fx == 0) {
-            if (result.size) dyn::AppendSpan(result, ". ");
-            fmt::Append(result, "{} FX", num_fx);
-        } else {
-            dyn::AppendSpan(result, ", ");
-            fmt::Append(result, "+{} more FX", unmentioned_fx);
-        }
+        if (mentioned_fx == 0)
+            fmt::Append(result, " {} FX.", num_fx);
+        else
+            fmt::Append(result, " +{} more FX.", unmentioned_fx);
     }
 
     // Capitalise first letter
-    if (result.size && result[0] >= 'a' && result[0] <= 'z') result[0] -= 32;
+    if (result[0] >= 'a' && result[0] <= 'z') result[0] -= 32;
 
     return result;
 }

@@ -5,7 +5,6 @@
 
 #include <IconsFontAwesome6.h>
 
-#include "common_infrastructure/auto_description.hpp"
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/state/macros.hpp"
@@ -580,13 +579,7 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     constexpr f32 k_desc_column_width = 160;
 
-    auto const& snapshot = g.engine.last_snapshot;
-    auto const& metadata = snapshot.state.metadata;
-
-    bool const has_desc = metadata.description.size != 0;
-
-    auto const auto_desc = has_desc ? AutoDescriptionString {} : AutoDescription(g.engine);
-    bool const has_auto_desc = auto_desc.size != 0;
+    auto const& cache = g.engine.preset_description_cache;
 
     auto const column = DoBox(builder,
                               {
@@ -603,33 +596,21 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                   },
                               });
 
-    if (!has_desc && !has_auto_desc) return;
+    if (!cache.long_text.size) return;
 
     DoSectionLabel(builder, column, "DESCRIPTION"_s);
 
-    if (has_desc) {
-        DoBox(builder,
-              {
-                  .parent = column,
-                  .text = fmt::FormatStringReplace(g.scratch_arena,
-                                                   metadata.description,
-                                                   ArrayT<fmt::StringReplacement>({{"\n"_s, " "_s}})),
-                  .wrap_width = k_wrap_to_parent,
-                  .size_from_text = true,
-                  .font = FontType::BodyItalic,
-                  .text_colours = Col {.c = Col::White, .alpha = 170},
-              });
-    } else if (has_auto_desc) {
-        DoBox(builder,
-              {
-                  .parent = column,
-                  .text = auto_desc,
-                  .wrap_width = k_wrap_to_parent,
-                  .size_from_text = true,
-                  .font = FontType::BodyItalic,
-                  .text_colours = Col {.c = Col::White, .alpha = 130},
-              });
-    }
+    DoBox(builder,
+          {
+              .parent = column,
+              .text = fmt::FormatStringReplace(g.scratch_arena,
+                                               cache.long_text,
+                                               ArrayT<fmt::StringReplacement>({{"\n"_s, " "_s}})),
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+              .font = FontType::BodyItalic,
+              .text_colours = Col {.c = Col::White, .alpha = (u8)(cache.long_is_user_desc ? 170 : 130)},
+          });
 }
 
 void MidPanelPerformContent(GuiBuilder& builder,

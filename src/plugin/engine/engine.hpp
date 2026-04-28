@@ -4,9 +4,9 @@
 #pragma once
 #include "foundation/foundation.hpp"
 
-#include "common_infrastructure/auto_description.hpp"
 #include "common_infrastructure/autosave.hpp"
 #include "common_infrastructure/constants.hpp"
+#include "common_infrastructure/preset_description.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 #include "common_infrastructure/state/macros.hpp"
@@ -91,6 +91,17 @@ struct Engine : ProcessorListener {
     Optional<PendingStateChange> pending_state_change {};
     LastSnapshot last_snapshot {};
 
+    struct PresetDescriptionCache {
+        AutoDescriptionString auto_desc {};
+        // Resolved short/long views. Both point either into auto_desc or into
+        // last_snapshot.state.metadata.description and remain valid until the next refresh.
+        String short_text {};
+        String long_text {};
+        // True when long_text is the user-authored description rather than auto-generated.
+        bool long_is_user_desc = false;
+    };
+    PresetDescriptionCache preset_description_cache {};
+
     StateMetadata state_metadata {};
 
     Bitset<k_num_effect_types> fx_visible {};
@@ -133,5 +144,3 @@ void LoadPresetFromFile(Engine& engine, String path);
 void SaveCurrentStateToFile(Engine& engine, String path);
 
 void SetToDefaultState(Engine& engine);
-
-AutoDescriptionString AutoDescription(Engine const& engine, s32 max_items = -1);
