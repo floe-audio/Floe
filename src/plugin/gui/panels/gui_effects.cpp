@@ -1031,6 +1031,16 @@ static void DoEffectParams(GuiState& g,
         case EffectType::ConvolutionReverb: {
             DoImpulseResponseSelector(g, frame_context, param_container, greyed_out);
 
+            auto const hp_vis = DoBox(g.builder,
+                                      {
+                                          .parent = param_container,
+                                          .layout {
+                                              .size = {200, 70},
+                                          },
+                                      });
+            if (auto const r = BoxRect(g.builder, hp_vis))
+                DoConvolutionReverbHighpassVisualizer(g, *r, greyed_out);
+
             DoKnobParameter(
                 g,
                 param_container,

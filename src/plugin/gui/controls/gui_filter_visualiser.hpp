@@ -21,6 +21,10 @@ void DoReverbPreFilterVisualizer(GuiState& g, Rect viewport_r, bool greyed_out);
 // shelf, draggable on X (cutoff) and Y (gain, 0 dB to -24 dB).
 void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out);
 
+// Convolution reverb high-pass visualiser: single cutoff handle for `ConvolutionReverbHighpass`.
+// Drag X = cutoff.
+void DoConvolutionReverbHighpassVisualizer(GuiState& g, Rect viewport_r, bool greyed_out);
+
 // Delay filter visualiser: bandpass centred on `DelayFilterCutoffSemitones`, width controlled by
 // `DelayFilterSpread` (radius in octaves = spread * 8). Single grabber: drag X = cutoff; drag
 // Y = spread (handle Y position tracks spread, top of viewport = max spread).

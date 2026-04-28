@@ -816,6 +816,108 @@ void DoReverbPostShelfVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) 
 }
 
 // ===============================================================================
+// Convolution reverb high-pass visualiser.
+
+void DoConvolutionReverbHighpassVisualizer(GuiState& g, Rect viewport_r, bool greyed_out) {
+    auto& imgui = g.imgui;
+    auto& engine = g.engine;
+    auto& params = engine.processor.main_params;
+    auto const& macro_dests = engine.processor.main_macro_destinations;
+
+    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
+
+    imgui.PushId(SourceLocationHash());
+    DEFER { imgui.PopId(); };
+
+    auto const cutoff_param = params.DescribedValue(ParamIndex::ConvolutionReverbHighpass);
+
+    filter_display::DrawBackground(imgui, viewport_r, cutoff_param.info);
+
+    auto const node_pos_viewport = [&] {
+        return f32x2 {viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w),
+                      filter_display::DbToY(0.0f, viewport_r)};
+    };
+
+    auto const interaction_id = imgui.MakeId(SourceLocationHash());
+
+    Rect const grabber_viewport_r {.xywh {node_pos_viewport().x - grabber_radius,
+                                          node_pos_viewport().y - grabber_radius,
+                                          grabber_radius * 2,
+                                          grabber_radius * 2}};
+    auto const grabber_window_r = imgui.RegisterAndConvertRect(grabber_viewport_r);
+
+    static f32x2 rel_click_pos;
+    if (imgui.ButtonBehaviour(grabber_window_r, interaction_id, imgui::SliderConfig::k_activation_cfg))
+        rel_click_pos = GuiIo().in.cursor_pos - imgui.ViewportPosToWindowPos(node_pos_viewport());
+
+    if (imgui.ButtonBehaviour(grabber_window_r,
+                              interaction_id,
+                              {
+                                  .mouse_button = MouseButton::Left,
+                                  .event = MouseButtonEvent::DoubleClick,
+                              }))
+        g.param_text_editor_to_open = ParamIndex::ConvolutionReverbHighpass;
+
+    if (imgui.WasJustActivated(interaction_id, MouseButton::Left))
+        ParameterJustStartedMoving(engine.processor, ParamIndex::ConvolutionReverbHighpass);
+
+    if (imgui.IsActive(interaction_id, MouseButton::Left)) {
+        auto const min_x = imgui.ViewportPosToWindowPos({viewport_r.x, 0}).x;
+        auto const max_x = imgui.ViewportPosToWindowPos({viewport_r.Right(), 0}).x;
+        auto const cursor_x = GuiIo().in.cursor_pos.x - rel_click_pos.x;
+        auto const x_clamped = Clamp(cursor_x, min_x, max_x);
+        auto const new_cutoff_linear = MapTo01(x_clamped, min_x, max_x);
+        SetParameterValue(engine.processor, ParamIndex::ConvolutionReverbHighpass, new_cutoff_linear, {});
+    }
+
+    if (imgui.WasJustDeactivated(interaction_id, MouseButton::Left))
+        ParameterJustStoppedMoving(engine.processor, ParamIndex::ConvolutionReverbHighpass);
+
+    auto const cutoff_adj_linear =
+        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
+    auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
+                                     15.0f,
+                                     filter_display::k_sample_rate * 0.49f);
+
+    auto const coeffs = rbj_filter::Coefficients({
+        .type = rbj_filter::Type::HighPass,
+        .fs = filter_display::k_sample_rate,
+        .fc = cutoff_adj_hz,
+        .q = 1.0f,
+        .peak_gain = 0.0f,
+    });
+
+    filter_display::DrawResponseCurve(
+        imgui,
+        viewport_r,
+        [&](f32 hz) { return rbj_filter::MagnitudeDb(coeffs, hz, filter_display::k_sample_rate); },
+        cutoff_param.info,
+        greyed_out);
+
+    DescribedParamValue const* params_arr[] = {&cutoff_param};
+    ParameterValuePopup(g, params_arr, interaction_id, grabber_window_r);
+
+    filter_display::DrawHandle(imgui,
+                               imgui.ViewportPosToWindowPos(node_pos_viewport()),
+                               handle_radius,
+                               interaction_id,
+                               greyed_out);
+
+    if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
+        GuiIo().out.wants.cursor_type = CursorType::HorizontalArrows;
+
+    OverlayMacroDestinationRegion(g, grabber_window_r, ParamIndex::ConvolutionReverbHighpass);
+
+    if (g.param_text_editor_to_open) {
+        Array<ParamIndex, 1> const all_indices {ParamIndex::ConvolutionReverbHighpass};
+        auto const cut = viewport_r.w / 3;
+        Rect const edit_r {.xywh {viewport_r.x + cut, viewport_r.y, viewport_r.w - (cut * 2), viewport_r.h}};
+        HandleShowingTextEditorForParams(g, edit_r, all_indices);
+    }
+}
+
+// ===============================================================================
 // Delay filter visualiser.
 //
 // The delay's filter is a bandpass: LP at midiToHz(cutoff + radius), HP at midiToHz(cutoff -
