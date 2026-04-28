@@ -143,9 +143,15 @@ inline Optional<ParamIndex> LegacyOverridingParam(Parameters const& params, Para
     if (auto const lp = LayerParamIndexAndLayerFor(modern)) {
         Optional<LayerParamIndex> legacy_layer_param;
         switch (lp->param) {
+            case LayerParamIndex::FilterCutoff:
+                legacy_layer_param = LayerParamIndex::LegacyFilterCutoff;
+                break;
             case LayerParamIndex::FilterResonance:
                 legacy_layer_param = LayerParamIndex::LegacyFilterResonance;
                 break;
+            case LayerParamIndex::EqFreq1: legacy_layer_param = LayerParamIndex::LegacyEqFreq1; break;
+            case LayerParamIndex::EqFreq2: legacy_layer_param = LayerParamIndex::LegacyEqFreq2; break;
+            case LayerParamIndex::EqFreq3: legacy_layer_param = LayerParamIndex::LegacyEqFreq3; break;
             case LayerParamIndex::EqResonance1:
                 legacy_layer_param = LayerParamIndex::LegacyEqResonance1;
                 break;
@@ -168,9 +174,12 @@ inline Optional<ParamIndex> LegacyOverridingParam(Parameters const& params, Para
     }
 
     switch (modern) {
+        case ParamIndex::FilterCutoff: return check(ParamIndex::LegacyFilterCutoff);
         case ParamIndex::FilterResonance: return check(ParamIndex::LegacyFilterResonance);
         case ParamIndex::FilterGain: return check(ParamIndex::LegacyFilterGain);
         case ParamIndex::FilterType: return check(ParamIndex::LegacyFilterType);
+        case ParamIndex::ChorusHighpass: return check(ParamIndex::LegacyChorusHighpass);
+        case ParamIndex::ConvolutionReverbHighpass: return check(ParamIndex::LegacyConvolutionReverbHighpass);
         default: return k_nullopt;
     }
 }

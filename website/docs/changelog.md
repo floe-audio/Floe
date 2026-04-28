@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 1.2.0-beta.2
+- Filter and EQ frequency parameters now use a logarithmic mapping (equal pixels per octave) so the knob position lines up with the visualiser's frequency axis. Existing presets are migrated automatically.
 - GUI: surface legacy parameter overrides on the main GUI. When a legacy parameter (loaded from a DAW project) is overriding its modern equivalent, a small warning badge appears on the affected control. Clicking the badge opens an explanation and lets you clear the override.
 - GUI: redesign the Legacy Parameters panel to list only currently-active overrides, one per row, with a reset button to clear each override.
 - Add five new LFO shapes: 'Pluck' and 'Pluck Sharp' (curved sawtooth-like shapes for percussive, plucky modulation), 'Pulse Narrow' and 'Pulse Wide' (asymmetric pulse waves at 25% and 75% duty cycle), and 'Trapezoid' (square with sloped edges).

@@ -161,6 +161,9 @@ constexpr double Pow(double base, double exponent) {
 
 constexpr float Powf(float base, float exponent) { return (float)Pow((double)base, (double)exponent); }
 
+constexpr float Log2f(float x) { return (float)Log2((double)x); }
+constexpr float Exp2f(float x) { return (float)Pow(2.0, (double)x); }
+
 // based on code from GCEM,
 // Copyright (C) 2016-2023 Keith O'Hara
 // SPDX-License-Identifier: Apache-2.0

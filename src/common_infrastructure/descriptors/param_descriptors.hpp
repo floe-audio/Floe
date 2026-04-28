@@ -25,6 +25,7 @@ enum class LayerParamIndex : u8 {
     VolumeSustain,
     VolumeRelease,
     FilterOn,
+    LegacyFilterCutoff,
     FilterCutoff,
     LegacyFilterResonance,
     FilterResonance,
@@ -46,18 +47,21 @@ enum class LayerParamIndex : u8 {
     LfoShape,
     LfoDestination,
     EqOn,
+    LegacyEqFreq1,
     EqFreq1,
     LegacyEqResonance1,
     EqResonance1,
     EqGain1,
     LegacyEqType1,
     EqType1,
+    LegacyEqFreq2,
     EqFreq2,
     LegacyEqResonance2,
     EqResonance2,
     EqGain2,
     LegacyEqType2,
     EqType2,
+    LegacyEqFreq3,
     EqFreq3,
     EqResonance3,
     EqGain3,
@@ -130,6 +134,7 @@ enum class ParamIndex : u16 {
     CompressorOn,
 
     FilterOn,
+    LegacyFilterCutoff,
     FilterCutoff,
     LegacyFilterResonance,
     FilterResonance,
@@ -142,6 +147,7 @@ enum class ParamIndex : u16 {
     StereoWidenOn,
 
     ChorusRate,
+    LegacyChorusHighpass,
     ChorusHighpass,
     ChorusDepth,
     ChorusWet,
@@ -169,6 +175,7 @@ enum class ParamIndex : u16 {
     PhaserMix,
     PhaserOn,
 
+    LegacyConvolutionReverbHighpass,
     ConvolutionReverbHighpass,
     ConvolutionReverbWet,
     ConvolutionReverbDry,
@@ -947,10 +954,31 @@ struct ParamDescriptor {
         enum class Type : u8 {
             Exponential,
             LinearThenExponential,
+            // Log: equal pixels per octave. linear ∈ [0,1] maps to projected ∈ [range.min, range.max]
+            // via exp2(lerp(log2(min), log2(max), t)). `exponent` is unused. range.min must be > 0.
+            Log,
         };
 
         constexpr f32 ProjectValue(f32 linear_value, Range linear_range_) const {
             switch (type) {
+                case Type::Log: {
+                    auto const log2 = [](f32 x) {
+                        if consteval {
+                            return constexpr_math::Log2f(x);
+                        }
+                        return Log2(x);
+                    };
+                    auto const exp2 = [](f32 x) {
+                        if consteval {
+                            return constexpr_math::Exp2f(x);
+                        }
+                        return Exp2(x);
+                    };
+                    auto const value_01 = linear_range_.RamapTo01(linear_value);
+                    auto const lo = log2(range.min);
+                    auto const hi = log2(range.max);
+                    return exp2(lo + (value_01 * (hi - lo)));
+                }
                 case Type::LinearThenExponential: {
                     auto const value_01 = linear_range_.RamapTo01(linear_value);
                     if (value_01 <= split_01) {
@@ -981,6 +1009,18 @@ struct ParamDescriptor {
         template <f32 (*pow_fn)(f32, f32)>
         constexpr f32 LineariseValue(Range linear_range_, f32 projected_value) const {
             switch (type) {
+                case Type::Log: {
+                    auto const log2 = [](f32 x) {
+                        if consteval {
+                            return constexpr_math::Log2f(x);
+                        }
+                        return Log2(x);
+                    };
+                    auto const lo = log2(range.min);
+                    auto const hi = log2(range.max);
+                    auto const value_01 = (log2(projected_value) - lo) / (hi - lo);
+                    return linear_range_.min + (value_01 * linear_range_.Delta());
+                }
                 case Type::LinearThenExponential: {
                     if (projected_value <= split_value) {
                         auto const t = (split_value == range.min)
@@ -1407,6 +1447,14 @@ struct FilterOptions {
 };
 constexpr ValConfig Filter(FilterOptions opts) {
     return Hz({
+        .projection = {.range = {15, 20000}, .exponent = 0, .type = ParamDescriptor::Projection::Type::Log},
+        .default_hz = opts.default_hz,
+    });
+}
+// Old pow-skewed mapping, retained only for backwards-compatibility shadow params that read DAW
+// automation written before the switch to log mapping.
+constexpr ValConfig LegacyFilter(FilterOptions opts) {
+    return Hz({
         .projection = {{15, 20000}, 2.8f},
         .default_hz = opts.default_hz,
     });
@@ -1678,8 +1726,17 @@ consteval auto CreateParams() {
         .gui_label = "Filter"_s,
         .tooltip = "Enable/disable the filter"_s,
     };
-    mp(FilterCutoff) = Args {
+    mp(LegacyFilterCutoff) = Args {
         .id = id(IdRegion::Master, 17), // never change
+        .value_config = val_config_helpers::LegacyFilter({.default_hz = 5000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Cutoff Frequency"_s,
+        .gui_label = "Cutoff"_s,
+        .tooltip = "Legacy cutoff parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(FilterCutoff) = Args {
+        .id = id(IdRegion::Master, 106), // never change
         .value_config = val_config_helpers::Filter({.default_hz = 5000}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Cutoff Frequency"_s,
@@ -1774,8 +1831,17 @@ consteval auto CreateParams() {
         .gui_label = "Rate"_s,
         .tooltip = "Chorus modulation rate"_s,
     };
-    mp(ChorusHighpass) = Args {
+    mp(LegacyChorusHighpass) = Args {
         .id = id(IdRegion::Master, 24), // never change
+        .value_config = val_config_helpers::LegacyFilter({.default_hz = 1000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Chorus},
+        .name = "Legacy High-pass"_s,
+        .gui_label = "High-pass"_s,
+        .tooltip = "Legacy high-pass parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ChorusHighpass) = Args {
+        .id = id(IdRegion::Master, 107), // never change
         .value_config = val_config_helpers::Filter({.default_hz = 1000}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "High-pass"_s,
@@ -1997,8 +2063,17 @@ consteval auto CreateParams() {
     };
 
     // =====================================================================================================
-    mp(ConvolutionReverbHighpass) = Args {
+    mp(LegacyConvolutionReverbHighpass) = Args {
         .id = id(IdRegion::Master, 65), // never change
+        .value_config = val_config_helpers::LegacyFilter({.default_hz = 30}),
+        .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
+        .name = "Legacy High-pass"_s,
+        .gui_label = "High-pass"_s,
+        .tooltip = "Legacy high-pass parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ConvolutionReverbHighpass) = Args {
+        .id = id(IdRegion::Master, 108), // never change
         .value_config = val_config_helpers::Filter({.default_hz = 30}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
         .name = "High-pass"_s,
@@ -2367,8 +2442,17 @@ consteval auto CreateParams() {
             .gui_label = "Filter"_s,
             .tooltip = "Enable/disable the filter"_s,
         };
-        lp(FilterCutoff) = Args {
+        lp(LegacyFilterCutoff) = Args {
             .id = id(region, 19), // never change
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 6000}),
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
+            .name = "Legacy Cutoff Frequency"_s,
+            .gui_label = "Cut"_s,
+            .tooltip = "Legacy cutoff parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(FilterCutoff) = Args {
+            .id = id(region, 90), // never change
             .value_config = val_config_helpers::Filter({.default_hz = 6000}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Cutoff Frequency"_s,
@@ -2575,8 +2659,18 @@ consteval auto CreateParams() {
             .gui_label = "EQ"_s,
             .tooltip = "Turn on or off the equaliser effect for this layer"_s,
         };
-        lp(EqFreq1) = Args {
+        lp(LegacyEqFreq1) = Args {
             .id = id(region, 36), // never change
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 8000}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
+            .name = "Legacy Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip =
+                "Legacy band 1 frequency parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqFreq1) = Args {
+            .id = id(region, 91), // never change
             .value_config = val_config_helpers::Filter({.default_hz = 8000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Frequency"_s,
@@ -2631,8 +2725,18 @@ consteval auto CreateParams() {
             .gui_label = "Type"_s,
             .tooltip = "Band 1: type of EQ band"_s,
         };
-        lp(EqFreq2) = Args {
+        lp(LegacyEqFreq2) = Args {
             .id = id(region, 40), // never change
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 500}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
+            .name = "Legacy Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip =
+                "Legacy band 2 frequency parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqFreq2) = Args {
+            .id = id(region, 92), // never change
             .value_config = val_config_helpers::Filter({.default_hz = 500}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Frequency"_s,
@@ -2687,8 +2791,18 @@ consteval auto CreateParams() {
             .gui_label = "Type"_s,
             .tooltip = "Band 2: type of EQ band"_s,
         };
-        lp(EqFreq3) = Args {
+        lp(LegacyEqFreq3) = Args {
             .id = id(region, 86), // never change
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 2000}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Legacy Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip =
+                "Legacy band 3 frequency parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqFreq3) = Args {
+            .id = id(region, 93), // never change
             .value_config = val_config_helpers::Filter({.default_hz = 2000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
             .name = "Frequency"_s,

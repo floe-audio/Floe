@@ -134,7 +134,10 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
     imgui.PushId(push_id);
     DEFER { imgui.PopId(); };
 
-    filter_display::DrawBackground(imgui, viewport_r);
+    auto const& freq_info =
+        k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::EqFreq1))];
+
+    filter_display::DrawBackground(imgui, viewport_r, freq_info);
 
     // Node handle sits at the base (user-set) value; the drawn curve reflects macro modulation.
     struct BandState {
@@ -178,8 +181,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
             .peak_gain = gain_adj_db,
         });
 
-        auto const freq_hz = freq_param.info.ProjectValue(freq_param.LinearValue());
-        auto const node_x = viewport_r.x + (filter_display::HzToX01(freq_hz) * viewport_r.w);
+        auto const node_x = viewport_r.x + (freq_param.LinearValue() * viewport_r.w);
         auto const node_y = b.uses_gain ? filter_display::DbToY(gain_param.ProjectedValue(), viewport_r)
                                         : filter_display::DbToY(0.0f, viewport_r);
         b.node_pos_viewport = {node_x, node_y};
@@ -195,6 +197,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
                     (f32)b.num_stages * rbj_filter::MagnitudeDb(b.coeffs, hz, filter_display::k_sample_rate);
             return db;
         },
+        freq_info,
         greyed_out);
 
     for (auto const band_idx : Range(k_num_bands)) {
@@ -244,9 +247,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
             auto const cursor = GuiIo().in.cursor_pos - rel_click_pos[band_idx];
 
             auto const x_clamped = Clamp(cursor.x, min_x, max_x);
-            auto const x_t = MapTo01(x_clamped, min_x, max_x);
-            auto const target_hz = filter_display::X01ToHz(x_t);
-            auto const new_freq_linear = freq_param.info.LineariseValue(target_hz, true).ValueOr(0.0f);
+            auto const new_freq_linear = MapTo01(x_clamped, min_x, max_x);
             SetParameterValue(engine.processor, freq_index, new_freq_linear, {});
 
             if (uses_gain) {

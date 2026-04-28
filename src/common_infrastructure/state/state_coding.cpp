@@ -549,6 +549,12 @@ enum class StateVersion : u16 {
     // backwards compatibility.
     AddedExtraFilterTypes,
 
+    // Switched all filter/EQ frequency parameters to a logarithmic mapping (equal pixels per
+    // octave) so the visualisers can scale linearly with the knob position. The legacy
+    // FilterCutoff, EqFreq1/2/3, ChorusHighpass and ConvolutionReverbHighpass parameters are now
+    // hidden and kept only for DAW automation backwards compatibility.
+    AddedLogFrequencyParams,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -584,7 +590,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 267,
+    static_assert(k_num_non_experimental_parameters == 282,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -877,6 +883,40 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
             state.LinearParam(current_pi) =
                 k_param_descriptors[ToInt(current_pi)].LineariseValue(new_db, true).ValueOr(current_default);
         }
+    }
+
+    if (version < StateVersion::AddedLogFrequencyParams) {
+        // Convert old pow-skewed linear values to the new log-skewed linear values by routing
+        // through Hz: project via the legacy descriptor, then linearise via the new descriptor.
+        auto const migrate_freq = [&](ParamIndex legacy_pi, ParamIndex current_pi) {
+            auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
+            auto const& current_desc = k_param_descriptors[ToInt(current_pi)];
+            if (source == StateSource::Daw) {
+                state.LinearParam(current_pi) = current_desc.default_linear_value;
+            } else {
+                auto& legacy_val = state.LinearParam(legacy_pi);
+                auto const hz = legacy_desc.ProjectValue(legacy_val);
+                legacy_val = legacy_desc.default_linear_value;
+                state.LinearParam(current_pi) =
+                    current_desc.LineariseValue(hz, true).ValueOr(current_desc.default_linear_value);
+            }
+        };
+
+        for (auto const layer_index : Range(k_num_layers)) {
+            for (auto const [legacy_idx_enum, current_idx_enum] :
+                 Array<Pair<LayerParamIndex, LayerParamIndex>, 4> {
+                     {{LayerParamIndex::LegacyFilterCutoff, LayerParamIndex::FilterCutoff},
+                      {LayerParamIndex::LegacyEqFreq1, LayerParamIndex::EqFreq1},
+                      {LayerParamIndex::LegacyEqFreq2, LayerParamIndex::EqFreq2},
+                      {LayerParamIndex::LegacyEqFreq3, LayerParamIndex::EqFreq3}}}) {
+                migrate_freq(ParamIndexFromLayerParamIndex(layer_index, legacy_idx_enum),
+                             ParamIndexFromLayerParamIndex(layer_index, current_idx_enum));
+            }
+        }
+
+        migrate_freq(ParamIndex::LegacyFilterCutoff, ParamIndex::FilterCutoff);
+        migrate_freq(ParamIndex::LegacyChorusHighpass, ParamIndex::ChorusHighpass);
+        migrate_freq(ParamIndex::LegacyConvolutionReverbHighpass, ParamIndex::ConvolutionReverbHighpass);
     }
 
     // During a brief in-development period, ArpMode was a 3-value menu: Off=0, Played=1, Fixed=2.

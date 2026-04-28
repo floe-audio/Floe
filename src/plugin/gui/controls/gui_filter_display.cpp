@@ -13,24 +13,12 @@ namespace filter_display {
 
 constexpr usize k_curve_points = 160;
 
-f32 HzToX01(f32 hz) {
-    auto const log_min = Log2(k_min_hz);
-    auto const log_max = Log2(k_max_hz);
-    return Clamp01(MapTo01(Log2(Max(hz, 1.0f)), log_min, log_max));
-}
-
-f32 X01ToHz(f32 t) {
-    auto const log_min = Log2(k_min_hz);
-    auto const log_max = Log2(k_max_hz);
-    return Exp2(MapFrom01(t, log_min, log_max));
-}
-
 f32 DbToY(f32 db, Rect viewport_r) {
     auto const t = MapTo01(db, k_min_db, k_max_db);
     return viewport_r.Bottom() - (t * viewport_r.h);
 }
 
-void DrawBackground(imgui::Context& imgui, Rect viewport_r) {
+void DrawBackground(imgui::Context& imgui, Rect viewport_r, ParamDescriptor const& freq_param_info) {
     auto const window_rect = imgui.ViewportRectToWindowRect(viewport_r);
     imgui.draw_list->AddRectFilled(window_rect, LiveCol(UiColMap::EqBack), WwToPixels(k_corner_rounding));
 
@@ -44,7 +32,9 @@ void DrawBackground(imgui::Context& imgui, Rect viewport_r) {
     }
 
     for (auto const f_hz : Array {100.0f, 1000.0f, 10000.0f}) {
-        auto const x = viewport_r.x + (HzToX01(f_hz) * viewport_r.w);
+        auto const linear = freq_param_info.LineariseValue(f_hz, true);
+        if (!linear) continue;
+        auto const x = viewport_r.x + (*linear * viewport_r.w);
         auto const p0 = imgui.ViewportPosToWindowPos({x, viewport_r.y});
         auto const p1 = imgui.ViewportPosToWindowPos({x, viewport_r.Bottom()});
         imgui.draw_list->AddLine(p0, p1, grid_col);
@@ -54,12 +44,13 @@ void DrawBackground(imgui::Context& imgui, Rect viewport_r) {
 void DrawResponseCurve(imgui::Context& imgui,
                        Rect viewport_r,
                        TrivialFunctionRef<f32(f32 freq_hz)> magnitude_db,
+                       ParamDescriptor const& freq_param_info,
                        bool greyed_out) {
     DynamicArrayBounded<f32x2, k_curve_points> curve_points;
     for (auto const i : Range(k_curve_points)) {
         auto const t = (f32)i / (f32)(k_curve_points - 1);
         auto const x = viewport_r.x + (t * viewport_r.w);
-        auto const freq_hz = X01ToHz(t);
+        auto const freq_hz = freq_param_info.ProjectValue(t);
         auto const y = DbToY(magnitude_db(freq_hz), viewport_r);
         dyn::Append(curve_points, imgui.ViewportPosToWindowPos({x, y}));
     }
