@@ -295,18 +295,62 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
         }
     }
 
-    // Full explanation.
-    DoBox(
-        builder,
-        {
-            .parent = panel,
-            .text =
-                "Floe never deletes parameters: when one needs to change, the old version is kept as a 'legacy' parameter so existing DAW automation keeps working exactly as before. Presets are modernised automatically when loaded — but DAW projects can't be, since Floe can't tell which parameters your DAW is automating.\n\nWhile a legacy override is active, the corresponding modern control is greyed out and disabled, marked with a yellow warning badge that opens this panel. Its knob position and any visualisers (filter response, EQ curve, envelope shape, etc.) reflect the modern parameter's underlying value, not the legacy value actually driving the audio — the sound is correct, but the on-screen display is not.\n\nModernising hands control over to the modern parameter and copies across an audibly-equivalent value so the sound doesn't change. Floe decides whether a legacy parameter is overriding purely by checking whether its value is at the default, so if you modernise while DAW automation is still writing to the legacy parameter, the override will re-engage the moment automation moves the value off default. Remove or re-create the automation in your DAW first.",
-            .wrap_width = k_wrap_to_parent,
-            .size_from_text = true,
-            .font = FontType::Body,
-            .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
-        });
+    // Full explanation (collapsible).
+    {
+        static bool more_info_open = false;
+
+        auto const more_info_btn = DoBox(builder,
+                                         {
+                                             .parent = panel,
+                                             .layout {
+                                                 .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                                 .contents_gap = 4,
+                                                 .contents_direction = layout::Direction::Row,
+                                                 .contents_align = layout::Alignment::Start,
+                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                             },
+                                             .button_behaviour = imgui::ButtonConfig {},
+                                         });
+        DoBox(builder,
+              {
+                  .parent = more_info_btn,
+                  .text = more_info_open ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT,
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours =
+                      ColSet {
+                          .base {.c = Col::Text, .dark_mode = true},
+                          .hot {.c = Col::Subtext0, .dark_mode = true},
+                          .active {.c = Col::Text, .dark_mode = true},
+                      },
+                  .parent_dictates_hot_and_active = true,
+              });
+        DoBox(builder,
+              {
+                  .parent = more_info_btn,
+                  .text = "More info"_s,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+                  .text_colours = Col {.c = Col::Text, .dark_mode = true},
+                  .parent_dictates_hot_and_active = true,
+              });
+
+        if (more_info_btn.button_fired) more_info_open = !more_info_open;
+
+        if (more_info_open) {
+            DoBox(
+                builder,
+                {
+                    .parent = panel,
+                    .text =
+                        "Floe never deletes parameters: when one needs to change, the old version is kept as a 'legacy' parameter so existing DAW automation keeps working exactly as before. Presets are modernised automatically when loaded — but DAW projects can't be, since Floe can't tell which parameters your DAW is automating.\n\nWhile a legacy override is active, the corresponding modern control is greyed out and disabled, marked with a yellow warning badge that opens this panel. Its knob position and any visualisers (filter response, EQ curve, envelope shape, etc.) reflect the modern parameter's underlying value, not the legacy value actually driving the audio — the sound is correct, but the on-screen display is not.\n\nModernising hands control over to the modern parameter and copies across an audibly-equivalent value so the sound doesn't change. Floe decides whether a legacy parameter is overriding purely by checking whether its value is at the default, so if you modernise while DAW automation is still writing to the legacy parameter, the override will re-engage the moment automation moves the value off default. Remove or re-create the automation in your DAW first.",
+                    .wrap_width = k_wrap_to_parent,
+                    .size_from_text = true,
+                    .font = FontType::Body,
+                    .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+                });
+        }
+    }
 
     // Param list.
     if (any_overriding) {
