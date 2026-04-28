@@ -779,8 +779,14 @@ void ProcessLayerChanges(LayerProcessor& layer,
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::EqOn))
         layer.eq_bands.SetOn(*p);
 
-    for (auto const eq_band_index : Range(k_num_layer_eq_bands))
-        layer.eq_bands.OnParamChange(eq_band_index, changes.changed_params, layer.index, sample_rate);
+    for (auto const eq_band_index : Range(k_num_layer_eq_bands)) {
+        auto const new_type = layer.eq_types[eq_band_index].Poll(changes.changed_params);
+        layer.eq_bands.OnParamChange(eq_band_index,
+                                     changes.changed_params,
+                                     layer.index,
+                                     sample_rate,
+                                     new_type);
+    }
 
     // Arpeggiator
     // =======================================================================================================

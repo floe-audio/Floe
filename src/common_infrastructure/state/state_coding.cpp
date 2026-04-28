@@ -543,6 +543,10 @@ enum class StateVersion : u16 {
     // LegacyLfoShapeV2 and kept only for DAW automation backwards compatibility.
     ExpandedLfoShapeParameter,
 
+    // Added EQ band types: Notch, LowPass12, LowPass24, HighPass12, HighPass24. The legacy EqType1/2
+    // parameters are now hidden and kept only for DAW automation backwards compatibility.
+    AddedEqLowHighPassTypes,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -578,7 +582,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 248,
+    static_assert(k_num_non_experimental_parameters == 254,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -749,6 +753,19 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                                     LayerParamIndex::LegacyLfoDestination,
                                     LayerParamIndex::LfoDestination,
                                     param_values::k_legacy_lfo_destination_to_current);
+    }
+
+    if (version < StateVersion::AddedEqLowHighPassTypes) {
+        MigrateLegacyEnumLayerParam(state,
+                                    source,
+                                    LayerParamIndex::LegacyEqType1,
+                                    LayerParamIndex::EqType1,
+                                    param_values::k_legacy_eq_type_to_current);
+        MigrateLegacyEnumLayerParam(state,
+                                    source,
+                                    LayerParamIndex::LegacyEqType2,
+                                    LayerParamIndex::EqType2,
+                                    param_values::k_legacy_eq_type_to_current);
     }
 
     if (version < StateVersion::AddedEffectVisibility) {

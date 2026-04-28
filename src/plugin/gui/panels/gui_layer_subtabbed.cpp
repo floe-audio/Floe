@@ -1080,13 +1080,15 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                             .style_system = GuiStyleSystem::MidPanel,
                             .greyed_out = greyed_out,
                         });
+        auto const eq_type = params.DescribedValue(layer_index, type_param).IntValue<param_values::EqType>();
+        auto const gain_greyed = greyed_out || !param_values::EqTypeUsesGain(eq_type);
         DoKnobParameter(g,
                         row,
                         params.DescribedValue(layer_index, gain_param),
                         {
                             .width = k_small_knob_w,
                             .style_system = GuiStyleSystem::MidPanel,
-                            .greyed_out = greyed_out,
+                            .greyed_out = gain_greyed,
                             .bidirectional = true,
                         });
     };

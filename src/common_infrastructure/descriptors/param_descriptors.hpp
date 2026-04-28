@@ -50,11 +50,13 @@ enum class LayerParamIndex : u8 {
     LegacyEqResonance1,
     EqResonance1,
     EqGain1,
+    LegacyEqType1,
     EqType1,
     EqFreq2,
     LegacyEqResonance2,
     EqResonance2,
     EqGain2,
+    LegacyEqType2,
     EqType2,
     LegacyVelocityMapping,
     Keytrack,
@@ -319,18 +321,52 @@ constexpr ParameterModule LayerModuleFromIndex(u8 layer_index) {
 
 namespace param_values {
 
+enum class LegacyEqType : u8 { // never reorder
+    Peak,
+    LowShelf,
+    HighShelf,
+    Count,
+};
+constexpr auto k_legacy_eq_type_strings = ArrayT<String>({
+    "Peak",
+    "Low-shelf",
+    "High-shelf",
+});
+static_assert(k_legacy_eq_type_strings.size == ToInt(LegacyEqType::Count));
+
 enum class EqType : u8 { // never reorder
     Peak,
     LowShelf,
     HighShelf,
+    Notch,
+    LowPass12,
+    LowPass24,
+    HighPass12,
+    HighPass24,
     Count,
 };
 constexpr auto k_eq_type_strings = ArrayT<String>({
     "Peak",
     "Low-shelf",
     "High-shelf",
+    "Notch",
+    "Low-pass 12dB",
+    "Low-pass 24dB",
+    "High-pass 12dB",
+    "High-pass 24dB",
 });
 static_assert(k_eq_type_strings.size == ToInt(EqType::Count));
+
+constexpr auto k_legacy_eq_type_to_current = ArrayT<EqType>({
+    EqType::Peak,
+    EqType::LowShelf,
+    EqType::HighShelf,
+});
+static_assert(k_legacy_eq_type_to_current.size == ToInt(LegacyEqType::Count));
+
+constexpr bool EqTypeUsesGain(EqType t) {
+    return t == EqType::Peak || t == EqType::LowShelf || t == EqType::HighShelf;
+}
 
 enum class LoopMode : u8 { // never reorder
     InstrumentDefault,
@@ -803,6 +839,7 @@ struct ParamDescriptor {
     enum class MenuType : u8 {
         None,
         LoopMode,
+        LegacyEqType,
         EqType,
         LfoSyncedRate,
         LfoRestartMode,
@@ -1084,6 +1121,7 @@ constexpr Optional<LayerParamIndexAndLayer> LayerParamIndexAndLayerFor(ParamInde
 constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
     using namespace param_values;
     switch (type) {
+        case ParamDescriptor::MenuType::LegacyEqType: return k_legacy_eq_type_strings;
         case ParamDescriptor::MenuType::EqType: return k_eq_type_strings;
         case ParamDescriptor::MenuType::LoopMode: return k_loop_mode_strings;
         case ParamDescriptor::MenuType::LfoSyncedRate: return k_lfo_synced_rate_strings;
@@ -2382,7 +2420,7 @@ consteval auto CreateParams() {
         lp(LfoAmount) = Args {
             .id = id(region, 30), // never change
             .value_config = val_config_helpers::BidirectionalPercent({
-                .default_percent = 0,
+                .default_percent = 50,
                 .display_format = ParamDisplayFormat::Percent,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
@@ -2507,8 +2545,20 @@ consteval auto CreateParams() {
             .gui_label = "Gain"_s,
             .tooltip = "Band 1: volume gain at the frequency"_s,
         };
-        lp(EqType1) = Args {
+        lp(LegacyEqType1) = Args {
             .id = id(region, 39), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyEqType,
+                .default_val = (u32)LegacyEqType::Peak,
+            }),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
+            .name = "Legacy Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Legacy type parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqType1) = Args {
+            .id = id(region, 84), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
                 .default_val = (u32)EqType::Peak,
@@ -2551,8 +2601,20 @@ consteval auto CreateParams() {
             .gui_label = "Gain"_s,
             .tooltip = "Band 2: volume gain at the frequency"_s,
         };
-        lp(EqType2) = Args {
+        lp(LegacyEqType2) = Args {
             .id = id(region, 43), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyEqType,
+                .default_val = (u32)LegacyEqType::Peak,
+            }),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
+            .name = "Legacy Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Legacy type parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqType2) = Args {
+            .id = id(region, 85), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
                 .default_val = (u32)EqType::Peak,

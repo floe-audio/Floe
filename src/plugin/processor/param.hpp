@@ -152,6 +152,8 @@ inline Optional<ParamIndex> LegacyOverridingParam(Parameters const& params, Para
             case LayerParamIndex::EqResonance2:
                 legacy_layer_param = LayerParamIndex::LegacyEqResonance2;
                 break;
+            case LayerParamIndex::EqType1: legacy_layer_param = LayerParamIndex::LegacyEqType1; break;
+            case LayerParamIndex::EqType2: legacy_layer_param = LayerParamIndex::LegacyEqType2; break;
             case LayerParamIndex::LfoShape: legacy_layer_param = LayerParamIndex::LegacyLfoShape; break;
             case LayerParamIndex::LfoDestination:
                 legacy_layer_param = LayerParamIndex::LegacyLfoDestination;

@@ -31,24 +31,63 @@ struct SharedLayerParams {
 
 constexpr u32 k_num_layer_eq_bands = 2;
 
+constexpr u32 k_max_eq_band_stages = 2;
+
+constexpr u32 EqTypeStageCount(param_values::EqType t) {
+    switch (t) {
+        case param_values::EqType::LowPass24:
+        case param_values::EqType::HighPass24: return 2;
+        case param_values::EqType::Peak:
+        case param_values::EqType::LowShelf:
+        case param_values::EqType::HighShelf:
+        case param_values::EqType::Notch:
+        case param_values::EqType::LowPass12:
+        case param_values::EqType::HighPass12: return 1;
+        case param_values::EqType::Count: break;
+    }
+    PanicIfReached();
+    return 1;
+}
+
+constexpr rbj_filter::Type EqTypeToRbjType(param_values::EqType t) {
+    switch (t) {
+        case param_values::EqType::Peak: return rbj_filter::Type::Peaking;
+        case param_values::EqType::LowShelf: return rbj_filter::Type::LowShelf;
+        case param_values::EqType::HighShelf: return rbj_filter::Type::HighShelf;
+        case param_values::EqType::Notch: return rbj_filter::Type::Notch;
+        case param_values::EqType::LowPass12:
+        case param_values::EqType::LowPass24: return rbj_filter::Type::LowPass;
+        case param_values::EqType::HighPass12:
+        case param_values::EqType::HighPass24: return rbj_filter::Type::HighPass;
+        case param_values::EqType::Count: break;
+    }
+    PanicIfReached();
+    return rbj_filter::Type::Peaking;
+}
+
 struct EqBand {
     f32x2 Process(f32x2 in) {
         auto const [coeffs, mix] = eq_coeffs.Value();
-        return rbj_filter::Process(eq_data, coeffs, in * mix);
+        f32x2 out = in * mix;
+        for (auto const stage_index : Range(num_stages))
+            out = rbj_filter::Process(eq_data[stage_index], coeffs, out);
+        return out;
     }
 
-    void OnParamChange(ChangedParams changed_params, u8 layer_index, f32 sample_rate, u32 band_num) {
+    void OnParamChange(ChangedParams changed_params,
+                       u8 layer_index,
+                       f32 sample_rate,
+                       u32 band_num,
+                       Optional<param_values::EqType> new_type) {
         auto freq_param = LayerParamIndex::EqFreq1;
         auto legacy_reso_param = LayerParamIndex::LegacyEqResonance1;
         auto reso_param = LayerParamIndex::EqResonance1;
         auto gain_param = LayerParamIndex::EqGain1;
-        auto type_param = LayerParamIndex::EqType1;
         if (band_num == 1) {
             freq_param = LayerParamIndex::EqFreq2;
             legacy_reso_param = LayerParamIndex::LegacyEqResonance2;
             reso_param = LayerParamIndex::EqResonance2;
             gain_param = LayerParamIndex::EqGain2;
-            type_param = LayerParamIndex::EqType2;
         } else if (band_num != 0) {
             PanicIfReached();
         }
@@ -76,32 +115,35 @@ struct EqBand {
             eq_params.peak_gain = *p;
             changed = true;
         }
-        if (auto p = changed_params.IntValue<param_values::EqType>(layer_index, type_param)) {
+        if (new_type) {
             eq_params.fs = sample_rate;
-            rbj_filter::Type type {rbj_filter::Type::Peaking};
-            switch (*p) {
-                case param_values::EqType::HighShelf: type = rbj_filter::Type::HighShelf; break;
-                case param_values::EqType::LowShelf: type = rbj_filter::Type::LowShelf; break;
-                case param_values::EqType::Peak: type = rbj_filter::Type::Peaking; break;
-                case param_values::EqType::Count: PanicIfReached(); break;
-            }
-            eq_params.type = type;
+            eq_params.type = EqTypeToRbjType(*new_type);
+            num_stages = EqTypeStageCount(*new_type);
             changed = true;
         }
 
         if (changed) eq_coeffs.Set(eq_params);
     }
 
-    void Reset() { eq_coeffs.ResetSmoothing(); }
+    void Reset() {
+        eq_coeffs.ResetSmoothing();
+        for (auto& d : eq_data)
+            d = {};
+    }
 
-    rbj_filter::StereoData eq_data {};
+    Array<rbj_filter::StereoData, k_max_eq_band_stages> eq_data {};
     rbj_filter::Params eq_params {};
     rbj_filter::SmoothedCoefficients eq_coeffs {};
+    u32 num_stages = 1;
 };
 
 struct EqBands {
-    void OnParamChange(u32 band_num, ChangedParams changed_params, u8 layer_index, f32 sample_rate) {
-        eq_bands[band_num].OnParamChange(changed_params, layer_index, sample_rate, band_num);
+    void OnParamChange(u32 band_num,
+                       ChangedParams changed_params,
+                       u8 layer_index,
+                       f32 sample_rate,
+                       Optional<param_values::EqType> new_type) {
+        eq_bands[band_num].OnParamChange(changed_params, layer_index, sample_rate, band_num, new_type);
     }
 
     void SetOn(bool on) { eq_mix = on ? 1.0f : 0.0f; }
@@ -220,6 +262,22 @@ struct LayerProcessor {
                   .remap_table = param_values::k_legacy_lfo_destination_to_current,
               }}},
           })
+        , eq_types({{
+              {
+                  .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType1),
+                  .legacies = {{{
+                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyEqType1),
+                      .remap_table = param_values::k_legacy_eq_type_to_current,
+                  }}},
+              },
+              {
+                  .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType2),
+                  .legacies = {{{
+                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyEqType2),
+                      .remap_table = param_values::k_legacy_eq_type_to_current,
+                  }}},
+              },
+          }})
         , eq_bands() {
         velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);
     }
@@ -373,6 +431,7 @@ struct LayerProcessor {
     EnumParamWithLegacies<param_values::LfoShape, 2> lfo_shape {};
     EnumParamWithLegacies<param_values::LfoDestination> lfo_dest {};
 
+    Array<EnumParamWithLegacies<param_values::EqType>, k_num_layer_eq_bands> eq_types;
     EqBands eq_bands;
 
     ArpeggiatorState arp_state {};

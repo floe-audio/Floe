@@ -40,16 +40,6 @@ static constexpr Array<BandParams, k_num_bands> k_band_params = {{
      LayerParamIndex::EqGain2},
 }};
 
-static rbj_filter::Type EqTypeToRbjType(param_values::EqType t) {
-    switch (t) {
-        case param_values::EqType::Peak: return rbj_filter::Type::Peaking;
-        case param_values::EqType::LowShelf: return rbj_filter::Type::LowShelf;
-        case param_values::EqType::HighShelf: return rbj_filter::Type::HighShelf;
-        case param_values::EqType::Count: break;
-    }
-    return rbj_filter::Type::Peaking;
-}
-
 static void DoEqBandRightClickMenu(GuiState& g,
                                    Rect window_r,
                                    imgui::Id interaction_id,
@@ -145,6 +135,8 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
     // Node handle sits at the base (user-set) value; the drawn curve reflects macro modulation.
     struct BandState {
         rbj_filter::Coeffs coeffs;
+        u32 num_stages;
+        bool uses_gain;
         f32x2 node_pos_viewport;
     };
     Array<BandState, k_num_bands> bands;
@@ -171,8 +163,11 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
         auto const gain_adj_db = gain_param.info.ProjectValue(gain_adj_linear);
         auto const q_adj = rbj_filter::EqResonanceToQ(reso_adj_linear);
 
+        auto const eq_type = type_param.IntValue<param_values::EqType>();
+        b.uses_gain = param_values::EqTypeUsesGain(eq_type);
+        b.num_stages = EqTypeStageCount(eq_type);
         b.coeffs = rbj_filter::Coefficients({
-            .type = EqTypeToRbjType(type_param.IntValue<param_values::EqType>()),
+            .type = EqTypeToRbjType(eq_type),
             .fs = filter_display::k_sample_rate,
             .fc = Clamp(freq_adj_hz, 15.0f, filter_display::k_sample_rate * 0.49f),
             .q = q_adj,
@@ -181,20 +176,19 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
 
         auto const freq_hz = freq_param.info.ProjectValue(freq_param.LinearValue());
         auto const node_x = viewport_r.x + (filter_display::HzToX01(freq_hz) * viewport_r.w);
-        auto const node_y = filter_display::DbToY(gain_param.ProjectedValue(), viewport_r);
+        auto const node_y = b.uses_gain ? filter_display::DbToY(gain_param.ProjectedValue(), viewport_r)
+                                        : filter_display::DbToY(0.0f, viewport_r);
         b.node_pos_viewport = {node_x, node_y};
     }
 
-    Array<rbj_filter::Coeffs, k_num_bands> coeffs_list;
-    for (auto const i : Range(k_num_bands))
-        coeffs_list[i] = bands[i].coeffs;
     filter_display::DrawResponseCurve(
         imgui,
         viewport_r,
         [&](f32 hz) {
             f32 db = 0;
-            for (auto const& c : coeffs_list)
-                db += rbj_filter::MagnitudeDb(c, hz, filter_display::k_sample_rate);
+            for (auto const& b : bands)
+                db +=
+                    (f32)b.num_stages * rbj_filter::MagnitudeDb(b.coeffs, hz, filter_display::k_sample_rate);
             return db;
         },
         greyed_out);
@@ -233,16 +227,15 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
                                   }))
             g.param_text_editor_to_open = freq_index;
 
+        auto const uses_gain = b.uses_gain;
         if (imgui.WasJustActivated(interaction_id, MouseButton::Left)) {
             ParameterJustStartedMoving(engine.processor, freq_index);
-            ParameterJustStartedMoving(engine.processor, gain_index);
+            if (uses_gain) ParameterJustStartedMoving(engine.processor, gain_index);
         }
 
         if (imgui.IsActive(interaction_id, MouseButton::Left)) {
             auto const min_x = imgui.ViewportPosToWindowPos({viewport_r.x, 0}).x;
             auto const max_x = imgui.ViewportPosToWindowPos({viewport_r.Right(), 0}).x;
-            auto const min_y = imgui.ViewportPosToWindowPos({0, viewport_r.y}).y;
-            auto const max_y = imgui.ViewportPosToWindowPos({0, viewport_r.Bottom()}).y;
 
             auto const cursor = GuiIo().in.cursor_pos - rel_click_pos[band_idx];
 
@@ -250,19 +243,22 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
             auto const x_t = MapTo01(x_clamped, min_x, max_x);
             auto const target_hz = filter_display::X01ToHz(x_t);
             auto const new_freq_linear = freq_param.info.LineariseValue(target_hz, true).ValueOr(0.0f);
-
-            auto const y_clamped = Clamp(cursor.y, min_y, max_y);
-            auto const y_t = 1.0f - MapTo01(y_clamped, min_y, max_y);
-            auto const new_gain_db = MapFrom01(y_t, filter_display::k_min_db, filter_display::k_max_db);
-            auto const gain_linear = gain_param.info.LineariseValue(new_gain_db, true).ValueOr(0.0f);
-
             SetParameterValue(engine.processor, freq_index, new_freq_linear, {});
-            SetParameterValue(engine.processor, gain_index, gain_linear, {});
+
+            if (uses_gain) {
+                auto const min_y = imgui.ViewportPosToWindowPos({0, viewport_r.y}).y;
+                auto const max_y = imgui.ViewportPosToWindowPos({0, viewport_r.Bottom()}).y;
+                auto const y_clamped = Clamp(cursor.y, min_y, max_y);
+                auto const y_t = 1.0f - MapTo01(y_clamped, min_y, max_y);
+                auto const new_gain_db = MapFrom01(y_t, filter_display::k_min_db, filter_display::k_max_db);
+                auto const gain_linear = gain_param.info.LineariseValue(new_gain_db, true).ValueOr(0.0f);
+                SetParameterValue(engine.processor, gain_index, gain_linear, {});
+            }
         }
 
         if (imgui.WasJustDeactivated(interaction_id, MouseButton::Left)) {
             ParameterJustStoppedMoving(engine.processor, freq_index);
-            ParameterJustStoppedMoving(engine.processor, gain_index);
+            if (uses_gain) ParameterJustStoppedMoving(engine.processor, gain_index);
         }
 
         imgui.ConsumeScrollAtRect(grabber_window_r);
@@ -284,7 +280,7 @@ void DoEqVisualizer(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_ou
         filter_display::DrawHandle(imgui, handle_pos, handle_radius, interaction_id, greyed_out);
 
         if (imgui.IsHotOrActive(interaction_id, MouseButton::Left))
-            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+            GuiIo().out.wants.cursor_type = uses_gain ? CursorType::AllArrows : CursorType::HorizontalArrows;
 
         OverlayMacroDestinationRegion(g, grabber_window_r, freq_index);
     }
