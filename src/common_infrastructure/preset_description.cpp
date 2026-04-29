@@ -252,6 +252,7 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
 DynamicArrayBounded<char, 200>
 GenerateAutoDescription(StateSnapshot const& state,
                         Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
+                        String folder_name,
                         u64 random_seed) {
     DynamicArrayBounded<char, 200> result {};
 
@@ -633,6 +634,11 @@ GenerateAutoDescription(StateSnapshot const& state,
     }
 
     if (!result.size) return result;
+
+    if (folder_name.size) {
+        dyn::AppendSpan(result, " — "_s);
+        dyn::AppendSpan(result, folder_name);
+    }
 
     dyn::AppendSpan(result, "."_s);
 

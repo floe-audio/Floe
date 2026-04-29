@@ -25,6 +25,7 @@ using AutoDescriptionString = DynamicArrayBounded<char, 200>;
 // it into a short leading sentence and a longer continuation.
 AutoDescriptionString GenerateAutoDescription(StateSnapshot const& state,
                                               Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
+                                              String folder_name,
                                               u64 random_seed);
 
 struct PresetDescriptionSplit {

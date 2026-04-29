@@ -39,18 +39,6 @@ DoSectionLabel(GuiBuilder& builder, Box parent, String text, u64 loc_hash = Sour
           });
 }
 
-// Strips leading digit prefixes like "01 ", "02. ", or "01 - " used for ordering folders.
-static String StripNumberedPrefix(String s) {
-    usize pos = 0;
-    while (pos < s.size && IsDigit(s[pos]))
-        pos++;
-    if (pos == 0) return s;
-    if (pos < s.size && s[pos] == '.') pos++;
-    if (pos + 1 < s.size && s[pos] == ' ' && s[pos + 1] == '-') pos += 2;
-    if (pos < s.size && s[pos] == ' ') pos++;
-    return s.SubSpan(pos);
-}
-
 static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto const& snapshot = g.engine.last_snapshot;
 

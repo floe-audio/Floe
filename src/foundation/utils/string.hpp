@@ -584,6 +584,18 @@ PUBLIC constexpr bool IsHexDigit(char c) {
 PUBLIC constexpr bool IsLowercaseAscii(char c) { return c >= 'a' && c <= 'z'; }
 PUBLIC constexpr bool IsAlpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
 PUBLIC constexpr bool IsAlphanum(char c) { return IsAlpha(c) || IsDigit(c); }
+
+// Strips a leading numeric ordering prefix like "01 ", "01. ", or "01 - ".
+PUBLIC constexpr String StripNumberedPrefix(String s) {
+    usize pos = 0;
+    while (pos < s.size && IsDigit(s[pos]))
+        pos++;
+    if (pos == 0) return s;
+    if (pos < s.size && s[pos] == '.') pos++;
+    if (pos + 1 < s.size && s[pos] == ' ' && s[pos + 1] == '-') pos += 2;
+    if (pos < s.size && s[pos] == ' ') pos++;
+    return s.SubSpan(pos);
+}
 PUBLIC constexpr bool IsEndOfLine(char c) { return c == '\n' || c == '\r'; }
 PUBLIC constexpr bool IsSpacing(char c) { return c == ' ' || c == '\t'; }
 PUBLIC constexpr bool IsWhitespace(char c) { return IsSpacing(c) || IsEndOfLine(c); }

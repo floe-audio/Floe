@@ -46,8 +46,14 @@ static void RefreshPresetDescriptionCache(Engine& engine) {
 
     auto& cache = engine.preset_description_cache;
 
+    String folder_name {};
+    if (auto const preset_path = engine.last_snapshot.name_or_path.Path())
+        if (auto const dir = path::Directory(*preset_path))
+            folder_name = StripNumberedPrefix(path::Filename(*dir));
+
     cache.auto_desc = GenerateAutoDescription(engine.last_snapshot.state,
                                               layer_info,
+                                              folder_name,
                                               Hash(engine.last_snapshot.name_or_path.Name()));
     if (cache.auto_desc.size) dyn::PrependSpan(cache.auto_desc, ICON_FA_WAND_MAGIC_SPARKLES " ");
 
