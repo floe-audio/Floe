@@ -13,6 +13,7 @@ enum class PhraseKind : u8 {
     Granular,
     OneShot,
     Looping,
+    MicroLoop,
     Monophonic,
     FilterSwept,
     Filtered,
@@ -95,6 +96,14 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
         }
         case PhraseKind::OneShot: return {"one-shot"_s, "one-shot playback"_s};
         case PhraseKind::Looping: return {"looping"_s, "looping"_s};
+        case PhraseKind::MicroLoop: {
+            static constexpr PhraseText k_variants[] = {
+                {"micro-looped"_s, "a micro-loop"_s},
+                {"tightly looped"_s, "a tight micro-loop"_s},
+                {"buzzing micro-loop"_s, "a buzzing micro-loop"_s},
+            };
+            return pick(k_variants);
+        }
         case PhraseKind::Monophonic: {
             static constexpr PhraseText k_variants[] = {
                 {"monophonic"_s, "monophonic playback"_s},
@@ -279,6 +288,7 @@ GenerateAutoDescription(StateSnapshot const& state,
     f32 lfo_rate = 0;
     Optional<param_values::LfoShape> lfo_shape {};
     bool any_looping = false;
+    bool any_micro_loop = false;
     bool any_one_shot = false;
     bool any_granular = false;
     u32 mono_layer_count = 0;
@@ -332,7 +342,13 @@ GenerateAutoDescription(StateSnapshot const& state,
             switch (layer_info[i].actual_loop_behaviour.value.id) {
                 case LoopBehaviourId::NoLoop: any_one_shot = true; break;
                 case LoopBehaviourId::CustomLoopStandard:
-                case LoopBehaviourId::CustomLoopPingPong: any_looping = true; break;
+                case LoopBehaviourId::CustomLoopPingPong: {
+                    any_looping = true;
+                    auto const loop_length =
+                        lp(i, LayerParamIndex::LoopEnd) - lp(i, LayerParamIndex::LoopStart);
+                    if (loop_length > 0 && loop_length < 0.02f) any_micro_loop = true;
+                    break;
+                }
                 case LoopBehaviourId::BuiltinLoopStandard:
                 case LoopBehaviourId::BuiltinLoopPingPong:
                 case LoopBehaviourId::MixedLoops:
@@ -385,6 +401,8 @@ GenerateAutoDescription(StateSnapshot const& state,
     // Playback character
     if (any_granular)
         dyn::Append(phrases, Phrase {PhraseKind::Granular, 0.7f});
+    else if (any_micro_loop)
+        dyn::Append(phrases, Phrase {PhraseKind::MicroLoop, 0.85f});
     else if (any_one_shot && !any_looping)
         dyn::Append(phrases, Phrase {PhraseKind::OneShot, 0.2f});
     else if (any_looping && !any_one_shot)
