@@ -238,6 +238,7 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
         sample_lib::Instrument const pseudo_inst {
             .library = pseudo_lib,
             .name = k_waveform_type_names[ToInt(waveform_type)],
+            .id = k_waveform_type_names[ToInt(waveform_type)],
             .folder = &pseudo_folder,
         };
 
