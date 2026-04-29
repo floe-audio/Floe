@@ -10,10 +10,14 @@ enum class PhraseKind : u8 {
     SharpAttack,
     DualLayer,
     TripleLayer,
-    Granular,
+    GranularSpeed,
+    GranularPosition,
     OneShot,
     Looping,
     MicroLoop,
+    Arpeggiated,
+    ArpeggiatedLayer,
+    FixedArpeggio,
     Monophonic,
     FilterSwept,
     Filtered,
@@ -87,15 +91,46 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
             };
             return pick(k_variants);
         }
-        case PhraseKind::Granular: {
+        case PhraseKind::GranularSpeed: {
             static constexpr PhraseText k_variants[] = {
-                {"granular"_s, "granular processing"_s},
-                {"grain-engined"_s, "grain processing"_s},
+                {"granular time-stretch"_s, "granular time-stretching"_s},
+                {"granular speed"_s, "a granular speed engine"_s},
+                {"grain-stretched"_s, "grain time-stretching"_s},
+            };
+            return pick(k_variants);
+        }
+        case PhraseKind::GranularPosition: {
+            static constexpr PhraseText k_variants[] = {
+                {"frozen granular"_s, "a frozen grain cloud"_s},
+                {"granular freeze"_s, "granular position scrubbing"_s},
+                {"grain-frozen"_s, "a grain cloud"_s},
             };
             return pick(k_variants);
         }
         case PhraseKind::OneShot: return {"one-shot"_s, "one-shot playback"_s};
         case PhraseKind::Looping: return {"looping"_s, "looping"_s};
+        case PhraseKind::Arpeggiated: {
+            static constexpr PhraseText k_variants[] = {
+                {"arpeggiated"_s, "an arpeggio"_s},
+                {"sequenced"_s, "a sequenced pattern"_s},
+                {"patterned"_s, "an arpeggiated pattern"_s},
+            };
+            return pick(k_variants);
+        }
+        case PhraseKind::ArpeggiatedLayer: {
+            static constexpr PhraseText k_variants[] = {
+                {"arp-layered"_s, "an arpeggiated layer"_s},
+                {"part-arpeggiated"_s, "arpeggiated motion underneath"_s},
+            };
+            return pick(k_variants);
+        }
+        case PhraseKind::FixedArpeggio: {
+            static constexpr PhraseText k_variants[] = {
+                {"fixed-note arpeggio"_s, "a fixed-note arpeggio"_s},
+                {"ostinato"_s, "an ostinato pattern"_s},
+            };
+            return pick(k_variants);
+        }
         case PhraseKind::MicroLoop: {
             static constexpr PhraseText k_variants[] = {
                 {"micro-looped"_s, "a micro-loop"_s},
@@ -290,8 +325,11 @@ GenerateAutoDescription(StateSnapshot const& state,
     bool any_looping = false;
     bool any_micro_loop = false;
     bool any_one_shot = false;
-    bool any_granular = false;
+    u32 granular_speed_count = 0;
+    u32 granular_position_count = 0;
     u32 mono_layer_count = 0;
+    u32 arp_layer_count = 0;
+    bool any_arp_fixed = false;
 
     for (u32 i = 0; i < k_num_layers; i++) {
         if (state.inst_ids[i].tag == InstrumentType::None) continue;
@@ -334,10 +372,19 @@ GenerateAutoDescription(StateSnapshot const& state,
         auto const mono_mode = (param_values::MonophonicMode)(u8)lp(i, LayerParamIndex::MonophonicMode);
         if (mono_mode != param_values::MonophonicMode::Off) mono_layer_count++;
 
+        // Arpeggiator
+        if (lp(i, LayerParamIndex::ArpOn) >= 0.5f) {
+            arp_layer_count++;
+            auto const mode = (param_values::ArpMode)(u8)lp(i, LayerParamIndex::ArpMode);
+            if (mode == param_values::ArpMode::Fixed) any_arp_fixed = true;
+        }
+
         // Playback mode and looping
         auto const play_mode = (param_values::PlayMode)(u8)lp(i, LayerParamIndex::PlayMode);
-        if (play_mode != param_values::PlayMode::Standard) {
-            any_granular = true;
+        if (play_mode == param_values::PlayMode::GranularPlayback) {
+            granular_speed_count++;
+        } else if (play_mode == param_values::PlayMode::GranularFixed) {
+            granular_position_count++;
         } else {
             switch (layer_info[i].actual_loop_behaviour.value.id) {
                 case LoopBehaviourId::NoLoop: any_one_shot = true; break;
@@ -399,14 +446,30 @@ GenerateAutoDescription(StateSnapshot const& state,
     }
 
     // Playback character
-    if (any_granular)
-        dyn::Append(phrases, Phrase {PhraseKind::Granular, 0.7f});
+    auto const granular_total = granular_speed_count + granular_position_count;
+    if (granular_total > 0)
+        if (granular_position_count >= granular_speed_count)
+            dyn::Append(phrases, Phrase {PhraseKind::GranularPosition, 0.8f});
+        else
+            dyn::Append(phrases, Phrase {PhraseKind::GranularSpeed, 0.75f});
     else if (any_micro_loop)
         dyn::Append(phrases, Phrase {PhraseKind::MicroLoop, 0.85f});
     else if (any_one_shot && !any_looping)
         dyn::Append(phrases, Phrase {PhraseKind::OneShot, 0.2f});
     else if (any_looping && !any_one_shot)
         dyn::Append(phrases, Phrase {PhraseKind::Looping, 0.15f});
+
+    // Arpeggiator: if every active layer is arpeggiated it's the defining feature; if only some are
+    // arpeggiated it's a textural element layered over the rest.
+    if (arp_layer_count > 0) {
+        bool const all_arp = arp_layer_count == num_layers;
+        if (any_arp_fixed && all_arp)
+            dyn::Append(phrases, Phrase {PhraseKind::FixedArpeggio, 0.85f});
+        else if (all_arp)
+            dyn::Append(phrases, Phrase {PhraseKind::Arpeggiated, 0.8f});
+        else
+            dyn::Append(phrases, Phrase {PhraseKind::ArpeggiatedLayer, 0.45f});
+    }
 
     // Monophonic (all active layers)
     if (mono_layer_count > 0 && mono_layer_count == num_layers)
