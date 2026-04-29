@@ -966,7 +966,6 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::EqOn);
 
     constexpr f32 k_small_knob_w = 24.0f;
-    constexpr f32 k_small_knob_gap = 12.0f;
 
     auto const page = DoBox(g.builder,
                             {
@@ -1001,7 +1000,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
         if (auto const r = BoxRect(g.builder, vis_box)) DoEqVisualizer(g, layer_index, *r, greyed_out);
     }
 
-    DoWhitespace(g.builder, page, 22);
+    DoWhitespace(g.builder, page, 16);
 
     // Compact band control rows at the bottom.
     auto const bands_container = DoBox(g.builder,
@@ -1026,7 +1025,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                    .id_extra = band_number,
                                    .layout {
                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_gap = k_small_knob_gap,
+                                       .contents_gap = 20,
                                        .contents_direction = layout::Direction::Row,
                                        .contents_align = layout::Alignment::Middle,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,

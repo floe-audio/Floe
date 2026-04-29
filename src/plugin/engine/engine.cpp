@@ -3,7 +3,6 @@
 
 #include "engine.hpp"
 
-#include <IconsFontAwesome6.h>
 #include <clap/ext/params.h>
 
 #include "foundation/foundation.hpp"
