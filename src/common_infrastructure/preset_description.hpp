@@ -18,15 +18,18 @@ struct AutoDescriptionLayerInfo {
 
 using AutoDescriptionString = DynamicArrayBounded<char, 200>;
 
+struct AutoDescription {
+    AutoDescriptionString short_text; // instrument name + lead phrase + folder
+    AutoDescriptionString long_text; // remaining phrases and FX summary
+};
+
 // Generate a short human-readable description of the preset state. Used when a preset has no explicit
 // description. The random_seed picks between wording variations so the output is stable for a given preset
-// but varies between presets - typically seeded by Hash(preset_name). The output places a full stop after
-// the most defining items (instrument name + first descriptive phrase) so SplitPresetDescription can split
-// it into a short leading sentence and a longer continuation.
-AutoDescriptionString GenerateAutoDescription(StateSnapshot const& state,
-                                              Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
-                                              String folder_name,
-                                              u64 random_seed);
+// but varies between presets - typically seeded by Hash(preset_name).
+AutoDescription GenerateAutoDescription(StateSnapshot const& state,
+                                        Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
+                                        String folder_name,
+                                        u64 random_seed);
 
 struct PresetDescriptionSplit {
     Optional<String> short_part;

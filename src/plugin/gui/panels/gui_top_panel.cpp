@@ -330,10 +330,14 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
         {
             // IMPROVE: should this be a text input that changes the description?
+            auto const& desc_cache = g.engine.preset_description_cache;
+            String const desc_text = desc_cache.short_is_user_desc || !desc_cache.short_text.size
+                                         ? (String)desc_cache.short_text
+                                         : (String)fmt::Format(builder.arena, "{}", desc_cache.short_text);
             DoBox(builder,
                   {
                       .parent = preset_box_left,
-                      .text = g.engine.preset_description_cache.short_text,
+                      .text = desc_text,
                       .font = FontType::BodyItalic,
                       .text_colours =
                           ColSet {

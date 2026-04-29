@@ -55,32 +55,23 @@ static void RefreshPresetDescriptionCache(Engine& engine) {
                                               layer_info,
                                               folder_name,
                                               Hash(engine.last_snapshot.name_or_path.Name()));
-    if (cache.auto_desc.size) dyn::PrependSpan(cache.auto_desc, ICON_FA_WAND_MAGIC_SPARKLES " ");
 
     String const real_desc = engine.last_snapshot.state.metadata.description;
     auto const real_split = SplitPresetDescription(real_desc);
-    auto const auto_split = SplitPresetDescription(cache.auto_desc);
 
-    // Short text: prefer the real description (its short part if it split, else the whole thing); fall
-    // back to the auto description.
-    if (real_desc.size)
-        cache.short_text = real_split.short_part.ValueOr(real_desc);
-    else
-        cache.short_text = auto_split.short_part.ValueOr((String)cache.auto_desc);
-
-    // Long text: real long part if the real description split; if the real description was shown in
-    // full as the short text, fall back to the full auto description; if there's no real description,
-    // show the auto long part if it split (otherwise the auto desc was shown in full as the short text).
     if (real_desc.size) {
-        if (real_split.long_part) {
-            cache.long_text = *real_split.long_part;
-            cache.long_is_user_desc = true;
-        } else {
-            cache.long_text = cache.auto_desc;
-            cache.long_is_user_desc = false;
-        }
+        cache.short_text = real_split.short_part.ValueOr(real_desc);
+        cache.short_is_user_desc = true;
     } else {
-        cache.long_text = auto_split.long_part.ValueOr(""_s);
+        cache.short_text = cache.auto_desc.short_text;
+        cache.short_is_user_desc = false;
+    }
+
+    if (real_desc.size && real_split.long_part) {
+        cache.long_text = *real_split.long_part;
+        cache.long_is_user_desc = true;
+    } else {
+        cache.long_text = cache.auto_desc.long_text;
         cache.long_is_user_desc = false;
     }
 }

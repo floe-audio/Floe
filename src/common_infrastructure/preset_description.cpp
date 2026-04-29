@@ -8,8 +8,6 @@
 enum class PhraseKind : u8 {
     SlowAttack,
     SharpAttack,
-    DualLayer,
-    TripleLayer,
     GranularSpeed,
     GranularPosition,
     OneShot,
@@ -74,20 +72,6 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
                 {"sharp attack"_s, "a sharp attack"_s},
                 {"punchy"_s, "a punchy attack"_s},
                 {"snappy"_s, "a snappy attack"_s},
-            };
-            return pick(k_variants);
-        }
-        case PhraseKind::DualLayer: {
-            static constexpr PhraseText k_variants[] = {
-                {"dual-layer"_s, "2 layers"_s},
-                {"2-layer"_s, "2 layers"_s},
-            };
-            return pick(k_variants);
-        }
-        case PhraseKind::TripleLayer: {
-            static constexpr PhraseText k_variants[] = {
-                {"3-layer"_s, "3 layers"_s},
-                {"triple-layered"_s, "3 layers"_s},
             };
             return pick(k_variants);
         }
@@ -202,7 +186,14 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
             };
             return pick(k_variants);
         }
-        case PhraseKind::Bitcrushed: return {"bitcrushed"_s, "bitcrush"_s};
+        case PhraseKind::Bitcrushed: {
+            static constexpr PhraseText k_variants[] = {
+                {"heavily bitcrushed"_s, "heavy bitcrushing"_s},
+                {"deeply crushed"_s, "deep bitcrushing"_s},
+                {"lo-fi crushed"_s, "an intense bitcrush"_s},
+            };
+            return pick(k_variants);
+        }
         case PhraseKind::WidelyStereo: {
             static constexpr PhraseText k_variants[] = {
                 {"widely stereo"_s, "wide stereo"_s},
@@ -235,26 +226,28 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
             };
             return pick(k_variants);
         }
-        case PhraseKind::FxDistortion: return {"distorted"_s, "distortion"_s};
-        case PhraseKind::FxBitCrush: return {"bitcrushed"_s, "bitcrush"_s};
-        case PhraseKind::FxCompressor: return {"compressed"_s, "compression"_s};
-        case PhraseKind::FxFilter: return {"filtered"_s, "filtering"_s};
-        case PhraseKind::FxStereoWiden: return {"widened"_s, "stereo widening"_s};
-        case PhraseKind::FxChorus: return {"chorus"_s, "chorus"_s};
-        case PhraseKind::FxDelay: return {"delayed"_s, "delay"_s};
-        case PhraseKind::FxPhaser: return {"phased"_s, "phaser"_s};
-        case PhraseKind::FxReverb: return {"reverbed"_s, "reverb"_s};
-        case PhraseKind::FxConvolutionReverb: return {"convolution reverb"_s, "convolution reverb"_s};
+        case PhraseKind::FxDistortion: return {"with a distorted edge"_s, "a distorted edge"_s};
+        case PhraseKind::FxBitCrush: return {"with a digital grit"_s, "digital grit"_s};
+        case PhraseKind::FxCompressor: return {"tightened with compression"_s, "tightening compression"_s};
+        case PhraseKind::FxFilter: return {"shaped by filtering"_s, "shaping filtering"_s};
+        case PhraseKind::FxStereoWiden: return {"with a widened image"_s, "a widened stereo image"_s};
+        case PhraseKind::FxChorus: return {"with a chorused shimmer"_s, "a chorused shimmer"_s};
+        case PhraseKind::FxDelay: return {"with delayed echoes"_s, "delayed echoes"_s};
+        case PhraseKind::FxPhaser: return {"with a phaser sweep"_s, "a phaser sweep"_s};
+        case PhraseKind::FxReverb: return {"with a reverberant tail"_s, "a reverberant tail"_s};
+        case PhraseKind::FxConvolutionReverb:
+            return {"set in a convolution space"_s, "a convolution space"_s};
     }
     return {};
 }
 
-DynamicArrayBounded<char, 200>
-GenerateAutoDescription(StateSnapshot const& state,
-                        Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
-                        String folder_name,
-                        u64 random_seed) {
-    DynamicArrayBounded<char, 200> result {};
+AutoDescription GenerateAutoDescription(StateSnapshot const& state,
+                                        Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
+                                        String folder_name,
+                                        u64 random_seed) {
+    AutoDescription out {};
+    auto& short_text = out.short_text;
+    auto& long_text = out.long_text;
 
     auto const lp = [&](u32 layer, LayerParamIndex p) -> f32 {
         return state.param_values[ToInt(ParamIndexFromLayerParamIndex(layer, p))];
@@ -281,11 +274,9 @@ GenerateAutoDescription(StateSnapshot const& state,
     u32 num_layers = 0;
     bool all_same_instrument = true;
     String first_inst_name {};
-    DynamicArrayBounded<f32, k_num_layers> layer_volumes {};
     for (u32 i = 0; i < k_num_layers; i++) {
         if (state.inst_ids[i].tag == InstrumentType::None || lp(i, LayerParamIndex::Mute) >= 0.5f) continue;
         num_layers++;
-        dyn::Append(layer_volumes, lp(i, LayerParamIndex::Volume));
         auto const name = layer_info[i].inst_name;
         if (name.size) {
             if (!first_inst_name.size)
@@ -295,22 +286,7 @@ GenerateAutoDescription(StateSnapshot const& state,
         }
     }
 
-    if (num_layers == 0) return result;
-
-    // Compute layer balance: average of (volume / max_volume) across all active layers.
-    // 1.0 = perfectly balanced; lower values mean one or more layers dominate the mix.
-    f32 layer_balance = 1.0f;
-    if (num_layers >= 2) {
-        f32 max_vol = 0;
-        for (auto v : layer_volumes)
-            max_vol = Max(max_vol, v);
-        if (max_vol > 0.001f) {
-            f32 sum_ratio = 0;
-            for (auto v : layer_volumes)
-                sum_ratio += v / max_vol;
-            layer_balance = sum_ratio / (f32)num_layers;
-        }
-    }
+    if (num_layers == 0) return out;
 
     // Analyse per-layer characteristics
     u32 slow_attack_count = 0;
@@ -434,17 +410,10 @@ GenerateAutoDescription(StateSnapshot const& state,
         dyn::Append(phrases, Phrase {PhraseKind::SharpAttack, 0.4f});
     }
 
-    // Layering - only mention when layers are reasonably balanced (otherwise one layer dominates and it
-    // doesn't really feel "layered"). Keep salience low since most presets use multiple layers and it's not
-    // very distinctive.
+    // Layering - only mention the same-instrument stacked case. Plain layer counts ("2 layers", "3 layers")
+    // aren't distinctive enough to be worth describing.
     bool const is_stacked = num_layers >= 2 && all_same_instrument && first_inst_name.size;
-    if (is_stacked) {
-        // Handled during assembly so we can format the instrument name
-    } else if (num_layers >= 3 && layer_balance > 0.4f) {
-        dyn::Append(phrases, Phrase {PhraseKind::TripleLayer, 0.1f});
-    } else if (num_layers == 2 && layer_balance > 0.4f) {
-        dyn::Append(phrases, Phrase {PhraseKind::DualLayer, 0.1f});
-    }
+    // is_stacked is handled during assembly so we can format the instrument name.
 
     // Playback character
     auto const granular_total = granular_speed_count + granular_position_count;
@@ -620,51 +589,85 @@ GenerateAutoDescription(StateSnapshot const& state,
     auto const unmentioned_fx = num_fx - mentioned_fx;
     bool const show_trailing_fx_line = unmentioned_fx > 0;
 
-    // Assemble. The "short" portion is the instrument name plus the most salient phrase descriptor; we
-    // terminate it with a full stop so SplitPresetDescriptionForTopPanel finds a natural boundary. The rest
-    // (additional phrases, FX summary) follows as a second sentence.
+    // Short text: instrument name plus the most salient phrase descriptor, optionally followed by " —
+    // folder". Long text: remaining phrases as a second sentence, plus an FX summary line.
     if (is_stacked)
-        fmt::Append(result, "layered {}", first_inst_name);
+        fmt::Append(short_text, "layered {}", first_inst_name);
     else if (num_layers == 1 && first_inst_name.size)
-        dyn::AppendSpan(result, first_inst_name);
+        dyn::AppendSpan(short_text, first_inst_name);
 
     if (phrases.size) {
-        if (result.size) dyn::AppendSpan(result, ", ");
-        dyn::AppendSpan(result, ResolvePhraseText(phrases[0].kind, random_seed).descriptor);
+        if (short_text.size) dyn::AppendSpan(short_text, ", ");
+        dyn::AppendSpan(short_text, ResolvePhraseText(phrases[0].kind, random_seed).descriptor);
     }
 
-    if (!result.size) return result;
+    if (!short_text.size) return out;
+
+    dyn::AppendSpan(short_text, "."_s);
 
     if (folder_name.size) {
-        dyn::AppendSpan(result, " — "_s);
-        dyn::AppendSpan(result, folder_name);
+        auto const start = short_text.size;
+        fmt::Append(short_text, " ({})", folder_name);
+        for (usize i = start + 3; i < short_text.size; i++)
+            if (short_text[i] >= 'A' && short_text[i] <= 'Z') short_text[i] += 32;
+        dyn::AppendSpan(short_text, "."_s);
     }
 
-    dyn::AppendSpan(result, "."_s);
-
     if (phrases.size > 1) {
-        dyn::AppendSpan(result, " With "_s);
         for (usize i = 1; i < phrases.size; i++) {
             if (i > 1) {
                 if (i == phrases.size - 1)
-                    dyn::AppendSpan(result, " and "_s);
+                    dyn::AppendSpan(long_text, " and "_s);
                 else
-                    dyn::AppendSpan(result, ", "_s);
+                    dyn::AppendSpan(long_text, ", "_s);
             }
-            dyn::AppendSpan(result, ResolvePhraseText(phrases[i].kind, random_seed).modifier);
+            dyn::AppendSpan(long_text, ResolvePhraseText(phrases[i].kind, random_seed).modifier);
         }
-        dyn::AppendSpan(result, "."_s);
+        dyn::AppendSpan(long_text, "."_s);
     }
 
     if (show_trailing_fx_line) {
+        auto const count = mentioned_fx == 0 ? num_fx : unmentioned_fx;
+        // Pick a phrase that suggests the magnitude of FX usage rather than reporting the exact count.
+        auto const fx_phrase = ({
+            String s;
+            auto const seed = random_seed ^ 0x57FE5757FE5757FEULL;
+            if (count >= 5) {
+                static constexpr String k_variants[] = {
+                    "many effects"_s,
+                    "an array of effects"_s,
+                    "numerous effects"_s,
+                };
+                s = k_variants[seed % ArraySize(k_variants)];
+            } else if (count >= 3) {
+                static constexpr String k_variants[] = {
+                    "several effects"_s,
+                };
+                s = k_variants[seed % ArraySize(k_variants)];
+            } else {
+                static constexpr String k_variants[] = {
+                    "a few effects"_s,
+                };
+                s = k_variants[seed % ArraySize(k_variants)];
+            }
+            s;
+        });
+
+        if (long_text.size) dyn::AppendSpan(long_text, " "_s);
+        auto const sentence_start = long_text.size;
         if (mentioned_fx == 0)
-            fmt::Append(result, " {} FX.", num_fx);
+            fmt::Append(long_text, "{}.", fx_phrase);
         else
-            fmt::Append(result, " +{} more FX.", unmentioned_fx);
+            fmt::Append(long_text, "Plus {}.", fx_phrase);
+        if (sentence_start < long_text.size && long_text[sentence_start] >= 'a' &&
+            long_text[sentence_start] <= 'z') {
+            long_text[sentence_start] -= 32;
+        }
     }
 
-    // Capitalise first letter
-    if (result[0] >= 'a' && result[0] <= 'z') result[0] -= 32;
+    // Capitalise first letter of each part
+    if (short_text.size && short_text[0] >= 'a' && short_text[0] <= 'z') short_text[0] -= 32;
+    if (long_text.size && long_text[0] >= 'a' && long_text[0] <= 'z') long_text[0] -= 32;
 
-    return result;
+    return out;
 }

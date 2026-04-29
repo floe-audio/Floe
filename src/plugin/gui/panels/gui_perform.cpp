@@ -586,7 +586,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 
     if (!cache.long_text.size) return;
 
-    DoSectionLabel(builder, column, "DESCRIPTION"_s);
+    DoSectionLabel(builder, column, cache.long_is_user_desc ? "DESCRIPTION"_s : "AUTO DESCRIPTION"_s);
 
     DoBox(builder,
           {
@@ -597,7 +597,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
               .wrap_width = k_wrap_to_parent,
               .size_from_text = true,
               .font = FontType::BodyItalic,
-              .text_colours = Col {.c = Col::White, .alpha = (u8)(cache.long_is_user_desc ? 170 : 130)},
+              .text_colours = Col {.c = Col::White, .alpha = 170},
           });
 }
 

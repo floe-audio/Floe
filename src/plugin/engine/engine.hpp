@@ -92,13 +92,15 @@ struct Engine : ProcessorListener {
     LastSnapshot last_snapshot {};
 
     struct PresetDescriptionCache {
-        AutoDescriptionString auto_desc {};
+        AutoDescription auto_desc {};
         // Resolved short/long views. Both point either into auto_desc or into
         // last_snapshot.state.metadata.description and remain valid until the next refresh.
         String short_text {};
         String long_text {};
         // True when long_text is the user-authored description rather than auto-generated.
         bool long_is_user_desc = false;
+        // True when short_text is the user-authored description rather than auto-generated.
+        bool short_is_user_desc = false;
     };
     PresetDescriptionCache preset_description_cache {};
 
