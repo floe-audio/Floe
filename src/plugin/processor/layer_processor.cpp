@@ -187,11 +187,7 @@ void LayerApplyNewState(LayerProcessor& layer, StateSnapshot const& state, State
 static param_values::MonophonicMode EffectiveMonophonicMode(LayerProcessor const& layer) {
     // The arp manages its own voice lifecycle, so monophonic modes don't apply.
     if (ArpIsOnForLayer(layer)) return param_values::MonophonicMode::Off;
-
-    // We maintain backwards compatibility with DAW projects that may have been automating the legacy
-    // monophonic switch by overwriting the mode if the legacy param is true.
-    return layer.monophonic_retrigger_legacy ? param_values::MonophonicMode::Retrigger
-                                             : layer.monophonic_mode;
+    return layer.monophonic_mode;
 }
 
 struct TriggerVoiceArgs {
@@ -604,24 +600,15 @@ void ProcessLayerChanges(LayerProcessor& layer,
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::FilterRelease))
         layer.voice_controller.fil_env.SetReleaseSamples(Max(k_min_envelope_ms, *p) / 1000.0f * sample_rate,
                                                          0.1f);
-    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::FilterCutoff))
+    if (auto p = changes.changed_params.ProjectedValueLegacyAware(layer.index, LayerParamIndex::FilterCutoff))
         vmst.sv_filter_cutoff_linear = sv_filter::HzToLinear(*p);
-    if (changes.changed_params.Changed(layer.index, LayerParamIndex::LegacyFilterResonance) ||
-        changes.changed_params.Changed(layer.index, LayerParamIndex::FilterResonance)) {
-        auto const legacy_idx =
-            ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LegacyFilterResonance);
-        auto const legacy_linear = changes.changed_params.params.LinearValue(legacy_idx);
-        auto const current_idx = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::FilterResonance);
-        // Legacy param used a quartic skew (x^4); current is linear. Both scale by 0.95 to
-        // keep the output below 1.0 and avoid a divide-by-zero in ResonanceToQ.
-        vmst.sv_filter_resonance =
-            IsLegacyParamOverridingModern(k_param_descriptors[ToInt(legacy_idx)], legacy_linear)
-                ? Pow(legacy_linear, 4.0f) * 0.95f
-                : sv_filter::SkewResonance(changes.changed_params.params.LinearValue(current_idx));
-    }
+    if (auto p = changes.changed_params.LinearValueLegacyAware(layer.index, LayerParamIndex::FilterResonance))
+        vmst.sv_filter_resonance = sv_filter::SkewResonance(*p);
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::FilterOn))
         vmst.filter_on = *p;
-    if (auto p = layer.filter_type.Poll(changes.changed_params)) {
+    if (auto p = changes.changed_params.IntValueLegacyAware<param_values::LayerFilterType>(
+            layer.index,
+            LayerParamIndex::FilterType)) {
         sv_filter::Type sv_type {};
         switch (*p) {
             case param_values::LayerFilterType::Lowpass: sv_type = sv_filter::Type::Lowpass; break;
@@ -645,14 +632,19 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
     // LFO
     // =======================================================================================================
-    if (auto shape = layer.lfo_shape.Poll(changes.changed_params)) {
+    if (auto shape = changes.changed_params.IntValueLegacyAware<param_values::LfoShape>(
+            layer.index,
+            LayerParamIndex::LfoShape)) {
         vmst.lfo.shape = *shape;
         for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
             UpdateLFOWaveform(v);
     }
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::LfoAmount))
         vmst.lfo.amount = *p;
-    if (auto dest = layer.lfo_dest.Poll(changes.changed_params)) vmst.lfo.dest = *dest;
+    if (auto dest = changes.changed_params.IntValueLegacyAware<param_values::LfoDestination>(
+            layer.index,
+            LayerParamIndex::LfoDestination))
+        vmst.lfo.dest = *dest;
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LfoOn))
         layer.voice_controller.lfo.on = *p;
 
@@ -689,13 +681,9 @@ void ProcessLayerChanges(LayerProcessor& layer,
                                                                                LayerParamIndex::LfoRestart))
         layer.lfo_restart_mode = *p;
 
-    // Read legacy bool parameter for DAW automation compatibility
-    if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LegacyMonophonicBool))
-        layer.monophonic_retrigger_legacy = *p;
-
-    if (auto p =
-            changes.changed_params.IntValue<param_values::MonophonicMode>(layer.index,
-                                                                          LayerParamIndex::MonophonicMode)) {
+    if (auto p = changes.changed_params.IntValueLegacyAware<param_values::MonophonicMode>(
+            layer.index,
+            LayerParamIndex::MonophonicMode)) {
         layer.monophonic_mode = *p;
 
         if (*p != param_values::MonophonicMode::Latch) layer.monophonic_latch = false;
@@ -772,8 +760,15 @@ void ProcessLayerChanges(LayerProcessor& layer,
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::EqOn))
         layer.eq_bands.SetOn(*p);
 
+    constexpr Array<LayerParamIndex, k_num_layer_eq_bands> k_eq_type_param_indices {
+        LayerParamIndex::EqType1,
+        LayerParamIndex::EqType2,
+        LayerParamIndex::EqType3,
+    };
     for (auto const eq_band_index : Range(k_num_layer_eq_bands)) {
-        auto const new_type = layer.eq_types[eq_band_index].Poll(changes.changed_params);
+        auto const new_type = changes.changed_params.IntValueLegacyAware<param_values::EqType>(
+            layer.index,
+            k_eq_type_param_indices[eq_band_index]);
         layer.eq_bands.OnParamChange(eq_band_index,
                                      changes.changed_params,
                                      layer.index,

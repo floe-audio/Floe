@@ -105,10 +105,10 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
 
     } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyLfoShape)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::LegacyLfoShape::Sine, {"Sine"}},
-            {(f32)param_values::LegacyLfoShape::Triangle, {"Triangle"}},
-            {(f32)param_values::LegacyLfoShape::Sawtooth, {"Sawtooth"}},
-            {(f32)param_values::LegacyLfoShape::Square, {"Square"}},
+            {(f32)param_values::LegacyLfoShapeV1::Sine, {"Sine"}},
+            {(f32)param_values::LegacyLfoShapeV1::Triangle, {"Triangle"}},
+            {(f32)param_values::LegacyLfoShapeV1::Sawtooth, {"Sawtooth"}},
+            {(f32)param_values::LegacyLfoShapeV1::Square, {"Square"}},
         });
         return k_types.Items();
 
@@ -566,32 +566,18 @@ enum class StateVersion : u16 {
     Latest = LatestPlusOne - 1,
 };
 
-// Modernise the legacy parameter `legacy_pi` for state load. For DAW state we leave the legacy
-// value intact (so DAW automation continues to drive the audio) and seed the modern parameter
-// with the audibly-equivalent value of legacy_default — that's what the engine reads during the
-// brief moments when DAW automation crosses through legacy_default and the override drops out
-// (see IsLegacyParamOverridingModern). For preset state we modernise the legacy value onto the
-// modern parameter and clear the legacy slot, since presets carry no automation lanes that could
-// be referencing the legacy parameter.
-static void ModerniseLegacyParamOnLoad(StateSnapshot& state, ParamIndex legacy_pi, StateSource source) {
-    auto const legacy_default = k_param_descriptors[ToInt(legacy_pi)].default_linear_value;
-    if (source == StateSource::Daw) {
-        if (auto const m = ModerniseLegacyValue(legacy_pi, legacy_default))
-            state.LinearParam(m->modern_param) = m->modern_linear;
-    } else {
-        auto& legacy_val = state.LinearParam(legacy_pi);
-        if (auto const m = ModerniseLegacyValue(legacy_pi, legacy_val)) {
-            state.LinearParam(m->modern_param) = m->modern_linear;
-            ModerniseMacroDestinations(state, legacy_pi, m->modern_param);
-        }
-        legacy_val = legacy_default;
+// Modernises from legacy to its immediate sucessor.
+static void ModerniseLegacyParam(StateSnapshot& state, ParamIndex legacy_pi, StateSource source) {
+    switch (source) {
+        case StateSource::Daw: ModerniseLegacyParamForDawState(state, legacy_pi); break;
+        case StateSource::PresetFile: ModerniseLegacyParamForPresetState(state, legacy_pi); break;
     }
 }
 
-static void
-ModerniseLegacyLayerParamOnLoad(StateSnapshot& state, LayerParamIndex legacy_idx, StateSource source) {
+// Overload for layers.
+static void ModerniseLegacyParam(StateSnapshot& state, LayerParamIndex legacy_idx, StateSource source) {
     for (auto const layer_index : Range(k_num_layers))
-        ModerniseLegacyParamOnLoad(state, ParamIndexFromLayerParamIndex(layer_index, legacy_idx), source);
+        ModerniseLegacyParam(state, ParamIndexFromLayerParamIndex(layer_index, legacy_idx), source);
 }
 
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
@@ -660,18 +646,18 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     }
 
     if (version < StateVersion::AddedMonophonicModeParameter)
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyMonophonicBool, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyMonophonicBool, source);
 
     if (version < StateVersion::AddedNewLfoShapeParameter)
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyLfoShape, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyLfoShape, source);
 
     if (version < StateVersion::AddedNewLfoDestinationParameter)
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyLfoDestination, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyLfoDestination, source);
 
     if (version < StateVersion::AddedExtraFilterTypes) {
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqType1, source);
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqType2, source);
-        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterType, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqType1, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqType2, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterType, source);
     }
 
     if (version < StateVersion::AddedEffectVisibility) {
@@ -690,23 +676,23 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     if (version < StateVersion::AddedSliceArpConfig) state.slice_arp_configs = {};
 
     if (version < StateVersion::AddedLinearFilterResonance) {
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyFilterResonance, source);
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqResonance1, source);
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqResonance2, source);
-        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterResonance, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyFilterResonance, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqResonance1, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqResonance2, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterResonance, source);
     }
 
     if (version < StateVersion::AddedLinearFilterGain)
-        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterGain, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterGain, source);
 
     if (version < StateVersion::AddedLogFrequencyParams) {
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyFilterCutoff, source);
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqFreq1, source);
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqFreq2, source);
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyEqFreq3, source);
-        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyFilterCutoff, source);
-        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyChorusHighpass, source);
-        ModerniseLegacyParamOnLoad(state, ParamIndex::LegacyConvolutionReverbHighpass, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyFilterCutoff, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqFreq1, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqFreq2, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqFreq3, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterCutoff, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyChorusHighpass, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyConvolutionReverbHighpass, source);
     }
 
     // During a brief in-development period, ArpMode was a 3-value menu: Off=0, Played=1, Fixed=2.
@@ -724,10 +710,10 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     }
 
     if (version < StateVersion::ExpandedLfoShapeParameter)
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyLfoShapeV2, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyLfoShapeV2, source);
 
     if (version < StateVersion::ReworkedLayerFilterTypeMenu)
-        ModerniseLegacyLayerParamOnLoad(state, LayerParamIndex::LegacyFilterType, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyFilterType, source);
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so
@@ -2415,9 +2401,9 @@ TEST_CASE(TestLoadingOldFiles) {
 
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::Volume), DbToAmp(-6.0f), 0.01f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::SampleOffset), 0.054875f, 0.005f);
-        CHECK_EQ(ParamToInt<param_values::LegacyLfoShape>(
+        CHECK_EQ(ParamToInt<param_values::LegacyLfoShapeV1>(
                      ProjectedLayerValue(state, 0, LayerParamIndex::LegacyLfoShape)),
-                 param_values::LegacyLfoShape::Sine);
+                 param_values::LegacyLfoShapeV1::Sine);
         CHECK_EQ(ParamToInt<param_values::LfoShape>(ProjectedLayerValue(state, 0, LayerParamIndex::LfoShape)),
                  param_values::LfoShape::Sine);
         CHECK_EQ(ParamToInt<param_values::LfoSyncedRate>(
@@ -2452,6 +2438,21 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_EQ(state.param_values[ToInt(ParamIndex::ReverbOn)], 1.0f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::ReverbSize)], 0.6f, 0.01f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::ReverbMix)], 0.25f, 0.2f);
+    }
+
+    SUBCASE("chained legacy param migration") {
+        auto const state = TRY(decode_file("Bass Pluck Repeater.mirage-phoenix"));
+        for (auto const layer_index : Range(k_num_layers)) {
+            CHECK_EQ(ParamToInt<param_values::LfoShape>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::LfoShape)),
+                     param_values::LfoShape::Sawtooth);
+            CHECK_EQ(ParamToInt<param_values::LegacyLfoShapeV1>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::LegacyLfoShape)),
+                     param_values::LegacyLfoShapeV1::Sine);
+            CHECK_EQ(ParamToInt<param_values::LegacyLfoShapeV2>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::LegacyLfoShapeV2)),
+                     param_values::LegacyLfoShapeV2::Sine);
+        }
     }
 
     SUBCASE("Abstract Chord.mirage-abstract") {

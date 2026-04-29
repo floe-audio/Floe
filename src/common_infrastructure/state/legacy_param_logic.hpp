@@ -8,142 +8,77 @@
 
 #include "plugin/processing_utils/curve_map.hpp"
 
+// Read and understand the legacy parameters documentation page as a preface to this overview.
+//
+// - Floe is perfectly backwards-compatible: it always produces the same audio for a given set of
+//   parameters/state.
+// - Floe never removes parameters.
+// - When a parameter needs to be replaced (due to a new design, better projection, new menu options, etc.)
+//   the old parameter is marked as legacy and a new parameter is created. The new parameter is defined as the
+//   successor of the old; we use this to compute the inverse (predecessor) at compile time. Every parameter
+//   has at most one successor and at most one predecessor — chains are linear, not branching. This invariant
+//   is enforced by static_assert.
+// - Adding a new legacy requires a few coordinated edits in this module: a case in the successor switch
+//   (records the chain link and triggers the compile-time uniqueness check) and a case in the value remap or
+//   enum remap tables (the transform from the legacy's encoding into its successor's). Additional changes
+//   will be needed in the state_coding file.
+// - Legacy parameters can form chains when a slot has been replaced multiple times (e.g. LegacyLfoShape →
+//   LegacyLfoShapeV2 → LfoShape).
+// - A legacy parameter is considered "active" (overriding its modern) when its linear value is not equal to
+//   its default. A non-default value strongly suggests it was set when this slot was the visible parameter on
+//   the GUI.
+// - When a chain has more than one active legacy ancestor, the OLDEST one wins, because it's the one most
+//   likely to carry the original DAW automation lane.
+// - Legacy parameters are not shown on the main GUI (only via a dedicated Legacy Parameters panel).
+// - State enters the system from either a preset file or the DAW — see state_coding.cpp.
+//   - For presets, on load we forward each active legacy value onto its successor and clear the legacy slot
+//     ('modernising' it). Migration runs one chain step per version boundary so a later step can never
+//     clobber a value an earlier one already migrated.
+//   - For DAW state we cannot move values out of legacy slots, since the DAW may still be writing automation
+//     to them. Instead, the audio pipeline detects legacy override at runtime on every parameter change and
+//     uses the chain-remapped legacy value when active.
+//   - On DAW load we also seed the modern slot with the audible-equivalent of legacy_default — this is what
+//     the audio engine reads in the brief moments when a DAW automation curve passes through legacy_default
+//     and the override drops out, avoiding a click/jump.
+// - When converting between encodings, the chain remap goes through the parameter's natural unit (Hz, dB,
+//   etc.) so unit changes between generations are handled transparently. Callers (state coding and DSP) only
+//   ever see modern's encoding; they never need to know about legacy details unless they need to.
+// - The Legacy Parameters panel offers a per-parameter and a 'Modernise all' action that walk the full chain
+//   at once. Users invoke this once they've confirmed no DAW automation targets the legacy slots, freeing
+//   them to tweak via the improved modern parameters.
+// - DSP code does not deal with legacies directly. The helpers in processor/param.hpp are typically used
+//   instead.
+// - When migrating, any macro modulation that target a legacy param must be retargeted to its successor.
+// - Some legacy parameters don't fit the one-to-one successor model — for example, the legacy
+//   velocity-mapping parameter folds into the per-layer velocity curve points combined with a global
+//   strength. Such cases are handled by their own migration code.
+
 struct StateSnapshot;
 
-// Per-index lookup tables that map a legacy enum value to its modern equivalent. The index into
-// each table is the legacy enum's underlying integer; the entry is an explicitly-chosen modern
-// enum value. Modern enums can be reordered or extended freely — only the legacy ordering is
-// fixed (since legacy enums never change), so each entry stays unambiguous.
-
-constexpr auto k_legacy_eq_type_to_current = ArrayT<param_values::EqType>({
-    param_values::EqType::Peak,
-    param_values::EqType::LowShelf,
-    param_values::EqType::HighShelf,
-});
-static_assert(k_legacy_eq_type_to_current.size == ToInt(param_values::LegacyEqType::Count));
-
-constexpr auto k_legacy_lfo_destination_to_current = ArrayT<param_values::LfoDestination>({
-    param_values::LfoDestination::Volume,
-    param_values::LfoDestination::Filter,
-    param_values::LfoDestination::Pan,
-    param_values::LfoDestination::Pitch,
-});
-static_assert(k_legacy_lfo_destination_to_current.size == ToInt(param_values::LegacyLfoDestination::Count));
-
-constexpr auto k_legacy_lfo_shape_to_current = ArrayT<param_values::LfoShape>({
-    param_values::LfoShape::Sine,
-    param_values::LfoShape::Triangle,
-    param_values::LfoShape::Sawtooth,
-    param_values::LfoShape::Square,
-});
-static_assert(k_legacy_lfo_shape_to_current.size == ToInt(param_values::LegacyLfoShape::Count));
-
-constexpr auto k_legacy_lfo_shape_v2_to_current = ArrayT<param_values::LfoShape>({
-    param_values::LfoShape::Sine,
-    param_values::LfoShape::Triangle,
-    param_values::LfoShape::Sawtooth,
-    param_values::LfoShape::Square,
-    param_values::LfoShape::RandomSteps,
-    param_values::LfoShape::RandomGlide,
-});
-static_assert(k_legacy_lfo_shape_v2_to_current.size == ToInt(param_values::LegacyLfoShapeV2::Count));
-
-// Allpass is removed in the modern enum; map it to the modern default (Lowpass) so old presets
-// using it land on a sensible audible filter rather than nothing.
-constexpr auto k_legacy_layer_filter_type_to_current = ArrayT<param_values::LayerFilterType>({
-    param_values::LayerFilterType::Lowpass,
-    param_values::LayerFilterType::BandpassResonant,
-    param_values::LayerFilterType::Highpass,
-    param_values::LayerFilterType::Bandpass,
-    param_values::LayerFilterType::BandShelving,
-    param_values::LayerFilterType::Notch,
-    param_values::LayerFilterType::Lowpass,
-    param_values::LayerFilterType::Peak,
-});
-static_assert(k_legacy_layer_filter_type_to_current.size ==
-              ToInt(param_values::LegacyLayerFilterType::Count));
-
-// Legacy LowPass/HighPass (which were 24dB due to the 2-pass DSP topology) map to the new *24
-// variants so existing presets keep their audible response.
-constexpr auto k_legacy_effect_filter_type_to_current = ArrayT<param_values::EffectFilterType>({
-    param_values::EffectFilterType::LowPass24,
-    param_values::EffectFilterType::HighPass24,
-    param_values::EffectFilterType::BandPass,
-    param_values::EffectFilterType::Notch,
-    param_values::EffectFilterType::Peak,
-    param_values::EffectFilterType::LowShelf,
-    param_values::EffectFilterType::HighShelf,
-});
-static_assert(k_legacy_effect_filter_type_to_current.size ==
-              ToInt(param_values::LegacyEffectFilterType::Count));
-
-// "Modernising" a legacy parameter means producing the modern parameter value that is audibly
-// equivalent to a given legacy value, so we can hand control over from the legacy parameter to its
-// modern replacement with zero audible change.
-//
-// The same math is used in two places:
-//   1. State load: when reading an old preset/DAW project, we modernise the saved values so that
-//      the modern parameter is set to the value that produces the same sound the legacy parameter
-//      used to drive (see state_coding.cpp's AdaptNewerParams).
-//   2. Live action: the Legacy Parameters panel exposes a "Modernise" action per parameter and a
-//      "Modernise all" button — both clear the legacy override and copy the audibly-equivalent
-//      value onto the modern parameter so the user's sound is preserved.
-
-// A hidden (legacy) param is "overriding" when it has been set to a non-default value by a DAW
-// automation lane, meaning it takes precedence over the modern equivalent param.
-//
-// IMPORTANT INVARIANT: when the legacy param is at its default value, the audio engine reads the
-// modern param instead. DAW automation curves can momentarily pass through legacy_default, so the
-// modern param must hold a value that is *audibly equivalent to legacy_default* — otherwise the
-// crossing produces a click/jump. State load seeds the modern param with that equivalent value
-// via ModerniseLegacyValue below. This decouples the modern param's `default_linear_value` (which
-// is free to change in future Floe versions) from the legacy compatibility behaviour.
 inline bool IsLegacyParamOverridingModern(ParamDescriptor const& desc, f32 linear_value) {
     ASSERT(desc.flags.legacy);
     return linear_value != desc.default_linear_value;
 }
 
-struct ModernisedValue {
-    ParamIndex modern_param;
-    f32 modern_linear;
+struct SuccessorValue {
+    ParamIndex successor_param;
+    f32 successor_linear;
 };
 
-// Returns the modernised value for `legacy` given its current `legacy_linear`. Returns nullopt if
-// `legacy` isn't a legacy parameter, or if it has no 1:1 modern counterpart (e.g. the legacy
-// velocity-mapping parameter, which folds into the velocity-curve points rather than a single
-// modern parameter).
-Optional<ModernisedValue> ModerniseLegacyValue(ParamIndex legacy, f32 legacy_linear);
+Optional<SuccessorValue> SuccessorOfLegacyValue(ParamIndex legacy, f32 legacy_linear);
 
-// Returns the modern parameter that supersedes `legacy`, or nullopt under the same conditions as
-// ModerniseLegacyValue.
-Optional<ParamIndex> ModernCounterpartOf(ParamIndex legacy);
+Optional<SuccessorValue> TopmostSuccessorOfLegacyValue(ParamIndex legacy, f32 legacy_linear);
 
-// Updates any macro destinations that target `legacy` to instead target `modern`. The
-// destination's modulation-depth value is independent of the target and is preserved as-is. Only
-// Float/Int params can be assigned as macro destinations from the GUI, so this is a no-op for
-// Menu/Bool legacy params.
-void ModerniseMacroDestinations(StateSnapshot& state, ParamIndex legacy, ParamIndex modern);
+void ModerniseMacroDestinations(StateSnapshot& state, ParamIndex legacy);
 
-// Modernises the legacy velocity system (per-layer LegacyVelocityMapping mode + global
-// MasterVelocity strength) into the equivalent velocity curve points for one layer. The legacy
-// mode picks a base curve shape (None = flat at 1, TopToBottom = linear, etc.); the master
-// strength then scales y values down toward x=0 so low-velocity notes get quieter.
+void ModerniseLegacyParamForDawState(StateSnapshot& state, ParamIndex legacy);
+void ModerniseLegacyParamForPresetState(StateSnapshot& state, ParamIndex legacy);
+
 CurveMap::Points ModerniseVelocityToCurve(param_values::VelocityMappingMode mode,
                                           f32 velocity_volume_strength);
 
-// Returns the legacy parameter that supersedes a given modern one, or nullopt if `modern` has no
-// 1:1 legacy counterpart (e.g. velocity, which folds into curves rather than a single param).
-// Inverse of ModernCounterpartOf. Doesn't read any parameter values — combine with
-// IsLegacyParamOverridingModern to check whether the legacy is currently overriding.
-Optional<ParamIndex> LegacyCounterpartOf(ParamIndex modern);
+bool IsAnyLegacyOverriding(ParamIndex modern, StaticSpan<f32 const, k_num_parameters> linear_param_values);
 
-// Returns the legacy parameter that is currently overriding `modern`, or nullopt if there is no
-// counterpart or it isn't overriding. `all_linear_values` is the full param-value array (e.g.
-// `Parameters::values` in the audio processor, or `StateSnapshot::param_values`).
-inline Optional<ParamIndex> LegacyOverridingParam(ParamIndex modern, Span<f32 const> all_linear_values) {
-    auto const legacy = LegacyCounterpartOf(modern);
-    if (!legacy) return k_nullopt;
-    auto const& legacy_desc = k_param_descriptors[ToInt(*legacy)];
-    if (IsLegacyParamOverridingModern(legacy_desc, all_linear_values[ToInt(*legacy)])) return legacy;
-    return k_nullopt;
-}
+Optional<ParamIndex> LegacyPredecessor(ParamIndex param);
+
+f32 ResolveLegacyAware(ParamIndex modern, StaticSpan<f32 const, k_num_parameters> linear_param_values);

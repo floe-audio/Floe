@@ -52,12 +52,31 @@ static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
         ModerniseLegacyVelocity(processor);
         return;
     }
-    auto const legacy_value = processor.main_params.LinearValue(legacy);
-    auto const m = ModerniseLegacyValue(legacy, legacy_value);
-    if (!m) return;
-    SetParameterValue(processor, m->modern_param, m->modern_linear, {});
-    SetParameterValue(processor, legacy, k_param_descriptors[ToInt(legacy)].default_linear_value, {});
-    RetargetMacroDestinations(processor, legacy, m->modern_param);
+
+    // Walk to the ultimate modern at the end of `legacy`'s chain.
+    auto const chain_end = TopmostSuccessorOfLegacyValue(
+        legacy,
+        k_param_descriptors[ToInt(legacy)].default_linear_value);
+    if (!chain_end) return;
+    auto const modern = chain_end->successor_param;
+
+    // Resolve the audibly-active value for `modern` (oldest overriding ancestor wins). This
+    // is what the user is currently hearing — preserve it across the modernisation.
+    auto const resolved_linear = ResolveLegacyAware(modern, processor.main_params.values);
+    SetParameterValue(processor, modern, resolved_linear, {});
+
+    // Clear every legacy ancestor in the chain and retarget any macros pointing at them to
+    // the modern. Without this, an older non-default legacy would still override the modern
+    // we just wrote, defeating the modernisation.
+    auto current = LegacyPredecessor(modern);
+    while (current) {
+        SetParameterValue(processor,
+                          *current,
+                          k_param_descriptors[ToInt(*current)].default_linear_value,
+                          {});
+        RetargetMacroDestinations(processor, *current, modern);
+        current = LegacyPredecessor(*current);
+    }
 }
 
 static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor const& desc, Box parent) {

@@ -5,79 +5,74 @@
 
 #include "tests/framework.hpp"
 
-TEST_CASE(TestEnumParamWithLegacies) {
+TEST_CASE(TestIntValueLegacyAware) {
     auto const legacy_v1 = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyLfoShape);
     auto const legacy_v2 = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyLfoShapeV2);
     auto const current = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LfoShape);
 
-    EnumParamWithLegacies<param_values::LfoShape, 2> p {
-        .current_idx = current,
-        .legacies = {{
-            {
-                .idx = legacy_v1,
-                .remap_table = k_legacy_lfo_shape_to_current,
-            },
-            {
-                .idx = legacy_v2,
-                .remap_table = k_legacy_lfo_shape_v2_to_current,
-            },
-        }},
+    auto const poll = [&](Parameters const& params, Bitset<k_num_parameters> const& changed) {
+        return ChangedParams {params, changed}.IntValueLegacyAware<param_values::LfoShape>(current);
     };
 
     {
         Parameters params {};
-        ChangedParams cp {params, {}};
-        REQUIRE(!p.Poll(cp).HasValue());
+        REQUIRE(!poll(params, {}).HasValue());
     }
     {
         Parameters params {};
-        ChangedParams cp {params, {}};
+        Bitset<k_num_parameters> changed {};
         params.values[ToInt(current)] = 3.0f;
-        cp.changed.Set(ToInt(current));
-        REQUIRE_EQ(*p.Poll(cp), param_values::LfoShape::Square);
+        changed.Set(ToInt(current));
+        REQUIRE_EQ(*poll(params, changed), param_values::LfoShape::Square);
     }
     {
+        // V1 overrides — V1 value walks V1 → V2 → modern (identity for first 4 enum values).
         Parameters params {};
-        ChangedParams cp {params, {}};
+        Bitset<k_num_parameters> changed {};
         params.values[ToInt(legacy_v1)] = 1.0f;
-        cp.changed.Set(ToInt(legacy_v1));
+        changed.Set(ToInt(legacy_v1));
         params.values[ToInt(current)] = 3.0f;
-        cp.changed.Set(ToInt(current));
-        REQUIRE_EQ(*p.Poll(cp), param_values::LfoShape::Triangle);
+        changed.Set(ToInt(current));
+        REQUIRE_EQ(*poll(params, changed), param_values::LfoShape::Triangle);
     }
     {
+        // V1 at default — V2 wins. V2 value 5 (RandomGlide) walks V2 → modern unchanged.
         Parameters params {};
-        ChangedParams cp {params, {}};
+        Bitset<k_num_parameters> changed {};
         params.values[ToInt(legacy_v1)] = 0.0f;
-        cp.changed.Set(ToInt(legacy_v1));
-        params.values[ToInt(current)] = 5.0f;
-        cp.changed.Set(ToInt(current));
-        REQUIRE_EQ(*p.Poll(cp), param_values::LfoShape::RandomGlide);
+        changed.Set(ToInt(legacy_v1));
+        params.values[ToInt(legacy_v2)] = 5.0f;
+        changed.Set(ToInt(legacy_v2));
+        params.values[ToInt(current)] = 0.0f;
+        changed.Set(ToInt(current));
+        REQUIRE_EQ(*poll(params, changed), param_values::LfoShape::RandomGlide);
     }
     {
+        // V1 and V2 both overriding — oldest wins (V1).
         Parameters params {};
-        ChangedParams cp {params, {}};
+        Bitset<k_num_parameters> changed {};
         params.values[ToInt(legacy_v1)] = 1.0f;
-        cp.changed.Set(ToInt(legacy_v1));
+        changed.Set(ToInt(legacy_v1));
         params.values[ToInt(legacy_v2)] = 3.0f;
-        cp.changed.Set(ToInt(legacy_v2));
+        changed.Set(ToInt(legacy_v2));
         params.values[ToInt(current)] = 5.0f;
-        cp.changed.Set(ToInt(current));
-        REQUIRE_EQ(*p.Poll(cp), param_values::LfoShape::Triangle);
+        changed.Set(ToInt(current));
+        REQUIRE_EQ(*poll(params, changed), param_values::LfoShape::Triangle);
     }
     {
+        // Only V2 overrides.
         Parameters params {};
-        ChangedParams cp {params, {}};
+        Bitset<k_num_parameters> changed {};
         params.values[ToInt(legacy_v1)] = 0.0f;
-        cp.changed.Set(ToInt(legacy_v1));
+        changed.Set(ToInt(legacy_v1));
         params.values[ToInt(legacy_v2)] = 3.0f;
-        cp.changed.Set(ToInt(legacy_v2));
+        changed.Set(ToInt(legacy_v2));
         params.values[ToInt(current)] = 5.0f;
-        cp.changed.Set(ToInt(current));
-        REQUIRE_EQ(*p.Poll(cp), param_values::LfoShape::Square);
+        changed.Set(ToInt(current));
+        REQUIRE_EQ(*poll(params, changed), param_values::LfoShape::Square);
     }
 
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterParamTests) { REGISTER_TEST(TestEnumParamWithLegacies); }
+TEST_REGISTRATION(RegisterParamTests) { REGISTER_TEST(TestIntValueLegacyAware); }

@@ -129,10 +129,8 @@ class Chorus final : public Effect {
             for (auto const i : Range(ToInt(ChorusIndexes::Count)))
                 m_c[i].SetRate(context.sample_rate, val);
         }
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ChorusHighpass)) {
-            auto const val = *p;
-            m_highpass_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, val, 1, 0);
-        }
+        if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::ChorusHighpass))
+            m_highpass_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, *p, 1, 0);
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ChorusDepth)) m_depth_01 = *p;
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ChorusWet)) m_wet_dry.SetWet(*p);
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ChorusDry)) m_wet_dry.SetDry(*p);

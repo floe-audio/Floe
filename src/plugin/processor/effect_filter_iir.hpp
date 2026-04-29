@@ -45,19 +45,11 @@ constexpr rbj_filter::Type EffectFilterTypeToRbjType(param_values::EffectFilterT
 
 class FilterEffect final : public Effect {
   public:
-    FilterEffect()
-        : Effect(EffectType::FilterEffect)
-        , m_filter_type({
-              .current_idx = ParamIndex::FilterType,
-              .legacies = {{{
-                  .idx = ParamIndex::LegacyFilterType,
-                  .remap_table = k_legacy_effect_filter_type_to_current,
-              }}},
-          }) {}
+    FilterEffect() : Effect(EffectType::FilterEffect) {}
 
     static bool IsUsingGainParam(Parameters const& params) {
         return param_values::EffectFilterTypeUsesGain(
-            params.IntValue<param_values::EffectFilterType>(ParamIndex::FilterType));
+            params.IntValueLegacyAware<param_values::EffectFilterType>(ParamIndex::FilterType));
     }
 
   private:
@@ -68,36 +60,22 @@ class FilterEffect final : public Effect {
 
     void ProcessChangesInternal(ProcessBlockChanges const& changes, AudioProcessingContext const&) override {
         bool set_params = false;
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterCutoff)) {
+        if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::FilterCutoff)) {
             m_filter_params.fc = *p;
             set_params = true;
         }
-        if (changes.changed_params.Changed(ParamIndex::LegacyFilterResonance) ||
-            changes.changed_params.Changed(ParamIndex::FilterResonance)) {
-            auto const legacy_idx = ParamIndex::LegacyFilterResonance;
-            auto const legacy_linear = changes.changed_params.params.LinearValue(legacy_idx);
-            auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
-            m_filter_params.q =
-                (legacy_linear != legacy_default)
-                    ? MapFrom01Skew(legacy_linear, 0.5f, 2, 5)
-                    : rbj_filter::EffectFilterResonanceToQ(
-                          changes.changed_params.params.LinearValue(ParamIndex::FilterResonance));
+        if (auto p = changes.changed_params.LinearValueLegacyAware(ParamIndex::FilterResonance)) {
+            m_filter_params.q = rbj_filter::EffectFilterResonanceToQ(*p);
             set_params = true;
         }
-        if (changes.changed_params.Changed(ParamIndex::LegacyFilterGain) ||
-            changes.changed_params.Changed(ParamIndex::FilterGain)) {
-            auto const legacy_idx = ParamIndex::LegacyFilterGain;
-            auto const legacy_linear = changes.changed_params.params.LinearValue(legacy_idx);
-            auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
-            m_filter_params.peak_gain =
-                (legacy_linear != legacy_default)
-                    ? k_param_descriptors[ToInt(legacy_idx)].ProjectValue(legacy_linear)
-                    : k_param_descriptors[ToInt(ParamIndex::FilterGain)].ProjectValue(
-                          changes.changed_params.params.LinearValue(ParamIndex::FilterGain)) /
-                          2;
+        if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::FilterGain)) {
+            // IMPORTANT: for now we assume everyone using the peak_gain are running a 2-stage filter and
+            // therefore we need half the dB.
+            m_filter_params.peak_gain = *p / 2;
             set_params = true;
         }
-        if (auto p = m_filter_type.Poll(changes.changed_params)) {
+        if (auto p = changes.changed_params.IntValueLegacyAware<param_values::EffectFilterType>(
+                ParamIndex::FilterType)) {
             m_filter_params.type = EffectFilterTypeToRbjType(*p);
             m_num_stages = EffectFilterStageCount(*p);
             set_params = true;
@@ -126,7 +104,6 @@ class FilterEffect final : public Effect {
         m_smoothed_coeffs.ResetSmoothing();
     }
 
-    EnumParamWithLegacies<param_values::EffectFilterType> const m_filter_type;
     rbj_filter::SmoothedCoefficients m_smoothed_coeffs {};
     rbj_filter::StereoData m_filter1 {};
     rbj_filter::StereoData m_filter2 {};

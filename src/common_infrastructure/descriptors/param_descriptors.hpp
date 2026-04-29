@@ -477,7 +477,7 @@ constexpr auto k_lfo_destination_strings = ArrayT<String>({
 });
 static_assert(k_lfo_destination_strings.size == ToInt(LfoDestination::Count));
 
-enum class LegacyLfoShape : u8 { // never reorder
+enum class LegacyLfoShapeV1 : u8 { // oldest. never reorder
     Sine,
     Triangle,
     Sawtooth,
@@ -490,7 +490,7 @@ constexpr auto k_legacy_lfo_shape_strings = ArrayT<String>({
     "Sawtooth",
     "Square",
 });
-static_assert(k_legacy_lfo_shape_strings.size == ToInt(LegacyLfoShape::Count));
+static_assert(k_legacy_lfo_shape_strings.size == ToInt(LegacyLfoShapeV1::Count));
 
 enum class LegacyLfoShapeV2 : u8 { // never reorder
     Sine,
@@ -2526,7 +2526,7 @@ consteval auto CreateParams() {
             .id = id(region, 28), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LegacyLfoShape,
-                .default_val = (u32)LegacyLfoShape::Sine,
+                .default_val = (u32)LegacyLfoShapeV1::Sine,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
             .name = "Legacy Shape"_s,

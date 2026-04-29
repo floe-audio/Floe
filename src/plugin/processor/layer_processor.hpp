@@ -80,19 +80,16 @@ struct EqBand {
                        u32 band_num,
                        Optional<param_values::EqType> new_type) {
         LayerParamIndex freq_param {};
-        Optional<LayerParamIndex> legacy_reso_param {};
         LayerParamIndex reso_param {};
         LayerParamIndex gain_param {};
         switch (band_num) {
             case 0:
                 freq_param = LayerParamIndex::EqFreq1;
-                legacy_reso_param = LayerParamIndex::LegacyEqResonance1;
                 reso_param = LayerParamIndex::EqResonance1;
                 gain_param = LayerParamIndex::EqGain1;
                 break;
             case 1:
                 freq_param = LayerParamIndex::EqFreq2;
-                legacy_reso_param = LayerParamIndex::LegacyEqResonance2;
                 reso_param = LayerParamIndex::EqResonance2;
                 gain_param = LayerParamIndex::EqGain2;
                 break;
@@ -105,24 +102,14 @@ struct EqBand {
         }
 
         bool changed = false;
-        if (auto p = changed_params.ProjectedValue(layer_index, freq_param)) {
+        if (auto p = changed_params.ProjectedValueLegacyAware(layer_index, freq_param)) {
             eq_params.fs = sample_rate;
             eq_params.fc = *p;
             changed = true;
         }
-        bool reso_changed = changed_params.Changed(layer_index, reso_param);
-        if (legacy_reso_param && changed_params.Changed(layer_index, *legacy_reso_param)) reso_changed = true;
-        if (reso_changed) {
-            f32 q = rbj_filter::EqResonanceToQ(
-                changed_params.params.LinearValue(ParamIndexFromLayerParamIndex(layer_index, reso_param)));
-            if (legacy_reso_param) {
-                auto const legacy_idx = ParamIndexFromLayerParamIndex(layer_index, *legacy_reso_param);
-                auto const legacy_linear = changed_params.params.LinearValue(legacy_idx);
-                auto const legacy_default = k_param_descriptors[ToInt(legacy_idx)].default_linear_value;
-                if (legacy_linear != legacy_default) q = MapFrom01Skew(legacy_linear, 0.5f, 8, 5);
-            }
+        if (auto p = changed_params.LinearValueLegacyAware(layer_index, reso_param)) {
             eq_params.fs = sample_rate;
-            eq_params.q = q;
+            eq_params.q = rbj_filter::EqResonanceToQ(*p);
             changed = true;
         }
         if (auto p = changed_params.ProjectedValue(layer_index, gain_param)) {
@@ -257,52 +244,6 @@ struct LayerProcessor {
         , voice_controller({
               .layer_index = index,
           })
-        , filter_type({
-              .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::FilterType),
-              .legacies = {{{
-                  .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyFilterType),
-                  .remap_table = k_legacy_layer_filter_type_to_current,
-              }}},
-          })
-        , lfo_shape({
-              .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoShape),
-              .legacies = {{
-                  {
-                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShape),
-                      .remap_table = k_legacy_lfo_shape_to_current,
-                  },
-                  {
-                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoShapeV2),
-                      .remap_table = k_legacy_lfo_shape_v2_to_current,
-                  },
-              }},
-          })
-        , lfo_dest({
-              .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LfoDestination),
-              .legacies = {{{
-                  .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyLfoDestination),
-                  .remap_table = k_legacy_lfo_destination_to_current,
-              }}},
-          })
-        , eq_types({{
-              {
-                  .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType1),
-                  .legacies = {{{
-                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyEqType1),
-                      .remap_table = k_legacy_eq_type_to_current,
-                  }}},
-              },
-              {
-                  .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType2),
-                  .legacies = {{{
-                      .idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::LegacyEqType2),
-                      .remap_table = k_legacy_eq_type_to_current,
-                  }}},
-              },
-              {
-                  .current_idx = ParamIndexFromLayerParamIndex(index, LayerParamIndex::EqType3),
-              },
-          }})
         , eq_bands() {
         velocity_curve_map.SetNewPoints(k_default_velocity_curve_points);
     }
@@ -444,7 +385,6 @@ struct LayerProcessor {
     f32 tune_cents = 0;
     f32 pitch_bend_range_semitone = 0;
     param_values::MonophonicMode monophonic_mode {};
-    bool monophonic_retrigger_legacy {}; // Legacy
     bool monophonic_latch {};
 
     bool vol_env_on_param = true;
@@ -453,11 +393,6 @@ struct LayerProcessor {
     param_values::LfoSyncedRate lfo_synced_time {};
     f32 lfo_unsynced_hz {};
     bool lfo_is_synced {};
-    EnumParamWithLegacies<param_values::LayerFilterType> filter_type {};
-    EnumParamWithLegacies<param_values::LfoShape, 2> lfo_shape {};
-    EnumParamWithLegacies<param_values::LfoDestination> lfo_dest {};
-
-    Array<EnumParamWithLegacies<param_values::EqType>, k_num_layer_eq_bands> eq_types;
     EqBands eq_bands;
 
     ArpeggiatorState arp_state {};
