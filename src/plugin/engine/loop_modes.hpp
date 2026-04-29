@@ -3,34 +3,11 @@
 
 #pragma once
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/loop_behaviour.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 
 #include "sample_lib_server/sample_library_server.hpp"
-
-enum class LoopBehaviourId : u8 {
-    NoLoop,
-    BuiltinLoopStandard,
-    BuiltinLoopPingPong,
-    CustomLoopStandard,
-    CustomLoopPingPong,
-    MixedLoops,
-    MixedNonLoopsAndLoops,
-};
-
-struct LoopBehaviour {
-    struct Value {
-        LoopBehaviourId id;
-        Optional<sample_lib::LoopMode> mode;
-        String name;
-        String short_name;
-        String description;
-        bool editable;
-    };
-    Value value;
-    String reason;
-    bool is_desired;
-};
 
 namespace detail {
 static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
@@ -432,18 +409,4 @@ PUBLIC String LoopModeDescription(param_values::LoopMode mode) {
     }
     PanicIfReached();
     return {};
-}
-
-PUBLIC bool IsBuiltinLoop(LoopBehaviourId id) {
-    switch (id) {
-        case LoopBehaviourId::BuiltinLoopStandard:
-        case LoopBehaviourId::BuiltinLoopPingPong: return true;
-        case LoopBehaviourId::NoLoop:
-        case LoopBehaviourId::CustomLoopStandard:
-        case LoopBehaviourId::CustomLoopPingPong:
-        case LoopBehaviourId::MixedLoops:
-        case LoopBehaviourId::MixedNonLoopsAndLoops: return false;
-    }
-    PanicIfReached();
-    return false;
 }

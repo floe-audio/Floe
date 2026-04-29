@@ -19,6 +19,7 @@
 #include "clap/ext/timer-support.h"
 #include "engine/engine_prefs.hpp"
 #include "engine/favourite_items.hpp"
+#include "engine/loop_modes.hpp"
 #include "plugin/plugin.hpp"
 #include "processing_utils/arpeggiator.hpp"
 #include "processor/layer_processor.hpp"
@@ -32,10 +33,15 @@ static void NotifyListener(Engine& engine) {
 static void RefreshPresetDescriptionCache(Engine& engine) {
     Array<AutoDescriptionLayerInfo, k_num_layers> layer_info {};
     for (auto const i : Range(k_num_layers)) {
-        auto const& layer = engine.processor.layer_processors[i];
+        auto& layer = engine.processor.layer_processors[i];
         layer_info[i].inst_name = layer.InstName();
-        if (auto sampled = layer.instrument.TryGetFromTag<InstrumentType::Sampler>())
-            if (*sampled) layer_info[i].inst_has_loops = (*sampled)->instrument.loop_overview.has_loops;
+        auto const desired_loop_mode =
+            engine.processor.main_params.IntValue<param_values::LoopMode>(layer.index,
+                                                                          LayerParamIndex::LoopMode);
+        layer_info[i].actual_loop_behaviour =
+            ActualLoopBehaviour(layer.instrument,
+                                desired_loop_mode,
+                                layer.VolumeEnvelopeIsOn(engine.processor.main_params));
     }
 
     auto& cache = engine.preset_description_cache;

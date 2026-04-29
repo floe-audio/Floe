@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/constants.hpp"
+#include "common_infrastructure/loop_behaviour.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 // Per-layer info needed by the auto-description generator. Keeps the generator
@@ -12,7 +13,7 @@
 // with a hand-constructed StateSnapshot.
 struct AutoDescriptionLayerInfo {
     String inst_name; // instrument display name, empty if unknown
-    bool inst_has_loops; // whether the loaded instrument actually has loops
+    LoopBehaviour actual_loop_behaviour; // resolved loop behaviour for the layer
 };
 
 using AutoDescriptionString = DynamicArrayBounded<char, 200>;

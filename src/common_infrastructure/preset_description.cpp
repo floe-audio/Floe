@@ -329,13 +329,15 @@ GenerateAutoDescription(StateSnapshot const& state,
         if (play_mode != param_values::PlayMode::Standard) {
             any_granular = true;
         } else {
-            auto const loop_mode = (param_values::LoopMode)(u8)lp(i, LayerParamIndex::LoopMode);
-            if (loop_mode == param_values::LoopMode::None)
-                any_one_shot = true;
-            else if (loop_mode == param_values::LoopMode::InstrumentDefault && !layer_info[i].inst_has_loops)
-                any_one_shot = true;
-            else
-                any_looping = true;
+            switch (layer_info[i].actual_loop_behaviour.value.id) {
+                case LoopBehaviourId::NoLoop: any_one_shot = true; break;
+                case LoopBehaviourId::CustomLoopStandard:
+                case LoopBehaviourId::CustomLoopPingPong: any_looping = true; break;
+                case LoopBehaviourId::BuiltinLoopStandard:
+                case LoopBehaviourId::BuiltinLoopPingPong:
+                case LoopBehaviourId::MixedLoops:
+                case LoopBehaviourId::MixedNonLoopsAndLoops: break;
+            }
         }
     }
 
