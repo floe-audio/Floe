@@ -632,9 +632,9 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
     // LFO
     // =======================================================================================================
-    if (auto shape = changes.changed_params.IntValueLegacyAware<param_values::LfoShape>(
-            layer.index,
-            LayerParamIndex::LfoShape)) {
+    if (auto shape =
+            changes.changed_params.IntValueLegacyAware<param_values::LfoShape>(layer.index,
+                                                                               LayerParamIndex::LfoShape)) {
         vmst.lfo.shape = *shape;
         for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
             UpdateLFOWaveform(v);

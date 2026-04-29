@@ -54,9 +54,8 @@ static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
     }
 
     // Walk to the ultimate modern at the end of `legacy`'s chain.
-    auto const chain_end = TopmostSuccessorOfLegacyValue(
-        legacy,
-        k_param_descriptors[ToInt(legacy)].default_linear_value);
+    auto const chain_end =
+        TopmostSuccessorOfLegacyValue(legacy, k_param_descriptors[ToInt(legacy)].default_linear_value);
     if (!chain_end) return;
     auto const modern = chain_end->successor_param;
 
@@ -70,10 +69,7 @@ static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
     // we just wrote, defeating the modernisation.
     auto current = LegacyPredecessor(modern);
     while (current) {
-        SetParameterValue(processor,
-                          *current,
-                          k_param_descriptors[ToInt(*current)].default_linear_value,
-                          {});
+        SetParameterValue(processor, *current, k_param_descriptors[ToInt(*current)].default_linear_value, {});
         RetargetMacroDestinations(processor, *current, modern);
         current = LegacyPredecessor(*current);
     }
