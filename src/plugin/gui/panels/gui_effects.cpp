@@ -77,35 +77,14 @@ static void DoKnobJoiningLine(GuiState& g, Box knob1, Box knob2) {
     }
 }
 
-struct EffectHeadingResult {
-    Box heading_btn;
-    Box extras_container;
-    bool close_fired;
-    bool bypass_toggled;
-};
-
-static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) {
+static Box DoEffectHeading(GuiState& g, Effect& fx, Box parent) {
     auto const cols = GetFxColMap(fx.type);
     auto const name = k_effect_info[ToInt(fx.type)].name;
 
-    // Master heading row
-    auto const master_row = DoBox(g.builder,
-                                  {
-                                      .parent = parent,
-                                      .id_extra = ToInt(fx.type),
-                                      .layout {
-                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                          .contents_gap = 2,
-                                          .contents_direction = layout::Direction::Row,
-                                          .contents_align = layout::Alignment::Start,
-                                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                      },
-                                  });
-
-    // Heading button
     auto const heading_btn = DoBox(g.builder,
                                    {
-                                       .parent = master_row,
+                                       .parent = parent,
+                                       .id_extra = ToInt(fx.type),
                                        .background_fill_colours = LiveColStruct(cols.back),
                                        .round_background_corners = 0b0010,
                                        .layout {
@@ -115,7 +94,6 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
                                        .button_behaviour = imgui::ButtonConfig {},
                                    });
 
-    // Heading button inner (text)
     DoBox(g.builder,
           {
               .parent = heading_btn,
@@ -138,84 +116,7 @@ static EffectHeadingResult DoEffectHeading(GuiState& g, Effect& fx, Box parent) 
               }},
           });
 
-    // Extras container (for compressor auto-gain, delay sync, etc.)
-    auto const extras = DoBox(g.builder,
-                              {
-                                  .parent = master_row,
-                                  .layout {
-                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                      .contents_direction = layout::Direction::Row,
-                                      .contents_align = layout::Alignment::End,
-                                  },
-                              });
-
-    // Bypass button
-    bool const is_on = EffectIsOn(g.engine.processor.main_params, &fx);
-    auto const bypass_btn =
-        DoBox(g.builder,
-              {
-                  .parent = master_row,
-                  .text = String {ICON_FA_POWER_OFF},
-                  .font = FontType::Icons,
-                  .text_colours =
-                      ColSet {
-                          .base = is_on ? LiveColStruct(cols.highlight) : LiveColStruct(UiColMap::MidIcon),
-                          .hot = LiveColStruct(UiColMap::MidTextHot),
-                          .active = LiveColStruct(UiColMap::MidTextHot),
-                      },
-                  .text_justification = TextJustification::Centred,
-                  .layout {
-                      .size = {19, 17},
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      return fmt::Format(g.scratch_arena,
-                                         "{} {}",
-                                         is_on ? "Bypass" : "Activate",
-                                         k_effect_info[ToInt(fx.type)].name);
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
-
-    bool bypass_toggled = false;
-    if (bypass_btn.button_fired) {
-        SetParameterValue(g.engine.processor,
-                          k_effect_info[ToInt(fx.type)].on_param_index,
-                          is_on ? 0.0f : 1.0f,
-                          {});
-        bypass_toggled = true;
-    }
-
-    // Close button
-    auto const close_btn =
-        DoBox(g.builder,
-              {
-                  .parent = master_row,
-                  .text = String {ICON_FA_XMARK},
-                  .font = FontType::Icons,
-                  .text_colours =
-                      ColSet {
-                          .base = LiveColStruct(UiColMap::MidIcon),
-                          .hot = LiveColStruct(UiColMap::MidTextHot),
-                          .active = LiveColStruct(UiColMap::MidTextHot),
-                      },
-                  .text_justification = TextJustification::Centred,
-                  .layout {
-                      .size = {19, 17},
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      return fmt::Format(g.scratch_arena, "Remove {}", k_effect_info[ToInt(fx.type)].name);
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
-
-    bool close_fired = false;
-    if (close_btn.button_fired) {
-        SetParameterValue(g.engine.processor, k_effect_info[ToInt(fx.type)].on_param_index, 0, {});
-        g.engine.fx_visible.SetToValue(ToInt(fx.type), false);
-        close_fired = true;
-    }
-
-    return {heading_btn, extras, close_fired, bypass_toggled};
+    return heading_btn;
 }
 
 static Box DoEffectParamContainer(GuiBuilder& builder, Box parent, u64 loc_hash = SourceLocationHash()) {
@@ -559,7 +460,6 @@ static void DoEffectParams(GuiState& g,
                            GuiFrameContext const& frame_context,
                            Effect& fx,
                            Box param_container,
-                           Box extras_container,
                            Col highlight_col,
                            bool greyed_out) {
 
@@ -635,16 +535,6 @@ static void DoEffectParams(GuiState& g,
             auto const type =
                 params.DescribedValue(ParamIndex::CompressorType).IntValue<param_values::CompressorType>();
 
-            if (type == param_values::CompressorType::MajorTom) {
-                DoButtonParameter(g,
-                                  extras_container,
-                                  params.DescribedValue(ParamIndex::CompressorAutoGain),
-                                  {.width = layout::k_hug_contents,
-                                   .height = k_fx_heading_h,
-                                   .greyed_out = greyed_out,
-                                   .on_colour = highlight_col});
-            }
-
             DoMenuParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::CompressorType),
@@ -683,6 +573,16 @@ static void DoEffectParams(GuiState& g,
                                 .greyed_out = greyed_out,
                                 .bidirectional = true,
                             });
+
+            if (type == param_values::CompressorType::MajorTom) {
+                DoButtonParameter(g,
+                                  param_container,
+                                  params.DescribedValue(ParamIndex::CompressorAutoGain),
+                                  {.width = layout::k_hug_contents,
+                                   .height = k_fx_heading_h,
+                                   .greyed_out = greyed_out,
+                                   .on_colour = highlight_col});
+            }
 
             break;
         }
@@ -953,46 +853,59 @@ static void DoEffectParams(GuiState& g,
         case EffectType::Delay: {
             bool const synced = params.BoolValue(ParamIndex::DelayTimeSyncSwitch);
 
-            // Sync toggle in heading extras
-            DoButtonParameter(g,
-                              extras_container,
-                              params.DescribedValue(ParamIndex::DelayTimeSyncSwitch),
-                              {.width = layout::k_hug_contents,
-                               .height = k_fx_heading_h,
-                               .greyed_out = greyed_out,
-                               .on_colour = highlight_col});
+            auto const time_group = DoBox(g.builder,
+                                          {
+                                              .parent = param_container,
+                                              .layout {
+                                                  .size = {150, layout::k_hug_contents},
+                                                  .contents_gap = {0, k_fx_controls_gap_y},
+                                                  .contents_direction = layout::Direction::Column,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
 
-            auto const time_box = DoBox(g.builder,
+            constexpr f32 k_time_row_h = (k_knob_w * 0.96f) + 2 + k_font_body_size;
+            auto const time_row = DoBox(g.builder,
                                         {
-                                            .parent = param_container,
+                                            .parent = time_group,
                                             .layout {
-                                                .size = {150, layout::k_hug_contents},
+                                                .size = {layout::k_fill_parent, k_time_row_h},
                                                 .contents_gap = synced ? 4 : k_fx_controls_gap_x,
+                                                .contents_align = layout::Alignment::Middle,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                             },
                                         });
             // Time params (conditional)
             if (synced) {
                 DoMenuParameter(g,
-                                time_box,
+                                time_row,
                                 params.DescribedValue(ParamIndex::DelayTimeSyncedL),
                                 {.greyed_out = greyed_out});
                 DoMenuParameter(g,
-                                time_box,
+                                time_row,
                                 params.DescribedValue(ParamIndex::DelayTimeSyncedR),
                                 {.greyed_out = greyed_out});
             } else {
                 auto const left_knob = DoKnobParameter(
                     g,
-                    time_box,
+                    time_row,
                     params.DescribedValue(ParamIndex::DelayTimeLMs),
                     {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
                 auto const right_knob = DoKnobParameter(
                     g,
-                    time_box,
+                    time_row,
                     params.DescribedValue(ParamIndex::DelayTimeRMs),
                     {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
                 DoKnobJoiningLine(g, left_knob, right_knob);
             }
+
+            DoButtonParameter(g,
+                              time_group,
+                              params.DescribedValue(ParamIndex::DelayTimeSyncSwitch),
+                              {.width = layout::k_hug_contents,
+                               .height = k_fx_heading_h,
+                               .greyed_out = greyed_out,
+                               .on_colour = highlight_col});
 
             DoKnobParameter(
                 g,
@@ -1090,14 +1003,25 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                                        .border_edges = 0b0001,
                                        .layout {
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_padding = {.b = 8},
-                                           .contents_direction = layout::Direction::Column,
+                                           .contents_direction = layout::Direction::Row,
                                            .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                        },
                                    });
 
-        auto const [heading_btn, extras_container, close_fired, bypass_toggled] =
-            DoEffectHeading(g, *fx, section);
+        auto const left_pane = DoBox(g.builder,
+                                     {
+                                         .parent = section,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_padding = {.b = 8},
+                                             .contents_direction = layout::Direction::Column,
+                                             .contents_align = layout::Alignment::Start,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                         },
+                                     });
+
+        auto const heading_btn = DoEffectHeading(g, *fx, left_pane);
         bool const bypassed = !EffectIsOn(params, fx);
 
         if (!is_being_dragged) {
@@ -1111,48 +1035,113 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                 GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         }
 
-        auto const contents = DoBox(g.builder,
+        auto const params_row = DoBox(g.builder,
+                                      {
+                                          .parent = left_pane,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_padding = {.lr = 12, .tb = 8},
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                          },
+                                      });
+
+        auto const param_container = DoEffectParamContainer(g.builder, params_row);
+
+        auto const common_controls =
+            DoBox(g.builder,
+                  {
+                      .parent = section,
+                      .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                      .border_edges = 0b1000,
+                      .layout {
+                          .size = {layout::k_hug_contents, layout::k_fill_parent},
+                          .contents_padding = {.l = 16, .r = 4, .tb = 4},
+                          .contents_gap = 8,
+                          .contents_direction = layout::Direction::Row,
+                          .contents_align = layout::Alignment::Middle,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                      },
+                  });
+
+        DoEffectParams(g, frame_context, *fx, param_container, highlight_col, bypassed);
+
+        DoKnobParameter(g,
+                        common_controls,
+                        params.DescribedValue(k_effect_info[ToInt(fx->type)].mix_param_index),
+                        {.width = 30.0f, .knob_highlight_col = highlight_col, .greyed_out = bypassed});
+
+        auto const icon_col = DoBox(g.builder,
                                     {
-                                        .parent = section,
+                                        .parent = common_controls,
                                         .layout {
-                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                            .contents_padding =
-                                                {
-                                                    .lr = 12,
-                                                    .tb = 8,
-                                                },
-                                            .contents_direction = layout::Direction::Row,
+                                            .size = layout::k_hug_contents,
+                                            .contents_gap = 4,
+                                            .contents_direction = layout::Direction::Column,
                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                         },
                                     });
 
-        auto const left_col = DoBox(g.builder,
-                                    {
-                                        .parent = contents,
-                                        .layout {
-                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                            .contents_direction = layout::Direction::Column,
-                                        },
-                                    });
-        auto const param_container = DoEffectParamContainer(g.builder, left_col);
+        {
+            auto const close_btn = DoBox(
+                g.builder,
+                {
+                    .parent = icon_col,
+                    .text = String {ICON_FA_XMARK},
+                    .font = FontType::Icons,
+                    .text_colours =
+                        ColSet {
+                            .base = LiveColStruct(UiColMap::MidIcon),
+                            .hot = LiveColStruct(UiColMap::MidTextHot),
+                            .active = LiveColStruct(UiColMap::MidTextHot),
+                        },
+                    .text_justification = TextJustification::Centred,
+                    .layout {
+                        .size = {19, 17},
+                    },
+                    .tooltip = FunctionRef<String()> {[&]() -> String {
+                        return fmt::Format(g.scratch_arena, "Remove {}", k_effect_info[ToInt(fx->type)].name);
+                    }},
+                    .button_behaviour = imgui::ButtonConfig {},
+                });
+            if (close_btn.button_fired) {
+                SetParameterValue(g.engine.processor, k_effect_info[ToInt(fx->type)].on_param_index, 0, {});
+                g.engine.fx_visible.SetToValue(ToInt(fx->type), false);
+            }
+        }
 
-        auto const mix_col = DoBox(g.builder,
-                                   {
-                                       .parent = contents,
-                                       .layout {
-                                           .size = layout::k_hug_contents,
-                                           .contents_padding = {.l = k_fx_controls_gap_x, .r = 8},
-                                           .contents_direction = layout::Direction::Row,
-                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                       },
-                                   });
-
-        DoEffectParams(g, frame_context, *fx, param_container, extras_container, highlight_col, bypassed);
-
-        DoKnobParameter(g,
-                        mix_col,
-                        params.DescribedValue(k_effect_info[ToInt(fx->type)].mix_param_index),
-                        {.width = 30.0f, .knob_highlight_col = highlight_col, .greyed_out = bypassed});
+        {
+            bool const is_on = !bypassed;
+            auto const bypass_btn = DoBox(
+                g.builder,
+                {
+                    .parent = icon_col,
+                    .text = String {ICON_FA_POWER_OFF},
+                    .font = FontType::Icons,
+                    .text_colours =
+                        ColSet {
+                            .base = is_on ? LiveColStruct(cols.highlight) : LiveColStruct(UiColMap::MidIcon),
+                            .hot = LiveColStruct(UiColMap::MidTextHot),
+                            .active = LiveColStruct(UiColMap::MidTextHot),
+                        },
+                    .text_justification = TextJustification::Centred,
+                    .layout {
+                        .size = {19, 17},
+                    },
+                    .tooltip = FunctionRef<String()> {[&]() -> String {
+                        return fmt::Format(g.scratch_arena,
+                                           "{} {}",
+                                           is_on ? "Bypass" : "Activate",
+                                           k_effect_info[ToInt(fx->type)].name);
+                    }},
+                    .button_behaviour = imgui::ButtonConfig {},
+                });
+            if (bypass_btn.button_fired)
+                SetParameterValue(g.engine.processor,
+                                  k_effect_info[ToInt(fx->type)].on_param_index,
+                                  is_on ? 0.0f : 1.0f,
+                                  {});
+        }
 
         dyn::Append(effect_sections, EffectSectionInfo {fx, section});
     }
