@@ -29,7 +29,7 @@ prefs::Descriptor SettingDescriptor(GuiPreference setting) {
             return {
                 .key = "show-instance-name"_s,
                 .value_requirements = prefs::ValueType::Bool,
-                .default_value = true,
+                .default_value = false,
                 .gui_label = "Show instance name",
                 .long_description = "Show the name of the instance in the top panel GUI.",
             };
