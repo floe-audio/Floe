@@ -609,7 +609,7 @@ static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params
 
         for (auto const& dest : macro.items) {
             if (!dest.param_index) continue;
-            if (params.Changed(*dest.param_index) || macro_changed)
+            if (params.ChangedIgnoringLegacy(*dest.param_index) || macro_changed)
                 needs_adjustment.Set(ToInt(*dest.param_index));
         }
     }
@@ -1451,7 +1451,7 @@ static void SendParamChangesToMainThread(AudioProcessor& processor, ChangedParam
     changes_for_main_thread.changed.ForEachSetBit([&](usize param_index) {
         dyn::Append(events,
                     {
-                        .value = processor.audio_params.LinearValue((ParamIndex)param_index),
+                        .value = processor.audio_params.LinearValueIgnoringLegacy((ParamIndex)param_index),
                         .index = (ParamIndex)param_index,
                     });
     });

@@ -46,6 +46,8 @@ struct Parameters {
         return LinearValue(ParamIndexFromLayerParamIndex(layer_index, index));
     }
 
+    ALWAYS_INLINE f32 LinearValueIgnoringLegacy(ParamIndex index) const { return values[ToInt(index)]; }
+
     f32 ProjectedValue(ParamIndex index) const {
         AssertNoUnhandledLegacyAncestor(index);
         return k_param_descriptors[ToInt(index)].ProjectValue(LinearValue(index));
@@ -156,12 +158,13 @@ struct ChangedParams {
         return Changed(ParamIndexFromLayerParamIndex(layer_index, index));
     }
 
+    bool ChangedIgnoringLegacy(ParamIndex index) const { return changed.Get(ToInt(index)); }
+
     bool ChangedLegacyAware(ParamIndex modern) const {
-        // Bypasses Changed() because that asserts no legacy ancestor.
-        if (changed.Get(ToInt(modern))) return true;
+        if (ChangedIgnoringLegacy(modern)) return true;
         auto ancestor = LegacyPredecessor(modern);
         while (ancestor) {
-            if (changed.Get(ToInt(*ancestor))) return true;
+            if (ChangedIgnoringLegacy(*ancestor)) return true;
             ancestor = LegacyPredecessor(*ancestor);
         }
         return false;
