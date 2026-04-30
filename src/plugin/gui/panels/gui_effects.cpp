@@ -646,13 +646,23 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::Compressor: {
-            DoButtonParameter(g,
-                              extras_container,
-                              params.DescribedValue(ParamIndex::CompressorAutoGain),
-                              {.width = layout::k_hug_contents,
-                               .height = k_fx_heading_h,
-                               .greyed_out = greyed_out,
-                               .on_colour = highlight_col});
+            auto const type =
+                params.DescribedValue(ParamIndex::CompressorType).IntValue<param_values::CompressorType>();
+
+            if (type == param_values::CompressorType::MajorTom) {
+                DoButtonParameter(g,
+                                  extras_container,
+                                  params.DescribedValue(ParamIndex::CompressorAutoGain),
+                                  {.width = layout::k_hug_contents,
+                                   .height = k_fx_heading_h,
+                                   .greyed_out = greyed_out,
+                                   .on_colour = highlight_col});
+            }
+
+            DoMenuParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::CompressorType),
+                            {.greyed_out = greyed_out});
 
             DoKnobParameter(
                 g,
@@ -664,6 +674,20 @@ static void DoEffectParams(GuiState& g,
                 param_container,
                 params.DescribedValue(ParamIndex::CompressorRatio),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+
+            if (type == param_values::CompressorType::Vital) {
+                DoKnobParameter(
+                    g,
+                    param_container,
+                    params.DescribedValue(ParamIndex::CompressorAttack),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+                DoKnobParameter(
+                    g,
+                    param_container,
+                    params.DescribedValue(ParamIndex::CompressorRelease),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            }
+
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::CompressorGain),
@@ -673,6 +697,14 @@ static void DoEffectParams(GuiState& g,
                                 .greyed_out = greyed_out,
                                 .bidirectional = true,
                             });
+
+            if (type == param_values::CompressorType::Vital) {
+                DoKnobParameter(
+                    g,
+                    param_container,
+                    params.DescribedValue(ParamIndex::CompressorMix),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            }
             break;
         }
 

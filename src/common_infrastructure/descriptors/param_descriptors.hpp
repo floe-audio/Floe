@@ -134,6 +134,10 @@ enum class ParamIndex : u16 {
     CompressorGain,
     CompressorAutoGain,
     CompressorOn,
+    CompressorType,
+    CompressorAttack,
+    CompressorRelease,
+    CompressorMix,
 
     FilterOn,
     LegacyFilterCutoff,
@@ -664,6 +668,17 @@ constexpr auto k_distortion_type_strings = ArrayT<String>({
 });
 static_assert(k_distortion_type_strings.size == ToInt(DistortionType::Count));
 
+enum class CompressorType : u8 { // never reorder
+    MajorTom,
+    Vital,
+    Count,
+};
+constexpr auto k_compressor_type_strings = ArrayT<String>({
+    "Major Tom",
+    "Vital",
+});
+static_assert(k_compressor_type_strings.size == ToInt(CompressorType::Count));
+
 enum class DelaySyncedTime : u8 { // never reorder
     // NOLINTBEGIN(readability-identifier-naming)
     _1_64T,
@@ -900,6 +915,7 @@ struct ParamDescriptor {
         LegacyEffectFilterType,
         EffectFilterType,
         DistortionType,
+        CompressorType,
         DelaySyncedTime,
         DelayMode,
         VelocityMappingMode,
@@ -1217,6 +1233,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::LegacyEffectFilterType: return k_legacy_effect_filter_type_strings;
         case ParamDescriptor::MenuType::EffectFilterType: return k_effect_filter_type_strings;
         case ParamDescriptor::MenuType::DistortionType: return k_distortion_type_strings;
+        case ParamDescriptor::MenuType::CompressorType: return k_compressor_type_strings;
         case ParamDescriptor::MenuType::DelaySyncedTime: return k_delay_synced_time_strings;
         case ParamDescriptor::MenuType::DelayMode: return k_delay_mode_strings;
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
@@ -1703,6 +1720,41 @@ consteval auto CreateParams() {
         .name = "On"_s,
         .gui_label = "Compressor",
         .tooltip = "Enable/disable the compression effect"_s,
+    };
+    mp(CompressorType) = Args {
+        .id = id(IdRegion::Master, 33), // never change
+        .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::CompressorType,
+            .default_val = (u32)CompressorType::Vital,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "The compressor algorithm to use"_s,
+    };
+    mp(CompressorAttack) = Args {
+        .id = id(IdRegion::Master, 34), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Attack"_s,
+        .gui_label = "Attack"_s,
+        .tooltip = "How quickly the compressor responds to a rise in level"_s,
+    };
+    mp(CompressorRelease) = Args {
+        .id = id(IdRegion::Master, 35), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Release"_s,
+        .gui_label = "Release"_s,
+        .tooltip = "How quickly the compressor recovers after the level drops"_s,
+    };
+    mp(CompressorMix) = Args {
+        .id = id(IdRegion::Master, 36), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the compressed signal"_s,
     };
 
     // =====================================================================================================
@@ -3169,7 +3221,7 @@ consteval auto CreateParams() {
             .name = "Auto Rate"_s,
             .gui_label = "Auto Rate"_s,
             .tooltip =
-                "Automatically pick an arpeggiator rate based on the sliced instrument's loop length and host tempo. Only applies to sliced instruments."_s,
+                "Automatically pick an arpeggiator rate based on the sliced instrument's loop length and host tempo."_s,
             .flags = {.experimental = true},
         };
         lp(ArpLength) = Args {

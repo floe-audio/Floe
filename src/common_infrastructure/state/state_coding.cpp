@@ -570,6 +570,11 @@ enum class StateVersion : u16 {
     // pre-existing presets and DAW automation.
     AddedStereoWidenMode,
 
+    // Added a new Vital-based compressor option alongside the original Stillwell Major Tom.
+    // Old presets default to MajorTom so they sound the same. Also added Attack, Release and
+    // Mix parameters used only by the Vital compressor.
+    AddedVitalCompressor,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -592,7 +597,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 290,
+    static_assert(k_num_non_experimental_parameters == 294,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -729,6 +734,11 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
     if (version < StateVersion::AddedStereoWidenMode)
         state.LinearParam(ParamIndex::StereoWidenMode) = (f32)ToInt(param_values::StereoWidenMode::Legacy);
+
+    if (version < StateVersion::AddedVitalCompressor) {
+        // Old presets used the Stillwell Major Tom compressor exclusively; preserve their sound.
+        state.param_values[ToInt(ParamIndex::CompressorType)] = (f32)param_values::CompressorType::MajorTom;
+    }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so

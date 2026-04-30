@@ -17,7 +17,7 @@
 #include "atomic_bitset.hpp"
 #include "effect_bitcrush.hpp"
 #include "effect_chorus.hpp"
-#include "effect_compressor_stillwell_majortom.hpp"
+#include "effect_compressor.hpp"
 #include "effect_convo.hpp"
 #include "effect_delay.hpp"
 #include "effect_distortion.hpp"
