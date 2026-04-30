@@ -21,6 +21,7 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/error_reporting.hpp"
+#include "common_infrastructure/global.hpp"
 #include "common_infrastructure/preferences.hpp"
 
 #include "engine/engine.hpp"
@@ -1273,6 +1274,9 @@ static bool ClapInit(const struct clap_plugin* plugin) {
                         floe.host.name,
                         floe.host.version,
                         CurrentThreadId());
+
+        if (StartsWithSpan(FromNullTerminated(floe.host.name), "clap-validator"_s))
+            g_plugin_host.Store(PluginHost::ClapValidator, StoreMemoryOrder::Relaxed);
 
         if (floe.initialised) return true;
 

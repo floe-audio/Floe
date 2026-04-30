@@ -25,6 +25,8 @@ static void ShutdownTracy() {
 
 static u32 g_tracy_init = 0;
 
+Atomic<PluginHost> g_plugin_host {PluginHost::Unknown};
+
 void GlobalInit(GlobalInitOptions options) {
     if constexpr (k_running_with_thread_sanitizer) {
         // Very unstable to run Valgrind with ThreadSanitizer.
@@ -37,8 +39,6 @@ void GlobalInit(GlobalInitOptions options) {
 
     SetPanicHook([](char const* message_c_str, SourceLocation loc, uintptr loc_pc) {
         // We don't have to be signal-safe here.
-
-        if (!PRODUCTION_BUILD && IsRunningUnderDebugger()) __builtin_debugtrap();
 
         ArenaAllocatorWithInlineStorage<2000> arena {PageAllocator::Instance()};
 
@@ -67,6 +67,13 @@ void GlobalInit(GlobalInitOptions options) {
             }
             return k_success;
         });
+
+        if constexpr (!PRODUCTION_BUILD) {
+            if (IsRunningUnderDebugger()) __builtin_debugtrap();
+
+            // Clap-validator seems to hang without this.
+            if (g_plugin_host.Load(LoadMemoryOrder::Relaxed) == PluginHost::ClapValidator) __builtin_abort();
+        }
 
         // Step 2: send an error report to Sentry.
         {
@@ -109,28 +116,7 @@ void GlobalInit(GlobalInitOptions options) {
                     "Failed to initialize stacktrace state: {}",
                     *err);
 
-    InitLogger({.destination = ({
-                    LogConfig::Destination d;
-                    if (options.force_log_to_stderr) {
-                        d = LogConfig::Destination::Stderr;
-                    } else {
-                        switch (g_final_binary_type) {
-                            case FinalBinaryType::Clap:
-                            case FinalBinaryType::AuV2:
-                            case FinalBinaryType::Vst3: d = LogConfig::Destination::File; break;
-                            case FinalBinaryType::Standalone:
-                            case FinalBinaryType::Packager:
-                            case FinalBinaryType::LicenseTool:
-                            case FinalBinaryType::PresetEditor:
-                            case FinalBinaryType::WindowsInstaller:
-                            case FinalBinaryType::WindowsUninstaller:
-                            case FinalBinaryType::DocsGenerator:
-                            case FinalBinaryType::Tests:
-                            case FinalBinaryType::Benchmarks: d = LogConfig::Destination::Stderr; break;
-                        }
-                    }
-                    d;
-                })});
+    InitLogger({});
 
     InitLogFolderIfNeeded();
 

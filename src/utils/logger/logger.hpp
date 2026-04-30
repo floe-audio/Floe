@@ -91,8 +91,6 @@ ErrorCodeOr<void> WriteLogLine(Writer writer,
                                WriteLogLineOptions options);
 
 struct LogConfig {
-    enum class Destination : u8 { Stderr, File };
-    Destination destination = Destination::Stderr;
     LogLevel min_level_allowed = PRODUCTION_BUILD ? LogLevel::Info : LogLevel::Debug;
 };
 

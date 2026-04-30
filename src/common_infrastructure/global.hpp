@@ -3,11 +3,18 @@
 
 #pragma once
 #include "foundation/foundation.hpp"
+#include "os/threading.hpp"
+
+enum class PluginHost : u8 {
+    Unknown,
+    ClapValidator,
+};
+
+extern Atomic<PluginHost> g_plugin_host;
 
 struct GlobalInitOptions {
     bool init_error_reporting = false;
     bool set_main_thread = false;
-    bool force_log_to_stderr = false;
 };
 
 void GlobalInit(GlobalInitOptions options);

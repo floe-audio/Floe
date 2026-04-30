@@ -255,6 +255,136 @@ void ShutdownLogger() {
 
 LogRingBuffer::Snapshot GetLatestLogMessages() { return g_message_ring_buffer.TakeSnapshot(); }
 
+static void
+LogToStderr(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message) {
+    constexpr WriteLogLineOptions k_config {
+        .ansi_colors = true,
+        .no_info_prefix = false,
+        .timestamp = true,
+        .thread = true,
+    };
+    auto& mutex = StdStreamMutex(StdStream::Err);
+    mutex.Lock();
+    DEFER { mutex.Unlock(); };
+
+    BufferedWriter<Kb(4)> buffered_writer {StdWriter(StdStream::Err)};
+    DEFER { buffered_writer.FlushReset(); };
+
+    auto _ = WriteLogLine(buffered_writer.Writer(), module_name, level, write_message, k_config);
+}
+
+static bool
+LogToFile(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message) {
+    CallOnce(g_call_once_flag, []() {
+        ASSERT(g_file == nullptr);
+        InitLogFolderIfNeeded();
+
+        auto seed = RandomSeed();
+        ArenaAllocatorWithInlineStorage<500> arena {PageAllocator::Instance()};
+
+        auto const log_folder = *LogFolder();
+        if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(log_folder));
+
+        auto const standard_path = path::Join(arena, Array {log_folder, k_latest_log_filename});
+        if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(standard_path));
+
+        // We have a few requirements here:
+        // - If possible, we want a log file with a fixed name so that it's easier to find and
+        //   use for debugging.
+        // - We don't want to overwrite any log files.
+        // - We need to correctly handle the case where other processes are running this same
+        //   code at the same time; this can happen when the host loads plugins in different
+        //   processes.
+        for (auto _ : Range(50)) {
+            // Try opening the file with exclusive access.
+            auto file_outcome =
+                OpenFile(standard_path,
+                         {
+                             .capability = FileMode::Capability::Append,
+                             .win32_share = FileMode::Share::DeleteRename | FileMode::Share::ReadWrite,
+                             .creation = FileMode::Creation::CreateNew, // Exclusive access
+                         });
+            if (file_outcome.HasError()) {
+                if (file_outcome.Error() == FilesystemError::PathAlreadyExists) {
+                    // We try to oust the standard log file by renaming it to a unique name.
+                    // Rename is atomic. If another process is already using the log file, they
+                    // will continue to do so safely, but it will be under the new name.
+                    auto const unique_path =
+                        path::Join(arena, Array {log_folder, UniqueFilename("", k_log_extension, seed)});
+                    ASSERT(IsValidUtf8(unique_path));
+                    auto const rename_o = Rename(standard_path, unique_path);
+                    if (rename_o.Succeeded()) {
+                        // We successfully renamed the file. Now let's try opening it again.
+                        continue;
+                    } else {
+                        if (rename_o.Error() == FilesystemError::PathDoesNotExist) {
+                            // The file was deleted between our OpenFile and Rename calls. Let's
+                            // try again.
+                            continue;
+                        }
+
+                        StdPrintFLocked(StdStream::Err,
+                                        "{} failed to rename log file: {}\n",
+                                        CurrentThreadId(),
+                                        rename_o.Error());
+                        return;
+                    }
+                }
+
+                // Some other error occurred, not much we can do.
+                StdPrintFLocked(StdStream::Err,
+                                "{} failed to open log file: {}\n",
+                                CurrentThreadId(),
+                                file_outcome.Error());
+                return;
+            }
+
+            auto file = PLACEMENT_NEW(g_file_storage) File {file_outcome.ReleaseValue()};
+            g_file = file;
+            return;
+        }
+
+        StdPrintFLocked(StdStream::Err, "{} failed to open log file: too many attempts\n", CurrentThreadId());
+        return;
+    });
+
+    auto file = g_file;
+
+    if (!file) return false;
+
+    BufferedWriter<Kb(4)> buffered_writer {file->Writer()};
+    DEFER {
+        auto outcome = buffered_writer.Flush();
+        if (outcome.HasError()) {
+            LogToStderr(ModuleName::Global, LogLevel::Error, [outcome](Writer writer) {
+                return fmt::FormatToWriter(writer,
+                                           "defer flush failed to write log file: {}"_s,
+                                           outcome.Error());
+            });
+        }
+        // We've done what we can with the outcome, let's not trigger any assertion.
+        buffered_writer.Reset();
+    };
+
+    auto o = WriteLogLine(buffered_writer.Writer(),
+                          module_name,
+                          level,
+                          write_message,
+                          {
+                              .ansi_colors = false,
+                              .no_info_prefix = false,
+                              .timestamp = true,
+                              .thread = true,
+                          });
+    if (o.HasError()) {
+        LogToStderr(ModuleName::Global, LogLevel::Error, [o](Writer writer) {
+            return fmt::FormatToWriter(writer, "failed to write log file: {}"_s, o.Error());
+        });
+    }
+
+    return true;
+}
+
 void Log(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message) {
     if (level < g_config.min_level_allowed) return;
 
@@ -282,148 +412,10 @@ void Log(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(W
         if (o.Succeeded()) TracyMessage(message.data, message.size);
     }
 
-    // For debugging purposes, we also log to a file or stderr.
+    // For debugging purposes, we also log to a file and stderr.
     if constexpr (!PRODUCTION_BUILD) {
-        static auto log_to_stderr =
-            [](ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message) {
-                constexpr WriteLogLineOptions k_config {
-                    .ansi_colors = true,
-                    .no_info_prefix = false,
-                    .timestamp = true,
-                    .thread = true,
-                };
-                auto& mutex = StdStreamMutex(StdStream::Err);
-                mutex.Lock();
-                DEFER { mutex.Unlock(); };
-
-                BufferedWriter<Kb(4)> buffered_writer {StdWriter(StdStream::Err)};
-                DEFER { buffered_writer.FlushReset(); };
-
-                auto _ = WriteLogLine(buffered_writer.Writer(), module_name, level, write_message, k_config);
-            };
-
-        switch (g_config.destination) {
-            case LogConfig::Destination::Stderr: {
-                log_to_stderr(module_name, level, write_message);
-                break;
-            }
-            case LogConfig::Destination::File: {
-                CallOnce(g_call_once_flag, []() {
-                    ASSERT(g_file == nullptr);
-                    InitLogFolderIfNeeded();
-
-                    auto seed = RandomSeed();
-                    ArenaAllocatorWithInlineStorage<500> arena {PageAllocator::Instance()};
-
-                    auto const log_folder = *LogFolder();
-                    if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(log_folder));
-
-                    auto const standard_path = path::Join(arena, Array {log_folder, k_latest_log_filename});
-                    if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(standard_path));
-
-                    // We have a few requirements here:
-                    // - If possible, we want a log file with a fixed name so that it's easier to find and
-                    //   use for debugging.
-                    // - We don't want to overwrite any log files.
-                    // - We need to correctly handle the case where other processes are running this same
-                    //   code at the same time; this can happen when the host loads plugins in different
-                    //   processes.
-                    for (auto _ : Range(50)) {
-                        // Try opening the file with exclusive access.
-                        auto file_outcome = OpenFile(
-                            standard_path,
-                            {
-                                .capability = FileMode::Capability::Append,
-                                .win32_share = FileMode::Share::DeleteRename | FileMode::Share::ReadWrite,
-                                .creation = FileMode::Creation::CreateNew, // Exclusive access
-                            });
-                        if (file_outcome.HasError()) {
-                            if (file_outcome.Error() == FilesystemError::PathAlreadyExists) {
-                                // We try to oust the standard log file by renaming it to a unique name.
-                                // Rename is atomic. If another process is already using the log file, they
-                                // will continue to do so safely, but it will be under the new name.
-                                auto const unique_path =
-                                    path::Join(arena,
-                                               Array {log_folder, UniqueFilename("", k_log_extension, seed)});
-                                ASSERT(IsValidUtf8(unique_path));
-                                auto const rename_o = Rename(standard_path, unique_path);
-                                if (rename_o.Succeeded()) {
-                                    // We successfully renamed the file. Now let's try opening it again.
-                                    continue;
-                                } else {
-                                    if (rename_o.Error() == FilesystemError::PathDoesNotExist) {
-                                        // The file was deleted between our OpenFile and Rename calls. Let's
-                                        // try again.
-                                        continue;
-                                    }
-
-                                    StdPrintFLocked(StdStream::Err,
-                                                    "{} failed to rename log file: {}\n",
-                                                    CurrentThreadId(),
-                                                    rename_o.Error());
-                                    return;
-                                }
-                            }
-
-                            // Some other error occurred, not much we can do.
-                            StdPrintFLocked(StdStream::Err,
-                                            "{} failed to open log file: {}\n",
-                                            CurrentThreadId(),
-                                            file_outcome.Error());
-                            return;
-                        }
-
-                        auto file = PLACEMENT_NEW(g_file_storage) File {file_outcome.ReleaseValue()};
-                        g_file = file;
-                        return;
-                    }
-
-                    StdPrintFLocked(StdStream::Err,
-                                    "{} failed to open log file: too many attempts\n",
-                                    CurrentThreadId());
-                    return;
-                });
-
-                auto file = g_file;
-
-                if (!file) {
-                    log_to_stderr(module_name, level, write_message);
-                    return;
-                }
-
-                BufferedWriter<Kb(4)> buffered_writer {file->Writer()};
-                DEFER {
-                    auto outcome = buffered_writer.Flush();
-                    if (outcome.HasError()) {
-                        log_to_stderr(ModuleName::Global, LogLevel::Error, [outcome](Writer writer) {
-                            return fmt::FormatToWriter(writer,
-                                                       "defer flush failed to write log file: {}"_s,
-                                                       outcome.Error());
-                        });
-                    }
-                    // We've done what we can with the outcome, let's not trigger any assertion.
-                    buffered_writer.Reset();
-                };
-
-                auto o = WriteLogLine(buffered_writer.Writer(),
-                                      module_name,
-                                      level,
-                                      write_message,
-                                      {
-                                          .ansi_colors = false,
-                                          .no_info_prefix = false,
-                                          .timestamp = true,
-                                          .thread = true,
-                                      });
-                if (o.HasError()) {
-                    log_to_stderr(ModuleName::Global, LogLevel::Error, [o](Writer writer) {
-                        return fmt::FormatToWriter(writer, "failed to write log file: {}"_s, o.Error());
-                    });
-                }
-
-                break;
-            }
-        }
+        LogToStderr(module_name, level, write_message);
+        LogToFile(module_name, level, write_message);
     }
 }
 

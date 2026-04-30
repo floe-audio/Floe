@@ -562,8 +562,7 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
         if (!success && entry_source.library_handle) UnloadLibrary(*entry_source.library_handle);
     };
 
-    entry_source.entry->init(entry_source.library_handle.HasValue() ? k_clap_init_log_to_stderr_sentinel
-                                                                    : nullptr);
+    entry_source.entry->init(nullptr);
     DEFER {
         if (!success) entry_source.entry->deinit();
     };
