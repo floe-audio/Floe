@@ -808,6 +808,7 @@ fn buildVitfx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
             "src/synthesis/effects/reverb.cpp",
             "src/synthesis/effects/phaser.cpp",
             "src/synthesis/effects/delay.cpp",
+            "src/synthesis/effects/compressor.cpp",
             "src/synthesis/framework/processor.cpp",
             "src/synthesis/framework/processor_router.cpp",
             "src/synthesis/framework/value.cpp",
