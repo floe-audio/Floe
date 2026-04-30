@@ -409,7 +409,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                 .parent = root,
                 .folder = &preset_folder->node,
                 .skip_root_folder = true,
-                .skip_heading = IsSingleFolderFilterSelected(state.common_state),
+                .skip_heading = IsSingleFolderFilterSelected(state.common_state, folder_hash),
                 .right_click_menu = PresetFolderRightClickMenu,
             };
         }

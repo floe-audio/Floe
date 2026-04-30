@@ -246,10 +246,15 @@ struct CommonBrowserState {
     BrowserKeyboardNavigation keyboard_navigation {};
 };
 
-inline bool IsSingleFolderFilterSelected(CommonBrowserState const& state) {
+inline bool IsSingleFolderFilterSelected(CommonBrowserState const& state, u64 section_folder_hash) {
     auto const& folder_filter = state.Filter(BrowserFilter::Folder);
     if (folder_filter.data.tag != FilterSelection::Type::Hashes) return false;
-    if (folder_filter.data.Get<FilterSelection::HashesData>().items.size != 1) return false;
+    auto const& items = folder_filter.data.Get<FilterSelection::HashesData>().items;
+    if (items.size != 1) return false;
+
+    // The section folder must be the one selected; descendant sections (e.g. when the filter matches
+    // ancestors) still need their heading to disambiguate.
+    if (items[0].hash != section_folder_hash) return false;
 
     // In OR mode with other active filters, items may match those filters but live outside the folder,
     // so the folder heading is still informative.
