@@ -65,6 +65,7 @@ pkgs.mkShell rec {
     pkgs.kcov
     pkgs.patchelf
     pkgs.valgrind
+    pkgs.pluginval
   ]
   ++ extraPackages;
 
