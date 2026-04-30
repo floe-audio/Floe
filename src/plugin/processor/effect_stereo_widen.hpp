@@ -2,28 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "processing_utils/stereo_widen.hpp"
+
 #include "effect.hpp"
-
-// http://www.musicdsp.org/show_archive_comment.php?ArchiveID=256
-// public domain
-// 'width' is the stretch factor of the stereo field:
-// width < 1: decrease in stereo width
-// width = 1: no change
-// width > 1: increase in stereo width
-// width = 0: mono
-inline void DoStereoWiden(f32 width, f32 in_left, f32 in_right, f32& out_left, f32& out_right) {
-    auto const coef_s = width * 0.5f;
-    auto const m = (in_left + in_right) * 0.5f;
-    auto const s = (in_right - in_left) * coef_s;
-    out_left = m - s;
-    out_right = m + s;
-}
-
-inline f32x2 DoStereoWiden(f32 width, f32x2 in) {
-    alignas(f32x2) f32 result[2];
-    DoStereoWiden(width, in.x, in.y, result[0], result[1]);
-    return LoadAlignedToType<f32x2>(result);
-}
 
 struct StereoWiden final : public Effect {
     StereoWiden() : Effect(EffectType::StereoWiden) {}

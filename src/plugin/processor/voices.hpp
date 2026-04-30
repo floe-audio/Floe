@@ -96,6 +96,7 @@ struct Voice {
     LFO lfo = {};
 
     OnePoleLowPassFilter<f32x2> gain_smoother;
+    OnePoleLowPassFilter<f32> stereo_width_smoother = {};
 
     VolumeFade volume_fade;
     adsr::Processor vol_env = {};

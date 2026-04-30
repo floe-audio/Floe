@@ -530,6 +530,11 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::Pan)) vmst.pan_pos = *p;
 
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::StereoWidth)) {
+        // Map bidirectional [-1, +1] to width [0, 2] for the widen algorithm.
+        vmst.stereo_width = *p + 1.0f;
+    }
+
     {
         bool set_tune = false;
         if (auto p = changes.changed_params.IntValue<int>(layer.index, LayerParamIndex::TuneSemitone)) {

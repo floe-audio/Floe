@@ -11,6 +11,7 @@ enum class LayerParamIndex : u8 {
     Mute,
     Solo,
     Pan,
+    StereoWidth,
     TuneCents,
     TuneSemitone,
     LoopMode,
@@ -2283,6 +2284,17 @@ consteval auto CreateParams() {
             .name = "Pan"_s,
             .gui_label = "Pan"_s,
             .tooltip = "Left/right balance"_s,
+        };
+        lp(StereoWidth) = Args {
+            .id = id(region, 95), // never change
+            .value_config = val_config_helpers::BidirectionalPercent({
+                .default_percent = 0,
+                .display_format = ParamDisplayFormat::Percent,
+            }),
+            .modules = {layer_module},
+            .name = "Stereo Width"_s,
+            .gui_label = "Stereo"_s,
+            .tooltip = "Layer stereo width: negative narrows toward mono, positive widens"_s,
         };
         lp(TuneCents) = Args {
             .id = id(region, 4), // never change

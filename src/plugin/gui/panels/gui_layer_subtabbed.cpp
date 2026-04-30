@@ -608,6 +608,13 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                      },
                                  });
 
+    // Mute/Solo column (vertical)
+    DoMuteSoloButtons(g,
+                      container,
+                      params.DescribedValue(layer_index, LayerParamIndex::Mute),
+                      params.DescribedValue(layer_index, LayerParamIndex::Solo),
+                      {.vertical = true});
+
     // Volume: peak meter + vertical slider
     {
         auto const vol_col = DoBox(g.builder,
@@ -647,7 +654,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                   });
     }
 
-    // Middle column: Pan knob + Mute/Solo
+    // Middle column: Pan knob + Stereo Width knob
     {
         auto const mid_col = DoBox(g.builder,
                                    {
@@ -670,11 +677,14 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                             .bidirectional = true,
                         });
 
-        // Mute/Solo buttons (horizontal)
-        DoMuteSoloButtons(g,
-                          mid_col,
-                          params.DescribedValue(layer_index, LayerParamIndex::Mute),
-                          params.DescribedValue(layer_index, LayerParamIndex::Solo));
+        DoKnobParameter(g,
+                        mid_col,
+                        params.DescribedValue(layer_index, LayerParamIndex::StereoWidth),
+                        {
+                            .width = 30,
+                            .style_system = GuiStyleSystem::MidPanel,
+                            .bidirectional = true,
+                        });
     }
 
     // Right column: Pitch + Detune

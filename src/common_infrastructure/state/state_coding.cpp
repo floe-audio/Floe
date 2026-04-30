@@ -562,6 +562,9 @@ enum class StateVersion : u16 {
     // compatibility.
     ReworkedLayerFilterTypeMenu,
 
+    // Added per-layer Stereo Width parameter. For older states, defaults to 0 (no width change).
+    AddedLayerStereoWidth,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -584,7 +587,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 285,
+    static_assert(k_num_non_experimental_parameters == 288,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -714,6 +717,11 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
     if (version < StateVersion::ReworkedLayerFilterTypeMenu)
         ModerniseLegacyParam(state, LayerParamIndex::LegacyFilterType, source);
+
+    if (version < StateVersion::AddedLayerStereoWidth) {
+        for (auto const layer_index : Range(k_num_layers))
+            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::StereoWidth)) = 0;
+    }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so

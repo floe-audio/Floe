@@ -193,6 +193,7 @@ struct VoiceProcessingController {
 
     f32 tune_semitones = 1;
     f32 pan_pos = 0;
+    f32 stereo_width = 1; // [0, 2]
 
     f32 sv_filter_cutoff_linear = 0;
     f32 sv_filter_resonance = 0;

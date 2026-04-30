@@ -388,6 +388,7 @@ void StartVoice(VoicePool& pool,
     voice.filter_linear_cutoff_smoother.Reset();
     voice.filter_mix_smoother.Reset();
     voice.filter_resonance_smoother.Reset();
+    voice.stereo_width_smoother.Reset();
 
     switch (params.params.tag) {
         case InstrumentType::None: {
@@ -1343,6 +1344,22 @@ struct VoiceProcessor {
             // Calculate final L/R gains
             auto const gain_1 = final_gain1 * pan_gains.xy;
             auto const gain_2 = final_gain2 * pan_gains.zw;
+
+            // Stereo width (applied before pan so e.g. width=0 mono-collapse can still be panned).
+            auto const smoothed_width =
+                voice.stereo_width_smoother.LowPass(voice.controller->stereo_width,
+                                                    context.one_pole_smoothing_cutoff_10ms);
+            if (frame_p1_is_valid) {
+                f32x4 const pair = {buffer[frame + 0].x,
+                                    buffer[frame + 0].y,
+                                    buffer[frame + 1].x,
+                                    buffer[frame + 1].y};
+                auto const widened = DoStereoWidenConstantPower2(smoothed_width, pair);
+                buffer[frame + 0] = f32x2 {widened.x, widened.y};
+                buffer[frame + 1] = f32x2 {widened.z, widened.w};
+            } else {
+                buffer[frame + 0] = DoStereoWidenConstantPower(smoothed_width, buffer[frame + 0]);
+            }
 
             // Apply gains to the buffer
             buffer[frame + 0] *= voice.gain_smoother.LowPass(gain_1, context.one_pole_smoothing_cutoff_0_2ms);
