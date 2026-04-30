@@ -2247,7 +2247,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     cfg.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                                                 imgui::ViewportScrollbarVisibility::Auto};
                     cfg.padding = {.lr = k_browser_spacing};
-                    cfg.scroll_line_size = k_browser_item_height * 1.5f;
+                    cfg.scroll_line_size = k_browser_item_height;
                     cfg;
                 }),
                 .debug_name = "filters",
