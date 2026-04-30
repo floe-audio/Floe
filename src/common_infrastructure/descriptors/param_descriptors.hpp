@@ -147,6 +147,8 @@ enum class ParamIndex : u16 {
 
     StereoWidenWidth,
     StereoWidenOn,
+    StereoWidenMode,
+    StereoWidenBassMono,
 
     ChorusRate,
     LegacyChorusHighpass,
@@ -741,6 +743,19 @@ constexpr auto k_monophonic_mode_strings = ArrayT<String>({
 });
 static_assert(k_monophonic_mode_strings.size == ToInt(MonophonicMode::Count));
 
+enum class StereoWidenMode : u8 { // never reorder
+    Balanced,
+    BassMono,
+    Legacy,
+    Count,
+};
+constexpr auto k_stereo_widen_mode_strings = ArrayT<String>({
+    "Balanced",
+    "Bass Mono",
+    "Legacy",
+});
+static_assert(k_stereo_widen_mode_strings.size == ToInt(StereoWidenMode::Count));
+
 enum class PlayMode : u8 {
     Standard,
     GranularPlayback,
@@ -889,6 +904,7 @@ struct ParamDescriptor {
         DelayMode,
         VelocityMappingMode,
         MonophonicMode,
+        StereoWidenMode,
         PlayMode,
         ArpMode,
         ArpNoteOrder,
@@ -1205,6 +1221,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::DelayMode: return k_delay_mode_strings;
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
         case ParamDescriptor::MenuType::MonophonicMode: return k_monophonic_mode_strings;
+        case ParamDescriptor::MenuType::StereoWidenMode: return k_stereo_widen_mode_strings;
         case ParamDescriptor::MenuType::PlayMode: return k_play_mode_strings;
         case ParamDescriptor::MenuType::ArpMode: return k_arp_type_strings;
         case ParamDescriptor::MenuType::ArpNoteOrder: return k_arp_note_order_strings;
@@ -1791,6 +1808,31 @@ consteval auto CreateParams() {
         .name = "On"_s,
         .gui_label = "Stereo Widen On"_s,
         .tooltip = "Turn the stereo widen effect on or off"_s,
+    };
+    mp(StereoWidenMode) = Args {
+        .id = id(IdRegion::Master, 31), // never change
+        .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::StereoWidenMode,
+            .default_val = (u32)param_values::StereoWidenMode::Balanced,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
+        .name = "Mode"_s,
+        .gui_label = "Mode"_s,
+        .tooltip =
+            "Stereo widening algorithm: Balanced (constant-power M/S), Legacy (original behaviour, kept for old presets), or Bass Mono (mono below the crossover, widened above)"_s,
+    };
+    mp(StereoWidenBassMono) = Args {
+        .id = id(IdRegion::Master, 32), // never change
+        .value_config = val_config_helpers::Hz({
+            .projection = {.range = {20, 1000},
+                           .exponent = 0,
+                           .type = ParamDescriptor::Projection::Type::Log},
+            .default_hz = 120,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
+        .name = "Bass Mono"_s,
+        .gui_label = "Bass Mono"_s,
+        .tooltip = "Frequencies below this point are summed to mono (Bass Mono mode only)"_s,
     };
 
     // =====================================================================================================

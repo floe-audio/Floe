@@ -568,6 +568,13 @@ static void DoEffectParams(GuiState& g,
 
     switch (fx.type) {
         case EffectType::StereoWiden: {
+            auto const mode = params.IntValue<param_values::StereoWidenMode>(ParamIndex::StereoWidenMode);
+
+            DoMenuParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::StereoWidenMode),
+                            {.greyed_out = greyed_out});
+
             DoKnobParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::StereoWidenWidth),
@@ -577,6 +584,17 @@ static void DoEffectParams(GuiState& g,
                                 .greyed_out = greyed_out,
                                 .bidirectional = true,
                             });
+
+            if (mode == param_values::StereoWidenMode::BassMono) {
+                DoKnobParameter(g,
+                                param_container,
+                                params.DescribedValue(ParamIndex::StereoWidenBassMono),
+                                {
+                                    .width = k_knob_w,
+                                    .knob_highlight_col = highlight_col,
+                                    .greyed_out = greyed_out,
+                                });
+            }
             break;
         }
 
