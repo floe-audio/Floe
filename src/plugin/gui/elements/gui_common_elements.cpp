@@ -96,6 +96,15 @@ Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonO
                            k_font_icons_size * 0.82f);
 }
 
+Box DoMidPanelUnloadButton(GuiBuilder& builder, Box row, MidPanelUnloadButtonOptions const& options) {
+    return DoMidIconButton(builder,
+                           row,
+                           ICON_FA_XMARK,
+                           options.tooltip,
+                           options.greyed_out,
+                           k_font_icons_size * 0.9f);
+}
+
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options) {
     if (!options.ignore_show_tooltips_preference &&
         !prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ShowTooltips)))

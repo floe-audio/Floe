@@ -41,6 +41,12 @@ struct MidPanelShuffleButtonOptions {
 };
 Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options = {});
 
+struct MidPanelUnloadButtonOptions {
+    bool greyed_out = false;
+    String tooltip {"Unload"};
+};
+Box DoMidPanelUnloadButton(GuiBuilder& builder, Box row, MidPanelUnloadButtonOptions const& options = {});
+
 void DoExperimentalModeIndicatorIfNeeded(GuiBuilder& builder, Box parent, prefs::Preferences const& prefs);
 
 // Reusable tab button used in tab bars across the GUI.

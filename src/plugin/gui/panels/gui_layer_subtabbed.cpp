@@ -486,6 +486,17 @@ void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
         auto context = make_browser_context();
         LoadRandomInstrument(context, g.inst_browser_state[layer_index]);
     }
+
+    // Unload button
+    auto const has_instrument = layer_obj.instrument_id.tag != InstrumentType::None;
+    auto const unload_btn = DoMidPanelUnloadButton(g.builder,
+                                                   selector_box,
+                                                   {
+                                                       .greyed_out = !has_instrument,
+                                                       .tooltip = "Unload the current instrument."_s,
+                                                   });
+    if (unload_btn.button_fired && has_instrument)
+        LoadInstrument(g.engine, layer_index, InstrumentType::None);
 }
 
 void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
