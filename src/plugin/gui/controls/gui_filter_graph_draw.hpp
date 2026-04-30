@@ -9,7 +9,7 @@
 #include "gui/core/gui_fwd.hpp"
 #include "processing_utils/filters.hpp"
 
-namespace filter_display {
+namespace filter_graph_draw {
 
 constexpr f32 k_min_db = -24.0f;
 constexpr f32 k_max_db = 24.0f;
@@ -35,4 +35,4 @@ void DrawHandle(imgui::Context& imgui,
                 imgui::Id interaction_id,
                 bool greyed_out);
 
-} // namespace filter_display
+} // namespace filter_graph_draw

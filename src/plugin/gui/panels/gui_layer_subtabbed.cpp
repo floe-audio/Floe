@@ -11,8 +11,7 @@
 #include "gui/controls/gui_arp_step_sequencer.hpp"
 #include "gui/controls/gui_curve_map.hpp"
 #include "gui/controls/gui_envelope.hpp"
-#include "gui/controls/gui_eq.hpp"
-#include "gui/controls/gui_filter_visualiser.hpp"
+#include "gui/controls/gui_filter_graphs.hpp"
 #include "gui/controls/gui_lfo_display.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"
@@ -878,7 +877,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                            .size = {layout::k_fill_parent, 80},
                                        },
                                    });
-        if (auto const r = BoxRect(g.builder, vis_box)) DoFilterVisualizer(g, layer_index, *r, greyed_out);
+        if (auto const r = BoxRect(g.builder, vis_box)) DoFilterGraph(g, layer_index, *r, greyed_out);
     }
 
     DoWhitespace(g.builder, page, 12);
@@ -1018,7 +1017,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                            .size = {layout::k_fill_parent, 140},
                                        },
                                    });
-        if (auto const r = BoxRect(g.builder, vis_box)) DoEqVisualizer(g, layer_index, *r, greyed_out);
+        if (auto const r = BoxRect(g.builder, vis_box)) DoEqGraph(g, layer_index, *r, greyed_out);
     }
 
     DoWhitespace(g.builder, page, 16);

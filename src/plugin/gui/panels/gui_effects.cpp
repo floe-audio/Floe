@@ -10,7 +10,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
-#include "gui/controls/gui_filter_visualiser.hpp"
+#include "gui/controls/gui_filter_graphs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -687,7 +687,7 @@ static void DoEffectParams(GuiState& g,
                                                .size = {250, 90},
                                            },
                                        });
-            if (auto const r = BoxRect(g.builder, vis_box)) DoEffectFilterVisualizer(g, *r, greyed_out);
+            if (auto const r = BoxRect(g.builder, vis_box)) DoEffectFilterGraph(g, *r, greyed_out);
 
             DoMenuParameter(g,
                             param_container,
@@ -806,7 +806,7 @@ static void DoEffectParams(GuiState& g,
                                          });
             auto const pre_vis =
                 DoBox(g.builder, {.parent = pre_group, .layout {.size = {k_reverb_vis_w, k_reverb_vis_h}}});
-            if (auto const r = BoxRect(g.builder, pre_vis)) DoReverbPreFilterVisualizer(g, *r, greyed_out);
+            if (auto const r = BoxRect(g.builder, pre_vis)) DoReverbPreFilterGraph(g, *r, greyed_out);
             auto const pre_knobs = DoBox(g.builder,
                                          {
                                              .parent = pre_group,
@@ -838,7 +838,7 @@ static void DoEffectParams(GuiState& g,
                                           });
             auto const post_vis =
                 DoBox(g.builder, {.parent = post_group, .layout {.size = {k_reverb_vis_w, k_reverb_vis_h}}});
-            if (auto const r = BoxRect(g.builder, post_vis)) DoReverbPostShelfVisualizer(g, *r, greyed_out);
+            if (auto const r = BoxRect(g.builder, post_vis)) DoReverbPostShelfGraph(g, *r, greyed_out);
             auto const post_grid = DoBox(g.builder,
                                          {
                                              .parent = post_group,
@@ -1025,7 +1025,7 @@ static void DoEffectParams(GuiState& g,
             constexpr f32 k_delay_vis_h = 70;
             auto const filter_vis =
                 DoBox(g.builder, {.parent = sub, .layout {.size = {k_delay_vis_w, k_delay_vis_h}}});
-            if (auto const r = BoxRect(g.builder, filter_vis)) DoDelayFilterVisualizer(g, *r, greyed_out);
+            if (auto const r = BoxRect(g.builder, filter_vis)) DoDelayFilterGraph(g, *r, greyed_out);
             auto const cutoff_knob = DoKnobParameter(
                 g,
                 sub,
@@ -1057,7 +1057,7 @@ static void DoEffectParams(GuiState& g,
                                           },
                                       });
             if (auto const r = BoxRect(g.builder, hp_vis))
-                DoConvolutionReverbHighpassVisualizer(g, *r, greyed_out);
+                DoConvolutionReverbHighpassGraph(g, *r, greyed_out);
 
             DoKnobParameter(
                 g,

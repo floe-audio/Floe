@@ -1,7 +1,7 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include "gui/controls/gui_filter_display.hpp"
+#include "gui/controls/gui_filter_graph_draw.hpp"
 
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -9,7 +9,7 @@
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-namespace filter_display {
+namespace filter_graph_draw {
 
 constexpr usize k_curve_points = 160;
 
@@ -92,4 +92,4 @@ void DrawHandle(imgui::Context& imgui,
     imgui.draw_list->AddCircleFilled(pos_in_window, radius, col);
 }
 
-} // namespace filter_display
+} // namespace filter_graph_draw
