@@ -17,6 +17,8 @@
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 
+constexpr bool k_vignette_only_perform_page = false;
+
 void DrawMidBlurredBackground(GuiState& g,
                               Rect r,
                               Rect clipped_to,
@@ -88,8 +90,7 @@ void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib:
     else
         g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
 
-    // Darken blurred panels on the perform page so they blend with the vignetted background
-    if (g.mid_panel_state.tab == MidPanelTab::Perform) {
+    if (!k_vignette_only_perform_page || g.mid_panel_state.tab == MidPanelTab::Perform) {
         g.imgui.draw_list->AddRectFilled(window_r,
                                          ChangeAlpha(k_vignette_colour, k_vignette_panel_opacity),
                                          panel_rounding);
@@ -149,10 +150,8 @@ static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
     else
         imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
 
-    if (g.mid_panel_state.tab == MidPanelTab::Perform) {
-        imgui.draw_list->AddRectFilled(r, Rgba(0, 0, 0, 0.0f));
+    if (!k_vignette_only_perform_page || g.mid_panel_state.tab == MidPanelTab::Perform)
         imgui.draw_list->AddVignetteRect(r, k_vignette_colour, k_vignette_inner_radius, k_vignette_num_bands);
-    }
 }
 
 struct MidPanelTabBarResult {
