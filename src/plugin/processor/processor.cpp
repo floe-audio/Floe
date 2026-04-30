@@ -478,8 +478,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
     }
 
     // Specialise the randomness of specific params for better results
-    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::BitCrushWet));
-    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::BitCrushDry));
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::BitCrushMix));
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::CompressorThreshold),
                               BiasType::Strong);
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::CompressorRatio));
@@ -488,16 +487,13 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
     set_param(processor.main_params.DescribedValue(ParamIndex::CompressorAutoGain), 1.0f);
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::FilterCutoff));
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::FilterResonance));
-    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ChorusWet));
-    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ChorusDry), BiasType::Strong);
+    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ChorusMix), BiasType::Strong);
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ReverbMix));
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::PhaserMix));
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::DelayMix));
-    randomise_near_to_linear_value(processor.main_params.DescribedValue(ParamIndex::ConvolutionReverbWet),
+    randomise_near_to_linear_value(processor.main_params.DescribedValue(ParamIndex::ConvolutionReverbMix),
                                    BiasType::Strong,
                                    0.5f);
-    randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ConvolutionReverbDry),
-                              BiasType::Strong);
     randomise_near_to_default(processor.main_params.DescribedValue(ParamIndex::ConvolutionReverbHighpass));
 
     {

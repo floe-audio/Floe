@@ -20,6 +20,7 @@ struct StereoWiden final : public Effect {
             bass_mono_hz = *p;
             crossover_changed = true;
         }
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::StereoWidenMix)) mix_param = *p;
 
         if (crossover_changed || sample_rate_at_coeffs != context.sample_rate) {
             sample_rate_at_coeffs = context.sample_rate;

@@ -116,7 +116,7 @@ class Delay final : public Effect {
         }
 
         for (auto const frame_index : Range((u32)frames.size))
-            frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], frames[frame_index]);
+            frames[frame_index] = ApplyBypassCrossfade(context, wet[frame_index], frames[frame_index]);
 
         // Check for silence on the output.
         UpdateSilentSeconds(silent_seconds, frames, context.sample_rate);

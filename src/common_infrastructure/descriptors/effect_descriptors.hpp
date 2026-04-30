@@ -28,6 +28,7 @@ struct EffectInfo {
     String name;
     u8 id;
     ParamIndex on_param_index;
+    ParamIndex mix_param_index;
 };
 
 constexpr auto k_effect_info = []() {
@@ -42,6 +43,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Distortion",
                     .id = 1, // never change
                     .on_param_index = ParamIndex::DistortionOn,
+                    .mix_param_index = ParamIndex::DistortionMix,
                 };
                 break;
             case EffectType::BitCrush:
@@ -51,6 +53,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Bit Crush",
                     .id = 2, // never change
                     .on_param_index = ParamIndex::BitCrushOn,
+                    .mix_param_index = ParamIndex::BitCrushMix,
                 };
                 break;
             case EffectType::Compressor:
@@ -59,6 +62,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Compressor",
                     .id = 3, // never change
                     .on_param_index = ParamIndex::CompressorOn,
+                    .mix_param_index = ParamIndex::CompressorMix,
                 };
                 break;
             case EffectType::FilterEffect:
@@ -68,6 +72,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Filter",
                     .id = 4, // never change
                     .on_param_index = ParamIndex::FilterOn,
+                    .mix_param_index = ParamIndex::FilterMix,
                 };
                 break;
             case EffectType::StereoWiden:
@@ -76,6 +81,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Stereo Widen",
                     .id = 5, // never change
                     .on_param_index = ParamIndex::StereoWidenOn,
+                    .mix_param_index = ParamIndex::StereoWidenMix,
                 };
                 break;
             case EffectType::Chorus:
@@ -85,6 +91,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Chorus",
                     .id = 6, // never change
                     .on_param_index = ParamIndex::ChorusOn,
+                    .mix_param_index = ParamIndex::ChorusMix,
                 };
                 break;
             case EffectType::Reverb:
@@ -94,6 +101,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Reverb",
                     .id = 7, // never change
                     .on_param_index = ParamIndex::ReverbOn,
+                    .mix_param_index = ParamIndex::ReverbMix,
                 };
                 break;
             case EffectType::Delay:
@@ -103,6 +111,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Delay",
                     .id = 11, // never change
                     .on_param_index = ParamIndex::DelayOn,
+                    .mix_param_index = ParamIndex::DelayMix,
                 };
                 break;
             case EffectType::ConvolutionReverb:
@@ -112,6 +121,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Convol Reverb",
                     .id = 10, // never change
                     .on_param_index = ParamIndex::ConvolutionReverbOn,
+                    .mix_param_index = ParamIndex::ConvolutionReverbMix,
                 };
                 break;
             case EffectType::Phaser:
@@ -120,6 +130,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Phaser",
                     .id = 9, // never change
                     .on_param_index = ParamIndex::PhaserOn,
+                    .mix_param_index = ParamIndex::PhaserMix,
                 };
                 break;
 

@@ -49,6 +49,26 @@ struct EffectWetDryHelper {
     OnePoleLowPassFilter<f32> dry_smoother {};
 };
 
+struct EffectiveWetDryAmps {
+    f32 wet_amp;
+    f32 dry_amp;
+};
+inline EffectiveWetDryAmps EffectiveWetDryFromMixOutputOrLegacy(Parameters const& p,
+                                                                ParamIndex legacy_wet,
+                                                                ParamIndex legacy_dry,
+                                                                ParamIndex modern_mix,
+                                                                ParamIndex modern_output) {
+    auto const wet_lin = p.LinearValueIgnoringLegacy(legacy_wet);
+    auto const dry_lin = p.LinearValueIgnoringLegacy(legacy_dry);
+    if (IsWetDryLegacyOverriding(legacy_wet, legacy_dry, wet_lin, dry_lin)) {
+        return {.wet_amp = k_param_descriptors[ToInt(legacy_wet)].ProjectValue(wet_lin),
+                .dry_amp = k_param_descriptors[ToInt(legacy_dry)].ProjectValue(dry_lin)};
+    }
+    auto const mix = p.LinearValue(modern_mix);
+    auto const output_amp = p.ProjectedValue(modern_output);
+    return {.wet_amp = output_amp * mix, .dry_amp = output_amp * (1.0f - mix)};
+}
+
 enum class EffectProcessResult : u8 {
     Done, // no more processing needed
     ProcessingTail, // processing needed
@@ -64,8 +84,9 @@ struct Effect {
 
     void ProcessChanges(ProcessBlockChanges const& changes, AudioProcessingContext const& context) {
         if (auto const p = changes.changed_params.BoolValue(k_effect_info[(u32)type].on_param_index))
-            mix = *p ? 1.0f : 0.0f;
+            bypass_target = *p ? 1.0f : 0.0f;
         ProcessChangesInternal(changes, context);
+        bypass_mix = bypass_target * mix_param;
     }
 
     // audio-thread
@@ -79,7 +100,7 @@ struct Effect {
                                                           AudioProcessingContext const& context) {
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
         for (auto& frame : frames)
-            frame = MixOnOffSmoothing(context, process_frame_function(frame), frame);
+            frame = ApplyBypassCrossfade(context, process_frame_function(frame), frame);
         return EffectProcessResult::Done;
     }
 
@@ -89,19 +110,21 @@ struct Effect {
         if (is_reset) return;
         ResetInternal();
         is_reset = true;
-        mix_smoother.Reset();
+        bypass_smoother.Reset();
     }
 
     // audio-thread
     bool ShouldProcessBlock() {
-        if (mix == 0 && mix_smoother.IsStable(mix, 0.001f)) return false;
+        if (bypass_mix == 0 && bypass_smoother.IsStable(bypass_mix, 0.001f)) return false;
         is_reset = false;
         return true;
     }
 
     // audio-thread
-    f32x2 MixOnOffSmoothing(AudioProcessingContext const& context, f32x2 wet, f32x2 dry) {
-        return LinearInterpolate(mix_smoother.LowPass(mix, context.one_pole_smoothing_cutoff_10ms), dry, wet);
+    f32x2 ApplyBypassCrossfade(AudioProcessingContext const& context, f32x2 wet, f32x2 dry) {
+        return LinearInterpolate(bypass_smoother.LowPass(bypass_mix, context.one_pole_smoothing_cutoff_10ms),
+                                 dry,
+                                 wet);
     }
 
     virtual void ResetInternal() {}
@@ -109,7 +132,9 @@ struct Effect {
                                         AudioProcessingContext const& context) = 0;
 
     EffectType const type;
-    f32 mix = 0;
-    OnePoleLowPassFilter<f32> mix_smoother {};
+    f32 bypass_target = 0;
+    f32 mix_param = 1;
+    f32 bypass_mix = 0;
+    OnePoleLowPassFilter<f32> bypass_smoother {};
     bool is_reset = true;
 };

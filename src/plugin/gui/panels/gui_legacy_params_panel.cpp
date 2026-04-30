@@ -47,9 +47,36 @@ static void ModerniseLegacyVelocity(AudioProcessor& processor) {
     SetParameterValue(processor, ParamIndex::MasterVelocity, 0, {});
 }
 
+static void ModerniseLegacyWetDryEffect(AudioProcessor& processor, WetDryEffectGroup const& g) {
+    auto const wet_lin = processor.main_params.LinearValue(g.legacy_wet);
+    auto const dry_lin = processor.main_params.LinearValue(g.legacy_dry);
+    auto const r = ConvertWetDryLinearToMixOutput(g, wet_lin, dry_lin);
+
+    SetParameterValue(processor, g.modern_mix, r.mix_linear, {});
+    SetParameterValue(processor, g.modern_output, r.output_linear, {});
+
+    SetParameterValue(processor,
+                      g.legacy_wet,
+                      k_param_descriptors[ToInt(g.legacy_wet)].default_linear_value,
+                      {});
+    SetParameterValue(processor,
+                      g.legacy_dry,
+                      k_param_descriptors[ToInt(g.legacy_dry)].default_linear_value,
+                      {});
+
+    RetargetMacroDestinations(processor, g.legacy_wet, g.modern_mix);
+    RetargetMacroDestinations(processor, g.legacy_dry, g.modern_output);
+}
+
 static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
     if (IsVelocityLegacyParam(legacy)) {
         ModerniseLegacyVelocity(processor);
+        return;
+    }
+
+    if (auto const g = WetDryGroupContaining(legacy);
+        g && (legacy == g->legacy_wet || legacy == g->legacy_dry)) {
+        ModerniseLegacyWetDryEffect(processor, *g);
         return;
     }
 
@@ -455,8 +482,29 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                   });
 }
 
+constexpr bool k_debug_randomise_legacy_params_on_open = true;
+static_assert(!k_debug_randomise_legacy_params_on_open || !PRODUCTION_BUILD,
+              "k_debug_randomise_legacy_params_on_open must be off in production builds");
+
+[[maybe_unused]] static void DebugRandomiseAllLegacyParams(AudioProcessor& processor) {
+    auto seed = RandomSeed();
+    for (auto const& desc : k_param_descriptors) {
+        if (!desc.flags.legacy) continue;
+        auto const v = RandomFloatInRange<f32>(seed, desc.linear_range.min, desc.linear_range.max);
+        SetParameterValue(processor, desc.index, v, {});
+    }
+}
+
 void DoLegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
     if (!builder.imgui.IsModalOpen(k_legacy_params_panel_id)) return;
+
+    if constexpr (k_debug_randomise_legacy_params_on_open) {
+        static bool s_randomised_once = false;
+        if (!s_randomised_once) {
+            s_randomised_once = true;
+            DebugRandomiseAllLegacyParams(g.engine.processor);
+        }
+    }
 
     auto viewport_config = k_default_modal_viewport;
     viewport_config.draw_background = DrawDarkModePanelBackground;

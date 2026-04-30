@@ -82,6 +82,8 @@ class FilterEffect final : public Effect {
         }
 
         if (set_params) m_smoothed_coeffs.Set(m_filter_params);
+
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::FilterMix)) mix_param = *p;
     }
 
     EffectProcessResult

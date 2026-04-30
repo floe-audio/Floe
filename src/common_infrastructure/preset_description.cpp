@@ -261,15 +261,6 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
     };
     auto const is_on = [&](ParamIndex p) -> bool { return gp(p) >= 0.5f; };
 
-    // Compute a 0-1 wet mix ratio from separate wet/dry volume params
-    auto const wet_dry_mix = [&](ParamIndex wet_param, ParamIndex dry_param) -> f32 {
-        auto const wet = gp(wet_param);
-        auto const dry = gp(dry_param);
-        auto const sum = wet + dry;
-        if (sum < 0.001f) return 0.0f;
-        return wet / sum;
-    };
-
     // Count active layers and check for same-instrument stacking
     u32 num_layers = 0;
     bool all_same_instrument = true;
@@ -546,7 +537,7 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
         mention(ParamIndex::DistortionOn, PhraseKind::HeavyDistortion, 0.5f + (drive * 0.4f));
     }
     if (is_on(ParamIndex::BitCrushOn)) {
-        auto const mix = wet_dry_mix(ParamIndex::BitCrushWet, ParamIndex::BitCrushDry);
+        auto const mix = gp(ParamIndex::BitCrushMix);
         auto const bits_intensity = 1.0f - gp(ParamIndex::BitCrushBits);
         auto const rate_intensity = 1.0f - gp(ParamIndex::BitCrushBitRate);
         auto const crush_intensity = Max(bits_intensity, rate_intensity);
@@ -567,7 +558,7 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
             mention(ParamIndex::ReverbOn, PhraseKind::LongReverb, 0.3f + (decay * 0.2f));
     }
     if (is_on(ParamIndex::ConvolutionReverbOn)) {
-        auto const mix = wet_dry_mix(ParamIndex::ConvolutionReverbWet, ParamIndex::ConvolutionReverbDry);
+        auto const mix = gp(ParamIndex::ConvolutionReverbMix);
         if (mix > 0.3f)
             mention(ParamIndex::ConvolutionReverbOn, PhraseKind::HeavyConvolutionReverb, 0.4f + (mix * 0.5f));
     }
@@ -607,10 +598,10 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
 
     if (folder_name.size) {
         auto const start = short_text.size;
-        fmt::Append(short_text, " ({})", folder_name);
+        fmt::Append(short_text, " [{}]", folder_name);
         for (usize i = start + 3; i < short_text.size; i++)
             if (short_text[i] >= 'A' && short_text[i] <= 'Z') short_text[i] += 32;
-        dyn::AppendSpan(short_text, "."_s);
+        // dyn::AppendSpan(short_text, "."_s);
     }
 
     if (phrases.size > 1) {

@@ -67,6 +67,7 @@
     X(RegisterScanFoldersTests)                                                                              \
     X(RegisterSamplePlayheadTests)                                                                           \
     X(RegisterSentryTests)                                                                                   \
+    X(RegisterLegacyParamLogicTests)                                                                         \
     X(RegisterStateCodingTests)                                                                              \
     X(RegisterStringTests)                                                                                   \
     X(RegisterTaggedUnionTests)                                                                              \

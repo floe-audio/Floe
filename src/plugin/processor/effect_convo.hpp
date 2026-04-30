@@ -33,10 +33,18 @@ class ConvolutionReverb final : public Effect {
                                 AudioProcessingContext const& context) override {
         if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::ConvolutionReverbHighpass))
             m_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, *p, 1, 0);
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbWet))
-            m_wet_dry.SetWet(*p);
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbDry))
-            m_wet_dry.SetDry(*p);
+        if (changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyConvolutionReverbWet) ||
+            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyConvolutionReverbDry) ||
+            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::ConvolutionReverbMix) ||
+            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::ConvolutionReverbOutput)) {
+            auto const e = EffectiveWetDryFromMixOutputOrLegacy(changes.changed_params.params,
+                                                                ParamIndex::LegacyConvolutionReverbWet,
+                                                                ParamIndex::LegacyConvolutionReverbDry,
+                                                                ParamIndex::ConvolutionReverbMix,
+                                                                ParamIndex::ConvolutionReverbOutput);
+            m_wet_dry.SetWet(e.wet_amp);
+            m_wet_dry.SetDry(e.dry_amp);
+        }
     }
 
     EffectProcessResult
@@ -90,7 +98,7 @@ class ConvolutionReverb final : public Effect {
                 UpdateRemainingTailLength(Max(wet, frame));
             }
 
-            wet = MixOnOffSmoothing(context, wet, frame);
+            wet = ApplyBypassCrossfade(context, wet, frame);
             frame = wet;
         }
 

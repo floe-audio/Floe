@@ -161,6 +161,7 @@ struct Distortion final : public Effect {
         }
 
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DistortionDrive)) amount = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DistortionMix)) mix_param = *p;
     }
 
     EffectProcessResult

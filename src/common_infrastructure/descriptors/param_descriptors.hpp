@@ -121,12 +121,15 @@ enum class ParamIndex : u16 {
 
     DistortionType,
     DistortionDrive,
+    DistortionMix,
     DistortionOn,
 
     BitCrushBits,
     BitCrushBitRate,
-    BitCrushWet,
-    BitCrushDry,
+    LegacyBitCrushWet,
+    LegacyBitCrushDry,
+    BitCrushMix,
+    BitCrushOutput,
     BitCrushOn,
 
     CompressorThreshold,
@@ -148,18 +151,22 @@ enum class ParamIndex : u16 {
     FilterGain,
     LegacyFilterType,
     FilterType,
+    FilterMix,
 
     StereoWidenWidth,
     StereoWidenOn,
     StereoWidenMode,
     StereoWidenBassMono,
+    StereoWidenMix,
 
     ChorusRate,
     LegacyChorusHighpass,
     ChorusHighpass,
     ChorusDepth,
-    ChorusWet,
-    ChorusDry,
+    LegacyChorusWet,
+    LegacyChorusDry,
+    ChorusMix,
+    ChorusOutput,
     ChorusOn,
 
     DelayMode,
@@ -185,8 +192,10 @@ enum class ParamIndex : u16 {
 
     LegacyConvolutionReverbHighpass,
     ConvolutionReverbHighpass,
-    ConvolutionReverbWet,
-    ConvolutionReverbDry,
+    LegacyConvolutionReverbWet,
+    LegacyConvolutionReverbDry,
+    ConvolutionReverbMix,
+    ConvolutionReverbOutput,
     ConvolutionReverbOn,
 
     ReverbDecayTimeMs,
@@ -1620,6 +1629,14 @@ consteval auto CreateParams() {
         .gui_label = "Drive"_s,
         .tooltip = "Distortion amount"_s,
     };
+    mp(DistortionMix) = Args {
+        .id = id(IdRegion::Master, 115), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Distortion},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the distorted signal"_s,
+    };
     mp(DistortionOn) = Args {
         .id = id(IdRegion::Master, 5), // never change
         .value_config = val_config_helpers::Bool({.default_state = false}),
@@ -1650,21 +1667,39 @@ consteval auto CreateParams() {
         .gui_label = "Samp Rate"_s,
         .tooltip = "Sample rate"_s,
     };
-    mp(BitCrushWet) = Args {
+    mp(LegacyBitCrushWet) = Args {
         .id = id(IdRegion::Master, 8), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
-        .name = "Wet"_s,
+        .name = "Legacy Wet"_s,
         .gui_label = "Wet"_s,
-        .tooltip = "Processed signal volume"_s,
+        .tooltip = "Legacy processed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
     };
-    mp(BitCrushDry) = Args {
+    mp(LegacyBitCrushDry) = Args {
         .id = id(IdRegion::Master, 9), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
-        .name = "Dry"_s,
+        .name = "Legacy Dry"_s,
         .gui_label = "Dry"_s,
-        .tooltip = "Unprocessed signal volume"_s,
+        .tooltip = "Legacy unprocessed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(BitCrushMix) = Args {
+        .id = id(IdRegion::Master, 109), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the bitcrushed signal"_s,
+    };
+    mp(BitCrushOutput) = Args {
+        .id = id(IdRegion::Master, 110), // never change
+        .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Output"_s,
+        .gui_label = "Output"_s,
+        .tooltip = "Output level after the mix"_s,
     };
     mp(BitCrushOn) = Args {
         .id = id(IdRegion::Master, 10), // never change
@@ -1840,6 +1875,14 @@ consteval auto CreateParams() {
         .gui_label = "Type"_s,
         .tooltip = "Filter type"_s,
     };
+    mp(FilterMix) = Args {
+        .id = id(IdRegion::Master, 117), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the filtered signal"_s,
+    };
 
     // =====================================================================================================
     mp(StereoWidenWidth) = Args {
@@ -1886,6 +1929,14 @@ consteval auto CreateParams() {
         .gui_label = "Bass Mono"_s,
         .tooltip = "Frequencies below this point are summed to mono (Bass Mono mode only)"_s,
     };
+    mp(StereoWidenMix) = Args {
+        .id = id(IdRegion::Master, 116), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the stereo-widened signal"_s,
+    };
 
     // =====================================================================================================
     mp(ChorusRate) = Args {
@@ -1921,21 +1972,39 @@ consteval auto CreateParams() {
         .gui_label = "Depth"_s,
         .tooltip = "Chorus effect intensity"_s,
     };
-    mp(ChorusWet) = Args {
+    mp(LegacyChorusWet) = Args {
         .id = id(IdRegion::Master, 26), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
-        .name = "Wet"_s,
+        .name = "Legacy Wet"_s,
         .gui_label = "Wet"_s,
-        .tooltip = "Processed signal volume"_s,
+        .tooltip = "Legacy processed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
     };
-    mp(ChorusDry) = Args {
+    mp(LegacyChorusDry) = Args {
         .id = id(IdRegion::Master, 27), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
-        .name = "Dry"_s,
+        .name = "Legacy Dry"_s,
         .gui_label = "Dry"_s,
-        .tooltip = "Unprocessed signal volume"_s,
+        .tooltip = "Legacy unprocessed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ChorusMix) = Args {
+        .id = id(IdRegion::Master, 111), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Chorus},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the chorused signal"_s,
+    };
+    mp(ChorusOutput) = Args {
+        .id = id(IdRegion::Master, 112), // never change
+        .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
+        .modules = {ParameterModule::Effect, ParameterModule::Chorus},
+        .name = "Output"_s,
+        .gui_label = "Output"_s,
+        .tooltip = "Output level after the mix"_s,
     };
     mp(ChorusOn) = Args {
         .id = id(IdRegion::Master, 28), // never change
@@ -2145,21 +2214,39 @@ consteval auto CreateParams() {
         .gui_label = "High-pass"_s,
         .tooltip = "Wet high-pass filter cutoff"_s,
     };
-    mp(ConvolutionReverbWet) = Args {
+    mp(LegacyConvolutionReverbWet) = Args {
         .id = id(IdRegion::Master, 66), // never change
         .value_config = val_config_helpers::Volume({.default_db = -30}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
-        .name = "Wet"_s,
+        .name = "Legacy Wet"_s,
         .gui_label = "Wet"_s,
-        .tooltip = "Processed signal volume"_s,
+        .tooltip = "Legacy processed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
     };
-    mp(ConvolutionReverbDry) = Args {
+    mp(LegacyConvolutionReverbDry) = Args {
         .id = id(IdRegion::Master, 67), // never change
         .value_config = val_config_helpers::Volume({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
-        .name = "Dry"_s,
+        .name = "Legacy Dry"_s,
         .gui_label = "Dry"_s,
-        .tooltip = "Unprocessed signal volume"_s,
+        .tooltip = "Legacy unprocessed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ConvolutionReverbMix) = Args {
+        .id = id(IdRegion::Master, 113), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 25}),
+        .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the convolution reverb signal"_s,
+    };
+    mp(ConvolutionReverbOutput) = Args {
+        .id = id(IdRegion::Master, 114), // never change
+        .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
+        .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
+        .name = "Output"_s,
+        .gui_label = "Output"_s,
+        .tooltip = "Output level after the mix"_s,
     };
     mp(ConvolutionReverbOn) = Args {
         .id = id(IdRegion::Master, 68), // never change
@@ -3309,6 +3396,7 @@ constexpr usize k_num_non_experimental_parameters = k_num_parameters - k_num_exp
 struct ComptimeParamSearchOptions {
     ParamModules modules {};
     Optional<ParamIndex> skip {};
+    Optional<ParamIndex> skip2 {};
 };
 
 template <ComptimeParamSearchOptions k_criteria>
@@ -3324,6 +3412,7 @@ constexpr auto ComptimeParamSearch() {
 
     constexpr auto k_matches_criteria = [k_modules](ParamDescriptor p) {
         if (k_criteria.skip && *k_criteria.skip == p.index) return false;
+        if (k_criteria.skip2 && *k_criteria.skip2 == p.index) return false;
         return StartsWithSpan(p.module_parts, k_modules);
     };
 

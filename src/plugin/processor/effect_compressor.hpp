@@ -49,8 +49,7 @@ class Compressor final : public Effect {
             m_vital_args.params[ToInt(vitfx::compressor::Params::Attack)] = *p;
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorRelease))
             m_vital_args.params[ToInt(vitfx::compressor::Params::Release)] = *p;
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorMix))
-            m_vital_args.params[ToInt(vitfx::compressor::Params::Mix)] = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorMix)) mix_param = *p;
 
         if (major_tom_changed) m_major_tom.Update(context.sample_rate);
     }
@@ -86,6 +85,8 @@ class Compressor final : public Effect {
                     // compressor.
                     m_vital_args.params[ToInt(vitfx::compressor::Params::LowerThresholdDb)] = -100.0f;
                     m_vital_args.params[ToInt(vitfx::compressor::Params::LowerRatio)] = 0.0f;
+                    // Wet/dry blend is handled outside via the Effect base's user_mix.
+                    m_vital_args.params[ToInt(vitfx::compressor::Params::Mix)] = 1.0f;
 
                     vitfx::compressor::Process(*m_vital, m_vital_args);
 
@@ -95,7 +96,7 @@ class Compressor final : public Effect {
 
                 for (auto const frame_index : Range((u32)io_frames.size))
                     io_frames[frame_index] =
-                        MixOnOffSmoothing(context, wet[frame_index], io_frames[frame_index]);
+                        ApplyBypassCrossfade(context, wet[frame_index], io_frames[frame_index]);
 
                 return EffectProcessResult::Done;
             }

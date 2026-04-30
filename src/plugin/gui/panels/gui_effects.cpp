@@ -34,6 +34,7 @@ constexpr f32 k_fx_icon_width = 20.5f;
 constexpr auto k_phaser_params = ComptimeParamSearch<ComptimeParamSearchOptions {
     .modules = {ParameterModule::Effect, ParameterModule::Phaser},
     .skip = ParamIndex::PhaserOn,
+    .skip2 = ParamIndex::PhaserMix,
 }>();
 
 struct FXColours {
@@ -622,26 +623,11 @@ static void DoEffectParams(GuiState& g,
                 params.DescribedValue(ParamIndex::BitCrushBitRate),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
 
-            auto sub = DoBox(g.builder,
-                             {
-                                 .parent = param_container,
-                                 .layout {
-                                     .size = layout::k_hug_contents,
-                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
-                                     .contents_direction = layout::Direction::Row,
-                                 },
-                             });
-            auto const wet_box = DoKnobParameter(
+            DoKnobParameter(
                 g,
-                sub,
-                params.DescribedValue(ParamIndex::BitCrushWet),
+                param_container,
+                params.DescribedValue(ParamIndex::BitCrushOutput),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            auto const dry_box = DoKnobParameter(
-                g,
-                sub,
-                params.DescribedValue(ParamIndex::BitCrushDry),
-                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            DoKnobJoiningLine(g, wet_box, dry_box);
             break;
         }
 
@@ -698,13 +684,6 @@ static void DoEffectParams(GuiState& g,
                                 .bidirectional = true,
                             });
 
-            if (type == param_values::CompressorType::Vital) {
-                DoKnobParameter(
-                    g,
-                    param_container,
-                    params.DescribedValue(ParamIndex::CompressorMix),
-                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            }
             break;
         }
 
@@ -770,26 +749,11 @@ static void DoEffectParams(GuiState& g,
                 params.DescribedValue(ParamIndex::ChorusHighpass),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
 
-            auto sub = DoBox(g.builder,
-                             {
-                                 .parent = param_container,
-                                 .layout {
-                                     .size = layout::k_hug_contents,
-                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
-                                     .contents_direction = layout::Direction::Row,
-                                 },
-                             });
-            auto const wet_box = DoKnobParameter(
+            DoKnobParameter(
                 g,
-                sub,
-                params.DescribedValue(ParamIndex::ChorusWet),
+                param_container,
+                params.DescribedValue(ParamIndex::ChorusOutput),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            auto const dry_box = DoKnobParameter(
-                g,
-                sub,
-                params.DescribedValue(ParamIndex::ChorusDry),
-                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            DoKnobJoiningLine(g, wet_box, dry_box);
             break;
         }
 
@@ -935,8 +899,6 @@ static void DoEffectParams(GuiState& g,
                                                params.DescribedValue(ParamIndex::ReverbChorusAmount),
                                                knob_opts);
             DoKnobJoiningLine(g, mod_rate, depth);
-
-            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbMix), knob_opts);
             break;
         }
 
@@ -1069,12 +1031,6 @@ static void DoEffectParams(GuiState& g,
                 params.DescribedValue(ParamIndex::DelayFilterSpread),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
             DoKnobJoiningLine(g, cutoff_knob, spread_knob);
-
-            DoKnobParameter(
-                g,
-                param_container,
-                params.DescribedValue(ParamIndex::DelayMix),
-                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
             break;
         }
 
@@ -1097,26 +1053,11 @@ static void DoEffectParams(GuiState& g,
                 params.DescribedValue(ParamIndex::ConvolutionReverbHighpass),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
 
-            auto sub = DoBox(g.builder,
-                             {
-                                 .parent = param_container,
-                                 .layout {
-                                     .size = layout::k_hug_contents,
-                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
-                                     .contents_direction = layout::Direction::Row,
-                                 },
-                             });
-            auto const wet_box = DoKnobParameter(
+            DoKnobParameter(
                 g,
-                sub,
-                params.DescribedValue(ParamIndex::ConvolutionReverbWet),
+                param_container,
+                params.DescribedValue(ParamIndex::ConvolutionReverbOutput),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            auto const dry_box = DoKnobParameter(
-                g,
-                sub,
-                params.DescribedValue(ParamIndex::ConvolutionReverbDry),
-                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            DoKnobJoiningLine(g, wet_box, dry_box);
             break;
         }
 
@@ -1180,12 +1121,38 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                                                     .lr = 12,
                                                     .tb = 8,
                                                 },
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                         },
                                     });
 
-        auto const param_container = DoEffectParamContainer(g.builder, contents);
+        auto const left_col = DoBox(g.builder,
+                                    {
+                                        .parent = contents,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_direction = layout::Direction::Column,
+                                        },
+                                    });
+        auto const param_container = DoEffectParamContainer(g.builder, left_col);
+
+        auto const mix_col = DoBox(g.builder,
+                                   {
+                                       .parent = contents,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                           .contents_padding = {.l = k_fx_controls_gap_x, .r = 8},
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                   });
 
         DoEffectParams(g, frame_context, *fx, param_container, extras_container, highlight_col, bypassed);
+
+        DoKnobParameter(g,
+                        mix_col,
+                        params.DescribedValue(k_effect_info[ToInt(fx->type)].mix_param_index),
+                        {.width = 30.0f, .knob_highlight_col = highlight_col, .greyed_out = bypassed});
 
         dyn::Append(effect_sections, EffectSectionInfo {fx, section});
     }

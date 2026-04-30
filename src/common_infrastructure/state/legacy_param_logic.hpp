@@ -8,6 +8,8 @@
 
 #include "plugin/processing_utils/curve_map.hpp"
 
+enum class StateSource : u8;
+
 // Read and understand the legacy parameters documentation page as a preface to this overview.
 //
 // - Floe is perfectly backwards-compatible: it always produces the same audio for a given set of
@@ -73,6 +75,37 @@ void ModerniseMacroDestinations(StateSnapshot& state, ParamIndex legacy);
 
 void ModerniseLegacyParamForDawState(StateSnapshot& state, ParamIndex legacy);
 void ModerniseLegacyParamForPresetState(StateSnapshot& state, ParamIndex legacy);
+
+// Migrate an effect that previously had separate Wet/Dry amplitude params to the new Mix + Output pair.
+// Lossless via Output_amp = W_amp + D_amp, Mix = W_amp / (W_amp + D_amp).
+// Preset path: read W/D, write Mix+Output, neutralise legacies, retarget macro destinations.
+// DAW path: cannot remove legacy lanes; instead seed Mix+Output to the audible-equivalent of legacy
+// defaults so transient automation passthrough at the legacy default doesn't click.
+void ModerniseWetDryEffect(StateSnapshot& state,
+                           ParamIndex legacy_wet,
+                           ParamIndex legacy_dry,
+                           ParamIndex modern_mix,
+                           ParamIndex modern_output,
+                           StateSource source);
+
+bool IsWetDryLegacyOverriding(ParamIndex legacy_wet, ParamIndex legacy_dry, f32 wet_linear, f32 dry_linear);
+
+struct WetDryEffectGroup {
+    ParamIndex legacy_wet;
+    ParamIndex legacy_dry;
+    ParamIndex modern_mix;
+    ParamIndex modern_output;
+};
+
+Optional<WetDryEffectGroup> WetDryGroupContaining(ParamIndex param);
+
+struct WetDryToMixOutputLinear {
+    f32 mix_linear;
+    f32 output_linear;
+};
+WetDryToMixOutputLinear ConvertWetDryLinearToMixOutput(WetDryEffectGroup const& g,
+                                                      f32 wet_linear,
+                                                      f32 dry_linear);
 
 CurveMap::Points ModerniseVelocityToCurve(param_values::VelocityMappingMode mode,
                                           f32 velocity_volume_strength);

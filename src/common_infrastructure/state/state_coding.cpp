@@ -181,11 +181,11 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
 
     if (IsLayerParamOfSpecificType(index, LayerParamIndex::Volume) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::VolumeSustain) ||
-        (index == ParamIndex::MasterVolume) || (index == ParamIndex::BitCrushWet) ||
-        (index == ParamIndex::BitCrushDry) || (index == ParamIndex::CompressorThreshold) ||
-        (index == ParamIndex::ChorusWet) || (index == ParamIndex::ChorusDry) ||
-        (index == ParamIndex::ConvolutionReverbWet) || (index == ParamIndex::ConvolutionReverbDry) ||
-        (index == ParamIndex::BitCrushWet)) {
+        (index == ParamIndex::MasterVolume) || (index == ParamIndex::LegacyBitCrushWet) ||
+        (index == ParamIndex::LegacyBitCrushDry) || (index == ParamIndex::CompressorThreshold) ||
+        (index == ParamIndex::LegacyChorusWet) || (index == ParamIndex::LegacyChorusDry) ||
+        (index == ParamIndex::LegacyConvolutionReverbWet) ||
+        (index == ParamIndex::LegacyConvolutionReverbDry)) {
         ASSERT(k_param_descriptors[(u32)index].linear_range.min >= 0);
         ASSERT(k_param_descriptors[(u32)index].linear_range.max <
                30); // it's unlikely to have an amp above 30
@@ -575,6 +575,13 @@ enum class StateVersion : u16 {
     // Mix parameters used only by the Vital compressor.
     AddedVitalCompressor,
 
+    // Added unified Mix knob to every effect, plus an Output trim on effects that previously had
+    // separate Wet/Dry pairs (BitCrush, Chorus, ConvolutionReverb). The previous Wet/Dry
+    // parameters are now hidden as legacy and kept only for DAW automation backwards
+    // compatibility. Distortion and StereoWiden gained a Mix knob (default 100% so existing
+    // states are unchanged).
+    AddedEffectMixOutput,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -597,7 +604,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 294,
+    static_assert(k_num_non_experimental_parameters == 303,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -738,6 +745,33 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     if (version < StateVersion::AddedVitalCompressor) {
         // Old presets used the Stillwell Major Tom compressor exclusively; preserve their sound.
         state.param_values[ToInt(ParamIndex::CompressorType)] = (f32)param_values::CompressorType::MajorTom;
+    }
+
+    if (version < StateVersion::AddedEffectMixOutput) {
+        for (auto const pi : Array {ParamIndex::DistortionMix,
+                                    ParamIndex::StereoWidenMix,
+                                    ParamIndex::FilterMix,
+                                    ParamIndex::CompressorMix})
+            state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+
+        ModerniseWetDryEffect(state,
+                              ParamIndex::LegacyBitCrushWet,
+                              ParamIndex::LegacyBitCrushDry,
+                              ParamIndex::BitCrushMix,
+                              ParamIndex::BitCrushOutput,
+                              source);
+        ModerniseWetDryEffect(state,
+                              ParamIndex::LegacyChorusWet,
+                              ParamIndex::LegacyChorusDry,
+                              ParamIndex::ChorusMix,
+                              ParamIndex::ChorusOutput,
+                              source);
+        ModerniseWetDryEffect(state,
+                              ParamIndex::LegacyConvolutionReverbWet,
+                              ParamIndex::LegacyConvolutionReverbDry,
+                              ParamIndex::ConvolutionReverbMix,
+                              ParamIndex::ConvolutionReverbOutput,
+                              source);
     }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's

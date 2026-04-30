@@ -52,8 +52,18 @@ class BitCrush final : public Effect {
             ASSERT_HOT(*p >= 1.0f && *p <= 1000000.0f);
             m_bit_rate = (s32)(*p + 0.5f);
         }
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushWet)) m_wet_dry.SetWet(*p);
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::BitCrushDry)) m_wet_dry.SetDry(*p);
+        if (changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyBitCrushWet) ||
+            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyBitCrushDry) ||
+            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::BitCrushMix) ||
+            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::BitCrushOutput)) {
+            auto const e = EffectiveWetDryFromMixOutputOrLegacy(changes.changed_params.params,
+                                                                ParamIndex::LegacyBitCrushWet,
+                                                                ParamIndex::LegacyBitCrushDry,
+                                                                ParamIndex::BitCrushMix,
+                                                                ParamIndex::BitCrushOutput);
+            m_wet_dry.SetWet(e.wet_amp);
+            m_wet_dry.SetDry(e.dry_amp);
+        }
     }
 
     EffectProcessResult
