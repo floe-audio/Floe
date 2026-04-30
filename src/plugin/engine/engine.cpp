@@ -615,6 +615,14 @@ void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId inst_id) {
     }
 }
 
+void RevertToLastSnapshot(Engine& engine) {
+    StateSnapshotWithName snapshot {
+        .state = engine.last_snapshot.state,
+        .name = engine.last_snapshot.name_or_path,
+    };
+    LoadNewState(engine, snapshot, StateSource::PresetFile);
+}
+
 void LoadPresetFromFile(Engine& engine, String path) {
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator, Kb(16)};

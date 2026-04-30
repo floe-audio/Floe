@@ -141,6 +141,8 @@ void ApplySection(Engine& engine,
 
 bool StateChangedSinceLastSnapshot(Engine& engine);
 
+void RevertToLastSnapshot(Engine& engine);
+
 void LoadPresetFromFile(Engine& engine, String path);
 
 void SaveCurrentStateToFile(Engine& engine, String path);
