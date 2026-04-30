@@ -844,9 +844,20 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
             },
             struct {
                 fn wait(process: *std.process.Child, done_inner: *std.atomic.Value(bool), build_args: []const []const u8) void {
-                    _ = process.wait() catch |err| {
-                        ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
-                    };
+                    if (builtin.os.tag == .windows) {
+                        // On Windows, process.wait() closes the process handle and sets
+                        // process.id to undefined, racing with killProcess in the timeout
+                        // path (TerminateProcess on the stale handle then fails with
+                        // INVALID_HANDLE). Just observe exit; the main thread does the
+                        // single wait() afterwards.
+                        std.os.windows.WaitForSingleObjectEx(process.id, std.os.windows.INFINITE, false) catch |err| {
+                            ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
+                        };
+                    } else {
+                        _ = process.wait() catch |err| {
+                            ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
+                        };
+                    }
 
                     done_inner.store(true, .release);
                 }
