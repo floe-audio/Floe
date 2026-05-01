@@ -183,8 +183,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
 
                 if (builder.imgui.WasJustActivated(imgui_id, MouseButton::Left))
                     BeginUndoableStep(g.engine, "Macro destination amount"_s);
-                if (builder.imgui.WasJustDeactivated(imgui_id, MouseButton::Left))
-                    EndUndoableStep(g.engine);
+                if (builder.imgui.WasJustDeactivated(imgui_id, MouseButton::Left)) EndUndoableStep(g.engine);
 
                 auto norm_value = MapTo01(dest.value, -1, 1);
                 if (builder.imgui.SliderBehaviourFraction({

@@ -103,9 +103,8 @@ struct WetDryToMixOutputLinear {
     f32 mix_linear;
     f32 output_linear;
 };
-WetDryToMixOutputLinear ConvertWetDryLinearToMixOutput(WetDryEffectGroup const& g,
-                                                      f32 wet_linear,
-                                                      f32 dry_linear);
+WetDryToMixOutputLinear
+ConvertWetDryLinearToMixOutput(WetDryEffectGroup const& g, f32 wet_linear, f32 dry_linear);
 
 CurveMap::Points ModerniseVelocityToCurve(param_values::VelocityMappingMode mode,
                                           f32 velocity_volume_strength);

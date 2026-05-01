@@ -18,6 +18,7 @@ enum class EffectType : u8 {
     Delay,
     ConvolutionReverb,
     Phaser,
+    Eq,
     Count,
 };
 
@@ -131,6 +132,16 @@ constexpr auto k_effect_info = []() {
                     .id = 9, // never change
                     .on_param_index = ParamIndex::PhaserOn,
                     .mix_param_index = ParamIndex::PhaserMix,
+                };
+                break;
+            case EffectType::Eq:
+                info = {
+                    .description =
+                        "Three-band parametric equaliser. Each band can be configured as a peak, shelf, notch, low-pass or high-pass filter.",
+                    .name = "EQ",
+                    .id = 8, // never change
+                    .on_param_index = ParamIndex::EqOn,
+                    .mix_param_index = ParamIndex::EqMix,
                 };
                 break;
 

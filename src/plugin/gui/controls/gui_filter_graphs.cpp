@@ -962,34 +962,46 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
 // Per-layer EQ graph: 3 bands, one draggable handle per band, summed response.
 
 struct EqBandParams {
-    LayerParamIndex type;
-    LayerParamIndex freq;
-    LayerParamIndex reso;
-    LayerParamIndex gain;
+    ParamIndex type;
+    ParamIndex freq;
+    ParamIndex reso;
+    ParamIndex gain;
 };
 
-static constexpr Array<EqBandParams, k_num_eq_bands> k_eq_band_params = {{
-    {LayerParamIndex::EqType1,
-     LayerParamIndex::EqFreq1,
-     LayerParamIndex::EqResonance1,
-     LayerParamIndex::EqGain1},
-    {LayerParamIndex::EqType2,
-     LayerParamIndex::EqFreq2,
-     LayerParamIndex::EqResonance2,
-     LayerParamIndex::EqGain2},
-    {LayerParamIndex::EqType3,
-     LayerParamIndex::EqFreq3,
-     LayerParamIndex::EqResonance3,
-     LayerParamIndex::EqGain3},
+static EqBandParams LayerEqBandParams(u8 layer_index, u32 band_idx) {
+    auto const lp = [&](LayerParamIndex p) { return ParamIndexFromLayerParamIndex(layer_index, p); };
+    switch (band_idx) {
+        case 0:
+            return {lp(LayerParamIndex::EqType1),
+                    lp(LayerParamIndex::EqFreq1),
+                    lp(LayerParamIndex::EqResonance1),
+                    lp(LayerParamIndex::EqGain1)};
+        case 1:
+            return {lp(LayerParamIndex::EqType2),
+                    lp(LayerParamIndex::EqFreq2),
+                    lp(LayerParamIndex::EqResonance2),
+                    lp(LayerParamIndex::EqGain2)};
+        case 2:
+            return {lp(LayerParamIndex::EqType3),
+                    lp(LayerParamIndex::EqFreq3),
+                    lp(LayerParamIndex::EqResonance3),
+                    lp(LayerParamIndex::EqGain3)};
+    }
+    PanicIfReached();
+    return {};
+}
+
+static constexpr Array<EqBandParams, k_num_eq_bands> k_effect_eq_band_params = {{
+    {ParamIndex::EqType1, ParamIndex::EqFreq1, ParamIndex::EqResonance1, ParamIndex::EqGain1},
+    {ParamIndex::EqType2, ParamIndex::EqFreq2, ParamIndex::EqResonance2, ParamIndex::EqGain2},
+    {ParamIndex::EqType3, ParamIndex::EqFreq3, ParamIndex::EqResonance3, ParamIndex::EqGain3},
 }};
 
 static void DoEqBandRightClickMenu(GuiState& g,
                                    Rect window_r,
                                    imgui::Id interaction_id,
-                                   u8 layer_index,
-                                   EqBandParams const& bp,
-                                   u8 band_number) {
-    auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)layer_index << 8) ^ band_number);
+                                   EqBandParams const& bp) {
+    auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)ToInt(bp.type) << 8));
 
     if (g.imgui.ButtonBehaviour(window_r,
                                 interaction_id,
@@ -1002,12 +1014,12 @@ static void DoEqBandRightClickMenu(GuiState& g,
 
     if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
 
-    auto const param = g.engine.processor.main_params.DescribedValue(layer_index, bp.type);
+    auto const param = g.engine.processor.main_params.DescribedValue(bp.type);
     auto const current_type = param.IntValue<param_values::EqType>();
-    auto const type_index = ParamIndexFromLayerParamIndex(layer_index, bp.type);
-    auto const freq_index = ParamIndexFromLayerParamIndex(layer_index, bp.freq);
-    auto const reso_index = ParamIndexFromLayerParamIndex(layer_index, bp.reso);
-    auto const gain_index = ParamIndexFromLayerParamIndex(layer_index, bp.gain);
+    auto const type_index = bp.type;
+    auto const freq_index = bp.freq;
+    auto const reso_index = bp.reso;
+    auto const gain_index = bp.gain;
 
     DoBoxViewport(
         g.builder,
@@ -1059,7 +1071,10 @@ static void DoEqBandRightClickMenu(GuiState& g,
         });
 }
 
-void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
+static void DoEqGraphImpl(GuiState& g,
+                          Span<EqBandParams const> band_params,
+                          Rect viewport_r,
+                          bool greyed_out) {
     auto& imgui = g.imgui;
     auto& engine = g.engine;
     auto& params = engine.processor.main_params;
@@ -1070,12 +1085,11 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
 
     auto push_id = HashInit();
     HashUpdate(push_id, SourceLocationHash());
-    HashUpdate(push_id, layer_index);
+    HashUpdate(push_id, ToInt(band_params[0].freq));
     imgui.PushId(push_id);
     DEFER { imgui.PopId(); };
 
-    auto const& freq_info =
-        k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::EqFreq1))];
+    auto const& freq_info = k_param_descriptors[ToInt(band_params[0].freq)];
 
     filter_graph_draw::DrawBackground(imgui, viewport_r, freq_info);
 
@@ -1091,8 +1105,8 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
 
     // Handle Y reflects the *base* (user-set) gain so it doesn't drift while macros modulate the curve.
     auto const node_pos_for = [&](Band const& b) {
-        auto const freq_param = params.DescribedValue(layer_index, b.params.freq);
-        auto const gain_param = params.DescribedValue(layer_index, b.params.gain);
+        auto const freq_param = params.DescribedValue(b.params.freq);
+        auto const gain_param = params.DescribedValue(b.params.gain);
         return f32x2 {
             viewport_r.x + (freq_param.LinearValue() * viewport_r.w),
             b.uses_gain ? filter_graph_draw::DbToY(gain_param.ProjectedValue(), viewport_r)
@@ -1102,12 +1116,12 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
 
     for (auto const band_idx : Range(k_num_eq_bands)) {
         auto& b = bands[band_idx];
-        b.params = k_eq_band_params[band_idx];
+        b.params = band_params[band_idx];
 
-        auto const freq_param = params.DescribedValue(layer_index, b.params.freq);
-        auto const reso_param = params.DescribedValue(layer_index, b.params.reso);
-        auto const gain_param = params.DescribedValue(layer_index, b.params.gain);
-        auto const type_param = params.DescribedValue(layer_index, b.params.type);
+        auto const freq_param = params.DescribedValue(b.params.freq);
+        auto const reso_param = params.DescribedValue(b.params.reso);
+        auto const gain_param = params.DescribedValue(b.params.gain);
+        auto const type_param = params.DescribedValue(b.params.type);
 
         auto const eq_type = type_param.IntValue<param_values::EqType>();
         b.uses_gain = param_values::EqTypeUsesGain(eq_type);
@@ -1134,14 +1148,11 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
 
     for (auto const band_idx : Range(k_num_eq_bands)) {
         auto const& b = bands[band_idx];
-        auto const freq_index = ParamIndexFromLayerParamIndex(layer_index, b.params.freq);
-        auto const gain_index = ParamIndexFromLayerParamIndex(layer_index, b.params.gain);
-        auto const reso_index = ParamIndexFromLayerParamIndex(layer_index, b.params.reso);
-        auto const reso_param = params.DescribedValue(layer_index, b.params.reso);
-        auto const gain_param = params.DescribedValue(layer_index, b.params.gain);
+        auto const reso_param = params.DescribedValue(b.params.reso);
+        auto const gain_param = params.DescribedValue(b.params.gain);
 
-        ParamIndex const moving_with_gain[] = {freq_index, gain_index};
-        ParamIndex const moving_no_gain[] = {freq_index};
+        ParamIndex const moving_with_gain[] = {b.params.freq, b.params.gain};
+        ParamIndex const moving_no_gain[] = {b.params.freq};
         RunGrabberDrag(g,
                        {
                            .viewport_r = viewport_r,
@@ -1150,26 +1161,26 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
                            .node_pos_viewport = node_pos_for(b),
                            .moving_params = b.uses_gain ? Span<ParamIndex const> {moving_with_gain}
                                                         : Span<ParamIndex const> {moving_no_gain},
-                           .double_click_target = freq_index,
+                           .double_click_target = b.params.freq,
                            .track_y_axis = b.uses_gain,
                            .on_drag =
                                [&](f32 x_t, f32 y_t) {
-                                   SetParameterValue(engine.processor, freq_index, x_t, {});
+                                   SetParameterValue(engine.processor, b.params.freq, x_t, {});
                                    if (b.uses_gain) {
                                        auto const new_gain_db = MapFrom01(y_t,
                                                                           filter_graph_draw::k_min_db,
                                                                           filter_graph_draw::k_max_db);
                                        auto const gain_linear =
                                            gain_param.info.LineariseValue(new_gain_db, true).ValueOr(0.0f);
-                                       SetParameterValue(engine.processor, gain_index, gain_linear, {});
+                                       SetParameterValue(engine.processor, b.params.gain, gain_linear, {});
                                    }
                                },
                            .drag_name = "EQ band node"_s,
                        });
 
-        DoScrollResonance(g, b.interaction_id, b.window_r, reso_index, reso_param.LinearValue());
+        DoScrollResonance(g, b.interaction_id, b.window_r, b.params.reso, reso_param.LinearValue());
 
-        DoEqBandRightClickMenu(g, b.window_r, b.interaction_id, layer_index, b.params, (u8)(band_idx + 1));
+        DoEqBandRightClickMenu(g, b.window_r, b.interaction_id, b.params);
     }
 
     filter_graph_draw::DrawResponseCurve(
@@ -1186,9 +1197,9 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
         greyed_out);
 
     for (auto const& b : bands) {
-        auto const freq_param = params.DescribedValue(layer_index, b.params.freq);
-        auto const gain_param = params.DescribedValue(layer_index, b.params.gain);
-        auto const reso_param = params.DescribedValue(layer_index, b.params.reso);
+        auto const freq_param = params.DescribedValue(b.params.freq);
+        auto const gain_param = params.DescribedValue(b.params.gain);
+        auto const reso_param = params.DescribedValue(b.params.reso);
         DescribedParamValue const* popup_params[] = {&freq_param, &gain_param, &reso_param};
         DrawGrabberHandleAndPopup(
             g,
@@ -1201,20 +1212,29 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
                 .greyed_out = greyed_out,
                 .active_cursor = b.uses_gain ? CursorType::AllArrows : CursorType::HorizontalArrows,
             });
-        OverlayMacroDestinationRegion(g,
-                                      b.window_r,
-                                      ParamIndexFromLayerParamIndex(layer_index, b.params.freq));
+        OverlayMacroDestinationRegion(g, b.window_r, b.params.freq);
     }
 
     Array<ParamIndex, k_num_eq_bands * 4> editor_indices;
     {
         usize idx = 0;
         for (auto const& b : bands) {
-            editor_indices[idx++] = ParamIndexFromLayerParamIndex(layer_index, b.params.freq);
-            editor_indices[idx++] = ParamIndexFromLayerParamIndex(layer_index, b.params.reso);
-            editor_indices[idx++] = ParamIndexFromLayerParamIndex(layer_index, b.params.gain);
-            editor_indices[idx++] = ParamIndexFromLayerParamIndex(layer_index, b.params.type);
+            editor_indices[idx++] = b.params.freq;
+            editor_indices[idx++] = b.params.reso;
+            editor_indices[idx++] = b.params.gain;
+            editor_indices[idx++] = b.params.type;
         }
     }
     DoParamTextEditorOverlay(g, viewport_r, editor_indices);
+}
+
+void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
+    Array<EqBandParams, k_num_eq_bands> bands {};
+    for (auto const i : Range(k_num_eq_bands))
+        bands[i] = LayerEqBandParams(layer_index, i);
+    DoEqGraphImpl(g, bands, viewport_r, greyed_out);
+}
+
+void DoEffectEqGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
+    DoEqGraphImpl(g, k_effect_eq_band_params, viewport_r, greyed_out);
 }

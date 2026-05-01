@@ -264,6 +264,7 @@ struct Col {
         Coral,
         SkyBlue,
         Mint,
+        Violet,
 
         Count,
 
@@ -340,6 +341,7 @@ constexpr u32 ToU32(Col colour) {
                     case Col::Coral: result[idx] = WebHex(0xFF7777); break;
                     case Col::SkyBlue: result[idx] = WebHex(0x89B7FF); break;
                     case Col::Mint: result[idx] = WebHex(0x67FFA5); break;
+                    case Col::Violet: result[idx] = WebHex(0xB78BFF); break;
 
                     case Col::Highlight50: result[idx] = WebHex(0xfffbeb); break;
                     case Col::Highlight100: result[idx] = WebHex(0xfdf1c8); break;

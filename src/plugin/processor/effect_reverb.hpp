@@ -81,8 +81,7 @@ class Reverb final : public Effect {
         }
 
         for (auto const frame_index : Range((u32)io_frames.size))
-            io_frames[frame_index] =
-                ApplyBypassCrossfade(context, wet[frame_index], io_frames[frame_index]);
+            io_frames[frame_index] = ApplyBypassCrossfade(context, wet[frame_index], io_frames[frame_index]);
 
         return IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
     }

@@ -588,6 +588,10 @@ enum class StateVersion : u16 {
     // are now hidden as legacy params and kept only for DAW automation backwards compatibility.
     ReworkedCompressorThresholdAndRatio,
 
+    // Added a master 3-band parametric EQ effect. Older states default it to off so the sound is
+    // unchanged.
+    AddedEqEffect,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -610,7 +614,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 305,
+    static_assert(k_num_non_experimental_parameters == 319,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -787,6 +791,24 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     if (version < StateVersion::ReworkedCompressorThresholdAndRatio) {
         ModerniseLegacyParam(state, ParamIndex::LegacyCompressorThreshold, source);
         ModerniseLegacyParam(state, ParamIndex::LegacyCompressorRatio, source);
+    }
+
+    if (version < StateVersion::AddedEqEffect) {
+        state.param_values[ToInt(ParamIndex::EqOn)] = 0;
+        for (auto const pi : Array {ParamIndex::EqMix,
+                                    ParamIndex::EqType1,
+                                    ParamIndex::EqFreq1,
+                                    ParamIndex::EqResonance1,
+                                    ParamIndex::EqGain1,
+                                    ParamIndex::EqType2,
+                                    ParamIndex::EqFreq2,
+                                    ParamIndex::EqResonance2,
+                                    ParamIndex::EqGain2,
+                                    ParamIndex::EqType3,
+                                    ParamIndex::EqFreq3,
+                                    ParamIndex::EqResonance3,
+                                    ParamIndex::EqGain3})
+            state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
     }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
@@ -1133,7 +1155,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
                 EffectType::Phaser,
                 EffectType::ConvolutionReverb,
             };
-            static_assert(ArraySize(k_effects_order_before_effects_could_be_reordered) == k_num_effect_types);
+            static_assert(ArraySize(k_effects_order_before_effects_could_be_reordered) <= k_num_effect_types);
 
             usize index = 0;
 
@@ -1145,7 +1167,8 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             if (index != k_num_effect_types) {
                 // Next, add any effects that have been added since adding reorderability.
                 for (auto const fx_type : Range(k_num_effect_types))
-                    if (!Find(fallback_order_of_effects, (EffectType)fx_type))
+                    if (!Find(Span<EffectType const> {fallback_order_of_effects.data, index},
+                              (EffectType)fx_type))
                         fallback_order_of_effects[index++] = (EffectType)fx_type;
             }
             ASSERT_EQ(index, fallback_order_of_effects.size);
@@ -1726,37 +1749,38 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
     // =======================================================================================================
     {
-        u16 num_effects {};
-        if (coder.IsWriting()) num_effects = CheckedCast<u16>(k_num_effect_types);
+        u16 num_effects = coder.IsWriting() ? CheckedCast<u16>(k_num_effect_types) : 0;
         TRY(coder.CodeNumber(num_effects, StateVersion::Initial));
+        if (num_effects > k_num_effect_types) return ErrorCode(CommonError::InvalidFileFormat);
 
-        Array<u8, k_num_effect_types> ordered_effect_ids;
-        if (coder.IsWriting()) {
-            for (auto [i, fx_type] : Enumerate(state.fx_order))
-                ordered_effect_ids[i] = k_effect_info[(usize)fx_type].id;
-            if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
-                for (auto const i : Range(ordered_effect_ids.size)) {
-                    for (auto const j : Range(ordered_effect_ids.size))
-                        if (i != j) ASSERT(ordered_effect_ids[i] != ordered_effect_ids[j]);
-                }
-            }
+        DynamicArrayBounded<u8, k_num_effect_types> fx_ids;
+        // Code the IDs
+        {
+            if (coder.IsWriting())
+                for (auto const fx_type : state.fx_order)
+                    dyn::Append(fx_ids, k_effect_info[(usize)fx_type].id);
+            else
+                fx_ids.size = num_effects;
+
+            for (auto& fx_id : fx_ids)
+                TRY(coder.CodeNumber(fx_id, StateVersion::Initial));
         }
 
-        TRY(coder.CodeTrivialObject(ordered_effect_ids, StateVersion::Initial));
-
         if (coder.IsReading()) {
-            for (auto [i, fx_id] : Enumerate(ordered_effect_ids)) {
+            DynamicArrayBounded<EffectType, k_num_effect_types> ordered_effects;
+            for (auto const fx_id : fx_ids) {
                 auto const type =
                     FindIf(k_effect_info, [fx_id](EffectInfo const& info) { return info.id == fx_id; });
-                if (!type.HasValue()) return ErrorCode(CommonError::InvalidFileFormat);
-                state.fx_order[i] = (EffectType)*type;
+                if (type.HasValue()) dyn::AppendIfNotAlreadyThere(ordered_effects, (EffectType)*type);
             }
 
-            if (num_effects != k_num_effect_types) {
-                static_assert(k_num_effect_types == 10,
-                              "You've changed the number of effects, you must add the new "
-                              "effects here so that the fx_order contains all values");
-            }
+            // Add any that aren't present in the state.
+            for (auto const i : Range(k_num_effect_types))
+                dyn::AppendIfNotAlreadyThere(ordered_effects, (EffectType)i);
+
+            ASSERT_EQ(ordered_effects.size, k_num_effect_types);
+            for (auto const i : Range(k_num_effect_types))
+                state.fx_order[i] = ordered_effects[i];
         }
     }
 

@@ -121,6 +121,15 @@ struct Parameters {
 };
 
 struct ChangedParams {
+    Optional<f32> LinearValue(ParamIndex index) const {
+        AssertNoUnhandledLegacyAncestor(index);
+        if (changed.Get(ToInt(index))) return params.LinearValue(index);
+        return k_nullopt;
+    }
+    Optional<f32> LinearValue(u8 layer_index, LayerParamIndex index) const {
+        return LinearValue(ParamIndexFromLayerParamIndex(layer_index, index));
+    }
+
     Optional<f32> ProjectedValue(ParamIndex index) const {
         AssertNoUnhandledLegacyAncestor(index);
         if (changed.Get(ToInt(index))) return params.ProjectedValue(index);

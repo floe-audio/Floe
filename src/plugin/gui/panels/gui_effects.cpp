@@ -56,6 +56,7 @@ static FXColours GetFxColMap(EffectType type) {
         case EffectType::Delay: return {DelayBack, DelayHighlight, DelayButton};
         case EffectType::ConvolutionReverb: return {ConvolutionBack, ConvolutionHighlight, ConvolutionButton};
         case EffectType::Phaser: return {PhaserBack, PhaserHighlight, PhaserButton};
+        case EffectType::Eq: return {FxEqBack, FxEqHighlight, FxEqButton};
         case EffectType::Count: PanicIfReached();
     }
     return {};
@@ -974,6 +975,115 @@ static void DoEffectParams(GuiState& g,
                 param_container,
                 params.DescribedValue(ParamIndex::ConvolutionReverbOutput),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            break;
+        }
+
+        case EffectType::Eq: {
+            constexpr f32 k_eq_vis_w = 320;
+            constexpr f32 k_eq_vis_h = 140;
+            constexpr f32 k_small_knob_w = 24.0f;
+
+            auto const eq_root = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = {16, 0},
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                           },
+                                       });
+
+            auto const vis = DoBox(g.builder, {.parent = eq_root, .layout {.size = {k_eq_vis_w, k_eq_vis_h}}});
+            if (auto const r = BoxRect(g.builder, vis)) DoEffectEqGraph(g, *r, greyed_out);
+
+            auto const bands_container = DoBox(g.builder,
+                                               {
+                                                   .parent = eq_root,
+                                                   .layout {
+                                                       .size = layout::k_hug_contents,
+                                                       .contents_gap = 8,
+                                                       .contents_direction = layout::Direction::Column,
+                                                       .contents_align = layout::Alignment::Start,
+                                                   },
+                                               });
+
+            constexpr Array<Array<ParamIndex, 4>, k_num_eq_bands> k_band_params {{
+                {ParamIndex::EqType1, ParamIndex::EqFreq1, ParamIndex::EqResonance1, ParamIndex::EqGain1},
+                {ParamIndex::EqType2, ParamIndex::EqFreq2, ParamIndex::EqResonance2, ParamIndex::EqGain2},
+                {ParamIndex::EqType3, ParamIndex::EqFreq3, ParamIndex::EqResonance3, ParamIndex::EqGain3},
+            }};
+
+            for (auto const band_idx : Range(k_num_eq_bands)) {
+                auto const& bp = k_band_params[band_idx];
+                u8 const band_number = (u8)(band_idx + 1);
+
+                auto const row = DoBox(g.builder,
+                                       {
+                                           .parent = bands_container,
+                                           .id_extra = band_number,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = 20,
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Start,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                           },
+                                       });
+
+                auto const label_and_menu = DoBox(g.builder,
+                                                  {
+                                                      .parent = row,
+                                                      .layout {
+                                                          .size = layout::k_hug_contents,
+                                                          .contents_gap = 5,
+                                                          .contents_direction = layout::Direction::Row,
+                                                          .contents_cross_axis_align =
+                                                              layout::CrossAxisAlign::Middle,
+                                                      },
+                                                  });
+
+                DoBox(g.builder,
+                      {
+                          .parent = label_and_menu,
+                          .text = fmt::Format(g.scratch_arena, "{}", band_number),
+                          .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed
+                                                                   : UiColMap::MidText),
+                          .text_justification = TextJustification::CentredLeft,
+                          .layout {
+                              .size = {8, k_font_body_size},
+                          },
+                      });
+
+                DoMenuParameter(g,
+                                label_and_menu,
+                                params.DescribedValue(bp[0]),
+                                {
+                                    .width = 110,
+                                    .greyed_out = greyed_out,
+                                    .label = false,
+                                });
+
+                ParameterComponentOptions const small_knob_opts {
+                    .width = k_small_knob_w,
+                    .style_system = GuiStyleSystem::MidPanel,
+                    .greyed_out = greyed_out,
+                };
+                DoKnobParameter(g, row, params.DescribedValue(bp[1]), small_knob_opts);
+                DoKnobParameter(g, row, params.DescribedValue(bp[2]), small_knob_opts);
+
+                auto const eq_type = params.DescribedValue(bp[0]).IntValue<param_values::EqType>();
+                auto const gain_greyed = greyed_out || !param_values::EqTypeUsesGain(eq_type);
+                DoKnobParameter(g,
+                                row,
+                                params.DescribedValue(bp[3]),
+                                {
+                                    .width = k_small_knob_w,
+                                    .style_system = GuiStyleSystem::MidPanel,
+                                    .greyed_out = gain_greyed,
+                                    .bidirectional = true,
+                                });
+            }
             break;
         }
 

@@ -192,6 +192,21 @@ enum class ParamIndex : u16 {
     PhaserMix,
     PhaserOn,
 
+    EqOn,
+    EqMix,
+    EqType1,
+    EqFreq1,
+    EqResonance1,
+    EqGain1,
+    EqType2,
+    EqFreq2,
+    EqResonance2,
+    EqGain2,
+    EqType3,
+    EqFreq3,
+    EqResonance3,
+    EqGain3,
+
     LegacyConvolutionReverbHighpass,
     ConvolutionReverbHighpass,
     LegacyConvolutionReverbWet,
@@ -2230,6 +2245,126 @@ consteval auto CreateParams() {
         .name = "On"_s,
         .gui_label = "Phaser"_s,
         .tooltip = "Enable/disable the phaser effect"_s,
+    };
+
+    // =====================================================================================================
+    mp(EqOn) = Args {
+        .id = id(IdRegion::Master, 120), // never change
+        .value_config = val_config_helpers::Bool({.default_state = false}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq},
+        .name = "On"_s,
+        .gui_label = "EQ"_s,
+        .tooltip = "Enable/disable the equaliser effect"_s,
+    };
+    mp(EqMix) = Args {
+        .id = id(IdRegion::Master, 121), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Mix between the wet and dry signals"_s,
+    };
+    mp(EqType1) = Args {
+        .id = id(IdRegion::Master, 122), // never change
+        .value_config =
+            val_config_helpers::Menu({.type = ParamDescriptor::MenuType::EqType,
+                                      .default_val = (u32)EqType::LowShelf}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Band 1: type of EQ band"_s,
+    };
+    mp(EqFreq1) = Args {
+        .id = id(IdRegion::Master, 123), // never change
+        .value_config = val_config_helpers::Filter({.default_hz = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Frequency"_s,
+        .gui_label = "Freq"_s,
+        .tooltip = "Band 1: frequency of this band"_s,
+    };
+    mp(EqResonance1) = Args {
+        .id = id(IdRegion::Master, 124), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 20}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Band 1: sharpness of the peak"_s,
+    };
+    mp(EqGain1) = Args {
+        .id = id(IdRegion::Master, 125), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Band 1: volume gain at the frequency"_s,
+    };
+    mp(EqType2) = Args {
+        .id = id(IdRegion::Master, 126), // never change
+        .value_config =
+            val_config_helpers::Menu({.type = ParamDescriptor::MenuType::EqType,
+                                      .default_val = (u32)EqType::Peak}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Band 2: type of EQ band"_s,
+    };
+    mp(EqFreq2) = Args {
+        .id = id(IdRegion::Master, 127), // never change
+        .value_config = val_config_helpers::Filter({.default_hz = 1000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Frequency"_s,
+        .gui_label = "Freq"_s,
+        .tooltip = "Band 2: frequency of this band"_s,
+    };
+    mp(EqResonance2) = Args {
+        .id = id(IdRegion::Master, 128), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 20}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Band 2: sharpness of the peak"_s,
+    };
+    mp(EqGain2) = Args {
+        .id = id(IdRegion::Master, 129), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Band 2: volume gain at the frequency"_s,
+    };
+    mp(EqType3) = Args {
+        .id = id(IdRegion::Master, 130), // never change
+        .value_config =
+            val_config_helpers::Menu({.type = ParamDescriptor::MenuType::EqType,
+                                      .default_val = (u32)EqType::HighShelf}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Band 3: type of EQ band"_s,
+    };
+    mp(EqFreq3) = Args {
+        .id = id(IdRegion::Master, 131), // never change
+        .value_config = val_config_helpers::Filter({.default_hz = 8000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Frequency"_s,
+        .gui_label = "Freq"_s,
+        .tooltip = "Band 3: frequency of this band"_s,
+    };
+    mp(EqResonance3) = Args {
+        .id = id(IdRegion::Master, 132), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 20}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Band 3: sharpness of the peak"_s,
+    };
+    mp(EqGain3) = Args {
+        .id = id(IdRegion::Master, 133), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Band 3: volume gain at the frequency"_s,
     };
 
     // =====================================================================================================

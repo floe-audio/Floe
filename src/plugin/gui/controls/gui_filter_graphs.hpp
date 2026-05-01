@@ -33,3 +33,6 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out);
 // Per-layer 3-band EQ graph. One handle per band (drag X = freq, drag Y = gain when the band uses
 // gain, wheel = resonance, right-click for band type).
 void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out);
+
+// Master effect 3-band EQ graph.
+void DoEffectEqGraph(GuiState& g, Rect viewport_r, bool greyed_out);

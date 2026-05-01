@@ -43,6 +43,7 @@ enum class PhraseKind : u8 {
     FxChorus,
     FxDelay,
     FxPhaser,
+    FxEq,
     FxReverb,
     FxConvolutionReverb,
 };
@@ -234,6 +235,7 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
         case PhraseKind::FxChorus: return {"with a chorused shimmer"_s, "a chorused shimmer"_s};
         case PhraseKind::FxDelay: return {"with delayed echoes"_s, "delayed echoes"_s};
         case PhraseKind::FxPhaser: return {"with a phaser sweep"_s, "a phaser sweep"_s};
+        case PhraseKind::FxEq: return {"with EQ shaping"_s, "EQ shaping"_s};
         case PhraseKind::FxReverb: return {"with a reverberant tail"_s, "a reverberant tail"_s};
         case PhraseKind::FxConvolutionReverb:
             return {"set in a convolution space"_s, "a convolution space"_s};
@@ -509,6 +511,7 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
         {ParamIndex::ChorusOn,            PhraseKind::FxChorus,            false},
         {ParamIndex::DelayOn,             PhraseKind::FxDelay,             false},
         {ParamIndex::PhaserOn,            PhraseKind::FxPhaser,            false},
+        {ParamIndex::EqOn,                PhraseKind::FxEq,                false},
         {ParamIndex::ReverbOn,            PhraseKind::FxReverb,            false},
         {ParamIndex::ConvolutionReverbOn, PhraseKind::FxConvolutionReverb, false},
     };

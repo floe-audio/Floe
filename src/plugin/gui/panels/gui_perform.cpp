@@ -453,13 +453,9 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                                        },
                                    });
 
-    auto const do_utility_button = [&](String icon,
-                                       String label,
-                                       String tooltip,
-                                       u64 id,
-                                       bool grey,
-                                       FunctionRef<void()> on_fire) {
-        auto const btn = DoBox(builder,
+    auto const do_utility_button =
+        [&](String icon, String label, String tooltip, u64 id, bool grey, FunctionRef<void()> on_fire) {
+            auto const btn = DoBox(builder,
                                {
                                    .parent = utility_row,
                                    .id_extra = id,
@@ -512,16 +508,16 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                                          },
                   .parent_dictates_hot_and_active = true,
               });
-        if (btn.button_fired && !grey) on_fire();
-    };
+            if (btn.button_fired && !grey) on_fire();
+        };
 
-    auto const do_random_button = [&](String icon, String label, String tooltip, u64 id, bool grey,
-                                      RandomScope scope) {
-        do_utility_button(icon, label, tooltip, id, grey, [&]() {
-            for (auto& target_layer : g.engine.processor.layer_processors)
-                load_random(target_layer, scope);
-        });
-    };
+    auto const do_random_button =
+        [&](String icon, String label, String tooltip, u64 id, bool grey, RandomScope scope) {
+            do_utility_button(icon, label, tooltip, id, grey, [&]() {
+                for (auto& target_layer : g.engine.processor.layer_processors)
+                    load_random(target_layer, scope);
+            });
+        };
 
     do_random_button(ICON_FA_DICE_ONE ""_s,
                      "Similar"_s,

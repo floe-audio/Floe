@@ -21,6 +21,7 @@
 #include "effect_convo.hpp"
 #include "effect_delay.hpp"
 #include "effect_distortion.hpp"
+#include "effect_eq.hpp"
 #include "effect_filter_iir.hpp"
 #include "effect_phaser.hpp"
 #include "effect_reverb.hpp"
@@ -288,6 +289,7 @@ struct AudioProcessor {
     Reverb reverb;
     Delay delay;
     Phaser phaser;
+    Eq eq;
     ConvolutionReverb convo;
 
     // The effects indexable by EffectType

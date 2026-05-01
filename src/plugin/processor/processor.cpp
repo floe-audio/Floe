@@ -1941,6 +1941,7 @@ AudioProcessor::AudioProcessor(clap_host const& host,
           &reverb,
           &delay,
           &phaser,
+          &eq,
           &convo,
       })) {
 
