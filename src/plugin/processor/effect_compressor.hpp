@@ -4,7 +4,6 @@
 #pragma once
 #include <vitfx/wrapper.hpp>
 
-#include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "dsp_stillwell_majortom.hpp"
@@ -24,13 +23,12 @@ class Compressor final : public Effect {
 
         bool major_tom_changed = false;
 
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorThreshold)) {
-            auto const db = AmpToDb(*p);
-            m_major_tom.slider_threshold = db;
-            m_vital_args.params[ToInt(vitfx::compressor::Params::UpperThresholdDb)] = db;
+        if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::CompressorThreshold)) {
+            m_major_tom.slider_threshold = *p;
+            m_vital_args.params[ToInt(vitfx::compressor::Params::UpperThresholdDb)] = *p;
             major_tom_changed = true;
         }
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorRatio)) {
+        if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::CompressorRatio)) {
             m_major_tom.slider_ratio = *p;
             // Map traditional ratio (1..20) to Vital's 0..1 normalised ratio: 1 - 1/r.
             m_vital_args.params[ToInt(vitfx::compressor::Params::UpperRatio)] = 1.0f - (1.0f / *p);

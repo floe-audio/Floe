@@ -182,7 +182,7 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
     if (IsLayerParamOfSpecificType(index, LayerParamIndex::Volume) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::VolumeSustain) ||
         (index == ParamIndex::MasterVolume) || (index == ParamIndex::LegacyBitCrushWet) ||
-        (index == ParamIndex::LegacyBitCrushDry) || (index == ParamIndex::CompressorThreshold) ||
+        (index == ParamIndex::LegacyBitCrushDry) || (index == ParamIndex::LegacyCompressorThreshold) ||
         (index == ParamIndex::LegacyChorusWet) || (index == ParamIndex::LegacyChorusDry) ||
         (index == ParamIndex::LegacyConvolutionReverbWet) ||
         (index == ParamIndex::LegacyConvolutionReverbDry)) {
@@ -582,6 +582,12 @@ enum class StateVersion : u16 {
     // states are unchanged).
     AddedEffectMixOutput,
 
+    // Reworked the compressor Threshold and Ratio parameters with more intuitive projections:
+    // Threshold is now linear in dB (range -60..0 dB), and Ratio uses an exponential curve so
+    // 1:1..2:1 occupies more of the knob. The previous CompressorThreshold and CompressorRatio
+    // are now hidden as legacy params and kept only for DAW automation backwards compatibility.
+    ReworkedCompressorThresholdAndRatio,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -604,7 +610,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 303,
+    static_assert(k_num_non_experimental_parameters == 305,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -772,6 +778,11 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                               ParamIndex::ConvolutionReverbMix,
                               ParamIndex::ConvolutionReverbOutput,
                               source);
+    }
+
+    if (version < StateVersion::ReworkedCompressorThresholdAndRatio) {
+        ModerniseLegacyParam(state, ParamIndex::LegacyCompressorThreshold, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyCompressorRatio, source);
     }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
@@ -1963,7 +1974,7 @@ ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource sou
 //=================================================
 
 TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
-    StateSnapshot state {};
+    StateSnapshot state = DefaultStateSnapshot();
 
     state.LinearParam(ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyVelocityMapping)) =
         (f32)param_values::VelocityMappingMode::TopToMiddle;

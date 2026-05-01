@@ -120,6 +120,9 @@ Optional<f32> ParamDescriptor::StringToLinearValue(String str) const {
         case ParamDisplayFormat::Semitones: {
             break;
         }
+        case ParamDisplayFormat::Ratio: {
+            break;
+        }
     }
 
     if (auto const opt_value = ParseFloat(str)) return LineariseValue((f32)*opt_value, true);
@@ -247,6 +250,10 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
             result = fmt::FormatInline<k_size>("{.0} semitones", value);
             break;
         }
+        case ParamDisplayFormat::Ratio: {
+            result = fmt::FormatInline<k_size>("{.2} : 1", value);
+            break;
+        }
     }
 
     if (!result.size) result = fmt::FormatInline<k_size>("{.1}", value);
@@ -341,8 +348,8 @@ constexpr auto k_non_layer_params = ArrayT<NonLayerParamId>({
     {"BitcWet", ParamIndex::LegacyBitCrushWet},
     {"BitcDry", ParamIndex::LegacyBitCrushDry},
     {"BitcOn", ParamIndex::BitCrushOn},
-    {"CompThr", ParamIndex::CompressorThreshold},
-    {"CompRt", ParamIndex::CompressorRatio},
+    {"CompThr", ParamIndex::LegacyCompressorThreshold},
+    {"CompRt", ParamIndex::LegacyCompressorRatio},
     {"CompGain", ParamIndex::CompressorGain},
     {"CompAuto", ParamIndex::CompressorAutoGain},
     {"CompOn", ParamIndex::CompressorOn},

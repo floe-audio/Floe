@@ -5,6 +5,8 @@
 
 #include "tests/framework.hpp"
 
+#include "common_infrastructure/audio_utils.hpp"
+
 #include "state_snapshot.hpp"
 
 // These tables remap legacy enum params to their modern equivalent. Index into them using the legacy value.
@@ -97,6 +99,8 @@ constexpr Optional<ParamIndex> SuccessorOfLegacyParamIndex(ParamIndex legacy) {
         case ParamIndex::LegacyFilterType: return ParamIndex::FilterType;
         case ParamIndex::LegacyChorusHighpass: return ParamIndex::ChorusHighpass;
         case ParamIndex::LegacyConvolutionReverbHighpass: return ParamIndex::ConvolutionReverbHighpass;
+        case ParamIndex::LegacyCompressorThreshold: return ParamIndex::CompressorThreshold;
+        case ParamIndex::LegacyCompressorRatio: return ParamIndex::CompressorRatio;
         default: return k_nullopt;
     }
 }
@@ -216,6 +220,19 @@ static f32 RemapLegacyValue(ParamIndex legacy, f32 legacy_linear) {
             return FrequencyRemap(legacy, ParamIndex::ChorusHighpass, legacy_linear);
         case ParamIndex::LegacyConvolutionReverbHighpass:
             return FrequencyRemap(legacy, ParamIndex::ConvolutionReverbHighpass, legacy_linear);
+        case ParamIndex::LegacyCompressorThreshold: {
+            auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
+            auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorThreshold)];
+            auto const amp = legacy_desc.ProjectValue(legacy_linear);
+            auto const db = amp <= 0 ? -60.0f : Max(AmpToDb(amp), -60.0f);
+            return modern_desc.LineariseValue(db, true).ValueOr(modern_desc.default_linear_value);
+        }
+        case ParamIndex::LegacyCompressorRatio: {
+            auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
+            auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorRatio)];
+            auto const ratio = legacy_desc.ProjectValue(legacy_linear);
+            return modern_desc.LineariseValue(ratio, true).ValueOr(modern_desc.default_linear_value);
+        }
         default: PanicIfReached();
     }
     return 0;
@@ -266,7 +283,8 @@ OldestOverridingAncestor(ParamIndex modern, StaticSpan<f32 const, k_num_paramete
 
 bool IsAnyLegacyOverriding(ParamIndex modern, StaticSpan<f32 const, k_num_parameters> linear_param_values) {
     if (OldestOverridingAncestor(modern, linear_param_values).HasValue()) return true;
-    if (auto const g = WetDryGroupContaining(modern); g && (modern == g->modern_mix || modern == g->modern_output))
+    if (auto const g = WetDryGroupContaining(modern);
+        g && (modern == g->modern_mix || modern == g->modern_output))
         return IsWetDryLegacyOverriding(g->legacy_wet,
                                         g->legacy_dry,
                                         linear_param_values[ToInt(g->legacy_wet)],
@@ -389,11 +407,14 @@ Optional<WetDryEffectGroup> WetDryGroupContaining(ParamIndex param) {
     return k_nullopt;
 }
 
-WetDryToMixOutputLinear ConvertWetDryLinearToMixOutput(WetDryEffectGroup const& g,
-                                                      f32 wet_linear,
-                                                      f32 dry_linear) {
-    auto const r =
-        WetDryLinearToMixOutputLinear(g.legacy_wet, g.legacy_dry, g.modern_mix, g.modern_output, wet_linear, dry_linear);
+WetDryToMixOutputLinear
+ConvertWetDryLinearToMixOutput(WetDryEffectGroup const& g, f32 wet_linear, f32 dry_linear) {
+    auto const r = WetDryLinearToMixOutputLinear(g.legacy_wet,
+                                                 g.legacy_dry,
+                                                 g.modern_mix,
+                                                 g.modern_output,
+                                                 wet_linear,
+                                                 dry_linear);
     return {.mix_linear = r.mix_01, .output_linear = r.output_amp};
 }
 

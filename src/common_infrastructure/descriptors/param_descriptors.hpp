@@ -132,7 +132,9 @@ enum class ParamIndex : u16 {
     BitCrushOutput,
     BitCrushOn,
 
+    LegacyCompressorThreshold,
     CompressorThreshold,
+    LegacyCompressorRatio,
     CompressorRatio,
     CompressorGain,
     CompressorAutoGain,
@@ -230,6 +232,7 @@ enum class ParamDisplayFormat : u8 {
     VolumeDbRange,
     Cents,
     Semitones,
+    Ratio,
 };
 
 enum class ParamValueType : u8 {
@@ -1711,20 +1714,53 @@ consteval auto CreateParams() {
     };
 
     // =====================================================================================================
-    mp(CompressorThreshold) = Args {
+    mp(LegacyCompressorThreshold) = Args {
         .id = id(IdRegion::Master, 11), // never change
         .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Legacy Threshold"_s,
+        .gui_label = "Threshold"_s,
+        .tooltip = "Legacy threshold parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(CompressorThreshold) = Args {
+        .id = id(IdRegion::Master, 118), // never change
+        .value_config =
+            ParamDescriptor::ConstructorArgs::ValueConfig {
+                .linear_range = {-60, 0},
+                .projection = k_nullopt,
+                .default_linear_value = 0,
+                .display_format = ParamDisplayFormat::VolumeDbRange,
+            },
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Threshold"_s,
         .gui_label = "Threshold"_s,
         .tooltip =
             "The threshold that the audio has to pass above before the compression should start taking place"_s,
     };
-    mp(CompressorRatio) = Args {
+    mp(LegacyCompressorRatio) = Args {
         .id = id(IdRegion::Master, 12), // never change
         .value_config = val_config_helpers::CustomLinear({
             .range = {1, 20},
             .default_val = 2,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Legacy Ratio"_s,
+        .gui_label = "Ratio"_s,
+        .tooltip = "Legacy ratio parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(CompressorRatio) = Args {
+        .id = id(IdRegion::Master, 119), // never change
+        .value_config = ({
+            ParamDescriptor::Projection const projection {{1.0f, 20.0f}, 2.66f};
+            ParamDescriptor::Range const linear_range = {0, 1};
+            ParamDescriptor::ConstructorArgs::ValueConfig {
+                .linear_range = linear_range,
+                .projection = projection,
+                .default_linear_value = projection.LineariseValue(linear_range, 2.0f),
+                .display_format = ParamDisplayFormat::Ratio,
+            };
         }),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Ratio"_s,
