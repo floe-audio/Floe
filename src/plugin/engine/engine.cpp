@@ -536,6 +536,27 @@ void ApplySection(Engine& engine,
                 source.velocity_curve_points[src]);
             break;
         }
+        case SelectorKind::Envelope: {
+            auto const src_sel = source_selector.Get<EnvelopeSelector>();
+            auto const dst_sel = target_selector.Get<EnvelopeSelector>();
+            ASSERT(src_sel.layer_index < k_num_layers && dst_sel.layer_index < k_num_layers);
+            if (src_sel.kind != dst_sel.kind) break;
+
+            auto const params = src_sel.kind == EnvelopeKind::Volume ? Array {LayerParamIndex::VolumeAttack,
+                                                                              LayerParamIndex::VolumeDecay,
+                                                                              LayerParamIndex::VolumeSustain,
+                                                                              LayerParamIndex::VolumeRelease}
+                                                                     : Array {LayerParamIndex::FilterAttack,
+                                                                              LayerParamIndex::FilterDecay,
+                                                                              LayerParamIndex::FilterSustain,
+                                                                              LayerParamIndex::FilterRelease};
+            for (auto const layer_param : params) {
+                auto const src_param = ParamIndexFromLayerParamIndex(src_sel.layer_index, layer_param);
+                auto const dst_param = ParamIndexFromLayerParamIndex(dst_sel.layer_index, layer_param);
+                SetParameterValue(engine.processor, dst_param, source.param_values[ToInt(src_param)], {});
+            }
+            break;
+        }
     }
 
     NotifyListener(engine);

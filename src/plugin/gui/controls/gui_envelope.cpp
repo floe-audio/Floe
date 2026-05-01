@@ -6,7 +6,9 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
@@ -181,6 +183,100 @@ void DoEnvelopeGui(GuiState& g,
             ids[i] = ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[i]);
         ids;
     });
+
+    // Background right-click menu. Registered before the grabber regions so they take precedence
+    // where they overlap.
+    {
+        auto const bg_id = imgui.MakeId("envelope-bg");
+        auto const popup_id = imgui.MakeId("envelope-bg-popup");
+        auto const window_r = imgui.ViewportRectToWindowRect(viewport_r);
+
+        if (imgui.ButtonBehaviour(window_r,
+                                  bg_id,
+                                  {
+                                      .mouse_button = MouseButton::Right,
+                                      .event = MouseButtonEvent::Up,
+                                  })) {
+            imgui.OpenPopupMenu(popup_id, bg_id);
+        }
+
+        if (imgui.IsPopupMenuOpen(popup_id)) {
+            EnvelopeSelector const env_target {
+                .layer_index = layer.index,
+                .kind = type == GuiEnvelopeType::Volume ? EnvelopeKind::Volume : EnvelopeKind::Filter};
+            String const env_label =
+                type == GuiEnvelopeType::Volume ? "Volume Envelope"_s : "Filter Envelope"_s;
+
+            DoBoxViewport(
+                g.builder,
+                {
+                    .run =
+                        [&](GuiBuilder&) {
+                            auto const root = DoBox(g.builder,
+                                                    {
+                                                        .layout {
+                                                            .size = layout::k_hug_contents,
+                                                            .contents_direction = layout::Direction::Column,
+                                                            .contents_align = layout::Alignment::Start,
+                                                        },
+                                                    });
+
+                            StateSnapshotSelector const target_selector {env_target};
+
+                            if (MenuItem(g.builder,
+                                         root,
+                                         {
+                                             .text = fmt::Format(g.scratch_arena, "Reset {}"_s, env_label),
+                                             .no_icon_gap = true,
+                                         })
+                                    .button_fired) {
+                                ApplySection(g.engine,
+                                             DefaultStateSnapshot(),
+                                             target_selector,
+                                             target_selector);
+                            }
+
+                            if (MenuItem(g.builder,
+                                         root,
+                                         {
+                                             .text = fmt::Format(g.scratch_arena, "Copy {}"_s, env_label),
+                                             .no_icon_gap = true,
+                                         })
+                                    .button_fired) {
+                                g.snapshot_clipboard = GuiState::CopiedSection {
+                                    .snapshot = CurrentStateSnapshot(g.engine),
+                                    .selector = target_selector,
+                                };
+                            }
+
+                            auto const can_paste =
+                                g.snapshot_clipboard.HasValue() &&
+                                g.snapshot_clipboard->selector.tag == SelectorKind::Envelope &&
+                                g.snapshot_clipboard->selector.Get<EnvelopeSelector>().kind ==
+                                    env_target.kind;
+
+                            if (MenuItem(g.builder,
+                                         root,
+                                         {
+                                             .text = fmt::Format(g.scratch_arena, "Paste {}"_s, env_label),
+                                             .mode = can_paste ? MenuItemOptions::Mode::Active
+                                                               : MenuItemOptions::Mode::Disabled,
+                                             .no_icon_gap = true,
+                                         })
+                                    .button_fired &&
+                                can_paste) {
+                                ApplySection(g.engine,
+                                             g.snapshot_clipboard->snapshot,
+                                             g.snapshot_clipboard->selector,
+                                             target_selector);
+                            }
+                        },
+                    .bounds = window_r,
+                    .imgui_id = popup_id,
+                    .viewport_config = k_default_popup_menu_viewport,
+                });
+        }
+    }
 
     auto const attack_imgui_id = imgui.MakeId("attack");
     auto const dec_sus_imgui_id = imgui.MakeId("dec-sus");

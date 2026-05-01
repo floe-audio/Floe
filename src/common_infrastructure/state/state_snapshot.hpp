@@ -127,12 +127,21 @@ struct VelocityCurveSelector {
     u8 layer_index;
 };
 
+enum class EnvelopeKind : u8 { Volume, Filter };
+
+struct EnvelopeSelector {
+    bool operator==(EnvelopeSelector const&) const = default;
+    u8 layer_index;
+    EnvelopeKind kind;
+};
+
 enum class SelectorKind : u8 {
     Modules,
     Macro,
     Instrument,
     Param,
     VelocityCurve,
+    Envelope,
 };
 
 using StateSnapshotSelector = TaggedUnion<SelectorKind,
@@ -140,6 +149,7 @@ using StateSnapshotSelector = TaggedUnion<SelectorKind,
                                           TypeAndTag<MacroSelector, SelectorKind::Macro>,
                                           TypeAndTag<InstrumentSelector, SelectorKind::Instrument>,
                                           TypeAndTag<ParamSelector, SelectorKind::Param>,
-                                          TypeAndTag<VelocityCurveSelector, SelectorKind::VelocityCurve>>;
+                                          TypeAndTag<VelocityCurveSelector, SelectorKind::VelocityCurve>,
+                                          TypeAndTag<EnvelopeSelector, SelectorKind::Envelope>>;
 
 StateSnapshot const& DefaultStateSnapshot();
