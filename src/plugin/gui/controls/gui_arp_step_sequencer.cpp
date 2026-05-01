@@ -724,7 +724,7 @@ void DoArpStepSequencer(GuiState& g,
                         auto const this_gate = snapshot.StepAt(i).gate;
                         for (u32 j = 0; j < active_steps; ++j) {
                             if (j == i) continue;
-                            ModifyStep(arp_state, j, [g_ = this_gate](ArpStep& s) { s.gate = g_; });
+                            ModifyStep(arp_state, j, [g = this_gate](ArpStep& s) { s.gate = g; });
                         }
                         RecordUndoableStep(g.engine, "Apply arp step gate to all"_s);
                     },

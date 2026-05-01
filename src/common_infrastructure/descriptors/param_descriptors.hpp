@@ -2266,9 +2266,8 @@ consteval auto CreateParams() {
     };
     mp(EqType1) = Args {
         .id = id(IdRegion::Master, 122), // never change
-        .value_config =
-            val_config_helpers::Menu({.type = ParamDescriptor::MenuType::EqType,
-                                      .default_val = (u32)EqType::LowShelf}),
+        .value_config = val_config_helpers::Menu(
+            {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::LowShelf}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
         .name = "Type"_s,
         .gui_label = "Type"_s,
@@ -2300,9 +2299,8 @@ consteval auto CreateParams() {
     };
     mp(EqType2) = Args {
         .id = id(IdRegion::Master, 126), // never change
-        .value_config =
-            val_config_helpers::Menu({.type = ParamDescriptor::MenuType::EqType,
-                                      .default_val = (u32)EqType::Peak}),
+        .value_config = val_config_helpers::Menu(
+            {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::Peak}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
         .name = "Type"_s,
         .gui_label = "Type"_s,
@@ -2334,9 +2332,8 @@ consteval auto CreateParams() {
     };
     mp(EqType3) = Args {
         .id = id(IdRegion::Master, 130), // never change
-        .value_config =
-            val_config_helpers::Menu({.type = ParamDescriptor::MenuType::EqType,
-                                      .default_val = (u32)EqType::HighShelf}),
+        .value_config = val_config_helpers::Menu(
+            {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::HighShelf}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
         .name = "Type"_s,
         .gui_label = "Type"_s,

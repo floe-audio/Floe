@@ -113,12 +113,12 @@ TEST_CASE(TestLFO) {
             lfo.SetRate(k_sample_rate, 5.0f);
 
             u32 audible_high_count = 0;
-            constexpr u32 total = 44100; // 5 full cycles
-            for (auto const _ : Range(total)) {
+            constexpr u32 k_total = 44100; // 5 full cycles
+            for (auto const _ : Range(k_total)) {
                 auto const audible = -lfo.Tick();
                 if (audible > 0.0f) ++audible_high_count;
             }
-            auto const measured = (f32)audible_high_count / (f32)total;
+            auto const measured = (f32)audible_high_count / (f32)k_total;
             REQUIRE(Fabs(measured - c.expected_audible_high_fraction) < 0.02f);
         }
     }

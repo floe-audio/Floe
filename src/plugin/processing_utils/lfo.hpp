@@ -147,15 +147,15 @@ struct LFO {
             }
             case Waveform::Trapezoid: {
                 // Square with linear sloped edges (16-sample ramps inside a 256-sample cycle).
-                constexpr u32 ramp = 16;
-                for (u32 i = 0; i < 128 - ramp; i++)
+                constexpr u32 k_ramp = 16;
+                for (u32 i = 0; i < 128 - k_ramp; i++)
                     table[i] = 1.0f;
-                for (u32 i = 0; i < ramp; i++)
-                    table[(128 - ramp) + i] = 1.0f - (2.0f * (f32)i / (f32)ramp);
-                for (u32 i = 128; i < 256 - ramp; i++)
+                for (u32 i = 0; i < k_ramp; i++)
+                    table[(128 - k_ramp) + i] = 1.0f - (2.0f * (f32)i / (f32)k_ramp);
+                for (u32 i = 128; i < 256 - k_ramp; i++)
                     table[i] = -1.0f;
-                for (u32 i = 0; i < ramp; i++)
-                    table[(256 - ramp) + i] = -1.0f + (2.0f * (f32)i / (f32)ramp);
+                for (u32 i = 0; i < k_ramp; i++)
+                    table[(256 - k_ramp) + i] = -1.0f + (2.0f * (f32)i / (f32)k_ramp);
                 table[256] = 1.0f;
                 break;
             }

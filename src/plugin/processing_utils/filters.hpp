@@ -497,14 +497,14 @@ inline f32 SkewResonance(f32 percent) { return percent * 0.95f; }
 // prototype |H(jω)|² evaluated at the bilinear-prewarped normalised frequency
 // ω = tan(π·eval_hz/fs) / tan(π·fc/fs). BandShelving uses the same fixed shelf gain as the DSP.
 inline f32 MagnitudeDb(Type type, f32 fc, f32 fs, f32 res, f32 eval_hz) {
-    auto const Q = ResonanceToQ(res);
-    auto const R = 1.0f / (2.0f * Q);
+    auto const q = ResonanceToQ(res);
+    auto const r = 1.0f / (2.0f * q);
     auto const g_fc = Tan(k_pi<f32> * fc / fs);
     auto const g_eval = Tan(k_pi<f32> * eval_hz / fs);
     auto const w = g_eval / g_fc;
     auto const w2 = w * w;
     auto const one_minus_w2 = 1.0f - w2;
-    auto const two_r_w = 2.0f * R * w;
+    auto const two_r_w = 2.0f * r * w;
     auto const den = (one_minus_w2 * one_minus_w2) + (two_r_w * two_r_w);
     f32 num = 0;
     switch (type) {
@@ -520,7 +520,7 @@ inline f32 MagnitudeDb(Type type, f32 fc, f32 fs, f32 res, f32 eval_hz) {
             break;
         }
         case Type::BandShelving: {
-            auto const six_r_w = 6.0f * R * w;
+            auto const six_r_w = 6.0f * r * w;
             num = (one_minus_w2 * one_minus_w2) + (six_r_w * six_r_w);
             break;
         }

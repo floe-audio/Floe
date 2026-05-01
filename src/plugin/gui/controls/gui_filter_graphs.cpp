@@ -997,10 +997,8 @@ static constexpr Array<EqBandParams, k_num_eq_bands> k_effect_eq_band_params = {
     {ParamIndex::EqType3, ParamIndex::EqFreq3, ParamIndex::EqResonance3, ParamIndex::EqGain3},
 }};
 
-static void DoEqBandRightClickMenu(GuiState& g,
-                                   Rect window_r,
-                                   imgui::Id interaction_id,
-                                   EqBandParams const& bp) {
+static void
+DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqBandParams const& bp) {
     auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)ToInt(bp.type) << 8));
 
     if (g.imgui.ButtonBehaviour(window_r,
@@ -1071,10 +1069,8 @@ static void DoEqBandRightClickMenu(GuiState& g,
         });
 }
 
-static void DoEqGraphImpl(GuiState& g,
-                          Span<EqBandParams const> band_params,
-                          Rect viewport_r,
-                          bool greyed_out) {
+static void
+DoEqGraphImpl(GuiState& g, Span<EqBandParams const> band_params, Rect viewport_r, bool greyed_out) {
     auto& imgui = g.imgui;
     auto& engine = g.engine;
     auto& params = engine.processor.main_params;

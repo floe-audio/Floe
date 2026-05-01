@@ -994,7 +994,8 @@ static void DoEffectParams(GuiState& g,
                                            },
                                        });
 
-            auto const vis = DoBox(g.builder, {.parent = eq_root, .layout {.size = {k_eq_vis_w, k_eq_vis_h}}});
+            auto const vis =
+                DoBox(g.builder, {.parent = eq_root, .layout {.size = {k_eq_vis_w, k_eq_vis_h}}});
             if (auto const r = BoxRect(g.builder, vis)) DoEffectEqGraph(g, *r, greyed_out);
 
             auto const bands_container = DoBox(g.builder,
@@ -1016,7 +1017,7 @@ static void DoEffectParams(GuiState& g,
 
             for (auto const band_idx : Range(k_num_eq_bands)) {
                 auto const& bp = k_band_params[band_idx];
-                u8 const band_number = (u8)(band_idx + 1);
+                auto const band_number = (u8)(band_idx + 1);
 
                 auto const row = DoBox(g.builder,
                                        {
@@ -1031,24 +1032,24 @@ static void DoEffectParams(GuiState& g,
                                            },
                                        });
 
-                auto const label_and_menu = DoBox(g.builder,
-                                                  {
-                                                      .parent = row,
-                                                      .layout {
-                                                          .size = layout::k_hug_contents,
-                                                          .contents_gap = 5,
-                                                          .contents_direction = layout::Direction::Row,
-                                                          .contents_cross_axis_align =
-                                                              layout::CrossAxisAlign::Middle,
-                                                      },
-                                                  });
+                auto const label_and_menu =
+                    DoBox(g.builder,
+                          {
+                              .parent = row,
+                              .layout {
+                                  .size = layout::k_hug_contents,
+                                  .contents_gap = 5,
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                          });
 
                 DoBox(g.builder,
                       {
                           .parent = label_and_menu,
                           .text = fmt::Format(g.scratch_arena, "{}", band_number),
-                          .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed
-                                                                   : UiColMap::MidText),
+                          .text_colours =
+                              LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
                           .text_justification = TextJustification::CentredLeft,
                           .layout {
                               .size = {8, k_font_body_size},

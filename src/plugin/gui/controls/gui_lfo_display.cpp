@@ -63,11 +63,11 @@ static f32 LfoShapeValue(param_values::LfoShape shape, f32 phase) {
         case param_values::LfoShape::PulseNarrow: return cycle_phase < 0.25f ? -1.0f : 1.0f;
         case param_values::LfoShape::PulseWide: return cycle_phase < 0.75f ? -1.0f : 1.0f;
         case param_values::LfoShape::Trapezoid: {
-            constexpr f32 ramp = 16.0f / 256.0f;
-            if (cycle_phase < 0.5f - ramp) return 1.0f;
-            if (cycle_phase < 0.5f) return 1.0f - (2.0f * (cycle_phase - (0.5f - ramp)) / ramp);
-            if (cycle_phase < 1.0f - ramp) return -1.0f;
-            return -1.0f + (2.0f * (cycle_phase - (1.0f - ramp)) / ramp);
+            constexpr f32 k_ramp = 16.0f / 256.0f;
+            if (cycle_phase < 0.5f - k_ramp) return 1.0f;
+            if (cycle_phase < 0.5f) return 1.0f - (2.0f * (cycle_phase - (0.5f - k_ramp)) / k_ramp);
+            if (cycle_phase < 1.0f - k_ramp) return -1.0f;
+            return -1.0f + (2.0f * (cycle_phase - (1.0f - k_ramp)) / k_ramp);
         }
         case param_values::LfoShape::Count: break;
     }
