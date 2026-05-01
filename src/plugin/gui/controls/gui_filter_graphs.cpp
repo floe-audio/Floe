@@ -961,8 +961,6 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
 // =============================================================================
 // Per-layer EQ graph: 3 bands, one draggable handle per band, summed response.
 
-constexpr u8 k_num_eq_bands = 3;
-
 struct EqBandParams {
     LayerParamIndex type;
     LayerParamIndex freq;

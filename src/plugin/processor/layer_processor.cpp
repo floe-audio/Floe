@@ -765,20 +765,38 @@ void ProcessLayerChanges(LayerProcessor& layer,
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::EqOn))
         layer.eq_bands.SetOn(*p);
 
-    constexpr Array<LayerParamIndex, k_num_layer_eq_bands> k_eq_type_param_indices {
-        LayerParamIndex::EqType1,
-        LayerParamIndex::EqType2,
-        LayerParamIndex::EqType3,
+    struct EqBandParams {
+        LayerParamIndex freq;
+        LayerParamIndex reso;
+        LayerParamIndex gain;
+        LayerParamIndex type;
     };
-    for (auto const eq_band_index : Range(k_num_layer_eq_bands)) {
-        auto const new_type = changes.changed_params.IntValueLegacyAware<param_values::EqType>(
-            layer.index,
-            k_eq_type_param_indices[eq_band_index]);
-        layer.eq_bands.OnParamChange(eq_band_index,
-                                     changes.changed_params,
-                                     layer.index,
-                                     sample_rate,
-                                     new_type);
+    constexpr Array<EqBandParams, k_num_eq_bands> k_eq_band_params {{
+        {LayerParamIndex::EqFreq1,
+         LayerParamIndex::EqResonance1,
+         LayerParamIndex::EqGain1,
+         LayerParamIndex::EqType1},
+        {LayerParamIndex::EqFreq2,
+         LayerParamIndex::EqResonance2,
+         LayerParamIndex::EqGain2,
+         LayerParamIndex::EqType2},
+        {LayerParamIndex::EqFreq3,
+         LayerParamIndex::EqResonance3,
+         LayerParamIndex::EqGain3,
+         LayerParamIndex::EqType3},
+    }};
+    for (auto const eq_band_index : Range(k_num_eq_bands)) {
+        auto const& params = k_eq_band_params[eq_band_index];
+        layer.eq_bands.OnParamChange(
+            eq_band_index,
+            {
+                .freq_hz = changes.changed_params.ProjectedValueLegacyAware(layer.index, params.freq),
+                .resonance_linear = changes.changed_params.LinearValueLegacyAware(layer.index, params.reso),
+                .gain_db = changes.changed_params.ProjectedValue(layer.index, params.gain),
+                .new_type = changes.changed_params.IntValueLegacyAware<param_values::EqType>(layer.index,
+                                                                                             params.type),
+            },
+            sample_rate);
     }
 
     // Arpeggiator
