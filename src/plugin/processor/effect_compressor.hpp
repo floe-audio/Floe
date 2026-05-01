@@ -57,7 +57,7 @@ class Compressor final : public Effect {
         if (!ShouldProcessBlock()) return EffectProcessResult::Done;
 
         switch (m_type) {
-            case param_values::CompressorType::MajorTom:
+            case param_values::CompressorType::Vintage:
                 return ProcessBlockByFrame(
                     io_frames,
                     [&](f32x2 in) {
@@ -67,7 +67,7 @@ class Compressor final : public Effect {
                     },
                     context);
 
-            case param_values::CompressorType::Vital: {
+            case param_values::CompressorType::Modern: {
                 f32x2 wet[k_block_size_max];
                 CopyMemory(wet, io_frames.data, io_frames.size * sizeof(f32x2));
 
@@ -115,7 +115,7 @@ class Compressor final : public Effect {
         vitfx::compressor::SetSampleRate(*m_vital, (int)context.sample_rate);
     }
 
-    param_values::CompressorType m_type {param_values::CompressorType::Vital};
+    param_values::CompressorType m_type {param_values::CompressorType::Modern};
     StillwellMajorTom m_major_tom;
     vitfx::compressor::Compressor* m_vital {};
     vitfx::compressor::ProcessCompressorArgs m_vital_args {};

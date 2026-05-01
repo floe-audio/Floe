@@ -681,13 +681,13 @@ constexpr auto k_distortion_type_strings = ArrayT<String>({
 static_assert(k_distortion_type_strings.size == ToInt(DistortionType::Count));
 
 enum class CompressorType : u8 { // never reorder
-    MajorTom,
-    Vital,
+    Vintage,
+    Modern,
     Count,
 };
 constexpr auto k_compressor_type_strings = ArrayT<String>({
-    "Major Tom",
-    "Vital",
+    "Vintage",
+    "Modern",
 });
 static_assert(k_compressor_type_strings.size == ToInt(CompressorType::Count));
 
@@ -1796,7 +1796,7 @@ consteval auto CreateParams() {
         .id = id(IdRegion::Master, 33), // never change
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::CompressorType,
-            .default_val = (u32)CompressorType::Vital,
+            .default_val = (u32)CompressorType::Modern,
         }),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Type"_s,

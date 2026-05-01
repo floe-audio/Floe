@@ -554,7 +554,7 @@ static void DoEffectParams(GuiState& g,
                 params.DescribedValue(ParamIndex::CompressorRatio),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
 
-            if (type == param_values::CompressorType::Vital) {
+            if (type == param_values::CompressorType::Modern) {
                 DoKnobParameter(
                     g,
                     param_container,
@@ -577,7 +577,7 @@ static void DoEffectParams(GuiState& g,
                                 .bidirectional = true,
                             });
 
-            if (type == param_values::CompressorType::MajorTom) {
+            if (type == param_values::CompressorType::Vintage) {
                 DoButtonParameter(g,
                                   param_container,
                                   params.DescribedValue(ParamIndex::CompressorAutoGain),

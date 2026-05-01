@@ -749,8 +749,12 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         state.LinearParam(ParamIndex::StereoWidenMode) = (f32)ToInt(param_values::StereoWidenMode::Legacy);
 
     if (version < StateVersion::AddedVitalCompressor) {
-        // Old presets used the Stillwell Major Tom compressor exclusively; preserve their sound.
-        state.param_values[ToInt(ParamIndex::CompressorType)] = (f32)param_values::CompressorType::MajorTom;
+        // Old presets used the Vintage (Stillwell Major Tom) compressor exclusively; preserve their sound.
+        // Seed Attack and Release (Modern-only params that did not exist yet) to their defaults so
+        // switching modes later gives a sensible starting point rather than zero.
+        state.param_values[ToInt(ParamIndex::CompressorType)] = (f32)param_values::CompressorType::Vintage;
+        for (auto const pi : Array {ParamIndex::CompressorAttack, ParamIndex::CompressorRelease})
+            state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
     }
 
     if (version < StateVersion::AddedEffectMixOutput) {
