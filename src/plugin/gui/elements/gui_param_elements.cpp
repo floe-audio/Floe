@@ -59,6 +59,42 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                               {});
         }
 
+        {
+            StateSnapshotSelector const param_target_selector {ParamSelector {param_index}};
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Copy Value"_s,
+                             .tooltip = "Copy this parameter's value"_s,
+                         })
+                    .button_fired) {
+                g.snapshot_clipboard = GuiState::CopiedSection {
+                    .snapshot = CurrentStateSnapshot(g.engine),
+                    .selector = param_target_selector,
+                };
+            }
+
+            auto const can_paste_param =
+                g.snapshot_clipboard.HasValue() && g.snapshot_clipboard->selector.tag == SelectorKind::Param;
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Paste Value"_s,
+                             .tooltip = "Overwrite this parameter with the previously copied value"_s,
+                             .mode = can_paste_param ? MenuItemOptions::Mode::Active
+                                                     : MenuItemOptions::Mode::Disabled,
+                         })
+                    .button_fired &&
+                can_paste_param) {
+                ApplySection(g.engine,
+                             g.snapshot_clipboard->snapshot,
+                             g.snapshot_clipboard->selector,
+                             param_target_selector);
+            }
+        }
+
         if (k_param_descriptors[ToInt(param_index)].value_type == ParamValueType::Float) {
             if (MenuItem(g.builder,
                          root,
