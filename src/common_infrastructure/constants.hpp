@@ -12,6 +12,7 @@ constexpr u8 k_max_tag_size = 30;
 constexpr u8 k_max_num_tags = 30;
 constexpr u8 k_max_preset_author_size = 64;
 constexpr u8 k_max_preset_description_size = 255;
+constexpr u8 k_max_preset_name_size = 64;
 constexpr u8 k_max_instance_id_size = 16;
 constexpr usize k_max_extra_scan_folders {16};
 constexpr u8 k_arp_max_steps = 64;

@@ -38,13 +38,13 @@ struct PresetCursor {
     usize preset_index;
 };
 
-static Optional<PresetCursor> CurrentCursor(PresetBrowserContext const& context, Optional<String> path) {
-    if (!path) return k_nullopt;
+static Optional<PresetCursor> CurrentCursor(PresetBrowserContext const& context, u64 snapshot_hash) {
+    if (!snapshot_hash) return k_nullopt;
 
     for (auto const [folder_index, folder] : Enumerate(context.presets_snapshot.folders)) {
         ASSERT(folder->folder);
-        auto const preset_index = folder->folder->MatchFullPresetPath(*path);
-        if (preset_index) return PresetCursor {folder_index, *preset_index};
+        for (auto const [preset_index, preset] : Enumerate(folder->folder->presets))
+            if (preset.snapshot_hash == snapshot_hash) return PresetCursor {folder_index, preset_index};
     }
 
     return k_nullopt;
@@ -173,19 +173,20 @@ LoadPreset(PresetBrowserContext const& context, PresetBrowserState& state, Prese
     if (scroll) state.scroll_to_show_selected = true;
 }
 
-static Optional<String> CurrentPath(Engine const& engine) {
-    if (engine.pending_state_change) return engine.pending_state_change->snapshot.name.Path();
-    return engine.last_snapshot.name_or_path.Path();
+static u64 CurrentLoadedPresetSnapshotHash(PresetBrowserContext const& context) {
+    auto const& engine = context.engine;
+    if (engine.pending_state_change) return engine.pending_state_change->snapshot.extras.last_preset_hash;
+    return engine.last_snapshot.state.extras.last_preset_hash;
 }
 
 void LoadAdjacentPreset(PresetBrowserContext const& context,
                         PresetBrowserState& state,
                         SearchDirection direction) {
     ASSERT(context.init);
-    auto const current_path = CurrentPath(context.engine);
+    auto const current_hash = CurrentLoadedPresetSnapshotHash(context);
 
-    if (current_path) {
-        if (auto const current = CurrentCursor(context, *current_path)) {
+    if (current_hash) {
+        if (auto const current = CurrentCursor(context, current_hash)) {
             if (auto const next = IteratePreset(context, state, *current, direction, false))
                 LoadPreset(context, state, *next, true);
         }
@@ -390,6 +391,8 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
         IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
 
+    auto const current_loaded_snapshot_hash = CurrentLoadedPresetSnapshotHash(context);
+
     Optional<u64> previous_folder_hash = {};
 
     Optional<BrowserSection> folder_section;
@@ -415,12 +418,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
         }
 
         if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
-            auto const is_current = ({
-                bool c {};
-                if (auto const current_path = CurrentPath(context.engine))
-                    c = cursor.preset_index == preset_folder->folder->MatchFullPresetPath(*current_path);
-                c;
-            });
+            auto const is_current = preset.snapshot_hash == current_loaded_snapshot_hash;
 
             auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
 

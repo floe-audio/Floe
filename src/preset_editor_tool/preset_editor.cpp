@@ -196,8 +196,8 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
     if (lua_isstring(lua, -1)) {
         size_t len;
         auto str = lua_tolstring(lua, -1, &len);
-        auto copy_len = Min(len, preset_state.instance_id.Capacity());
-        dyn::Assign(preset_state.instance_id, {str, copy_len});
+        auto copy_len = Min(len, preset_state.extras.instance_id.Capacity());
+        dyn::Assign(preset_state.extras.instance_id, {str, copy_len});
     }
     lua_pop(lua, 1);
 
@@ -441,7 +441,7 @@ static void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_stat
     lua_setfield(lua, -2, "metadata");
 
     // instance_id
-    lua_pushlstring(lua, preset_state.instance_id.data, preset_state.instance_id.size);
+    lua_pushlstring(lua, preset_state.extras.instance_id.data, preset_state.extras.instance_id.size);
     lua_setfield(lua, -2, "instance_id");
 
     // ir_id
@@ -546,7 +546,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         return error;
     });
 
-    auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena, false), {
+    auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena), {
         StdPrintF(StdStream::Err, "Error: failed to open preset file: {}\n", error);
         return error;
     });

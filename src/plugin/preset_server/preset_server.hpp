@@ -21,12 +21,12 @@ struct PresetFolder {
         u64 author_hash {}; // cached Hash(metadata.author)
         OrderedSet<sample_lib::LibraryId, NoHash, sample_lib::LibraryIdLessThanSet> used_libraries {};
         u64 file_hash {};
+        u64 snapshot_hash {}; // StateExtras::last_snapshot_hash
         u64 full_path_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
         PresetFormat file_format {};
     };
 
-    Optional<usize> MatchFullPresetPath(String path) const;
     String FullPathForPreset(Preset const& preset, Allocator& a) const;
 
     ArenaAllocator arena {Malloc::Instance(), 0, 512};

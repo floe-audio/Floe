@@ -47,14 +47,14 @@ static void RefreshPresetDescriptionCache(Engine& engine) {
     auto& cache = engine.preset_description_cache;
 
     String folder_name {};
-    if (auto const preset_path = engine.last_snapshot.name_or_path.Path())
-        if (auto const dir = path::Directory(*preset_path))
+    if (auto const& preset_path = engine.last_snapshot.preset_path; preset_path.size)
+        if (auto const dir = path::Directory(preset_path))
             folder_name = StripNumberedPrefix(path::Filename(*dir));
 
     cache.auto_desc = GenerateAutoDescription(engine.last_snapshot.state,
                                               layer_info,
                                               folder_name,
-                                              Hash(engine.last_snapshot.name_or_path.Name()));
+                                              Hash(engine.last_snapshot.state.extras.display_name));
 
     String const real_desc = engine.last_snapshot.state.metadata.description;
     auto const real_split = SplitPresetDescription(real_desc);
@@ -128,8 +128,9 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
     UpdateAttributionText(engine.attribution_requirements, scratch_arena, insts, ir);
 }
 
-static void SetLastSnapshot(Engine& engine, StateSnapshotWithName const& state) {
-    engine.last_snapshot.Set(state);
+static void SetLastSnapshot(Engine& engine, StateSnapshot const& state, String preset_path) {
+    engine.last_snapshot.state = state;
+    dyn::Assign(engine.last_snapshot.preset_path, preset_path);
     RefreshPresetDescriptionCache(engine);
     NotifyListener(engine);
     engine.host.request_callback(&engine.host);
@@ -137,26 +138,26 @@ static void SetLastSnapshot(Engine& engine, StateSnapshotWithName const& state) 
     engine.pending_state_change.Clear();
 }
 
-static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, StateSource source) {
+static void LoadNewState(Engine& engine, StateSnapshot const& state, String preset_path, StateSource source) {
     ZoneScoped;
     ASSERT(g_is_logical_main_thread);
 
-    if (source == StateSource::Daw) SetInstanceId(engine.autosave_state, state.state.instance_id);
+    if (source == StateSource::Daw) SetInstanceId(engine.autosave_state, state.extras.instance_id);
 
     auto const async = ({
         bool a = false;
-        for (auto const& i : state.state.inst_ids) {
+        for (auto const& i : state.inst_ids) {
             if (i.tag == InstrumentType::Sampler) {
                 a = true;
                 break;
             }
         }
-        if (state.state.ir_id) a = true;
+        if (state.ir_id) a = true;
         a;
     });
 
     if (!async) {
-        for (auto [layer_index, i] : Enumerate<u32>(state.state.inst_ids)) {
+        for (auto [layer_index, i] : Enumerate<u32>(state.inst_ids)) {
             engine.processor.layer_processors[layer_index].instrument_id = i;
             switch (i.tag) {
                 case InstrumentType::None:
@@ -171,26 +172,26 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
             }
         }
 
-        ASSERT(!state.state.ir_id.HasValue());
+        ASSERT(!state.ir_id.HasValue());
         engine.processor.convo.ir_id = k_nullopt;
         SetConvolutionIrAudioData(engine.processor, nullptr, {});
 
-        engine.state_metadata = state.state.metadata;
-        engine.macro_names = state.state.macro_names;
-        engine.fx_visible = state.state.fx_visible;
-        ApplyNewState(engine.processor, state.state, source);
-        SetLastSnapshot(engine, state);
+        engine.state_metadata = state.metadata;
+        engine.macro_names = state.macro_names;
+        engine.fx_visible = state.fx_visible;
+        ApplyNewState(engine.processor, state, source);
+        SetLastSnapshot(engine, state, preset_path);
 
         MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
         engine.host.request_callback(&engine.host);
     } else {
         engine.pending_state_change.Emplace();
         auto& pending = *engine.pending_state_change;
-        pending.snapshot.state = state.state;
-        pending.snapshot.name = state.name.Clone(pending.arena);
+        pending.snapshot = state;
+        dyn::Assign(pending.preset_path, preset_path);
         pending.source = source;
 
-        for (auto [layer_index, i] : Enumerate<u32>(state.state.inst_ids)) {
+        for (auto [layer_index, i] : Enumerate<u32>(state.inst_ids)) {
             engine.processor.layer_processors[layer_index].instrument_id = i;
 
             if (i.tag != InstrumentType::Sampler) continue;
@@ -206,12 +207,12 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
             ASSERT(appended1);
         }
 
-        engine.processor.convo.ir_id = state.state.ir_id;
-        if (state.state.ir_id) {
+        engine.processor.convo.ir_id = state.ir_id;
+        if (state.ir_id) {
             auto const async_id =
                 sample_lib_server::SendAsyncLoadRequest(engine.shared_engine_systems.sample_library_server,
                                                         engine.sample_lib_server_async_channel,
-                                                        *state.state.ir_id);
+                                                        *state.ir_id);
             auto const appended2 = dyn::Append(pending.requests, async_id);
             ASSERT(appended2);
         }
@@ -220,7 +221,7 @@ static void LoadNewState(Engine& engine, StateSnapshotWithName const& state, Sta
 
 static Instrument InstrumentFromPendingState(Engine::PendingStateChange const& pending_state_change,
                                              u32 layer_index) {
-    auto const inst_id = pending_state_change.snapshot.state.inst_ids[layer_index];
+    auto const inst_id = pending_state_change.snapshot.inst_ids[layer_index];
 
     Instrument instrument = InstrumentType::None;
     switch (inst_id.tag) {
@@ -245,7 +246,7 @@ static Instrument InstrumentFromPendingState(Engine::PendingStateChange const& p
 
 static sample_lib_server::ResourcePointer<sample_lib::LoadedIr>
 IrFromPendingState(Engine::PendingStateChange const& pending_state_change) {
-    auto const ir_id = pending_state_change.snapshot.state.ir_id;
+    auto const ir_id = pending_state_change.snapshot.ir_id;
     if (!ir_id) return {};
     for (auto const& r : pending_state_change.retained_results) {
         auto const loaded_ir = r.TryExtract<sample_lib_server::ResourcePointer<sample_lib::LoadedIr>>();
@@ -270,21 +271,23 @@ static void ApplyNewStateFromPending(Engine& engine) {
                                   ir ? ir->audio_data : nullptr,
                                   ir ? ir->ir.audio_props : sample_lib::ImpulseResponse::AudioProperties {});
     }
-    engine.state_metadata = pending_state_change.snapshot.state.metadata;
-    engine.macro_names = pending_state_change.snapshot.state.macro_names;
-    engine.fx_visible = pending_state_change.snapshot.state.fx_visible;
+    engine.state_metadata = pending_state_change.snapshot.metadata;
+    engine.macro_names = pending_state_change.snapshot.macro_names;
+    engine.fx_visible = pending_state_change.snapshot.fx_visible;
 
     // IMPORTANT: we clear the pending state before applying the new state because some hosts, such as Bitwig,
     // will call our param get_value during the call to rescan that we make, and we want our get_value to
     // correctly use the new values.
     ArenaAllocatorWithInlineStorage<1000> temp_arena {Malloc::Instance()};
-    auto const snapshot = pending_state_change.snapshot.state;
-    auto const name = pending_state_change.snapshot.name.Clone(temp_arena);
+    auto const snapshot = pending_state_change.snapshot;
+    auto const preset_path = pending_state_change.preset_path.size
+                                 ? String(temp_arena.Clone(pending_state_change.preset_path))
+                                 : ""_s;
     auto const source = pending_state_change.source;
     engine.pending_state_change.Clear();
 
     ApplyNewState(engine.processor, snapshot, source);
-    SetLastSnapshot(engine, {snapshot, name});
+    SetLastSnapshot(engine, snapshot, preset_path);
 }
 
 static void SampleLibraryChanged(Engine& engine, sample_lib::LibraryId library_id) {
@@ -377,13 +380,27 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
     engine.host.request_callback(&engine.host);
 }
 
+static StateSnapshot const& LastLoadedSnapshot(Engine& engine) {
+    return engine.pending_state_change ? engine.pending_state_change->snapshot : engine.last_snapshot.state;
+}
+
 StateSnapshot CurrentStateSnapshot(Engine& engine) {
-    StateSnapshot snapshot = engine.pending_state_change ? engine.pending_state_change->snapshot.state
+    StateSnapshot snapshot = engine.pending_state_change ? engine.pending_state_change->snapshot
                                                          : MakeStateSnapshot(engine.processor);
     snapshot.metadata = engine.state_metadata;
     snapshot.macro_names = engine.macro_names;
     snapshot.fx_visible = engine.fx_visible;
-    snapshot.instance_id = InstanceId(engine.autosave_state);
+
+    auto const& last = LastLoadedSnapshot(engine);
+    if (last.extras.modified_from_last_preset) {
+        snapshot.extras = last.extras;
+    } else {
+        snapshot.extras = last.extras; // Ignore extras before the != next line.
+        snapshot.extras.modified_from_last_preset = snapshot != last;
+    }
+
+    snapshot.extras.instance_id = InstanceId(engine.autosave_state);
+
     return snapshot;
 }
 
@@ -566,19 +583,11 @@ void ApplySection(Engine& engine,
 }
 
 bool StateChangedSinceLastSnapshot(Engine& engine) {
-    auto current = CurrentStateSnapshot(engine);
-
-    auto const& last = engine.pending_state_change ? engine.pending_state_change->snapshot.state
-                                                   : engine.last_snapshot.state;
-
-    // we don't check the params ccs for changes
-    current.param_learned_ccs = last.param_learned_ccs;
-    // we don't check the instance id for changes
-    current.instance_id = last.instance_id;
-
-    bool const changed = last != current;
+    auto const current = CurrentStateSnapshot(engine);
+    bool const changed = current.extras.modified_from_last_preset;
 
     if constexpr (!PRODUCTION_BUILD) {
+        auto const& last = LastLoadedSnapshot(engine);
         if (changed)
             AssignDiffDescription(engine.state_change_description, last, current);
         else
@@ -651,27 +660,23 @@ void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId inst_id) {
 }
 
 void RevertToLastSnapshot(Engine& engine) {
-    StateSnapshotWithName snapshot {
-        .state = engine.last_snapshot.state,
-        .name = engine.last_snapshot.name_or_path,
-    };
-    LoadNewState(engine, snapshot, StateSource::PresetFile);
+    LoadNewState(engine,
+                 engine.last_snapshot.state,
+                 engine.last_snapshot.preset_path,
+                 StateSource::PresetFile);
     RecordUndoableStep(engine, "Revert"_s);
 }
 
 void LoadPresetFromFile(Engine& engine, String path) {
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator, Kb(16)};
-    auto state_outcome = LoadPresetFile(path, scratch_arena, false);
+    auto state_outcome = LoadPresetFile(path, scratch_arena);
     auto const error_id = HashMultiple(Array {"preset-load"_s, path});
 
     if (state_outcome.HasValue()) {
-        LoadNewState(engine,
-                     {
-                         .state = state_outcome.Value(),
-                         .name = {.name_or_path = path},
-                     },
-                     StateSource::PresetFile);
+        auto& state = state_outcome.Value();
+        state.extras.display_name = path::FilenameWithoutExtension(path);
+        LoadNewState(engine, state, path, StateSource::PresetFile);
         engine.error_notifications.RemoveError(error_id);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path));
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
@@ -683,14 +688,15 @@ void LoadPresetFromFile(Engine& engine, String path) {
 }
 
 void SaveCurrentStateToFile(Engine& engine, String path) {
-    auto current_state = CurrentStateSnapshot(engine);
+    auto const state = CurrentStateSnapshot(engine);
+
     auto const error_id = HashMultiple(Array {"preset-save"_s, path});
     if (auto const outcome = SavePresetFile(
             path,
-            current_state,
+            state,
             prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()));
         outcome.Succeeded()) {
-        SetLastSnapshot(engine, {.state = current_state, .name = {.name_or_path = path}});
+        SetLastSnapshot(engine, state, path);
         engine.error_notifications.RemoveError(error_id);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
         DEFER { engine.error_notifications.EndWriteError(*err); };
@@ -763,7 +769,6 @@ Engine::Engine(clap_host const& host,
                   },
           })} {
 
-    last_snapshot.state = CurrentStateSnapshot(*this);
     RefreshPresetDescriptionCache(*this);
 
     InitAutosaveState(autosave_state, shared_engine_systems.prefs, random_seed, last_snapshot.state);
@@ -771,7 +776,7 @@ Engine::Engine(clap_host const& host,
     {
         UndoableStep seed {};
         seed.snapshot = last_snapshot.state;
-        dyn::AssignFitInCapacity(seed.snapshot_name, last_snapshot.name_or_path.name_or_path);
+        dyn::AssignFitInCapacity(seed.snapshot_name, last_snapshot.state.extras.display_name);
         undo_history.Record(seed);
     }
 
@@ -867,14 +872,14 @@ usize MegabytesUsedBySamples(Engine const& engine) {
 }
 
 void SetToDefaultState(Engine& engine) {
-    auto const default_state = DefaultStateSnapshot();
-    LoadNewState(engine, {.state = default_state, .name = {"Default"_s}}, StateSource::PresetFile);
+    auto default_state = DefaultStateSnapshot();
+    LoadNewState(engine, default_state, ""_s, StateSource::PresetFile);
     RecordUndoableStep(engine, "Reset");
 }
 
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
     auto state = CurrentStateSnapshot(engine);
-    ASSERT(state.instance_id.size);
+    ASSERT(state.extras.instance_id.size);
     auto outcome = CodeState(
         state,
         CodeStateArguments {
@@ -891,7 +896,6 @@ static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
                 return k_success;
             },
             .source = StateSource::Daw,
-            .abbreviated_read = false,
             .write_experimental_params =
                 prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()),
         });
@@ -929,7 +933,6 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
                           return k_success;
                       },
                       .source = StateSource::Daw,
-                      .abbreviated_read = false,
                   });
 
     auto const error_id = SourceLocationHash();
@@ -944,23 +947,23 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
     }
 
     engine.error_notifications.RemoveError(error_id);
-    LoadNewState(engine, {.state = state, .name = {.name_or_path = "DAW State"}}, StateSource::Daw);
+    // Fallback display name for legacy DAW state that doesn't carry one.
+    if (state.extras.display_name.size == 0) dyn::Assign(state.extras.display_name, "DAW State"_s);
+    LoadNewState(engine, state, ""_s, StateSource::Daw);
     engine.undo_history.Clear();
-    RecordUndoableStep(engine, "DAW State"_s);
+    RecordUndoableStep(engine, state.extras.display_name);
     return true;
 }
 
 void RecordUndoableStep(Engine& engine, String name) {
     ASSERT(g_is_logical_main_thread);
     auto const current = CurrentStateSnapshot(engine);
-    auto const& current_snapshot_name = engine.pending_state_change
-                                            ? engine.pending_state_change->snapshot.name.name_or_path
-                                            : engine.last_snapshot.name_or_path.name_or_path;
-    engine.undo_history.Record({
+    UndoableStep step {
         .name = name,
-        .snapshot_name = current_snapshot_name,
         .snapshot = current,
-    });
+    };
+    dyn::AssignFitInCapacity(step.snapshot_name, current.extras.display_name);
+    engine.undo_history.Record(step);
 }
 
 void Engine::OnParamChange(ProcessorListener::ParamChange change, ParamIndex param) {
@@ -991,18 +994,14 @@ void Undo(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undo_history.CanUndo());
     auto const entry = engine.undo_history.Undo();
-    LoadNewState(engine,
-                 {.state = entry.snapshot, .name = {.name_or_path = String {entry.snapshot_name}}},
-                 StateSource::PresetFile);
+    LoadNewState(engine, entry.snapshot, ""_s, StateSource::PresetFile);
 }
 
 void Redo(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undo_history.CanRedo());
     auto const entry = engine.undo_history.Redo();
-    LoadNewState(engine,
-                 {.state = entry.snapshot, .name = {.name_or_path = String {entry.snapshot_name}}},
-                 StateSource::PresetFile);
+    LoadNewState(engine, entry.snapshot, ""_s, StateSource::PresetFile);
 }
 
 PluginCallbacks<Engine> const g_engine_callbacks {

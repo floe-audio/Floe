@@ -36,6 +36,23 @@ struct InstanceConfig {
     u8 seed {0}; // 0-99, determines what the master PRNG resets to
 };
 
+// Fields that aren't part of the audible patch. Typically excluded from state equality checks.
+struct StateExtras {
+    bool operator==(StateExtras const& other) const = default;
+    bool operator!=(StateExtras const& other) const = default;
+
+    DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
+    Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
+
+    // For DAW state only. Preset files always get their name from the filename.
+    DynamicArrayBounded<char, k_max_preset_name_size> display_name {};
+
+    // The hash of the preset when it was loaded from file - if any. This allows us to identify the preset
+    // this state is based on and track if state has been modified since loading.
+    u64 last_preset_hash {}; // 0 == unknown. Filled automatically when decoding a preset.
+    bool modified_from_last_preset {};
+};
+
 struct StateSnapshot {
     f32& LinearParam(ParamIndex index) { return param_values[ToInt(index)]; }
     f32 LinearParam(ParamIndex index) const { return param_values[ToInt(index)]; }
@@ -48,9 +65,7 @@ struct StateSnapshot {
     Array<f32, k_num_parameters> param_values {};
     Array<EffectType, k_num_effect_types> fx_order {};
     Bitset<k_num_effect_types> fx_visible {};
-    Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
     StateMetadata metadata {};
-    DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
     Array<CurveMap::Points, k_num_layers> velocity_curve_points {};
     Array<HarmonyIntervalsBitset, k_num_layers> harmony_intervals {};
     Array<Array<ArpStep, k_arp_max_steps>, k_num_layers> arp_steps {};
@@ -58,31 +73,10 @@ struct StateSnapshot {
     MacroNames macro_names {};
     MacroDestinations macro_destinations {};
     InstanceConfig instance_config {};
+    StateExtras extras {};
 };
 
 enum class StateSource : u8 { PresetFile, Daw };
-
-struct StateSnapshotName {
-    StateSnapshotName Clone(Allocator& a, CloneType clone_type = CloneType::Shallow) const {
-        auto _ = clone_type;
-        return {
-            .name_or_path = name_or_path.Clone(a, CloneType::Shallow),
-        };
-    }
-
-    Optional<String> Path() const {
-        if (path::IsAbsolute(name_or_path)) return name_or_path;
-        return k_nullopt;
-    }
-    String Name() const { return path::FilenameWithoutExtension(name_or_path); }
-
-    String name_or_path;
-};
-
-struct StateSnapshotWithName {
-    StateSnapshot state;
-    StateSnapshotName name;
-};
 
 [[maybe_unused]] static auto PrintInstrumentId(InstrumentId id) {
     DynamicArrayBounded<char, 100> result {};

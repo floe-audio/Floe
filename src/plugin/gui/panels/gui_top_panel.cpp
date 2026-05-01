@@ -293,7 +293,9 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                 .tooltip = FunctionRef<String()> {[&arena = builder.arena, &engine = g.engine]() -> String {
                     DynamicArray<char> buffer {arena};
                     dyn::Assign(buffer, "Open presets window"_s);
-                    fmt::Append(buffer, "\nCurrent preset: {}", engine.last_snapshot.name_or_path.Name());
+                    fmt::Append(buffer,
+                                "\nCurrent preset: {}",
+                                engine.last_snapshot.state.extras.display_name);
                     if (engine.last_snapshot.state.metadata.description.size) {
                         dyn::AppendSpan(buffer, "\n\n"_s);
                         dyn::AppendSpan(buffer, engine.last_snapshot.state.metadata.description);
@@ -315,7 +317,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   .parent = preset_box_left,
                   .text = fmt::Format(builder.arena,
                                       "{}{}",
-                                      g.engine.last_snapshot.name_or_path.Name(),
+                                      g.engine.last_snapshot.state.extras.display_name,
                                       StateChangedSinceLastSnapshot(g.engine) ? " (modified)"_s : ""_s),
                   .text_colours =
                       ColSet {

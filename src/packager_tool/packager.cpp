@@ -253,7 +253,7 @@ AddPresetIfNeeded(PackageInfo& info, String path_in_zip, ArenaAllocator& arena, 
         ++found.element.data;
     }
 
-    if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile, true); outcome.HasValue()) {
+    if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile); outcome.HasValue()) {
         auto const& state = outcome.Value();
         state.metadata.tags.ForEachSetBit([&](usize bit) {
             auto const tag_name = GetTagInfo((TagType)bit).name;

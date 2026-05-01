@@ -14,7 +14,6 @@ struct CodeStateArguments {
     Mode mode;
     FunctionRef<ErrorCodeOr<void>(void* data, usize bytes)> read_or_write_data;
     StateSource source;
-    bool abbreviated_read;
     bool write_experimental_params;
 };
 
@@ -28,12 +27,10 @@ Optional<PresetFormat> PresetFormatFromPath(String path);
 ErrorCodeOr<void>
 DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String json_data);
 
-ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source, bool abbreviated_read);
+ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source);
 
-ErrorCodeOr<StateSnapshot>
-LoadPresetFile(String filepath, ArenaAllocator& scratch_arena, bool abbreviated_read);
+ErrorCodeOr<StateSnapshot> LoadPresetFile(String filepath, ArenaAllocator& scratch_arena);
 
-ErrorCodeOr<StateSnapshot>
-LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_arena, bool abbreviated_read);
+ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_arena);
 
 ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experimental_params);

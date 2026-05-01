@@ -374,7 +374,7 @@ inline auto operator&(StateProperties a, StateProperties b) { return ToInt(a) & 
 static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StateProperties properties) {
     StateSnapshot state;
 
-    state.instance_id = "foo-123"_s;
+    state.extras.instance_id = "foo-123"_s;
 
     for (auto const index : Range(k_num_effect_types))
         state.fx_order[index] = (EffectType)index;
@@ -443,7 +443,6 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
                           return k_success;
                       },
                       .source = StateSource::Daw,
-                      .abbreviated_read = false,
                   }));
 
     return buffer.ToOwnedSpan();

@@ -30,29 +30,16 @@ struct Engine : ProcessorListener {
                 r.Release();
         }
 
-        ArenaAllocator arena {PageAllocator::Instance()};
         DynamicArrayBounded<sample_lib_server::RequestId, k_num_layers + 1> requests;
         DynamicArrayBounded<sample_lib_server::LoadResult, k_num_layers + 1> retained_results;
-        StateSnapshotWithName snapshot;
+        StateSnapshot snapshot;
+        DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
         StateSource source;
     };
 
     struct LastSnapshot {
-        LastSnapshot() { name_or_path.name_or_path = "Default"; }
-
-        void Set(StateSnapshotWithName const& snapshot) {
-            state = snapshot.state;
-            SetName(snapshot.name);
-        }
-
-        void SetName(StateSnapshotName const& m) {
-            name_arena.ResetCursorAndConsolidateRegions();
-            name_or_path = m.Clone(name_arena);
-        }
-
-        ArenaAllocatorWithInlineStorage<1000> name_arena {Malloc::Instance()};
-        StateSnapshot state {};
-        StateSnapshotName name_or_path {};
+        StateSnapshot state {DefaultStateSnapshot()};
+        DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
     };
 
     Engine(clap_host const& host,
@@ -95,13 +82,9 @@ struct Engine : ProcessorListener {
 
     struct PresetDescriptionCache {
         AutoDescription auto_desc {};
-        // Resolved short/long views. Both point either into auto_desc or into
-        // last_snapshot.state.metadata.description and remain valid until the next refresh.
         String short_text {};
         String long_text {};
-        // True when long_text is the user-authored description rather than auto-generated.
         bool long_is_user_desc = false;
-        // True when short_text is the user-authored description rather than auto-generated.
         bool short_is_user_desc = false;
     };
     PresetDescriptionCache preset_description_cache {};

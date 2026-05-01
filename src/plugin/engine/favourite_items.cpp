@@ -50,7 +50,7 @@ void MigrateLegacyFavourites(prefs::Preferences& prefs, sample_lib_server::Serve
     auto const old_ir_values = prefs::LookupValues(prefs, k_favourite_ir_key_legacy);
     if (!old_inst_values && !old_ir_values) return; // Nothing to migrate
 
-    // Iterate through all loaded libraries and migrate any favorites found
+    // Iterate through all loaded libraries and migrate any favourites found
     for (auto& lib_node : sample_lib_server::LibrariesList(server)) {
         if (auto listed_lib = lib_node.TryScoped()) {
             if (!listed_lib->lib) continue;

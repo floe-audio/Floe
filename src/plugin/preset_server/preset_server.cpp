@@ -132,27 +132,6 @@ static String ExtensionForPreset(PresetFolder::Preset const& preset) {
     }
 }
 
-Optional<usize> PresetFolder::MatchFullPresetPath(String p) const {
-    if (!path::IsWithinDirectory(p, scan_folder)) return k_nullopt;
-
-    PathArena scratch_arena {PageAllocator::Instance()};
-
-    DynamicArray<char> path {scan_folder, scratch_arena};
-    path::JoinAppend(path, folder);
-    auto const path_len = path.size;
-
-    for (auto const [i, preset] : Enumerate(presets)) {
-        path::JoinAppend(path, preset.name);
-        dyn::AppendSpan(path, ExtensionForPreset(preset));
-
-        if (path == p) return i;
-
-        dyn::Resize(path, path_len);
-    }
-
-    return k_nullopt;
-}
-
 String PresetFolder::FullPathForPreset(PresetFolder::Preset const& preset, Allocator& a) const {
     auto path = path::Join(a, Array {scan_folder, folder, preset.name});
     path = fmt::JoinAppendResizeAllocation(a, path, Array {ExtensionForPreset(preset)});
@@ -343,6 +322,8 @@ static void AddPresetToFolder(PresetFolder& folder,
         }
     }
 
+    ASSERT(state.extras.last_preset_hash);
+
     dyn::Append(presets,
                 PresetFolder::Preset {
                     .name = folder.arena.Clone(path::FilenameWithoutExtension(entry.subpath)),
@@ -357,6 +338,7 @@ static void AddPresetToFolder(PresetFolder& folder,
                     .author_hash = Hash(state.metadata.author),
                     .used_libraries = used_libraries,
                     .file_hash = file_hash,
+                    .snapshot_hash = state.extras.last_preset_hash,
                     .full_path_hash = HashMultiple(Array {folder.scan_folder, folder.folder, entry.subpath}),
                     .file_extension = file_format == PresetFormat::Mirage
                                           ? (String)folder.arena.Clone(path::Extension(entry.subpath))
@@ -1041,7 +1023,7 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         }
 
         auto reader = Reader::FromMemory(file_data);
-        auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena, true), {
+        auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena), {
             LogDebug(ModuleName::PresetServer, "preset: failed to read {}, {}", entry.subpath, error);
             continue;
         });

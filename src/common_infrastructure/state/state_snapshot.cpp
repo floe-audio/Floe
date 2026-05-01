@@ -52,14 +52,14 @@ void AssignDiffDescription(DynArrayT& diff_desc,
 
     for (auto cc : Range<usize>(1, 128)) {
         for (auto param_index : Range(k_num_parameters)) {
-            if (old_state.param_learned_ccs[param_index].Get(cc) !=
-                new_state.param_learned_ccs[param_index].Get(cc)) {
+            if (old_state.extras.param_learned_ccs[param_index].Get(cc) !=
+                new_state.extras.param_learned_ccs[param_index].Get(cc)) {
                 fmt::Append(diff_desc,
                             "CC {}: Param {}: {} vs {}\n"_s,
                             cc,
                             k_param_descriptors[param_index].name,
-                            old_state.param_learned_ccs[param_index].Get(cc),
-                            new_state.param_learned_ccs[param_index].Get(cc));
+                            old_state.extras.param_learned_ccs[param_index].Get(cc),
+                            new_state.extras.param_learned_ccs[param_index].Get(cc));
             }
         }
     }
@@ -84,7 +84,20 @@ void AssignDiffDescription(DynArrayT& diff_desc,
             [&](usize bit) { fmt::Append(diff_desc, "  + {}\n"_s, GetTagInfo((TagType)bit).name); });
     }
 
-    if (old_state.instance_id != new_state.instance_id) dyn::AppendSpan(diff_desc, "instance ID changes");
+    if (old_state.extras.instance_id != new_state.extras.instance_id)
+        dyn::AppendSpan(diff_desc, "instance ID changes");
+
+    if (old_state.extras.display_name != new_state.extras.display_name)
+        fmt::Append(diff_desc, "display name changed");
+
+    if (old_state.extras.last_preset_hash != new_state.extras.last_preset_hash)
+        fmt::Append(diff_desc,
+                    "last snapshot hash changed {} vs {}",
+                    old_state.extras.last_preset_hash,
+                    new_state.extras.last_preset_hash);
+
+    if (old_state.extras.modified_from_last_preset != new_state.extras.modified_from_last_preset)
+        fmt::Append(diff_desc, "modified from last snapshot changed");
 
     for (auto layer_index : Range(k_num_layers))
         if (old_state.velocity_curve_points[layer_index] != new_state.velocity_curve_points[layer_index])
@@ -140,6 +153,7 @@ StateSnapshot const& DefaultStateSnapshot() {
         s.macro_names = DefaultMacroNames();
         for (auto const i : Range<u8>(s.fx_order.size))
             s.fx_order[i] = (EffectType)i;
+        s.extras.display_name = "Default"_s;
         s;
     });
     return state;

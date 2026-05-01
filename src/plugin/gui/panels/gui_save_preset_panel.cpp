@@ -326,13 +326,14 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                    {.text = "Cancel"_s, .tooltip = "Cancel and close"_s}))
                         builder.imgui.CloseTopModal();
 
-                    if (auto const existing_path = context.engine.last_snapshot.name_or_path.Path()) {
+                    if (auto const& existing_path = context.engine.last_snapshot.preset_path;
+                        existing_path.size) {
                         if (TextButton(
                                 builder,
                                 button_container,
                                 {.text = "Overwrite"_s, .tooltip = "Overwrite the existing preset"_s})) {
                             CommitMetadataToEngine(context.engine, state);
-                            SaveCurrentStateToFile(context.engine, *existing_path);
+                            SaveCurrentStateToFile(context.engine, existing_path);
                             if (!state.modeless) builder.imgui.CloseTopModal();
                         }
 

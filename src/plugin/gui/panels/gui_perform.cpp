@@ -124,7 +124,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
 
     // Preset name
     {
-        auto name = snapshot.name_or_path.Name();
+        auto name = snapshot.state.extras.display_name;
         if (name.size) {
             DoBox(builder,
                   {
@@ -759,8 +759,8 @@ void MidPanelPerformContent(GuiBuilder& builder,
     {
         auto const& snapshot = g.engine.last_snapshot;
         DynamicArray<char> folder_buf {g.scratch_arena};
-        if (auto const preset_path = snapshot.name_or_path.Path()) {
-            if (auto const dir = path::Directory(*preset_path))
+        if (auto const& preset_path = snapshot.preset_path; preset_path.size) {
+            if (auto const dir = path::Directory(preset_path))
                 fmt::Append(folder_buf, "{}", StripNumberedPrefix(path::Filename(*dir)));
         }
         if (folder_buf.size) {

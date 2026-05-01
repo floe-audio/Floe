@@ -592,6 +592,8 @@ enum class StateVersion : u16 {
     // unchanged.
     AddedEqEffect,
 
+    AddedStateExtras,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -1261,7 +1263,11 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             }
         }
     }
+
     if (adapt_for_latest_version) AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+    state.extras = {};
+    state.extras.last_preset_hash = RapidHash64(data);
 
     return k_success;
 }
@@ -1294,6 +1300,13 @@ ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& sc
 //
 
 struct StateCoder {
+    ALWAYS_INLINE ErrorCodeOr<void> ReadOrWriteData(void* data, usize bytes) {
+        TRY(args.read_or_write_data(data, bytes));
+        if (args.mode == CodeStateArguments::Mode::Decode)
+            HashUpdateFnv1a(hash, Span<u8 const> {(u8 const*)data, bytes});
+        return k_success;
+    }
+
     template <typename Type>
     requires(Arithmetic<Type>)
     ErrorCodeOr<void> CodeNumber(Type& number, StateVersion version_added) {
@@ -1310,7 +1323,7 @@ struct StateCoder {
 
     template <TriviallyCopyable Type>
     ErrorCodeOr<void> CodeTrivialObject(Type& trivial_obj, StateVersion version_added) {
-        if (version >= version_added) return args.read_or_write_data(&trivial_obj, sizeof(Type));
+        if (version >= version_added) return ReadOrWriteData(&trivial_obj, sizeof(Type));
         return k_success;
     }
 
@@ -1321,12 +1334,12 @@ struct StateCoder {
         if (version >= version_added) {
             u32 size = 0;
             if (IsWriting()) size = CheckedCast<u32>(arr.size);
-            TRY(args.read_or_write_data(&size, sizeof(size)));
+            TRY(ReadOrWriteData(&size, sizeof(size)));
 
             if (size) {
                 if (IsReading())
                     if (!dyn::Resize(arr, size)) return ErrorCode(CommonError::InvalidFileFormat);
-                TRY(args.read_or_write_data((void*)arr.data, size * sizeof(Type)));
+                TRY(ReadOrWriteData((void*)arr.data, size * sizeof(Type)));
             }
         }
         return k_success;
@@ -1336,11 +1349,11 @@ struct StateCoder {
         if (version >= version_added) {
             u16 size = 0;
             if (IsWriting()) size = CheckedCast<u16>(string.size);
-            TRY(args.read_or_write_data(&size, sizeof(size)));
+            TRY(ReadOrWriteData(&size, sizeof(size)));
 
             if (size) {
                 if (IsReading()) string = allocator.AllocateExactSizeUninitialised<char>(size);
-                TRY(args.read_or_write_data((void*)string.data, size));
+                TRY(ReadOrWriteData((void*)string.data, size));
             }
         }
         return k_success;
@@ -1382,6 +1395,7 @@ struct StateCoder {
     CodeStateArguments const& args;
     StateVersion version;
     u32 counter {0};
+    u64 hash = HashInitFnv1a();
 };
 
 ErrorCodeOr<void> CodeLibraryId(StateCoder& coder, sample_lib::LibraryId& library_id) {
@@ -1412,6 +1426,18 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         .args = args,
         .version = StateVersion::Initial, // start at Initial so that we always
                                           // write the magic value
+    };
+
+    // StateExtras are mostly for DAW state only.
+    if (args.source == StateSource::PresetFile) state.extras = {};
+    DEFER {
+        // We have a special behaviour when decoding a preset file: we auto-populate the last_snapshot_hash
+        // because it's very useful for us to be able to have a quick unique identifier for snapshots.
+        if (coder.IsReading() && args.source == StateSource::PresetFile)
+            state.extras = {
+                .last_preset_hash = coder.hash,
+                .modified_from_last_preset = false,
+            };
     };
 
     // =======================================================================================================
@@ -1597,11 +1623,11 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     // =======================================================================================================
     {
         String instance_id {};
-        if (coder.IsWriting()) instance_id = state.instance_id;
+        if (coder.IsWriting()) instance_id = state.extras.instance_id;
         TRY(coder.CodeString(instance_id, scratch_arena, StateVersion::Initial));
         if (coder.IsReading()) {
             if (instance_id.size > k_max_instance_id_size) return ErrorCode(CommonError::InvalidFileFormat);
-            state.instance_id = instance_id;
+            state.extras.instance_id = instance_id;
         }
     }
 
@@ -1741,13 +1767,6 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     TRY(coder.CodeIntegrityCheckNumber(StateVersion::Initial));
 
     // =======================================================================================================
-    // It's actually not that abbreviated...
-    if (args.abbreviated_read) {
-        ASSERT(coder.IsReading());
-        return k_success;
-    }
-
-    // =======================================================================================================
     {
         u16 num_effects = coder.IsWriting() ? CheckedCast<u16>(k_num_effect_types) : 0;
         TRY(coder.CodeNumber(num_effects, StateVersion::Initial));
@@ -1825,7 +1844,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (coder.IsWriting() && args.source == StateSource::Daw) {
             DynamicArray<Mapping> mappings_arr {scratch_arena};
-            for (auto [param_index, ccs] : Enumerate(state.param_learned_ccs)) {
+            for (auto [param_index, ccs] : Enumerate(state.extras.param_learned_ccs)) {
                 for (auto const cc_num : Range(128uz))
                     if (ccs.Get(cc_num)) {
                         dyn::Append(mappings_arr,
@@ -1848,7 +1867,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             if (coder.IsReading() && args.source == StateSource::Daw) {
                 auto const index = ParamIdToIndex(m.param_id);
                 if (!index) continue; // Experimental params may be removed
-                state.param_learned_ccs[(usize)*index].Set(m.cc_num);
+                state.extras.param_learned_ccs[(usize)*index].Set(m.cc_num);
             }
         }
     }
@@ -1885,6 +1904,15 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     }
 
     // =======================================================================================================
+    {
+        constexpr auto k_added = StateVersion::AddedStateExtras;
+
+        TRY(coder.CodeDynArray(state.extras.display_name, k_added));
+        TRY(coder.CodeNumber(state.extras.last_preset_hash, k_added));
+        TRY(coder.CodeNumber(state.extras.modified_from_last_preset, k_added));
+    }
+
+    // =======================================================================================================
     AdaptNewerParams(state, coder.version, args.source);
 
     // =======================================================================================================
@@ -1914,7 +1942,7 @@ Optional<PresetFormat> PresetFormatFromPath(String path) {
 }
 
 ErrorCodeOr<StateSnapshot>
-LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_arena, bool abbreviated_read) {
+LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_arena) {
     StateSnapshot state;
     switch (format) {
         case PresetFormat::Floe: {
@@ -1926,7 +1954,6 @@ LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_aren
                                   return k_success;
                               },
                               .source = StateSource::PresetFile,
-                              .abbreviated_read = abbreviated_read,
                           }));
             break;
         }
@@ -1940,14 +1967,12 @@ LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_aren
     return state;
 }
 
-ErrorCodeOr<StateSnapshot>
-LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool abbreviated_read) {
+ErrorCodeOr<StateSnapshot> LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena) {
     StateSnapshot state;
     auto reader = TRY(Reader::FromFile(filepath));
     return LoadPresetFile(PresetFormatFromPath(filepath).ValueOr(PresetFormat::Mirage),
                           reader,
-                          scratch_arena,
-                          abbreviated_read);
+                          scratch_arena);
 }
 
 ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
@@ -1966,13 +1991,12 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool w
                           return k_success;
                       },
                       .source = StateSource::PresetFile,
-                      .abbreviated_read = false,
                       .write_experimental_params = write_experiment_params,
                   }));
     return k_success;
 }
 
-ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source, bool abbreviated_read) {
+ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source) {
     StateSnapshot state;
     usize read_pos = 0;
     TRY(CodeState(state,
@@ -1986,7 +2010,6 @@ ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource sou
                           return k_success;
                       },
                       .source = source,
-                      .abbreviated_read = abbreviated_read,
                   }));
     return state;
 }
@@ -2152,7 +2175,7 @@ TEST_CASE(TestParsersHandleInvalidData) {
     SUBCASE("binary") {
         for ([[maybe_unused]] auto i : Range(0, 20)) {
             auto const data = make_random_data();
-            auto const result = DecodeFromMemory(data.ToByteSpan(), StateSource::PresetFile, false);
+            auto const result = DecodeFromMemory(data.ToByteSpan(), StateSource::PresetFile);
             CHECK(!result.HasValue());
         }
     }
@@ -2272,11 +2295,14 @@ TEST_CASE(TestNewSerialisation) {
                         bits.Set(20);
                         bits.Set(10);
                         bits.Set(1);
-                        state.param_learned_ccs[param] = bits;
+                        state.extras.param_learned_ccs[param] = bits;
                     }
                 }
+                dyn::Assign(state.extras.display_name, "TEST"_s);
+                state.extras.last_preset_hash = 0x12356789ull;
+                state.extras.modified_from_last_preset = true;
             } else {
-                state.param_learned_ccs = {};
+                state.extras = {};
             }
 
             CheckStateIsValid(tester, state);
@@ -2319,13 +2345,20 @@ TEST_CASE(TestNewSerialisation) {
             CHECK_OP(read_pos, ==, serialised_data.size);
             CheckStateIsValid(tester, out_state);
 
+            if (source == StateSource::PresetFile) {
+                // When decoding a preset file we expect it to to have populated the hash for us.
+                CHECK(out_state.extras.last_preset_hash != 0);
+                out_state.extras.last_preset_hash = 0; // Clear it for correct equality checks below.
+            }
+
             if (!(state == out_state)) {
                 DynamicArray<char> diff {tester.scratch_arena};
                 AssignDiffDescription(diff, state, out_state);
                 tester.log.Error("{}", diff);
             }
             CHECK(state == out_state);
-            if (source == StateSource::Daw) CHECK(state.param_learned_ccs == out_state.param_learned_ccs);
+            if (source == StateSource::Daw)
+                CHECK(state.extras.param_learned_ccs == out_state.extras.param_learned_ccs);
         }
     }
 

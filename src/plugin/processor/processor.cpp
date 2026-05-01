@@ -868,7 +868,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
 
     if (source == StateSource::Daw)
         for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
-            cc.AssignBlockwise(state.param_learned_ccs[i]);
+            cc.AssignBlockwise(state.extras.param_learned_ccs[i]);
 
     processor.main_params.values = state.param_values;
 
@@ -948,7 +948,7 @@ StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
     result.macro_destinations = processor.main_macro_destinations;
 
     for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
-        result.param_learned_ccs[i] = cc.GetBlockwise();
+        result.extras.param_learned_ccs[i] = cc.GetBlockwise();
 
     result.instance_config = processor.instance_config.Load(LoadMemoryOrder::Relaxed);
 
