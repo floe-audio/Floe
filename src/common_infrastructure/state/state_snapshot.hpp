@@ -122,17 +122,24 @@ struct ParamSelector {
     ParamIndex param;
 };
 
+struct VelocityCurveSelector {
+    bool operator==(VelocityCurveSelector const&) const = default;
+    u8 layer_index;
+};
+
 enum class SelectorKind : u8 {
     Modules,
     Macro,
     Instrument,
     Param,
+    VelocityCurve,
 };
 
 using StateSnapshotSelector = TaggedUnion<SelectorKind,
                                           TypeAndTag<ParamModules, SelectorKind::Modules>,
                                           TypeAndTag<MacroSelector, SelectorKind::Macro>,
                                           TypeAndTag<InstrumentSelector, SelectorKind::Instrument>,
-                                          TypeAndTag<ParamSelector, SelectorKind::Param>>;
+                                          TypeAndTag<ParamSelector, SelectorKind::Param>,
+                                          TypeAndTag<VelocityCurveSelector, SelectorKind::VelocityCurve>>;
 
 StateSnapshot const& DefaultStateSnapshot();

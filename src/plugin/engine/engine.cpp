@@ -528,6 +528,14 @@ void ApplySection(Engine& engine,
             SetParameterValue(engine.processor, dst, source.param_values[ToInt(src)], {});
             break;
         }
+        case SelectorKind::VelocityCurve: {
+            auto const src = source_selector.Get<VelocityCurveSelector>().layer_index;
+            auto const dst = target_selector.Get<VelocityCurveSelector>().layer_index;
+            ASSERT(src < k_num_layers && dst < k_num_layers);
+            engine.processor.layer_processors[dst].velocity_curve_map.SetNewPoints(
+                source.velocity_curve_points[src]);
+            break;
+        }
     }
 
     NotifyListener(engine);
@@ -948,16 +956,14 @@ void Engine::OnParamChange(ProcessorListener::ParamChange change, ParamIndex par
 
 void BeginUndoableStep(Engine& engine, String name) {
     ASSERT(g_is_logical_main_thread);
-    if (engine.undoable_step_depth == 0)
-        dyn::AssignFitInCapacity(engine.pending_undoable_step_name, name);
+    if (engine.undoable_step_depth == 0) dyn::AssignFitInCapacity(engine.pending_undoable_step_name, name);
     ++engine.undoable_step_depth;
 }
 
 void EndUndoableStep(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undoable_step_depth);
-    if (--engine.undoable_step_depth == 0)
-        RecordUndoableStep(engine, engine.pending_undoable_step_name);
+    if (--engine.undoable_step_depth == 0) RecordUndoableStep(engine, engine.pending_undoable_step_name);
 }
 
 void Undo(Engine& engine) {

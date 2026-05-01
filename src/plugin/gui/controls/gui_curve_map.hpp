@@ -8,6 +8,7 @@
 
 void DoCurveMap(GuiState& g,
                 CurveMap& curve_map,
+                u8 layer_index,
                 Rect rect,
                 Optional<f32> velocity_marker,
                 String additional_tooltip);

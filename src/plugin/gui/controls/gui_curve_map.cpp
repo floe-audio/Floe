@@ -6,6 +6,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
@@ -35,6 +36,7 @@ DrawCurvedSegment(DrawList& graphics, f32x2 p0, f32x2 p1, float curve_value, int
 
 void DoCurveMap(GuiState& g,
                 CurveMap& curve_map,
+                u8 layer_index,
                 Rect rect,
                 Optional<f32> velocity_marker,
                 String additional_tooltip) {
@@ -73,6 +75,57 @@ void DoCurveMap(GuiState& g,
     Optional<f32x2> new_point_at_window_pos {};
 
     bool changed_values = false;
+
+    StateSnapshotSelector const curve_target_selector {VelocityCurveSelector {layer_index}};
+
+    auto const append_common_menu_items = [&](Box root) {
+        DoModalDivider(g.builder, root, {.horizontal = true});
+
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Reset Curve"_s,
+                         .tooltip = "Reset the curve to its default shape"_s,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            ApplySection(g.engine, DefaultStateSnapshot(), curve_target_selector, curve_target_selector);
+            imgui.ClearActive();
+        }
+
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Copy Curve"_s,
+                         .tooltip = "Copy this curve's points"_s,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            g.snapshot_clipboard = GuiState::CopiedSection {
+                .snapshot = CurrentStateSnapshot(g.engine),
+                .selector = curve_target_selector,
+            };
+        }
+
+        auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                               g.snapshot_clipboard->selector.tag == SelectorKind::VelocityCurve;
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Paste Curve"_s,
+                         .tooltip = "Overwrite this curve with the previously copied curve"_s,
+                         .mode = can_paste ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                         .no_icon_gap = true,
+                     })
+                .button_fired &&
+            can_paste) {
+            ApplySection(g.engine,
+                         g.snapshot_clipboard->snapshot,
+                         g.snapshot_clipboard->selector,
+                         curve_target_selector);
+            imgui.ClearActive();
+        }
+    };
 
     for (auto const working_index : Range(working.size)) {
         auto& working_point = working[working_index];
@@ -162,6 +215,7 @@ void DoCurveMap(GuiState& g,
                                             .button_fired) {
                                         new_point_at_window_pos = g.curve_map_add_point_click_pos;
                                     }
+                                    append_common_menu_items(root);
                                 },
                             .bounds = Rect {.pos = g.curve_map_add_point_click_pos}.Expanded(grabber_radius),
                             .imgui_id = right_click_id,
@@ -276,6 +330,7 @@ void DoCurveMap(GuiState& g,
                                                 .button_fired) {
                                             new_point_at_window_pos = g.curve_map_add_point_click_pos;
                                         }
+                                        append_common_menu_items(root);
                                     },
                                 .bounds =
                                     Rect {.pos = g.curve_map_add_point_click_pos}.Expanded(grabber_radius),
@@ -352,6 +407,7 @@ void DoCurveMap(GuiState& g,
                                                   remove_real_index = k_remove_all;
                                                   imgui.ClearActive();
                                               }
+                                              append_common_menu_items(root);
                                           },
                                       .bounds = grabber_rect,
                                       .imgui_id = right_click_id,

@@ -1554,6 +1554,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
             DoCurveMap(
                 g,
                 layer.velocity_curve_map,
+                (u8)layer_index,
                 window_r,
                 velocity,
                 "Configures how MIDI velocity maps to volume. X-axis: velocity, Y-axis: volume. Adjust the curve to customize this relationship.");
