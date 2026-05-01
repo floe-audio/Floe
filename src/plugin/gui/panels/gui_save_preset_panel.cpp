@@ -259,7 +259,9 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
 constexpr u32 k_save_panel_contents_imgui_id = (u32)SourceLocationHash();
 
 static void CommitMetadataToEngine(Engine& engine, SavePresetPanelState const& state) {
+    if (engine.state_metadata == state.metadata) return;
     engine.state_metadata = state.metadata;
+    RecordUndoableStep(engine, "Edit preset metadata"_s);
 }
 
 void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state) {

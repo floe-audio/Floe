@@ -532,6 +532,8 @@ void ApplySection(Engine& engine,
 
     NotifyListener(engine);
     engine.host.request_callback(&engine.host);
+
+    RecordUndoableStep(engine, "Apply section"_s);
 }
 
 bool StateChangedSinceLastSnapshot(Engine& engine) {
@@ -587,6 +589,8 @@ void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir_id) {
         engine.host.request_callback(&engine.host);
         SetConvolutionIrAudioData(engine.processor, nullptr, {});
     }
+
+    RecordUndoableStep(engine, ir_id ? "Load IR"_s : "Clear IR"_s);
 }
 
 // one-off load
@@ -613,6 +617,8 @@ void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId inst_id) {
             SetInstrument(engine.processor, layer_index, inst_id.Get<WaveformType>());
             break;
     }
+
+    RecordUndoableStep(engine, "Load instrument"_s);
 }
 
 void RevertToLastSnapshot(Engine& engine) {
@@ -621,6 +627,7 @@ void RevertToLastSnapshot(Engine& engine) {
         .name = engine.last_snapshot.name_or_path,
     };
     LoadNewState(engine, snapshot, StateSource::PresetFile);
+    RecordUndoableStep(engine, "Revert"_s);
 }
 
 void LoadPresetFromFile(Engine& engine, String path) {
@@ -637,6 +644,7 @@ void LoadPresetFromFile(Engine& engine, String path) {
                      },
                      StateSource::PresetFile);
         engine.error_notifications.RemoveError(error_id);
+        RecordUndoableStep(engine, path::FilenameWithoutExtension(path));
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
         DEFER { engine.error_notifications.EndWriteError(*err); };
         dyn::AssignFitInCapacity(err->title, "Failed to load preset"_s);
@@ -732,6 +740,13 @@ Engine::Engine(clap_host const& host,
     InitAutosaveState(autosave_state, shared_engine_systems.prefs, random_seed, last_snapshot.state);
 
     {
+        UndoableStep seed {};
+        seed.snapshot = last_snapshot.state;
+        dyn::AssignFitInCapacity(seed.snapshot_name, last_snapshot.name_or_path.name_or_path);
+        undo_history.Record(seed);
+    }
+
+    {
         if (auto const timer_support =
                 (clap_host_timer_support const*)host.get_extension(&host, CLAP_EXT_TIMER_SUPPORT);
             timer_support && timer_support->register_timer) {
@@ -823,20 +838,9 @@ usize MegabytesUsedBySamples(Engine const& engine) {
 }
 
 void SetToDefaultState(Engine& engine) {
-    for (auto layer_index : Range(k_num_layers))
-        LoadInstrument(engine, layer_index, InstrumentType::None);
-    LoadConvolutionIr(engine, k_nullopt);
-    engine.state_metadata = {};
-    engine.fx_visible = {};
-    SetAllParametersToDefaultValues(engine.processor);
-    auto snapshot = MakeStateSnapshot(engine.processor);
-    engine.macro_names = DefaultMacroNames();
-    snapshot.macro_names = engine.macro_names;
-    SetLastSnapshot(engine,
-                    {
-                        .state = snapshot,
-                        .name = {.name_or_path = "Default"},
-                    });
+    auto const default_state = DefaultStateSnapshot();
+    LoadNewState(engine, {.state = default_state, .name = {"Default"_s}}, StateSource::PresetFile);
+    RecordUndoableStep(engine, "Reset");
 }
 
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
@@ -912,7 +916,66 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
 
     engine.error_notifications.RemoveError(error_id);
     LoadNewState(engine, {.state = state, .name = {.name_or_path = "DAW State"}}, StateSource::Daw);
+    engine.undo_history.Clear();
+    RecordUndoableStep(engine, "DAW State"_s);
     return true;
+}
+
+void RecordUndoableStep(Engine& engine, String name) {
+    ASSERT(g_is_logical_main_thread);
+    auto const current = CurrentStateSnapshot(engine);
+    auto const& current_snapshot_name = engine.pending_state_change
+                                            ? engine.pending_state_change->snapshot.name.name_or_path
+                                            : engine.last_snapshot.name_or_path.name_or_path;
+    engine.undo_history.Record({
+        .name = name,
+        .snapshot_name = current_snapshot_name,
+        .snapshot = current,
+    });
+}
+
+void Engine::OnParamChange(ProcessorListener::ParamChange change, ParamIndex param) {
+    switch (change) {
+        case ProcessorListener::ValueChanged:
+            if (!undoable_step_depth) RecordUndoableStep(*this, k_param_descriptors[ToInt(param)].name);
+            break;
+        case ProcessorListener::GestureBegin:
+            BeginUndoableStep(*this, k_param_descriptors[ToInt(param)].name);
+            break;
+        case ProcessorListener::GestureEnd: EndUndoableStep(*this); break;
+    }
+}
+
+void BeginUndoableStep(Engine& engine, String name) {
+    ASSERT(g_is_logical_main_thread);
+    if (engine.undoable_step_depth == 0)
+        dyn::AssignFitInCapacity(engine.pending_undoable_step_name, name);
+    ++engine.undoable_step_depth;
+}
+
+void EndUndoableStep(Engine& engine) {
+    ASSERT(g_is_logical_main_thread);
+    ASSERT(engine.undoable_step_depth);
+    if (--engine.undoable_step_depth == 0)
+        RecordUndoableStep(engine, engine.pending_undoable_step_name);
+}
+
+void Undo(Engine& engine) {
+    ASSERT(g_is_logical_main_thread);
+    ASSERT(engine.undo_history.CanUndo());
+    auto const entry = engine.undo_history.Undo();
+    LoadNewState(engine,
+                 {.state = entry.snapshot, .name = {.name_or_path = String {entry.snapshot_name}}},
+                 StateSource::PresetFile);
+}
+
+void Redo(Engine& engine) {
+    ASSERT(g_is_logical_main_thread);
+    ASSERT(engine.undo_history.CanRedo());
+    auto const entry = engine.undo_history.Redo();
+    LoadNewState(engine,
+                 {.state = entry.snapshot, .name = {.name_or_path = String {entry.snapshot_name}}},
+                 StateSource::PresetFile);
 }
 
 PluginCallbacks<Engine> const g_engine_callbacks {

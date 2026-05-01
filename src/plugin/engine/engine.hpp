@@ -13,6 +13,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "engine/package_installation.hpp"
+#include "engine/undo.hpp"
 #include "processor/processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
@@ -62,6 +63,7 @@ struct Engine : ProcessorListener {
     auto& Layer(u32 index) { return processor.layer_processors[index]; }
 
     void OnProcessorChange(ChangeFlags) override;
+    void OnParamChange(ProcessorListener::ParamChange, ParamIndex) override;
 
     clap_host const& host;
     SharedEngineSystems& shared_engine_systems;
@@ -113,6 +115,10 @@ struct Engine : ProcessorListener {
     EngineListener* listener {};
 
     sample_lib_server::AsyncCommsChannel& sample_lib_server_async_channel;
+
+    UndoHistory undo_history {PageAllocator::Instance()};
+    u32 undoable_step_depth {};
+    DynamicArrayBounded<char, k_undoable_step_name_max_size> pending_undoable_step_name {};
 };
 
 extern PluginCallbacks<Engine> const g_engine_callbacks;
@@ -148,3 +154,21 @@ void LoadPresetFromFile(Engine& engine, String path);
 void SaveCurrentStateToFile(Engine& engine, String path);
 
 void SetToDefaultState(Engine& engine);
+
+// ================================================================================================
+// Undo system.
+//
+// AudioProcessor functions ParameterJustStartedMoving/Finished and SetParameterValue will, by default, issue
+// appropriate undoable steps to the engine. However, for non-parameters, or for when we want to coalesce
+// multiple parameter changes into one step, the GUI needs to use these functions.
+
+// Call once you've made a modification.
+void RecordUndoableStep(Engine& engine, String name);
+
+// Same as RecordUndoableStep except it should be used when multiple SetParameterValue or
+// ParameterJustStartedMoving/Finished should be coalesced into a single step.
+void BeginUndoableStep(Engine& engine, String name);
+void EndUndoableStep(Engine& engine);
+
+void Undo(Engine& engine);
+void Redo(Engine& engine);

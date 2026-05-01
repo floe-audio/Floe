@@ -195,6 +195,10 @@ void DoCurveMap(GuiState& g,
 
                 f32 percent = MapTo01(working_point.curve * (inverted ? -1.0f : 1.0f), -1.0f, 1.0f);
 
+                if (imgui.WasJustActivated(imgui_id, MouseButton::Left))
+                    BeginUndoableStep(g.engine, "Curve shape"_s);
+                if (imgui.WasJustDeactivated(imgui_id, MouseButton::Left)) EndUndoableStep(g.engine);
+
                 if (imgui.SliderBehaviourFraction({
                         .rect_in_window_coords = curve_shaper_rect,
                         .id = imgui_id,
@@ -362,6 +366,11 @@ void DoCurveMap(GuiState& g,
             });
             imgui.ButtonBehaviour(grabber_rect, imgui_id, drag_activation_cfg);
 
+            if (imgui.WasJustActivated(imgui_id, drag_activation_cfg.mouse_button))
+                BeginUndoableStep(g.engine, "Move curve point"_s);
+            if (imgui.WasJustDeactivated(imgui_id, drag_activation_cfg.mouse_button))
+                EndUndoableStep(g.engine);
+
             if (imgui.IsActive(imgui_id, drag_activation_cfg.mouse_button)) {
                 // Dragging point
                 auto const mouse_pos = GuiIo().in.cursor_pos;
@@ -411,6 +420,9 @@ void DoCurveMap(GuiState& g,
             curve_map.Clear();
         else
             curve_map.RemoveIndex(*remove_real_index);
+        RecordUndoableStep(g.engine,
+                           *remove_real_index == k_remove_all ? "Remove all curve points"_s
+                                                              : "Remove curve point"_s);
     }
 
     if (new_point_at_window_pos) {
@@ -423,6 +435,7 @@ void DoCurveMap(GuiState& g,
             1.0f);
 
         curve_map.AddPoint({new_point.x, new_point.y, 0});
+        RecordUndoableStep(g.engine, "Add curve point"_s);
     }
 
     if (changed_values) curve_map.RenderCurveToLookupTable();

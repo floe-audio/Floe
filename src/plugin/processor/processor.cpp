@@ -298,27 +298,6 @@ bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index) {
     return LayerSilentState(solo, mute).Get(layer_index);
 }
 
-void SetAllParametersToDefaultValues(AudioProcessor& processor) {
-    ASSERT(g_is_logical_main_thread);
-
-    StateSnapshot state {};
-
-    for (auto const fx_index : Range<u8>(state.fx_order.size))
-        state.fx_order[fx_index] = (EffectType)fx_index;
-
-    for (auto const param_index : Range(k_num_parameters))
-        state.param_values[param_index] = k_param_descriptors[param_index].default_linear_value;
-
-    for (auto& velo_curve : state.velocity_curve_points)
-        velo_curve = k_default_velocity_curve_points;
-
-    for (auto& layer_steps : state.arp_steps)
-        for (auto& s : layer_steps)
-            s = {};
-
-    ApplyNewState(processor, state, StateSource::PresetFile);
-}
-
 static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool only_effects) {
     ASSERT(g_is_logical_main_thread);
 
@@ -688,6 +667,8 @@ void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index) {
         audio_thread_inbox::ParamChange::GuiGestureType::Begin);
 
     if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
+
+    processor.listener.OnParamChange(ProcessorListener::ParamChange::GestureBegin, index);
 }
 
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
@@ -697,6 +678,8 @@ void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index) {
         audio_thread_inbox::ParamChange::GuiGestureType::End);
 
     if (auto host_params = HostsParamsExtension(processor)) host_params->request_flush(&processor.host);
+
+    processor.listener.OnParamChange(ProcessorListener::ParamChange::GestureEnd, index);
 }
 
 bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, ParamChangeFlags flags) {
@@ -716,6 +699,8 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
         host_params->request_flush(&processor.host);
     else
         processor.host.request_process(&processor.host);
+
+    processor.listener.OnParamChange(ProcessorListener::ParamChange::ValueChanged, index);
 
     return changed;
 }

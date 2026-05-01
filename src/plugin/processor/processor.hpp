@@ -188,8 +188,14 @@ struct ProcessorListener {
         PeakMeterChanged = 1 << 5,
         ParametersChanged = 1 << 6,
     };
+    enum ParamChange : u8 {
+        ValueChanged,
+        GestureBegin,
+        GestureEnd,
+    };
     using ChangeFlags = u32;
     virtual void OnProcessorChange(ChangeFlags) = 0; // Called from EITHER audio or main thread.
+    virtual void OnParamChange(ParamChange, ParamIndex) = 0;
     virtual ~ProcessorListener() = default;
 };
 
@@ -326,7 +332,6 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
 
 bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index);
 
-void SetAllParametersToDefaultValues(AudioProcessor&);
 void RandomiseAllParameterValues(AudioProcessor&);
 void RandomiseAllEffectParameterValues(AudioProcessor&);
 void ResetAudioProcessing(AudioProcessor&);

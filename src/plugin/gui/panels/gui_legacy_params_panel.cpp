@@ -211,7 +211,11 @@ static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor con
             .extra_margin_for_mouse_events = 4,
         });
 
-    if (reset_btn.button_fired) ModerniseLegacyParam(g.engine.processor, desc.index);
+    if (reset_btn.button_fired) {
+        BeginUndoableStep(g.engine, "Modernise legacy parameter"_s);
+        DEFER { EndUndoableStep(g.engine); };
+        ModerniseLegacyParam(g.engine.processor, desc.index);
+    }
 }
 
 static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
@@ -327,6 +331,8 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
               });
 
         if (modernise_btn.button_fired) {
+            BeginUndoableStep(g.engine, "Modernise all legacy parameters"_s);
+            DEFER { EndUndoableStep(g.engine); };
             for (auto const& desc : k_param_descriptors) {
                 if (!desc.flags.legacy) continue;
                 if (!IsLegacyParamOverridingModern(desc,

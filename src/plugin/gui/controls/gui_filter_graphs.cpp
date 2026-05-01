@@ -41,6 +41,7 @@ struct GrabberDragOptions {
     ParamIndex double_click_target;
     bool track_y_axis;
     TrivialFunctionRef<void(f32 x_t, f32 y_t)> on_drag;
+    String drag_name;
 };
 
 // One global suffices: only one grabber can be dragged at a time.
@@ -60,9 +61,11 @@ static void RunGrabberDrag(GuiState& g, GrabberDragOptions const& opt) {
                               {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::DoubleClick}))
         g.param_text_editor_to_open = opt.double_click_target;
 
-    if (imgui.WasJustActivated(opt.interaction_id, MouseButton::Left))
+    if (imgui.WasJustActivated(opt.interaction_id, MouseButton::Left)) {
+        BeginUndoableStep(g.engine, opt.drag_name);
         for (auto const p : opt.moving_params)
             ParameterJustStartedMoving(processor, p);
+    }
 
     if (imgui.IsActive(opt.interaction_id, MouseButton::Left)) {
         auto const min_x = imgui.ViewportPosToWindowPos({opt.viewport_r.x, 0}).x;
@@ -79,9 +82,11 @@ static void RunGrabberDrag(GuiState& g, GrabberDragOptions const& opt) {
         opt.on_drag(x_t, y_t);
     }
 
-    if (imgui.WasJustDeactivated(opt.interaction_id, MouseButton::Left))
+    if (imgui.WasJustDeactivated(opt.interaction_id, MouseButton::Left)) {
         for (auto const p : opt.moving_params)
             ParameterJustStoppedMoving(processor, p);
+        EndUndoableStep(g.engine);
+    }
 }
 
 static void DoScrollResonance(GuiState& g,
@@ -94,9 +99,7 @@ static void DoScrollResonance(GuiState& g,
     auto const scroll = GuiIo().in.mouse_scroll_delta_in_lines;
     if (scroll == 0) return;
     auto const new_reso = Clamp01(current_linear + (scroll * 0.03f));
-    ParameterJustStartedMoving(g.engine.processor, reso_index);
     SetParameterValue(g.engine.processor, reso_index, new_reso, {});
-    ParameterJustStoppedMoving(g.engine.processor, reso_index);
 }
 
 struct GrabberDrawOptions {
@@ -272,6 +275,7 @@ void DoFilterGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out
             .double_click_target = cutoff_index,
             .track_y_axis = false,
             .on_drag = [&](f32 x_t, f32) { SetParameterValue(engine.processor, cutoff_index, x_t, {}); },
+            .drag_name = "Layer filter node"_s,
         });
 
     DoScrollResonance(g, interaction_id, grabber_window_r, reso_index, reso_param.LinearValue());
@@ -459,6 +463,7 @@ void DoEffectFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                         SetParameterValue(engine.processor, ParamIndex::FilterGain, gain_linear, {});
                     }
                 },
+            .drag_name = "Filter node"_s,
         });
 
     DoScrollResonance(g,
@@ -616,6 +621,7 @@ void DoReverbPreFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                                                      SemitonesFromXt(x_t, freq_info, gr.param.info),
                                                      {});
                                },
+                           .drag_name = "Filter node"_s,
                        });
     }
 
@@ -733,6 +739,7 @@ void DoReverbPostShelfGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                             sh.gain_param.info.LineariseValue(new_gain_db, true).ValueOr(0.0f);
                         SetParameterValue(engine.processor, sh.gain_idx, gain_lin, {});
                     },
+                .drag_name = "Filter node"_s,
             });
     }
 
@@ -818,6 +825,7 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
                 [&](f32 x_t, f32) {
                     SetParameterValue(engine.processor, ParamIndex::ConvolutionReverbHighpass, x_t, {});
                 },
+            .drag_name = "Reverb highpass node"_s,
         });
 
     auto const cutoff_adj_linear =
@@ -911,6 +919,7 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                                                  {});
                                SetParameterValue(engine.processor, ParamIndex::DelayFilterSpread, y_t, {});
                            },
+                       .drag_name = "Delay filter node"_s,
                    });
 
     auto const cutoff_adj_sem = cutoff_param.info.ProjectValue(
@@ -1157,6 +1166,7 @@ void DoEqGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out) {
                                        SetParameterValue(engine.processor, gain_index, gain_linear, {});
                                    }
                                },
+                           .drag_name = "EQ band node"_s,
                        });
 
         DoScrollResonance(g, b.interaction_id, b.window_r, reso_index, reso_param.LinearValue());

@@ -5,7 +5,7 @@ SPDX-License-Identifier: CC0-1.0
 
 This is the Floe repository, an audio plugin written in C++ and built using the Zig build system. Floe is a sample library platform for performing, finding and transforming sounds from sample libraries - more like a ROMpler or sample-based synth than a traditional sampler. It's available on Linux, Windows, and macOS.
 
-Floe, at it's core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
+Floe, at its core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
 
 Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:github-publish-release` to promote the beta website to stable.
 
@@ -43,7 +43,7 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 - We write in a Zig-like style: closer to modern C than C++.
 - See `.clang-tidy`'s readability-identifier-naming section for naming conventions.
 - When working with enums use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed. When defining enums, specify the size type (typically ` : u8`).
-- Keep comments to a minimum. Use them more as section markers and notes. Never explain what is evident from reading the code. Prefer renaming variables/functions to be clearer/longer rather than augmenting them with comments.
+- **Keep comments to a bare minimum**. Use them more as section markers and notes. Never explain what is evident from reading the code. Prefer renaming variables/functions to be clearer/longer rather than augmenting them with comments.
 - Where needed, use Clang/GCC 'statement expressions' to initialise a variable to a const to avoid function-wide mutability and unclear encapsulation.
 - Always use `auto` type where possible.
 - Prefer `Range` over C-style for loops: `for (auto index : Range(10))`.

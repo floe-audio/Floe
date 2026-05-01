@@ -145,6 +145,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                            .macro_index = macro_index,
                                            .destination_index = *remove_destination_index,
                                        });
+                RecordUndoableStep(g.engine, "Remove macro destination"_s);
 
                 // Another annoying hack. When the we remove the value we are shifting the memory in the
                 // contiguous array. The next time we run this code the IMGUI ID is still active, and because
@@ -179,6 +180,11 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 builder.imgui.PushId(dest_knob_index);
                 DEFER { builder.imgui.PopId(); };
                 auto const imgui_id = builder.imgui.MakeId("destination-knob"_s);
+
+                if (builder.imgui.WasJustActivated(imgui_id, MouseButton::Left))
+                    BeginUndoableStep(g.engine, "Macro destination amount"_s);
+                if (builder.imgui.WasJustDeactivated(imgui_id, MouseButton::Left))
+                    EndUndoableStep(g.engine);
 
                 auto norm_value = MapTo01(dest.value, -1, 1);
                 if (builder.imgui.SliderBehaviourFraction({
@@ -252,8 +258,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 if (k_param_descriptors[ToInt(*dest.param_index)].flags.legacy) {
                     auto const badge_size = knob_r.w * 0.55f;
                     Rect const badge_r {
-                        .x = knob_r.Right() - badge_size * 0.85f,
-                        .y = knob_r.y - badge_size * 0.15f,
+                        .x = knob_r.Right() - (badge_size * 0.85f),
+                        .y = knob_r.y - (badge_size * 0.15f),
                         .w = badge_size,
                         .h = badge_size,
                     };
@@ -448,6 +454,9 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
 
             if (result.enter_pressed || result.buffer_changed)
                 dyn::AssignFitInCapacity(g.engine.macro_names[macro_index], result.text);
+
+            if (g.imgui.TextInputJustUnfocused(name_input.imgui_id))
+                RecordUndoableStep(g.engine, "Macro rename");
         }
 
         if (remove_button) {
@@ -523,6 +532,7 @@ void OverlayMacroDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_
                                        .param = param_index,
                                        .macro_index = *g.macros_gui_state.macro_destination_select_mode,
                                    });
+            RecordUndoableStep(g.engine, "Add macro destination"_s);
             g.macros_gui_state.macro_destination_select_mode.Clear();
         }
 

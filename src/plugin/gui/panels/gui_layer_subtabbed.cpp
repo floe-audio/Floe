@@ -1655,8 +1655,10 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                                                                .close_on_click = false,
                                                            },
                                                            SourceLocationHash() + i);
-                                if (item.button_fired)
+                                if (item.button_fired) {
                                     layer.harmony_intervals.AssignBlockwise(preset.intervals);
+                                    RecordUndoableStep(g.engine, "Harmony preset"_s);
+                                }
                             }
                         }
 
@@ -1722,8 +1724,10 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                                     bool const is_selected = layer.harmony_intervals.Get(bit);
                                     auto const id = g.imgui.MakeId((uintptr)bit);
 
-                                    if (g.imgui.ButtonBehaviour(cell_r, id, imgui::ButtonConfig {}))
+                                    if (g.imgui.ButtonBehaviour(cell_r, id, imgui::ButtonConfig {})) {
                                         layer.harmony_intervals.Flip(bit);
+                                        RecordUndoableStep(g.engine, "Harmony interval"_s);
+                                    }
 
                                     bool const hot_or_active = g.imgui.IsHotOrActive(id);
                                     auto const rounding = WwToPixels(2.0f);

@@ -27,6 +27,7 @@
     X(RegisterCliArgParseTests)                                                                              \
     X(RegisterDebugTests)                                                                                    \
     X(RegisterDynamicArrayTests)                                                                             \
+    X(RegisterUndoHistoryTests)                                                                              \
     X(RegisterEncryptedPackageTests)                                                                         \
     X(RegisterErrorCodeTests)                                                                                \
     X(RegisterErrorNotificationsTests)                                                                       \

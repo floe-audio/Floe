@@ -140,6 +140,9 @@ void DoArpStepSequencer(GuiState& g,
                                                      .event = MouseButtonEvent::Down,
                                                  });
 
+        if (fired) BeginUndoableStep(g.engine, "Arp step velocity"_s);
+        if (imgui.WasJustDeactivated(bar_id, MouseButton::Left)) EndUndoableStep(g.engine);
+
         if (fired || imgui.IsActive(bar_id, MouseButton::Left)) {
             auto const& io = GuiIo().in;
             auto const pos_to_step = [&](f32 x) {
@@ -375,8 +378,10 @@ void DoArpStepSequencer(GuiState& g,
             {
                 imgui.PushId((u64)i);
                 auto const toggle_id = imgui.MakeId(SourceLocationHash());
-                if (imgui.ButtonBehaviour(label_click_rect, toggle_id, {}))
+                if (imgui.ButtonBehaviour(label_click_rect, toggle_id, {})) {
                     ModifyStep(arp_state, i, [](ArpStep& s) { s.on = !s.on; });
+                    RecordUndoableStep(g.engine, "Arp step on/off"_s);
+                }
                 label_hot = imgui.IsHot(toggle_id);
                 Tooltip(
                     g,
@@ -416,9 +421,11 @@ void DoArpStepSequencer(GuiState& g,
                                                      .tooltip = "Enable every step"_s,
                                                      .no_icon_gap = true,
                                                  })
-                                            .button_fired)
+                                            .button_fired) {
                                         for (u32 j = 0; j < active_steps; ++j)
                                             ModifyStep(arp_state, j, [](ArpStep& s) { s.on = true; });
+                                        RecordUndoableStep(g.engine, "Reset all arp steps"_s);
+                                    }
                                 },
                             .bounds = label_click_rect,
                             .imgui_id = popup_id,
@@ -533,6 +540,7 @@ void DoArpStepSequencer(GuiState& g,
                         ModifyStep(arp_state, i, [](ArpStep& s) { s.note = 60; });
                     else
                         ModifyStep(arp_state, i, [](ArpStep& s) { s.interval = 0; });
+                    RecordUndoableStep(g.engine, "Reset arp step note"_s);
                 },
                 [&]() {
                     auto const this_step = snapshot.StepAt(i);
@@ -545,6 +553,7 @@ void DoArpStepSequencer(GuiState& g,
                                 s.interval = iv;
                             });
                     }
+                    RecordUndoableStep(g.engine, "Apply arp step note to all"_s);
                 },
                 [&]() {
                     for (u32 j = 0; j < active_steps; ++j)
@@ -552,7 +561,12 @@ void DoArpStepSequencer(GuiState& g,
                             ModifyStep(arp_state, j, [](ArpStep& s) { s.note = 60; });
                         else
                             ModifyStep(arp_state, j, [](ArpStep& s) { s.interval = 0; });
+                    RecordUndoableStep(g.engine, "Reset all arp step notes"_s);
                 });
+
+            if (imgui.WasJustActivated(note_id, MouseButton::Left))
+                BeginUndoableStep(g.engine, "Arp step note"_s);
+            if (imgui.WasJustDeactivated(note_id, MouseButton::Left)) EndUndoableStep(g.engine);
 
             if (dragger_result.value_changed) {
                 if (is_fixed)
@@ -576,6 +590,7 @@ void DoArpStepSequencer(GuiState& g,
                                        s.interval = v;
                                    });
                 }
+                RecordUndoableStep(g.engine, "Arp step note"_s);
             }
 
             auto note_hot = imgui.IsHot(note_id);
@@ -624,8 +639,10 @@ void DoArpStepSequencer(GuiState& g,
             if (edit.step_tie) {
                 imgui.PushId((u64)(i + (k_arp_max_steps * 2)));
                 auto const tie_id = imgui.MakeId(SourceLocationHash());
-                if (imgui.ButtonBehaviour(tie_click_rect, tie_id, {}))
+                if (imgui.ButtonBehaviour(tie_click_rect, tie_id, {})) {
                     ModifyStep(arp_state, i, [](ArpStep& s) { s.tie = !s.tie; });
+                    RecordUndoableStep(g.engine, "Arp step tie"_s);
+                }
                 tie_hot = imgui.IsHot(tie_id);
                 Tooltip(g,
                         tie_id,
@@ -699,18 +716,27 @@ void DoArpStepSequencer(GuiState& g,
                     gate_str,
                     "Reset gate to 100%"_s,
                     "Reset every step's gate to 100%"_s,
-                    [&]() { ModifyStep(arp_state, i, [](ArpStep& s) { s.gate = ArpStep::From01(1.0f); }); },
+                    [&]() {
+                        ModifyStep(arp_state, i, [](ArpStep& s) { s.gate = ArpStep::From01(1.0f); });
+                        RecordUndoableStep(g.engine, "Reset arp step gate"_s);
+                    },
                     [&]() {
                         auto const this_gate = snapshot.StepAt(i).gate;
                         for (u32 j = 0; j < active_steps; ++j) {
                             if (j == i) continue;
-                            ModifyStep(arp_state, j, [g = this_gate](ArpStep& s) { s.gate = g; });
+                            ModifyStep(arp_state, j, [g_ = this_gate](ArpStep& s) { s.gate = g_; });
                         }
+                        RecordUndoableStep(g.engine, "Apply arp step gate to all"_s);
                     },
                     [&]() {
                         for (u32 j = 0; j < active_steps; ++j)
                             ModifyStep(arp_state, j, [](ArpStep& s) { s.gate = ArpStep::From01(1.0f); });
+                        RecordUndoableStep(g.engine, "Reset all arp step gates"_s);
                     });
+
+                if (imgui.WasJustActivated(knob_id, MouseButton::Left))
+                    BeginUndoableStep(g.engine, "Arp step gate"_s);
+                if (imgui.WasJustDeactivated(knob_id, MouseButton::Left)) EndUndoableStep(g.engine);
 
                 if (dragger_result.value_changed) {
                     auto const new_gate = Clamp(gate_pct / 100.0f, 0.05f, 1.0f);
@@ -723,6 +749,7 @@ void DoArpStepSequencer(GuiState& g,
                             s.gate = ArpStep::From01(new_gate);
                         });
                     }
+                    RecordUndoableStep(g.engine, "Arp step gate"_s);
                 }
                 gate_text_input_result = dragger_result.text_input_result;
 
@@ -799,8 +826,10 @@ void DoArpStepSequencer(GuiState& g,
                                                  .tooltip = "Reset all values of this step to defaults"_s,
                                                  .no_icon_gap = true,
                                              })
-                                        .button_fired)
+                                        .button_fired) {
                                     ModifyStep(arp_state, i, [](ArpStep& s) { s = {}; });
+                                    RecordUndoableStep(g.engine, "Reset arp step"_s);
+                                }
 
                                 if (MenuItem(
                                         g.builder,
@@ -823,6 +852,7 @@ void DoArpStepSequencer(GuiState& g,
                                             s.note = this_step.note;
                                         });
                                     }
+                                    RecordUndoableStep(g.engine, "Apply arp step to all"_s);
                                 }
 
                                 if (MenuItem(g.builder,
@@ -832,9 +862,11 @@ void DoArpStepSequencer(GuiState& g,
                                                  .tooltip = "Reset every step to its defaults"_s,
                                                  .no_icon_gap = true,
                                              })
-                                        .button_fired)
+                                        .button_fired) {
                                     for (u32 j = 0; j < active_steps; ++j)
                                         ModifyStep(arp_state, j, [](ArpStep& s) { s = {}; });
+                                    RecordUndoableStep(g.engine, "Reset all arp steps"_s);
+                                }
                             },
                         .bounds = step_window_rect,
                         .imgui_id = step_popup_id,

@@ -225,7 +225,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                     f32 font_scale,
                                     f32 padding_x,
                                     Col colour = {.c = Col::Subtext1, .dark_mode = true},
-                                    u64 id_extra = SourceLocationHash()) {
+                                    u64 id_extra = SourceLocationHash(),
+                                    bool disabled = false) {
         // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
         auto const button = DoBox(builder,
                                   {
@@ -248,8 +249,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   .text_colours =
                       ColSet {
                           .base = colour,
-                          .hot {.c = Col::Highlight},
-                          .active {.c = Col::Highlight},
+                          .hot = disabled ? colour : Col {.c = Col::Highlight},
+                          .active = disabled ? colour : Col {.c = Col::Highlight},
                       },
                   .parent_dictates_hot_and_active = true,
               });
@@ -467,7 +468,40 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         if (prefs_button.button_fired) g.imgui.OpenModalViewport(g.preferences_panel_state.k_panel_id);
     }
 
-    // info
+    {
+        auto const can_undo = g.engine.undo_history.CanUndo();
+        auto const next = g.engine.undo_history.NextUndoName();
+        auto const tooltip =
+            next ? (String)fmt::Format(builder.arena, "Undo: {}", *next) : "Nothing to undo"_s;
+        auto const undo_button =
+            do_icon_button(right_icon_buttons_container,
+                           ICON_FA_ARROW_ROTATE_LEFT,
+                           tooltip,
+                           0.9f,
+                           5,
+                           Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_undo ? (u8)255 : (u8)60},
+                           SourceLocationHash(),
+                           !can_undo);
+        if (undo_button.button_fired && can_undo) Undo(g.engine);
+    }
+
+    {
+        auto const can_redo = g.engine.undo_history.CanRedo();
+        auto const next = g.engine.undo_history.NextRedoName();
+        auto const tooltip =
+            next ? (String)fmt::Format(builder.arena, "Redo: {}", *next) : "Nothing to redo"_s;
+        auto const redo_button =
+            do_icon_button(right_icon_buttons_container,
+                           ICON_FA_ARROW_ROTATE_RIGHT,
+                           tooltip,
+                           0.9f,
+                           5,
+                           Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_redo ? (u8)255 : (u8)60},
+                           SourceLocationHash(),
+                           !can_redo);
+        if (redo_button.button_fired && can_redo) Redo(g.engine);
+    }
+
     {
         auto const info_button =
             do_icon_button(right_icon_buttons_container, ICON_FA_CIRCLE_INFO, "Open info window"_s, 0.9f, 5);

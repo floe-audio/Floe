@@ -364,6 +364,8 @@ static void DoSwitchboard(GuiState& g, Box root) {
 
                 if (fired) {
                     bool const new_state = !is_visible;
+                    BeginUndoableStep(g.engine, new_state ? "Add FX"_s : "Remove FX"_s);
+                    DEFER { EndUndoableStep(g.engine); };
                     SetParameterValue(g.engine.processor,
                                       k_effect_info[ToInt(fx->type)].on_param_index,
                                       new_state ? 1.0f : 0.0f,
@@ -450,6 +452,7 @@ static void DoSwitchboard(GuiState& g, Box root) {
             g.engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged,
                                                    RmwMemoryOrder::Release);
             g.engine.processor.host.request_process(&g.engine.processor.host);
+            RecordUndoableStep(g.engine, "FX order");
             g.dragging_fx_switch.Clear();
         }
     }
@@ -1105,6 +1108,8 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                     .button_behaviour = imgui::ButtonConfig {},
                 });
             if (close_btn.button_fired) {
+                BeginUndoableStep(g.engine, "Remove FX"_s);
+                DEFER { EndUndoableStep(g.engine); };
                 SetParameterValue(g.engine.processor, k_effect_info[ToInt(fx->type)].on_param_index, 0, {});
                 g.engine.fx_visible.SetToValue(ToInt(fx->type), false);
             }
@@ -1282,6 +1287,7 @@ static void DoEffectDragAndDrop(GuiState& g,
                                                      StoreMemoryOrder::Release);
         engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);
         engine.processor.host.request_process(&engine.processor.host);
+        RecordUndoableStep(engine, "FX order");
     }
 }
 
