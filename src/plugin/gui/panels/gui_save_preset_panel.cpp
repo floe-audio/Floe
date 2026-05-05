@@ -326,22 +326,22 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                    {.text = "Cancel"_s, .tooltip = "Cancel and close"_s}))
                         builder.imgui.CloseTopModal();
 
-                    if (context.engine.last_snapshot.lookup_preset_path) {
+                    if (context.engine.pinned_snapshot.preset_path_needs_lookup) {
                         auto& preset_server = context.engine.shared_engine_systems.preset_server;
                         auto const path = FindPresetMatchingSnapshotHash(
                             preset_server,
-                            context.engine.last_snapshot.state.extras.last_preset_hash,
+                            context.engine.pinned_snapshot.state.extras.origin_preset_hash,
                             builder.arena);
                         if (path) {
-                            dyn::Assign(context.engine.last_snapshot.preset_path, *path);
-                            context.engine.last_snapshot.lookup_preset_path = false;
+                            dyn::Assign(context.engine.pinned_snapshot.preset_path, *path);
+                            context.engine.pinned_snapshot.preset_path_needs_lookup = false;
                         } else if (!AreFoldersScanning(preset_server)) {
                             // Not found in preset index, and no scanning is occurring.
-                            context.engine.last_snapshot.lookup_preset_path = false;
+                            context.engine.pinned_snapshot.preset_path_needs_lookup = false;
                         }
                     }
 
-                    if (auto const& existing_path = context.engine.last_snapshot.preset_path;
+                    if (auto const& existing_path = context.engine.pinned_snapshot.preset_path;
                         existing_path.size) {
                         if (TextButton(
                                 builder,

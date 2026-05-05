@@ -35,15 +35,26 @@ struct Engine : ProcessorListener {
         StateSnapshot snapshot;
         DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
         StateSource source;
+        bool pin_on_complete = true;
     };
 
-    struct LastSnapshot {
+    struct PinnedSnapshot {
+        struct DescriptionCache {
+            AutoDescription auto_desc {};
+            String short_text {};
+            String long_text {};
+            bool long_is_user_desc = false;
+            bool short_is_user_desc = false;
+        };
+
         StateSnapshot state {DefaultStateSnapshot()};
         DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
 
         // We sometimes don't have the full path, but it's worth seeing if it's our known preset index. To
         // avoid wasteful repeated lookup in the preset index, we use this bool to only do it once.
-        bool lookup_preset_path {};
+        bool preset_path_needs_lookup {};
+
+        DescriptionCache description_cache {};
     };
 
     Engine(clap_host const& host,
@@ -82,16 +93,7 @@ struct Engine : ProcessorListener {
     ThreadsafeFunctionQueue main_thread_callbacks {.arena = {PageAllocator::Instance()}};
 
     Optional<PendingStateChange> pending_state_change {};
-    LastSnapshot last_snapshot {};
-
-    struct PresetDescriptionCache {
-        AutoDescription auto_desc {};
-        String short_text {};
-        String long_text {};
-        bool long_is_user_desc = false;
-        bool short_is_user_desc = false;
-    };
-    PresetDescriptionCache preset_description_cache {};
+    PinnedSnapshot pinned_snapshot {};
 
     StateMetadata state_metadata {};
 
@@ -134,16 +136,16 @@ usize MegabytesUsedBySamples(Engine const& engine);
 
 StateSnapshot CurrentStateSnapshot(Engine& engine);
 
-String CurrentPresetFolderName(Engine const& engine);
+String PinnedPresetFolderName(Engine const& engine);
 
 void ApplySectionOfState(Engine& engine,
                          StateSnapshot const& source,
                          StateSnapshotSection const& source_section,
                          StateSnapshotSection const& target_section);
 
-bool StateChangedSinceLastSnapshot(Engine& engine);
+bool StateModifiedFromPinned(Engine& engine);
 
-void RevertToLastSnapshot(Engine& engine);
+void RevertToPinned(Engine& engine);
 
 void LoadPresetFromFile(Engine& engine, String path);
 

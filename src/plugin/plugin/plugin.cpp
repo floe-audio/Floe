@@ -877,7 +877,7 @@ static bool ClapParamsGetValue(clap_plugin_t const* plugin, clap_id param_id, f6
         auto const index = (usize)*opt_index;
 
         if (floe.engine->pending_state_change)
-            *out_value = (f64)floe.engine->last_snapshot.state.param_values[index];
+            *out_value = (f64)floe.engine->pinned_snapshot.state.param_values[index];
         else
             *out_value = (f64)floe.engine->processor.main_params.values[index];
 

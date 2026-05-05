@@ -564,7 +564,7 @@ static void ProcessorRandomiseAllParamsInternal(AudioProcessor& processor, bool 
         }
     }
 
-    ApplyNewState(processor, state, StateSource::PresetFile);
+    ApplyState(processor, state, StateSource::PresetFile);
 }
 
 void RandomiseAllEffectParameterValues(AudioProcessor& processor) {
@@ -863,7 +863,7 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
     processor.host.request_process(&processor.host);
 }
 
-void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateSource source) {
+void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSource source) {
     ASSERT(g_is_logical_main_thread);
 
     if (source == StateSource::Daw)
@@ -876,7 +876,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
 
     // Layers.
     for (auto const layer_index : Range(k_num_layers))
-        LayerApplyNewState(processor.layer_processors[layer_index], state, source);
+        LayerApplyState(processor.layer_processors[layer_index], state, source);
 
     // Macro destinations.
     {
@@ -918,7 +918,7 @@ void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateS
     processor.host.request_process(&processor.host);
 }
 
-StateSnapshot MakeStateSnapshot(AudioProcessor const& processor) {
+StateSnapshot CaptureStateSnapshot(AudioProcessor const& processor) {
     StateSnapshot result {};
     auto const ordered_fx_pointers =
         DecodeEffectsArray(processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),

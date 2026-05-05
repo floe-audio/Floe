@@ -319,9 +319,9 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
                                AudioData const* audio_data,
                                sample_lib::ImpulseResponse::AudioProperties const& audio_props);
 
-void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateSource source);
+void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSource source);
 
-StateSnapshot MakeStateSnapshot(AudioProcessor const& processor);
+StateSnapshot CaptureStateSnapshot(AudioProcessor const& processor);
 
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index);
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index);

@@ -112,7 +112,7 @@ ArpGuiSnapshot CreateArpGuiSnapshot(Parameters const& params,
     };
 }
 
-void ArpApplyNewState(ArpeggiatorState& arp, StateSnapshot const& state, u8 layer_index) {
+void ArpApplyState(ArpeggiatorState& arp, StateSnapshot const& state, u8 layer_index) {
     ASSERT(g_is_logical_main_thread);
 
     for (auto const step_index : Range(k_arp_max_steps))

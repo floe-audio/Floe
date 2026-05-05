@@ -297,4 +297,4 @@ void ProcessLayerPreVoices(LayerProcessor& layer,
                            VoicePool& voice_pool,
                            u32 num_frames);
 
-void LayerApplyNewState(LayerProcessor& layer, StateSnapshot const& state, StateSource source);
+void LayerApplyState(LayerProcessor& layer, StateSnapshot const& state, StateSource source);

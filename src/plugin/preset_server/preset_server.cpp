@@ -338,7 +338,7 @@ static void AddPresetToFolder(PresetFolder& folder,
         }
     }
 
-    ASSERT(state.extras.last_preset_hash);
+    ASSERT(state.extras.origin_preset_hash);
 
     dyn::Append(presets,
                 PresetFolder::Preset {
@@ -354,7 +354,7 @@ static void AddPresetToFolder(PresetFolder& folder,
                     .author_hash = Hash(state.metadata.author),
                     .used_libraries = used_libraries,
                     .file_hash = file_hash,
-                    .snapshot_hash = state.extras.last_preset_hash,
+                    .snapshot_hash = state.extras.origin_preset_hash,
                     .full_path_hash = HashMultiple(Array {folder.scan_folder, folder.folder, entry.subpath}),
                     .file_extension = file_format == PresetFormat::Mirage
                                           ? (String)folder.arena.Clone(path::Extension(entry.subpath))

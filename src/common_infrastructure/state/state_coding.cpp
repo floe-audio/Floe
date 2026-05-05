@@ -1267,7 +1267,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
     if (adapt_for_latest_version) AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
     state.extras = {};
-    state.extras.last_preset_hash = RapidHash64(data);
+    state.extras.origin_preset_hash = RapidHash64(data);
 
     return k_success;
 }
@@ -1431,12 +1431,12 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     // StateExtras are mostly for DAW state only.
     if (args.source == StateSource::PresetFile) state.extras = {};
     DEFER {
-        // We have a special behaviour when decoding a preset file: we auto-populate the last_snapshot_hash
+        // We have a special behaviour when decoding a preset file: we auto-populate the origin_preset_hash
         // because it's very useful for us to be able to have a quick unique identifier for snapshots.
         if (coder.IsReading() && args.source == StateSource::PresetFile)
             state.extras = {
-                .last_preset_hash = coder.hash,
-                .modified_from_last_preset = false,
+                .origin_preset_hash = coder.hash,
+                .modified_from_origin_preset = false,
             };
     };
 
@@ -1909,8 +1909,8 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         TRY(coder.CodeDynArray(state.extras.display_name, k_added));
         TRY(coder.CodeDynArray(state.extras.display_category, k_added));
-        TRY(coder.CodeNumber(state.extras.last_preset_hash, k_added));
-        TRY(coder.CodeNumber(state.extras.modified_from_last_preset, k_added));
+        TRY(coder.CodeNumber(state.extras.origin_preset_hash, k_added));
+        TRY(coder.CodeNumber(state.extras.modified_from_origin_preset, k_added));
     }
 
     // =======================================================================================================
@@ -2301,8 +2301,8 @@ TEST_CASE(TestNewSerialisation) {
                 }
                 dyn::Assign(state.extras.display_name, "TEST"_s);
                 dyn::Assign(state.extras.display_category, "CATEGORY"_s);
-                state.extras.last_preset_hash = 0x12356789ull;
-                state.extras.modified_from_last_preset = true;
+                state.extras.origin_preset_hash = 0x12356789ull;
+                state.extras.modified_from_origin_preset = true;
             } else {
                 state.extras = {};
             }
@@ -2349,8 +2349,8 @@ TEST_CASE(TestNewSerialisation) {
 
             if (source == StateSource::PresetFile) {
                 // When decoding a preset file we expect it to to have populated the hash for us.
-                CHECK(out_state.extras.last_preset_hash != 0);
-                out_state.extras.last_preset_hash = 0; // Clear it for correct equality checks below.
+                CHECK(out_state.extras.origin_preset_hash != 0);
+                out_state.extras.origin_preset_hash = 0; // Clear it for correct equality checks below.
             }
 
             if (!(state == out_state)) {

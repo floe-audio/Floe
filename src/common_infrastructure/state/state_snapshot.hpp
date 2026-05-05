@@ -50,8 +50,8 @@ struct StateExtras {
 
     // The hash of the preset when it was loaded from file - if any. This allows us to identify the preset
     // this state is based on and track if state has been modified since loading.
-    u64 last_preset_hash {}; // 0 == unknown. Filled automatically when decoding a preset.
-    bool modified_from_last_preset {};
+    u64 origin_preset_hash {}; // 0 == unknown. Filled automatically when decoding a preset.
+    bool modified_from_origin_preset {};
 };
 
 struct StateSnapshot {

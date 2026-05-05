@@ -167,14 +167,14 @@ void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context)
     layer.peak_meter.PrepareToPlay(context.sample_rate);
 }
 
-void LayerApplyNewState(LayerProcessor& layer, StateSnapshot const& state, StateSource) {
+void LayerApplyState(LayerProcessor& layer, StateSnapshot const& state, StateSource) {
     ASSERT(g_is_logical_main_thread);
 
     layer.velocity_curve_map.SetNewPoints(state.velocity_curve_points[layer.index]);
 
     layer.harmony_intervals.AssignBlockwise(state.harmony_intervals[layer.index]);
 
-    ArpApplyNewState(layer.arp_state, state, layer.index);
+    ArpApplyState(layer.arp_state, state, layer.index);
 }
 
 //

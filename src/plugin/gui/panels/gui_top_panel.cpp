@@ -295,10 +295,10 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     dyn::Assign(buffer, "Open presets window"_s);
                     fmt::Append(buffer,
                                 "\nCurrent preset: {}",
-                                engine.last_snapshot.state.extras.display_name);
-                    if (engine.last_snapshot.state.metadata.description.size) {
+                                engine.pinned_snapshot.state.extras.display_name);
+                    if (engine.pinned_snapshot.state.metadata.description.size) {
                         dyn::AppendSpan(buffer, "\n\n"_s);
-                        dyn::AppendSpan(buffer, engine.last_snapshot.state.metadata.description);
+                        dyn::AppendSpan(buffer, engine.pinned_snapshot.state.metadata.description);
                     }
                     return buffer.ToOwnedSpan();
                 }},
@@ -317,8 +317,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   .parent = preset_box_left,
                   .text = fmt::Format(builder.arena,
                                       "{}{}",
-                                      g.engine.last_snapshot.state.extras.display_name,
-                                      StateChangedSinceLastSnapshot(g.engine) ? " (modified)"_s : ""_s),
+                                      g.engine.pinned_snapshot.state.extras.display_name,
+                                      StateModifiedFromPinned(g.engine) ? " (modified)"_s : ""_s),
                   .text_colours =
                       ColSet {
                           .base {.c = Col::Text, .dark_mode = true},
@@ -333,7 +333,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
         {
             // IMPROVE: should this be a text input that changes the description?
-            auto const& desc_cache = g.engine.preset_description_cache;
+            auto const& desc_cache = g.engine.pinned_snapshot.description_cache;
             String const desc_text = desc_cache.short_is_user_desc || !desc_cache.short_text.size
                                          ? (String)desc_cache.short_text
                                          : (String)fmt::Format(builder.arena, "{}", desc_cache.short_text);

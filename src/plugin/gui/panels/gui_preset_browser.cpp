@@ -175,8 +175,8 @@ LoadPreset(PresetBrowserContext const& context, PresetBrowserState& state, Prese
 
 static u64 CurrentLoadedPresetSnapshotHash(PresetBrowserContext const& context) {
     auto const& engine = context.engine;
-    if (engine.pending_state_change) return engine.pending_state_change->snapshot.extras.last_preset_hash;
-    return engine.last_snapshot.state.extras.last_preset_hash;
+    if (engine.pending_state_change) return engine.pending_state_change->snapshot.extras.origin_preset_hash;
+    return engine.pinned_snapshot.state.extras.origin_preset_hash;
 }
 
 void LoadAdjacentPreset(PresetBrowserContext const& context,

@@ -165,7 +165,7 @@ void ArpProcessBlock(ArpeggiatorState& arp,
 
 void ResetArpAudioPlayback(ArpeggiatorState& arp);
 
-void ArpApplyNewState(ArpeggiatorState& arp, StateSnapshot const& state, u8 layer_index);
+void ArpApplyState(ArpeggiatorState& arp, StateSnapshot const& state, u8 layer_index);
 
 struct ArpInstrumentChangeArgs {
     sample_lib::Region const* old_sliced_region;

@@ -40,7 +40,7 @@ DoSectionLabel(GuiBuilder& builder, Box parent, String text, u64 loc_hash = Sour
 }
 
 static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
-    auto const& snapshot = g.engine.last_snapshot;
+    auto const& snapshot = g.engine.pinned_snapshot;
 
     auto const container = DoBox(builder,
                                  {
@@ -547,8 +547,8 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                       "Revert"_s,
                       "Discard modifications and reload the last loaded preset"_s,
                       4,
-                      !StateChangedSinceLastSnapshot(g.engine),
-                      [&]() { RevertToLastSnapshot(g.engine); });
+                      !StateModifiedFromPinned(g.engine),
+                      [&]() { RevertToPinned(g.engine); });
 }
 
 static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
@@ -632,7 +632,7 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     constexpr f32 k_desc_column_width = 160;
 
-    auto const& cache = g.engine.preset_description_cache;
+    auto const& cache = g.engine.pinned_snapshot.description_cache;
 
     auto const column = DoBox(builder,
                               {
@@ -762,7 +762,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
     }
 
     // Folder name badge at the bottom of the top section
-    if (auto const folder_name = CurrentPresetFolderName(g.engine); folder_name.size) {
+    if (auto const folder_name = PinnedPresetFolderName(g.engine); folder_name.size) {
         auto const badge = DoBox(builder,
                                  {
                                      .parent = root,
