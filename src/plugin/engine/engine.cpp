@@ -406,11 +406,15 @@ static StateSnapshot const& EffectivePinnedSnapshot(Engine& engine) {
 }
 
 StateSnapshot CurrentStateSnapshot(Engine& engine) {
-    StateSnapshot snapshot = engine.pending_state_change ? engine.pending_state_change->snapshot
-                                                         : CaptureStateSnapshot(engine.processor);
-    snapshot.metadata = engine.state_metadata;
-    snapshot.macro_names = engine.macro_names;
-    snapshot.fx_visible = engine.fx_visible;
+    StateSnapshot snapshot;
+    if (engine.pending_state_change) {
+        snapshot = engine.pending_state_change->snapshot;
+    } else {
+        snapshot = CaptureStateSnapshot(engine.processor);
+        snapshot.metadata = engine.state_metadata;
+        snapshot.macro_names = engine.macro_names;
+        snapshot.fx_visible = engine.fx_visible;
+    }
 
     auto const& last = EffectivePinnedSnapshot(engine);
     if (last.extras.modified_from_origin_preset) {
