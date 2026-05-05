@@ -150,13 +150,13 @@ static void AfterStateChanged(Engine& engine) {
 struct LoadStateOptions {
     StateSource source;
     String preset_path = ""_s;
-    bool pin = true;
+    bool update_pinned_snapshot = true;
 };
 
 static void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts) {
     auto const preset_path = opts.preset_path;
     auto const source = opts.source;
-    auto const pin = opts.pin;
+    auto const update_pinned_snapshot = opts.update_pinned_snapshot;
     ZoneScoped;
     ASSERT(g_is_logical_main_thread);
 
@@ -198,7 +198,7 @@ static void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptio
         engine.macro_names = state.macro_names;
         engine.fx_visible = state.fx_visible;
         ApplyState(engine.processor, state, source);
-        if (pin) SetPinnedSnapshot(engine, state, preset_path);
+        if (update_pinned_snapshot) SetPinnedSnapshot(engine, state, preset_path);
 
         MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
         AfterStateChanged(engine);
@@ -208,7 +208,7 @@ static void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptio
         pending.snapshot = state;
         dyn::Assign(pending.preset_path, preset_path);
         pending.source = source;
-        pending.pin_on_complete = pin;
+        pending.update_pinned_snapshot_on_complete = update_pinned_snapshot;
 
         for (auto [layer_index, i] : Enumerate<u32>(state.inst_ids)) {
             engine.processor.layer_processors[layer_index].instrument_id = i;
@@ -303,11 +303,11 @@ static void CompletePendingStateLoad(Engine& engine) {
                                  ? String(temp_arena.Clone(pending_state_change.preset_path))
                                  : ""_s;
     auto const source = pending_state_change.source;
-    auto const pin = pending_state_change.pin_on_complete;
+    auto const update_pinned_snapshot = pending_state_change.update_pinned_snapshot_on_complete;
     engine.pending_state_change.Clear();
 
     ApplyState(engine.processor, snapshot, source);
-    if (pin) SetPinnedSnapshot(engine, snapshot, preset_path);
+    if (update_pinned_snapshot) SetPinnedSnapshot(engine, snapshot, preset_path);
     AfterStateChanged(engine);
 }
 
@@ -401,7 +401,15 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
     engine.host.request_callback(&engine.host);
 }
 
-static StateSnapshot const& EffectivePinnedSnapshot(Engine& engine) {
+// The snapshot to compare against when computing modified_from_origin_preset. During an in-flight load,
+// engine.pinned_snapshot still holds the previous pinned snapshot (SetPinnedSnapshot only runs on
+// completion), but the load target is the eventual settled state — comparing against the stale pinned
+// snapshot would falsely flag the
+// in-flight state as modified for the entire load duration. This helper returns the load target during
+// pending and the committed pinned snapshot otherwise. Use it ONLY for modification detection; for UI
+// "what preset is loaded" display, use engine.pinned_snapshot directly; for the load target, use
+// engine.pending_state_change.
+static StateSnapshot const& PinnedSnapshotForModificationCheck(Engine& engine) {
     return engine.pending_state_change ? engine.pending_state_change->snapshot : engine.pinned_snapshot.state;
 }
 
@@ -416,7 +424,7 @@ StateSnapshot CurrentStateSnapshot(Engine& engine) {
         snapshot.fx_visible = engine.fx_visible;
     }
 
-    auto const& last = EffectivePinnedSnapshot(engine);
+    auto const& last = PinnedSnapshotForModificationCheck(engine);
     if (last.extras.modified_from_origin_preset) {
         snapshot.extras = last.extras;
     } else {
@@ -619,7 +627,7 @@ bool StateModifiedFromPinned(Engine& engine) {
     bool const changed = current.extras.modified_from_origin_preset;
 
     if constexpr (!PRODUCTION_BUILD) {
-        auto const& last = EffectivePinnedSnapshot(engine);
+        auto const& last = PinnedSnapshotForModificationCheck(engine);
         if (changed)
             AssignDiffDescription(engine.state_change_description, last, current);
         else
@@ -708,7 +716,7 @@ void LoadInstruments(Engine& engine,
     for (auto const layer_index : Range(k_num_layers))
         if (auto const& id = new_ids[layer_index]) snapshot.inst_ids[layer_index] = *id;
 
-    LoadState(engine, snapshot, {.source = StateSource::PresetFile, .pin = false});
+    LoadState(engine, snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
     RecordUndoableStep(engine, undo_name);
 }
 
@@ -718,7 +726,7 @@ void RevertToPinned(Engine& engine) {
               {
                   .source = StateSource::PresetFile,
                   .preset_path = engine.pinned_snapshot.preset_path,
-                  .pin = false,
+                  .update_pinned_snapshot = false,
               });
     RecordUndoableStep(engine, "Revert"_s);
 }
@@ -1014,13 +1022,13 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
     return true;
 }
 
-void RecordUndoableStep(Engine& engine, String name, bool is_pin_anchor) {
+void RecordUndoableStep(Engine& engine, String name, bool is_pinned_snapshot_anchor) {
     ASSERT(g_is_logical_main_thread);
     auto const current = CurrentStateSnapshot(engine);
     UndoableStep step {
         .name = name,
         .snapshot = current,
-        .is_pin_anchor = is_pin_anchor,
+        .is_pinned_snapshot_anchor = is_pinned_snapshot_anchor,
     };
     dyn::AssignFitInCapacity(step.snapshot_name, current.extras.display_name);
     engine.undo_history.Record(step);
@@ -1050,15 +1058,15 @@ void EndUndoableStep(Engine& engine) {
     if (--engine.undoable_step_depth == 0) RecordUndoableStep(engine, engine.pending_undoable_step_name);
 }
 
-// Walks the undo stack backwards from the current top to find the most recent pin-anchor entry, and
-// reseats the engine's pin to that anchor's snapshot. The path is left empty so the existing
-// preset_path_needs_lookup mechanism resolves it from origin_preset_hash. If no anchor is reachable
-// (e.g. the oldest scrolled off the ring), the pin is left untouched.
-static void RestorePinFromAnchor(Engine& engine) {
+// Walks the undo stack backwards from the current top to find the most recent pinned-snapshot-anchor
+// entry, and reseats the engine's pinned snapshot to that anchor's snapshot. The path is left empty so the
+// existing preset_path_needs_lookup mechanism resolves it from origin_preset_hash. If no anchor is
+// reachable (e.g. the oldest scrolled off the ring), the pinned snapshot is left untouched.
+static void RestorePinnedSnapshotFromAnchor(Engine& engine) {
     auto const& undo = engine.undo_history.undo;
     for (auto i = undo.Size(); i > 0; --i) {
         auto const& step = undo.At(i - 1);
-        if (step.is_pin_anchor) {
+        if (step.is_pinned_snapshot_anchor) {
             SetPinnedSnapshot(engine, step.snapshot, ""_s);
             return;
         }
@@ -1069,16 +1077,16 @@ void Undo(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undo_history.CanUndo());
     auto const entry = engine.undo_history.Undo();
-    LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .pin = false});
-    RestorePinFromAnchor(engine);
+    LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+    RestorePinnedSnapshotFromAnchor(engine);
 }
 
 void Redo(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undo_history.CanRedo());
     auto const entry = engine.undo_history.Redo();
-    LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .pin = false});
-    RestorePinFromAnchor(engine);
+    LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+    RestorePinnedSnapshotFromAnchor(engine);
 }
 
 PluginCallbacks<Engine> const g_engine_callbacks {

@@ -35,7 +35,7 @@ struct Engine : ProcessorListener {
         StateSnapshot snapshot;
         DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
         StateSource source;
-        bool pin_on_complete = true;
+        bool update_pinned_snapshot_on_complete = true;
     };
 
     struct PinnedSnapshot {
@@ -160,10 +160,10 @@ void SetToDefaultState(Engine& engine);
 // appropriate undoable steps to the engine. However, for non-parameters, or for when we want to coalesce
 // multiple parameter changes into one step, the GUI needs to use these functions.
 
-// Call once you've made a modification. Pass is_pin_anchor=true for baseline-establishing events
+// Call once you've made a modification. Pass is_pinned_snapshot_anchor=true for baseline-establishing events
 // (preset load, DAW state load, default reset, save) so undo/redo can correctly relocate the pinned
 // snapshot when navigating across these boundaries.
-void RecordUndoableStep(Engine& engine, String name, bool is_pin_anchor = false);
+void RecordUndoableStep(Engine& engine, String name, bool is_pinned_snapshot_anchor = false);
 
 // Same as RecordUndoableStep except it should be used when multiple SetParameterValue or
 // ParameterJustStartedMoving/Finished should be coalesced into a single step.
