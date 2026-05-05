@@ -201,9 +201,10 @@ void DoEnvelopeGui(GuiState& g,
         }
 
         if (imgui.IsPopupMenuOpen(popup_id)) {
-            EnvelopeSelector const env_target {
-                .layer_index = layer.index,
-                .kind = type == GuiEnvelopeType::Volume ? EnvelopeKind::Volume : EnvelopeKind::Filter};
+            EnvelopeSection const env_target {.layer_index = layer.index,
+                                              .kind = type == GuiEnvelopeType::Volume
+                                                          ? EnvelopeSection::Kind::Volume
+                                                          : EnvelopeSection::Kind::Filter};
             String const env_label =
                 type == GuiEnvelopeType::Volume ? "Volume Envelope"_s : "Filter Envelope"_s;
 
@@ -221,7 +222,7 @@ void DoEnvelopeGui(GuiState& g,
                                                         },
                                                     });
 
-                            StateSnapshotSelector const target_selector {env_target};
+                            StateSnapshotSection const target_section {env_target};
 
                             if (MenuItem(g.builder,
                                          root,
@@ -230,10 +231,10 @@ void DoEnvelopeGui(GuiState& g,
                                              .no_icon_gap = true,
                                          })
                                     .button_fired) {
-                                ApplySection(g.engine,
-                                             DefaultStateSnapshot(),
-                                             target_selector,
-                                             target_selector);
+                                ApplySectionOfState(g.engine,
+                                                    DefaultStateSnapshot(),
+                                                    target_section,
+                                                    target_section);
                             }
 
                             if (MenuItem(g.builder,
@@ -245,15 +246,14 @@ void DoEnvelopeGui(GuiState& g,
                                     .button_fired) {
                                 g.snapshot_clipboard = GuiState::CopiedSection {
                                     .snapshot = CurrentStateSnapshot(g.engine),
-                                    .selector = target_selector,
+                                    .section = target_section,
                                 };
                             }
 
                             auto const can_paste =
                                 g.snapshot_clipboard.HasValue() &&
-                                g.snapshot_clipboard->selector.tag == SelectorKind::Envelope &&
-                                g.snapshot_clipboard->selector.Get<EnvelopeSelector>().kind ==
-                                    env_target.kind;
+                                g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Envelope &&
+                                g.snapshot_clipboard->section.Get<EnvelopeSection>().kind == env_target.kind;
 
                             if (MenuItem(g.builder,
                                          root,
@@ -265,10 +265,10 @@ void DoEnvelopeGui(GuiState& g,
                                          })
                                     .button_fired &&
                                 can_paste) {
-                                ApplySection(g.engine,
-                                             g.snapshot_clipboard->snapshot,
-                                             g.snapshot_clipboard->selector,
-                                             target_selector);
+                                ApplySectionOfState(g.engine,
+                                                    g.snapshot_clipboard->snapshot,
+                                                    g.snapshot_clipboard->section,
+                                                    target_section);
                             }
                         },
                     .bounds = window_r,

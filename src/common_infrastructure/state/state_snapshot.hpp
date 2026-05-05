@@ -102,35 +102,34 @@ void AssignDiffDescription(DynArrayT& diff_desc,
                            StateSnapshot const& old_state,
                            StateSnapshot const& new_state);
 
-struct MacroSelector {
-    bool operator==(MacroSelector const&) const = default;
+struct MacroSection {
+    bool operator==(MacroSection const&) const = default;
     u8 macro_index;
 };
 
-struct InstrumentSelector {
-    bool operator==(InstrumentSelector const&) const = default;
+struct InstrumentSection {
+    bool operator==(InstrumentSection const&) const = default;
     u8 layer_index;
 };
 
-struct ParamSelector {
-    bool operator==(ParamSelector const&) const = default;
+struct ParamSection {
+    bool operator==(ParamSection const&) const = default;
     ParamIndex param;
 };
 
-struct VelocityCurveSelector {
-    bool operator==(VelocityCurveSelector const&) const = default;
+struct VelocityCurveSection {
+    bool operator==(VelocityCurveSection const&) const = default;
     u8 layer_index;
 };
 
-enum class EnvelopeKind : u8 { Volume, Filter };
-
-struct EnvelopeSelector {
-    bool operator==(EnvelopeSelector const&) const = default;
+struct EnvelopeSection {
+    enum class Kind : u8 { Volume, Filter };
+    bool operator==(EnvelopeSection const&) const = default;
     u8 layer_index;
-    EnvelopeKind kind;
+    Kind kind;
 };
 
-enum class SelectorKind : u8 {
+enum class StateSnapshotSectionKind : u8 {
     Modules,
     Macro,
     Instrument,
@@ -139,12 +138,13 @@ enum class SelectorKind : u8 {
     Envelope,
 };
 
-using StateSnapshotSelector = TaggedUnion<SelectorKind,
-                                          TypeAndTag<ParamModules, SelectorKind::Modules>,
-                                          TypeAndTag<MacroSelector, SelectorKind::Macro>,
-                                          TypeAndTag<InstrumentSelector, SelectorKind::Instrument>,
-                                          TypeAndTag<ParamSelector, SelectorKind::Param>,
-                                          TypeAndTag<VelocityCurveSelector, SelectorKind::VelocityCurve>,
-                                          TypeAndTag<EnvelopeSelector, SelectorKind::Envelope>>;
+using StateSnapshotSection =
+    TaggedUnion<StateSnapshotSectionKind,
+                TypeAndTag<ParamModules, StateSnapshotSectionKind::Modules>,
+                TypeAndTag<MacroSection, StateSnapshotSectionKind::Macro>,
+                TypeAndTag<InstrumentSection, StateSnapshotSectionKind::Instrument>,
+                TypeAndTag<ParamSection, StateSnapshotSectionKind::Param>,
+                TypeAndTag<VelocityCurveSection, StateSnapshotSectionKind::VelocityCurve>,
+                TypeAndTag<EnvelopeSection, StateSnapshotSectionKind::Envelope>>;
 
 StateSnapshot const& DefaultStateSnapshot();

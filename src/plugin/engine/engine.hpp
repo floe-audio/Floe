@@ -128,9 +128,11 @@ usize MegabytesUsedBySamples(Engine const& engine);
 StateSnapshot CurrentStateSnapshot(Engine& engine);
 
 String CurrentPresetFolderName(Engine const& engine);
-                  StateSnapshot const& source,
-                  StateSnapshotSelector const& source_selector,
-                  StateSnapshotSelector const& target_selector);
+
+void ApplySectionOfState(Engine& engine,
+                         StateSnapshot const& source,
+                         StateSnapshotSection const& source_section,
+                         StateSnapshotSection const& target_section);
 
 bool StateChangedSinceLastSnapshot(Engine& engine);
 

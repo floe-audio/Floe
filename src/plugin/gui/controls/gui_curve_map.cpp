@@ -76,7 +76,7 @@ void DoCurveMap(GuiState& g,
 
     bool changed_values = false;
 
-    StateSnapshotSelector const curve_target_selector {VelocityCurveSelector {layer_index}};
+    StateSnapshotSection const curve_target_section {VelocityCurveSection {layer_index}};
 
     auto const append_common_menu_items = [&](Box root) {
         DoModalDivider(g.builder, root, {.horizontal = true});
@@ -89,7 +89,7 @@ void DoCurveMap(GuiState& g,
                          .no_icon_gap = true,
                      })
                 .button_fired) {
-            ApplySection(g.engine, DefaultStateSnapshot(), curve_target_selector, curve_target_selector);
+            ApplySectionOfState(g.engine, DefaultStateSnapshot(), curve_target_section, curve_target_section);
             imgui.ClearActive();
         }
 
@@ -103,12 +103,12 @@ void DoCurveMap(GuiState& g,
                 .button_fired) {
             g.snapshot_clipboard = GuiState::CopiedSection {
                 .snapshot = CurrentStateSnapshot(g.engine),
-                .selector = curve_target_selector,
+                .section = curve_target_section,
             };
         }
 
         auto const can_paste = g.snapshot_clipboard.HasValue() &&
-                               g.snapshot_clipboard->selector.tag == SelectorKind::VelocityCurve;
+                               g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::VelocityCurve;
         if (MenuItem(g.builder,
                      root,
                      {
@@ -119,10 +119,10 @@ void DoCurveMap(GuiState& g,
                      })
                 .button_fired &&
             can_paste) {
-            ApplySection(g.engine,
-                         g.snapshot_clipboard->snapshot,
-                         g.snapshot_clipboard->selector,
-                         curve_target_selector);
+            ApplySectionOfState(g.engine,
+                                g.snapshot_clipboard->snapshot,
+                                g.snapshot_clipboard->section,
+                                curve_target_section);
             imgui.ClearActive();
         }
     };

@@ -56,7 +56,7 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
 
                             DoModalDivider(g.builder, root, {.horizontal = true});
 
-                            StateSnapshotSelector const inst_target {InstrumentSelector {layer_index}};
+                            StateSnapshotSection const inst_target {InstrumentSection {layer_index}};
 
                             if (MenuItem(g.builder,
                                          root,
@@ -67,13 +67,13 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                     .button_fired) {
                                 g.snapshot_clipboard = GuiState::CopiedSection {
                                     .snapshot = CurrentStateSnapshot(g.engine),
-                                    .selector = inst_target,
+                                    .section = inst_target,
                                 };
                             }
 
                             auto const can_paste_inst =
                                 g.snapshot_clipboard.HasValue() &&
-                                g.snapshot_clipboard->selector.tag == SelectorKind::Instrument;
+                                g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Instrument;
 
                             if (MenuItem(g.builder,
                                          root,
@@ -85,15 +85,15 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                          })
                                     .button_fired &&
                                 can_paste_inst) {
-                                ApplySection(g.engine,
-                                             g.snapshot_clipboard->snapshot,
-                                             g.snapshot_clipboard->selector,
-                                             inst_target);
+                                ApplySectionOfState(g.engine,
+                                                    g.snapshot_clipboard->snapshot,
+                                                    g.snapshot_clipboard->section,
+                                                    inst_target);
                             }
 
                             DoModalDivider(g.builder, root, {.horizontal = true});
 
-                            StateSnapshotSelector const layer_target {
+                            StateSnapshotSection const layer_target {
                                 ParamModules {LayerModuleFromIndex(layer_index)}};
 
                             if (MenuItem(g.builder,
@@ -105,15 +105,15 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                     .button_fired) {
                                 g.snapshot_clipboard = GuiState::CopiedSection {
                                     .snapshot = CurrentStateSnapshot(g.engine),
-                                    .selector = layer_target,
+                                    .section = layer_target,
                                 };
                             }
 
                             auto const can_paste_layer = ({
                                 bool ok = false;
                                 if (g.snapshot_clipboard.HasValue() &&
-                                    g.snapshot_clipboard->selector.tag == SelectorKind::Modules) {
-                                    auto const& mods = g.snapshot_clipboard->selector.Get<ParamModules>();
+                                    g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules) {
+                                    auto const& mods = g.snapshot_clipboard->section.Get<ParamModules>();
                                     ok = LayerIndexFromModule(mods[0]).HasValue() &&
                                          mods[1] == ParameterModule::None;
                                 }
@@ -130,10 +130,10 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                          })
                                     .button_fired &&
                                 can_paste_layer) {
-                                ApplySection(g.engine,
-                                             g.snapshot_clipboard->snapshot,
-                                             g.snapshot_clipboard->selector,
-                                             layer_target);
+                                ApplySectionOfState(g.engine,
+                                                    g.snapshot_clipboard->snapshot,
+                                                    g.snapshot_clipboard->section,
+                                                    layer_target);
                             }
 
                             if (MenuItem(g.builder,
@@ -143,7 +143,10 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                              .no_icon_gap = true,
                                          })
                                     .button_fired) {
-                                ApplySection(g.engine, DefaultStateSnapshot(), layer_target, layer_target);
+                                ApplySectionOfState(g.engine,
+                                                    DefaultStateSnapshot(),
+                                                    layer_target,
+                                                    layer_target);
                             }
                         },
                     .bounds = window_r,

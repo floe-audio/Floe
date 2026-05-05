@@ -507,24 +507,24 @@ static void ApplyModulesSection(Engine& engine,
     }
 }
 
-void ApplySection(Engine& engine,
-                  StateSnapshot const& source,
-                  StateSnapshotSelector const& source_selector,
-                  StateSnapshotSelector const& target_selector) {
+void ApplySectionOfState(Engine& engine,
+                         StateSnapshot const& source,
+                         StateSnapshotSection const& source_section,
+                         StateSnapshotSection const& target_section) {
     ASSERT(g_is_logical_main_thread);
-    if (source_selector.tag != target_selector.tag) return;
+    if (source_section.tag != target_section.tag) return;
 
-    switch (source_selector.tag) {
-        case SelectorKind::Modules: {
+    switch (source_section.tag) {
+        case StateSnapshotSectionKind::Modules: {
             ApplyModulesSection(engine,
                                 source,
-                                source_selector.Get<ParamModules>(),
-                                target_selector.Get<ParamModules>());
+                                source_section.Get<ParamModules>(),
+                                target_section.Get<ParamModules>());
             break;
         }
-        case SelectorKind::Macro: {
-            auto const src = source_selector.Get<MacroSelector>().macro_index;
-            auto const dst = target_selector.Get<MacroSelector>().macro_index;
+        case StateSnapshotSectionKind::Macro: {
+            auto const src = source_section.Get<MacroSection>().macro_index;
+            auto const dst = target_section.Get<MacroSection>().macro_index;
             ASSERT(src < k_num_macros && dst < k_num_macros);
 
             SetParameterValue(engine.processor,
@@ -538,41 +538,48 @@ void ApplySection(Engine& engine,
                 SendMacroDestination(engine.processor, dst, d);
             break;
         }
-        case SelectorKind::Instrument: {
-            auto const src = source_selector.Get<InstrumentSelector>().layer_index;
-            auto const dst = target_selector.Get<InstrumentSelector>().layer_index;
+        case StateSnapshotSectionKind::Instrument: {
+            auto const src = source_section.Get<InstrumentSection>().layer_index;
+            auto const dst = target_section.Get<InstrumentSection>().layer_index;
             ASSERT(src < k_num_layers && dst < k_num_layers);
             LoadInstrument(engine, dst, source.inst_ids[src]);
             break;
         }
-        case SelectorKind::Param: {
-            auto const src = source_selector.Get<ParamSelector>().param;
-            auto const dst = target_selector.Get<ParamSelector>().param;
+        case StateSnapshotSectionKind::Param: {
+            auto const src = source_section.Get<ParamSection>().param;
+            auto const dst = target_section.Get<ParamSection>().param;
             SetParameterValue(engine.processor, dst, source.param_values[ToInt(src)], {});
             break;
         }
-        case SelectorKind::VelocityCurve: {
-            auto const src = source_selector.Get<VelocityCurveSelector>().layer_index;
-            auto const dst = target_selector.Get<VelocityCurveSelector>().layer_index;
+        case StateSnapshotSectionKind::VelocityCurve: {
+            auto const src = source_section.Get<VelocityCurveSection>().layer_index;
+            auto const dst = target_section.Get<VelocityCurveSection>().layer_index;
             ASSERT(src < k_num_layers && dst < k_num_layers);
             engine.processor.layer_processors[dst].velocity_curve_map.SetNewPoints(
                 source.velocity_curve_points[src]);
             break;
         }
-        case SelectorKind::Envelope: {
-            auto const src_sel = source_selector.Get<EnvelopeSelector>();
-            auto const dst_sel = target_selector.Get<EnvelopeSelector>();
+        case StateSnapshotSectionKind::Envelope: {
+            auto const src_sel = source_section.Get<EnvelopeSection>();
+            auto const dst_sel = target_section.Get<EnvelopeSection>();
             ASSERT(src_sel.layer_index < k_num_layers && dst_sel.layer_index < k_num_layers);
             if (src_sel.kind != dst_sel.kind) break;
 
-            auto const params = src_sel.kind == EnvelopeKind::Volume ? Array {LayerParamIndex::VolumeAttack,
-                                                                              LayerParamIndex::VolumeDecay,
-                                                                              LayerParamIndex::VolumeSustain,
-                                                                              LayerParamIndex::VolumeRelease}
-                                                                     : Array {LayerParamIndex::FilterAttack,
-                                                                              LayerParamIndex::FilterDecay,
-                                                                              LayerParamIndex::FilterSustain,
-                                                                              LayerParamIndex::FilterRelease};
+            auto const params = [&]() {
+                switch (src_sel.kind) {
+                    case EnvelopeSection::Kind::Volume:
+                        return Array {LayerParamIndex::VolumeAttack,
+                                      LayerParamIndex::VolumeDecay,
+                                      LayerParamIndex::VolumeSustain,
+                                      LayerParamIndex::VolumeRelease};
+                    case EnvelopeSection::Kind::Filter:
+                        return Array {LayerParamIndex::FilterAttack,
+                                      LayerParamIndex::FilterDecay,
+                                      LayerParamIndex::FilterSustain,
+                                      LayerParamIndex::FilterRelease};
+                }
+            }();
+
             for (auto const layer_param : params) {
                 auto const src_param = ParamIndexFromLayerParamIndex(src_sel.layer_index, layer_param);
                 auto const dst_param = ParamIndexFromLayerParamIndex(dst_sel.layer_index, layer_param);

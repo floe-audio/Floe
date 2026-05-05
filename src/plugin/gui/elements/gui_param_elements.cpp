@@ -60,7 +60,7 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
         }
 
         {
-            StateSnapshotSelector const param_target_selector {ParamSelector {param_index}};
+            StateSnapshotSection const param_target_section {ParamSection {param_index}};
 
             if (MenuItem(g.builder,
                          root,
@@ -71,12 +71,12 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                     .button_fired) {
                 g.snapshot_clipboard = GuiState::CopiedSection {
                     .snapshot = CurrentStateSnapshot(g.engine),
-                    .selector = param_target_selector,
+                    .section = param_target_section,
                 };
             }
 
-            auto const can_paste_param =
-                g.snapshot_clipboard.HasValue() && g.snapshot_clipboard->selector.tag == SelectorKind::Param;
+            auto const can_paste_param = g.snapshot_clipboard.HasValue() &&
+                                         g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Param;
 
             if (MenuItem(g.builder,
                          root,
@@ -88,10 +88,10 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                          })
                     .button_fired &&
                 can_paste_param) {
-                ApplySection(g.engine,
-                             g.snapshot_clipboard->snapshot,
-                             g.snapshot_clipboard->selector,
-                             param_target_selector);
+                ApplySectionOfState(g.engine,
+                                    g.snapshot_clipboard->snapshot,
+                                    g.snapshot_clipboard->section,
+                                    param_target_section);
             }
         }
 
@@ -168,7 +168,7 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
         if (auto const macro_index = MacroIndexFromParamIndex(param_index)) {
             DoModalDivider(g.builder, root, {.horizontal = true});
 
-            StateSnapshotSelector const target_selector {MacroSelector {*macro_index}};
+            StateSnapshotSection const target_section {MacroSection {*macro_index}};
 
             if (MenuItem(g.builder,
                          root,
@@ -179,12 +179,12 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                     .button_fired) {
                 g.snapshot_clipboard = GuiState::CopiedSection {
                     .snapshot = CurrentStateSnapshot(g.engine),
-                    .selector = target_selector,
+                    .section = target_section,
                 };
             }
 
-            auto const can_paste =
-                g.snapshot_clipboard.HasValue() && g.snapshot_clipboard->selector.tag == SelectorKind::Macro;
+            auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                                   g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Macro;
 
             if (MenuItem(
                     g.builder,
@@ -196,10 +196,10 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                     })
                     .button_fired &&
                 can_paste) {
-                ApplySection(g.engine,
-                             g.snapshot_clipboard->snapshot,
-                             g.snapshot_clipboard->selector,
-                             target_selector);
+                ApplySectionOfState(g.engine,
+                                    g.snapshot_clipboard->snapshot,
+                                    g.snapshot_clipboard->section,
+                                    target_section);
             }
 
             if (MenuItem(g.builder,
@@ -209,7 +209,7 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                              .tooltip = "Reset this macro's value, name and destinations to defaults"_s,
                          })
                     .button_fired) {
-                ApplySection(g.engine, DefaultStateSnapshot(), target_selector, target_selector);
+                ApplySectionOfState(g.engine, DefaultStateSnapshot(), target_section, target_section);
             }
         }
 
