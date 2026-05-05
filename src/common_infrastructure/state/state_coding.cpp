@@ -1908,6 +1908,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         constexpr auto k_added = StateVersion::AddedStateExtras;
 
         TRY(coder.CodeDynArray(state.extras.display_name, k_added));
+        TRY(coder.CodeDynArray(state.extras.display_category, k_added));
         TRY(coder.CodeNumber(state.extras.last_preset_hash, k_added));
         TRY(coder.CodeNumber(state.extras.modified_from_last_preset, k_added));
     }
@@ -2299,6 +2300,7 @@ TEST_CASE(TestNewSerialisation) {
                     }
                 }
                 dyn::Assign(state.extras.display_name, "TEST"_s);
+                dyn::Assign(state.extras.display_category, "CATEGORY"_s);
                 state.extras.last_preset_hash = 0x12356789ull;
                 state.extras.modified_from_last_preset = true;
             } else {

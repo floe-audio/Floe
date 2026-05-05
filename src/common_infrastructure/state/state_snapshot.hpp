@@ -46,6 +46,7 @@ struct StateExtras {
 
     // For DAW state only. Preset files always get their name from the filename.
     DynamicArrayBounded<char, k_max_preset_name_size> display_name {};
+    DynamicArrayBounded<char, k_max_preset_name_size> display_category {};
 
     // The hash of the preset when it was loaded from file - if any. This allows us to identify the preset
     // this state is based on and track if state has been modified since loading.

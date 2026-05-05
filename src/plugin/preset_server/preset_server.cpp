@@ -175,6 +175,22 @@ void StartScanningIfNeeded(PresetServer& server) {
     server.enable_scanning.Store(true, StoreMemoryOrder::Relaxed);
 }
 
+// Reader thread
+Optional<String>
+FindPresetMatchingSnapshotHash(PresetServer& server, u64 snapshot_hash, Allocator& allocator) {
+    StartScanningIfNeeded(server);
+
+    server.mutex.Lock();
+    DEFER { server.mutex.Unlock(); };
+
+    for (auto const folder : server.folders) {
+        for (auto const& preset : folder->presets)
+            if (preset.snapshot_hash == snapshot_hash) return folder->FullPathForPreset(preset, allocator);
+    }
+
+    return k_nullopt;
+}
+
 static u64 OldestVersion(Span<u64> versions) {
     auto oldest = versions[0];
     for (auto const v : versions)
@@ -986,7 +1002,6 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
     PresetFolder* preset_folder {};
 
     for (auto const& entry : entries) {
-
         if (entry.type != FileType::File) continue;
 
         if (path::Equal(entry.subpath, k_preset_bank_filename)) {

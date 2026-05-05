@@ -90,6 +90,9 @@ void AssignDiffDescription(DynArrayT& diff_desc,
     if (old_state.extras.display_name != new_state.extras.display_name)
         fmt::Append(diff_desc, "display name changed");
 
+    if (old_state.extras.display_category != new_state.extras.display_category)
+        fmt::Append(diff_desc, "display category changed");
+
     if (old_state.extras.last_preset_hash != new_state.extras.last_preset_hash)
         fmt::Append(diff_desc,
                     "last snapshot hash changed {} vs {}",
@@ -154,6 +157,7 @@ StateSnapshot const& DefaultStateSnapshot() {
         for (auto const i : Range<u8>(s.fx_order.size))
             s.fx_order[i] = (EffectType)i;
         s.extras.display_name = "Default"_s;
+        s.extras.display_category = {};
         s;
     });
     return state;

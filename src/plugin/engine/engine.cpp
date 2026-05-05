@@ -30,6 +30,16 @@ static void NotifyListener(Engine& engine) {
     if (engine.listener) engine.listener->OnEngineChange();
 }
 
+String CurrentPresetFolderName(Engine const& engine) {
+    String folder_name {};
+    if (auto const& preset_path = engine.last_snapshot.preset_path; preset_path.size) {
+        if (auto const dir = path::Directory(preset_path)) folder_name = path::Filename(*dir);
+    } else {
+        if (auto const& cat = engine.last_snapshot.state.extras.display_category; cat.size) folder_name = cat;
+    }
+    return StripNumberedPrefix(folder_name);
+}
+
 static void RefreshPresetDescriptionCache(Engine& engine) {
     Array<AutoDescriptionLayerInfo, k_num_layers> layer_info {};
     for (auto const i : Range(k_num_layers)) {
@@ -46,14 +56,9 @@ static void RefreshPresetDescriptionCache(Engine& engine) {
 
     auto& cache = engine.preset_description_cache;
 
-    String folder_name {};
-    if (auto const& preset_path = engine.last_snapshot.preset_path; preset_path.size)
-        if (auto const dir = path::Directory(preset_path))
-            folder_name = StripNumberedPrefix(path::Filename(*dir));
-
     cache.auto_desc = GenerateAutoDescription(engine.last_snapshot.state,
                                               layer_info,
-                                              folder_name,
+                                              CurrentPresetFolderName(engine),
                                               Hash(engine.last_snapshot.state.extras.display_name));
 
     String const real_desc = engine.last_snapshot.state.metadata.description;
@@ -131,6 +136,7 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
 static void SetLastSnapshot(Engine& engine, StateSnapshot const& state, String preset_path) {
     engine.last_snapshot.state = state;
     dyn::Assign(engine.last_snapshot.preset_path, preset_path);
+    engine.last_snapshot.lookup_preset_path = preset_path.size == 0;
     RefreshPresetDescriptionCache(engine);
     NotifyListener(engine);
     engine.host.request_callback(&engine.host);
@@ -675,7 +681,9 @@ void LoadPresetFromFile(Engine& engine, String path) {
 
     if (state_outcome.HasValue()) {
         auto& state = state_outcome.Value();
-        state.extras.display_name = path::FilenameWithoutExtension(path);
+        dyn::AssignFitInCapacity(state.extras.display_name, path::FilenameWithoutExtension(path));
+        dyn::AssignFitInCapacity(state.extras.display_category,
+                                 path::Filename(path::Directory(path).ValueOr({})));
         LoadNewState(engine, state, path, StateSource::PresetFile);
         engine.error_notifications.RemoveError(error_id);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path));

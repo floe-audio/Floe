@@ -756,38 +756,30 @@ void MidPanelPerformContent(GuiBuilder& builder,
     }
 
     // Folder name badge at the bottom of the top section
-    {
-        auto const& snapshot = g.engine.last_snapshot;
-        DynamicArray<char> folder_buf {g.scratch_arena};
-        if (auto const& preset_path = snapshot.preset_path; preset_path.size) {
-            if (auto const dir = path::Directory(preset_path))
-                fmt::Append(folder_buf, "{}", StripNumberedPrefix(path::Filename(*dir)));
-        }
-        if (folder_buf.size) {
-            auto const badge = DoBox(builder,
-                                     {
-                                         .parent = root,
-                                         .round_background_corners = 0b1111,
-                                         .corner_rounding = k_corner_rounding,
-                                         .layout {
-                                             .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                             .margins = {.t = 8},
-                                             .contents_padding = {.lr = 8, .tb = 4},
-                                         },
-                                     });
-            if (auto const r = BoxRect(builder, badge))
-                DrawMidBlurredPanelSurface(g,
-                                           builder.imgui.ViewportRectToWindowRect(*r),
-                                           LibraryForOverallBackground(g.engine));
-            DoBox(builder,
-                  {
-                      .parent = badge,
-                      .text = folder_buf.ToOwnedSpan(),
-                      .size_from_text = true,
-                      .font = FontType::Body,
-                      .text_colours = Col {.c = Col::White, .alpha = 160},
-                  });
-        }
+    if (auto const folder_name = CurrentPresetFolderName(g.engine); folder_name.size) {
+        auto const badge = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .round_background_corners = 0b1111,
+                                     .corner_rounding = k_corner_rounding,
+                                     .layout {
+                                         .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                         .margins = {.t = 8},
+                                         .contents_padding = {.lr = 8, .tb = 4},
+                                     },
+                                 });
+        if (auto const r = BoxRect(builder, badge))
+            DrawMidBlurredPanelSurface(g,
+                                       builder.imgui.ViewportRectToWindowRect(*r),
+                                       LibraryForOverallBackground(g.engine));
+        DoBox(builder,
+              {
+                  .parent = badge,
+                  .text = folder_name,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+                  .text_colours = Col {.c = Col::White, .alpha = 160},
+              });
     }
 
     // Spacer pushes the central panel to the bottom

@@ -166,6 +166,9 @@ void StartScanningIfNeeded(PresetServer& server);
 BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
 void EndReadFolders(PresetServer& server, PresetServerReadHandle handle);
 
+Optional<String>
+FindPresetMatchingSnapshotHash(PresetServer& server, u64 snapshot_hash, Allocator& allocator);
+
 // Waits until all folders have finished scanning.
 // Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
 // If timeout is 0, just returns 'is scanning' status immediately.

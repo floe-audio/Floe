@@ -40,6 +40,10 @@ struct Engine : ProcessorListener {
     struct LastSnapshot {
         StateSnapshot state {DefaultStateSnapshot()};
         DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
+
+        // We sometimes don't have the full path, but it's worth seeing if it's our known preset index. To
+        // avoid wasteful repeated lookup in the preset index, we use this bool to only do it once.
+        bool lookup_preset_path {};
     };
 
     Engine(clap_host const& host,
@@ -123,7 +127,7 @@ usize MegabytesUsedBySamples(Engine const& engine);
 
 StateSnapshot CurrentStateSnapshot(Engine& engine);
 
-void ApplySection(Engine& engine,
+String CurrentPresetFolderName(Engine const& engine);
                   StateSnapshot const& source,
                   StateSnapshotSelector const& source_selector,
                   StateSnapshotSelector const& target_selector);
