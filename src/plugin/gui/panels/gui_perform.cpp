@@ -130,6 +130,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                   {
                       .parent = container,
                       .text = name,
+                      .wrap_width = k_wrap_to_parent,
                       .size_from_text = true,
                       .font = FontType::LargeTitle,
                       .text_colours = Col {.c = Col::White},
@@ -746,13 +747,14 @@ void MidPanelPerformContent(GuiBuilder& builder,
 
         auto const prev_btn = do_nav_button(info_row, ICON_FA_CARET_LEFT ""_s, "Previous preset"_s, 0);
         if (prev_btn.button_fired) load_adjacent(SearchDirection::Backward);
-        if (prev_btn.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
 
         DoPresetInfo(builder, g, frame_context, info_row);
 
         auto const next_btn = do_nav_button(info_row, ICON_FA_CARET_RIGHT ""_s, "Next preset"_s, 1);
         if (next_btn.button_fired) load_adjacent(SearchDirection::Forward);
-        if (next_btn.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
+
+        if (prev_btn.is_hot || next_btn.is_hot)
+            StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
     }
 
     // Folder name badge at the bottom of the top section

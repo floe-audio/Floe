@@ -14,7 +14,6 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_live_edit.hpp"
-#include "processor/layer_processor.hpp"
 
 // ArpStep is a small atomic; user edits are Load/modify/Store so we don't lose neighbouring fields.
 template <typename Mutate>
