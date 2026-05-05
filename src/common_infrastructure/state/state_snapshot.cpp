@@ -85,22 +85,34 @@ void AssignDiffDescription(DynArrayT& diff_desc,
     }
 
     if (old_state.extras.instance_id != new_state.extras.instance_id)
-        dyn::AppendSpan(diff_desc, "instance ID changes");
+        fmt::Append(diff_desc,
+                    "instance ID changed: {} vs {}\n"_s,
+                    old_state.extras.instance_id,
+                    new_state.extras.instance_id);
 
     if (old_state.extras.display_name != new_state.extras.display_name)
-        fmt::Append(diff_desc, "display name changed");
+        fmt::Append(diff_desc,
+                    "display name changed: {} vs {}\n"_s,
+                    old_state.extras.display_name,
+                    new_state.extras.display_name);
 
     if (old_state.extras.display_category != new_state.extras.display_category)
-        fmt::Append(diff_desc, "display category changed");
+        fmt::Append(diff_desc,
+                    "display category changed: {} vs {}\n"_s,
+                    old_state.extras.display_category,
+                    new_state.extras.display_category);
 
     if (old_state.extras.origin_preset_hash != new_state.extras.origin_preset_hash)
         fmt::Append(diff_desc,
-                    "origin preset hash changed {} vs {}",
+                    "origin preset hash changed: {} vs {}\n"_s,
                     old_state.extras.origin_preset_hash,
                     new_state.extras.origin_preset_hash);
 
     if (old_state.extras.modified_from_origin_preset != new_state.extras.modified_from_origin_preset)
-        fmt::Append(diff_desc, "modified from origin preset changed");
+        fmt::Append(diff_desc,
+                    "modified from origin preset changed: {} vs {}\n"_s,
+                    old_state.extras.modified_from_origin_preset,
+                    new_state.extras.modified_from_origin_preset);
 
     for (auto layer_index : Range(k_num_layers))
         if (old_state.velocity_curve_points[layer_index] != new_state.velocity_curve_points[layer_index])
