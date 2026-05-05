@@ -18,6 +18,11 @@ struct UndoableStep {
     DynamicArrayBounded<char, k_undoable_step_name_max_size> name;
     DynamicArrayBounded<char, k_undoable_step_snapshot_name_max_size> snapshot_name;
     StateSnapshot snapshot;
+
+    // Marks a baseline-establishing event (preset load, DAW state load, default reset, save). When undo/redo
+    // navigation lands on or crosses such an entry, the engine's pin moves to the most recent anchor at or
+    // before the current position. The anchor's own snapshot serves as the pinned state — no duplicate copy.
+    bool is_pin_anchor = false;
 };
 
 static_assert(TriviallyCopyable<UndoableStep>);

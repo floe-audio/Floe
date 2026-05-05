@@ -732,7 +732,7 @@ void LoadPresetFromFile(Engine& engine, String path) {
                                  path::Filename(path::Directory(path).ValueOr({})));
         LoadState(engine, state, {.source = StateSource::PresetFile, .preset_path = path});
         engine.error_notifications.RemoveError(error_id);
-        RecordUndoableStep(engine, path::FilenameWithoutExtension(path));
+        RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
         DEFER { engine.error_notifications.EndWriteError(*err); };
         dyn::AssignFitInCapacity(err->title, "Failed to load preset"_s);
@@ -751,6 +751,7 @@ void SaveCurrentStateToFile(Engine& engine, String path) {
             prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()));
         outcome.Succeeded()) {
         SetPinnedSnapshot(engine, state, path);
+        RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
         engine.error_notifications.RemoveError(error_id);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
         DEFER { engine.error_notifications.EndWriteError(*err); };
@@ -928,7 +929,7 @@ usize MegabytesUsedBySamples(Engine const& engine) {
 void SetToDefaultState(Engine& engine) {
     auto default_state = DefaultStateSnapshot();
     LoadState(engine, default_state, {.source = StateSource::PresetFile});
-    RecordUndoableStep(engine, "Reset");
+    RecordUndoableStep(engine, "Reset"_s, true);
 }
 
 static bool PluginSaveState(Engine& engine, clap_ostream const& stream) {
@@ -1005,16 +1006,17 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
     if (state.extras.display_name.size == 0) dyn::Assign(state.extras.display_name, "DAW State"_s);
     LoadState(engine, state, {.source = StateSource::Daw});
     engine.undo_history.Clear();
-    RecordUndoableStep(engine, state.extras.display_name);
+    RecordUndoableStep(engine, state.extras.display_name, true);
     return true;
 }
 
-void RecordUndoableStep(Engine& engine, String name) {
+void RecordUndoableStep(Engine& engine, String name, bool is_pin_anchor) {
     ASSERT(g_is_logical_main_thread);
     auto const current = CurrentStateSnapshot(engine);
     UndoableStep step {
         .name = name,
         .snapshot = current,
+        .is_pin_anchor = is_pin_anchor,
     };
     dyn::AssignFitInCapacity(step.snapshot_name, current.extras.display_name);
     engine.undo_history.Record(step);
@@ -1044,11 +1046,27 @@ void EndUndoableStep(Engine& engine) {
     if (--engine.undoable_step_depth == 0) RecordUndoableStep(engine, engine.pending_undoable_step_name);
 }
 
+// Walks the undo stack backwards from the current top to find the most recent pin-anchor entry, and
+// reseats the engine's pin to that anchor's snapshot. The path is left empty so the existing
+// preset_path_needs_lookup mechanism resolves it from origin_preset_hash. If no anchor is reachable
+// (e.g. the oldest scrolled off the ring), the pin is left untouched.
+static void RestorePinFromAnchor(Engine& engine) {
+    auto const& undo = engine.undo_history.undo;
+    for (auto i = undo.Size(); i > 0; --i) {
+        auto const& step = undo.At(i - 1);
+        if (step.is_pin_anchor) {
+            SetPinnedSnapshot(engine, step.snapshot, ""_s);
+            return;
+        }
+    }
+}
+
 void Undo(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undo_history.CanUndo());
     auto const entry = engine.undo_history.Undo();
     LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .pin = false});
+    RestorePinFromAnchor(engine);
 }
 
 void Redo(Engine& engine) {
@@ -1056,6 +1074,7 @@ void Redo(Engine& engine) {
     ASSERT(engine.undo_history.CanRedo());
     auto const entry = engine.undo_history.Redo();
     LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .pin = false});
+    RestorePinFromAnchor(engine);
 }
 
 PluginCallbacks<Engine> const g_engine_callbacks {

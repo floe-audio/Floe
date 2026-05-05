@@ -69,7 +69,10 @@ void UndoHistory::Clear() {
 }
 
 void UndoHistory::Record(UndoableStep const& step) {
-    if (undo.Size() && undo.Top().snapshot == step.snapshot) return;
+    if (undo.Size() && undo.Top().snapshot == step.snapshot) {
+        if (step.is_pin_anchor) undo.At(undo.Size() - 1).is_pin_anchor = true;
+        return;
+    }
     undo.PushEvictOldest(step);
     redo.Clear();
 }
