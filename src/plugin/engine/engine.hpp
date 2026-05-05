@@ -121,6 +121,13 @@ Optional<sample_lib::LibraryId> LibraryForOverallBackground(Engine const& engine
 void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir);
 void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId instrument_id);
 
+// Load new sampler instruments into multiple layers as a single, synchronised operation: all
+// samples are streamed in together and swapped in atomically, and the change is recorded as one
+// undo step. Layers with k_nullopt are left unchanged.
+void LoadInstruments(Engine& engine,
+                     Array<Optional<sample_lib::InstrumentId>, k_num_layers> const& new_ids,
+                     String undo_name);
+
 String IrName(Engine const& engine);
 
 usize MegabytesUsedBySamples(Engine const& engine);

@@ -125,19 +125,50 @@ static Optional<InstrumentCursor> IterateInstrument(InstBrowserContext const& co
     return k_nullopt;
 }
 
+static sample_lib::InstrumentId InstrumentIdFromCursor(InstBrowserContext const& context,
+                                                       InstrumentCursor const& cursor) {
+    auto const& lib = *context.frame_context.libraries[cursor.lib_index];
+    auto const& inst = *lib.sorted_instruments[cursor.inst_index];
+    return {
+        .library = lib.id,
+        .inst_id = inst.id,
+    };
+}
+
 static void LoadInstrument(InstBrowserContext const& context,
                            InstBrowserState& state,
                            InstrumentCursor const& cursor,
                            bool scroll) {
-    auto const& lib = *context.frame_context.libraries[cursor.lib_index];
-    auto const& inst = *lib.sorted_instruments[cursor.inst_index];
-    LoadInstrument(context.engine,
-                   context.layer.index,
-                   sample_lib::InstrumentId {
-                       .library = lib.id,
-                       .inst_id = inst.id,
-                   });
+    LoadInstrument(context.engine, context.layer.index, InstrumentIdFromCursor(context, cursor));
     if (scroll) state.scroll_to_show_selected = true;
+}
+
+static Optional<InstrumentCursor> PickRandomInstrumentCursor(InstBrowserContext const& context,
+                                                             InstBrowserState& state) {
+    auto const first =
+        IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
+    if (!first) return k_nullopt;
+
+    auto cursor = *first;
+
+    usize num_instruments = 1;
+    while (true) {
+        if (auto const next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false)) {
+            cursor = *next;
+            if (cursor == *first) break;
+            ++num_instruments;
+        } else {
+            break;
+        }
+    }
+
+    auto const random_pos = RandomIntInRange<usize>(context.engine.random_seed, 0, num_instruments - 1);
+
+    cursor = *first;
+    for (usize i = 0; i < random_pos; ++i)
+        cursor = *IterateInstrument(context, state, cursor, SearchDirection::Forward, false);
+
+    return cursor;
 }
 
 void LoadAdjacentInstrument(InstBrowserContext const& context,
@@ -181,30 +212,15 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
 }
 
 void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state) {
-    auto const first =
-        IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
-    if (!first) return;
+    if (auto const cursor = PickRandomInstrumentCursor(context, state))
+        LoadInstrument(context, state, *cursor, true);
+}
 
-    auto cursor = *first;
-
-    usize num_instruments = 1;
-    while (true) {
-        if (auto const next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false)) {
-            cursor = *next;
-            if (cursor == *first) break;
-            ++num_instruments;
-        } else {
-            break;
-        }
-    }
-
-    auto const random_pos = RandomIntInRange<usize>(context.engine.random_seed, 0, num_instruments - 1);
-
-    cursor = *first;
-    for (usize i = 0; i < random_pos; ++i)
-        cursor = *IterateInstrument(context, state, cursor, SearchDirection::Forward, false);
-
-    LoadInstrument(context, state, cursor, true);
+Optional<sample_lib::InstrumentId> RandomInstrumentId(InstBrowserContext const& context,
+                                                      InstBrowserState& state) {
+    if (auto const cursor = PickRandomInstrumentCursor(context, state))
+        return InstrumentIdFromCursor(context, *cursor);
+    return k_nullopt;
 }
 
 static void InstBrowserWaveformItems(GuiBuilder& builder,

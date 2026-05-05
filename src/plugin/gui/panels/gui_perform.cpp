@@ -148,16 +148,17 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
 
     enum class RandomScope : u8 { Folder, Library, Any };
 
-    auto const load_random = [&](LayerProcessor& target_layer, RandomScope scope) {
+    auto const random_inst_id = [&](LayerProcessor& target_layer,
+                                    RandomScope scope) -> Optional<sample_lib::InstrumentId> {
         InstBrowserState ephemeral_state {.id = HashFnv1a("dummy-inst-browser")};
 
         if (scope != RandomScope::Any) {
             auto sampled_inst = target_layer.instrument.TryGetFromTag<InstrumentType::Sampler>();
-            if (!sampled_inst) return;
+            if (!sampled_inst) return k_nullopt;
             auto const& inst = (*sampled_inst)->instrument;
 
             if (scope == RandomScope::Folder) {
-                if (!inst.folder) return;
+                if (!inst.folder) return k_nullopt;
                 auto const folder_name =
                     inst.folder->display_name.size ? inst.folder->display_name : inst.folder->name;
                 ephemeral_state.common_state.Filter(BrowserFilter::Folder)
@@ -179,7 +180,7 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
             .confirmation_dialog_state = g.confirmation_dialog_state,
             .frame_context = frame_context,
         };
-        LoadRandomInstrument(context, ephemeral_state);
+        return RandomInstrumentId(context, ephemeral_state);
     };
 
     auto const column = DoBox(builder,
@@ -515,8 +516,11 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
     auto const do_random_button =
         [&](String icon, String label, String tooltip, u64 id, bool grey, RandomScope scope) {
             do_utility_button(icon, label, tooltip, id, grey, [&]() {
-                for (auto& target_layer : g.engine.processor.layer_processors)
-                    load_random(target_layer, scope);
+                Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};
+                for (auto const layer_index : Range(k_num_layers))
+                    new_ids[layer_index] =
+                        random_inst_id(g.engine.processor.layer_processors[layer_index], scope);
+                LoadInstruments(g.engine, new_ids, "Random instruments"_s);
             });
         };
 

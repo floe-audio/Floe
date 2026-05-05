@@ -39,4 +39,7 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
 
 void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state);
 
+Optional<sample_lib::InstrumentId> RandomInstrumentId(InstBrowserContext const& context,
+                                                      InstBrowserState& state);
+
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state);

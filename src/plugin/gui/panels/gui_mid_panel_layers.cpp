@@ -56,6 +56,7 @@ void MidPanelLayersContent(GuiBuilder& builder,
                                     {.tooltip = "Load random instruments for all 3 layers"_s});
 
         if (rand_btn.button_fired) {
+            Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};
             for (auto& layer : g.engine.processor.layer_processors) {
                 InstBrowserContext context {
                     .layer = layer,
@@ -68,8 +69,9 @@ void MidPanelLayersContent(GuiBuilder& builder,
                     .confirmation_dialog_state = g.confirmation_dialog_state,
                     .frame_context = frame_context,
                 };
-                LoadRandomInstrument(context, g.inst_browser_state[layer.index]);
+                new_ids[layer.index] = RandomInstrumentId(context, g.inst_browser_state[layer.index]);
             }
+            LoadInstruments(g.engine, new_ids, "Random instruments"_s);
         }
     }
 

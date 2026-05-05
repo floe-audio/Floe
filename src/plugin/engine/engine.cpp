@@ -672,6 +672,27 @@ void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId inst_id) {
     RecordUndoableStep(engine, "Load instrument"_s);
 }
 
+void LoadInstruments(Engine& engine,
+                     Array<Optional<sample_lib::InstrumentId>, k_num_layers> const& new_ids,
+                     String undo_name) {
+    ASSERT(g_is_logical_main_thread);
+
+    bool any = false;
+    for (auto const& id : new_ids)
+        if (id) {
+            any = true;
+            break;
+        }
+    if (!any) return;
+
+    auto snapshot = CurrentStateSnapshot(engine);
+    for (auto const layer_index : Range(k_num_layers))
+        if (auto const& id = new_ids[layer_index]) snapshot.inst_ids[layer_index] = *id;
+
+    LoadNewState(engine, snapshot, ""_s, StateSource::PresetFile);
+    RecordUndoableStep(engine, undo_name);
+}
+
 void RevertToLastSnapshot(Engine& engine) {
     LoadNewState(engine,
                  engine.last_snapshot.state,
