@@ -159,6 +159,10 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
                 // Error is already in error_buffer, will be shown next frame
             }
         }
+        if (TextButton(builder, button_row, {.text = "Paste"})) {
+            builder.imgui.SetTextInputFocus(text_input.box.imgui_id, job.job->pasted_license_text, true);
+            GuiIo().out.wants.clipboard_text_paste = true;
+        }
         if (TextButton(builder, button_row, {.text = "Cancel"})) {
             dyn::Assign(job.job->error_buffer, "Cancelled"_s);
             job.job->state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
