@@ -542,11 +542,30 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                     ICON_FA_DICE_SIX,
                 };
                 int const pip_index = Clamp((int)(t_hover * 6.0f), 0, 5);
-                Rect const icon_r {.x = tick_x - half_icon, .y = wr.y + 1.0f, .w = icon_size, .h = icon_size};
+
+                // Callout floats above the strip with a downward-pointing tip toward tick_x,
+                // so the cursor doesn't obscure the dice.
+                constexpr f32 k_callout_gap = 0;
+                constexpr f32 k_tip_h = 4;
+                constexpr f32 k_tip_w = 6;
+                f32 const tip_y = wr.y - k_callout_gap;
+                f32 const base_y = tip_y - k_tip_h;
+                Rect const callout_r {
+                    .x = tick_x - half_icon,
+                    .y = base_y - icon_size,
+                    .w = icon_size,
+                    .h = icon_size,
+                };
+                u32 const bg_col = ToU32(Col {.c = Col::White, .alpha = (u8)(strip.is_active ? 90 : 55)});
+                g.imgui.draw_list->AddRectFilled(callout_r, bg_col, 3.0f);
+                g.imgui.draw_list->AddTriangleFilled({tick_x - k_tip_w * 0.5f, base_y},
+                                                     {tick_x + k_tip_w * 0.5f, base_y},
+                                                     {tick_x, tip_y},
+                                                     bg_col);
                 u32 const icon_col = ToU32(Col {.c = Col::White, .alpha = (u8)(strip.is_active ? 150 : 240)});
                 builder.fonts.Push(ToInt(FontType::Icons));
                 DEFER { builder.fonts.Pop(); };
-                g.imgui.draw_list->AddTextInRect(icon_r,
+                g.imgui.draw_list->AddTextInRect(callout_r,
                                                  icon_col,
                                                  k_dice_icons[pip_index],
                                                  {
