@@ -456,93 +456,93 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                                        },
                                    });
 
-    auto const do_utility_button =
-        [&](String icon, String label, String tooltip, u64 id, bool grey, FunctionRef<void()> on_fire) {
-            auto const btn = DoBox(builder,
-                               {
-                                   .parent = utility_row,
-                                   .id_extra = id,
-                                   .background_fill_colours =
-                                       grey ? Colours {Col {.c = Col::None}}
-                                            : ColSet {
-                                                  .base = Col {.c = Col::White, .alpha = 12},
-                                                  .hot = Col {.c = Col::White, .alpha = 25},
-                                                  .active = Col {.c = Col::White, .alpha = 35},
-                                              },
-                                   .round_background_corners = 0b1111,
-                                   .corner_rounding = k_corner_rounding,
-                                   .layout {
-                                       .size = {layout::k_hug_contents, k_mid_button_height},
-                                       .contents_padding = {.lr = 10},
-                                       .contents_gap = 6,
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_align = layout::Alignment::Middle,
-                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                   },
-                                   .tooltip = tooltip,
-                                   .button_behaviour = imgui::ButtonConfig {},
-                               });
-            DoBox(builder,
+    {
+        auto const pill = DoBox(builder,
+                                {
+                                    .parent = utility_row,
+                                    .background_fill_colours = Col {.c = Col::White, .alpha = 12},
+                                    .round_background_corners = 0b1111,
+                                    .corner_rounding = k_corner_rounding,
+                                    .layout {
+                                        .size = {layout::k_hug_contents, k_mid_button_height},
+                                        .contents_padding = {.l = 10, .r = 4},
+                                        .contents_gap = 6,
+                                        .contents_direction = layout::Direction::Row,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                    },
+                                });
+
+        DoBox(builder,
               {
-                  .parent = btn,
-                  .text = icon,
-                  .size_from_text = true,
-                  .font = FontType::Icons,
-                  .font_size = k_font_icons_size * 0.9f,
-                  .text_colours = grey ? Colours {Col {.c = Col::White, .alpha = 60}}
-                                       : ColSet {
-                                             .base = LiveColStruct(UiColMap::MidIcon),
-                                             .hot = LiveColStruct(UiColMap::MidTextHot),
-                                             .active = LiveColStruct(UiColMap::MidTextOn),
-                                         },
-                  .parent_dictates_hot_and_active = true,
-              });
-            DoBox(builder,
-              {
-                  .parent = btn,
-                  .text = label,
+                  .parent = pill,
+                  .text = "Vary"_s,
                   .size_from_text = true,
                   .font = FontType::Body,
-                  .text_colours = grey ? Colours {Col {.c = Col::White, .alpha = 60}}
-                                       : ColSet {
-                                             .base = Col {.c = Col::White, .alpha = 200},
-                                             .hot = Col {.c = Col::White, .alpha = 240},
-                                             .active = Col {.c = Col::White, .alpha = 255},
-                                         },
-                  .parent_dictates_hot_and_active = true,
+                  .text_colours = Col {.c = Col::White, .alpha = 180},
               });
-            if (btn.button_fired && !grey) on_fire();
-        };
 
-    auto const do_random_button =
-        [&](String icon, String label, String tooltip, u64 id, bool grey, RandomScope scope) {
-            do_utility_button(icon, label, tooltip, id, grey, [&]() {
+        struct VaryMode {
+            String icon;
+            String tooltip;
+            RandomScope scope;
+        };
+        Array<VaryMode, 3> const modes {{
+            {ICON_FA_DICE_ONE, "Subtle variation: same folder"_s, RandomScope::Folder},
+            {ICON_FA_DICE_THREE, "Wider variation: same library"_s, RandomScope::Library},
+            {ICON_FA_DICE_SIX, "Wild variation: any library"_s, RandomScope::Any},
+        }};
+
+        for (auto const mode_index : Range(modes.size)) {
+            auto const& mode = modes[mode_index];
+            bool const grey = !any_active && mode.scope != RandomScope::Any;
+
+            auto const btn =
+                DoBox(builder,
+                      {
+                          .parent = pill,
+                          .id_extra = mode_index,
+                          .background_fill_colours = grey ? Colours {Col {.c = Col::None}}
+                                                          : Colours {ColSet {
+                                                                .base = Col {.c = Col::None},
+                                                                .hot = Col {.c = Col::White, .alpha = 18},
+                                                                .active = Col {.c = Col::White, .alpha = 28},
+                                                            }},
+                          .round_background_corners = 0b1111,
+                          .corner_rounding = k_corner_rounding * 0.85f,
+                          .layout {
+                              .size = {k_mid_button_height, layout::k_fill_parent},
+                              .contents_align = layout::Alignment::Middle,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                          .tooltip = TooltipString {mode.tooltip},
+                          .button_behaviour = grey ? Optional<imgui::ButtonConfig> {}
+                                                   : Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}},
+                      });
+            DoBox(builder,
+                  {
+                      .parent = btn,
+                      .text = mode.icon,
+                      .size_from_text = true,
+                      .font = FontType::Icons,
+                      .font_size = k_font_icons_size * 0.95f,
+                      .text_colours = grey ? Colours {Col {.c = Col::White, .alpha = 60}}
+                                           : Colours {ColSet {
+                                                 .base = LiveColStruct(UiColMap::MidIcon),
+                                                 .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                 .active = LiveColStruct(UiColMap::MidTextOn),
+                                             }},
+                      .parent_dictates_hot_and_active = true,
+                  });
+            if (btn.button_fired && !grey) {
                 Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};
                 for (auto const layer_index : Range(k_num_layers))
                     new_ids[layer_index] =
-                        random_inst_id(g.engine.processor.layer_processors[layer_index], scope);
+                        random_inst_id(g.engine.processor.layer_processors[layer_index], mode.scope);
                 LoadInstruments(g.engine, new_ids, "Random instruments"_s);
-            });
-        };
-
-    do_random_button(ICON_FA_DICE_ONE ""_s,
-                     "Similar"_s,
-                     "Random instruments from the same folders for all layers"_s,
-                     1,
-                     !any_active,
-                     RandomScope::Folder);
-    do_random_button(ICON_FA_DICE_THREE ""_s,
-                     "Related"_s,
-                     "Random instruments from the same libraries for all layers"_s,
-                     2,
-                     !any_active,
-                     RandomScope::Library);
-    do_random_button(ICON_FA_DICE_SIX ""_s,
-                     "Random"_s,
-                     "Truly random instruments from any library for all layers"_s,
-                     3,
-                     false,
-                     RandomScope::Any);
+            }
+        }
+    }
 
     {
         auto const viewing_pinned = ViewingPinnedSnapshot(g.engine);
