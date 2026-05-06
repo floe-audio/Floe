@@ -749,6 +749,83 @@ void LoadInstruments(Engine& engine,
     RecordUndoableStep(engine, undo_name);
 }
 
+enum class RandomVariationScope : u8 { Folder, Library, Any };
+
+static RandomVariationScope PickRandomVariationScope(u64& seed, f32 amount) {
+    auto const r = RandomFloatInRange<f32>(seed, 0, 1);
+    if (amount <= 0.5f) {
+        auto const w_library = amount * 2.0f;
+        return r < w_library ? RandomVariationScope::Library : RandomVariationScope::Folder;
+    }
+    auto const w_any = (amount - 0.5f) * 2.0f;
+    return r < w_any ? RandomVariationScope::Any : RandomVariationScope::Library;
+}
+
+static Optional<sample_lib::InstrumentId> PickRandomInstrument(u64& seed,
+                                                               sample_lib_server::LibrariesSpan libraries,
+                                                               sample_lib::InstrumentId const& origin,
+                                                               RandomVariationScope scope) {
+    sample_lib::Instrument const* origin_inst = nullptr;
+    for (auto const& lib : libraries) {
+        if (lib->id == origin.library) {
+            if (auto const inst_pp = lib->insts_by_id.Find(origin.inst_id)) origin_inst = *inst_pp;
+            break;
+        }
+    }
+
+    DynamicArray<sample_lib::Instrument const*> candidates {PageAllocator::Instance()};
+    for (auto const& lib : libraries) {
+        if (scope != RandomVariationScope::Any && lib->id != origin.library) continue;
+        for (auto const* inst : lib->sorted_instruments) {
+            if (scope == RandomVariationScope::Folder) {
+                if (!origin_inst || !origin_inst->folder) continue;
+                if (!IsInsideFolder(inst->folder, origin_inst->folder->Hash())) continue;
+            }
+            dyn::Append(candidates, inst);
+        }
+    }
+
+    if (candidates.size == 0) return k_nullopt;
+    auto const pick = RandomIntInRange<usize>(seed, 0, candidates.size - 1);
+    return sample_lib::InstrumentId {.library = candidates[pick]->library.id,
+                                     .inst_id = candidates[pick]->id};
+}
+
+void LoadRandomVariation(Engine& engine, f32 amount) {
+    ASSERT(g_is_logical_main_thread);
+    amount = Clamp(amount, 0.0f, 1.0f);
+
+    PageAllocator page_allocator;
+    ArenaAllocator scratch_arena {page_allocator, Kb(16)};
+    auto libraries =
+        sample_lib_server::AllLibrariesRetained(engine.shared_engine_systems.sample_library_server,
+                                                scratch_arena);
+    DEFER { sample_lib_server::ReleaseAll(libraries); };
+
+    auto snapshot = engine.pinned_snapshot.state;
+
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto const* pinned_inst_id =
+            engine.pinned_snapshot.state.inst_ids[layer_index].TryGet<sample_lib::InstrumentId>();
+        if (!pinned_inst_id) continue;
+        auto const scope = PickRandomVariationScope(engine.random_seed, amount);
+        if (auto const new_id = PickRandomInstrument(engine.random_seed, libraries, *pinned_inst_id, scope))
+            snapshot.inst_ids[layer_index] = *new_id;
+    }
+
+    if (auto const macro_amp = Pow(amount, 2.5f); macro_amp > 0) {
+        for (auto const [macro_index, param_index] : Enumerate(k_macro_params)) {
+            if (engine.processor.main_macro_destinations[macro_index].Size() == 0) continue;
+            auto const pinned_value = engine.pinned_snapshot.state.param_values[ToInt(param_index)];
+            auto const deviation = RandomFloatInRange<f32>(engine.random_seed, -macro_amp, macro_amp);
+            snapshot.param_values[ToInt(param_index)] = Clamp(pinned_value + deviation, 0.0f, 1.0f);
+        }
+    }
+
+    LoadState(engine, snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+    RecordUndoableStep(engine, "Random variation"_s);
+}
+
 bool ViewingPinnedSnapshot(Engine const& engine) { return engine.stashed_modifications.HasValue(); }
 
 void TogglePinnedView(Engine& engine) {

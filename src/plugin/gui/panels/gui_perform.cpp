@@ -144,46 +144,8 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
 
 constexpr f32 k_inst_name_top_margin = 2;
 
-static void
-DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
+static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     auto& params = g.engine.processor.main_params;
-
-    enum class RandomScope : u8 { Folder, Library, Any };
-
-    auto const random_inst_id = [&](LayerProcessor& target_layer,
-                                    RandomScope scope) -> Optional<sample_lib::InstrumentId> {
-        InstBrowserState ephemeral_state {.id = HashFnv1a("dummy-inst-browser")};
-
-        if (scope != RandomScope::Any) {
-            auto sampled_inst = target_layer.instrument.TryGetFromTag<InstrumentType::Sampler>();
-            if (!sampled_inst) return k_nullopt;
-            auto const& inst = (*sampled_inst)->instrument;
-
-            if (scope == RandomScope::Folder) {
-                if (!inst.folder) return k_nullopt;
-                auto const folder_name =
-                    inst.folder->display_name.size ? inst.folder->display_name : inst.folder->name;
-                ephemeral_state.common_state.Filter(BrowserFilter::Folder)
-                    .Add(inst.folder->Hash(), folder_name);
-            } else {
-                ephemeral_state.common_state.Filter(BrowserFilter::Library)
-                    .Add(inst.library.id, inst.library.name);
-            }
-        }
-
-        InstBrowserContext context {
-            .layer = target_layer,
-            .sample_library_server = g.shared_engine_systems.sample_library_server,
-            .library_images = g.library_images,
-            .engine = g.engine,
-            .prefs = g.prefs,
-            .notifications = g.notifications,
-            .persistent_store = g.shared_engine_systems.persistent_store,
-            .confirmation_dialog_state = g.confirmation_dialog_state,
-            .frame_context = frame_context,
-        };
-        return RandomInstrumentId(context, ephemeral_state);
-    };
 
     auto const column = DoBox(builder,
                               {
@@ -436,8 +398,8 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
     }
 
     bool any_active = false;
-    for (auto const& layer : g.engine.processor.layer_processors)
-        if (layer.instrument.tag != InstrumentType::None) {
+    for (auto const& inst_id : g.engine.pinned_snapshot.state.inst_ids)
+        if (inst_id.tag != InstrumentType::None) {
             any_active = true;
             break;
         }
@@ -474,39 +436,53 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                                     },
                                 });
 
-        DoBox(builder,
-              {
-                  .parent = pill,
-                  .text = "Vary"_s,
-                  .size_from_text = true,
-                  .font = FontType::Body,
-                  .text_colours = Col {.c = Col::White, .alpha = (u8)(any_active ? 200 : 110)},
-              });
+        auto const trigger_random_variation = [&](f32 t) {
+            LoadRandomVariation(g.engine, t);
+            g.mid_panel_state.last_random_variation_amount = t;
+        };
 
-        constexpr f32 k_strip_w = 130;
-        auto const strip = DoBox(
+        auto const vary_btn = DoBox(
             builder,
             {
                 .parent = pill,
-                .id_extra = 1,
-                .background_fill_colours =
+                .id_extra = 0,
+                .text = "Vary"_s,
+                .size_from_text = true,
+                .font = FontType::Body,
+                .text_colours =
                     ColSet {
-                        .base = Col {.c = Col::White, .alpha = 8},
-                        .hot = Col {.c = Col::White, .alpha = 14},
-                        .active = Col {.c = Col::White, .alpha = 22},
+                        .base = Col {.c = Col::White, .alpha = (u8)(any_active ? 200 : 110)},
+                        .hot = Col {.c = Col::White, .alpha = 240},
+                        .active = Col {.c = Col::White, .alpha = 255},
                     },
-                .round_background_corners = 0b1111,
-                .corner_rounding = k_corner_rounding * 0.7f,
-                .layout {
-                    .size = {k_strip_w, layout::k_fill_parent},
-                    .margins = {.l = 2, .r = 2, .tb = 2},
-                },
                 .tooltip =
                     TooltipString {
-                        "Click anywhere on the strip to load random instruments. "
-                        "Further right = wider variation (left = same folder, middle = same library, right = anywhere)."_s},
+                        "Click to repeat the last variation, or click anywhere on the strip to load random instruments. "
+                        "The strip blends three scopes by probability: left favours the same folder, middle the same library, right anywhere. "
+                        "Each layer rolls independently, so intermediate positions mix scopes."_s},
                 .button_behaviour = imgui::ButtonConfig {},
             });
+        if (vary_btn.button_fired) trigger_random_variation(g.mid_panel_state.last_random_variation_amount);
+
+        constexpr f32 k_strip_w = 130;
+        auto const strip = DoBox(builder,
+                                 {
+                                     .parent = pill,
+                                     .id_extra = 1,
+                                     .background_fill_colours =
+                                         ColSet {
+                                             .base = Col {.c = Col::White, .alpha = 8},
+                                             .hot = Col {.c = Col::White, .alpha = 14},
+                                             .active = Col {.c = Col::White, .alpha = 22},
+                                         },
+                                     .round_background_corners = 0b1111,
+                                     .corner_rounding = k_corner_rounding * 0.7f,
+                                     .layout {
+                                         .size = {k_strip_w, layout::k_fill_parent},
+                                         .margins = {.l = 2, .r = 2, .tb = 2},
+                                     },
+                                     .button_behaviour = imgui::ButtonConfig {},
+                                 });
 
         if (auto const r = BoxRect(builder, strip)) {
             auto const wr = g.imgui.ViewportRectToWindowRect(*r);
@@ -524,16 +500,20 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
             // While armed (mouse held), pin to the down-position so the die doesn't move.
             // The icon centre is inset by half its width so it never overhangs the strip edges,
             // and t is computed over the same inset range so the pip count matches what's drawn.
-            if (strip.is_hot || strip.is_active) {
+            if (strip.is_hot || strip.is_active || vary_btn.is_active) {
                 GuiIo().out.wants.mouse_motion_redraw = true;
-                f32 const ref_x = strip.is_active ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
-                                                  : GuiIo().in.cursor_pos.x;
                 f32 const icon_size = wr.h - 2.0f;
                 f32 const half_icon = icon_size * 0.5f;
                 f32 const min_x = wr.x + half_icon;
                 f32 const max_x = wr.x + wr.w - half_icon;
+                f32 const ref_x =
+                    vary_btn.is_active
+                        ? min_x + g.mid_panel_state.last_random_variation_amount * (max_x - min_x)
+                    : strip.is_active ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
+                                      : GuiIo().in.cursor_pos.x;
                 f32 const tick_x = Clamp(ref_x, min_x, max_x);
                 f32 const t_hover = Clamp((ref_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
+                bool const armed = strip.is_active || vary_btn.is_active;
                 static constexpr String k_dice_icons[6] {
                     ICON_FA_DICE_ONE,
                     ICON_FA_DICE_TWO,
@@ -557,13 +537,13 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                     .w = icon_size,
                     .h = icon_size,
                 };
-                u32 const bg_col = ToU32(Col {.c = Col::White, .alpha = (u8)(strip.is_active ? 90 : 55)});
+                u32 const bg_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 90 : 55)});
                 g.imgui.draw_list->AddRectFilled(callout_r, bg_col, 3.0f);
                 g.imgui.draw_list->AddTriangleFilled({tick_x - k_tip_w * 0.5f, base_y},
                                                      {tick_x + k_tip_w * 0.5f, base_y},
                                                      {tick_x, tip_y},
                                                      bg_col);
-                u32 const icon_col = ToU32(Col {.c = Col::White, .alpha = (u8)(strip.is_active ? 150 : 240)});
+                u32 const icon_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 150 : 240)});
                 builder.fonts.Push(ToInt(FontType::Icons));
                 DEFER { builder.fonts.Pop(); };
                 g.imgui.draw_list->AddTextInRect(callout_r,
@@ -584,16 +564,7 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                 f32 const min_x = wr.x + half_icon;
                 f32 const max_x = wr.x + wr.w - half_icon;
                 f32 const t = Clamp((press_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
-                auto const scope = t < 0.34f   ? RandomScope::Folder
-                                   : t < 0.67f ? RandomScope::Library
-                                               : RandomScope::Any;
-                if (any_active || scope == RandomScope::Any) {
-                    Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};
-                    for (auto const layer_index : Range(k_num_layers))
-                        new_ids[layer_index] =
-                            random_inst_id(g.engine.processor.layer_processors[layer_index], scope);
-                    LoadInstruments(g.engine, new_ids, "Random instruments"_s);
-                }
+                trigger_random_variation(t);
             }
         }
     }
@@ -911,7 +882,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
 
         DoMacrosColumn(builder, g, central_panel);
 
-        DoLayersColumn(builder, g, frame_context, central_panel);
+        DoLayersColumn(builder, g, central_panel);
 
         DoDescriptionColumn(builder, g, central_panel);
     }

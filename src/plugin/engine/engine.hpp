@@ -133,6 +133,8 @@ void LoadInstruments(Engine& engine,
                      Array<Optional<sample_lib::InstrumentId>, k_num_layers> const& new_ids,
                      String undo_name);
 
+void LoadRandomVariation(Engine& engine, f32 amount);
+
 String IrName(Engine const& engine);
 
 usize MegabytesUsedBySamples(Engine const& engine);
