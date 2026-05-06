@@ -488,7 +488,7 @@ static void LegacyParamsPanel(GuiBuilder& builder, GuiState& g) {
                   });
 }
 
-constexpr bool k_debug_randomise_legacy_params_on_open = true;
+constexpr bool k_debug_randomise_legacy_params_on_open = false;
 static_assert(!k_debug_randomise_legacy_params_on_open || !PRODUCTION_BUILD,
               "k_debug_randomise_legacy_params_on_open must be off in production builds");
 
