@@ -514,7 +514,11 @@ void ApplySectionOfState(Engine& engine,
     DEFER { EndUndoableStep(engine); };
 
     auto const set_param = [&](ParamIndex src, ParamIndex dst) {
-        SetParameterValue(engine.processor, dst, source.param_values[ToInt(src)], {});
+        auto const& dst_range = k_param_descriptors[ToInt(dst)].linear_range;
+        SetParameterValue(engine.processor,
+                          dst,
+                          Clamp(source.param_values[ToInt(src)], dst_range.min, dst_range.max),
+                          {});
     };
 
     switch (source_section.tag) {
