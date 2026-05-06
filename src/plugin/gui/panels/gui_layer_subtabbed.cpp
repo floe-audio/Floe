@@ -54,71 +54,84 @@ static void DoTabRightClickMenu(GuiState& g,
 
     if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
 
-    DoBoxViewport(g.builder,
-                  {
-                      .run =
-                          [&](GuiBuilder&) {
-                              auto const root = DoBox(g.builder,
-                                                      {
-                                                          .layout {
-                                                              .size = layout::k_hug_contents,
-                                                              .contents_direction = layout::Direction::Column,
-                                                              .contents_align = layout::Alignment::Start,
-                                                          },
-                                                      });
+    DoBoxViewport(
+        g.builder,
+        {
+            .run =
+                [&](GuiBuilder&) {
+                    auto const root = DoBox(g.builder,
+                                            {
+                                                .layout {
+                                                    .size = layout::k_hug_contents,
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
 
-                              ParamModules const target_modules {LayerModuleFromIndex(layer_index),
-                                                                 tab_module};
+                    ParamModules const target_modules {LayerModuleFromIndex(layer_index), tab_module};
 
-                              if (MenuItem(g.builder,
-                                           root,
-                                           {
-                                               .text = fmt::Format(g.scratch_arena, "Copy {}"_s, tab_name),
-                                               .no_icon_gap = true,
-                                           })
-                                      .button_fired) {
-                                  g.snapshot_clipboard = GuiState::CopiedSection {
-                                      .snapshot = CurrentStateSnapshot(g.engine),
-                                      .section = ParamModules {LayerModuleFromIndex(layer_index), tab_module},
-                                  };
-                              }
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = fmt::Format(g.scratch_arena, "Copy {}"_s, tab_name),
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired) {
+                        g.snapshot_clipboard = GuiState::CopiedSection {
+                            .snapshot = CurrentStateSnapshot(g.engine),
+                            .section = ParamModules {LayerModuleFromIndex(layer_index), tab_module},
+                        };
+                    }
 
-                              auto const can_paste =
-                                  g.snapshot_clipboard.HasValue() &&
-                                  g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules &&
-                                  g.snapshot_clipboard->section.Get<ParamModules>()[1] == tab_module;
+                    auto const can_paste =
+                        g.snapshot_clipboard.HasValue() &&
+                        g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules &&
+                        g.snapshot_clipboard->section.Get<ParamModules>()[1] == tab_module;
 
-                              if (MenuItem(g.builder,
-                                           root,
-                                           {
-                                               .text = fmt::Format(g.scratch_arena, "Paste {}"_s, tab_name),
-                                               .mode = can_paste ? MenuItemOptions::Mode::Active
-                                                                 : MenuItemOptions::Mode::Disabled,
-                                               .no_icon_gap = true,
-                                           })
-                                      .button_fired &&
-                                  can_paste) {
-                                  ApplySectionOfState(g.engine,
-                                                      g.snapshot_clipboard->snapshot,
-                                                      g.snapshot_clipboard->section,
-                                                      StateSnapshotSection {target_modules});
-                              }
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = fmt::Format(g.scratch_arena, "Paste {}"_s, tab_name),
+                                     .mode = can_paste ? MenuItemOptions::Mode::Active
+                                                       : MenuItemOptions::Mode::Disabled,
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired &&
+                        can_paste) {
+                        ApplySectionOfState(g.engine,
+                                            g.snapshot_clipboard->snapshot,
+                                            g.snapshot_clipboard->section,
+                                            StateSnapshotSection {target_modules});
+                    }
 
-                              if (MenuItem(g.builder,
-                                           root,
-                                           {
-                                               .text = fmt::Format(g.scratch_arena, "Reset {}"_s, tab_name),
-                                               .no_icon_gap = true,
-                                           })
-                                      .button_fired) {
-                                  StateSnapshotSection const selector {target_modules};
-                                  ApplySectionOfState(g.engine, DefaultStateSnapshot(), selector, selector);
-                              }
-                          },
-                      .bounds = window_r,
-                      .imgui_id = right_click_id,
-                      .viewport_config = k_default_popup_menu_viewport,
-                  });
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = fmt::Format(g.scratch_arena, "Reset {}"_s, tab_name),
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired) {
+                        StateSnapshotSection const selector {target_modules};
+                        auto snapshot = DefaultStateSnapshot();
+                        Optional<LayerParamIndex> preserved_on {};
+                        switch (tab_module) {
+                            case ParameterModule::Lfo: preserved_on = LayerParamIndex::LfoOn; break;
+                            case ParameterModule::Eq: preserved_on = LayerParamIndex::EqOn; break;
+                            case ParameterModule::Arp: preserved_on = LayerParamIndex::ArpOn; break;
+                            default: break;
+                        }
+                        if (preserved_on) {
+                            auto const on_param = ParamIndexFromLayerParamIndex(layer_index, *preserved_on);
+                            snapshot.param_values[ToInt(on_param)] =
+                                g.engine.processor.main_params.LinearValue(on_param);
+                        }
+                        ApplySectionOfState(g.engine, snapshot, selector, selector);
+                    }
+                },
+            .bounds = window_r,
+            .imgui_id = right_click_id,
+            .viewport_config = k_default_popup_menu_viewport,
+        });
 }
 
 static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
