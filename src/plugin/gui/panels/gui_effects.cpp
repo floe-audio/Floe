@@ -43,6 +43,76 @@ struct FXColours {
     UiColMap button;
 };
 
+static ParameterModule EffectTypeToParameterModule(EffectType type) {
+    switch (type) {
+        case EffectType::Distortion: return ParameterModule::Distortion;
+        case EffectType::BitCrush: return ParameterModule::Bitcrush;
+        case EffectType::Compressor: return ParameterModule::Compressor;
+        case EffectType::FilterEffect: return ParameterModule::Filter;
+        case EffectType::StereoWiden: return ParameterModule::StereoWiden;
+        case EffectType::Chorus: return ParameterModule::Chorus;
+        case EffectType::Reverb: return ParameterModule::Reverb;
+        case EffectType::Delay: return ParameterModule::Delay;
+        case EffectType::ConvolutionReverb: return ParameterModule::ConvolutionReverb;
+        case EffectType::Phaser: return ParameterModule::Phaser;
+        case EffectType::Eq: return ParameterModule::Eq;
+        case EffectType::Count: PanicIfReached();
+    }
+    return {};
+}
+
+static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window_r, EffectType type) {
+    auto const right_click_id = g.imgui.MakeId(SourceLocationHash() + ToInt(type));
+    if (g.imgui.ButtonBehaviour(window_r,
+                                button_id,
+                                {
+                                    .mouse_button = MouseButton::Right,
+                                    .event = MouseButtonEvent::Up,
+                                })) {
+        g.imgui.OpenPopupMenu(right_click_id, button_id);
+    }
+
+    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
+
+    auto const name = k_effect_info[ToInt(type)].name;
+
+    DoBoxViewport(g.builder,
+                  {
+                      .run =
+                          [&](GuiBuilder&) {
+                              auto const root = DoBox(g.builder,
+                                                      {
+                                                          .layout {
+                                                              .size = layout::k_hug_contents,
+                                                              .contents_direction = layout::Direction::Column,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+
+                              ParamModules const target {ParameterModule::Effect,
+                                                         EffectTypeToParameterModule(type)};
+
+                              if (MenuItem(g.builder,
+                                           root,
+                                           {
+                                               .text = fmt::Format(g.scratch_arena, "Reset {}"_s, name),
+                                               .no_icon_gap = true,
+                                           })
+                                      .button_fired) {
+                                  StateSnapshotSection const selector {target};
+                                  auto snapshot = DefaultStateSnapshot();
+                                  auto const on_param = k_effect_info[ToInt(type)].on_param_index;
+                                  snapshot.param_values[ToInt(on_param)] =
+                                      g.engine.processor.main_params.LinearValue(on_param);
+                                  ApplySectionOfState(g.engine, snapshot, selector, selector);
+                              }
+                          },
+                      .bounds = window_r,
+                      .imgui_id = right_click_id,
+                      .viewport_config = k_default_popup_menu_viewport,
+                  });
+}
+
 static FXColours GetFxColMap(EffectType type) {
     using enum UiColMap;
     switch (type) {
@@ -372,6 +442,8 @@ static void DoSwitchboard(GuiState& g, Box root) {
                                         text_col,
                                         k_effect_info[ToInt(fx->type)].name,
                                         {.justification = TextJustification::CentredLeft});
+
+                DoEffectRightClickMenu(g, btn_id, window_slot_r, fx->type);
 
                 if (fired) {
                     bool const new_state = !is_visible;
@@ -1146,6 +1218,8 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                                      });
 
         auto const heading_btn = DoEffectHeading(g, *fx, left_pane);
+        if (auto const r = BoxRect(g.builder, heading_btn))
+            DoEffectRightClickMenu(g, heading_btn.imgui_id, g.imgui.ViewportRectToWindowRect(*r), fx->type);
         bool const bypassed = !EffectIsOn(params, fx);
 
         if (!is_being_dragged) {
