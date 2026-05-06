@@ -725,7 +725,24 @@ void LoadInstruments(Engine& engine,
     RecordUndoableStep(engine, undo_name);
 }
 
-void RevertToPinned(Engine& engine) {
+bool ViewingPinnedSnapshot(Engine const& engine) { return engine.stashed_modifications.HasValue(); }
+
+void TogglePinnedView(Engine& engine) {
+    ASSERT(g_is_logical_main_thread);
+
+    if (engine.stashed_modifications) {
+        auto const stashed = *engine.stashed_modifications;
+        engine.stashed_modifications.Clear();
+        LoadState(engine,
+                  stashed,
+                  {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+        RecordUndoableStep(engine, "View modifications"_s);
+        return;
+    }
+
+    if (!StateModifiedFromPinned(engine)) return;
+
+    auto const stash = CurrentStateSnapshot(engine);
     LoadState(engine,
               engine.pinned_snapshot.state,
               {
@@ -733,7 +750,9 @@ void RevertToPinned(Engine& engine) {
                   .preset_path = engine.pinned_snapshot.preset_path,
                   .update_pinned_snapshot = false,
               });
-    RecordUndoableStep(engine, "Revert"_s);
+    RecordUndoableStep(engine, "View preset"_s);
+    // Must be set after RecordUndoableStep, which clears the stash.
+    engine.stashed_modifications = stash;
 }
 
 void LoadPresetFromFile(Engine& engine, String path) {
@@ -1029,6 +1048,7 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
 
 void RecordUndoableStep(Engine& engine, String name, bool is_pinned_snapshot_anchor) {
     ASSERT(g_is_logical_main_thread);
+    engine.stashed_modifications.Clear();
     auto const current = CurrentStateSnapshot(engine);
     UndoableStep step {
         .name = name,
@@ -1081,6 +1101,7 @@ static void RestorePinnedSnapshotFromAnchor(Engine& engine) {
 void Undo(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undo_history.CanUndo());
+    engine.stashed_modifications.Clear();
     auto const entry = engine.undo_history.Undo();
     LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
     RestorePinnedSnapshotFromAnchor(engine);
@@ -1089,6 +1110,7 @@ void Undo(Engine& engine) {
 void Redo(Engine& engine) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(engine.undo_history.CanRedo());
+    engine.stashed_modifications.Clear();
     auto const entry = engine.undo_history.Redo();
     LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
     RestorePinnedSnapshotFromAnchor(engine);

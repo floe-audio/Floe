@@ -95,6 +95,9 @@ struct Engine : ProcessorListener {
     Optional<PendingStateChange> pending_state_change {};
     PinnedSnapshot pinned_snapshot {};
 
+    // Holds the modified state set aside while auditioning the pinned snapshot.
+    Optional<StateSnapshot> stashed_modifications {};
+
     StateMetadata state_metadata {};
 
     Bitset<k_num_effect_types> fx_visible {};
@@ -149,7 +152,10 @@ bool StateModifiedFromPinned(Engine& engine);
 // default initial state.
 StateSnapshot const* PinnedPresetState(Engine const& engine);
 
-void RevertToPinned(Engine& engine);
+bool ViewingPinnedSnapshot(Engine const& engine);
+
+// Editing while auditioning the pinned snapshot discards the stash (auto-promote).
+void TogglePinnedView(Engine& engine);
 
 void LoadPresetFromFile(Engine& engine, String path);
 
