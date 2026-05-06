@@ -75,6 +75,28 @@ void MidPanelLayersContent(GuiBuilder& builder,
         }
     }
 
+    {
+        bool any_loaded = false;
+        for (auto const& layer : g.engine.processor.layer_processors) {
+            if (layer.instrument_id.tag != InstrumentType::None) {
+                any_loaded = true;
+                break;
+            }
+        }
+
+        auto const unload_btn = DoMidPanelIconButton(
+            builder,
+            tab_extra_buttons_box,
+            {.icon = MidPanelIcon::Unload, .tooltip = "Unload all instruments"_s, .greyed_out = !any_loaded});
+
+        if (unload_btn.button_fired && any_loaded) {
+            BeginUndoableStep(g.engine, "Unload all instruments"_s);
+            DEFER { EndUndoableStep(g.engine); };
+            for (auto const layer_index : Range<u32>(k_num_layers))
+                LoadInstrument(g.engine, layer_index, InstrumentType::None);
+        }
+    }
+
     auto const root = DoBox(builder,
                             {
                                 .parent = parent,

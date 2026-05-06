@@ -696,7 +696,7 @@ void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId inst_id) {
             break;
     }
 
-    RecordUndoableStep(engine, "Load instrument"_s);
+    if (!engine.undoable_step_depth) RecordUndoableStep(engine, "Load instrument"_s);
 }
 
 void LoadInstruments(Engine& engine,
