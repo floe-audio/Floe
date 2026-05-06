@@ -104,47 +104,7 @@ static void DoTabRightClickMenu(GuiState& g,
                                             StateSnapshotSection {target_modules});
                     }
 
-                    StateSnapshotSection const reset_selector {target_modules};
-                    Optional<LayerParamIndex> preserved_on {};
-                    switch (tab_module) {
-                        case ParameterModule::Lfo: preserved_on = LayerParamIndex::LfoOn; break;
-                        case ParameterModule::Eq: preserved_on = LayerParamIndex::EqOn; break;
-                        case ParameterModule::Arp: preserved_on = LayerParamIndex::ArpOn; break;
-                        default: break;
-                    }
-                    auto const apply_with_preserved_on = [&](StateSnapshot snapshot) {
-                        if (preserved_on) {
-                            auto const on_param = ParamIndexFromLayerParamIndex(layer_index, *preserved_on);
-                            snapshot.param_values[ToInt(on_param)] =
-                                g.engine.processor.main_params.LinearValue(on_param);
-                        }
-                        ApplySectionOfState(g.engine, snapshot, reset_selector, reset_selector);
-                    };
-
-                    if (MenuItem(g.builder,
-                                 root,
-                                 {
-                                     .text = fmt::Format(g.scratch_arena, "Reset {} to Default"_s, tab_name),
-                                     .no_icon_gap = true,
-                                 })
-                            .button_fired) {
-                        apply_with_preserved_on(DefaultStateSnapshot());
-                    }
-
-                    if (auto const pinned = PinnedPresetState(g.engine)) {
-                        if (MenuItem(g.builder,
-                                     root,
-                                     {
-                                         .text = fmt::Format(g.scratch_arena,
-                                                             "Reset {} to \"{}\" state"_s,
-                                                             tab_name,
-                                                             pinned->extras.display_name),
-                                         .no_icon_gap = true,
-                                     })
-                                .button_fired) {
-                            apply_with_preserved_on(*pinned);
-                        }
-                    }
+                    DoResetSectionMenuItems(g, root, StateSnapshotSection {target_modules}, tab_name);
                 },
             .bounds = window_r,
             .imgui_id = right_click_id,
