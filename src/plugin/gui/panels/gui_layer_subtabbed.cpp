@@ -490,10 +490,11 @@ void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
     }
 
     // Shuffle button
-    auto const shuffle_btn = DoMidPanelShuffleButton(
+    auto const shuffle_btn = DoMidPanelIconButton(
         g.builder,
         selector_box,
-        {.tooltip = "Load a random instrument.\n\nThis is based on the currently selected filters."_s});
+        {.icon = MidPanelIcon::Shuffle,
+         .tooltip = "Load a random instrument.\n\nThis is based on the currently selected filters."_s});
     if (shuffle_btn.button_fired) {
         auto context = make_browser_context();
         LoadRandomInstrument(context, g.inst_browser_state[layer_index]);
@@ -501,12 +502,13 @@ void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
 
     // Unload button
     auto const has_instrument = layer_obj.instrument_id.tag != InstrumentType::None;
-    auto const unload_btn = DoMidPanelUnloadButton(g.builder,
-                                                   selector_box,
-                                                   {
-                                                       .greyed_out = !has_instrument,
-                                                       .tooltip = "Unload the current instrument."_s,
-                                                   });
+    auto const unload_btn = DoMidPanelIconButton(g.builder,
+                                                 selector_box,
+                                                 {
+                                                     .icon = MidPanelIcon::Unload,
+                                                     .tooltip = "Unload the current instrument."_s,
+                                                     .greyed_out = !has_instrument,
+                                                 });
     if (unload_btn.button_fired && has_instrument)
         LoadInstrument(g.engine, layer_index, InstrumentType::None);
 }

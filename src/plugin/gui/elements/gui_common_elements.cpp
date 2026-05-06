@@ -11,13 +11,13 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-static ColSet MidIconButtonColours(bool greyed_out) {
+static ColSet MidIconButtonColours(bool greyed_out, bool is_on = false) {
     if (greyed_out) {
         auto const dimmed = LiveColStruct(UiColMap::MidIconDimmed);
         return {.base = dimmed, .hot = dimmed, .active = dimmed};
     }
     return {
-        .base = LiveColStruct(UiColMap::MidIcon),
+        .base = is_on ? LiveColStruct(UiColMap::MidTextOn) : LiveColStruct(UiColMap::MidIcon),
         .hot = LiveColStruct(UiColMap::MidTextHot),
         .active = LiveColStruct(UiColMap::MidTextOn),
     };
@@ -45,7 +45,8 @@ static Box DoMidIconButton(GuiBuilder& builder,
                            String icon,
                            String tooltip,
                            bool greyed_out,
-                           f32 font_size = 0) {
+                           f32 font_size = 0,
+                           bool is_on = false) {
     auto const btn = DoBox(builder,
                            {
                                .parent = parent,
@@ -63,7 +64,7 @@ static Box DoMidIconButton(GuiBuilder& builder,
               .size_from_text = true,
               .font = FontType::Icons,
               .font_size = font_size,
-              .text_colours = MidIconButtonColours(greyed_out),
+              .text_colours = MidIconButtonColours(greyed_out, is_on),
               .text_justification = TextJustification::Centred,
               .parent_dictates_hot_and_active = true,
               .layout {
@@ -87,22 +88,20 @@ DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsO
     return result;
 }
 
-Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options) {
-    return DoMidIconButton(builder,
-                           row,
-                           ICON_FA_SHUFFLE,
-                           options.tooltip,
-                           options.greyed_out,
-                           k_font_icons_size * 0.82f);
-}
-
-Box DoMidPanelUnloadButton(GuiBuilder& builder, Box row, MidPanelUnloadButtonOptions const& options) {
-    return DoMidIconButton(builder,
-                           row,
-                           ICON_FA_XMARK,
-                           options.tooltip,
-                           options.greyed_out,
-                           k_font_icons_size * 0.9f);
+Box DoMidPanelIconButton(GuiBuilder& builder, Box row, MidPanelIconButtonOptions const& options) {
+    auto const [icon, font_size] = ({
+        struct {
+            String icon;
+            f32 font_size;
+        } v;
+        switch (options.icon) {
+            case MidPanelIcon::Shuffle: v = {ICON_FA_SHUFFLE, k_font_icons_size * 0.82f}; break;
+            case MidPanelIcon::Unload: v = {ICON_FA_XMARK, k_font_icons_size * 0.9f}; break;
+            case MidPanelIcon::Power: v = {ICON_FA_POWER_OFF, k_font_icons_size * 0.85f}; break;
+        }
+        v;
+    });
+    return DoMidIconButton(builder, row, icon, options.tooltip, options.greyed_out, font_size, options.is_on);
 }
 
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options) {

@@ -332,21 +332,23 @@ static void DoImpulseResponseSelector(GuiState& g,
     if (prev_next.next_fired) LoadAdjacentIr(context, g.ir_browser_state, SearchDirection::Forward);
 
     // Shuffle button
-    auto const shuffle_btn = DoMidPanelShuffleButton(
+    auto const shuffle_btn = DoMidPanelIconButton(
         g.builder,
         btn_row,
-        {.greyed_out = greyed_out,
-         .tooltip = "Load a random IR.\n\nThis is based on the currently selected filters."_s});
+        {.icon = MidPanelIcon::Shuffle,
+         .tooltip = "Load a random IR.\n\nThis is based on the currently selected filters."_s,
+         .greyed_out = greyed_out});
     if (shuffle_btn.button_fired) LoadRandomIr(context, g.ir_browser_state);
 
     // Unload button
     auto const has_ir = g.engine.processor.convo.ir_id.HasValue();
-    auto const unload_btn = DoMidPanelUnloadButton(g.builder,
-                                                   btn_row,
-                                                   {
-                                                       .greyed_out = greyed_out || !has_ir,
-                                                       .tooltip = "Unload the current IR."_s,
-                                                   });
+    auto const unload_btn = DoMidPanelIconButton(g.builder,
+                                                 btn_row,
+                                                 {
+                                                     .icon = MidPanelIcon::Unload,
+                                                     .tooltip = "Unload the current IR."_s,
+                                                     .greyed_out = greyed_out || !has_ir,
+                                                 });
     if (unload_btn.button_fired && has_ir) LoadConvolutionIr(g.engine, k_nullopt);
 
     // Label below
@@ -1534,9 +1536,10 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             Box tab_extra_buttons_box) {
     // Add randomise button to heading.
     {
-        auto const rand_btn = DoMidPanelShuffleButton(builder,
-                                                      tab_extra_buttons_box,
-                                                      {.tooltip = "Randomise all of the effects"_s});
+        auto const rand_btn = DoMidPanelIconButton(
+            builder,
+            tab_extra_buttons_box,
+            {.icon = MidPanelIcon::Shuffle, .tooltip = "Randomise all of the effects"_s});
 
         if (rand_btn.button_fired) {
             RandomiseAllEffectParameterValues(g.engine.processor);
@@ -1551,6 +1554,55 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                 .frame_context = frame_context,
             };
             LoadRandomIr(ir_context, g.ir_browser_state);
+        }
+    }
+
+    // Add bypass-all and remove-all buttons to heading.
+    {
+        auto const& params = g.engine.processor.main_params;
+        bool any_visible = false;
+        bool any_on = false;
+        for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+            if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
+            any_visible = true;
+            if (EffectIsOn(params, fx)) {
+                any_on = true;
+                break;
+            }
+        }
+
+        auto const power_btn =
+            DoMidPanelIconButton(builder,
+                                 tab_extra_buttons_box,
+                                 {.icon = MidPanelIcon::Power,
+                                  .tooltip = any_on ? "Bypass all effects"_s : "Activate all effects"_s,
+                                  .greyed_out = !any_visible,
+                                  .is_on = any_on});
+
+        if (power_btn.button_fired && any_visible) {
+            f32 const new_value = any_on ? 0.0f : 1.0f;
+            for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+                if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
+                SetParameterValue(g.engine.processor,
+                                  k_effect_info[ToInt(fx->type)].on_param_index,
+                                  new_value,
+                                  {});
+            }
+        }
+
+        auto const remove_btn = DoMidPanelIconButton(
+            builder,
+            tab_extra_buttons_box,
+            {.icon = MidPanelIcon::Unload, .tooltip = "Remove all effects"_s, .greyed_out = !any_visible});
+
+        if (remove_btn.button_fired && any_visible) {
+            BeginUndoableStep(g.engine, "Remove all FX"_s);
+            DEFER { EndUndoableStep(g.engine); };
+            for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+                if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
+                SetParameterValue(g.engine.processor, k_effect_info[ToInt(fx->type)].on_param_index, 0, {});
+                g.engine.fx_visible.SetToValue(ToInt(fx->type), false);
+            }
         }
     }
 

@@ -50,10 +50,10 @@ void MidPanelLayersContent(GuiBuilder& builder,
     constexpr f32 k_subpanel_gap_x = 8.08f;
 
     {
-        auto const rand_btn =
-            DoMidPanelShuffleButton(builder,
-                                    tab_extra_buttons_box,
-                                    {.tooltip = "Load random instruments for all 3 layers"_s});
+        auto const rand_btn = DoMidPanelIconButton(
+            builder,
+            tab_extra_buttons_box,
+            {.icon = MidPanelIcon::Shuffle, .tooltip = "Load random instruments for all 3 layers"_s});
 
         if (rand_btn.button_fired) {
             Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};

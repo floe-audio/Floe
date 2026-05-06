@@ -35,17 +35,15 @@ struct MidPanelPrevNextButtonsOptions {
 MidPanelPrevNextButtonsResult
 DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options = {});
 
-struct MidPanelShuffleButtonOptions {
-    bool greyed_out = false;
-    String tooltip {"Shuffle"};
-};
-Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options = {});
+enum class MidPanelIcon : u8 { Shuffle, Unload, Power };
 
-struct MidPanelUnloadButtonOptions {
+struct MidPanelIconButtonOptions {
+    MidPanelIcon icon;
+    String tooltip;
     bool greyed_out = false;
-    String tooltip {"Unload"};
+    bool is_on = false; // Only meaningful for icons with an on/off state (e.g. Power).
 };
-Box DoMidPanelUnloadButton(GuiBuilder& builder, Box row, MidPanelUnloadButtonOptions const& options = {});
+Box DoMidPanelIconButton(GuiBuilder& builder, Box row, MidPanelIconButtonOptions const& options);
 
 void DoExperimentalModeIndicatorIfNeeded(GuiBuilder& builder, Box parent, prefs::Preferences const& prefs);
 
