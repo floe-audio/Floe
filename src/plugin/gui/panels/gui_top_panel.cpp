@@ -47,7 +47,7 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "Reset State",
+                     .text = "Load Blank Preset",
                      .tooltip = "Set all parameters to their default values, clear all instruments and IRs"_s,
                  })
             .button_fired) {
@@ -57,7 +57,7 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "Randomise All Parameters",
+                     .text = "Randomise All",
                      .tooltip = "Randomise all parameters and load random instruments and IRs"_s,
                  })
             .button_fired) {
@@ -104,14 +104,24 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     MenuDivider(g.builder, root);
 
     // Windows
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Info",
-                     .tooltip = "Open the info window"_s,
-                 })
-            .button_fired) {
-        g.imgui.OpenModalViewport(g.info_panel_state.k_panel_id);
+    {
+        auto const info_item = MenuItem(g.builder,
+                                        root,
+                                        {
+                                            .text = "Info",
+                                            .tooltip = "Open the info window"_s,
+                                        });
+        if (info_item.button_fired) g.imgui.OpenModalViewport(g.info_panel_state.k_panel_id);
+
+        if (g.show_new_version_indicator) {
+            if (auto const r = BoxRect(g.builder, info_item)) {
+                f32 const radius = 3.5f;
+                f32x2 const centre {r->Right() - 10, r->CentreY()};
+                g.imgui.draw_list->AddCircleFilled(g.imgui.ViewportPosToWindowPos(centre),
+                                                   radius,
+                                                   ToU32({.c = Col::Red}));
+            }
+        }
     }
 
     if (MenuItem(g.builder,
@@ -162,7 +172,7 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "Library Developer Panel",
+                     .text = "Library Developer Tools",
                      .tooltip = "Open the developer panel for tools to help develop libraries"_s,
                  })
             .button_fired) {

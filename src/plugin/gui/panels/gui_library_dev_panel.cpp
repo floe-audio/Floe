@@ -362,7 +362,7 @@ static void DoPanel(GuiBuilder& builder, LibraryDevPanelContext& context, Librar
 
     auto const root = DoModal(builder,
                               {
-                                  .title = "Library Developer Panel"_s,
+                                  .title = "Library Developer Tools"_s,
                                   .modeless = &state.modeless,
                                   .tabs = k_tab_config,
                                   .current_tab_index = ToIntRef(state.tab),
