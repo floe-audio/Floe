@@ -349,6 +349,11 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                     builder.imgui.ButtonBehaviour(mouse_rect, box.imgui_id, *config.button_behaviour);
                 box.is_active = builder.imgui.IsActive(box.imgui_id, config.button_behaviour->mouse_button);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
+            } else if (config.parent_dictates_hot_and_active) {
+                // Mirror the parent's state onto our persistent fields so descendants that also opt in
+                // see the originating button's state through us, not a default-false value.
+                box.is_active = config.parent->is_active;
+                box.is_hot = config.parent->is_hot;
             }
 
             //
