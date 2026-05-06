@@ -269,6 +269,16 @@ static void DoImpulseResponseSelector(GuiState& g,
          .tooltip = "Load a random IR.\n\nThis is based on the currently selected filters."_s});
     if (shuffle_btn.button_fired) LoadRandomIr(context, g.ir_browser_state);
 
+    // Unload button
+    auto const has_ir = g.engine.processor.convo.ir_id.HasValue();
+    auto const unload_btn = DoMidPanelUnloadButton(g.builder,
+                                                   btn_row,
+                                                   {
+                                                       .greyed_out = greyed_out || !has_ir,
+                                                       .tooltip = "Unload the current IR."_s,
+                                                   });
+    if (unload_btn.button_fired && has_ir) LoadConvolutionIr(g.engine, k_nullopt);
+
     // Label below
     DoBox(g.builder,
           {
