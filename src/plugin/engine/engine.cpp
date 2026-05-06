@@ -733,9 +733,7 @@ void TogglePinnedView(Engine& engine) {
     if (engine.stashed_modifications) {
         auto const stashed = *engine.stashed_modifications;
         engine.stashed_modifications.Clear();
-        LoadState(engine,
-                  stashed,
-                  {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+        LoadState(engine, stashed, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
         RecordUndoableStep(engine, "View modifications"_s);
         return;
     }

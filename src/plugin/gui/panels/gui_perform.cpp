@@ -556,51 +556,50 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
 
         // The whole toggle is a single button. Inner cells are pure visuals — they share the parent's
         // hot/active state and the active cell renders a thumb fill to indicate which side is showing.
-        auto const track =
-            DoBox(builder,
-                  {
-                      .parent = utility_row,
-                      .background_fill_colours =
-                          has_comparison ? Colours {ColSet {
-                                               .base = Col {.c = Col::White, .alpha = scale(18)},
-                                               .hot = Col {.c = Col::White, .alpha = scale(26)},
-                                               .active = Col {.c = Col::White, .alpha = scale(34)},
-                                           }}
-                                         : Colours {Col {.c = Col::White, .alpha = scale(18)}},
-                      .round_background_corners = 0b1111,
-                      .corner_rounding = k_corner_rounding,
-                      .layout {
-                          .size = {k_segment_w * 2 + k_track_padding * 2, k_mid_button_height},
-                          .contents_padding = {.lr = k_track_padding, .tb = k_track_padding},
-                          .contents_direction = layout::Direction::Row,
-                      },
-                      .tooltip =
-                          has_comparison
-                              ? TooltipString {"Switch between the loaded preset and your modifications. "
-                                               "Editing while viewing the preset discards your "
-                                               "modifications."_s}
-                              : TooltipString {k_nullopt},
-                      .button_behaviour = has_comparison ? Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}}
-                                                         : k_nullopt,
-                  });
+        auto const track = DoBox(
+            builder,
+            {
+                .parent = utility_row,
+                .background_fill_colours = has_comparison
+                                               ? Colours {ColSet {
+                                                     .base = Col {.c = Col::White, .alpha = scale(18)},
+                                                     .hot = Col {.c = Col::White, .alpha = scale(26)},
+                                                     .active = Col {.c = Col::White, .alpha = scale(34)},
+                                                 }}
+                                               : Colours {Col {.c = Col::White, .alpha = scale(18)}},
+                .round_background_corners = 0b1111,
+                .corner_rounding = k_corner_rounding,
+                .layout {
+                    .size = {k_segment_w * 2 + k_track_padding * 2, k_mid_button_height},
+                    .contents_padding = {.lr = k_track_padding, .tb = k_track_padding},
+                    .contents_direction = layout::Direction::Row,
+                },
+                .tooltip = has_comparison
+                               ? TooltipString {"Switch between the loaded preset and your modifications. "
+                                                "Editing while viewing the preset discards your "
+                                                "modifications."_s}
+                               : TooltipString {k_nullopt},
+                .button_behaviour =
+                    has_comparison ? Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}} : k_nullopt,
+            });
 
         auto const do_segment = [&](String label, bool selected, u64 id) {
-            auto const cell = DoBox(builder,
-                                    {
-                                        .parent = track,
-                                        .id_extra = id,
-                                        .background_fill_colours =
-                                            selected ? Colours {Col {.c = Col::White, .alpha = scale(40)}}
-                                                     : Colours {Col {.c = Col::None}},
-                                        .parent_dictates_hot_and_active = true,
-                                        .round_background_corners = 0b1111,
-                                        .corner_rounding = k_corner_rounding * 0.85f,
-                                        .layout {
-                                            .size = {k_segment_w, layout::k_fill_parent},
-                                            .contents_align = layout::Alignment::Middle,
-                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                        },
-                                    });
+            auto const cell = DoBox(
+                builder,
+                {
+                    .parent = track,
+                    .id_extra = id,
+                    .background_fill_colours = selected ? Colours {Col {.c = Col::White, .alpha = scale(40)}}
+                                                        : Colours {Col {.c = Col::None}},
+                    .parent_dictates_hot_and_active = true,
+                    .round_background_corners = 0b1111,
+                    .corner_rounding = k_corner_rounding * 0.85f,
+                    .layout {
+                        .size = {k_segment_w, layout::k_fill_parent},
+                        .contents_align = layout::Alignment::Middle,
+                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                    },
+                });
             DoBox(builder,
                   {
                       .parent = cell,
