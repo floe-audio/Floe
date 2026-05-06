@@ -80,19 +80,40 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config) {
 
 Box DoModalDivider(GuiBuilder& builder, Box parent, DividerOptions options, u64 id_extra) {
     auto const one_pixel = PixelsToWw(1.0f);
-    return DoBox(builder,
-                 {
-                     .parent = parent,
-                     .id_extra = id_extra,
-                     .background_fill_colours = Col {.c = !options.subtle ? Col::Surface2 : Col::Surface0,
-                                                     .dark_mode = options.dark_mode},
-                     .layout {
-                         .size = options.horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
-                                                    : f32x2 {one_pixel, layout::k_fill_parent},
-                         .margins = {.lr = options.vertical ? options.margin : 0,
-                                     .tb = options.horizontal ? options.margin : 0},
-                     },
-                 });
+    auto const box = DoBox(builder,
+                           {
+                               .parent = parent,
+                               .id_extra = id_extra,
+                               .layout {
+                                   .size = options.horizontal ? f32x2 {layout::k_fill_parent, one_pixel}
+                                                              : f32x2 {one_pixel, layout::k_fill_parent},
+                                   .margins = {.lr = options.vertical ? options.margin : 0,
+                                               .tb = options.horizontal ? options.margin : 0},
+                               },
+                           });
+
+    // Bypass DoBox's background fill so the line lands on a pixel boundary regardless of the layout's
+    // sub-pixel position. Without this, a 1-px-tall fill at e.g. y=12.5 spreads across two rows at ~50%
+    // coverage, producing a blurry double-line.
+    if (auto const viewport_r = BoxRect(builder, box)) {
+        auto const r = builder.imgui.ViewportRectToWindowRect(*viewport_r);
+        auto const col =
+            ToU32(Col {.c = !options.subtle ? Col::Surface2 : Col::Surface0, .dark_mode = options.dark_mode});
+        f32x2 p_min;
+        f32x2 p_max;
+        if (options.horizontal) {
+            auto const y = Round(r.Centre().y);
+            p_min = {Floor(r.x), y};
+            p_max = {Ceil(r.Right()), y + 1.0f};
+        } else {
+            auto const x = Round(r.Centre().x);
+            p_min = {x, Floor(r.y)};
+            p_max = {x + 1.0f, Ceil(r.Bottom())};
+        }
+        builder.imgui.draw_list->AddRectFilled(p_min, p_max, col);
+    }
+
+    return box;
 }
 
 // Creates a tab bar with configurable tabs
