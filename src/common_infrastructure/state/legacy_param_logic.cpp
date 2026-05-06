@@ -447,14 +447,55 @@ void ModerniseWetDryEffect(StateSnapshot& state,
     state.LinearParam(modern_mix) = r.mix_01;
     state.LinearParam(modern_output) = r.output_amp;
 
-    // Wet→Mix, Dry→Output: Wet varies most when blending, so it best maps to the new Mix knob.
+    // Remap macro destinations. When a single macro modulates BOTH legacy wet and dry of this effect,
+    // we can derive joint (mix, output) amounts that match the audio result exactly at macro=0 and
+    // macro=1 (the endpoints of the macro's [0,1] range). For single-sided destinations we fall back
+    // to a heuristic: Wet→Mix (wet varies most when blending), Dry→Output.
+    auto const& mix_desc = k_param_descriptors[ToInt(modern_mix)];
+    auto const& output_desc = k_param_descriptors[ToInt(modern_output)];
     for (auto& dests : state.macro_destinations) {
-        for (auto& dest : dests.items) {
-            if (!dest.param_index) continue;
-            if (*dest.param_index == legacy_wet)
-                dest.param_index = modern_mix;
-            else if (*dest.param_index == legacy_dry)
-                dest.param_index = modern_output;
+        Optional<usize> wet_slot;
+        Optional<usize> dry_slot;
+        for (auto const dest_index : Range(k_max_macro_destinations)) {
+            auto const& d = dests.items[dest_index];
+            if (!d.param_index) continue;
+            if (*d.param_index == legacy_wet)
+                wet_slot = dest_index;
+            else if (*d.param_index == legacy_dry)
+                dry_slot = dest_index;
+        }
+
+        if (wet_slot && dry_slot) {
+            // The effective linear param under this macro at m=1 is:
+            //   p_eff(1) = clamp(p_base + delta_p * projected_amount, p_min, p_max)
+            // We sample the legacy pair at m=1, run it through the wet/dry→mix/output transform,
+            // then back out the projected amounts that produce the same modern values at m=1.
+            auto const a_w_proj = dests.items[*wet_slot].ProjectedValue();
+            auto const a_d_proj = dests.items[*dry_slot].ProjectedValue();
+
+            auto const wet_at_m1 = Clamp(wet_val + wet_desc.linear_range.Delta() * a_w_proj, 0.0f, 1.0f);
+            auto const dry_at_m1 = Clamp(dry_val + dry_desc.linear_range.Delta() * a_d_proj, 0.0f, 1.0f);
+            auto const r1 = WetDryLinearToMixOutputLinear(legacy_wet,
+                                                          legacy_dry,
+                                                          modern_mix,
+                                                          modern_output,
+                                                          wet_at_m1,
+                                                          dry_at_m1);
+
+            auto const mix_base = state.LinearParam(modern_mix);
+            auto const output_base = state.LinearParam(modern_output);
+            auto const mix_proj = Clamp((r1.mix_01 - mix_base) / mix_desc.linear_range.Delta(), -1.0f, 1.0f);
+            auto const out_proj =
+                Clamp((r1.output_amp - output_base) / output_desc.linear_range.Delta(), -1.0f, 1.0f);
+
+            // Invert projection (sign(v)·v²) to recover the stored value.
+            dests.items[*wet_slot].param_index = modern_mix;
+            dests.items[*wet_slot].value = Copysign(Sqrt(Abs(mix_proj)), mix_proj);
+            dests.items[*dry_slot].param_index = modern_output;
+            dests.items[*dry_slot].value = Copysign(Sqrt(Abs(out_proj)), out_proj);
+        } else {
+            if (wet_slot) dests.items[*wet_slot].param_index = modern_mix;
+            if (dry_slot) dests.items[*dry_slot].param_index = modern_output;
         }
     }
 
