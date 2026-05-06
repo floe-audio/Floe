@@ -54,16 +54,7 @@ bool DoResetSectionMenuItems(GuiState& g, Box menu_root, StateSnapshotSection co
     return fired;
 }
 
-static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices) {
-    auto const root = DoBox(g.builder,
-                            {
-                                .layout {
-                                    .size = layout::k_hug_contents,
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
-
+static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> param_indices) {
     for (auto const param_index : param_indices) {
         g.imgui.PushId(ToInt(param_index));
         DEFER { g.imgui.PopId(); };
@@ -271,30 +262,21 @@ void AddParamContextMenuBehaviour(GuiState& g,
                                           hash;
                                       }));
 
-    if (g.builder.imgui.ButtonBehaviour(window_r,
-                                        id,
-                                        {
-                                            .mouse_button = MouseButton::Right,
-                                            .event = MouseButtonEvent::Up,
-                                        })) {
-        g.builder.imgui.OpenPopupMenu(popup_id, id);
-    }
-
-    if (g.builder.imgui.IsPopupMenuOpen(popup_id))
-        DoBoxViewport(g.builder,
-                      {
-                          .run = [&g, indices = ({
-                                          auto const indices =
-                                              g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(
-                                                  params.size);
-                                          for (auto const i : Range(params.size))
-                                              indices[i] = params[i].info.index;
-                                          indices;
-                                      })](GuiBuilder&) { DoParamContextMenu(g, indices); },
-                          .bounds = window_r,
-                          .imgui_id = popup_id,
-                          .viewport_config = k_default_popup_menu_viewport,
-                      });
+    DoRightClickMenu(
+        g,
+        {
+            .button_id = id,
+            .popup_id = popup_id,
+            .interaction_r = window_r,
+            .do_menu_items = [&g, indices = ({
+                                      auto const indices =
+                                          g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(
+                                              params.size);
+                                      for (auto const i : Range(params.size))
+                                          indices[i] = params[i].info.index;
+                                      indices;
+                                  })](Box root) { DoParamContextMenu(g, root, indices); },
+        });
 }
 
 void AddParamContextMenuBehaviour(GuiState& g,

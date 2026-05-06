@@ -198,74 +198,56 @@ void DoArpStepSequencer(GuiState& g,
                                                   auto&& on_reset_all) {
         auto const popup_id = imgui.MakeId(SourceLocationHash());
 
-        if (imgui.ButtonBehaviour(dragger_rect,
-                                  dragger_id,
-                                  {
-                                      .mouse_button = MouseButton::Right,
-                                      .event = MouseButtonEvent::Up,
-                                  }))
-            imgui.OpenPopupMenu(popup_id, dragger_id);
+        DoRightClickMenu(g,
+                         {
+                             .button_id = dragger_id,
+                             .popup_id = popup_id,
+                             .interaction_r = dragger_rect,
+                             .do_menu_items =
+                                 [&](Box root) {
+                                     if (MenuItem(g.builder,
+                                                  root,
+                                                  {
+                                                      .text = "Enter Value"_s,
+                                                      .tooltip = "Open a text input to enter a value"_s,
+                                                      .no_icon_gap = true,
+                                                  })
+                                             .button_fired)
+                                         imgui.SetTextInputFocus(dragger_id, display_text, false);
 
-        if (imgui.IsPopupMenuOpen(popup_id))
-            DoBoxViewport(g.builder,
-                          {
-                              .run =
-                                  [&](GuiBuilder&) {
-                                      auto const root =
-                                          DoBox(g.builder,
-                                                {
-                                                    .layout {
-                                                        .size = layout::k_hug_contents,
-                                                        .contents_direction = layout::Direction::Column,
-                                                        .contents_align = layout::Alignment::Start,
-                                                    },
-                                                });
-                                      if (MenuItem(g.builder,
-                                                   root,
-                                                   {
-                                                       .text = "Enter Value"_s,
-                                                       .tooltip = "Open a text input to enter a value"_s,
-                                                       .no_icon_gap = true,
-                                                   })
-                                              .button_fired)
-                                          imgui.SetTextInputFocus(dragger_id, display_text, false);
+                                     if (MenuItem(g.builder,
+                                                  root,
+                                                  {
+                                                      .text = "Reset Value to Default"_s,
+                                                      .tooltip = reset_tooltip,
+                                                      .no_icon_gap = true,
+                                                  })
+                                             .button_fired)
+                                         on_reset();
 
-                                      if (MenuItem(g.builder,
-                                                   root,
-                                                   {
-                                                       .text = "Reset Value to Default"_s,
-                                                       .tooltip = reset_tooltip,
-                                                       .no_icon_gap = true,
-                                                   })
-                                              .button_fired)
-                                          on_reset();
+                                     MenuDivider(g.builder, root);
 
-                                      MenuDivider(g.builder, root);
+                                     if (MenuItem(g.builder,
+                                                  root,
+                                                  {
+                                                      .text = "Apply to All Steps"_s,
+                                                      .tooltip = "Set every other step to this same value"_s,
+                                                      .no_icon_gap = true,
+                                                  })
+                                             .button_fired)
+                                         on_apply_to_all();
 
-                                      if (MenuItem(g.builder,
-                                                   root,
-                                                   {
-                                                       .text = "Apply to All Steps"_s,
-                                                       .tooltip = "Set every other step to this same value"_s,
-                                                       .no_icon_gap = true,
-                                                   })
-                                              .button_fired)
-                                          on_apply_to_all();
-
-                                      if (MenuItem(g.builder,
-                                                   root,
-                                                   {
-                                                       .text = "Reset All Steps to Default"_s,
-                                                       .tooltip = reset_all_tooltip,
-                                                       .no_icon_gap = true,
-                                                   })
-                                              .button_fired)
-                                          on_reset_all();
-                                  },
-                              .bounds = dragger_rect,
-                              .imgui_id = popup_id,
-                              .viewport_config = k_default_popup_menu_viewport,
-                          });
+                                     if (MenuItem(g.builder,
+                                                  root,
+                                                  {
+                                                      .text = "Reset All Steps to Default"_s,
+                                                      .tooltip = reset_all_tooltip,
+                                                      .no_icon_gap = true,
+                                                  })
+                                             .button_fired)
+                                         on_reset_all();
+                                 },
+                         });
     };
 
     u32 last_overview_label = 0;
@@ -393,46 +375,28 @@ void DoArpStepSequencer(GuiState& g,
                     {});
 
                 auto const popup_id = imgui.MakeId(SourceLocationHash());
-                if (imgui.ButtonBehaviour(label_click_rect,
-                                          toggle_id,
-                                          {
-                                              .mouse_button = MouseButton::Right,
-                                              .event = MouseButtonEvent::Up,
-                                          }))
-                    imgui.OpenPopupMenu(popup_id, toggle_id);
-
-                if (imgui.IsPopupMenuOpen(popup_id))
-                    DoBoxViewport(
-                        g.builder,
-                        {
-                            .run =
-                                [&](GuiBuilder&) {
-                                    auto const root =
-                                        DoBox(g.builder,
-                                              {
-                                                  .layout {
-                                                      .size = layout::k_hug_contents,
-                                                      .contents_direction = layout::Direction::Column,
-                                                      .contents_align = layout::Alignment::Start,
-                                                  },
-                                              });
-                                    if (MenuItem(g.builder,
-                                                 root,
-                                                 {
-                                                     .text = "Reset All Steps"_s,
-                                                     .tooltip = "Enable every step"_s,
-                                                     .no_icon_gap = true,
-                                                 })
-                                            .button_fired) {
-                                        for (u32 j = 0; j < active_steps; ++j)
-                                            ModifyStep(arp_state, j, [](ArpStep& s) { s.on = true; });
-                                        RecordUndoableStep(g.engine, "Reset all arp steps"_s);
-                                    }
-                                },
-                            .bounds = label_click_rect,
-                            .imgui_id = popup_id,
-                            .viewport_config = k_default_popup_menu_viewport,
-                        });
+                DoRightClickMenu(
+                    g,
+                    {
+                        .button_id = toggle_id,
+                        .popup_id = popup_id,
+                        .interaction_r = label_click_rect,
+                        .do_menu_items =
+                            [&](Box root) {
+                                if (MenuItem(g.builder,
+                                             root,
+                                             {
+                                                 .text = "Reset All Steps"_s,
+                                                 .tooltip = "Enable every step"_s,
+                                                 .no_icon_gap = true,
+                                             })
+                                        .button_fired) {
+                                    for (u32 j = 0; j < active_steps; ++j)
+                                        ModifyStep(arp_state, j, [](ArpStep& s) { s.on = true; });
+                                    RecordUndoableStep(g.engine, "Reset all arp steps"_s);
+                                }
+                            },
+                    });
 
                 imgui.PopId();
             }

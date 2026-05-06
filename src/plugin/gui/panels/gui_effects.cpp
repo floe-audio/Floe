@@ -63,40 +63,20 @@ static ParameterModule EffectTypeToParameterModule(EffectType type) {
 
 static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window_r, EffectType type) {
     auto const right_click_id = g.imgui.MakeId(SourceLocationHash() + ToInt(type));
-    if (g.imgui.ButtonBehaviour(window_r,
-                                button_id,
-                                {
-                                    .mouse_button = MouseButton::Right,
-                                    .event = MouseButtonEvent::Up,
-                                })) {
-        g.imgui.OpenPopupMenu(right_click_id, button_id);
-    }
-
-    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
-
     auto const name = k_effect_info[ToInt(type)].name;
 
-    DoBoxViewport(g.builder,
-                  {
-                      .run =
-                          [&](GuiBuilder&) {
-                              auto const root = DoBox(g.builder,
-                                                      {
-                                                          .layout {
-                                                              .size = layout::k_hug_contents,
-                                                              .contents_direction = layout::Direction::Column,
-                                                              .contents_align = layout::Alignment::Start,
-                                                          },
-                                                      });
-
-                              ParamModules const target {ParameterModule::Effect,
-                                                         EffectTypeToParameterModule(type)};
-                              DoResetSectionMenuItems(g, root, StateSnapshotSection {target}, name);
-                          },
-                      .bounds = window_r,
-                      .imgui_id = right_click_id,
-                      .viewport_config = k_default_popup_menu_viewport,
-                  });
+    DoRightClickMenu(g,
+                     {
+                         .button_id = button_id,
+                         .popup_id = right_click_id,
+                         .interaction_r = window_r,
+                         .do_menu_items =
+                             [&](Box root) {
+                                 ParamModules const target {ParameterModule::Effect,
+                                                            EffectTypeToParameterModule(type)};
+                                 DoResetSectionMenuItems(g, root, StateSnapshotSection {target}, name);
+                             },
+                     });
 }
 
 static FXColours GetFxColMap(EffectType type) {
@@ -194,49 +174,19 @@ static Box DoEffectParamContainer(GuiBuilder& builder, Box parent, u64 loc_hash 
 static void DoIrSelectorRightClickMenu(GuiState& g, Box selector_button) {
     auto const right_click_id = g.imgui.MakeId("ir-selector-popup");
 
-    if (auto const r = BoxRect(g.builder, selector_button)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        if (g.imgui.ButtonBehaviour(window_r,
-                                    selector_button.imgui_id,
-                                    {
-                                        .mouse_button = MouseButton::Right,
-                                        .event = MouseButtonEvent::Up,
-                                    })) {
-            g.imgui.OpenPopupMenu(right_click_id, selector_button.imgui_id);
+    DoRightClickMenu(g, selector_button, right_click_id, [&](Box root) {
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Unload IR"_s,
+                         .mode = !g.engine.processor.convo.ir_id ? MenuItemOptions::Mode::Disabled
+                                                                 : MenuItemOptions::Mode::Active,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            LoadConvolutionIr(g.engine, k_nullopt);
         }
-
-        if (g.imgui.IsPopupMenuOpen(right_click_id))
-            DoBoxViewport(g.builder,
-                          {
-                              .run =
-                                  [&](GuiBuilder&) {
-                                      auto const root =
-                                          DoBox(g.builder,
-                                                {
-                                                    .layout {
-                                                        .size = layout::k_hug_contents,
-                                                        .contents_direction = layout::Direction::Column,
-                                                        .contents_align = layout::Alignment::Start,
-                                                    },
-                                                });
-                                      if (MenuItem(g.builder,
-                                                   root,
-                                                   {
-                                                       .text = "Unload IR"_s,
-                                                       .mode = !g.engine.processor.convo.ir_id
-                                                                   ? MenuItemOptions::Mode::Disabled
-                                                                   : MenuItemOptions::Mode::Active,
-                                                       .no_icon_gap = true,
-                                                   })
-                                              .button_fired) {
-                                          LoadConvolutionIr(g.engine, k_nullopt);
-                                      }
-                                  },
-                              .bounds = window_r,
-                              .imgui_id = right_click_id,
-                              .viewport_config = k_default_popup_menu_viewport,
-                          });
-    }
+    });
 }
 
 static void DoImpulseResponseSelector(GuiState& g,

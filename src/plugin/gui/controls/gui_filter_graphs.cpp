@@ -170,37 +170,20 @@ static void DoResetParamsRightClickMenu(GuiState& g,
                                         Span<ParamIndex const> param_indices) {
     auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)ToInt(param_indices[0]) << 8));
 
-    if (g.imgui.ButtonBehaviour(window_r,
-                                interaction_id,
-                                {
-                                    .mouse_button = MouseButton::Right,
-                                    .event = MouseButtonEvent::Up,
-                                })) {
-        g.imgui.OpenPopupMenu(right_click_id, interaction_id);
-    }
-
-    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
-
-    DoBoxViewport(
-        g.builder,
+    DoRightClickMenu(
+        g,
         {
-            .run =
+            .button_id = interaction_id,
+            .popup_id = right_click_id,
+            .interaction_r = window_r,
+            .do_menu_items =
                 [&g, param_indices = ({
                          auto const copy =
                              g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(param_indices.size);
                          for (auto const i : Range(param_indices.size))
                              copy[i] = param_indices[i];
                          (Span<ParamIndex const>)copy;
-                     })](GuiBuilder&) {
-                    auto const root = DoBox(g.builder,
-                                            {
-                                                .layout {
-                                                    .size = layout::k_hug_contents,
-                                                    .contents_direction = layout::Direction::Column,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
-
+                     })](Box root) {
                     if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired)
                         for (auto const idx : param_indices)
                             SetParameterValue(g.engine.processor,
@@ -220,45 +203,25 @@ static void DoResetParamsRightClickMenu(GuiState& g,
                         }
                     }
                 },
-            .bounds = window_r,
-            .imgui_id = right_click_id,
-            .viewport_config = k_default_popup_menu_viewport,
         });
 }
 
 static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, u8 layer_index) {
     auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)layer_index << 8));
 
-    if (g.imgui.ButtonBehaviour(window_r,
-                                interaction_id,
-                                {
-                                    .mouse_button = MouseButton::Right,
-                                    .event = MouseButtonEvent::Up,
-                                })) {
-        g.imgui.OpenPopupMenu(right_click_id, interaction_id);
-    }
-
-    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
-
     auto const param =
         g.engine.processor.main_params.DescribedValue(layer_index, LayerParamIndex::FilterType);
     auto const current_type = param.IntValue<param_values::LayerFilterType>();
     auto const param_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterType);
 
-    DoBoxViewport(
-        g.builder,
+    DoRightClickMenu(
+        g,
         {
-            .run =
-                [current_type, param_index, layer_index, &g](GuiBuilder&) {
-                    auto const root = DoBox(g.builder,
-                                            {
-                                                .layout {
-                                                    .size = layout::k_hug_contents,
-                                                    .contents_direction = layout::Direction::Column,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
-
+            .button_id = interaction_id,
+            .popup_id = right_click_id,
+            .interaction_r = window_r,
+            .do_menu_items =
+                [current_type, param_index, layer_index, &g](Box root) {
                     for (auto const i : Range(ToInt(param_values::LayerFilterType::Count))) {
                         auto const type_val = (param_values::LayerFilterType)i;
                         auto const item = MenuItem(g.builder,
@@ -308,9 +271,6 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
                         }
                     }
                 },
-            .bounds = window_r,
-            .imgui_id = right_click_id,
-            .viewport_config = k_default_popup_menu_viewport,
         });
 }
 
@@ -418,34 +378,17 @@ void DoFilterGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out
 static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id) {
     auto const right_click_id = (imgui::Id)SourceLocationHash();
 
-    if (g.imgui.ButtonBehaviour(window_r,
-                                interaction_id,
-                                {
-                                    .mouse_button = MouseButton::Right,
-                                    .event = MouseButtonEvent::Up,
-                                })) {
-        g.imgui.OpenPopupMenu(right_click_id, interaction_id);
-    }
-
-    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
-
     auto const param = g.engine.processor.main_params.DescribedValue(ParamIndex::FilterType);
     auto const current_type = param.IntValue<param_values::EffectFilterType>();
 
-    DoBoxViewport(
-        g.builder,
+    DoRightClickMenu(
+        g,
         {
-            .run =
-                [current_type, &g](GuiBuilder&) {
-                    auto const root = DoBox(g.builder,
-                                            {
-                                                .layout {
-                                                    .size = layout::k_hug_contents,
-                                                    .contents_direction = layout::Direction::Column,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
-
+            .button_id = interaction_id,
+            .popup_id = right_click_id,
+            .interaction_r = window_r,
+            .do_menu_items =
+                [current_type, &g](Box root) {
                     for (auto const i : Range(ToInt(param_values::EffectFilterType::Count))) {
                         auto const type_val = (param_values::EffectFilterType)i;
                         auto const item = MenuItem(g.builder,
@@ -501,9 +444,6 @@ static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::
                         }
                     }
                 },
-            .bounds = window_r,
-            .imgui_id = right_click_id,
-            .viewport_config = k_default_popup_menu_viewport,
         });
 }
 
@@ -1116,17 +1056,6 @@ static void
 DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqBandParams const& bp) {
     auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)ToInt(bp.type) << 8));
 
-    if (g.imgui.ButtonBehaviour(window_r,
-                                interaction_id,
-                                {
-                                    .mouse_button = MouseButton::Right,
-                                    .event = MouseButtonEvent::Up,
-                                })) {
-        g.imgui.OpenPopupMenu(right_click_id, interaction_id);
-    }
-
-    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
-
     auto const param = g.engine.processor.main_params.DescribedValue(bp.type);
     auto const current_type = param.IntValue<param_values::EqType>();
     auto const type_index = bp.type;
@@ -1134,20 +1063,14 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
     auto const reso_index = bp.reso;
     auto const gain_index = bp.gain;
 
-    DoBoxViewport(
-        g.builder,
+    DoRightClickMenu(
+        g,
         {
-            .run =
-                [current_type, type_index, freq_index, reso_index, gain_index, &g](GuiBuilder&) {
-                    auto const root = DoBox(g.builder,
-                                            {
-                                                .layout {
-                                                    .size = layout::k_hug_contents,
-                                                    .contents_direction = layout::Direction::Column,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
-
+            .button_id = interaction_id,
+            .popup_id = right_click_id,
+            .interaction_r = window_r,
+            .do_menu_items =
+                [current_type, type_index, freq_index, reso_index, gain_index, &g](Box root) {
                     for (auto const i : Range(ToInt(param_values::EqType::Count))) {
                         auto const type_val = (param_values::EqType)i;
                         auto const item = MenuItem(g.builder,
@@ -1200,9 +1123,6 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
                         }
                     }
                 },
-            .bounds = window_r,
-            .imgui_id = right_click_id,
-            .viewport_config = k_default_popup_menu_viewport,
         });
 }
 

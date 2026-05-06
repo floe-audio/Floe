@@ -17,131 +17,99 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
     auto const& layer_obj = g.engine.Layer(layer_index);
     auto const right_click_id = SourceLocationHash() + layer_index;
 
-    if (auto const r = BoxRect(g.builder, selector_button)) {
-        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-        if (g.imgui.ButtonBehaviour(window_r,
-                                    selector_button.imgui_id,
-                                    {
-                                        .mouse_button = MouseButton::Right,
-                                        .event = MouseButtonEvent::Up,
-                                    })) {
-            g.imgui.OpenPopupMenu(right_click_id, selector_button.imgui_id);
+    DoRightClickMenu(g, selector_button, right_click_id, [&](Box root) {
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Unload Instrument"_s,
+                         .mode = layer_obj.instrument_id.tag == InstrumentType::None
+                                     ? MenuItemOptions::Mode::Disabled
+                                     : MenuItemOptions::Mode::Active,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            LoadInstrument(g.engine, layer_index, InstrumentType::None);
         }
 
-        if (g.imgui.IsPopupMenuOpen(right_click_id))
-            DoBoxViewport(
+        MenuDivider(g.builder, root);
+
+        StateSnapshotSection const inst_target {InstrumentSection {layer_index}};
+
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Copy Instrument"_s,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            g.snapshot_clipboard = GuiState::CopiedSection {
+                .snapshot = CurrentStateSnapshot(g.engine),
+                .section = inst_target,
+            };
+        }
+
+        auto const can_paste_inst = g.snapshot_clipboard.HasValue() &&
+                                    g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Instrument;
+
+        if (MenuItem(
                 g.builder,
+                root,
                 {
-                    .run =
-                        [&](GuiBuilder&) {
-                            auto const root = DoBox(g.builder,
-                                                    {
-                                                        .layout {
-                                                            .size = layout::k_hug_contents,
-                                                            .contents_direction = layout::Direction::Column,
-                                                            .contents_align = layout::Alignment::Start,
-                                                        },
-                                                    });
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = "Unload Instrument"_s,
-                                             .mode = layer_obj.instrument_id.tag == InstrumentType::None
-                                                         ? MenuItemOptions::Mode::Disabled
-                                                         : MenuItemOptions::Mode::Active,
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired) {
-                                LoadInstrument(g.engine, layer_index, InstrumentType::None);
-                            }
+                    .text = "Paste Instrument"_s,
+                    .mode = can_paste_inst ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                    .no_icon_gap = true,
+                })
+                .button_fired &&
+            can_paste_inst) {
+            ApplySectionOfState(g.engine,
+                                g.snapshot_clipboard->snapshot,
+                                g.snapshot_clipboard->section,
+                                inst_target);
+        }
 
-                            MenuDivider(g.builder, root);
+        MenuDivider(g.builder, root);
 
-                            StateSnapshotSection const inst_target {InstrumentSection {layer_index}};
+        StateSnapshotSection const layer_target {ParamModules {LayerModuleFromIndex(layer_index)}};
 
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = "Copy Instrument"_s,
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired) {
-                                g.snapshot_clipboard = GuiState::CopiedSection {
-                                    .snapshot = CurrentStateSnapshot(g.engine),
-                                    .section = inst_target,
-                                };
-                            }
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Copy Layer"_s,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            g.snapshot_clipboard = GuiState::CopiedSection {
+                .snapshot = CurrentStateSnapshot(g.engine),
+                .section = layer_target,
+            };
+        }
 
-                            auto const can_paste_inst =
-                                g.snapshot_clipboard.HasValue() &&
-                                g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Instrument;
+        auto const can_paste_layer = ({
+            bool ok = false;
+            if (g.snapshot_clipboard.HasValue() &&
+                g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules) {
+                auto const& mods = g.snapshot_clipboard->section.Get<ParamModules>();
+                ok = LayerIndexFromModule(mods[0]).HasValue() && mods[1] == ParameterModule::None;
+            }
+            ok;
+        });
 
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = "Paste Instrument"_s,
-                                             .mode = can_paste_inst ? MenuItemOptions::Mode::Active
-                                                                    : MenuItemOptions::Mode::Disabled,
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired &&
-                                can_paste_inst) {
-                                ApplySectionOfState(g.engine,
-                                                    g.snapshot_clipboard->snapshot,
-                                                    g.snapshot_clipboard->section,
-                                                    inst_target);
-                            }
+        if (MenuItem(
+                g.builder,
+                root,
+                {
+                    .text = "Paste Layer"_s,
+                    .mode = can_paste_layer ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                    .no_icon_gap = true,
+                })
+                .button_fired &&
+            can_paste_layer) {
+            ApplySectionOfState(g.engine,
+                                g.snapshot_clipboard->snapshot,
+                                g.snapshot_clipboard->section,
+                                layer_target);
+        }
 
-                            MenuDivider(g.builder, root);
-
-                            StateSnapshotSection const layer_target {
-                                ParamModules {LayerModuleFromIndex(layer_index)}};
-
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = "Copy Layer"_s,
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired) {
-                                g.snapshot_clipboard = GuiState::CopiedSection {
-                                    .snapshot = CurrentStateSnapshot(g.engine),
-                                    .section = layer_target,
-                                };
-                            }
-
-                            auto const can_paste_layer = ({
-                                bool ok = false;
-                                if (g.snapshot_clipboard.HasValue() &&
-                                    g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules) {
-                                    auto const& mods = g.snapshot_clipboard->section.Get<ParamModules>();
-                                    ok = LayerIndexFromModule(mods[0]).HasValue() &&
-                                         mods[1] == ParameterModule::None;
-                                }
-                                ok;
-                            });
-
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = "Paste Layer"_s,
-                                             .mode = can_paste_layer ? MenuItemOptions::Mode::Active
-                                                                     : MenuItemOptions::Mode::Disabled,
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired &&
-                                can_paste_layer) {
-                                ApplySectionOfState(g.engine,
-                                                    g.snapshot_clipboard->snapshot,
-                                                    g.snapshot_clipboard->section,
-                                                    layer_target);
-                            }
-
-                            DoResetSectionMenuItems(g, root, layer_target, "Layer"_s);
-                        },
-                    .bounds = window_r,
-                    .imgui_id = right_click_id,
-                    .viewport_config = k_default_popup_menu_viewport,
-                });
-    }
+        DoResetSectionMenuItems(g, root, layer_target, "Layer"_s);
+    });
 }

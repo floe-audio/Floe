@@ -39,77 +39,43 @@ static void DoTabRightClickMenu(GuiState& g,
                                 u64 id_extra) {
     auto const right_click_id = SourceLocationHash() + id_extra;
 
-    auto const r = BoxRect(g.builder, tab_button);
-    if (!r) return;
+    DoRightClickMenu(g, tab_button, right_click_id, [&](Box root) {
+        ParamModules const target_modules {LayerModuleFromIndex(layer_index), tab_module};
 
-    auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-    if (g.imgui.ButtonBehaviour(window_r,
-                                tab_button.imgui_id,
-                                {
-                                    .mouse_button = MouseButton::Right,
-                                    .event = MouseButtonEvent::Up,
-                                })) {
-        g.imgui.OpenPopupMenu(right_click_id, tab_button.imgui_id);
-    }
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = fmt::Format(g.scratch_arena, "Copy {}"_s, tab_name),
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            g.snapshot_clipboard = GuiState::CopiedSection {
+                .snapshot = CurrentStateSnapshot(g.engine),
+                .section = ParamModules {LayerModuleFromIndex(layer_index), tab_module},
+            };
+        }
 
-    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
+        auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                               g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules &&
+                               g.snapshot_clipboard->section.Get<ParamModules>()[1] == tab_module;
 
-    DoBoxViewport(
-        g.builder,
-        {
-            .run =
-                [&](GuiBuilder&) {
-                    auto const root = DoBox(g.builder,
-                                            {
-                                                .layout {
-                                                    .size = layout::k_hug_contents,
-                                                    .contents_direction = layout::Direction::Column,
-                                                    .contents_align = layout::Alignment::Start,
-                                                },
-                                            });
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = fmt::Format(g.scratch_arena, "Paste {}"_s, tab_name),
+                         .mode = can_paste ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                         .no_icon_gap = true,
+                     })
+                .button_fired &&
+            can_paste) {
+            ApplySectionOfState(g.engine,
+                                g.snapshot_clipboard->snapshot,
+                                g.snapshot_clipboard->section,
+                                StateSnapshotSection {target_modules});
+        }
 
-                    ParamModules const target_modules {LayerModuleFromIndex(layer_index), tab_module};
-
-                    if (MenuItem(g.builder,
-                                 root,
-                                 {
-                                     .text = fmt::Format(g.scratch_arena, "Copy {}"_s, tab_name),
-                                     .no_icon_gap = true,
-                                 })
-                            .button_fired) {
-                        g.snapshot_clipboard = GuiState::CopiedSection {
-                            .snapshot = CurrentStateSnapshot(g.engine),
-                            .section = ParamModules {LayerModuleFromIndex(layer_index), tab_module},
-                        };
-                    }
-
-                    auto const can_paste =
-                        g.snapshot_clipboard.HasValue() &&
-                        g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules &&
-                        g.snapshot_clipboard->section.Get<ParamModules>()[1] == tab_module;
-
-                    if (MenuItem(g.builder,
-                                 root,
-                                 {
-                                     .text = fmt::Format(g.scratch_arena, "Paste {}"_s, tab_name),
-                                     .mode = can_paste ? MenuItemOptions::Mode::Active
-                                                       : MenuItemOptions::Mode::Disabled,
-                                     .no_icon_gap = true,
-                                 })
-                            .button_fired &&
-                        can_paste) {
-                        ApplySectionOfState(g.engine,
-                                            g.snapshot_clipboard->snapshot,
-                                            g.snapshot_clipboard->section,
-                                            StateSnapshotSection {target_modules});
-                    }
-
-                    DoResetSectionMenuItems(g, root, StateSnapshotSection {target_modules}, tab_name);
-                },
-            .bounds = window_r,
-            .imgui_id = right_click_id,
-            .viewport_config = k_default_popup_menu_viewport,
-        });
+        DoResetSectionMenuItems(g, root, StateSnapshotSection {target_modules}, tab_name);
+    });
 }
 
 static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {

@@ -50,3 +50,20 @@ Box MenuItem(GuiBuilder& builder,
 
 // Horizontal divider sized for popup menus (with a small gap above and below).
 Box MenuDivider(GuiBuilder& builder, Box parent, u64 id_extra = SourceLocationHash());
+
+struct GuiState;
+
+struct RightClickMenuOptions {
+    imgui::Id button_id;
+    imgui::Id popup_id;
+    Rect interaction_r;
+    Optional<Rect> popup_anchor_r {};
+    TrivialFunctionRef<void(Box root)> do_menu_items;
+};
+void DoRightClickMenu(GuiState& g, RightClickMenuOptions const& options);
+
+void DoRightClickMenu(GuiState& g,
+                      Box const& box,
+                      imgui::Id popup_id,
+                      TrivialFunctionRef<void(Box root)> do_menu_items,
+                      Optional<Rect> popup_anchor_r = {});

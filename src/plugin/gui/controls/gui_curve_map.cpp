@@ -354,56 +354,29 @@ void DoCurveMap(GuiState& g,
             // Right-click menu
             {
                 auto const right_click_id = imgui.MakeId(SourceLocationHash());
-
-                if (imgui.ButtonBehaviour(grabber_rect,
-                                          imgui_id,
-                                          {
-                                              .mouse_button = MouseButton::Right,
-                                              .event = MouseButtonEvent::Up,
-                                          })) {
-                    imgui.OpenPopupMenu(right_click_id, imgui_id);
-                }
-
-                if (g.imgui.IsPopupMenuOpen(right_click_id))
-                    DoBoxViewport(g.builder,
-                                  {
-                                      .run =
-                                          [&](GuiBuilder&) {
-                                              auto const root = DoBox(
-                                                  g.builder,
-                                                  {
-                                                      .layout {
-                                                          .size = layout::k_hug_contents,
-                                                          .contents_direction = layout::Direction::Column,
-                                                          .contents_align = layout::Alignment::Start,
-                                                      },
-                                                  });
-                                              if (MenuItem(g.builder,
-                                                           root,
-                                                           {
-                                                               .text = "Remove Point"_s,
-                                                               .no_icon_gap = true,
-                                                           })
-                                                      .button_fired) {
-                                                  remove_real_index = (usize)working_point.real_index;
-                                                  imgui.ClearActive();
-                                              }
-                                              if (MenuItem(g.builder,
-                                                           root,
-                                                           {
-                                                               .text = "Remove All Points"_s,
-                                                               .no_icon_gap = true,
-                                                           })
-                                                      .button_fired) {
-                                                  remove_real_index = k_remove_all;
-                                                  imgui.ClearActive();
-                                              }
-                                              append_common_menu_items(root);
-                                          },
-                                      .bounds = grabber_rect,
-                                      .imgui_id = right_click_id,
-                                      .viewport_config = k_default_popup_menu_viewport,
-                                  });
+                DoRightClickMenu(
+                    g,
+                    {
+                        .button_id = imgui_id,
+                        .popup_id = right_click_id,
+                        .interaction_r = grabber_rect,
+                        .do_menu_items =
+                            [&](Box root) {
+                                if (MenuItem(g.builder, root, {.text = "Remove Point"_s, .no_icon_gap = true})
+                                        .button_fired) {
+                                    remove_real_index = (usize)working_point.real_index;
+                                    imgui.ClearActive();
+                                }
+                                if (MenuItem(g.builder,
+                                             root,
+                                             {.text = "Remove All Points"_s, .no_icon_gap = true})
+                                        .button_fired) {
+                                    remove_real_index = k_remove_all;
+                                    imgui.ClearActive();
+                                }
+                                append_common_menu_items(root);
+                            },
+                    });
             }
 
             auto const drag_activation_cfg = ({

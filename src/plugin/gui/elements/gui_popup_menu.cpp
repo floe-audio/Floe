@@ -3,6 +3,7 @@
 
 #include "gui/elements/gui_popup_menu.hpp"
 
+#include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 
@@ -143,4 +144,54 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
 
 Box MenuDivider(GuiBuilder& builder, Box parent, u64 id_extra) {
     return DoModalDivider(builder, parent, {.margin = 4, .horizontal = true, .subtle = true}, id_extra);
+}
+
+void DoRightClickMenu(GuiState& g, RightClickMenuOptions const& options) {
+    if (g.imgui.ButtonBehaviour(options.interaction_r,
+                                options.button_id,
+                                {
+                                    .mouse_button = MouseButton::Right,
+                                    .event = MouseButtonEvent::Up,
+                                })) {
+        g.imgui.OpenPopupMenu(options.popup_id, options.button_id);
+    }
+
+    if (!g.imgui.IsPopupMenuOpen(options.popup_id)) return;
+
+    DoBoxViewport(g.builder,
+                  {
+                      .run =
+                          [&g, do_menu_items = options.do_menu_items](GuiBuilder&) {
+                              auto const root = DoBox(g.builder,
+                                                      {
+                                                          .layout {
+                                                              .size = layout::k_hug_contents,
+                                                              .contents_direction = layout::Direction::Column,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+                              do_menu_items(root);
+                          },
+                      .bounds = options.popup_anchor_r.ValueOr(options.interaction_r),
+                      .imgui_id = options.popup_id,
+                      .viewport_config = k_default_popup_menu_viewport,
+                  });
+}
+
+void DoRightClickMenu(GuiState& g,
+                      Box const& box,
+                      imgui::Id popup_id,
+                      TrivialFunctionRef<void(Box root)> do_menu_items,
+                      Optional<Rect> popup_anchor_r) {
+    auto const r = BoxRect(g.builder, box);
+    if (!r) return;
+    auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+    DoRightClickMenu(g,
+                     {
+                         .button_id = box.imgui_id,
+                         .popup_id = popup_id,
+                         .interaction_r = window_r,
+                         .popup_anchor_r = popup_anchor_r,
+                         .do_menu_items = do_menu_items,
+                     });
 }

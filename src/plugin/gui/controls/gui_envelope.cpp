@@ -191,80 +191,59 @@ void DoEnvelopeGui(GuiState& g,
         auto const popup_id = imgui.MakeId("envelope-bg-popup");
         auto const window_r = imgui.ViewportRectToWindowRect(viewport_r);
 
-        if (imgui.ButtonBehaviour(window_r,
-                                  bg_id,
-                                  {
-                                      .mouse_button = MouseButton::Right,
-                                      .event = MouseButtonEvent::Up,
-                                  })) {
-            imgui.OpenPopupMenu(popup_id, bg_id);
-        }
+        EnvelopeSection const env_target {.layer_index = layer.index,
+                                          .kind = type == GuiEnvelopeType::Volume
+                                                      ? EnvelopeSection::Kind::Volume
+                                                      : EnvelopeSection::Kind::Filter};
+        String const env_label = type == GuiEnvelopeType::Volume ? "Volume Envelope"_s : "Filter Envelope"_s;
 
-        if (imgui.IsPopupMenuOpen(popup_id)) {
-            EnvelopeSection const env_target {.layer_index = layer.index,
-                                              .kind = type == GuiEnvelopeType::Volume
-                                                          ? EnvelopeSection::Kind::Volume
-                                                          : EnvelopeSection::Kind::Filter};
-            String const env_label =
-                type == GuiEnvelopeType::Volume ? "Volume Envelope"_s : "Filter Envelope"_s;
+        DoRightClickMenu(
+            g,
+            {
+                .button_id = bg_id,
+                .popup_id = popup_id,
+                .interaction_r = window_r,
+                .do_menu_items =
+                    [&](Box root) {
+                        StateSnapshotSection const target_section {env_target};
 
-            DoBoxViewport(
-                g.builder,
-                {
-                    .run =
-                        [&](GuiBuilder&) {
-                            auto const root = DoBox(g.builder,
-                                                    {
-                                                        .layout {
-                                                            .size = layout::k_hug_contents,
-                                                            .contents_direction = layout::Direction::Column,
-                                                            .contents_align = layout::Alignment::Start,
-                                                        },
-                                                    });
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {
+                                         .text = fmt::Format(g.scratch_arena, "Copy {}"_s, env_label),
+                                         .no_icon_gap = true,
+                                     })
+                                .button_fired) {
+                            g.snapshot_clipboard = GuiState::CopiedSection {
+                                .snapshot = CurrentStateSnapshot(g.engine),
+                                .section = target_section,
+                            };
+                        }
 
-                            StateSnapshotSection const target_section {env_target};
+                        auto const can_paste =
+                            g.snapshot_clipboard.HasValue() &&
+                            g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Envelope &&
+                            g.snapshot_clipboard->section.Get<EnvelopeSection>().kind == env_target.kind;
 
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = fmt::Format(g.scratch_arena, "Copy {}"_s, env_label),
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired) {
-                                g.snapshot_clipboard = GuiState::CopiedSection {
-                                    .snapshot = CurrentStateSnapshot(g.engine),
-                                    .section = target_section,
-                                };
-                            }
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {
+                                         .text = fmt::Format(g.scratch_arena, "Paste {}"_s, env_label),
+                                         .mode = can_paste ? MenuItemOptions::Mode::Active
+                                                           : MenuItemOptions::Mode::Disabled,
+                                         .no_icon_gap = true,
+                                     })
+                                .button_fired &&
+                            can_paste) {
+                            ApplySectionOfState(g.engine,
+                                                g.snapshot_clipboard->snapshot,
+                                                g.snapshot_clipboard->section,
+                                                target_section);
+                        }
 
-                            auto const can_paste =
-                                g.snapshot_clipboard.HasValue() &&
-                                g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Envelope &&
-                                g.snapshot_clipboard->section.Get<EnvelopeSection>().kind == env_target.kind;
-
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = fmt::Format(g.scratch_arena, "Paste {}"_s, env_label),
-                                             .mode = can_paste ? MenuItemOptions::Mode::Active
-                                                               : MenuItemOptions::Mode::Disabled,
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired &&
-                                can_paste) {
-                                ApplySectionOfState(g.engine,
-                                                    g.snapshot_clipboard->snapshot,
-                                                    g.snapshot_clipboard->section,
-                                                    target_section);
-                            }
-
-                            DoResetSectionMenuItems(g, root, target_section, env_label);
-                        },
-                    .bounds = window_r,
-                    .imgui_id = popup_id,
-                    .viewport_config = k_default_popup_menu_viewport,
-                });
-        }
+                        DoResetSectionMenuItems(g, root, target_section, env_label);
+                    },
+            });
     }
 
     auto const attack_imgui_id = imgui.MakeId("attack");
