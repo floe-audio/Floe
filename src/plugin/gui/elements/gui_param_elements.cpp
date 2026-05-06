@@ -138,7 +138,7 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
                              .text = fmt::Format(g.scratch_arena,
                                                  "Reset Value to \"{}\" state",
                                                  pinned->extras.display_name),
-                             .tooltip = "Reset the parameter to its value in the loaded preset"_s,
+                             .tooltip = "Reset the parameter to its value in the original state"_s,
                          })
                     .button_fired) {
                 SetParameterValue(g.engine.processor, param_index, pinned->LinearParam(param_index), {});

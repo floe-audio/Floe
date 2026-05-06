@@ -1601,6 +1601,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/controls/gui_filter_graphs.cpp",
             "gui/controls/gui_keyboard.cpp",
             "gui/controls/gui_lfo_display.cpp",
+            "gui/controls/gui_pinned_view_toggle.cpp",
             "gui/controls/gui_waveform.cpp",
             "gui/core/gui_actions.cpp",
             "gui/core/gui_file_picker.cpp",

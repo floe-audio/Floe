@@ -7,6 +7,7 @@
 
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
+#include "gui/controls/gui_pinned_view_toggle.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
@@ -532,6 +533,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                            !can_redo);
         if (redo_button.button_fired && can_redo) Redo(g.engine);
     }
+
+    DoPinnedViewToggle(g, right_icon_buttons_container, PinnedViewToggleStyle::Compact);
 
     // attribution
     if (g.engine.attribution_requirements.formatted_text.size) {
