@@ -224,8 +224,6 @@ void DoEnvelopeGui(GuiState& g,
 
                             StateSnapshotSection const target_section {env_target};
 
-                            DoResetSectionMenuItems(g, root, target_section, env_label);
-
                             if (MenuItem(g.builder,
                                          root,
                                          {
@@ -259,6 +257,8 @@ void DoEnvelopeGui(GuiState& g,
                                                     g.snapshot_clipboard->section,
                                                     target_section);
                             }
+
+                            DoResetSectionMenuItems(g, root, target_section, env_label);
                         },
                     .bounds = window_r,
                     .imgui_id = popup_id,

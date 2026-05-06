@@ -4,6 +4,7 @@
 #include "gui/elements/gui_popup_menu.hpp"
 
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
 
 Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const& options, u64 id_extra) {
     auto const background_colours = [&]() -> Colours {
@@ -138,4 +139,8 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
     }
 
     return item;
+}
+
+Box MenuDivider(GuiBuilder& builder, Box parent, u64 id_extra) {
+    return DoModalDivider(builder, parent, {.margin = 4, .horizontal = true, .subtle = true}, id_extra);
 }

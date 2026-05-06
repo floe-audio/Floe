@@ -45,7 +45,7 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                             if (MenuItem(g.builder,
                                          root,
                                          {
-                                             .text = "Unload instrument"_s,
+                                             .text = "Unload Instrument"_s,
                                              .mode = layer_obj.instrument_id.tag == InstrumentType::None
                                                          ? MenuItemOptions::Mode::Disabled
                                                          : MenuItemOptions::Mode::Active,
@@ -55,7 +55,7 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                 LoadInstrument(g.engine, layer_index, InstrumentType::None);
                             }
 
-                            DoModalDivider(g.builder, root, {.horizontal = true});
+                            MenuDivider(g.builder, root);
 
                             StateSnapshotSection const inst_target {InstrumentSection {layer_index}};
 
@@ -92,7 +92,7 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                                     inst_target);
                             }
 
-                            DoModalDivider(g.builder, root, {.horizontal = true});
+                            MenuDivider(g.builder, root);
 
                             StateSnapshotSection const layer_target {
                                 ParamModules {LayerModuleFromIndex(layer_index)}};

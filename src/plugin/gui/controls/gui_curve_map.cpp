@@ -80,9 +80,7 @@ void DoCurveMap(GuiState& g,
     StateSnapshotSection const curve_target_section {VelocityCurveSection {layer_index}};
 
     auto const append_common_menu_items = [&](Box root) {
-        DoModalDivider(g.builder, root, {.horizontal = true});
-
-        if (DoResetSectionMenuItems(g, root, curve_target_section, "Curve"_s)) imgui.ClearActive();
+        MenuDivider(g.builder, root);
 
         if (MenuItem(g.builder,
                      root,
@@ -116,6 +114,8 @@ void DoCurveMap(GuiState& g,
                                 curve_target_section);
             imgui.ClearActive();
         }
+
+        if (DoResetSectionMenuItems(g, root, curve_target_section, "Curve"_s)) imgui.ClearActive();
     };
 
     for (auto const working_index : Range(working.size)) {

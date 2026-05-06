@@ -12,6 +12,7 @@
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
@@ -222,22 +223,24 @@ void DoArpStepSequencer(GuiState& g,
                                       if (MenuItem(g.builder,
                                                    root,
                                                    {
-                                                       .text = "Reset Value"_s,
-                                                       .tooltip = reset_tooltip,
-                                                       .no_icon_gap = true,
-                                                   })
-                                              .button_fired)
-                                          on_reset();
-
-                                      if (MenuItem(g.builder,
-                                                   root,
-                                                   {
                                                        .text = "Enter Value"_s,
                                                        .tooltip = "Open a text input to enter a value"_s,
                                                        .no_icon_gap = true,
                                                    })
                                               .button_fired)
                                           imgui.SetTextInputFocus(dragger_id, display_text, false);
+
+                                      if (MenuItem(g.builder,
+                                                   root,
+                                                   {
+                                                       .text = "Reset Value to Default"_s,
+                                                       .tooltip = reset_tooltip,
+                                                       .no_icon_gap = true,
+                                                   })
+                                              .button_fired)
+                                          on_reset();
+
+                                      MenuDivider(g.builder, root);
 
                                       if (MenuItem(g.builder,
                                                    root,
@@ -252,7 +255,7 @@ void DoArpStepSequencer(GuiState& g,
                                       if (MenuItem(g.builder,
                                                    root,
                                                    {
-                                                       .text = "Reset All Steps"_s,
+                                                       .text = "Reset All Steps to Default"_s,
                                                        .tooltip = reset_all_tooltip,
                                                        .no_icon_gap = true,
                                                    })

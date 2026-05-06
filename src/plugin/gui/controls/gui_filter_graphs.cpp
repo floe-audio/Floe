@@ -208,7 +208,7 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
                             SetParameterValue(g.engine.processor, param_index, (f32)i, {});
                     }
 
-                    DoModalDivider(g.builder, root, {.horizontal = true});
+                    MenuDivider(g.builder, root);
 
                     auto const cutoff_idx =
                         ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterCutoff);
@@ -395,7 +395,7 @@ static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::
                             SetParameterValue(g.engine.processor, ParamIndex::FilterType, (f32)i, {});
                     }
 
-                    DoModalDivider(g.builder, root, {.horizontal = true});
+                    MenuDivider(g.builder, root);
 
                     if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
                         SetParameterValue(
@@ -1086,7 +1086,7 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
                             SetParameterValue(g.engine.processor, type_index, (f32)i, {});
                     }
 
-                    DoModalDivider(g.builder, root, {.horizontal = true});
+                    MenuDivider(g.builder, root);
 
                     if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
                         SetParameterValue(g.engine.processor,

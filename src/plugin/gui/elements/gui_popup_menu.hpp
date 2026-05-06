@@ -47,3 +47,6 @@ Box MenuItem(GuiBuilder& builder,
              Box parent,
              MenuItemOptions const& options,
              u64 id_extra = SourceLocationHash());
+
+// Horizontal divider sized for popup menus (with a small gap above and below).
+Box MenuDivider(GuiBuilder& builder, Box parent, u64 id_extra = SourceLocationHash());
