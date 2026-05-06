@@ -69,7 +69,7 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
 
         MenuDivider(g.builder, root);
 
-        StateSnapshotSection const layer_target {ParamModules {LayerModuleFromIndex(layer_index)}};
+        StateSnapshotSection const layer_target {LayerSection {layer_index}};
 
         if (MenuItem(g.builder,
                      root,
@@ -84,15 +84,8 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
             };
         }
 
-        auto const can_paste_layer = ({
-            bool ok = false;
-            if (g.snapshot_clipboard.HasValue() &&
-                g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules) {
-                auto const& mods = g.snapshot_clipboard->section.Get<ParamModules>();
-                ok = LayerIndexFromModule(mods[0]).HasValue() && mods[1] == ParameterModule::None;
-            }
-            ok;
-        });
+        auto const can_paste_layer = g.snapshot_clipboard.HasValue() &&
+                                     g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Layer;
 
         if (MenuItem(
                 g.builder,

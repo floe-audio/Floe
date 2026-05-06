@@ -65,18 +65,19 @@ static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window
     auto const right_click_id = g.imgui.MakeId(SourceLocationHash() + ToInt(type));
     auto const name = k_effect_info[ToInt(type)].name;
 
-    DoRightClickMenu(g,
-                     {
-                         .button_id = button_id,
-                         .popup_id = right_click_id,
-                         .interaction_r = window_r,
-                         .do_menu_items =
-                             [&](Box root) {
-                                 ParamModules const target {ParameterModule::Effect,
-                                                            EffectTypeToParameterModule(type)};
-                                 DoResetSectionMenuItems(g, root, StateSnapshotSection {target}, name);
-                             },
-                     });
+    DoRightClickMenu(
+        g,
+        {
+            .button_id = button_id,
+            .popup_id = right_click_id,
+            .interaction_r = window_r,
+            .do_menu_items =
+                [&](Box root) {
+                    StateSnapshotSection const target {
+                        ModuleTabSection {ParameterModule::Effect, EffectTypeToParameterModule(type)}};
+                    DoResetSectionMenuItems(g, root, target, name);
+                },
+        });
 }
 
 static FXColours GetFxColMap(EffectType type) {

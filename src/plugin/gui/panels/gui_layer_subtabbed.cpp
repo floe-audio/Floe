@@ -40,7 +40,7 @@ static void DoTabRightClickMenu(GuiState& g,
     auto const right_click_id = SourceLocationHash() + id_extra;
 
     DoRightClickMenu(g, tab_button, right_click_id, [&](Box root) {
-        ParamModules const target_modules {LayerModuleFromIndex(layer_index), tab_module};
+        StateSnapshotSection const target {ModuleTabSection {LayerModuleFromIndex(layer_index), tab_module}};
 
         if (MenuItem(g.builder,
                      root,
@@ -51,13 +51,13 @@ static void DoTabRightClickMenu(GuiState& g,
                 .button_fired) {
             g.snapshot_clipboard = GuiState::CopiedSection {
                 .snapshot = CurrentStateSnapshot(g.engine),
-                .section = ParamModules {LayerModuleFromIndex(layer_index), tab_module},
+                .section = target,
             };
         }
 
         auto const can_paste = g.snapshot_clipboard.HasValue() &&
-                               g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Modules &&
-                               g.snapshot_clipboard->section.Get<ParamModules>()[1] == tab_module;
+                               g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::ModuleTab &&
+                               g.snapshot_clipboard->section.Get<ModuleTabSection>().subtab == tab_module;
 
         if (MenuItem(g.builder,
                      root,
@@ -71,10 +71,10 @@ static void DoTabRightClickMenu(GuiState& g,
             ApplySectionOfState(g.engine,
                                 g.snapshot_clipboard->snapshot,
                                 g.snapshot_clipboard->section,
-                                StateSnapshotSection {target_modules});
+                                target);
         }
 
-        DoResetSectionMenuItems(g, root, StateSnapshotSection {target_modules}, tab_name);
+        DoResetSectionMenuItems(g, root, target, tab_name);
     });
 }
 

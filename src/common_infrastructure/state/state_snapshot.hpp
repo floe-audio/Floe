@@ -129,22 +129,43 @@ struct EnvelopeSection {
     Kind kind;
 };
 
+struct LayerSection {
+    bool operator==(LayerSection const&) const = default;
+    u8 layer_index;
+};
+
+struct ModuleTabSection {
+    bool operator==(ModuleTabSection const&) const = default;
+    ParameterModule scope;
+    ParameterModule subtab;
+};
+
+struct EqBandSection {
+    bool operator==(EqBandSection const&) const = default;
+    ParameterModule scope;
+    u8 band;
+};
+
 enum class StateSnapshotSectionKind : u8 {
-    Modules,
+    Param,
     Macro,
     Instrument,
-    Param,
     VelocityCurve,
     Envelope,
+    Layer,
+    ModuleTab,
+    EqBand,
 };
 
 using StateSnapshotSection =
     TaggedUnion<StateSnapshotSectionKind,
-                TypeAndTag<ParamModules, StateSnapshotSectionKind::Modules>,
+                TypeAndTag<ParamSection, StateSnapshotSectionKind::Param>,
                 TypeAndTag<MacroSection, StateSnapshotSectionKind::Macro>,
                 TypeAndTag<InstrumentSection, StateSnapshotSectionKind::Instrument>,
-                TypeAndTag<ParamSection, StateSnapshotSectionKind::Param>,
                 TypeAndTag<VelocityCurveSection, StateSnapshotSectionKind::VelocityCurve>,
-                TypeAndTag<EnvelopeSection, StateSnapshotSectionKind::Envelope>>;
+                TypeAndTag<EnvelopeSection, StateSnapshotSectionKind::Envelope>,
+                TypeAndTag<LayerSection, StateSnapshotSectionKind::Layer>,
+                TypeAndTag<ModuleTabSection, StateSnapshotSectionKind::ModuleTab>,
+                TypeAndTag<EqBandSection, StateSnapshotSectionKind::EqBand>>;
 
 StateSnapshot const& DefaultStateSnapshot();

@@ -22,6 +22,7 @@
 #include "engine/loop_modes.hpp"
 #include "plugin/plugin.hpp"
 #include "processing_utils/arpeggiator.hpp"
+#include "processing_utils/eq_bands.hpp"
 #include "processor/layer_processor.hpp"
 #include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
@@ -437,20 +438,21 @@ StateSnapshot CurrentStateSnapshot(Engine& engine) {
     return snapshot;
 }
 
-static usize ParamModulesLength(ParamModules const& m) {
-    usize n = 0;
-    for (auto p : m) {
-        if (p == ParameterModule::None) break;
-        ++n;
-    }
-    return n;
-}
-
 static void CopyLayerArpState(Engine& engine, StateSnapshot const& source, u8 src_layer, u8 dst_layer) {
     StateSnapshot s {};
     s.arp_steps[dst_layer] = source.arp_steps[src_layer];
     s.slice_arp_configs[dst_layer] = source.slice_arp_configs[src_layer];
     ArpApplyState(engine.processor.layer_processors[dst_layer].arp_state, s, dst_layer);
+}
+
+static void CopyLayerVelocity(Engine& engine, StateSnapshot const& source, u8 src_layer, u8 dst_layer) {
+    engine.processor.layer_processors[dst_layer].velocity_curve_map.SetNewPoints(
+        source.velocity_curve_points[src_layer]);
+}
+
+static void CopyLayerHarmony(Engine& engine, StateSnapshot const& source, u8 src_layer, u8 dst_layer) {
+    engine.processor.layer_processors[dst_layer].harmony_intervals.AssignBlockwise(
+        source.harmony_intervals[src_layer]);
 }
 
 static void SendMacroDestination(AudioProcessor& processor, u8 macro_index, u8 dest_index) {
@@ -464,74 +466,41 @@ static void SendMacroDestination(AudioProcessor& processor, u8 macro_index, u8 d
                         });
 }
 
-static void ApplyModulesSection(Engine& engine,
-                                StateSnapshot const& source,
-                                ParamModules const& src_modules,
-                                ParamModules const& dst_modules) {
-    auto const src_len = ParamModulesLength(src_modules);
-    auto const dst_len = ParamModulesLength(dst_modules);
-    if (src_len == 0 || src_len != dst_len) return;
+struct EqBandResolved {
+    ParamIndex type, freq, reso, gain;
+};
 
-    for (auto const i : Range(src_len)) {
-        if (src_modules[i] == dst_modules[i]) continue;
-        if (i != 0) return;
-        if (!LayerIndexFromModule(src_modules[0]) || !LayerIndexFromModule(dst_modules[0])) return;
+static EqBandResolved ResolveEqBand(ParameterModule scope, u8 band) {
+    ASSERT(band < k_num_eq_bands);
+    if (auto const layer = LayerIndexFromModule(scope)) {
+        constexpr LayerParamIndex k_lp[k_num_eq_bands][4] = {
+            {LayerParamIndex::EqType1,
+             LayerParamIndex::EqFreq1,
+             LayerParamIndex::EqResonance1,
+             LayerParamIndex::EqGain1},
+            {LayerParamIndex::EqType2,
+             LayerParamIndex::EqFreq2,
+             LayerParamIndex::EqResonance2,
+             LayerParamIndex::EqGain2},
+            {LayerParamIndex::EqType3,
+             LayerParamIndex::EqFreq3,
+             LayerParamIndex::EqResonance3,
+             LayerParamIndex::EqGain3},
+        };
+        return {
+            ParamIndexFromLayerParamIndex(*layer, k_lp[band][0]),
+            ParamIndexFromLayerParamIndex(*layer, k_lp[band][1]),
+            ParamIndexFromLayerParamIndex(*layer, k_lp[band][2]),
+            ParamIndexFromLayerParamIndex(*layer, k_lp[band][3]),
+        };
     }
-
-    auto const src_layer = LayerIndexFromModule(src_modules[0]);
-    auto const dst_layer = LayerIndexFromModule(dst_modules[0]);
-
-    for (auto const i : Range(k_num_parameters)) {
-        auto const& parts = k_param_descriptors[i].module_parts;
-        if (parts.size < src_len) continue;
-
-        bool matches = true;
-        for (auto const j : Range(src_len)) {
-            if (parts[j] != src_modules[j]) {
-                matches = false;
-                break;
-            }
-        }
-        if (!matches) continue;
-
-        ParamIndex dst_param;
-        if (src_layer && dst_layer) {
-            auto const info = LayerParamIndexAndLayerFor((ParamIndex)i);
-            if (!info) continue;
-            dst_param = ParamIndexFromLayerParamIndex(*dst_layer, info->param);
-        } else {
-            dst_param = (ParamIndex)i;
-        }
-
-        SetParameterValue(engine.processor, dst_param, source.param_values[i], {});
-    }
-
-    if (!src_layer || !dst_layer) return;
-
-    auto const copy_arp = [&] { CopyLayerArpState(engine, source, *src_layer, *dst_layer); };
-    auto const copy_velocity = [&] {
-        engine.processor.layer_processors[*dst_layer].velocity_curve_map.SetNewPoints(
-            source.velocity_curve_points[*src_layer]);
+    ASSERT(scope == ParameterModule::Effect);
+    constexpr ParamIndex k_pi[k_num_eq_bands][4] = {
+        {ParamIndex::EqType1, ParamIndex::EqFreq1, ParamIndex::EqResonance1, ParamIndex::EqGain1},
+        {ParamIndex::EqType2, ParamIndex::EqFreq2, ParamIndex::EqResonance2, ParamIndex::EqGain2},
+        {ParamIndex::EqType3, ParamIndex::EqFreq3, ParamIndex::EqResonance3, ParamIndex::EqGain3},
     };
-    auto const copy_harmony = [&] {
-        engine.processor.layer_processors[*dst_layer].harmony_intervals.AssignBlockwise(
-            source.harmony_intervals[*src_layer]);
-    };
-    auto const copy_instrument = [&] { LoadInstrument(engine, *dst_layer, source.inst_ids[*src_layer]); };
-
-    if (src_len == 1) {
-        copy_arp();
-        copy_velocity();
-        copy_harmony();
-        copy_instrument();
-    } else {
-        switch (src_modules[1]) {
-            case ParameterModule::Arp: copy_arp(); break;
-            case ParameterModule::Config: copy_velocity(); break;
-            case ParameterModule::Playback: copy_harmony(); break;
-            default: break;
-        }
-    }
+    return {k_pi[band][0], k_pi[band][1], k_pi[band][2], k_pi[band][3]};
 }
 
 void ApplySectionOfState(Engine& engine,
@@ -541,12 +510,16 @@ void ApplySectionOfState(Engine& engine,
     ASSERT(g_is_logical_main_thread);
     if (source_section.tag != target_section.tag) return;
 
+    BeginUndoableStep(engine, "Apply section"_s);
+    DEFER { EndUndoableStep(engine); };
+
+    auto const set_param = [&](ParamIndex src, ParamIndex dst) {
+        SetParameterValue(engine.processor, dst, source.param_values[ToInt(src)], {});
+    };
+
     switch (source_section.tag) {
-        case StateSnapshotSectionKind::Modules: {
-            ApplyModulesSection(engine,
-                                source,
-                                source_section.Get<ParamModules>(),
-                                target_section.Get<ParamModules>());
+        case StateSnapshotSectionKind::Param: {
+            set_param(source_section.Get<ParamSection>().param, target_section.Get<ParamSection>().param);
             break;
         }
         case StateSnapshotSectionKind::Macro: {
@@ -554,11 +527,7 @@ void ApplySectionOfState(Engine& engine,
             auto const dst = target_section.Get<MacroSection>().macro_index;
             ASSERT(src < k_num_macros && dst < k_num_macros);
 
-            SetParameterValue(engine.processor,
-                              ParamIndexFromMacroIndex(dst),
-                              source.param_values[ToInt(ParamIndexFromMacroIndex(src))],
-                              {});
-
+            set_param(ParamIndexFromMacroIndex(src), ParamIndexFromMacroIndex(dst));
             engine.macro_names[dst] = source.macro_names[src];
             engine.processor.main_macro_destinations[dst] = source.macro_destinations[src];
             for (auto const d : Range<u8>(k_max_macro_destinations))
@@ -572,18 +541,11 @@ void ApplySectionOfState(Engine& engine,
             LoadInstrument(engine, dst, source.inst_ids[src]);
             break;
         }
-        case StateSnapshotSectionKind::Param: {
-            auto const src = source_section.Get<ParamSection>().param;
-            auto const dst = target_section.Get<ParamSection>().param;
-            SetParameterValue(engine.processor, dst, source.param_values[ToInt(src)], {});
-            break;
-        }
         case StateSnapshotSectionKind::VelocityCurve: {
             auto const src = source_section.Get<VelocityCurveSection>().layer_index;
             auto const dst = target_section.Get<VelocityCurveSection>().layer_index;
             ASSERT(src < k_num_layers && dst < k_num_layers);
-            engine.processor.layer_processors[dst].velocity_curve_map.SetNewPoints(
-                source.velocity_curve_points[src]);
+            CopyLayerVelocity(engine, source, src, dst);
             break;
         }
         case StateSnapshotSectionKind::Envelope: {
@@ -607,19 +569,77 @@ void ApplySectionOfState(Engine& engine,
                 }
             }();
 
-            for (auto const layer_param : params) {
-                auto const src_param = ParamIndexFromLayerParamIndex(src_sel.layer_index, layer_param);
-                auto const dst_param = ParamIndexFromLayerParamIndex(dst_sel.layer_index, layer_param);
-                SetParameterValue(engine.processor, dst_param, source.param_values[ToInt(src_param)], {});
+            for (auto const lp : params)
+                set_param(ParamIndexFromLayerParamIndex(src_sel.layer_index, lp),
+                          ParamIndexFromLayerParamIndex(dst_sel.layer_index, lp));
+            break;
+        }
+        case StateSnapshotSectionKind::Layer: {
+            auto const src = source_section.Get<LayerSection>().layer_index;
+            auto const dst = target_section.Get<LayerSection>().layer_index;
+            ASSERT(src < k_num_layers && dst < k_num_layers);
+            for (auto const i : Range(k_num_layer_parameters)) {
+                auto const lp = (LayerParamIndex)i;
+                set_param(ParamIndexFromLayerParamIndex(src, lp), ParamIndexFromLayerParamIndex(dst, lp));
             }
+            CopyLayerArpState(engine, source, src, dst);
+            CopyLayerVelocity(engine, source, src, dst);
+            CopyLayerHarmony(engine, source, src, dst);
+            LoadInstrument(engine, dst, source.inst_ids[src]);
+            break;
+        }
+        case StateSnapshotSectionKind::ModuleTab: {
+            auto const src_sel = source_section.Get<ModuleTabSection>();
+            auto const dst_sel = target_section.Get<ModuleTabSection>();
+            if (src_sel.subtab != dst_sel.subtab) break;
+
+            auto const src_layer = LayerIndexFromModule(src_sel.scope);
+            auto const dst_layer = LayerIndexFromModule(dst_sel.scope);
+            if (src_sel.scope != dst_sel.scope && !(src_layer && dst_layer)) break;
+
+            for (auto const i : Range(k_num_parameters)) {
+                auto const& parts = k_param_descriptors[i].module_parts;
+                if (parts[0] != src_sel.scope || parts[1] != src_sel.subtab) continue;
+                auto dst_param = (ParamIndex)i;
+                if (src_layer && dst_layer && *src_layer != *dst_layer) {
+                    auto const info = LayerParamIndexAndLayerFor((ParamIndex)i);
+                    if (!info) continue;
+                    dst_param = ParamIndexFromLayerParamIndex(*dst_layer, info->param);
+                }
+                set_param((ParamIndex)i, dst_param);
+            }
+
+            if (src_layer && dst_layer) {
+                switch (src_sel.subtab) {
+                    case ParameterModule::Arp:
+                        CopyLayerArpState(engine, source, *src_layer, *dst_layer);
+                        break;
+                    case ParameterModule::Config:
+                        CopyLayerVelocity(engine, source, *src_layer, *dst_layer);
+                        break;
+                    case ParameterModule::Playback:
+                        CopyLayerHarmony(engine, source, *src_layer, *dst_layer);
+                        break;
+                    default: break;
+                }
+            }
+            break;
+        }
+        case StateSnapshotSectionKind::EqBand: {
+            auto const src_sel = source_section.Get<EqBandSection>();
+            auto const dst_sel = target_section.Get<EqBandSection>();
+            auto const srcs = ResolveEqBand(src_sel.scope, src_sel.band);
+            auto const dsts = ResolveEqBand(dst_sel.scope, dst_sel.band);
+            set_param(srcs.type, dsts.type);
+            set_param(srcs.freq, dsts.freq);
+            set_param(srcs.reso, dsts.reso);
+            set_param(srcs.gain, dsts.gain);
             break;
         }
     }
 
     NotifyListener(engine);
     engine.host.request_callback(&engine.host);
-
-    RecordUndoableStep(engine, "Apply section"_s);
 }
 
 StateSnapshot const* PinnedPresetState(Engine const& engine) {

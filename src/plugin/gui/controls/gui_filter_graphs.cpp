@@ -1086,6 +1086,45 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
 
                     MenuDivider(g.builder, root);
 
+                    auto const band_modules = k_param_descriptors[ToInt(freq_index)].module_parts;
+                    StateSnapshotSection const band_section {EqBandSection {
+                        .scope = band_modules[0],
+                        .band = (u8)(ToInt(band_modules[2]) - ToInt(ParameterModule::Band1)),
+                    }};
+
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {.text = "Copy Band"_s,
+                                  .tooltip = "Copy this EQ band's settings"_s,
+                                  .no_icon_gap = true})
+                            .button_fired) {
+                        g.snapshot_clipboard = GuiState::CopiedSection {
+                            .snapshot = CurrentStateSnapshot(g.engine),
+                            .section = band_section,
+                        };
+                    }
+
+                    auto const can_paste_band =
+                        g.snapshot_clipboard.HasValue() &&
+                        g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::EqBand;
+
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {.text = "Paste Band"_s,
+                                  .tooltip = "Overwrite this EQ band with the previously copied band"_s,
+                                  .mode = can_paste_band ? MenuItemOptions::Mode::Active
+                                                         : MenuItemOptions::Mode::Disabled,
+                                  .no_icon_gap = true})
+                            .button_fired &&
+                        can_paste_band) {
+                        ApplySectionOfState(g.engine,
+                                            g.snapshot_clipboard->snapshot,
+                                            g.snapshot_clipboard->section,
+                                            band_section);
+                    }
+
+                    MenuDivider(g.builder, root);
+
                     if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
                         SetParameterValue(g.engine.processor,
                                           freq_index,
