@@ -1094,9 +1094,7 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
 
                     if (MenuItem(g.builder,
                                  root,
-                                 {.text = "Copy Band"_s,
-                                  .tooltip = "Copy this EQ band's settings"_s,
-                                  .no_icon_gap = true})
+                                 {.text = "Copy Band"_s, .tooltip = "Copy this EQ band's settings"_s})
                             .button_fired) {
                         g.snapshot_clipboard = GuiState::CopiedSection {
                             .snapshot = CurrentStateSnapshot(g.engine),
@@ -1113,8 +1111,7 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
                                  {.text = "Paste Band"_s,
                                   .tooltip = "Overwrite this EQ band with the previously copied band"_s,
                                   .mode = can_paste_band ? MenuItemOptions::Mode::Active
-                                                         : MenuItemOptions::Mode::Disabled,
-                                  .no_icon_gap = true})
+                                                         : MenuItemOptions::Mode::Disabled})
                             .button_fired &&
                         can_paste_band) {
                         ApplySectionOfState(g.engine,
