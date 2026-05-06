@@ -285,6 +285,11 @@ struct GuiFrameOutput {
         bool mouse_capture = false;
         bool mouse_scroll = false;
 
+        // Set this to wake the GUI on every mouse-motion event (not just enter/exit of tracked rects).
+        // Use sparingly: only while you actively need to follow the cursor (e.g. drawing a hover
+        // playhead). Costs nothing while the cursor is still — only motion events trigger redraws.
+        bool mouse_motion_redraw = false;
+
         // Set this to the cursor that you want
         CursorType cursor_type = CursorType::Default;
 

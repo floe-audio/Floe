@@ -479,67 +479,101 @@ DoLayersColumn(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_co
                   .text = "Vary"_s,
                   .size_from_text = true,
                   .font = FontType::Body,
-                  .text_colours = Col {.c = Col::White, .alpha = 180},
+                  .text_colours = Col {.c = Col::White, .alpha = (u8)(any_active ? 200 : 110)},
               });
 
-        struct VaryMode {
-            String icon;
-            String tooltip;
-            RandomScope scope;
-        };
-        Array<VaryMode, 3> const modes {{
-            {ICON_FA_DICE_ONE, "Subtle variation: same folder"_s, RandomScope::Folder},
-            {ICON_FA_DICE_THREE, "Wider variation: same library"_s, RandomScope::Library},
-            {ICON_FA_DICE_SIX, "Wild variation: any library"_s, RandomScope::Any},
-        }};
+        constexpr f32 k_strip_w = 130;
+        auto const strip = DoBox(
+            builder,
+            {
+                .parent = pill,
+                .id_extra = 1,
+                .background_fill_colours =
+                    ColSet {
+                        .base = Col {.c = Col::White, .alpha = 8},
+                        .hot = Col {.c = Col::White, .alpha = 14},
+                        .active = Col {.c = Col::White, .alpha = 22},
+                    },
+                .round_background_corners = 0b1111,
+                .corner_rounding = k_corner_rounding * 0.7f,
+                .layout {
+                    .size = {k_strip_w, layout::k_fill_parent},
+                    .margins = {.l = 2, .r = 2, .tb = 2},
+                },
+                .tooltip =
+                    TooltipString {
+                        "Click anywhere on the strip to load random instruments. "
+                        "Further right = wider variation (left = same folder, middle = same library, right = anywhere)."_s},
+                .button_behaviour = imgui::ButtonConfig {},
+            });
 
-        for (auto const mode_index : Range(modes.size)) {
-            auto const& mode = modes[mode_index];
-            bool const grey = !any_active && mode.scope != RandomScope::Any;
+        if (auto const r = BoxRect(builder, strip)) {
+            auto const wr = g.imgui.ViewportRectToWindowRect(*r);
+            // Intensity gradient overlay: dim left → bright right.
+            u32 const col_left = ToU32(Col {.c = Col::White, .alpha = 12});
+            u32 const col_right = ToU32(Col {.c = Col::White, .alpha = 90});
+            g.imgui.draw_list->AddRectFilledMultiColor({wr.x, wr.y},
+                                                       {wr.x + wr.w, wr.y + wr.h},
+                                                       col_left,
+                                                       col_right,
+                                                       col_right,
+                                                       col_left);
 
-            auto const btn =
-                DoBox(builder,
-                      {
-                          .parent = pill,
-                          .id_extra = mode_index,
-                          .background_fill_colours = grey ? Colours {Col {.c = Col::None}}
-                                                          : Colours {ColSet {
-                                                                .base = Col {.c = Col::None},
-                                                                .hot = Col {.c = Col::White, .alpha = 18},
-                                                                .active = Col {.c = Col::White, .alpha = 28},
-                                                            }},
-                          .round_background_corners = 0b1111,
-                          .corner_rounding = k_corner_rounding * 0.85f,
-                          .layout {
-                              .size = {k_mid_button_height, layout::k_fill_parent},
-                              .contents_align = layout::Alignment::Middle,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                          .tooltip = TooltipString {mode.tooltip},
-                          .button_behaviour = grey ? Optional<imgui::ButtonConfig> {}
-                                                   : Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}},
-                      });
-            DoBox(builder,
-                  {
-                      .parent = btn,
-                      .text = mode.icon,
-                      .size_from_text = true,
-                      .font = FontType::Icons,
-                      .font_size = k_font_icons_size * 0.95f,
-                      .text_colours = grey ? Colours {Col {.c = Col::White, .alpha = 60}}
-                                           : Colours {ColSet {
-                                                 .base = LiveColStruct(UiColMap::MidIcon),
-                                                 .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                 .active = LiveColStruct(UiColMap::MidTextOn),
-                                             }},
-                      .parent_dictates_hot_and_active = true,
-                  });
-            if (btn.button_fired && !grey) {
-                Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};
-                for (auto const layer_index : Range(k_num_layers))
-                    new_ids[layer_index] =
-                        random_inst_id(g.engine.processor.layer_processors[layer_index], mode.scope);
-                LoadInstruments(g.engine, new_ids, "Random instruments"_s);
+            // Hover/armed playhead: a die showing 1-6 pips by cursor position.
+            // While armed (mouse held), pin to the down-position so the die doesn't move.
+            // The icon centre is inset by half its width so it never overhangs the strip edges,
+            // and t is computed over the same inset range so the pip count matches what's drawn.
+            if (strip.is_hot || strip.is_active) {
+                GuiIo().out.wants.mouse_motion_redraw = true;
+                f32 const ref_x = strip.is_active ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
+                                                  : GuiIo().in.cursor_pos.x;
+                f32 const icon_size = wr.h - 2.0f;
+                f32 const half_icon = icon_size * 0.5f;
+                f32 const min_x = wr.x + half_icon;
+                f32 const max_x = wr.x + wr.w - half_icon;
+                f32 const tick_x = Clamp(ref_x, min_x, max_x);
+                f32 const t_hover = Clamp((ref_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
+                static constexpr String k_dice_icons[6] {
+                    ICON_FA_DICE_ONE,
+                    ICON_FA_DICE_TWO,
+                    ICON_FA_DICE_THREE,
+                    ICON_FA_DICE_FOUR,
+                    ICON_FA_DICE_FIVE,
+                    ICON_FA_DICE_SIX,
+                };
+                int const pip_index = Clamp((int)(t_hover * 6.0f), 0, 5);
+                Rect const icon_r {.x = tick_x - half_icon, .y = wr.y + 1.0f, .w = icon_size, .h = icon_size};
+                u32 const icon_col = ToU32(Col {.c = Col::White, .alpha = (u8)(strip.is_active ? 150 : 240)});
+                builder.fonts.Push(ToInt(FontType::Icons));
+                DEFER { builder.fonts.Pop(); };
+                g.imgui.draw_list->AddTextInRect(icon_r,
+                                                 icon_col,
+                                                 k_dice_icons[pip_index],
+                                                 {
+                                                     .justification = TextJustification::Centred,
+                                                     .overflow_type = TextOverflowType::AllowOverflow,
+                                                 });
+            }
+        }
+
+        if (strip.button_fired) {
+            if (auto const r = BoxRect(builder, strip)) {
+                auto const wr = g.imgui.ViewportRectToWindowRect(*r);
+                f32 const press_x = GuiIo().in.Mouse(MouseButton::Left).last_press.point.x;
+                f32 const half_icon = (wr.h - 2.0f) * 0.5f;
+                f32 const min_x = wr.x + half_icon;
+                f32 const max_x = wr.x + wr.w - half_icon;
+                f32 const t = Clamp((press_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
+                auto const scope = t < 0.34f   ? RandomScope::Folder
+                                   : t < 0.67f ? RandomScope::Library
+                                               : RandomScope::Any;
+                if (any_active || scope == RandomScope::Any) {
+                    Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};
+                    for (auto const layer_index : Range(k_num_layers))
+                        new_ids[layer_index] =
+                            random_inst_id(g.engine.processor.layer_processors[layer_index], scope);
+                    LoadInstruments(g.engine, new_ids, "Random instruments"_s);
+                }
             }
         }
     }

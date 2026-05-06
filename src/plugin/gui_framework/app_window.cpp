@@ -252,7 +252,8 @@ static bool EventMotion(AppWindow& window, PuglMotionEvent const& motion_event) 
         }
     }
 
-    if (window.last_result.mouse_tracked_rects.size == 0 || window.last_result.wants.mouse_capture) {
+    if (window.last_result.mouse_tracked_rects.size == 0 || window.last_result.wants.mouse_capture ||
+        window.last_result.wants.mouse_motion_redraw) {
         result = true;
     } else if (IsUpdateNeeded(window)) {
         return true;
