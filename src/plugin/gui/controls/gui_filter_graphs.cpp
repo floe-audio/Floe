@@ -162,6 +162,70 @@ static sv_filter::Type MapLayerFilterType(param_values::LayerFilterType t) {
     return sv_filter::Type::Lowpass;
 }
 
+// Right-click menu for filter-graph nodes that have no type selector. Resets all of the node's params
+// together to either default or pinned-preset values.
+static void DoResetParamsRightClickMenu(GuiState& g,
+                                        Rect window_r,
+                                        imgui::Id interaction_id,
+                                        Span<ParamIndex const> param_indices) {
+    auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)ToInt(param_indices[0]) << 8));
+
+    if (g.imgui.ButtonBehaviour(window_r,
+                                interaction_id,
+                                {
+                                    .mouse_button = MouseButton::Right,
+                                    .event = MouseButtonEvent::Up,
+                                })) {
+        g.imgui.OpenPopupMenu(right_click_id, interaction_id);
+    }
+
+    if (!g.imgui.IsPopupMenuOpen(right_click_id)) return;
+
+    DoBoxViewport(
+        g.builder,
+        {
+            .run =
+                [&g, param_indices = ({
+                         auto const copy =
+                             g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(param_indices.size);
+                         for (auto const i : Range(param_indices.size))
+                             copy[i] = param_indices[i];
+                         (Span<ParamIndex const>)copy;
+                     })](GuiBuilder&) {
+                    auto const root = DoBox(g.builder,
+                                            {
+                                                .layout {
+                                                    .size = layout::k_hug_contents,
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
+
+                    if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired)
+                        for (auto const idx : param_indices)
+                            SetParameterValue(g.engine.processor,
+                                              idx,
+                                              k_param_descriptors[ToInt(idx)].default_linear_value,
+                                              {});
+
+                    if (auto const pinned = PinnedPresetState(g.engine)) {
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {.text = fmt::Format(g.scratch_arena,
+                                                          "Reset Value to \"{}\" state",
+                                                          pinned->extras.display_name)})
+                                .button_fired) {
+                            for (auto const idx : param_indices)
+                                SetParameterValue(g.engine.processor, idx, pinned->LinearParam(idx), {});
+                        }
+                    }
+                },
+            .bounds = window_r,
+            .imgui_id = right_click_id,
+            .viewport_config = k_default_popup_menu_viewport,
+        });
+}
+
 static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, u8 layer_index) {
     auto const right_click_id = (imgui::Id)(SourceLocationHash() ^ ((u64)layer_index << 8));
 
@@ -689,6 +753,7 @@ void DoReverbPreFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                                       .greyed_out = greyed_out,
                                       .active_cursor = CursorType::HorizontalArrows,
                                   });
+        DoResetParamsRightClickMenu(g, gr.window_r, gr.interaction_id, Array {gr.index});
     }
 
     ParamIndex const editor_indices[] = {
@@ -812,6 +877,7 @@ void DoReverbPostShelfGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                                       .greyed_out = greyed_out,
                                       .active_cursor = CursorType::AllArrows,
                                   });
+        DoResetParamsRightClickMenu(g, sh.window_r, sh.interaction_id, Array {sh.cutoff_idx, sh.gain_idx});
     }
 
     ParamIndex const editor_indices[] = {
@@ -900,6 +966,10 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
                                   .greyed_out = greyed_out,
                                   .active_cursor = CursorType::HorizontalArrows,
                               });
+    DoResetParamsRightClickMenu(g,
+                                grabber_window_r,
+                                interaction_id,
+                                Array {ParamIndex::ConvolutionReverbHighpass});
 
     ParamIndex const editor_indices[] = {ParamIndex::ConvolutionReverbHighpass};
     DoParamTextEditorOverlay(g, viewport_r, editor_indices);
@@ -990,6 +1060,11 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                                   .greyed_out = greyed_out,
                                   .active_cursor = CursorType::AllArrows,
                               });
+    DoResetParamsRightClickMenu(
+        g,
+        grabber_window_r,
+        interaction_id,
+        Array {ParamIndex::DelayFilterCutoffSemitones, ParamIndex::DelayFilterSpread});
 
     ParamIndex const editor_indices[] = {
         ParamIndex::DelayFilterCutoffSemitones,
