@@ -1580,6 +1580,8 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                                   .is_on = any_on});
 
         if (power_btn.button_fired && any_visible) {
+            BeginUndoableStep(g.engine, "Bypass all effects"_s);
+            DEFER { EndUndoableStep(g.engine); };
             f32 const new_value = any_on ? 0.0f : 1.0f;
             for (auto const fx : g.engine.processor.effects_ordered_by_type) {
                 if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
@@ -1596,7 +1598,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
             {.icon = MidPanelIcon::Unload, .tooltip = "Remove all effects"_s, .greyed_out = !any_visible});
 
         if (remove_btn.button_fired && any_visible) {
-            BeginUndoableStep(g.engine, "Remove all FX"_s);
+            BeginUndoableStep(g.engine, "Remove all effects"_s);
             DEFER { EndUndoableStep(g.engine); };
             for (auto const fx : g.engine.processor.effects_ordered_by_type) {
                 if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
