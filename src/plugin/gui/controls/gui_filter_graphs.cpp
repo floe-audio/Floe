@@ -215,7 +215,7 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
                     auto const reso_idx =
                         ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance);
 
-                    if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
+                    if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
                         SetParameterValue(g.engine.processor,
                                           cutoff_idx,
                                           k_param_descriptors[ToInt(cutoff_idx)].default_linear_value,
@@ -224,6 +224,24 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
                                           reso_idx,
                                           k_param_descriptors[ToInt(reso_idx)].default_linear_value,
                                           {});
+                    }
+
+                    if (auto const pinned = PinnedPresetState(g.engine)) {
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {.text = fmt::Format(g.scratch_arena,
+                                                          "Reset Value to \"{}\" state",
+                                                          pinned->extras.display_name)})
+                                .button_fired) {
+                            SetParameterValue(g.engine.processor,
+                                              cutoff_idx,
+                                              pinned->LinearParam(cutoff_idx),
+                                              {});
+                            SetParameterValue(g.engine.processor,
+                                              reso_idx,
+                                              pinned->LinearParam(reso_idx),
+                                              {});
+                        }
                     }
                 },
             .bounds = window_r,
@@ -379,7 +397,7 @@ static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::
 
                     DoModalDivider(g.builder, root, {.horizontal = true});
 
-                    if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
+                    if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
                         SetParameterValue(
                             g.engine.processor,
                             ParamIndex::FilterCutoff,
@@ -395,6 +413,28 @@ static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::
                             ParamIndex::FilterGain,
                             k_param_descriptors[ToInt(ParamIndex::FilterGain)].default_linear_value,
                             {});
+                    }
+
+                    if (auto const pinned = PinnedPresetState(g.engine)) {
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {.text = fmt::Format(g.scratch_arena,
+                                                          "Reset Value to \"{}\" state",
+                                                          pinned->extras.display_name)})
+                                .button_fired) {
+                            SetParameterValue(g.engine.processor,
+                                              ParamIndex::FilterCutoff,
+                                              pinned->LinearParam(ParamIndex::FilterCutoff),
+                                              {});
+                            SetParameterValue(g.engine.processor,
+                                              ParamIndex::FilterResonance,
+                                              pinned->LinearParam(ParamIndex::FilterResonance),
+                                              {});
+                            SetParameterValue(g.engine.processor,
+                                              ParamIndex::FilterGain,
+                                              pinned->LinearParam(ParamIndex::FilterGain),
+                                              {});
+                        }
                     }
                 },
             .bounds = window_r,
@@ -1048,7 +1088,7 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
 
                     DoModalDivider(g.builder, root, {.horizontal = true});
 
-                    if (MenuItem(g.builder, root, {.text = "Reset Value"}).button_fired) {
+                    if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
                         SetParameterValue(g.engine.processor,
                                           freq_index,
                                           k_param_descriptors[ToInt(freq_index)].default_linear_value,
@@ -1061,6 +1101,28 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
                                           gain_index,
                                           k_param_descriptors[ToInt(gain_index)].default_linear_value,
                                           {});
+                    }
+
+                    if (auto const pinned = PinnedPresetState(g.engine)) {
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {.text = fmt::Format(g.scratch_arena,
+                                                          "Reset Value to \"{}\" state",
+                                                          pinned->extras.display_name)})
+                                .button_fired) {
+                            SetParameterValue(g.engine.processor,
+                                              freq_index,
+                                              pinned->LinearParam(freq_index),
+                                              {});
+                            SetParameterValue(g.engine.processor,
+                                              reso_index,
+                                              pinned->LinearParam(reso_index),
+                                              {});
+                            SetParameterValue(g.engine.processor,
+                                              gain_index,
+                                              pinned->LinearParam(gain_index),
+                                              {});
+                        }
                     }
                 },
             .bounds = window_r,

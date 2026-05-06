@@ -9,6 +9,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_builder.hpp"
 
@@ -136,18 +137,7 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                                     layer_target);
                             }
 
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = "Reset Layer"_s,
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired) {
-                                ApplySectionOfState(g.engine,
-                                                    DefaultStateSnapshot(),
-                                                    layer_target,
-                                                    layer_target);
-                            }
+                            DoResetSectionMenuItems(g, root, layer_target, "Layer"_s);
                         },
                     .bounds = window_r,
                     .imgui_id = right_click_id,

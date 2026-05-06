@@ -4,6 +4,7 @@
 #pragma once
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "gui/core/gui_fwd.hpp"
 #include "gui/elements/gui_constants.hpp"
@@ -115,6 +116,11 @@ Box DoVerticalSliderParameter(GuiState& g,
                               Box parent,
                               DescribedParamValue const& param,
                               VerticalSliderParameterOptions options);
+
+// Adds the standard pair of "Reset {name} to Default" / "Reset {name} to "<preset>" state" menu items for a
+// snapshot section. The pinned-preset item is only shown when a preset is loaded. Returns true on the frame
+// either item fires, so the caller can run post-reset cleanup.
+bool DoResetSectionMenuItems(GuiState& g, Box menu_root, StateSnapshotSection const& section, String name);
 
 String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out = false);
 

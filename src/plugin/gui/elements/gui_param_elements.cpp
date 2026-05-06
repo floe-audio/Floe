@@ -21,6 +21,39 @@
 
 constexpr f32 k_row_button_label_gap_y = 6;
 
+bool DoResetSectionMenuItems(GuiState& g, Box menu_root, StateSnapshotSection const& section, String name) {
+    bool fired = false;
+
+    if (MenuItem(g.builder,
+                 menu_root,
+                 {
+                     .text = fmt::Format(g.scratch_arena, "Reset {} to Default"_s, name),
+                     .no_icon_gap = true,
+                 })
+            .button_fired) {
+        ApplySectionOfState(g.engine, DefaultStateSnapshot(), section, section);
+        fired = true;
+    }
+
+    if (auto const pinned = PinnedPresetState(g.engine)) {
+        if (MenuItem(g.builder,
+                     menu_root,
+                     {
+                         .text = fmt::Format(g.scratch_arena,
+                                             "Reset {} to \"{}\" state"_s,
+                                             name,
+                                             pinned->extras.display_name),
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            ApplySectionOfState(g.engine, *pinned, section, section);
+            fired = true;
+        }
+    }
+
+    return fired;
+}
+
 static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices) {
     auto const root = DoBox(g.builder,
                             {
@@ -49,7 +82,7 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
         if (MenuItem(g.builder,
                      root,
                      {
-                         .text = "Reset Value",
+                         .text = "Reset Value to Default",
                          .tooltip = "Reset the parameter to its default value"_s,
                      })
                 .button_fired) {
@@ -57,6 +90,20 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                               param_index,
                               k_param_descriptors[ToInt(param_index)].default_linear_value,
                               {});
+        }
+
+        if (auto const pinned = PinnedPresetState(g.engine)) {
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = fmt::Format(g.scratch_arena,
+                                                 "Reset Value to \"{}\" state",
+                                                 pinned->extras.display_name),
+                             .tooltip = "Reset the parameter to its value in the loaded preset"_s,
+                         })
+                    .button_fired) {
+                SetParameterValue(g.engine.processor, param_index, pinned->LinearParam(param_index), {});
+            }
         }
 
         {
@@ -202,15 +249,7 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                                     target_section);
             }
 
-            if (MenuItem(g.builder,
-                         root,
-                         {
-                             .text = "Reset Macro"_s,
-                             .tooltip = "Reset this macro's value, name and destinations to defaults"_s,
-                         })
-                    .button_fired) {
-                ApplySectionOfState(g.engine, DefaultStateSnapshot(), target_section, target_section);
-            }
+            DoResetSectionMenuItems(g, root, target_section, "Macro"_s);
         }
 
         if (param_indices.size != 1 && param_index != Last(param_indices))

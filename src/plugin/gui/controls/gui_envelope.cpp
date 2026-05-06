@@ -224,18 +224,7 @@ void DoEnvelopeGui(GuiState& g,
 
                             StateSnapshotSection const target_section {env_target};
 
-                            if (MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = fmt::Format(g.scratch_arena, "Reset {}"_s, env_label),
-                                             .no_icon_gap = true,
-                                         })
-                                    .button_fired) {
-                                ApplySectionOfState(g.engine,
-                                                    DefaultStateSnapshot(),
-                                                    target_section,
-                                                    target_section);
-                            }
+                            DoResetSectionMenuItems(g, root, target_section, env_label);
 
                             if (MenuItem(g.builder,
                                          root,

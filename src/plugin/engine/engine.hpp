@@ -145,6 +145,10 @@ void ApplySectionOfState(Engine& engine,
 
 bool StateModifiedFromPinned(Engine& engine);
 
+// Returns the pinned snapshot if it originated from a preset, or nullptr if the pinned snapshot is just the
+// default initial state.
+StateSnapshot const* PinnedPresetState(Engine const& engine);
+
 void RevertToPinned(Engine& engine);
 
 void LoadPresetFromFile(Engine& engine, String path);

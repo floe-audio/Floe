@@ -76,41 +76,58 @@ static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window
 
     auto const name = k_effect_info[ToInt(type)].name;
 
-    DoBoxViewport(g.builder,
-                  {
-                      .run =
-                          [&](GuiBuilder&) {
-                              auto const root = DoBox(g.builder,
-                                                      {
-                                                          .layout {
-                                                              .size = layout::k_hug_contents,
-                                                              .contents_direction = layout::Direction::Column,
-                                                              .contents_align = layout::Alignment::Start,
-                                                          },
-                                                      });
+    DoBoxViewport(
+        g.builder,
+        {
+            .run =
+                [&](GuiBuilder&) {
+                    auto const root = DoBox(g.builder,
+                                            {
+                                                .layout {
+                                                    .size = layout::k_hug_contents,
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
 
-                              ParamModules const target {ParameterModule::Effect,
-                                                         EffectTypeToParameterModule(type)};
+                    ParamModules const target {ParameterModule::Effect, EffectTypeToParameterModule(type)};
+                    StateSnapshotSection const selector {target};
+                    auto const on_param = k_effect_info[ToInt(type)].on_param_index;
+                    auto const apply_with_preserved_on = [&](StateSnapshot snapshot) {
+                        snapshot.param_values[ToInt(on_param)] =
+                            g.engine.processor.main_params.LinearValue(on_param);
+                        ApplySectionOfState(g.engine, snapshot, selector, selector);
+                    };
 
-                              if (MenuItem(g.builder,
-                                           root,
-                                           {
-                                               .text = fmt::Format(g.scratch_arena, "Reset {}"_s, name),
-                                               .no_icon_gap = true,
-                                           })
-                                      .button_fired) {
-                                  StateSnapshotSection const selector {target};
-                                  auto snapshot = DefaultStateSnapshot();
-                                  auto const on_param = k_effect_info[ToInt(type)].on_param_index;
-                                  snapshot.param_values[ToInt(on_param)] =
-                                      g.engine.processor.main_params.LinearValue(on_param);
-                                  ApplySectionOfState(g.engine, snapshot, selector, selector);
-                              }
-                          },
-                      .bounds = window_r,
-                      .imgui_id = right_click_id,
-                      .viewport_config = k_default_popup_menu_viewport,
-                  });
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = fmt::Format(g.scratch_arena, "Reset {} to Default"_s, name),
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired) {
+                        apply_with_preserved_on(DefaultStateSnapshot());
+                    }
+
+                    if (auto const pinned = PinnedPresetState(g.engine)) {
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {
+                                         .text = fmt::Format(g.scratch_arena,
+                                                             "Reset {} to \"{}\" state"_s,
+                                                             name,
+                                                             pinned->extras.display_name),
+                                         .no_icon_gap = true,
+                                     })
+                                .button_fired) {
+                            apply_with_preserved_on(*pinned);
+                        }
+                    }
+                },
+            .bounds = window_r,
+            .imgui_id = right_click_id,
+            .viewport_config = k_default_popup_menu_viewport,
+        });
 }
 
 static FXColours GetFxColMap(EffectType type) {

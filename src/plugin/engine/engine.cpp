@@ -622,6 +622,11 @@ void ApplySectionOfState(Engine& engine,
     RecordUndoableStep(engine, "Apply section"_s);
 }
 
+StateSnapshot const* PinnedPresetState(Engine const& engine) {
+    if (engine.pinned_snapshot.state.extras.origin_preset_hash == 0) return nullptr;
+    return &engine.pinned_snapshot.state;
+}
+
 bool StateModifiedFromPinned(Engine& engine) {
     auto const current = CurrentStateSnapshot(engine);
     bool const changed = current.extras.modified_from_origin_preset;

@@ -7,6 +7,7 @@
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
@@ -81,17 +82,7 @@ void DoCurveMap(GuiState& g,
     auto const append_common_menu_items = [&](Box root) {
         DoModalDivider(g.builder, root, {.horizontal = true});
 
-        if (MenuItem(g.builder,
-                     root,
-                     {
-                         .text = "Reset Curve"_s,
-                         .tooltip = "Reset the curve to its default shape"_s,
-                         .no_icon_gap = true,
-                     })
-                .button_fired) {
-            ApplySectionOfState(g.engine, DefaultStateSnapshot(), curve_target_section, curve_target_section);
-            imgui.ClearActive();
-        }
+        if (DoResetSectionMenuItems(g, root, curve_target_section, "Curve"_s)) imgui.ClearActive();
 
         if (MenuItem(g.builder,
                      root,
