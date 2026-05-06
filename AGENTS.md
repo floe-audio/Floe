@@ -41,6 +41,7 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 # Style
 - No C++ STL/standard library.
 - We write in a Zig-like style: closer to modern C than C++.
+- Liberally use ASSERT macros (or ASSERT_HOT if the codepath is known to be hot).
 - See `.clang-tidy`'s readability-identifier-naming section for naming conventions.
 - When working with enums use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed. When defining enums, specify the size type (typically ` : u8`).
 - **Keep comments to a bare minimum**. Use them more as section markers and notes. Never explain what is evident from reading the code. Prefer renaming variables/functions to be clearer/longer rather than augmenting them with comments.
@@ -48,9 +49,9 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 - Always use `auto` type where possible.
 - Prefer `Range` over C-style for loops: `for (auto index : Range(10))`.
 - Prefer names such as `step_index` over `i` or `j`.
+- Don't use anonymous namespaces, prefer static functions
 - Look for natural places to utilise pure functions, reducing the number of functions that mutate state.
 - Consider using the 'options/args/context struct' pattern along with designated initialiser syntax instead of lots of function arguments.
-- Liberally use ASSERT macros (or ASSERT_HOT if the codepath is known to be hot).
 
 # Github Issues
 We extensively use Github issues to track work. Use `gh` to query and manage issues. Our issues often include lots of details and design.
