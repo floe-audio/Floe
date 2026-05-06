@@ -43,6 +43,7 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
                                 },
                             });
 
+    // State
     if (MenuItem(g.builder,
                  root,
                  {
@@ -51,36 +52,6 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
                  })
             .button_fired) {
         SetToDefaultState(g.engine);
-    }
-
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Reset Audio Engine",
-                     .tooltip = "Stops all audio and clears all playing notes"_s,
-                 })
-            .button_fired) {
-        ResetAudioProcessing(g.engine.processor);
-    }
-
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "MIDI CC Assignments",
-                     .tooltip = "View and manage all MIDI CC-to-parameter assignments"_s,
-                 })
-            .button_fired) {
-        g.imgui.OpenModalViewport(g.midi_cc_panel_state.k_panel_id);
-    }
-
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Instance Config",
-                     .tooltip = "Configure per-instance settings such as randomisation behaviour"_s,
-                 })
-            .button_fired) {
-        g.imgui.OpenModalViewport(g.instance_config_panel_state.k_panel_id);
     }
 
     if (MenuItem(g.builder,
@@ -120,16 +91,47 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
         }
     }
 
-    if (MenuItem(
-            g.builder,
-            root,
-            {
-                .text = "Legacy Parameters",
-                .tooltip =
-                    "Open the legacy parameters window to edit parameters that are not shown in the main UI"_s,
-            })
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Panic (Stop All Sound)",
+                     .tooltip = "Stops all audio and clears all playing notes"_s,
+                 })
             .button_fired) {
-        g.imgui.OpenModalViewport(k_legacy_params_panel_id);
+        ResetAudioProcessing(g.engine.processor);
+    }
+
+    MenuDivider(g.builder, root);
+
+    // Windows
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Info",
+                     .tooltip = "Open the info window"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.info_panel_state.k_panel_id);
+    }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "MIDI CC Assignments",
+                     .tooltip = "View and manage all MIDI CC-to-parameter assignments"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.midi_cc_panel_state.k_panel_id);
+    }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Instance Config",
+                     .tooltip = "Configure per-instance settings such as randomisation behaviour"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.instance_config_panel_state.k_panel_id);
     }
 
     if (MenuItem(g.builder,
@@ -140,6 +142,21 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
                  })
             .button_fired) {
         g.imgui.OpenModalViewport(g.feedback_panel_state.k_panel_id);
+    }
+
+    MenuDivider(g.builder, root);
+
+    // Advanced
+    if (MenuItem(
+            g.builder,
+            root,
+            {
+                .text = "Legacy Parameters",
+                .tooltip =
+                    "Open the legacy parameters window to edit parameters that are not shown in the main UI"_s,
+            })
+            .button_fired) {
+        g.imgui.OpenModalViewport(k_legacy_params_panel_id);
     }
 
     if (MenuItem(g.builder,
@@ -163,6 +180,8 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
             g.shared_engine_systems.AddMirageFoldersIfNeeded();
         }
     }
+
+    MenuDivider(g.builder, root);
 
     if (MenuItem(g.builder,
                  root,
@@ -504,24 +523,6 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         if (redo_button.button_fired && can_redo) Redo(g.engine);
     }
 
-    {
-        auto const info_button =
-            do_icon_button(right_icon_buttons_container, ICON_FA_CIRCLE_INFO, "Open info window"_s, 0.9f, 5);
-        if (info_button.button_fired) g.imgui.OpenModalViewport(g.info_panel_state.k_panel_id);
-
-        if (g.show_new_version_indicator) {
-            DoBox(builder,
-                  {
-                      .parent = info_button,
-                      .background_fill_colours = Col {.c = Col::Red},
-                      .background_shape = BackgroundShape::Circle,
-                      .layout {
-                          .size = 7,
-                      },
-                  });
-        }
-    }
-
     // attribution
     if (g.engine.attribution_requirements.formatted_text.size) {
         auto const attribution_button = do_icon_button(right_icon_buttons_container,
@@ -540,6 +541,18 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                                 "Additional functions and information"_s,
                                                 1.0f,
                                                 6);
+        if (g.show_new_version_indicator) {
+            DoBox(builder,
+                  {
+                      .parent = dots_button,
+                      .background_fill_colours = Col {.c = Col::Red},
+                      .background_shape = BackgroundShape::Circle,
+                      .layout {
+                          .size = 7,
+                      },
+                  });
+        }
+
         auto const popup_id = builder.imgui.MakeId("DotsMenu");
         if (dots_button.button_fired) builder.imgui.OpenPopupMenu(popup_id, dots_button.imgui_id);
 
