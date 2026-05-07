@@ -497,8 +497,6 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         if (redo_button.button_fired && can_redo) Redo(g.engine);
     }
 
-    DoPinnedViewToggle(g, right_icon_buttons_container, PinnedViewToggleStyle::Compact);
-
     // attribution
     if (g.engine.attribution_requirements.formatted_text.size) {
         auto const attribution_button = do_icon_button(right_icon_buttons_container,

@@ -8,30 +8,17 @@
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 
-void DoPinnedViewToggle(GuiState& g, Box parent, PinnedViewToggleStyle style) {
+void DoPinnedViewToggle(GuiState& g, Box parent) {
     auto const viewing_pinned = ViewingPinnedSnapshot(g.engine);
     auto const modified = StateModifiedFromPinned(g.engine);
     auto const has_comparison = viewing_pinned || modified;
     auto const original_selected = viewing_pinned || !modified;
 
-    auto const [left_label, right_label, segment_width, height, font_size_scale] = ({
-        struct {
-            String left_label;
-            String right_label;
-            f32 segment_width;
-            f32 height;
-            f32 font_size_scale;
-        } v;
-        switch (style) {
-            case PinnedViewToggleStyle::Labeled:
-                v = {"Original"_s, "Modified"_s, 70.0f, k_mid_button_height, 1.0f};
-                break;
-            case PinnedViewToggleStyle::Compact:
-                v = {"A"_s, "B"_s, 16.0f, k_mid_button_height * 0.85f, 0.85f};
-                break;
-        }
-        v;
-    });
+    auto const left_label = "Original"_s;
+    auto const right_label = "Modified"_s;
+    auto const segment_width = 70.0f;
+    auto const height = k_mid_button_height;
+    auto const font_size_scale = 1.0f;
 
     constexpr f32 k_track_padding = 2;
     auto const scale = [&](u32 a) { return (u8)((a * (has_comparison ? 255u : 95u)) / 255u); };
