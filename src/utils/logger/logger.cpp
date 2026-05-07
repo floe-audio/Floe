@@ -273,7 +273,7 @@ LogToStderr(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void
     auto _ = WriteLogLine(buffered_writer.Writer(), module_name, level, write_message, k_config);
 }
 
-static bool
+[[maybe_unused]] static bool
 LogToFile(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message) {
     CallOnce(g_call_once_flag, []() {
         ASSERT(g_file == nullptr);
