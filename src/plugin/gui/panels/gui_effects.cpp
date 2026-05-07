@@ -1458,8 +1458,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
         auto const rand_btn = DoMidPanelIconButton(
             builder,
             tab_extra_buttons_box,
-            {.icon = MidPanelIcon::Shuffle,
-             .tooltip = "Randomise which effects are visible and active"_s});
+            {.icon = MidPanelIcon::Shuffle, .tooltip = "Randomise which effects are visible and active"_s});
 
         if (rand_btn.button_fired) {
             BeginUndoableStep(g.engine, "Randomise effects"_s);

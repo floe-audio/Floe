@@ -573,8 +573,7 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
             animation_items[i].progress += dt / animation_items[i].duration;
             if (animation_items[i].progress >= 1.0f) dyn::RemoveSwapLast(animation_items, i);
         }
-        if (animation_items.size)
-            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+        if (animation_items.size) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
     }
 
     tab_just_used_to_focus = false;
