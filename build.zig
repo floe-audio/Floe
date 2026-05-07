@@ -1592,6 +1592,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "engine/engine.cpp",
             "engine/favourite_items.cpp",
             "engine/package_installation.cpp",
+            "engine/random_variation.cpp",
             "engine/shared_engine_systems.cpp",
             "engine/undo.cpp",
             "gui/controls/gui_arp_step_sequencer.cpp",

@@ -10,6 +10,7 @@
 #include "common_infrastructure/state/macros.hpp"
 
 #include "engine/engine.hpp"
+#include "engine/random_variation.hpp"
 #include "gui/controls/gui_pinned_view_toggle.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_state.hpp"

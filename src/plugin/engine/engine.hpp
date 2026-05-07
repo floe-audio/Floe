@@ -133,7 +133,16 @@ void LoadInstruments(Engine& engine,
                      Array<Optional<sample_lib::InstrumentId>, k_num_layers> const& new_ids,
                      String undo_name);
 
-void LoadRandomVariation(Engine& engine, f32 amount);
+struct LoadStateOptions {
+    StateSource source;
+    String preset_path = ""_s;
+    bool update_pinned_snapshot = true;
+};
+
+// Load a state snapshot into the engine. May be synchronous or async (kicks off sample-library
+// requests and completes in CompletePendingStateLoad) depending on whether the snapshot
+// references samples or IRs that need to be loaded.
+void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts);
 
 String IrName(Engine const& engine);
 
