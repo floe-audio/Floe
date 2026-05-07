@@ -129,6 +129,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
     {
         auto name = snapshot.state.extras.display_name;
         if (name.size) {
+            if (StateModifiedFromPinned(g.engine)) dyn::AppendSpan(name, " (modified)");
             DoBox(builder,
                   {
                       .parent = container,
@@ -479,9 +480,8 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
             {
                 .icon = MidPanelIcon::Shuffle,
                 .tooltip =
-                    "Click to repeat the last variation, or click anywhere on the strip to load random instruments. "
-                    "The strip blends three scopes by probability: left favours the same folder, middle the same library, right anywhere. "
-                    "Each layer rolls independently, so intermediate positions mix scopes."_s,
+                    "Click to load a new random variation using the same randomness as last time.\n\n"
+                    "Or, click anywhere on the strip to load a variation: further right means a more varied result, further left stays closer to the current preset."_s,
                 .greyed_out = !any_active,
             });
         if (vary_btn.button_fired) trigger_random_variation(g.mid_panel_state.last_random_variation_amount);
@@ -518,32 +518,26 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                                  k_corner_rounding * 0.7f);
             }
 
-            // Waveform-density visualisation: orderly bars on the left scatter into
-            // taller, jittery bars on the right — "similar" → "wildcard".
             {
-                constexpr int k_n_bars = 50;
-                constexpr auto k_noise = [] {
-                    Array<f32, k_n_bars> arr {};
-                    u32 s = 0xC0FFEEu;
-                    for (auto& v : arr) {
-                        s = (s * 1664525u) + 1013904223u;
-                        v = (((f32)(s >> 8) / (f32)(1u << 24)) * 2.0f) - 1.0f;
-                    }
-                    return arr;
-                }();
-                f32 const inset = wr.w * (14.0f / 660.0f);
-                f32 const span = wr.w - 2 * inset;
+                f32 const spacing = WwToPixels(5.0f);
+                f32 const inset_x = wr.w * (14.0f / 660.0f);
+                f32 const x_start = Round(wr.x + inset_x);
+                f32 const x_end = wr.x + wr.w - inset_x;
+                int const n_cols = Max(1, (int)((x_end - x_start) / spacing));
+                int const n_rows = Max(1, (int)((wr.h - spacing) / spacing));
                 f32 const cy = wr.y + wr.h * 0.5f;
-                f32 const max_h = wr.h - 4.0f;
-                for (auto const i : Range<usize>(k_n_bars)) {
-                    f32 const frac = (f32)i / (f32)(k_n_bars - 1);
-                    f32 const x = wr.x + inset + frac * span;
-                    f32 const base_h = (max_h * 0.2f) + frac * (max_h * 0.45f);
-                    f32 const chaos = frac * frac;
-                    f32 const h = Clamp(base_h + k_noise[i] * chaos * (max_h * 0.55f), max_h * 0.1f, max_h);
-                    u8 const alpha = (u8)Clamp(46.0f + frac * 132.0f, 0.0f, 255.0f);
-                    u32 const col = ToU32(Col {.c = Col::White, .alpha = alpha});
-                    g.imgui.draw_list->AddLine({x, cy - h * 0.5f}, {x, cy + h * 0.5f}, col, 2.0f);
+                f32 const grid_h = (f32)(n_rows - 1) * spacing;
+                f32 const y0 = Round(cy - grid_h * 0.5f);
+                f32 const x_step = (x_end - x_start) / (f32)Max(1, n_cols - 1);
+                for (auto const col_idx : Range(n_cols)) {
+                    f32 const x = Round(x_start + (f32)col_idx * x_step);
+                    f32 const frac = n_cols == 1 ? 1.0f : (f32)col_idx / (f32)(n_cols - 1);
+                    u8 const alpha = (u8)Clamp(8.0f + frac * 36.0f, 0.0f, 255.0f);
+                    u32 const dot_col = ToU32(Col {.c = Col::White, .alpha = alpha});
+                    for (auto const row_idx : Range(n_rows)) {
+                        f32 const y = y0 + (f32)row_idx * spacing;
+                        g.imgui.draw_list->AddRectFilled(f32x2 {x, y}, f32x2 {x + 1.0f, y + 1.0f}, dot_col);
+                    }
                 }
             }
 
@@ -566,11 +560,16 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 
                 int const pct = (int)(t_hover * 100.0f);
                 String word;
-                if (pct <= 20) word = "small variation"_s;
-                else if (pct <= 40) word = "medium variation"_s;
-                else if (pct <= 60) word = "large variation"_s;
-                else if (pct <= 80) word = "huge variation"_s;
-                else word = "extreme variation"_s;
+                if (pct <= 20)
+                    word = "small variation"_s;
+                else if (pct <= 40)
+                    word = "medium variation"_s;
+                else if (pct <= 60)
+                    word = "large variation"_s;
+                else if (pct <= 80)
+                    word = "huge variation"_s;
+                else
+                    word = "extreme variation"_s;
                 hover_label = fmt::Format(g.scratch_arena, "{}% — {}", pct, word);
             }
         }
