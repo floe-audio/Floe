@@ -532,9 +532,50 @@ bool Context::WasJustUnhovered(Id id) const {
     return !IsHovered(id) && hovered_item_last_frame == hovered_item;
 }
 
+void Context::StartAnimation(Id id, f32 initial, f32 duration_seconds, bool restart) {
+    for (auto& item : animation_items) {
+        if (item.id == id) {
+            item.initial = restart ? initial : item.prev;
+            item.prev = item.initial;
+            item.duration = duration_seconds;
+            item.progress = 0;
+            return;
+        }
+    }
+    dyn::Append(animation_items,
+                AnimationItem {
+                    .id = id,
+                    .progress = 0,
+                    .duration = duration_seconds,
+                    .initial = initial,
+                    .prev = initial,
+                });
+}
+
+f32 Context::GetAnimatedValue(Id id, f32 target) {
+    for (auto& item : animation_items) {
+        if (item.id == id) {
+            f32 const p = 1.0f - ((1.0f - item.progress) * (1.0f - item.progress));
+            item.prev = item.initial + (p * (target - item.initial));
+            return item.prev;
+        }
+    }
+    return target;
+}
+
 void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     ASSERT_EQ(viewport_stack.size, 0u);
     ASSERT_EQ(current_popup_stack.size, 0u);
+
+    {
+        f32 const dt = GuiIo().in.delta_time;
+        for (usize i = animation_items.size; i-- > 0;) {
+            animation_items[i].progress += dt / animation_items[i].duration;
+            if (animation_items[i].progress >= 1.0f) dyn::RemoveSwapLast(animation_items, i);
+        }
+        if (animation_items.size)
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+    }
 
     tab_just_used_to_focus = false;
     viewport_just_created = nullptr;

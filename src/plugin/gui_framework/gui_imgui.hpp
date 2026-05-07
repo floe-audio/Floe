@@ -706,6 +706,17 @@ struct Context {
     void PopScissorStack();
 
     //
+    // Animations
+    //
+    // Tween a value toward a target over time, keyed by Id. Based on
+    // https://rxi.github.io/a_simple_ui_animation_system.html
+
+    // By default, restarting an in-flight animation continues from its current animated value (good for
+    // state transitions). Pass restart = true for one-shot effects that should snap back to `initial`.
+    void StartAnimation(Id id, f32 initial, f32 duration_seconds, bool restart = false);
+    f32 GetAnimatedValue(Id id, f32 target);
+
+    //
     //
     //
 
@@ -828,6 +839,16 @@ struct Context {
     bool temp_keyboard_focus_item_is_popup = false;
 
     DynamicArray<Id> id_stack {Malloc::Instance()};
+
+    struct AnimationItem {
+        Id id;
+        f32 progress;
+        f32 duration;
+        f32 initial;
+        f32 prev;
+    };
+    static constexpr usize k_max_animation_items = 32;
+    DynamicArrayBounded<AnimationItem, k_max_animation_items> animation_items {};
 };
 
 } // namespace imgui
