@@ -45,6 +45,73 @@ static void VarySubsetOfParams(u64& seed,
     }
 }
 
+// Toggles the on-state of a few effects (count rises with amount). For each effect that ends
+// up newly enabled, every inner param is reseeded to a fresh random value so the effect lands
+// somewhere unexpected rather than reusing whatever was set previously.
+static void VaryEffects(u64& seed, StateSnapshot const& source, StateSnapshot& target, f32 amount) {
+    auto const num_to_vary = (u32)Round(amount * 4.0f);
+    if (num_to_vary == 0) return;
+
+    DynamicArrayBounded<EffectType, k_num_effect_types> shuffled {};
+    for (auto const i : Range<u32>(k_num_effect_types))
+        dyn::Append(shuffled, (EffectType)i);
+    for (auto const i : Range(num_to_vary)) {
+        auto const swap_idx = RandomIntInRange<usize>(seed, i, shuffled.size - 1);
+        Swap(shuffled[i], shuffled[swap_idx]);
+    }
+
+    for (auto const i : Range(num_to_vary)) {
+        auto const effect_type = shuffled[i];
+        auto const& info = k_effect_info[ToInt(effect_type)];
+        auto const on_idx = ToInt(info.on_param_index);
+        bool const will_be_on = !(source.param_values[on_idx] > 0.5f);
+        target.param_values[on_idx] = will_be_on ? 1.0f : 0.0f;
+        target.fx_visible.SetToValue(ToInt(effect_type), will_be_on);
+        if (!will_be_on) continue;
+
+        auto const module = EffectTypeToParameterModule(effect_type);
+        for (auto const& desc : k_param_descriptors) {
+            if (desc.module_parts[0] != ParameterModule::Effect) continue;
+            if (desc.module_parts[1] != module) continue;
+            if (desc.flags.legacy) continue;
+            if (desc.index == info.on_param_index) continue;
+            if (desc.index == info.mix_param_index) continue;
+
+            auto const idx = ToInt(desc.index);
+
+            // Output/makeup gains: keep at default so newly-enabled effects don't suddenly
+            // bring the patch up or down in level.
+            bool const keep_default = desc.index == ParamIndex::CompressorGain ||
+                                      desc.index == ParamIndex::ChorusOutput ||
+                                      desc.index == ParamIndex::ConvolutionReverbOutput ||
+                                      desc.index == ParamIndex::BitCrushOutput;
+            if (keep_default) {
+                target.param_values[idx] = desc.default_linear_value;
+                continue;
+            }
+
+            auto range = desc.linear_range;
+            // Filter/EQ gains span ±30 dB; constrain so randomization can't produce huge
+            // boosts or cuts even at amount=1.
+            bool const is_risky_gain = desc.index == ParamIndex::FilterGain ||
+                                       desc.index == ParamIndex::EqGain1 ||
+                                       desc.index == ParamIndex::EqGain2 ||
+                                       desc.index == ParamIndex::EqGain3;
+            if (is_risky_gain) {
+                range.min = Max(range.min, -0.4f);
+                range.max = Min(range.max, 0.4f);
+            }
+            // Sample a band around the default that grows with amount. Sampling within an
+            // already-narrowed band (rather than sampling the full range and clamping)
+            // avoids the bunching at min/max that clamping produces.
+            auto const d = Clamp(desc.default_linear_value, range.min, range.max);
+            auto const lo = d + ((range.min - d) * amount);
+            auto const hi = d + ((range.max - d) * amount);
+            target.param_values[idx] = RandomFloatInRange<f32>(seed, lo, hi);
+        }
+    }
+}
+
 // Distance from origin instrument to candidate. Lower = more similar. Negative = exclude.
 // The metric is intentionally extensible: future signals (timbral features, etc.) can subtract
 // from the base distance to bring otherwise-far instruments closer.
@@ -84,6 +151,26 @@ static f32 DistanceWeight(f32 distance, f32 amount) {
     constexpr f32 k_falloff_exponent = 2.0f;
     auto const overshoot = Max(0.0f, distance - amount);
     return Pow(Max(0.0f, 1.0f - overshoot), k_falloff_exponent);
+}
+
+// Picks an instrument uniformly across all libraries. Used when there's no origin to
+// measure distance from (e.g. blank state with nothing pinned).
+static Optional<sample_lib::InstrumentId> PickAnyInstrument(u64& seed,
+                                                            sample_lib_server::LibrariesSpan libraries) {
+    usize total = 0;
+    for (auto const& lib : libraries)
+        total += lib->sorted_instruments.size;
+    if (total == 0) return k_nullopt;
+
+    auto pick = RandomIntInRange<usize>(seed, 0, total - 1);
+    for (auto const& lib : libraries) {
+        if (pick < lib->sorted_instruments.size) {
+            auto const* inst = lib->sorted_instruments[pick];
+            return sample_lib::InstrumentId {.library = inst->library.id, .inst_id = inst->id};
+        }
+        pick -= lib->sorted_instruments.size;
+    }
+    return k_nullopt;
 }
 
 // Picks an instrument by (1) computing per-candidate distance, (2) grouping by distance level
@@ -181,25 +268,49 @@ void LoadRandomVariation(Engine& engine, f32 amount) {
             ++pinned_sampler_count;
         }
 
-    // Decide which sampler slots will be present after variation. WaveformSynth layers are
-    // preserved as-is. Add/remove probabilities are asymmetric: removing a layer is much
-    // rarer than adding one, so wilder variations still occasionally drop instruments but
-    // don't tend to collapse to a single sampler.
-    Array<bool, k_num_layers> will_have_sampler = pinned_was_sampler;
-    // Softer ease-in than EaseInQuad so adding new layers is a touch more likely in the
-    // mid-amount range, while still tapering toward zero at the bottom.
-    auto const add_probability = Pow(amount, 1.5f) * 0.5f;
-    auto const remove_probability = EaseInQuad(amount) * 0.25f;
-    for (auto const layer_index : Range(k_num_layers)) {
-        if (pinned.inst_ids[layer_index].tag == InstrumentType::WaveformSynth) continue;
-        auto const toggle_probability =
-            pinned_was_sampler[layer_index] ? remove_probability : add_probability;
-        if (RandomFloatInRange<f32>(seed, 0, 1) < toggle_probability)
-            will_have_sampler[layer_index] = !will_have_sampler[layer_index];
-    }
+    // Blank state (nothing pinned to vary from): seed one layer with a uniformly-random
+    // instrument, then derive any additional layers from it via the usual distance-based
+    // pick. Without this branch, every layer would skip for lack of an origin.
+    if (pinned_sampler_count == 0) {
+        DynamicArrayBounded<u32, k_num_layers> eligible_layers {};
+        for (auto const layer_index : Range<u32>(k_num_layers))
+            if (pinned.inst_ids[layer_index].tag != InstrumentType::WaveformSynth)
+                dyn::Append(eligible_layers, layer_index);
 
-    // Guarantee at least one sampler remains if the pinned state had any.
-    if (pinned_sampler_count != 0) {
+        if (eligible_layers.size != 0) {
+            if (auto const seed_inst = PickAnyInstrument(seed, libraries)) {
+                snapshot.inst_ids[eligible_layers[0]] = *seed_inst;
+                auto const populate_probability = 0.4f + (0.4f * amount);
+                for (auto const i : Range<usize>(1, eligible_layers.size)) {
+                    if (RandomFloatInRange<f32>(seed, 0, 1) >= populate_probability) continue;
+                    if (auto const new_id =
+                            PickRandomInstrument(seed, scratch_arena, libraries, *seed_inst, amount))
+                        snapshot.inst_ids[eligible_layers[i]] = *new_id;
+                }
+            }
+        }
+
+        // Octave shifts on populated layers still apply below; macros/fx subsets are
+        // no-ops since nothing was pinned to perturb.
+    } else {
+        // Decide which sampler slots will be present after variation. WaveformSynth layers
+        // are preserved as-is. Add/remove probabilities are asymmetric: removing a layer is
+        // much rarer than adding one, so wilder variations still occasionally drop
+        // instruments but don't tend to collapse to a single sampler.
+        Array<bool, k_num_layers> will_have_sampler = pinned_was_sampler;
+        // Softer ease-in than EaseInQuad so adding new layers is a touch more likely in the
+        // mid-amount range, while still tapering toward zero at the bottom.
+        auto const add_probability = Pow(amount, 1.5f) * 0.5f;
+        auto const remove_probability = EaseInQuad(amount) * 0.25f;
+        for (auto const layer_index : Range(k_num_layers)) {
+            if (pinned.inst_ids[layer_index].tag == InstrumentType::WaveformSynth) continue;
+            auto const toggle_probability =
+                pinned_was_sampler[layer_index] ? remove_probability : add_probability;
+            if (RandomFloatInRange<f32>(seed, 0, 1) < toggle_probability)
+                will_have_sampler[layer_index] = !will_have_sampler[layer_index];
+        }
+
+        // Guarantee at least one sampler remains.
         bool any_will = false;
         for (auto const v : will_have_sampler)
             if (v) any_will = true;
@@ -210,41 +321,41 @@ void LoadRandomVariation(Engine& engine, f32 amount) {
             auto const pick = RandomIntInRange<usize>(seed, 0, restorable_layers.size - 1);
             will_have_sampler[restorable_layers[pick]] = true;
         }
-    }
 
-    // Reference instrument for layers being newly populated (no pinned id of their own).
-    sample_lib::InstrumentId const* reference_id = nullptr;
-    for (auto const layer_index : Range(k_num_layers))
-        if (auto const* id = pinned.inst_ids[layer_index].TryGet<sample_lib::InstrumentId>()) {
-            reference_id = id;
-            break;
+        // Reference instrument for layers being newly populated (no pinned id of their own).
+        sample_lib::InstrumentId const* reference_id = nullptr;
+        for (auto const layer_index : Range(k_num_layers))
+            if (auto const* id = pinned.inst_ids[layer_index].TryGet<sample_lib::InstrumentId>()) {
+                reference_id = id;
+                break;
+            }
+
+        for (auto const layer_index : Range(k_num_layers)) {
+            auto const& pinned_id = pinned.inst_ids[layer_index];
+            if (pinned_id.tag == InstrumentType::WaveformSynth) continue;
+
+            if (!will_have_sampler[layer_index]) {
+                snapshot.inst_ids[layer_index] = InstrumentType::None;
+                continue;
+            }
+
+            auto const* pinned_sampler = pinned_id.TryGet<sample_lib::InstrumentId>();
+
+            // When multiple sampler slots are populated, occasionally leave one untouched
+            // so variations don't always replace every instrument. Probability falls off
+            // with amount so wilder variations are still likely to swap everything out.
+            if (pinned_sampler && pinned_sampler_count >= 2) {
+                auto const keep_probability = (1.0f - amount) * 0.5f;
+                if (RandomFloatInRange<f32>(seed, 0, 1) < keep_probability) continue;
+            }
+
+            auto const* origin = pinned_sampler ? pinned_sampler : reference_id;
+            if (!origin) continue;
+            if (auto const new_id = PickRandomInstrument(seed, scratch_arena, libraries, *origin, amount))
+                snapshot.inst_ids[layer_index] = *new_id;
+            else if (!pinned_sampler)
+                snapshot.inst_ids[layer_index] = InstrumentType::None;
         }
-
-    for (auto const layer_index : Range(k_num_layers)) {
-        auto const& pinned_id = pinned.inst_ids[layer_index];
-        if (pinned_id.tag == InstrumentType::WaveformSynth) continue;
-
-        if (!will_have_sampler[layer_index]) {
-            snapshot.inst_ids[layer_index] = InstrumentType::None;
-            continue;
-        }
-
-        auto const* pinned_sampler = pinned_id.TryGet<sample_lib::InstrumentId>();
-
-        // When multiple sampler slots are populated, occasionally leave one untouched so
-        // variations don't always replace every instrument. Probability falls off with
-        // amount so wilder variations are still likely to swap everything out.
-        if (pinned_sampler && pinned_sampler_count >= 2) {
-            auto const keep_probability = (1.0f - amount) * 0.5f;
-            if (RandomFloatInRange<f32>(seed, 0, 1) < keep_probability) continue;
-        }
-
-        auto const* origin = pinned_sampler ? pinned_sampler : reference_id;
-        if (!origin) continue;
-        if (auto const new_id = PickRandomInstrument(seed, scratch_arena, libraries, *origin, amount))
-            snapshot.inst_ids[layer_index] = *new_id;
-        else if (!pinned_sampler)
-            snapshot.inst_ids[layer_index] = InstrumentType::None;
     }
 
     // Ease-out curve so subset variations ramp up faster across the lower-mid range.
@@ -261,6 +372,8 @@ void LoadRandomVariation(Engine& engine, f32 amount) {
         if (pinned.param_values[ToInt(info.on_param_index)] > 0.5f)
             dyn::Append(active_fx_mix, info.mix_param_index);
     VarySubsetOfParams(seed, pinned, snapshot, active_fx_mix, subset_curve);
+
+    VaryEffects(seed, pinned, snapshot, amount);
 
     // Octave shift: small chance per active layer to transpose by ±12 or ±24 semitones.
     // Stays a flavour rather than the rule, so probability rises only mildly with amount.

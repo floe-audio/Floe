@@ -43,24 +43,6 @@ struct FXColours {
     UiColMap button;
 };
 
-static ParameterModule EffectTypeToParameterModule(EffectType type) {
-    switch (type) {
-        case EffectType::Distortion: return ParameterModule::Distortion;
-        case EffectType::BitCrush: return ParameterModule::Bitcrush;
-        case EffectType::Compressor: return ParameterModule::Compressor;
-        case EffectType::FilterEffect: return ParameterModule::Filter;
-        case EffectType::StereoWiden: return ParameterModule::StereoWiden;
-        case EffectType::Chorus: return ParameterModule::Chorus;
-        case EffectType::Reverb: return ParameterModule::Reverb;
-        case EffectType::Delay: return ParameterModule::Delay;
-        case EffectType::ConvolutionReverb: return ParameterModule::ConvolutionReverb;
-        case EffectType::Phaser: return ParameterModule::Phaser;
-        case EffectType::Eq: return ParameterModule::Eq;
-        case EffectType::Count: PanicIfReached();
-    }
-    return {};
-}
-
 static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window_r, EffectType type) {
     auto const right_click_id = g.imgui.MakeId(SourceLocationHash() + ToInt(type));
     auto const name = k_effect_info[ToInt(type)].name;
