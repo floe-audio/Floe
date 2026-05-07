@@ -305,6 +305,21 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
         if (preset_box_left.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
 
+        DoRightClickMenu(g, preset_box_left, builder.imgui.MakeId("PresetRClick"), [&](Box root) {
+            if (MenuItem(
+                    g.builder,
+                    root,
+                    {
+                        .text = "Load Blank Preset",
+                        .tooltip =
+                            "Set all parameters to their default values, clear all instruments and IRs"_s,
+                        .no_icon_gap = true,
+                    })
+                    .button_fired) {
+                SetToDefaultState(g.engine);
+            }
+        });
+
         DoBox(builder,
               {
                   .parent = preset_box_left,
