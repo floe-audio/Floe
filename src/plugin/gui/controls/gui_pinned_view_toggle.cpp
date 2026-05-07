@@ -37,7 +37,7 @@ void DoPinnedViewToggle(GuiState& g, Box parent) {
                   .round_background_corners = 0b1111,
                   .corner_rounding = k_corner_rounding,
                   .layout {
-                      .size = {segment_width * 2 + k_track_padding * 2, height},
+                      .size = {(segment_width * 2) + (k_track_padding * 2), height},
                       .contents_padding = {.lr = k_track_padding, .tb = k_track_padding},
                       .contents_direction = layout::Direction::Row,
                   },

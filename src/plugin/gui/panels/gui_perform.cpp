@@ -510,10 +510,10 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                 f32 const half_inset = (wr.h - 2.0f) * 0.5f;
                 f32 const fx =
                     Clamp(g.mid_panel_state.last_strip_fire_x, wr.x + half_inset, wr.x + wr.w - half_inset);
-                u8 const alpha = (u8)(flash * 70.0f);
+                auto const alpha = (u8)(flash * 70.0f);
                 u32 const col = ToU32(Col {.c = Col::White, .alpha = alpha});
-                g.imgui.draw_list->AddRectFilled(f32x2 {fx - k_flash_w * 0.5f, wr.y},
-                                                 f32x2 {fx + k_flash_w * 0.5f, wr.y + wr.h},
+                g.imgui.draw_list->AddRectFilled(f32x2 {fx - (k_flash_w * 0.5f), wr.y},
+                                                 f32x2 {fx + (k_flash_w * 0.5f), wr.y + wr.h},
                                                  col,
                                                  k_corner_rounding * 0.7f);
             }
@@ -525,17 +525,17 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                 f32 const x_end = wr.x + wr.w - inset_x;
                 int const n_cols = Max(1, (int)((x_end - x_start) / spacing));
                 int const n_rows = Max(1, (int)((wr.h - spacing) / spacing));
-                f32 const cy = wr.y + wr.h * 0.5f;
+                f32 const cy = wr.y + (wr.h * 0.5f);
                 f32 const grid_h = (f32)(n_rows - 1) * spacing;
-                f32 const y0 = Round(cy - grid_h * 0.5f);
+                f32 const y0 = Round(cy - (grid_h * 0.5f));
                 f32 const x_step = (x_end - x_start) / (f32)Max(1, n_cols - 1);
                 for (auto const col_idx : Range(n_cols)) {
-                    f32 const x = Round(x_start + (f32)col_idx * x_step);
+                    f32 const x = Round(x_start + ((f32)col_idx * x_step));
                     f32 const frac = n_cols == 1 ? 1.0f : (f32)col_idx / (f32)(n_cols - 1);
-                    u8 const alpha = (u8)Clamp(8.0f + frac * 36.0f, 0.0f, 255.0f);
+                    auto const alpha = (u8)Clamp(8.0f + (frac * 36.0f), 0.0f, 255.0f);
                     u32 const dot_col = ToU32(Col {.c = Col::White, .alpha = alpha});
                     for (auto const row_idx : Range(n_rows)) {
-                        f32 const y = y0 + (f32)row_idx * spacing;
+                        f32 const y = y0 + ((f32)row_idx * spacing);
                         g.imgui.draw_list->AddRectFilled(f32x2 {x, y}, f32x2 {x + 1.0f, y + 1.0f}, dot_col);
                     }
                 }
@@ -547,10 +547,11 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                 f32 const half_inset = (wr.h - 2.0f) * 0.5f;
                 f32 const min_x = wr.x + half_inset;
                 f32 const max_x = wr.x + wr.w - half_inset;
-                f32 const ref_x = using_last_amount ? min_x + g.mid_panel_state.last_random_variation_amount *
-                                                                  (max_x - min_x)
-                                  : strip.is_active ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
-                                                    : GuiIo().in.cursor_pos.x;
+                f32 const ref_x =
+                    using_last_amount
+                        ? min_x + (g.mid_panel_state.last_random_variation_amount * (max_x - min_x))
+                    : strip.is_active ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
+                                      : GuiIo().in.cursor_pos.x;
                 f32 const tick_x = Clamp(ref_x, min_x, max_x);
                 f32 const t_hover = Clamp((ref_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
                 bool const armed = strip.is_active || vary_btn.is_active;
@@ -558,7 +559,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                 u32 const cursor_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 220 : 170)});
                 g.imgui.draw_list->AddLine({tick_x, wr.y}, {tick_x, wr.y + wr.h}, cursor_col, 1.5f);
 
-                int const pct = (int)(t_hover * 100.0f);
+                auto const pct = (int)(t_hover * 100.0f);
                 String word;
                 if (pct <= 20)
                     word = "small variation"_s;

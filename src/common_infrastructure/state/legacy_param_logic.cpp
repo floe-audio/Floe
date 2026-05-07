@@ -473,8 +473,8 @@ void ModerniseWetDryEffect(StateSnapshot& state,
             auto const a_w_proj = dests.items[*wet_slot].ProjectedValue();
             auto const a_d_proj = dests.items[*dry_slot].ProjectedValue();
 
-            auto const wet_at_m1 = Clamp(wet_val + wet_desc.linear_range.Delta() * a_w_proj, 0.0f, 1.0f);
-            auto const dry_at_m1 = Clamp(dry_val + dry_desc.linear_range.Delta() * a_d_proj, 0.0f, 1.0f);
+            auto const wet_at_m1 = Clamp(wet_val + (wet_desc.linear_range.Delta() * a_w_proj), 0.0f, 1.0f);
+            auto const dry_at_m1 = Clamp(dry_val + (dry_desc.linear_range.Delta() * a_d_proj), 0.0f, 1.0f);
             auto const r1 = WetDryLinearToMixOutputLinear(legacy_wet,
                                                           legacy_dry,
                                                           modern_mix,
