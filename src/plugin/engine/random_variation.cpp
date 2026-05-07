@@ -81,10 +81,9 @@ static void VaryEffects(u64& seed, StateSnapshot const& source, StateSnapshot& t
 
             // Output/makeup gains: keep at default so newly-enabled effects don't suddenly
             // bring the patch up or down in level.
-            bool const keep_default = desc.index == ParamIndex::CompressorGain ||
-                                      desc.index == ParamIndex::ChorusOutput ||
-                                      desc.index == ParamIndex::ConvolutionReverbOutput ||
-                                      desc.index == ParamIndex::BitCrushOutput;
+            bool const keep_default =
+                desc.index == ParamIndex::CompressorGain || desc.index == ParamIndex::ChorusOutput ||
+                desc.index == ParamIndex::ConvolutionReverbOutput || desc.index == ParamIndex::BitCrushOutput;
             if (keep_default) {
                 target.param_values[idx] = desc.default_linear_value;
                 continue;
@@ -95,8 +94,7 @@ static void VaryEffects(u64& seed, StateSnapshot const& source, StateSnapshot& t
             // boosts or cuts even at amount=1.
             bool const is_risky_gain = desc.index == ParamIndex::FilterGain ||
                                        desc.index == ParamIndex::EqGain1 ||
-                                       desc.index == ParamIndex::EqGain2 ||
-                                       desc.index == ParamIndex::EqGain3;
+                                       desc.index == ParamIndex::EqGain2 || desc.index == ParamIndex::EqGain3;
             if (is_risky_gain) {
                 range.min = Max(range.min, -0.4f);
                 range.max = Min(range.max, 0.4f);
@@ -374,6 +372,15 @@ void LoadRandomVariation(Engine& engine, f32 amount) {
     VarySubsetOfParams(seed, pinned, snapshot, active_fx_mix, subset_curve);
 
     VaryEffects(seed, pinned, snapshot, amount);
+
+    for (auto const macro_index : Range(k_num_macros)) {
+        auto& destinations = snapshot.macro_destinations[macro_index];
+        for (usize i = destinations.Size(); i-- != 0;) {
+            auto const param_index = *destinations.items[i].param_index;
+            if (!IsParamCurrentlyRelevant(param_index, snapshot.param_values)) destinations.RemoveAt(i);
+        }
+        if (destinations.Size() == 0) snapshot.macro_names[macro_index] = DefaultMacroNames()[macro_index];
+    }
 
     // Octave shift: small chance per active layer to transpose by ±12 or ±24 semitones.
     // Stays a flavour rather than the rule, so probability rises only mildly with amount.

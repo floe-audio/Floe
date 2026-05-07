@@ -3700,3 +3700,5 @@ using LegacyParam = TaggedUnion<ParamExistance,
 
 Optional<LegacyParam> ParamFromLegacyId(String id);
 Optional<DynamicArrayBounded<char, 64>> ParamToLegacyId(LegacyParam index);
+
+bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_parameters> linear_param_values);
