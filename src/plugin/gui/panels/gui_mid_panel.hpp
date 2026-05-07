@@ -18,6 +18,7 @@ enum class MidPanelTab : u8 {
 struct MidPanelState {
     MidPanelTab tab = MidPanelTab::Perform;
     f32 last_random_variation_amount = 0;
+    f32 last_strip_fire_x = 0;
 };
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);

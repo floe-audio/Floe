@@ -412,24 +412,55 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                        .border_edges = 0b0100, // top
                                        .layout {
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_padding = {.lr = 10, .tb = 10},
-                                           .contents_gap = 6,
+                                           .contents_padding = {.lr = 10},
+                                           .contents_gap = 10,
                                            .contents_direction = layout::Direction::Row,
-                                           .contents_align = layout::Alignment::Middle,
+                                           .contents_align = layout::Alignment::Start,
                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                        },
                                    });
 
     {
+        auto const vary_section = DoBox(builder,
+                                        {
+                                            .parent = utility_row,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_padding = {.tb = 10},
+                                                .contents_gap = 4,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+
+        auto const header_row = DoBox(builder,
+                                      {
+                                          .parent = vary_section,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_gap = 8,
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::Start,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                          },
+                                      });
+
+        DoSectionLabel(builder, header_row, "RANDOM VARIATION"_s);
+
+        auto const hover_text_box = DoBox(builder,
+                                          {
+                                              .parent = header_row,
+                                              .layout {
+                                                  .size = {layout::k_fill_parent, k_font_body_size},
+                                              },
+                                          });
+
         auto const pill = DoBox(builder,
                                 {
-                                    .parent = utility_row,
-                                    .background_fill_colours = Col {.c = Col::White, .alpha = 12},
-                                    .round_background_corners = 0b1111,
-                                    .corner_rounding = k_corner_rounding,
+                                    .parent = vary_section,
                                     .layout {
-                                        .size = {layout::k_hug_contents, k_mid_button_height},
-                                        .contents_padding = {.l = 10, .r = 4},
+                                        .size = {layout::k_fill_parent, k_mid_button_height},
                                         .contents_gap = 6,
                                         .contents_direction = layout::Direction::Row,
                                         .contents_align = layout::Alignment::Start,
@@ -442,116 +473,119 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
             g.mid_panel_state.last_random_variation_amount = t;
         };
 
-        auto const vary_btn = DoBox(
+        auto const vary_btn = DoMidPanelIconButton(
             builder,
+            pill,
             {
-                .parent = pill,
-                .id_extra = 0,
-                .text = "Vary"_s,
-                .size_from_text = true,
-                .font = FontType::Body,
-                .text_colours =
-                    ColSet {
-                        .base = Col {.c = Col::White, .alpha = (u8)(any_active ? 200 : 110)},
-                        .hot = Col {.c = Col::White, .alpha = 240},
-                        .active = Col {.c = Col::White, .alpha = 255},
-                    },
+                .icon = MidPanelIcon::Shuffle,
                 .tooltip =
-                    TooltipString {
-                        "Click to repeat the last variation, or click anywhere on the strip to load random instruments. "
-                        "The strip blends three scopes by probability: left favours the same folder, middle the same library, right anywhere. "
-                        "Each layer rolls independently, so intermediate positions mix scopes."_s},
-                .button_behaviour = imgui::ButtonConfig {},
+                    "Click to repeat the last variation, or click anywhere on the strip to load random instruments. "
+                    "The strip blends three scopes by probability: left favours the same folder, middle the same library, right anywhere. "
+                    "Each layer rolls independently, so intermediate positions mix scopes."_s,
+                .greyed_out = !any_active,
             });
         if (vary_btn.button_fired) trigger_random_variation(g.mid_panel_state.last_random_variation_amount);
 
-        constexpr f32 k_strip_w = 130;
         auto const strip = DoBox(builder,
                                  {
                                      .parent = pill,
                                      .id_extra = 1,
-                                     .background_fill_colours =
-                                         ColSet {
-                                             .base = Col {.c = Col::White, .alpha = 8},
-                                             .hot = Col {.c = Col::White, .alpha = 14},
-                                             .active = Col {.c = Col::White, .alpha = 22},
-                                         },
+                                     .background_fill_colours = Col {.c = Col::White, .alpha = 12},
                                      .round_background_corners = 0b1111,
-                                     .corner_rounding = k_corner_rounding * 0.7f,
+                                     .corner_rounding = k_corner_rounding,
                                      .layout {
-                                         .size = {k_strip_w, layout::k_fill_parent},
-                                         .margins = {.l = 2, .r = 2, .tb = 2},
+                                         .size = {layout::k_fill_parent, layout::k_fill_parent},
                                      },
                                      .button_behaviour = imgui::ButtonConfig {},
                                  });
 
+        String hover_label = {};
+
         if (auto const r = BoxRect(builder, strip)) {
             auto const wr = g.imgui.ViewportRectToWindowRect(*r);
-            // Intensity gradient overlay: dim left → bright right.
-            u32 const col_left = ToU32(Col {.c = Col::White, .alpha = 12});
-            u32 const col_right = ToU32(Col {.c = Col::White, .alpha = 90});
-            g.imgui.draw_list->AddRectFilledMultiColor({wr.x, wr.y},
-                                                       {wr.x + wr.w, wr.y + wr.h},
-                                                       col_left,
-                                                       col_right,
-                                                       col_right,
-                                                       col_left);
 
-            // Hover/armed playhead: a die showing 1-6 pips by cursor position.
-            // While armed (mouse held), pin to the down-position so the die doesn't move.
-            // The icon centre is inset by half its width so it never overhangs the strip edges,
-            // and t is computed over the same inset range so the pip count matches what's drawn.
-            if (strip.is_hot || strip.is_active || vary_btn.is_active) {
+            f32 const flash = g.imgui.GetAnimatedValue(strip.imgui_id, 0.0f);
+            if (flash > 0.001f) {
+                constexpr f32 k_flash_w = 20;
+                f32 const half_inset = (wr.h - 2.0f) * 0.5f;
+                f32 const fx =
+                    Clamp(g.mid_panel_state.last_strip_fire_x, wr.x + half_inset, wr.x + wr.w - half_inset);
+                u8 const alpha = (u8)(flash * 70.0f);
+                u32 const col = ToU32(Col {.c = Col::White, .alpha = alpha});
+                g.imgui.draw_list->AddRectFilled(f32x2 {fx - k_flash_w * 0.5f, wr.y},
+                                                 f32x2 {fx + k_flash_w * 0.5f, wr.y + wr.h},
+                                                 col,
+                                                 k_corner_rounding * 0.7f);
+            }
+
+            // Waveform-density visualisation: orderly bars on the left scatter into
+            // taller, jittery bars on the right — "similar" → "wildcard".
+            {
+                constexpr int k_n_bars = 50;
+                constexpr auto k_noise = [] {
+                    Array<f32, k_n_bars> arr {};
+                    u32 s = 0xC0FFEEu;
+                    for (auto& v : arr) {
+                        s = (s * 1664525u) + 1013904223u;
+                        v = (((f32)(s >> 8) / (f32)(1u << 24)) * 2.0f) - 1.0f;
+                    }
+                    return arr;
+                }();
+                f32 const inset = wr.w * (14.0f / 660.0f);
+                f32 const span = wr.w - 2 * inset;
+                f32 const cy = wr.y + wr.h * 0.5f;
+                f32 const max_h = wr.h - 4.0f;
+                for (auto const i : Range<usize>(k_n_bars)) {
+                    f32 const frac = (f32)i / (f32)(k_n_bars - 1);
+                    f32 const x = wr.x + inset + frac * span;
+                    f32 const base_h = (max_h * 0.2f) + frac * (max_h * 0.45f);
+                    f32 const chaos = frac * frac;
+                    f32 const h = Clamp(base_h + k_noise[i] * chaos * (max_h * 0.55f), max_h * 0.1f, max_h);
+                    u8 const alpha = (u8)Clamp(46.0f + frac * 132.0f, 0.0f, 255.0f);
+                    u32 const col = ToU32(Col {.c = Col::White, .alpha = alpha});
+                    g.imgui.draw_list->AddLine({x, cy - h * 0.5f}, {x, cy + h * 0.5f}, col, 2.0f);
+                }
+            }
+
+            bool const using_last_amount = vary_btn.is_hot || vary_btn.is_active;
+            if (strip.is_hot || strip.is_active || using_last_amount) {
                 GuiIo().out.wants.mouse_motion_redraw = true;
-                f32 const icon_size = wr.h - 2.0f;
-                f32 const half_icon = icon_size * 0.5f;
-                f32 const min_x = wr.x + half_icon;
-                f32 const max_x = wr.x + wr.w - half_icon;
-                f32 const ref_x =
-                    vary_btn.is_active
-                        ? min_x + g.mid_panel_state.last_random_variation_amount * (max_x - min_x)
-                    : strip.is_active ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
-                                      : GuiIo().in.cursor_pos.x;
+                f32 const half_inset = (wr.h - 2.0f) * 0.5f;
+                f32 const min_x = wr.x + half_inset;
+                f32 const max_x = wr.x + wr.w - half_inset;
+                f32 const ref_x = using_last_amount ? min_x + g.mid_panel_state.last_random_variation_amount *
+                                                                  (max_x - min_x)
+                                  : strip.is_active ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
+                                                    : GuiIo().in.cursor_pos.x;
                 f32 const tick_x = Clamp(ref_x, min_x, max_x);
                 f32 const t_hover = Clamp((ref_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
                 bool const armed = strip.is_active || vary_btn.is_active;
-                static constexpr String k_dice_icons[6] {
-                    ICON_FA_DICE_ONE,
-                    ICON_FA_DICE_TWO,
-                    ICON_FA_DICE_THREE,
-                    ICON_FA_DICE_FOUR,
-                    ICON_FA_DICE_FIVE,
-                    ICON_FA_DICE_SIX,
-                };
-                int const pip_index = Clamp((int)(t_hover * 6.0f), 0, 5);
 
-                // Callout floats above the strip with a downward-pointing tip toward tick_x,
-                // so the cursor doesn't obscure the dice.
-                constexpr f32 k_callout_gap = 0;
-                constexpr f32 k_tip_h = 4;
-                constexpr f32 k_tip_w = 6;
-                f32 const tip_y = wr.y - k_callout_gap;
-                f32 const base_y = tip_y - k_tip_h;
-                Rect const callout_r {
-                    .x = tick_x - half_icon,
-                    .y = base_y - icon_size,
-                    .w = icon_size,
-                    .h = icon_size,
-                };
-                u32 const bg_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 90 : 55)});
-                g.imgui.draw_list->AddRectFilled(callout_r, bg_col, 3.0f);
-                g.imgui.draw_list->AddTriangleFilled({tick_x - k_tip_w * 0.5f, base_y},
-                                                     {tick_x + k_tip_w * 0.5f, base_y},
-                                                     {tick_x, tip_y},
-                                                     bg_col);
-                u32 const icon_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 150 : 240)});
-                builder.fonts.Push(ToInt(FontType::Icons));
+                u32 const cursor_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 220 : 170)});
+                g.imgui.draw_list->AddLine({tick_x, wr.y}, {tick_x, wr.y + wr.h}, cursor_col, 1.5f);
+
+                int const pct = (int)(t_hover * 100.0f);
+                String word;
+                if (pct <= 20) word = "small variation"_s;
+                else if (pct <= 40) word = "medium variation"_s;
+                else if (pct <= 60) word = "large variation"_s;
+                else if (pct <= 80) word = "huge variation"_s;
+                else word = "extreme variation"_s;
+                hover_label = fmt::Format(g.scratch_arena, "{}% — {}", pct, word);
+            }
+        }
+
+        if (hover_label.size) {
+            if (auto const r = BoxRect(builder, hover_text_box)) {
+                auto const wr = g.imgui.ViewportRectToWindowRect(*r);
+                builder.fonts.Push(ToInt(FontType::BodyItalic));
                 DEFER { builder.fonts.Pop(); };
-                g.imgui.draw_list->AddTextInRect(callout_r,
-                                                 icon_col,
-                                                 k_dice_icons[pip_index],
+                u32 const text_col = ToU32(Col {.c = Col::White, .alpha = 120});
+                g.imgui.draw_list->AddTextInRect(wr,
+                                                 text_col,
+                                                 hover_label,
                                                  {
-                                                     .justification = TextJustification::Centred,
+                                                     .justification = TextJustification::CentredRight,
                                                      .overflow_type = TextOverflowType::AllowOverflow,
                                                  });
             }
@@ -566,11 +600,37 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                 f32 const max_x = wr.x + wr.w - half_icon;
                 f32 const t = Clamp((press_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
                 trigger_random_variation(t);
+                g.mid_panel_state.last_strip_fire_x = press_x;
+                g.imgui.StartAnimation(strip.imgui_id, 1.0f, 0.45f, true);
             }
         }
     }
 
-    DoPinnedViewToggle(g, utility_row, PinnedViewToggleStyle::Labeled);
+    DoBox(builder,
+          {
+              .parent = utility_row,
+              .background_fill_colours = Col {.c = Col::White, .alpha = 20},
+              .layout {
+                  .size = {1, layout::k_fill_parent},
+              },
+          });
+
+    auto const compare_section = DoBox(builder,
+                                       {
+                                           .parent = utility_row,
+                                           .layout {
+                                               .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                               .contents_padding = {.tb = 10},
+                                               .contents_gap = 4,
+                                               .contents_direction = layout::Direction::Column,
+                                               .contents_align = layout::Alignment::Start,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                           },
+                                       });
+
+    DoSectionLabel(builder, compare_section, "COMPARE"_s);
+
+    DoPinnedViewToggle(g, compare_section, PinnedViewToggleStyle::Labeled);
 }
 
 static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
