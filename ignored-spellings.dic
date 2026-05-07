@@ -3,6 +3,7 @@
 
 100px
 10px
+12dB
 15px
 16px
 1rem
@@ -10,6 +11,7 @@
 20px
 20state
 20type
+24dB
 2CFloe
 2px
 2rem
@@ -41,6 +43,7 @@ ARM64
 AUv2
 Ableton
 AppData
+Arpeggiator
 Async
 Atan
 Audioata
@@ -189,6 +192,7 @@ args
 arm64
 arp
 arpeggiated
+arpeggiator
 asc
 async
 autocompletion
@@ -316,6 +320,7 @@ multisampled
 multisampling
 myname
 mypresetbank
+namespaces
 natively
 noir
 notarization
@@ -331,6 +336,7 @@ pitchbend
 pluginval
 png
 polyphonically
+polyrate
 pre
 preprocess
 preprocessor
@@ -385,6 +391,7 @@ ul
 umami
 uncheck
 unchecking
+undoable
 unencrypted
 unintuitiveness
 unlink
