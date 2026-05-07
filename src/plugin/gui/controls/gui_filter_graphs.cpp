@@ -184,12 +184,15 @@ static void DoResetParamsRightClickMenu(GuiState& g,
                              copy[i] = param_indices[i];
                          (Span<ParamIndex const>)copy;
                      })](Box root) {
-                    if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired)
+                    if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
+                        BeginUndoableStep(g.engine, "Reset filter"_s);
+                        DEFER { EndUndoableStep(g.engine); };
                         for (auto const idx : param_indices)
                             SetParameterValue(g.engine.processor,
                                               idx,
                                               k_param_descriptors[ToInt(idx)].default_linear_value,
                                               {});
+                    }
 
                     if (auto const pinned = PinnedPresetState(g.engine)) {
                         if (MenuItem(g.builder,
@@ -198,6 +201,8 @@ static void DoResetParamsRightClickMenu(GuiState& g,
                                                           "Reset Value to \"{}\" state",
                                                           pinned->extras.display_name)})
                                 .button_fired) {
+                            BeginUndoableStep(g.engine, "Reset filter"_s);
+                            DEFER { EndUndoableStep(g.engine); };
                             for (auto const idx : param_indices)
                                 SetParameterValue(g.engine.processor, idx, pinned->LinearParam(idx), {});
                         }
@@ -243,6 +248,8 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
                         ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance);
 
                     if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
+                        BeginUndoableStep(g.engine, "Reset filter"_s);
+                        DEFER { EndUndoableStep(g.engine); };
                         SetParameterValue(g.engine.processor,
                                           cutoff_idx,
                                           k_param_descriptors[ToInt(cutoff_idx)].default_linear_value,
@@ -260,6 +267,8 @@ static void DoFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::Id int
                                                           "Reset Value to \"{}\" state",
                                                           pinned->extras.display_name)})
                                 .button_fired) {
+                            BeginUndoableStep(g.engine, "Reset filter"_s);
+                            DEFER { EndUndoableStep(g.engine); };
                             SetParameterValue(g.engine.processor,
                                               cutoff_idx,
                                               pinned->LinearParam(cutoff_idx),
@@ -405,6 +414,8 @@ static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::
                     MenuDivider(g.builder, root);
 
                     if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
+                        BeginUndoableStep(g.engine, "Reset filter"_s);
+                        DEFER { EndUndoableStep(g.engine); };
                         SetParameterValue(
                             g.engine.processor,
                             ParamIndex::FilterCutoff,
@@ -429,6 +440,8 @@ static void DoEffectFilterTypeRightClickMenu(GuiState& g, Rect window_r, imgui::
                                                           "Reset Value to \"{}\" state",
                                                           pinned->extras.display_name)})
                                 .button_fired) {
+                            BeginUndoableStep(g.engine, "Reset filter"_s);
+                            DEFER { EndUndoableStep(g.engine); };
                             SetParameterValue(g.engine.processor,
                                               ParamIndex::FilterCutoff,
                                               pinned->LinearParam(ParamIndex::FilterCutoff),
@@ -1123,6 +1136,8 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
                     MenuDivider(g.builder, root);
 
                     if (MenuItem(g.builder, root, {.text = "Reset Value to Default"}).button_fired) {
+                        BeginUndoableStep(g.engine, "Reset EQ band"_s);
+                        DEFER { EndUndoableStep(g.engine); };
                         SetParameterValue(g.engine.processor,
                                           freq_index,
                                           k_param_descriptors[ToInt(freq_index)].default_linear_value,
@@ -1144,6 +1159,8 @@ DoEqBandRightClickMenu(GuiState& g, Rect window_r, imgui::Id interaction_id, EqB
                                                           "Reset Value to \"{}\" state",
                                                           pinned->extras.display_name)})
                                 .button_fired) {
+                            BeginUndoableStep(g.engine, "Reset EQ band"_s);
+                            DEFER { EndUndoableStep(g.engine); };
                             SetParameterValue(g.engine.processor,
                                               freq_index,
                                               pinned->LinearParam(freq_index),
