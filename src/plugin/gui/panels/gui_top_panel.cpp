@@ -34,7 +34,7 @@ static Optional<ImageID> LogoImage(GuiState& g) {
     return g.floe_logo_image;
 }
 
-static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
+static void DoDotsMenu(GuiState& g) {
     auto const root = DoBox(g.builder,
                             {
                                 .layout {
@@ -53,43 +53,6 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
                  })
             .button_fired) {
         SetToDefaultState(g.engine);
-    }
-
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Randomise All",
-                     .tooltip = "Randomise all parameters and load random instruments and IRs"_s,
-                 })
-            .button_fired) {
-        RandomiseAllParameterValues(g.engine.processor);
-        for (auto& layer : g.engine.processor.layer_processors) {
-            InstBrowserContext context {
-                .layer = layer,
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            LoadRandomInstrument(context, g.inst_browser_state[layer.index]);
-        }
-        {
-            IrBrowserContext ir_context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            LoadRandomIr(ir_context, g.ir_browser_state);
-        }
     }
 
     if (MenuItem(g.builder,
@@ -572,7 +535,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         if (builder.imgui.IsPopupMenuOpen(popup_id))
             DoBoxViewport(builder,
                           {
-                              .run = [&g, &frame_context](GuiBuilder&) { DoDotsMenu(g, frame_context); },
+                              .run = [&g](GuiBuilder&) { DoDotsMenu(g); },
                               .bounds = dots_button,
                               .imgui_id = popup_id,
                               .viewport_config = k_default_popup_menu_viewport,

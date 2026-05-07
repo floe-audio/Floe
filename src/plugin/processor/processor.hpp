@@ -334,8 +334,6 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
 
 bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index);
 
-void RandomiseAllParameterValues(AudioProcessor&);
-void RandomiseAllEffectParameterValues(AudioProcessor&);
 void ResetAudioProcessing(AudioProcessor&);
 
 bool IsMidiCCLearnActive(AudioProcessor const& processor);

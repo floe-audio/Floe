@@ -629,7 +629,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 
     DoSectionLabel(builder, compare_section, "COMPARE"_s);
 
-    DoPinnedViewToggle(g, compare_section, PinnedViewToggleStyle::Labeled);
+    DoPinnedViewToggle(g, compare_section);
 }
 
 static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {

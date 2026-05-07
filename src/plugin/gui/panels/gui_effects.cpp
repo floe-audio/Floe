@@ -1458,21 +1458,20 @@ void MidPanelEffectsContent(GuiBuilder& builder,
         auto const rand_btn = DoMidPanelIconButton(
             builder,
             tab_extra_buttons_box,
-            {.icon = MidPanelIcon::Shuffle, .tooltip = "Randomise all of the effects"_s});
+            {.icon = MidPanelIcon::Shuffle,
+             .tooltip = "Randomise which effects are visible and active"_s});
 
         if (rand_btn.button_fired) {
-            RandomiseAllEffectParameterValues(g.engine.processor);
-            IrBrowserContext ir_context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            LoadRandomIr(ir_context, g.ir_browser_state);
+            BeginUndoableStep(g.engine, "Randomise effects"_s);
+            DEFER { EndUndoableStep(g.engine); };
+            for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+                bool const on = RandomIntInRange<u32>(g.engine.random_seed, 0, 1) != 0;
+                g.engine.fx_visible.SetToValue(ToInt(fx->type), on);
+                SetParameterValue(g.engine.processor,
+                                  k_effect_info[ToInt(fx->type)].on_param_index,
+                                  on ? 1.0f : 0.0f,
+                                  {});
+            }
         }
     }
 
