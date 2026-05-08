@@ -9,17 +9,14 @@
 #include "engine/engine.hpp"
 #include "gui/controls/gui_filter_graph_draw.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "processing_utils/filters.hpp"
 #include "processor/effect_filter_iir.hpp"
-#include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
 
-constexpr f32 k_handle_radius_ww = 5.0f;
-constexpr f32 k_grabber_radius_ww = 12.0f;
+constexpr f32 k_grabber_radius_ww = 14.0f;
 
 // =============================================================================
 // Shared building blocks. Each visualiser assembles itself from these.
@@ -288,7 +285,7 @@ void DoFilterGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out
     auto& engine = g.engine;
     auto& params = engine.processor.main_params;
 
-    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
     auto push_id = HashInit();
@@ -465,7 +462,7 @@ void DoEffectFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto& engine = g.engine;
     auto& params = engine.processor.main_params;
 
-    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
     imgui.PushId(SourceLocationHash());
@@ -627,7 +624,7 @@ void DoReverbPreFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto& params = engine.processor.main_params;
     auto const& macro_dests = engine.processor.main_macro_destinations;
 
-    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
     imgui.PushId(SourceLocationHash());
@@ -722,7 +719,7 @@ void DoReverbPostShelfGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto& params = engine.processor.main_params;
     auto const& macro_dests = engine.processor.main_macro_destinations;
 
-    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
     imgui.PushId(SourceLocationHash());
@@ -851,7 +848,7 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
     auto& params = engine.processor.main_params;
     auto const& macro_dests = engine.processor.main_macro_destinations;
 
-    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
     imgui.PushId(SourceLocationHash());
@@ -942,7 +939,7 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto& params = engine.processor.main_params;
     auto const& macro_dests = engine.processor.main_macro_destinations;
 
-    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
     imgui.PushId(SourceLocationHash());
@@ -1186,7 +1183,7 @@ DoEqGraphImpl(GuiState& g, Span<EqBandParams const> band_params, Rect viewport_r
     auto& params = engine.processor.main_params;
     auto const& macro_dests = engine.processor.main_macro_destinations;
 
-    auto const handle_radius = WwToPixels(k_handle_radius_ww);
+    auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
     auto push_id = HashInit();

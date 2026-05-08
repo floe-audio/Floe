@@ -37,7 +37,7 @@ DrawEnvelopeRangeLines(imgui::Context& imgui, EnvelopeXRange range, imgui::Id id
 
 static void
 DrawEnvelopeHandle(imgui::Context& imgui, f32x2 point, imgui::Id id, f32 handle_size, bool greyed_out) {
-    auto const handle_visible_size = handle_size / 10;
+    auto const handle_visible_size = WwToPixels(k_graph_handle_radius);
     auto const hover_col = LiveCol(UiColMap::EnvelopeHandleHover);
     auto col = greyed_out ? LiveCol(UiColMap::EnvelopeHandleGreyedOut) : LiveCol(UiColMap::EnvelopeHandle);
     if (imgui.IsHot(id)) {
