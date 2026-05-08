@@ -138,6 +138,13 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
 static void
 SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path, u64 known_preset_id) {
     engine.pinned_snapshot.state = state;
+    if (preset_path.size) {
+        // Preset files always get their name from the filename.
+        auto& extras = engine.pinned_snapshot.state.extras;
+        dyn::AssignFitInCapacity(extras.display_name, path::FilenameWithoutExtension(preset_path));
+        dyn::AssignFitInCapacity(extras.display_category,
+                                 path::Filename(path::Directory(preset_path).ValueOr({})));
+    }
     dyn::Assign(engine.pinned_snapshot.preset_path, preset_path);
     engine.pinned_snapshot.known_preset_id = known_preset_id;
     engine.pinned_snapshot.preset_path_needs_lookup = preset_path.size == 0;
@@ -785,9 +792,6 @@ void LoadPresetFromFile(Engine& engine, String path, u64 known_preset_id) {
 
     if (state_outcome.HasValue()) {
         auto& state = state_outcome.Value();
-        dyn::AssignFitInCapacity(state.extras.display_name, path::FilenameWithoutExtension(path));
-        dyn::AssignFitInCapacity(state.extras.display_category,
-                                 path::Filename(path::Directory(path).ValueOr({})));
         LoadState(engine,
                   state,
                   {
