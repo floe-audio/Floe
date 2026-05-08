@@ -73,6 +73,7 @@ void GlobalInit(GlobalInitOptions options) {
 
             // Clap-validator seems to hang without this.
             if (g_plugin_host.Load(LoadMemoryOrder::Relaxed) == PluginHost::ClapValidator) __builtin_abort();
+            if (g_final_binary_type == FinalBinaryType::Tests) __builtin_abort();
         }
 
         // Step 2: send an error report to Sentry.
