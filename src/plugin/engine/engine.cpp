@@ -408,24 +408,23 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
     engine.host.request_callback(&engine.host);
 }
 
-// The snapshot to compare against when computing modified_from_origin_preset. During an in-flight load,
-// engine.pinned_snapshot still holds the previous pinned snapshot (SetPinnedSnapshot only runs on
-// completion), but the load target is the eventual settled state — comparing against the stale pinned
-// snapshot would falsely flag the
-// in-flight state as modified for the entire load duration. This helper returns the load target during
-// pending and the committed pinned snapshot otherwise. Use it ONLY for modification detection; for UI
-// "what preset is loaded" display, use engine.pinned_snapshot directly; for the load target, use
-// engine.pending_state_change.
 static StateSnapshot const& PinnedSnapshotForModificationCheck(Engine& engine) {
     return engine.pending_state_change ? engine.pending_state_change->snapshot : engine.pinned_snapshot.state;
 }
 
 StateSnapshot CurrentStateSnapshot(Engine& engine) {
-    StateSnapshot snapshot;
+    StateSnapshot snapshot = CaptureStateSnapshot(engine.processor);
+
+    // We always want to retain our learned CCs unless there's pending DAW state.
+    auto const ccs = snapshot.extras.param_learned_ccs;
+    DEFER {
+        if (!(engine.pending_state_change && engine.pending_state_change->source == StateSource::Daw))
+            snapshot.extras.param_learned_ccs = ccs;
+    };
+
     if (engine.pending_state_change) {
         snapshot = engine.pending_state_change->snapshot;
     } else {
-        snapshot = CaptureStateSnapshot(engine.processor);
         snapshot.metadata = engine.state_metadata;
         snapshot.macro_names = engine.macro_names;
         snapshot.fx_visible = engine.fx_visible;
