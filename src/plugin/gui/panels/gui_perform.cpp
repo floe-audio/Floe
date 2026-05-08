@@ -550,8 +550,12 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                 f32 const t_hover = Clamp((ref_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
                 bool const armed = strip.is_active || vary_btn.is_active;
 
-                u32 const cursor_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 220 : 170)});
-                g.imgui.draw_list->AddLine({tick_x, wr.y}, {tick_x, wr.y + wr.h}, cursor_col, 1.5f);
+                u32 const cursor_col = ToU32(Col {.c = Col::White, .alpha = (u8)(armed ? 90 : 60)});
+                constexpr f32 k_cursor_w = 20;
+                g.imgui.draw_list->AddRectFilled(f32x2 {tick_x - (k_cursor_w * 0.5f), wr.y},
+                                                 f32x2 {tick_x + (k_cursor_w * 0.5f), wr.y + wr.h},
+                                                 cursor_col,
+                                                 k_corner_rounding * 0.7f);
 
                 auto const pct = (int)(t_hover * 100.0f);
                 String word;
