@@ -11,26 +11,27 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "processing_utils/synced_timings.hpp"
 #include "processor/processor.hpp"
 
-constexpr usize k_lfo_curve_points = 240;
-constexpr usize k_cycles_to_draw = 2;
-
-// Deterministic "random" sequence so the random-mode previews are stable rather than flickering.
-constexpr Array<f32, 8> k_random_steps_preview {
-    0.45f,
-    -0.72f,
-    0.15f,
-    -0.30f,
-    0.88f,
-    -0.55f,
-    0.10f,
-    -0.92f,
-};
+constexpr usize k_lfo_curve_points = 480;
+// Display window in seconds at the reference tempo. Picked so that a quarter-note synced rate at
+// 120 BPM (2 Hz) shows ~4 cycles, which reads as a moderate rate.
+constexpr f32 k_viewport_seconds = 2.0f;
+constexpr f64 k_reference_bpm = 120.0;
 
 static f32 Smoothstep(f32 t) { return t * t * (3.0f - (2.0f * t)); }
 
-// Returns a waveform value in [-1, 1] for the given shape at phase in [0, k_cycles_to_draw).
+// Stable hash to [-1, 1] so random previews don't visibly repeat across the viewport.
+static f32 RandomStepValue(usize step_index) {
+    auto x = (u32)step_index * 2654435761u;
+    x ^= x >> 16;
+    x *= 0x85ebca6bu;
+    x ^= x >> 13;
+    return ((f32)(x & 0xffffu) / 32767.5f) - 1.0f;
+}
+
+// Returns a waveform value in [-1, 1] for the given shape at phase across all drawn cycles.
 static f32 LfoShapeValue(param_values::LfoShape shape, f32 phase) {
     auto const cycle_phase = phase - Floor(phase);
 
@@ -45,18 +46,16 @@ static f32 LfoShapeValue(param_values::LfoShape shape, f32 phase) {
         case param_values::LfoShape::Sawtooth: return (cycle_phase * 2.0f) - 1.0f;
         case param_values::LfoShape::Square: return cycle_phase < 0.5f ? 1.0f : -1.0f;
         case param_values::LfoShape::RandomSteps: {
-            auto const step_index =
-                (usize)(cycle_phase * (f32)k_random_steps_preview.size) % k_random_steps_preview.size;
-            return k_random_steps_preview[step_index];
+            constexpr f32 k_steps_per_cycle = 1.0f;
+            return RandomStepValue((usize)(phase * k_steps_per_cycle));
         }
         case param_values::LfoShape::RandomGlide: {
-            auto const scaled = cycle_phase * (f32)k_random_steps_preview.size;
-            auto const step_index = (usize)scaled % k_random_steps_preview.size;
-            auto const next_index = (step_index + 1) % k_random_steps_preview.size;
+            constexpr f32 k_steps_per_cycle = 1.0f;
+            auto const scaled = phase * k_steps_per_cycle;
+            auto const step_index = (usize)scaled;
             auto const t = scaled - Floor(scaled);
-            auto const s = Smoothstep(t);
-            return k_random_steps_preview[step_index] +
-                   ((k_random_steps_preview[next_index] - k_random_steps_preview[step_index]) * s);
+            return RandomStepValue(step_index) +
+                   ((RandomStepValue(step_index + 1) - RandomStepValue(step_index)) * Smoothstep(t));
         }
         case param_values::LfoShape::Pluck: return 1.0f - (2.0f * Exp(-cycle_phase / 0.15f));
         case param_values::LfoShape::PluckSharp: return 1.0f - (2.0f * Exp(-cycle_phase / 0.05f));
@@ -95,21 +94,46 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
 
     auto const shape_param = params.DescribedValue(layer_index, LayerParamIndex::LfoShape);
     auto const amount_param = params.DescribedValue(layer_index, LayerParamIndex::LfoAmount);
+    auto const sync_on = params.BoolValue(layer_index, LayerParamIndex::LfoSyncSwitch);
+    auto const rate_param =
+        params.DescribedValue(layer_index,
+                              sync_on ? LayerParamIndex::LfoRateTempoSynced : LayerParamIndex::LfoRateHz);
 
     auto const shape = shape_param.IntValue<param_values::LfoShape>();
     auto const amount_linear =
         AdjustedLinearValue(params, macro_dests, amount_param.LinearValue(), amount_param.info.index);
-
-    // Amount param is a BidirectionalPercent with linear range [-1, 1]; use directly.
     auto const amount = Clamp(amount_linear, -1.0f, 1.0f);
 
-    // Half of the viewport height is the full +/-1 amplitude.
+    auto const rate_adj_linear =
+        AdjustedLinearValue(params, macro_dests, rate_param.LinearValue(), rate_param.info.index);
+
+    // Convert rate to Hz at a reference tempo so the display speed scales with the actual rate
+    // value rather than its linear position in the param range.
+    auto const rate_hz = ({
+        f32 hz;
+        if (sync_on) {
+            auto const synced = (param_values::LfoSyncedRate)Clamp(Round(rate_adj_linear),
+                                                                   rate_param.info.linear_range.min,
+                                                                   rate_param.info.linear_range.max);
+            hz = SyncedTimeToHz(k_reference_bpm, SyncedTimesFromParam(synced));
+        } else {
+            hz = rate_param.info.ProjectValue(rate_adj_linear);
+        }
+        hz;
+    });
+
+    // Random modes run at 2x rate in the DSP (see lfo.hpp's RecomputePhaseIncrement); mirror here.
+    auto const is_random =
+        shape == param_values::LfoShape::RandomSteps || shape == param_values::LfoShape::RandomGlide;
+    auto const rate_multiplier = is_random ? 2.0f : 1.0f;
+    auto const cycles_to_draw = rate_hz * k_viewport_seconds * rate_multiplier;
+
     auto const half_h = viewport_r.h * 0.5f;
 
     DynamicArrayBounded<f32x2, k_lfo_curve_points> curve_points;
     for (auto const i : Range(k_lfo_curve_points)) {
         auto const t = (f32)i / (f32)(k_lfo_curve_points - 1);
-        auto const phase = t * (f32)k_cycles_to_draw;
+        auto const phase = t * cycles_to_draw;
         // The DSP negates the raw LFO output before applying to parameters; mirror that here so
         // the visual matches what's audible.
         auto const value = -LfoShapeValue(shape, phase) * amount;
@@ -118,7 +142,6 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
         dyn::Append(curve_points, imgui.ViewportPosToWindowPos({x, y}));
     }
 
-    // Area fill between curve and centre line (per-segment quads, no AA to avoid seams).
     auto const zero_y_window = imgui.ViewportPosToWindowPos({viewport_r.x, centre_y}).y;
     auto const area_col = LiveCol(UiColMap::EqArea);
     for (auto const i : Range(curve_points.size - 1)) {
