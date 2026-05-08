@@ -38,16 +38,23 @@ struct PresetCursor {
     usize preset_index;
 };
 
-static Optional<PresetCursor> CurrentCursor(PresetBrowserContext const& context, u64 snapshot_hash) {
+static Optional<PresetCursor>
+CurrentCursor(PresetBrowserContext const& context, u64 snapshot_hash, u64 known_preset_id) {
     if (!snapshot_hash) return k_nullopt;
 
+    Optional<PresetCursor> first_hash_match;
     for (auto const [folder_index, folder] : Enumerate(context.presets_snapshot.folders)) {
         ASSERT(folder->folder);
-        for (auto const [preset_index, preset] : Enumerate(folder->folder->presets))
-            if (preset.snapshot_hash == snapshot_hash) return PresetCursor {folder_index, preset_index};
+        for (auto const [preset_index, preset] : Enumerate(folder->folder->presets)) {
+            if (preset.snapshot_hash != snapshot_hash) continue;
+            PresetCursor const cursor {folder_index, preset_index};
+            // Disambiguate duplicate-content presets: prefer the file the user actually loaded.
+            if (known_preset_id && preset.full_path_hash == known_preset_id) return cursor;
+            if (!first_hash_match) first_hash_match = cursor;
+        }
     }
 
-    return k_nullopt;
+    return first_hash_match;
 }
 
 static bool ShouldSkipPreset(PresetBrowserContext const& context,
@@ -168,7 +175,9 @@ LoadPreset(PresetBrowserContext const& context, PresetBrowserState& state, Prese
     auto const& preset = folder->folder->presets[cursor.preset_index];
 
     PathArena path_arena {PageAllocator::Instance()};
-    LoadPresetFromFile(context.engine, folder->folder->FullPathForPreset(preset, path_arena));
+    LoadPresetFromFile(context.engine,
+                       folder->folder->FullPathForPreset(preset, path_arena),
+                       preset.full_path_hash);
 
     if (scroll) state.scroll_to_show_selected = true;
 }
@@ -179,14 +188,21 @@ static u64 CurrentLoadedPresetSnapshotHash(PresetBrowserContext const& context) 
     return engine.pinned_snapshot.state.extras.origin_preset_hash;
 }
 
+static u64 CurrentLoadedKnownPresetId(PresetBrowserContext const& context) {
+    auto const& engine = context.engine;
+    if (engine.pending_state_change) return engine.pending_state_change->known_preset_id;
+    return engine.pinned_snapshot.known_preset_id;
+}
+
 void LoadAdjacentPreset(PresetBrowserContext const& context,
                         PresetBrowserState& state,
                         SearchDirection direction) {
     ASSERT(context.init);
     auto const current_hash = CurrentLoadedPresetSnapshotHash(context);
+    auto const current_known_id = CurrentLoadedKnownPresetId(context);
 
     if (current_hash) {
-        if (auto const current = CurrentCursor(context, current_hash)) {
+        if (auto const current = CurrentCursor(context, current_hash, current_known_id)) {
             if (auto const next = IteratePreset(context, state, *current, direction, false))
                 LoadPreset(context, state, *next, true);
         }
@@ -392,6 +408,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
     if (!first) return;
 
     auto const current_loaded_snapshot_hash = CurrentLoadedPresetSnapshotHash(context);
+    auto const current_loaded_known_id = CurrentLoadedKnownPresetId(context);
 
     Optional<u64> previous_folder_hash = {};
 
@@ -418,7 +435,10 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
         }
 
         if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
-            auto const is_current = preset.snapshot_hash == current_loaded_snapshot_hash;
+            auto const is_current = current_loaded_known_id
+                                        ? preset.full_path_hash == current_loaded_known_id
+                                        : (current_loaded_snapshot_hash != 0 &&
+                                           preset.snapshot_hash == current_loaded_snapshot_hash);
 
             auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
 

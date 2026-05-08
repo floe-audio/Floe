@@ -34,6 +34,8 @@ struct Engine : ProcessorListener {
         DynamicArrayBounded<sample_lib_server::LoadResult, k_num_layers + 1> retained_results;
         StateSnapshot snapshot;
         DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
+        u64 known_preset_id {}; // Optional. 0 == unknown. Opaque id supplied by the loader (typically the
+                                // preset browser) used to disambiguate presets sharing identical content.
         StateSource source;
         bool update_pinned_snapshot_on_complete = true;
     };
@@ -49,6 +51,7 @@ struct Engine : ProcessorListener {
 
         StateSnapshot state {DefaultStateSnapshot()};
         DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
+        u64 known_preset_id {}; // See PendingStateChange::known_preset_id.
 
         // We sometimes don't have the full path, but it's worth seeing if it's our known preset index. To
         // avoid wasteful repeated lookup in the preset index, we use this bool to only do it once.
@@ -136,6 +139,7 @@ void LoadInstruments(Engine& engine,
 struct LoadStateOptions {
     StateSource source;
     String preset_path = ""_s;
+    u64 known_preset_id = 0;
     bool update_pinned_snapshot = true;
 };
 
@@ -168,7 +172,7 @@ bool ViewingPinnedSnapshot(Engine const& engine);
 // Editing while auditioning the pinned snapshot discards the stash (auto-promote).
 void TogglePinnedView(Engine& engine);
 
-void LoadPresetFromFile(Engine& engine, String path);
+void LoadPresetFromFile(Engine& engine, String path, u64 known_preset_id = 0);
 
 void SaveCurrentStateToFile(Engine& engine, String path);
 

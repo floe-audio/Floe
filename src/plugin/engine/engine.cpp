@@ -135,9 +135,11 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
     UpdateAttributionText(engine.attribution_requirements, scratch_arena, insts, ir);
 }
 
-static void SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path) {
+static void
+SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path, u64 known_preset_id) {
     engine.pinned_snapshot.state = state;
     dyn::Assign(engine.pinned_snapshot.preset_path, preset_path);
+    engine.pinned_snapshot.known_preset_id = known_preset_id;
     engine.pinned_snapshot.preset_path_needs_lookup = preset_path.size == 0;
     RefreshPresetDescriptionCache(engine);
 }
@@ -150,6 +152,7 @@ static void AfterStateChanged(Engine& engine) {
 
 void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts) {
     auto const preset_path = opts.preset_path;
+    auto const known_preset_id = opts.known_preset_id;
     auto const source = opts.source;
     auto const update_pinned_snapshot = opts.update_pinned_snapshot;
     ZoneScoped;
@@ -193,7 +196,7 @@ void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions cons
         engine.macro_names = state.macro_names;
         engine.fx_visible = state.fx_visible;
         ApplyState(engine.processor, state, source);
-        if (update_pinned_snapshot) SetPinnedSnapshot(engine, state, preset_path);
+        if (update_pinned_snapshot) SetPinnedSnapshot(engine, state, preset_path, known_preset_id);
 
         MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
         AfterStateChanged(engine);
@@ -202,6 +205,7 @@ void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions cons
         auto& pending = *engine.pending_state_change;
         pending.snapshot = state;
         dyn::Assign(pending.preset_path, preset_path);
+        pending.known_preset_id = known_preset_id;
         pending.source = source;
         pending.update_pinned_snapshot_on_complete = update_pinned_snapshot;
 
@@ -297,12 +301,13 @@ static void CompletePendingStateLoad(Engine& engine) {
     auto const preset_path = pending_state_change.preset_path.size
                                  ? String(temp_arena.Clone(pending_state_change.preset_path))
                                  : ""_s;
+    auto const known_preset_id = pending_state_change.known_preset_id;
     auto const source = pending_state_change.source;
     auto const update_pinned_snapshot = pending_state_change.update_pinned_snapshot_on_complete;
     engine.pending_state_change.Clear();
 
     ApplyState(engine.processor, snapshot, source);
-    if (update_pinned_snapshot) SetPinnedSnapshot(engine, snapshot, preset_path);
+    if (update_pinned_snapshot) SetPinnedSnapshot(engine, snapshot, preset_path, known_preset_id);
     AfterStateChanged(engine);
 }
 
@@ -764,6 +769,7 @@ void TogglePinnedView(Engine& engine) {
               {
                   .source = StateSource::PresetFile,
                   .preset_path = engine.pinned_snapshot.preset_path,
+                  .known_preset_id = engine.pinned_snapshot.known_preset_id,
                   .update_pinned_snapshot = false,
               });
     RecordUndoableStep(engine, "View preset"_s);
@@ -771,7 +777,7 @@ void TogglePinnedView(Engine& engine) {
     engine.stashed_modifications = stash;
 }
 
-void LoadPresetFromFile(Engine& engine, String path) {
+void LoadPresetFromFile(Engine& engine, String path, u64 known_preset_id) {
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator, Kb(16)};
     auto state_outcome = LoadPresetFile(path, scratch_arena);
@@ -782,7 +788,13 @@ void LoadPresetFromFile(Engine& engine, String path) {
         dyn::AssignFitInCapacity(state.extras.display_name, path::FilenameWithoutExtension(path));
         dyn::AssignFitInCapacity(state.extras.display_category,
                                  path::Filename(path::Directory(path).ValueOr({})));
-        LoadState(engine, state, {.source = StateSource::PresetFile, .preset_path = path});
+        LoadState(engine,
+                  state,
+                  {
+                      .source = StateSource::PresetFile,
+                      .preset_path = path,
+                      .known_preset_id = known_preset_id,
+                  });
         engine.error_notifications.RemoveError(error_id);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
@@ -802,7 +814,7 @@ void SaveCurrentStateToFile(Engine& engine, String path) {
             state,
             prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()));
         outcome.Succeeded()) {
-        SetPinnedSnapshot(engine, state, path);
+        SetPinnedSnapshot(engine, state, path, 0);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
         engine.error_notifications.RemoveError(error_id);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
@@ -1108,7 +1120,7 @@ static void RestorePinnedSnapshotFromAnchor(Engine& engine) {
     for (auto i = undo.Size(); i > 0; --i) {
         auto const& step = undo.At(i - 1);
         if (step.is_pinned_snapshot_anchor) {
-            SetPinnedSnapshot(engine, step.snapshot, ""_s);
+            SetPinnedSnapshot(engine, step.snapshot, ""_s, 0);
             return;
         }
     }
