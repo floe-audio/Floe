@@ -126,7 +126,15 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     auto const is_random =
         shape == param_values::LfoShape::RandomSteps || shape == param_values::LfoShape::RandomGlide;
     auto const rate_multiplier = is_random ? 2.0f : 1.0f;
-    auto const cycles_to_draw = rate_hz * k_viewport_seconds * rate_multiplier;
+    auto const raw_cycles = rate_hz * k_viewport_seconds * rate_multiplier;
+
+    // Above this many cycles the polyline aliases against the pixel grid (moiré on dense
+    // near-vertical segments). Compress logarithmically so each higher rate still looks distinct
+    // without packing more crossings per pixel.
+    constexpr f32 k_cycle_soft_cap = 12.0f;
+    auto const cycles_to_draw = raw_cycles <= k_cycle_soft_cap
+                                    ? raw_cycles
+                                    : k_cycle_soft_cap + (Log2(raw_cycles / k_cycle_soft_cap) * 1.5f);
 
     auto const half_h = viewport_r.h * 0.5f;
 
