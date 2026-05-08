@@ -120,7 +120,11 @@ Box DoVerticalSliderParameter(GuiState& g,
 // Adds the standard pair of "Reset {name} to Default" / "Reset {name} to "<preset>" state" menu items for a
 // snapshot section. The pinned-preset item is only shown when a preset is loaded. Returns true on the frame
 // either item fires, so the caller can run post-reset cleanup.
-bool DoResetSectionMenuItems(GuiState& g, Box menu_root, StateSnapshotSection const& section, String name);
+bool DoResetSectionMenuItems(GuiState& g,
+                             Box menu_root,
+                             StateSnapshotSection const& section,
+                             String name,
+                             bool no_icon_gap = true);
 
 String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out = false);
 

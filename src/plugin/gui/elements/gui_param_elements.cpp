@@ -21,14 +21,18 @@
 
 constexpr f32 k_row_button_label_gap_y = 6;
 
-bool DoResetSectionMenuItems(GuiState& g, Box menu_root, StateSnapshotSection const& section, String name) {
+bool DoResetSectionMenuItems(GuiState& g,
+                             Box menu_root,
+                             StateSnapshotSection const& section,
+                             String name,
+                             bool no_icon_gap) {
     bool fired = false;
 
     if (MenuItem(g.builder,
                  menu_root,
                  {
                      .text = fmt::Format(g.scratch_arena, "Reset {} to Default"_s, name),
-                     .no_icon_gap = true,
+                     .no_icon_gap = no_icon_gap,
                  })
             .button_fired) {
         ApplySectionOfState(g.engine, DefaultStateSnapshot(), section, section);
@@ -43,7 +47,7 @@ bool DoResetSectionMenuItems(GuiState& g, Box menu_root, StateSnapshotSection co
                                              "Reset {} to \"{}\" state"_s,
                                              name,
                                              pinned->extras.display_name),
-                         .no_icon_gap = true,
+                         .no_icon_gap = no_icon_gap,
                      })
                 .button_fired) {
             ApplySectionOfState(g.engine, *pinned, section, section);
@@ -242,7 +246,7 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
                                     target_section);
             }
 
-            DoResetSectionMenuItems(g, root, target_section, "Macro"_s);
+            DoResetSectionMenuItems(g, root, target_section, "Macro"_s, false);
         }
 
         if (param_indices.size != 1 && param_index != Last(param_indices)) MenuDivider(g.builder, root);
