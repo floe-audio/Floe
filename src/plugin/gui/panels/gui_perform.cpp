@@ -469,11 +469,6 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                     },
                                 });
 
-        auto const trigger_random_variation = [&](f32 t) {
-            LoadRandomVariation(g.engine, t);
-            g.mid_panel_state.last_random_variation_amount = t;
-        };
-
         auto const vary_btn = DoMidPanelIconButton(
             builder,
             pill,
@@ -484,7 +479,6 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                     "Or, click anywhere on the strip to load a variation: further right means a more varied result, further left stays closer to the current preset."_s,
                 .greyed_out = !any_active,
             });
-        if (vary_btn.button_fired) trigger_random_variation(g.mid_panel_state.last_random_variation_amount);
 
         auto const strip = DoBox(builder,
                                  {
@@ -591,16 +585,20 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
             }
         }
 
-        if (strip.button_fired) {
+        if (strip.button_fired || vary_btn.button_fired) {
             if (auto const r = BoxRect(builder, strip)) {
                 auto const wr = g.imgui.ViewportRectToWindowRect(*r);
-                f32 const press_x = GuiIo().in.Mouse(MouseButton::Left).last_press.point.x;
                 f32 const half_icon = (wr.h - 2.0f) * 0.5f;
                 f32 const min_x = wr.x + half_icon;
                 f32 const max_x = wr.x + wr.w - half_icon;
-                f32 const t = Clamp((press_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
-                trigger_random_variation(t);
-                g.mid_panel_state.last_strip_fire_x = press_x;
+                f32 const fire_x =
+                    strip.button_fired
+                        ? GuiIo().in.Mouse(MouseButton::Left).last_press.point.x
+                        : min_x + (g.mid_panel_state.last_random_variation_amount * (max_x - min_x));
+                f32 const t = Clamp((fire_x - min_x) / (max_x - min_x), 0.0f, 1.0f);
+                LoadRandomVariation(g.engine, t);
+                g.mid_panel_state.last_random_variation_amount = t;
+                g.mid_panel_state.last_strip_fire_x = fire_x;
                 g.imgui.StartAnimation(strip.imgui_id, 1.0f, 0.45f, true);
             }
         }
