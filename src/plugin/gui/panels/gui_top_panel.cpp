@@ -65,6 +65,17 @@ static void DoDotsMenu(GuiState& g) {
         ResetAudioProcessing(g.engine.processor);
     }
 
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Rescan Libraries & Presets",
+                     .tooltip = "Force a full rescan of all sample library and preset folders"_s,
+                 })
+            .button_fired) {
+        sample_lib_server::RescanAllFolders(g.shared_engine_systems.sample_library_server);
+        RescanAllFolders(g.shared_engine_systems.preset_server);
+    }
+
     MenuDivider(g.builder, root);
 
     // Windows

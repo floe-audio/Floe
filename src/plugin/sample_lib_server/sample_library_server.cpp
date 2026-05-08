@@ -1397,6 +1397,12 @@ void RescanFolder(Server& server, String path) {
             AsyncScanFolder(server.scan_folders, f, true);
 }
 
+void RescanAllFolders(Server& server) {
+    ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
+    for (auto const f : GetFolders(server.scan_folders, scratch_arena))
+        AsyncScanFolder(server.scan_folders, f, true);
+}
+
 void SetExtraScanFolders(Server& server, Span<String const> extra_folders) {
     ASSERT(extra_folders.size <= k_max_extra_scan_folders);
     SetFolders(server.scan_folders, extra_folders);

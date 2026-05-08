@@ -364,6 +364,10 @@ void RequestScanningOfUnscannedFolders(Server& server);
 // [threadsafe]
 void RescanFolder(Server& server, String folder);
 
+// Rescan every known scan folder.
+// [threadsafe]
+void RescanAllFolders(Server& server);
+
 // Waits until all libraries have finished loading and all scan folders have finished scanning.
 // Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
 // [threadsafe]

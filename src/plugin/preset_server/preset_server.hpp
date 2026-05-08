@@ -99,6 +99,7 @@ struct PresetServer {
 
     Atomic<bool> enable_scanning {};
     Atomic<u32> is_scanning {};
+    Atomic<bool> rescan_all_requested {false};
 };
 
 void InitPresetServer(PresetServer& server, String always_scanned_folder);
@@ -178,3 +179,5 @@ bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout);
 bool AreFoldersScanning(PresetServer& server);
 
 void RescanFolder(PresetServer& server, String folder);
+
+void RescanAllFolders(PresetServer& server);

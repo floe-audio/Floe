@@ -1188,6 +1188,10 @@ static void ServerThread(PresetServer& server) {
             dyn::Clear(buf);
         });
 
+        if (server.rescan_all_requested.Exchange(false, RmwMemoryOrder::AcquireRelease))
+            for (auto& f : server.scan_folders)
+                dyn::AppendIfNotAlreadyThere(rescan_folders, &f);
+
         if (watcher) {
             auto const dirs_to_watch = ({
                 DynamicArray<DirectoryToWatch> dirs {scratch_arena};
@@ -1348,6 +1352,12 @@ void RescanFolder(PresetServer& server, String folder) {
         dyn::Append(buf, '\0');
         server.is_scanning.Store(true, StoreMemoryOrder::Release);
     });
+    server.work_signaller.Signal();
+}
+
+void RescanAllFolders(PresetServer& server) {
+    server.rescan_all_requested.Store(true, StoreMemoryOrder::Release);
+    server.is_scanning.Store(true, StoreMemoryOrder::Release);
     server.work_signaller.Signal();
 }
 
