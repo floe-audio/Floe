@@ -1428,12 +1428,20 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                                           // write the magic value
     };
 
-    // StateExtras are mostly for DAW state only.
-    if (args.source == StateSource::PresetFile) state.extras = {};
+    // When writing a preset file, we don't want to include any extras in the file so we clear the field for
+    // the duration of this function. We restore it back to where since it would be confusing for a 'write'
+    // operation to modify the data.
+    auto const scrub_extras = coder.IsWriting() && args.source == StateSource::PresetFile;
+    auto const initial_extras = state.extras;
+    if (scrub_extras) state.extras = {};
     DEFER {
-        // We have a special behaviour when decoding a preset file: we auto-populate the origin_preset_hash
-        // because it's very useful for us to be able to have a quick unique identifier for snapshots.
-        if (coder.IsReading() && args.source == StateSource::PresetFile)
+        if (scrub_extras) state.extras = initial_extras;
+    };
+
+    // We have a special behaviour when decoding a preset file: we auto-populate the origin_preset_hash
+    // because it's very useful for us to be able to have a quick unique identifier for snapshots.
+    DEFER {
+        if (args.source == StateSource::PresetFile && coder.IsReading())
             state.extras = {
                 .origin_preset_hash = coder.hash,
                 .modified_from_origin_preset = false,
