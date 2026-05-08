@@ -1,0 +1,916 @@
+{
+ "layers": [
+  {
+   "name": "Prismatic Pad",
+   "path": "sampler/Tonal/Prismatic Pad"
+  },
+  {
+   "name": "Night Orbit",
+   "path": "sampler/Drones/Night Orbit"
+  },
+  {
+   "name": "None",
+   "path": ""
+  }
+ ],
+ "library": {
+  "id": 632999892,
+  "name": "Wraith",
+  "version": 1
+ },
+ "params": [
+  {
+   "ccs": [],
+   "name": "L0Vol",
+   "value": 3.2916030883789062
+  },
+  {
+   "ccs": [],
+   "name": "L0Mute",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Solo",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Pan",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Detune",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Pitch",
+   "value": -24.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Vel",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0VlEnOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Att",
+   "value": 837.40234375
+  },
+  {
+   "ccs": [],
+   "name": "L0Dec",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Sus",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Rel",
+   "value": 1288.6849365234375
+  },
+  {
+   "ccs": [],
+   "name": "L0FlOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L0FlCut",
+   "value": 10.0
+  },
+  {
+   "ccs": [],
+   "name": "L0FfRes",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0FlTy",
+   "value": "Highpass"
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoSh",
+   "value": "Sine"
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoMd",
+   "value": "Retrigger"
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoAm",
+   "value": 71.98603820800781
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoTg",
+   "value": "Filter"
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoSyt",
+   "value": "1/4"
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoHZ",
+   "value": 0.2200116515159607
+  },
+  {
+   "ccs": [],
+   "name": "L0LfoSyO",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0LpOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L0LpStrt",
+   "value": 24.946195602416992
+  },
+  {
+   "ccs": [],
+   "name": "L0LpEnd",
+   "value": 39.53125
+  },
+  {
+   "ccs": [],
+   "name": "L0LpXf",
+   "value": 27.98702621459961
+  },
+  {
+   "ccs": [],
+   "name": "L0LpPP",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Offs",
+   "value": 24.21875
+  },
+  {
+   "ccs": [],
+   "name": "L0Rev",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0EqOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L0EqFr0",
+   "value": 20000.0
+  },
+  {
+   "ccs": [],
+   "name": "L0EqRs0",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0EqGn0",
+   "value": -10.31675910949707
+  },
+  {
+   "ccs": [],
+   "name": "L0EqTy0",
+   "value": "Peaking"
+  },
+  {
+   "ccs": [],
+   "name": "L0EqFr1",
+   "value": 10.0
+  },
+  {
+   "ccs": [],
+   "name": "L0EqRs1",
+   "value": 15.234375
+  },
+  {
+   "ccs": [],
+   "name": "L0EqGn1",
+   "value": -8.128805160522461
+  },
+  {
+   "ccs": [],
+   "name": "L0EqTy1",
+   "value": "Low Shelf"
+  },
+  {
+   "ccs": [],
+   "name": "L0KTr",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Mono",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L0Trn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Vol",
+   "value": -6.900444030761719
+  },
+  {
+   "ccs": [],
+   "name": "L1Mute",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Solo",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Pan",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Detune",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Pitch",
+   "value": -12.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Vel",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1VlEnOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Att",
+   "value": 670.47119140625
+  },
+  {
+   "ccs": [],
+   "name": "L1Dec",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Sus",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Rel",
+   "value": 1828.6904296875
+  },
+  {
+   "ccs": [],
+   "name": "L1FlOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L1FlCut",
+   "value": 13.219552993774414
+  },
+  {
+   "ccs": [],
+   "name": "L1FfRes",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1FlTy",
+   "value": "Highpass"
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoSh",
+   "value": "Triangle"
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoMd",
+   "value": "Free"
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoAm",
+   "value": -43.83067321777344
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoTg",
+   "value": "Filter"
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoSyt",
+   "value": "1/1"
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoHZ",
+   "value": 0.11986985057592392
+  },
+  {
+   "ccs": [],
+   "name": "L1LfoSyO",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1LpOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L1LpStrt",
+   "value": 21.508453369140625
+  },
+  {
+   "ccs": [],
+   "name": "L1LpEnd",
+   "value": 39.41645812988281
+  },
+  {
+   "ccs": [],
+   "name": "L1LpXf",
+   "value": 21.835369110107422
+  },
+  {
+   "ccs": [],
+   "name": "L1LpPP",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Offs",
+   "value": 20.703125
+  },
+  {
+   "ccs": [],
+   "name": "L1Rev",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1EqOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L1EqFr0",
+   "value": 74.68132019042969
+  },
+  {
+   "ccs": [],
+   "name": "L1EqRs0",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1EqGn0",
+   "value": 6.5625
+  },
+  {
+   "ccs": [],
+   "name": "L1EqTy0",
+   "value": "Peaking"
+  },
+  {
+   "ccs": [],
+   "name": "L1EqFr1",
+   "value": 132.16482543945312
+  },
+  {
+   "ccs": [],
+   "name": "L1EqRs1",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1EqGn1",
+   "value": -9.574172973632812
+  },
+  {
+   "ccs": [],
+   "name": "L1EqTy1",
+   "value": "Low Shelf"
+  },
+  {
+   "ccs": [],
+   "name": "L1KTr",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Mono",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L1Trn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Vol",
+   "value": -6.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Mute",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Solo",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Pan",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Detune",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Pitch",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Vel",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2VlEnOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Att",
+   "value": 837.40234375
+  },
+  {
+   "ccs": [],
+   "name": "L2Dec",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Sus",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Rel",
+   "value": 1905.24462890625
+  },
+  {
+   "ccs": [],
+   "name": "L2FlOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L2FlCut",
+   "value": 46.564910888671875
+  },
+  {
+   "ccs": [],
+   "name": "L2FfRes",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2FlTy",
+   "value": "Highpass"
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoSh",
+   "value": "Sine"
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoMd",
+   "value": "Retrigger"
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoAm",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoTg",
+   "value": "Volume"
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoSyt",
+   "value": "1/4"
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoHZ",
+   "value": 5.0
+  },
+  {
+   "ccs": [],
+   "name": "L2LfoSyO",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L2LpOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L2LpStrt",
+   "value": 5.0
+  },
+  {
+   "ccs": [],
+   "name": "L2LpEnd",
+   "value": 95.0
+  },
+  {
+   "ccs": [],
+   "name": "L2LpXf",
+   "value": 14.62716007232666
+  },
+  {
+   "ccs": [],
+   "name": "L2LpPP",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Offs",
+   "value": 4.6875
+  },
+  {
+   "ccs": [],
+   "name": "L2Rev",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2EqOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L2EqFr0",
+   "value": 122.79216766357422
+  },
+  {
+   "ccs": [],
+   "name": "L2EqRs0",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2EqGn0",
+   "value": -10.235029220581055
+  },
+  {
+   "ccs": [],
+   "name": "L2EqTy0",
+   "value": "Peaking"
+  },
+  {
+   "ccs": [],
+   "name": "L2EqFr1",
+   "value": 288.1701965332031
+  },
+  {
+   "ccs": [],
+   "name": "L2EqRs1",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2EqGn1",
+   "value": -5.625
+  },
+  {
+   "ccs": [],
+   "name": "L2EqTy1",
+   "value": "Peaking"
+  },
+  {
+   "ccs": [],
+   "name": "L2KTr",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Mono",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "L2Trn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "MastVol",
+   "value": -9.493331909179688
+  },
+  {
+   "ccs": [],
+   "name": "MastVel",
+   "value": 70.0
+  },
+  {
+   "ccs": [],
+   "name": "DistType",
+   "value": "Raph1"
+  },
+  {
+   "ccs": [],
+   "name": "DistDrive",
+   "value": 89.87503814697266
+  },
+  {
+   "ccs": [],
+   "name": "DistOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "BitcBits",
+   "value": 32.0
+  },
+  {
+   "ccs": [],
+   "name": "BitcRate",
+   "value": 44100.0
+  },
+  {
+   "ccs": [],
+   "name": "BitcWet",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "BitcDry",
+   "value": -80.0
+  },
+  {
+   "ccs": [],
+   "name": "BitcOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "CompThr",
+   "value": -12.0
+  },
+  {
+   "ccs": [],
+   "name": "CompRt",
+   "value": 2.0
+  },
+  {
+   "ccs": [],
+   "name": "CompGain",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "CompAuto",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "CompOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "FlOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "FlCut",
+   "value": 3351.4541015625
+  },
+  {
+   "ccs": [],
+   "name": "FlRes",
+   "value": 10.379755020141602
+  },
+  {
+   "ccs": [],
+   "name": "FlGain",
+   "value": -6.0
+  },
+  {
+   "ccs": [],
+   "name": "FlType",
+   "value": "Low Pass"
+  },
+  {
+   "ccs": [],
+   "name": "SterWd",
+   "value": 32.1875
+  },
+  {
+   "ccs": [],
+   "name": "SterOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "ChorRate",
+   "value": 0.9843758940696716
+  },
+  {
+   "ccs": [],
+   "name": "ChorHP",
+   "value": 30.0
+  },
+  {
+   "ccs": [],
+   "name": "ChorDpth",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "ChorWet",
+   "value": -6.0
+  },
+  {
+   "ccs": [],
+   "name": "ChorDry",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "ChorOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "RvSize",
+   "value": 60.0
+  },
+  {
+   "ccs": [],
+   "name": "RvDamp",
+   "value": 50.0
+  },
+  {
+   "ccs": [],
+   "name": "RvWidth",
+   "value": 100.0
+  },
+  {
+   "ccs": [],
+   "name": "RvDry",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "RvWet",
+   "value": 78.55250549316406
+  },
+  {
+   "ccs": [],
+   "name": "RvOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "DlMsL",
+   "value": 470.0
+  },
+  {
+   "ccs": [],
+   "name": "DlMsR",
+   "value": 490.0
+  },
+  {
+   "ccs": [],
+   "name": "DlSyncL",
+   "value": "1/4"
+  },
+  {
+   "ccs": [],
+   "name": "DlSyncR",
+   "value": "1/8"
+  },
+  {
+   "ccs": [],
+   "name": "DlSyncOn",
+   "value": 1.0
+  },
+  {
+   "ccs": [],
+   "name": "DlFeed",
+   "value": 50.0
+  },
+  {
+   "ccs": [],
+   "name": "DlDamp",
+   "value": 50.0
+  },
+  {
+   "ccs": [],
+   "name": "DlWet",
+   "value": -6.0
+  },
+  {
+   "ccs": [],
+   "name": "DlOn",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "ConvIR",
+   "value": "None"
+  },
+  {
+   "ccs": [],
+   "name": "ConvHP",
+   "value": 30.0
+  },
+  {
+   "ccs": [],
+   "name": "ConvWet",
+   "value": -30.0
+  },
+  {
+   "ccs": [],
+   "name": "ConvDry",
+   "value": 0.0
+  },
+  {
+   "ccs": [],
+   "name": "ConvOn",
+   "value": 0.0
+  }
+ ],
+ "master": {
+  "last loaded preset": {
+   "changed": false,
+   "file_size": "000031ba",
+   "name": "Low End"
+  },
+  "version": 257
+ }
+}

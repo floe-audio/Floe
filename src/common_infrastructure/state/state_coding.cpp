@@ -165,14 +165,14 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
         IsLayerParamOfSpecificType(index, LayerParamIndex::LoopCrossfade) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::SampleOffset) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::LfoAmount) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::FilterResonance) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyFilterResonance) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::FilterEnvAmount) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::EqResonance1) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::EqResonance2) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqResonance1) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqResonance2) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::FilterSustain) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::Pan) || (index == ParamIndex::MasterVelocity) ||
         (index == ParamIndex::MasterTimbre) || (index == ParamIndex::DistortionDrive) ||
-        (index == ParamIndex::StereoWidenWidth) || (index == ParamIndex::FilterResonance)) {
+        (index == ParamIndex::StereoWidenWidth) || (index == ParamIndex::LegacyFilterResonance)) {
         ASSERT(k_param_descriptors[(u32)index].linear_range.min == 0 ||
                k_param_descriptors[(u32)index].linear_range.min == -1);
         ASSERT_EQ(k_param_descriptors[(u32)index].linear_range.max, 1.0f);
@@ -2697,6 +2697,26 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayFeedback)], 0.8f, 0.2f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayFilterCutoffSemitones)], 60.0f, 3.0f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayMix)], 0.15f, 0.1f);
+    }
+
+    SUBCASE("Low End.mirage-wraith") {
+        auto const state = TRY(decode_file("Low End.mirage-wraith"));
+
+        // The JSON stores per-layer high-pass filters enabled with very low cutoffs:
+        // L0=10 Hz, L1=13.219553 Hz, L2=46.564911 Hz. Floe was reporting all three as ~6 kHz
+        // (the legacy default), because the JSON value was being overwritten during legacy
+        // param modernisation. The modern FilterCutoff range is 15..20000 Hz, so values
+        // below 15 should clamp to 15 Hz.
+        for (auto const layer_index : Range(k_num_layers)) {
+            CHECK_EQ(ProjectedLayerValue(state, layer_index, LayerParamIndex::FilterOn), 1.0f);
+            CHECK_EQ(ParamToInt<param_values::LayerFilterType>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::FilterType)),
+                     param_values::LayerFilterType::Highpass);
+        }
+
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::FilterCutoff), 15.0f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 1, LayerParamIndex::FilterCutoff), 15.0f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 2, LayerParamIndex::FilterCutoff), 46.56f, 1.0f);
     }
 
     return k_success;

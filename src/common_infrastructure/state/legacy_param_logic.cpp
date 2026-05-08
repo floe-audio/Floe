@@ -338,10 +338,14 @@ void ModerniseLegacyParamForPresetState(StateSnapshot& state, ParamIndex legacy)
 
     auto& legacy_val = state.LinearParam(legacy);
 
-    // Set the successor param to match the legacy param.
-    if (auto const m = SuccessorOfLegacyValue(legacy, legacy_val)) {
-        state.LinearParam(m->successor_param) = m->successor_linear;
-        ModerniseMacroDestinations(state, legacy);
+    // Set the successor param to match the legacy param. Only do so when the legacy is actually
+    // overriding (non-default), otherwise we'd clobber a value the binary CodeState may have
+    // already loaded into the successor slot by stable ID.
+    if (IsLegacyParamOverridingModern(desc, legacy_val)) {
+        if (auto const m = SuccessorOfLegacyValue(legacy, legacy_val)) {
+            state.LinearParam(m->successor_param) = m->successor_linear;
+            ModerniseMacroDestinations(state, legacy);
+        }
     }
 
     // Clear the legacy param so DSP no longer considers it active.
