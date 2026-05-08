@@ -1455,10 +1455,11 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             Box tab_extra_buttons_box) {
     // Add randomise button to heading.
     {
-        auto const rand_btn = DoMidPanelIconButton(
-            builder,
-            tab_extra_buttons_box,
-            {.icon = MidPanelIcon::Shuffle, .tooltip = "Randomise which effects are visible and active"_s});
+        auto const rand_btn =
+            DoMidPanelIconButton(builder,
+                                 tab_extra_buttons_box,
+                                 {.icon = MidPanelIcon::Shuffle,
+                                  .tooltip = "Randomise which effects are on and shuffle their order"_s});
 
         if (rand_btn.button_fired) {
             BeginUndoableStep(g.engine, "Randomise effects"_s);
@@ -1471,6 +1472,13 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                                   on ? 1.0f : 0.0f,
                                   {});
             }
+
+            auto ordered_effects =
+                DecodeEffectsArray(g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
+                                   g.engine.processor.effects_ordered_by_type);
+            Shuffle(ordered_effects, g.engine.random_seed);
+            g.engine.processor.desired_effects_order.Store(EncodeEffectsArray(ordered_effects),
+                                                           StoreMemoryOrder::Relaxed);
         }
     }
 
