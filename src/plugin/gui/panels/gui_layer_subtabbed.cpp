@@ -1119,17 +1119,19 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
 
     DoWhitespace(g.builder, page, 6);
 
-    // Visual display of the LFO shape scaled by amount.
-    {
-        auto const vis_box = DoBox(g.builder,
-                                   {
-                                       .parent = page,
-                                       .layout {
-                                           .size = {layout::k_fill_parent, 70},
-                                       },
-                                   });
+    // Visual display of the LFO shape.
+    auto const vis_box = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, 70},
+                                   },
+                               });
+    // We defer it so it's drawn using the latest versions of parameter values that might have been modified
+    // by a GUI element in this function.
+    DEFER {
         if (auto const r = BoxRect(g.builder, vis_box)) DoLfoDisplay(g, layer_index, *r, greyed_out);
-    }
+    };
 
     DoWhitespace(g.builder, page, 10);
 
