@@ -1067,10 +1067,10 @@ void RecordUndoableStep(Engine& engine, String name, bool is_pinned_snapshot_anc
     engine.stashed_modifications.Clear();
     auto const current = CurrentStateSnapshot(engine);
     UndoableStep step {
-        .name = name,
         .snapshot = current,
         .is_pinned_snapshot_anchor = is_pinned_snapshot_anchor,
     };
+    dyn::AssignFitInCapacity(step.name, name);
     dyn::AssignFitInCapacity(step.snapshot_name, current.extras.display_name);
     engine.undo_history.Record(step);
 }
