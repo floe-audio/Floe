@@ -333,9 +333,9 @@ void DoFilterGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out
     auto const& macro_dests = engine.processor.main_macro_destinations;
 
     auto const cutoff_adj_linear =
-        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
     auto const reso_adj_linear =
-        AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, reso_param.LinearValue(), reso_param.info.index);
 
     auto const sv_type = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
 
@@ -531,11 +531,11 @@ void DoEffectFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const& macro_dests = engine.processor.main_macro_destinations;
 
     auto const cutoff_adj_linear =
-        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
     auto const reso_adj_linear =
-        AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, reso_param.LinearValue(), reso_param.info.index);
     auto const gain_adj_linear =
-        AdjustedLinearValue(params, macro_dests, gain_param.LinearValue(), gain_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, gain_param.LinearValue(), gain_param.info.index);
 
     auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
     auto const q_adj = rbj_filter::EffectFilterResonanceToQ(Clamp01(reso_adj_linear));
@@ -680,9 +680,9 @@ void DoReverbPreFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     }
 
     auto const lp_fc_hz = SemitonesToHz(lp_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, lp_param.LinearValue(), lp_param.info.index)));
+        AdjustedLinearValue(params.values, macro_dests, lp_param.LinearValue(), lp_param.info.index)));
     auto const hp_fc_hz = SemitonesToHz(hp_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, hp_param.LinearValue(), hp_param.info.index)));
+        AdjustedLinearValue(params.values, macro_dests, hp_param.LinearValue(), hp_param.info.index)));
 
     filter_graph_draw::DrawResponseCurve(
         imgui,
@@ -799,7 +799,8 @@ void DoReverbPostShelfGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     }
 
     auto const projected_adj = [&](DescribedParamValue const& p) {
-        return p.info.ProjectValue(AdjustedLinearValue(params, macro_dests, p.LinearValue(), p.info.index));
+        return p.info.ProjectValue(
+            AdjustedLinearValue(params.values, macro_dests, p.LinearValue(), p.info.index));
     };
     auto const lo_fc_hz = SemitonesToHz(projected_adj(lo_cut_param));
     auto const hi_fc_hz = SemitonesToHz(projected_adj(hi_cut_param));
@@ -885,7 +886,7 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
         });
 
     auto const cutoff_adj_linear =
-        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
     auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
                                      15.0f,
                                      filter_graph_draw::k_sample_rate * 0.49f);
@@ -983,9 +984,9 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
                    });
 
     auto const cutoff_adj_sem = cutoff_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index));
+        AdjustedLinearValue(params.values, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index));
     auto const spread_adj = spread_param.info.ProjectValue(
-        AdjustedLinearValue(params, macro_dests, spread_param.LinearValue(), spread_param.info.index));
+        AdjustedLinearValue(params.values, macro_dests, spread_param.LinearValue(), spread_param.info.index));
 
     constexpr f32 k_spread_octaves = 8;
     auto const radius_sem = spread_adj * k_spread_octaves * 12.0f;
@@ -1231,11 +1232,11 @@ DoEqGraphImpl(GuiState& g, Span<EqBandParams const> band_params, Rect viewport_r
         b.num_stages = EqTypeStageCount(eq_type);
 
         auto const freq_adj_hz = freq_param.info.ProjectValue(
-            AdjustedLinearValue(params, macro_dests, freq_param.LinearValue(), freq_param.info.index));
+            AdjustedLinearValue(params.values, macro_dests, freq_param.LinearValue(), freq_param.info.index));
         auto const gain_adj_db = gain_param.info.ProjectValue(
-            AdjustedLinearValue(params, macro_dests, gain_param.LinearValue(), gain_param.info.index));
+            AdjustedLinearValue(params.values, macro_dests, gain_param.LinearValue(), gain_param.info.index));
         auto const q_adj = rbj_filter::EqResonanceToQ(
-            AdjustedLinearValue(params, macro_dests, reso_param.LinearValue(), reso_param.info.index));
+            AdjustedLinearValue(params.values, macro_dests, reso_param.LinearValue(), reso_param.info.index));
 
         b.coeffs = rbj_filter::Coefficients({
             .type = EqTypeToRbjType(eq_type),

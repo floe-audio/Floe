@@ -320,7 +320,7 @@ static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params
             continue;
         }
 
-        macro_adjusted_params.values[param_index] = AdjustedLinearValue(params.params,
+        macro_adjusted_params.values[param_index] = AdjustedLinearValue(params.params.values,
                                                                         macros,
                                                                         params.params.values[param_index],
                                                                         (ParamIndex)param_index);
@@ -493,26 +493,6 @@ static EffectsArray OrderEffectsToEnum(EffectsArray e) {
             ASSERT(effect != nullptr);
     Sort(e, [](Effect const* a, Effect const* b) { return a->type < b->type; });
     return e;
-}
-
-f32 AdjustedLinearValue(Parameters const& params,
-                        MacroDestinations const& macros,
-                        f32 linear_value,
-                        ParamIndex param_index) {
-    auto const& descriptor = k_param_descriptors[ToInt(param_index)];
-
-    for (auto const [macro_index, dests] : Enumerate(macros)) {
-        for (auto const& dest : dests.items)
-            if (dest.param_index == param_index) {
-                auto const& macro_param = params.LinearValue(k_macro_params[macro_index]);
-                linear_value += descriptor.linear_range.Delta() * (dest.ProjectedValue() * macro_param);
-            }
-    }
-
-    // Clamp the value to the range of the parameter.
-    linear_value = Clamp(linear_value, descriptor.linear_range.min, descriptor.linear_range.max);
-
-    return linear_value;
 }
 
 static void ClearInbox(AudioProcessor& processor) {

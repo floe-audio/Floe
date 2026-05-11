@@ -174,11 +174,6 @@ EffectsArray DecodeEffectsArray(u64 val, EffectsArray const& unordered_effects);
 
 bool EffectIsOn(Parameters const& params, Effect*);
 
-f32 AdjustedLinearValue(Parameters const& params,
-                        MacroDestinations const& macro_destinations,
-                        f32 linear_value,
-                        ParamIndex param_index);
-
 struct ProcessorListener {
     enum : u8 {
         None = 0,

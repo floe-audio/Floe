@@ -101,11 +101,11 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
 
     auto const shape = shape_param.IntValue<param_values::LfoShape>();
     auto const amount_linear =
-        AdjustedLinearValue(params, macro_dests, amount_param.LinearValue(), amount_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, amount_param.LinearValue(), amount_param.info.index);
     auto const amount = Clamp(amount_linear, -1.0f, 1.0f);
 
     auto const rate_adj_linear =
-        AdjustedLinearValue(params, macro_dests, rate_param.LinearValue(), rate_param.info.index);
+        AdjustedLinearValue(params.values, macro_dests, rate_param.LinearValue(), rate_param.info.index);
 
     // Convert rate to Hz at a reference tempo so the display speed scales with the actual rate
     // value rather than its linear position in the param range.

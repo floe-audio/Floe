@@ -637,7 +637,7 @@ Box DoKnobParameter(GuiState& g,
                                      }))) {
         auto const current_percent =
             MapTo01(new_val ? *new_val : val, param.info.linear_range.min, param.info.linear_range.max);
-        auto const modulated_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params,
+        auto const modulated_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params.values,
                                                                    g.engine.processor.main_macro_destinations,
                                                                    val,
                                                                    param.info.index),
@@ -789,7 +789,7 @@ Box DoVerticalSliderParameter(GuiState& g,
     if (auto const r = BoxRect(g.builder, container)) {
         auto const current_percent =
             MapTo01(new_val ? *new_val : val, param.info.linear_range.min, param.info.linear_range.max);
-        auto const modulated_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params,
+        auto const modulated_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params.values,
                                                                    g.engine.processor.main_macro_destinations,
                                                                    val,
                                                                    param.info.index),
