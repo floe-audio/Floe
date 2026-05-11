@@ -33,15 +33,9 @@ class ConvolutionReverb final : public Effect {
                                 AudioProcessingContext const& context) override {
         if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::ConvolutionReverbHighpass))
             m_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, *p, 1, 0);
-        if (changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyConvolutionReverbWet) ||
-            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyConvolutionReverbDry) ||
-            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::ConvolutionReverbMix) ||
-            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::ConvolutionReverbOutput)) {
+        if (AnyChanged(changes.changed_params, k_convolution_reverb_wet_dry_mapping)) {
             auto const e = EffectiveWetDryFromMixOutputOrLegacy(changes.changed_params.params,
-                                                                ParamIndex::LegacyConvolutionReverbWet,
-                                                                ParamIndex::LegacyConvolutionReverbDry,
-                                                                ParamIndex::ConvolutionReverbMix,
-                                                                ParamIndex::ConvolutionReverbOutput);
+                                                                k_convolution_reverb_wet_dry_mapping);
             m_wet_dry.SetWet(e.wet_amp);
             m_wet_dry.SetDry(e.dry_amp);
         }

@@ -132,15 +132,9 @@ class Chorus final : public Effect {
         if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::ChorusHighpass))
             m_highpass_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, *p, 1, 0);
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ChorusDepth)) m_depth_01 = *p;
-        if (changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyChorusWet) ||
-            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::LegacyChorusDry) ||
-            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::ChorusMix) ||
-            changes.changed_params.ChangedIgnoringLegacy(ParamIndex::ChorusOutput)) {
-            auto const e = EffectiveWetDryFromMixOutputOrLegacy(changes.changed_params.params,
-                                                                ParamIndex::LegacyChorusWet,
-                                                                ParamIndex::LegacyChorusDry,
-                                                                ParamIndex::ChorusMix,
-                                                                ParamIndex::ChorusOutput);
+        if (AnyChanged(changes.changed_params, k_chorus_wet_dry_mapping)) {
+            auto const e =
+                EffectiveWetDryFromMixOutputOrLegacy(changes.changed_params.params, k_chorus_wet_dry_mapping);
             m_wet_dry.SetWet(e.wet_amp);
             m_wet_dry.SetDry(e.dry_amp);
         }

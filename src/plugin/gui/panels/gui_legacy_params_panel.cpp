@@ -47,25 +47,25 @@ static void ModerniseLegacyVelocity(AudioProcessor& processor) {
     SetParameterValue(processor, ParamIndex::MasterVelocity, 0, {});
 }
 
-static void ModerniseLegacyWetDryEffect(AudioProcessor& processor, WetDryEffectGroup const& g) {
-    auto const wet_lin = processor.main_params.LinearValue(g.legacy_wet);
-    auto const dry_lin = processor.main_params.LinearValue(g.legacy_dry);
-    auto const r = ConvertWetDryLinearToMixOutput(g, wet_lin, dry_lin);
+static void ModerniseLegacyWetDryEffect(AudioProcessor& processor, WetDryMapping const& mapping) {
+    auto const wet_lin = processor.main_params.LinearValue(mapping.legacy_wet);
+    auto const dry_lin = processor.main_params.LinearValue(mapping.legacy_dry);
+    auto const mix_output = ConvertWetDryLinearToMixOutput(mapping, wet_lin, dry_lin);
 
-    SetParameterValue(processor, g.modern_mix, r.mix_linear, {});
-    SetParameterValue(processor, g.modern_output, r.output_linear, {});
+    SetParameterValue(processor, mapping.modern_mix, mix_output.mix_linear, {});
+    SetParameterValue(processor, mapping.modern_output, mix_output.output_linear, {});
 
     SetParameterValue(processor,
-                      g.legacy_wet,
-                      k_param_descriptors[ToInt(g.legacy_wet)].default_linear_value,
+                      mapping.legacy_wet,
+                      k_param_descriptors[ToInt(mapping.legacy_wet)].default_linear_value,
                       {});
     SetParameterValue(processor,
-                      g.legacy_dry,
-                      k_param_descriptors[ToInt(g.legacy_dry)].default_linear_value,
+                      mapping.legacy_dry,
+                      k_param_descriptors[ToInt(mapping.legacy_dry)].default_linear_value,
                       {});
 
-    RetargetMacroDestinations(processor, g.legacy_wet, g.modern_mix);
-    RetargetMacroDestinations(processor, g.legacy_dry, g.modern_output);
+    RetargetMacroDestinations(processor, mapping.legacy_wet, mapping.modern_mix);
+    RetargetMacroDestinations(processor, mapping.legacy_dry, mapping.modern_output);
 }
 
 static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
@@ -74,9 +74,9 @@ static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
         return;
     }
 
-    if (auto const g = WetDryGroupContaining(legacy);
-        g && (legacy == g->legacy_wet || legacy == g->legacy_dry)) {
-        ModerniseLegacyWetDryEffect(processor, *g);
+    if (auto const mapping = WetDryMappingContaining(legacy);
+        mapping && (legacy == mapping->legacy_wet || legacy == mapping->legacy_dry)) {
+        ModerniseLegacyWetDryEffect(processor, *mapping);
         return;
     }
 

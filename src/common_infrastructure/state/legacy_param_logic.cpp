@@ -283,12 +283,12 @@ OldestOverridingAncestor(ParamIndex modern, StaticSpan<f32 const, k_num_paramete
 
 bool IsAnyLegacyOverriding(ParamIndex modern, StaticSpan<f32 const, k_num_parameters> linear_param_values) {
     if (OldestOverridingAncestor(modern, linear_param_values).HasValue()) return true;
-    if (auto const g = WetDryGroupContaining(modern);
-        g && (modern == g->modern_mix || modern == g->modern_output))
-        return IsWetDryLegacyOverriding(g->legacy_wet,
-                                        g->legacy_dry,
-                                        linear_param_values[ToInt(g->legacy_wet)],
-                                        linear_param_values[ToInt(g->legacy_dry)]);
+    if (auto const mapping = WetDryMappingContaining(modern);
+        mapping && (modern == mapping->modern_mix || modern == mapping->modern_output))
+        return IsWetDryLegacyOverriding(mapping->legacy_wet,
+                                        mapping->legacy_dry,
+                                        linear_param_values[ToInt(mapping->legacy_wet)],
+                                        linear_param_values[ToInt(mapping->legacy_dry)]);
     return false;
 }
 
@@ -359,24 +359,21 @@ static WetDryToMixOutput WetDryAmpToMixOutputAmp(f32 wet_amp, f32 dry_amp) {
     return {.mix_01 = wet_amp / sum, .output_amp = sum};
 }
 
-static WetDryToMixOutput WetDryLinearToMixOutputLinear(ParamIndex legacy_wet,
-                                                       ParamIndex legacy_dry,
-                                                       ParamIndex modern_mix,
-                                                       ParamIndex modern_output,
-                                                       f32 wet_linear,
-                                                       f32 dry_linear) {
-    auto const& wet_desc = k_param_descriptors[ToInt(legacy_wet)];
-    auto const& dry_desc = k_param_descriptors[ToInt(legacy_dry)];
-    auto const& mix_desc = k_param_descriptors[ToInt(modern_mix)];
-    auto const& output_desc = k_param_descriptors[ToInt(modern_output)];
+static WetDryToMixOutput
+WetDryLinearToMixOutputLinear(WetDryMapping const& mapping, f32 wet_linear, f32 dry_linear) {
+    auto const& wet_desc = k_param_descriptors[ToInt(mapping.legacy_wet)];
+    auto const& dry_desc = k_param_descriptors[ToInt(mapping.legacy_dry)];
+    auto const& mix_desc = k_param_descriptors[ToInt(mapping.modern_mix)];
+    auto const& output_desc = k_param_descriptors[ToInt(mapping.modern_output)];
 
     auto const wet_amp = wet_desc.ProjectValue(wet_linear);
     auto const dry_amp = dry_desc.ProjectValue(dry_linear);
-    auto const r = WetDryAmpToMixOutputAmp(wet_amp, dry_amp);
+    auto const mix_output = WetDryAmpToMixOutputAmp(wet_amp, dry_amp);
 
-    auto const mix_linear = mix_desc.LineariseValue(r.mix_01, true).ValueOr(mix_desc.default_linear_value);
+    auto const mix_linear =
+        mix_desc.LineariseValue(mix_output.mix_01, true).ValueOr(mix_desc.default_linear_value);
     auto const output_linear =
-        output_desc.LineariseValue(r.output_amp, true).ValueOr(output_desc.default_linear_value);
+        output_desc.LineariseValue(mix_output.output_amp, true).ValueOr(output_desc.default_linear_value);
     return {.mix_01 = mix_linear, .output_amp = output_linear};
 }
 
@@ -385,123 +382,147 @@ bool IsWetDryLegacyOverriding(ParamIndex legacy_wet, ParamIndex legacy_dry, f32 
            IsLegacyParamOverridingModern(k_param_descriptors[ToInt(legacy_dry)], dry_linear);
 }
 
-constexpr WetDryEffectGroup k_wet_dry_groups[] = {
-    {ParamIndex::LegacyBitCrushWet,
-     ParamIndex::LegacyBitCrushDry,
-     ParamIndex::BitCrushMix,
-     ParamIndex::BitCrushOutput},
-    {ParamIndex::LegacyChorusWet,
-     ParamIndex::LegacyChorusDry,
-     ParamIndex::ChorusMix,
-     ParamIndex::ChorusOutput},
-    {ParamIndex::LegacyConvolutionReverbWet,
-     ParamIndex::LegacyConvolutionReverbDry,
-     ParamIndex::ConvolutionReverbMix,
-     ParamIndex::ConvolutionReverbOutput},
-};
-
-Optional<WetDryEffectGroup> WetDryGroupContaining(ParamIndex param) {
-    for (auto const& g : k_wet_dry_groups)
-        if (param == g.legacy_wet || param == g.legacy_dry || param == g.modern_mix ||
-            param == g.modern_output)
-            return g;
+Optional<WetDryMapping> WetDryMappingContaining(ParamIndex param) {
+    for (auto const& mapping : k_wet_dry_mappings)
+        if (param == mapping.legacy_wet || param == mapping.legacy_dry || param == mapping.modern_mix ||
+            param == mapping.modern_output)
+            return mapping;
     return k_nullopt;
 }
 
 WetDryToMixOutputLinear
-ConvertWetDryLinearToMixOutput(WetDryEffectGroup const& g, f32 wet_linear, f32 dry_linear) {
-    auto const r = WetDryLinearToMixOutputLinear(g.legacy_wet,
-                                                 g.legacy_dry,
-                                                 g.modern_mix,
-                                                 g.modern_output,
-                                                 wet_linear,
-                                                 dry_linear);
-    return {.mix_linear = r.mix_01, .output_linear = r.output_amp};
+ConvertWetDryLinearToMixOutput(WetDryMapping const& mapping, f32 wet_linear, f32 dry_linear) {
+    auto const mix_output = WetDryLinearToMixOutputLinear(mapping, wet_linear, dry_linear);
+    return {.mix_linear = mix_output.mix_01, .output_linear = mix_output.output_amp};
 }
 
-void ModerniseWetDryEffect(StateSnapshot& state,
-                           ParamIndex legacy_wet,
-                           ParamIndex legacy_dry,
-                           ParamIndex modern_mix,
-                           ParamIndex modern_output,
-                           StateSource source) {
-    auto const& wet_desc = k_param_descriptors[ToInt(legacy_wet)];
-    auto const& dry_desc = k_param_descriptors[ToInt(legacy_dry)];
-    ASSERT(wet_desc.flags.legacy && dry_desc.flags.legacy);
+static void MigrateWetDryStateToMixOutput(StateSnapshot& state, WetDryMapping const& mapping) {
+    auto const& wet_desc = k_param_descriptors[ToInt(mapping.legacy_wet)];
+    auto const& dry_desc = k_param_descriptors[ToInt(mapping.legacy_dry)];
+    auto const& mix_desc = k_param_descriptors[ToInt(mapping.modern_mix)];
+    auto const& output_desc = k_param_descriptors[ToInt(mapping.modern_output)];
+    auto& wet_val = state.LinearParam(mapping.legacy_wet);
+    auto& dry_val = state.LinearParam(mapping.legacy_dry);
 
-    if (source == StateSource::Daw) {
-        auto const r = WetDryLinearToMixOutputLinear(legacy_wet,
-                                                     legacy_dry,
-                                                     modern_mix,
-                                                     modern_output,
-                                                     wet_desc.default_linear_value,
-                                                     dry_desc.default_linear_value);
-        state.LinearParam(modern_mix) = r.mix_01;
-        state.LinearParam(modern_output) = r.output_amp;
-        return;
-    }
+    // Target mix/output: legacy audio at the loaded macro state.
+    auto const target_at_load = ({
+        auto const wet_lin =
+            AdjustedLinearValue(state.param_values, state.macro_destinations, wet_val, mapping.legacy_wet);
+        auto const dry_lin =
+            AdjustedLinearValue(state.param_values, state.macro_destinations, dry_val, mapping.legacy_dry);
+        WetDryLinearToMixOutputLinear(mapping, wet_lin, dry_lin);
+    });
 
-    auto& wet_val = state.LinearParam(legacy_wet);
-    auto& dry_val = state.LinearParam(legacy_dry);
-    auto const r =
-        WetDryLinearToMixOutputLinear(legacy_wet, legacy_dry, modern_mix, modern_output, wet_val, dry_val);
-    state.LinearParam(modern_mix) = r.mix_01;
-    state.LinearParam(modern_output) = r.output_amp;
-
-    // Remap macro destinations. When a single macro modulates BOTH legacy wet and dry of this effect,
-    // we can derive joint (mix, output) amounts that match the audio result exactly at macro=0 and
-    // macro=1 (the endpoints of the macro's [0,1] range). For single-sided destinations we fall back
-    // to a heuristic: Wet→Mix (wet varies most when blending), Dry→Output.
-    auto const& mix_desc = k_param_descriptors[ToInt(modern_mix)];
-    auto const& output_desc = k_param_descriptors[ToInt(modern_output)];
-    for (auto& dests : state.macro_destinations) {
+    // A common preset pattern is one macro modulating both wet and dry to emulate a mix sweep.
+    // The extra destination gives us enough freedom to also match audio at the macro's far
+    // endpoint, so the sweep stays close to legacy instead of drifting after load.
+    for (auto const macro_index : Range(k_num_macros)) {
+        auto& dests = state.macro_destinations[macro_index];
         Optional<usize> wet_slot;
         Optional<usize> dry_slot;
         for (auto const dest_index : Range(k_max_macro_destinations)) {
             auto const& d = dests.items[dest_index];
-            if (!d.param_index) continue;
-            if (*d.param_index == legacy_wet)
+            if (!d.param_index) break;
+            if (*d.param_index == mapping.legacy_wet)
                 wet_slot = dest_index;
-            else if (*d.param_index == legacy_dry)
+            else if (*d.param_index == mapping.legacy_dry)
                 dry_slot = dest_index;
         }
+        if (!wet_slot || !dry_slot) continue;
 
-        if (wet_slot && dry_slot) {
-            // The effective linear param under this macro at m=1 is:
-            //   p_eff(1) = clamp(p_base + delta_p * projected_amount, p_min, p_max)
-            // We sample the legacy pair at m=1, run it through the wet/dry→mix/output transform,
-            // then back out the projected amounts that produce the same modern values at m=1.
-            auto const a_w_proj = dests.items[*wet_slot].ProjectedValue();
-            auto const a_d_proj = dests.items[*dry_slot].ProjectedValue();
+        auto& macro_lin = state.LinearParam(k_macro_params[macro_index]);
+        auto const m_load = macro_lin;
+        auto const m_far = (m_load < 0.5f) ? 1.0f : 0.0f;
+        auto const dm = m_far - m_load;
+        if (dm == 0) break;
 
-            auto const wet_at_m1 = Clamp(wet_val + (wet_desc.linear_range.Delta() * a_w_proj), 0.0f, 1.0f);
-            auto const dry_at_m1 = Clamp(dry_val + (dry_desc.linear_range.Delta() * a_d_proj), 0.0f, 1.0f);
-            auto const r1 = WetDryLinearToMixOutputLinear(legacy_wet,
-                                                          legacy_dry,
-                                                          modern_mix,
-                                                          modern_output,
-                                                          wet_at_m1,
-                                                          dry_at_m1);
+        auto const target_at_far = ({
+            macro_lin = m_far;
+            auto const wet_lin = AdjustedLinearValue(state.param_values,
+                                                     state.macro_destinations,
+                                                     wet_val,
+                                                     mapping.legacy_wet);
+            auto const dry_lin = AdjustedLinearValue(state.param_values,
+                                                     state.macro_destinations,
+                                                     dry_val,
+                                                     mapping.legacy_dry);
+            macro_lin = m_load;
+            WetDryLinearToMixOutputLinear(mapping, wet_lin, dry_lin);
+        });
 
-            auto const mix_base = state.LinearParam(modern_mix);
-            auto const output_base = state.LinearParam(modern_output);
-            auto const mix_proj = Clamp((r1.mix_01 - mix_base) / mix_desc.linear_range.Delta(), -1.0f, 1.0f);
-            auto const out_proj =
-                Clamp((r1.output_amp - output_base) / output_desc.linear_range.Delta(), -1.0f, 1.0f);
+        auto const proj_w_new =
+            (target_at_far.mix_01 - target_at_load.mix_01) / (mix_desc.linear_range.Delta() * dm);
+        auto const proj_d_new =
+            (target_at_far.output_amp - target_at_load.output_amp) / (output_desc.linear_range.Delta() * dm);
+        auto invert_proj = [](f32 p) {
+            auto const c = Clamp(p, -1.0f, 1.0f);
+            return Copysign(Sqrt(Abs(c)), c);
+        };
+        dests.items[*wet_slot].value = invert_proj(proj_w_new);
+        dests.items[*dry_slot].value = invert_proj(proj_d_new);
+        break;
+    }
 
-            // Invert projection (sign(v)·v²) to recover the stored value.
-            dests.items[*wet_slot].param_index = modern_mix;
-            dests.items[*wet_slot].value = Copysign(Sqrt(Abs(mix_proj)), mix_proj);
-            dests.items[*dry_slot].param_index = modern_output;
-            dests.items[*dry_slot].value = Copysign(Sqrt(Abs(out_proj)), out_proj);
-        } else {
-            if (wet_slot) dests.items[*wet_slot].param_index = modern_mix;
-            if (dry_slot) dests.items[*dry_slot].param_index = modern_output;
+    // Retarget destinations onto the modern slots.
+    for (auto& dests : state.macro_destinations) {
+        for (auto& d : dests.items) {
+            if (!d.param_index) break;
+            if (*d.param_index == mapping.legacy_wet)
+                d.param_index = mapping.modern_mix;
+            else if (*d.param_index == mapping.legacy_dry)
+                d.param_index = mapping.modern_output;
         }
     }
 
+    // Back-solve mix/output base so base + macro contribution at load == target_at_load.
+    {
+        f32 mix_macro_contrib = 0;
+        f32 output_macro_contrib = 0;
+        for (auto const macro_index : Range(k_num_macros)) {
+            auto const macro_value = state.LinearParam(k_macro_params[macro_index]);
+            for (auto const& d : state.macro_destinations[macro_index].items) {
+                if (!d.param_index) break;
+                auto const macro_contribution_01 = macro_value * d.ProjectedValue();
+                if (*d.param_index == mapping.modern_mix)
+                    mix_macro_contrib += mix_desc.linear_range.Delta() * macro_contribution_01;
+                else if (*d.param_index == mapping.modern_output)
+                    output_macro_contrib += output_desc.linear_range.Delta() * macro_contribution_01;
+            }
+        }
+        state.LinearParam(mapping.modern_mix) = Clamp(target_at_load.mix_01 - mix_macro_contrib,
+                                                      mix_desc.linear_range.min,
+                                                      mix_desc.linear_range.max);
+        state.LinearParam(mapping.modern_output) = Clamp(target_at_load.output_amp - output_macro_contrib,
+                                                         output_desc.linear_range.min,
+                                                         output_desc.linear_range.max);
+    }
+
+    // Neutralise legacy so the DSP no longer treats them as active.
     wet_val = wet_desc.default_linear_value;
     dry_val = dry_desc.default_linear_value;
+}
+
+void ModerniseWetDryEffect(StateSnapshot& state, WetDryMapping const& mapping, StateSource source) {
+    auto const& wet_desc = k_param_descriptors[ToInt(mapping.legacy_wet)];
+    auto const& dry_desc = k_param_descriptors[ToInt(mapping.legacy_dry)];
+    ASSERT(wet_desc.flags.legacy && dry_desc.flags.legacy);
+
+    switch (source) {
+        case StateSource::Daw: {
+            // No remapping because DAW automation might rely on the values. Instead, we just reset modern
+            // versions to equal the legacy defaults for seamless switching.
+            auto const seed = WetDryLinearToMixOutputLinear(mapping,
+                                                            wet_desc.default_linear_value,
+                                                            dry_desc.default_linear_value);
+            state.LinearParam(mapping.modern_mix) = seed.mix_01;
+            state.LinearParam(mapping.modern_output) = seed.output_amp;
+            break;
+        }
+        case StateSource::PresetFile:
+            // The conversion is amp-lossless: Output_amp = W_amp + D_amp, Mix = W_amp / (W_amp + D_amp).
+            MigrateWetDryStateToMixOutput(state, mapping);
+            break;
+    }
 }
 
 CurveMap::Points ModerniseVelocityToCurve(param_values::VelocityMappingMode mode,
@@ -568,53 +589,30 @@ CurveMap::Points ModerniseVelocityToCurve(param_values::VelocityMappingMode mode
 }
 
 TEST_CASE(TestModerniseWetDryEffectLossless) {
-    struct Triple {
-        ParamIndex legacy_wet, legacy_dry, modern_mix, modern_output;
-    };
-    Triple const cases[] = {
-        {ParamIndex::LegacyBitCrushWet,
-         ParamIndex::LegacyBitCrushDry,
-         ParamIndex::BitCrushMix,
-         ParamIndex::BitCrushOutput},
-        {ParamIndex::LegacyChorusWet,
-         ParamIndex::LegacyChorusDry,
-         ParamIndex::ChorusMix,
-         ParamIndex::ChorusOutput},
-        {ParamIndex::LegacyConvolutionReverbWet,
-         ParamIndex::LegacyConvolutionReverbDry,
-         ParamIndex::ConvolutionReverbMix,
-         ParamIndex::ConvolutionReverbOutput},
-    };
-
     // Legacy wet/dry can each go up to +12 dB. The modern Output is +18 dB so any (W, D)
     // combination is representable losslessly.
     f32 const wet_linear_samples[] = {0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 1.0f};
     f32 const dry_linear_samples[] = {0.0f, 0.1f, 0.25f, 0.5f, 0.75f, 1.0f};
 
-    for (auto const& c : cases) {
-        auto const& wet_desc = k_param_descriptors[ToInt(c.legacy_wet)];
-        auto const& dry_desc = k_param_descriptors[ToInt(c.legacy_dry)];
-        auto const& mix_desc = k_param_descriptors[ToInt(c.modern_mix)];
-        auto const& output_desc = k_param_descriptors[ToInt(c.modern_output)];
+    for (auto const& mapping : k_wet_dry_mappings) {
+        auto const& wet_desc = k_param_descriptors[ToInt(mapping.legacy_wet)];
+        auto const& dry_desc = k_param_descriptors[ToInt(mapping.legacy_dry)];
+        auto const& mix_desc = k_param_descriptors[ToInt(mapping.modern_mix)];
+        auto const& output_desc = k_param_descriptors[ToInt(mapping.modern_output)];
 
         for (auto const w_lin : wet_linear_samples) {
             for (auto const d_lin : dry_linear_samples) {
                 StateSnapshot state {};
-                state.LinearParam(c.legacy_wet) = w_lin;
-                state.LinearParam(c.legacy_dry) = d_lin;
+                state.LinearParam(mapping.legacy_wet) = w_lin;
+                state.LinearParam(mapping.legacy_dry) = d_lin;
 
-                ModerniseWetDryEffect(state,
-                                      c.legacy_wet,
-                                      c.legacy_dry,
-                                      c.modern_mix,
-                                      c.modern_output,
-                                      StateSource::PresetFile);
+                ModerniseWetDryEffect(state, mapping, StateSource::PresetFile);
 
                 auto const w_amp = wet_desc.ProjectValue(w_lin);
                 auto const d_amp = dry_desc.ProjectValue(d_lin);
 
-                auto const mix_lin = state.LinearParam(c.modern_mix);
-                auto const out_lin = state.LinearParam(c.modern_output);
+                auto const mix_lin = state.LinearParam(mapping.modern_mix);
+                auto const out_lin = state.LinearParam(mapping.modern_output);
                 auto const out_amp = output_desc.ProjectValue(out_lin);
                 auto const mix_01 = mix_desc.ProjectValue(mix_lin);
 
@@ -624,8 +622,8 @@ TEST_CASE(TestModerniseWetDryEffectLossless) {
                 CHECK_APPROX_EQ(recovered_w, w_amp, 0.01f);
                 CHECK_APPROX_EQ(recovered_d, d_amp, 0.01f);
 
-                CHECK_APPROX_EQ(state.LinearParam(c.legacy_wet), wet_desc.default_linear_value, 1e-6f);
-                CHECK_APPROX_EQ(state.LinearParam(c.legacy_dry), dry_desc.default_linear_value, 1e-6f);
+                CHECK_APPROX_EQ(state.LinearParam(mapping.legacy_wet), wet_desc.default_linear_value, 1e-6f);
+                CHECK_APPROX_EQ(state.LinearParam(mapping.legacy_dry), dry_desc.default_linear_value, 1e-6f);
             }
         }
     }

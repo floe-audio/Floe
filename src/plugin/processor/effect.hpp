@@ -54,19 +54,23 @@ struct EffectiveWetDryAmps {
     f32 dry_amp;
 };
 inline EffectiveWetDryAmps EffectiveWetDryFromMixOutputOrLegacy(Parameters const& p,
-                                                                ParamIndex legacy_wet,
-                                                                ParamIndex legacy_dry,
-                                                                ParamIndex modern_mix,
-                                                                ParamIndex modern_output) {
-    auto const wet_lin = p.LinearValueIgnoringLegacy(legacy_wet);
-    auto const dry_lin = p.LinearValueIgnoringLegacy(legacy_dry);
-    if (IsWetDryLegacyOverriding(legacy_wet, legacy_dry, wet_lin, dry_lin)) {
-        return {.wet_amp = k_param_descriptors[ToInt(legacy_wet)].ProjectValue(wet_lin),
-                .dry_amp = k_param_descriptors[ToInt(legacy_dry)].ProjectValue(dry_lin)};
+                                                                WetDryMapping const& mapping) {
+    auto const wet_lin = p.LinearValueIgnoringLegacy(mapping.legacy_wet);
+    auto const dry_lin = p.LinearValueIgnoringLegacy(mapping.legacy_dry);
+    if (IsWetDryLegacyOverriding(mapping.legacy_wet, mapping.legacy_dry, wet_lin, dry_lin)) {
+        return {.wet_amp = k_param_descriptors[ToInt(mapping.legacy_wet)].ProjectValue(wet_lin),
+                .dry_amp = k_param_descriptors[ToInt(mapping.legacy_dry)].ProjectValue(dry_lin)};
     }
-    auto const mix = p.LinearValue(modern_mix);
-    auto const output_amp = p.ProjectedValue(modern_output);
+    auto const mix = p.LinearValue(mapping.modern_mix);
+    auto const output_amp = p.ProjectedValue(mapping.modern_output);
     return {.wet_amp = output_amp * mix, .dry_amp = output_amp * (1.0f - mix)};
+}
+
+inline bool AnyChanged(auto const& changed_params, WetDryMapping const& mapping) {
+    return changed_params.ChangedIgnoringLegacy(mapping.legacy_wet) ||
+           changed_params.ChangedIgnoringLegacy(mapping.legacy_dry) ||
+           changed_params.ChangedIgnoringLegacy(mapping.modern_mix) ||
+           changed_params.ChangedIgnoringLegacy(mapping.modern_output);
 }
 
 enum class EffectProcessResult : u8 {

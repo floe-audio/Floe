@@ -770,24 +770,9 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                                     ParamIndex::CompressorMix})
             state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
 
-        ModerniseWetDryEffect(state,
-                              ParamIndex::LegacyBitCrushWet,
-                              ParamIndex::LegacyBitCrushDry,
-                              ParamIndex::BitCrushMix,
-                              ParamIndex::BitCrushOutput,
-                              source);
-        ModerniseWetDryEffect(state,
-                              ParamIndex::LegacyChorusWet,
-                              ParamIndex::LegacyChorusDry,
-                              ParamIndex::ChorusMix,
-                              ParamIndex::ChorusOutput,
-                              source);
-        ModerniseWetDryEffect(state,
-                              ParamIndex::LegacyConvolutionReverbWet,
-                              ParamIndex::LegacyConvolutionReverbDry,
-                              ParamIndex::ConvolutionReverbMix,
-                              ParamIndex::ConvolutionReverbOutput,
-                              source);
+        ModerniseWetDryEffect(state, k_bitcrush_wet_dry_mapping, source);
+        ModerniseWetDryEffect(state, k_chorus_wet_dry_mapping, source);
+        ModerniseWetDryEffect(state, k_convolution_reverb_wet_dry_mapping, source);
     }
 
     if (version < StateVersion::ReworkedCompressorThresholdAndRatio) {
@@ -2198,7 +2183,7 @@ TEST_CASE(TestParsersHandleInvalidData) {
     return k_success;
 }
 
-TEST_CASE(TestNewSerialisation) {
+TEST_CASE(TestSerialisation) {
     auto& scratch_arena = tester.scratch_arena;
 
     for (auto const source : Array {StateSource::PresetFile, StateSource::Daw}) {
@@ -2835,149 +2820,160 @@ TEST_CASE(TestLoadingOldFiles) {
     return k_success;
 }
 
-// Starting point for legacy-modernisation tests: every param at its descriptor default. Tests then
-// zero out the *modern* successor(s) they care about to simulate the real on-disk scenario where
-// the modern param did not yet exist in the older state version (StateSnapshot zero-inits new
-// fields that the binary decoder skipped past).
-static StateSnapshot LegacyBinaryStateBase() { return DefaultStateSnapshot(); }
+TEST_CASE(TestAdaptPreservesLegacyAudio) {
+    SUBCASE("compressor ratio") {
+        auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyCompressorRatio)];
+        auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorRatio)];
 
-TEST_CASE(TestAdaptCompressorRatioFromLegacyDefault) {
-    auto state = LegacyBinaryStateBase();
-    state.LinearParam(ParamIndex::CompressorRatio) = 0.0f;
+        auto check_for_legacy_ratio = [&](f32 legacy_ratio) {
+            auto state = DefaultStateSnapshot();
+            state.LinearParam(ParamIndex::CompressorRatio) = 0;
+            state.LinearParam(ParamIndex::LegacyCompressorRatio) =
+                legacy_desc.LineariseValue(legacy_ratio, true).Value();
 
-    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+            AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
-    auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorRatio)];
-    auto const projected = modern_desc.ProjectValue(state.LinearParam(ParamIndex::CompressorRatio));
-    CHECK_APPROX_EQ(projected, 2.0f, 0.05f);
+            auto const modern_ratio =
+                modern_desc.ProjectValue(state.LinearParam(ParamIndex::CompressorRatio));
+            CHECK_APPROX_EQ(modern_ratio, legacy_ratio, 0.05f);
+        };
+
+        check_for_legacy_ratio(legacy_desc.ProjectValue(legacy_desc.default_linear_value));
+        check_for_legacy_ratio(4.0f);
+    }
+
+    SUBCASE("compressor threshold") {
+        auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyCompressorThreshold)];
+        auto const expected_db = AmpToDb(legacy_desc.ProjectValue(legacy_desc.default_linear_value));
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(ParamIndex::CompressorThreshold) = 0;
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        // Modern threshold has no projection — the linear value is the dB value.
+        auto const modern_threshold_db = state.LinearParam(ParamIndex::CompressorThreshold);
+        CHECK_APPROX_EQ(modern_threshold_db, expected_db, 0.5f);
+    }
+
+    SUBCASE("layer filter resonance Q") {
+        auto const layer_q = [](f32 skewed) { return 1.0f / (2.0f * (1.0f - skewed)); };
+        auto const legacy_skew = [](f32 linear) { return Pow(linear, 4.0f) * 0.95f; };
+        auto const modern_skew = [](f32 linear) { return linear * 0.95f; };
+
+        constexpr f32 k_legacy_linear = 0.30f;
+        auto const legacy_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyFilterResonance);
+        auto const modern_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::FilterResonance);
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(modern_pi) = 0;
+        state.LinearParam(legacy_pi) =
+            k_param_descriptors[ToInt(legacy_pi)].LineariseValue(k_legacy_linear, true).Value();
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        CHECK_APPROX_EQ(layer_q(modern_skew(state.LinearParam(modern_pi))),
+                        layer_q(legacy_skew(k_legacy_linear)),
+                        1e-4f);
+    }
+
+    SUBCASE("convolution reverb highpass") {
+        constexpr f32 k_legacy_hz = 30.0f;
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(ParamIndex::ConvolutionReverbHighpass) = 0;
+        state.LinearParam(ParamIndex::LegacyConvolutionReverbHighpass) =
+            k_param_descriptors[ToInt(ParamIndex::LegacyConvolutionReverbHighpass)]
+                .LineariseValue(k_legacy_hz, true)
+                .Value();
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        auto const modern_hz = k_param_descriptors[ToInt(ParamIndex::ConvolutionReverbHighpass)].ProjectValue(
+            state.LinearParam(ParamIndex::ConvolutionReverbHighpass));
+        CHECK_APPROX_EQ(modern_hz, k_legacy_hz, 2.0f);
+    }
+
+    SUBCASE("bitcrush wet/dry → mix/output") {
+        auto const& wet_desc = k_param_descriptors[ToInt(ParamIndex::LegacyBitCrushWet)];
+        auto const& dry_desc = k_param_descriptors[ToInt(ParamIndex::LegacyBitCrushDry)];
+        auto const wet_default_amp = wet_desc.ProjectValue(wet_desc.default_linear_value);
+        auto const dry_default_amp = dry_desc.ProjectValue(dry_desc.default_linear_value);
+        auto const expected_output_amp = wet_default_amp + dry_default_amp;
+        auto const expected_mix = wet_default_amp / expected_output_amp;
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(ParamIndex::BitCrushMix) = 0;
+        state.LinearParam(ParamIndex::BitCrushOutput) = 0;
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        auto const mix = k_param_descriptors[ToInt(ParamIndex::BitCrushMix)].ProjectValue(
+            state.LinearParam(ParamIndex::BitCrushMix));
+        auto const output_amp = k_param_descriptors[ToInt(ParamIndex::BitCrushOutput)].ProjectValue(
+            state.LinearParam(ParamIndex::BitCrushOutput));
+        CHECK_APPROX_EQ(mix, expected_mix, 0.05f);
+        CHECK_APPROX_EQ(output_amp, expected_output_amp, 0.05f);
+    }
+
     return k_success;
 }
 
-TEST_CASE(TestAdaptCompressorRatioFromLegacyNonDefault) {
-    auto state = LegacyBinaryStateBase();
-    state.LinearParam(ParamIndex::CompressorRatio) = 0.0f;
-    auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyCompressorRatio)];
-    state.LinearParam(ParamIndex::LegacyCompressorRatio) = legacy_desc.LineariseValue(4.0f, true).Value();
+// A macro on a legacy param must not change the audio heard at load: AdaptNewerParams has to
+// seed the modern successor(s) so that the macro-modulated state still sounds the same.
+TEST_CASE(TestAdaptPreservesLegacyAudioUnderMacros) {
+    SUBCASE("convolution reverb wet/dry → mix/output") {
+        auto const wet_pi = ParamIndex::LegacyConvolutionReverbWet;
+        auto const dry_pi = ParamIndex::LegacyConvolutionReverbDry;
+        auto const mix_pi = ParamIndex::ConvolutionReverbMix;
+        auto const out_pi = ParamIndex::ConvolutionReverbOutput;
+        auto const& wet_desc = k_param_descriptors[ToInt(wet_pi)];
+        auto const& dry_desc = k_param_descriptors[ToInt(dry_pi)];
 
-    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(wet_pi) = wet_desc.LineariseValue(0.0f, true).Value();
+        state.LinearParam(dry_pi) = dry_desc.LineariseValue(0.245f, true).Value();
+        state.LinearParam(mix_pi) = 0;
+        state.LinearParam(out_pi) = 0;
+        state.LinearParam(ParamIndex::Macro4) = 1.0f;
+        state.macro_destinations[3].items[0] = {.param_index = wet_pi, .value = 0.7f};
 
-    auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorRatio)];
-    auto const projected = modern_desc.ProjectValue(state.LinearParam(ParamIndex::CompressorRatio));
-    CHECK_APPROX_EQ(projected, 4.0f, 0.05f);
-    return k_success;
-}
+        auto const legacy_wet_amp = wet_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                              state.macro_destinations,
+                                                                              state.LinearParam(wet_pi),
+                                                                              wet_pi));
+        auto const legacy_dry_amp = dry_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                              state.macro_destinations,
+                                                                              state.LinearParam(dry_pi),
+                                                                              dry_pi));
 
-TEST_CASE(TestAdaptCompressorThresholdFromLegacyDefault) {
-    auto state = LegacyBinaryStateBase();
-    state.LinearParam(ParamIndex::CompressorThreshold) = 0.0f;
+        // Start past the macro-reset migration so our state.macro_destinations setup survives.
+        AdaptNewerParams(state, StateVersion::AddedVitalCompressor, StateSource::PresetFile);
 
-    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+        auto const mix_01 =
+            k_param_descriptors[ToInt(mix_pi)].ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                                state.macro_destinations,
+                                                                                state.LinearParam(mix_pi),
+                                                                                mix_pi));
+        auto const out_amp =
+            k_param_descriptors[ToInt(out_pi)].ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                                state.macro_destinations,
+                                                                                state.LinearParam(out_pi),
+                                                                                out_pi));
 
-    auto const projected = state.LinearParam(ParamIndex::CompressorThreshold);
-    CHECK_APPROX_EQ(projected, 0.0f, 0.5f);
-    return k_success;
-}
+        CHECK_APPROX_EQ(out_amp * mix_01, legacy_wet_amp, 0.01f);
+        CHECK_APPROX_EQ(out_amp * (1.0f - mix_01), legacy_dry_amp, 0.01f);
+    }
 
-TEST_CASE(TestAdaptLayerFilterResonancePreservesQ) {
-    // Legacy layer DSP: Q = 1 / (2 · (1 − 0.95 · linear^4))   (LegacySkewResonance + ResonanceToQ)
-    // Modern  layer DSP: Q = 1 / (2 · (1 − 0.95 · linear))    (SkewResonance     + ResonanceToQ)
-    // Modernisation maps modern = legacy^4 so the audible Q stays identical.
-    auto state = LegacyBinaryStateBase();
-    auto const legacy_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyFilterResonance);
-    auto const modern_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::FilterResonance);
-    state.LinearParam(modern_pi) = 0.0f;
-    auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
-    state.LinearParam(legacy_pi) = legacy_desc.LineariseValue(0.30f, true).Value();
-
-    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
-
-    constexpr f32 k_legacy_linear = 0.30f;
-    auto const legacy_skew = Pow(k_legacy_linear, 4.0f) * 0.95f;
-    auto const legacy_q = 1.0f / (2.0f * (1.0f - legacy_skew));
-
-    auto const modern_linear = state.LinearParam(modern_pi);
-    auto const modern_q = 1.0f / (2.0f * (1.0f - 0.95f * modern_linear));
-    CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
-    return k_success;
-}
-
-TEST_CASE(TestAdaptConvolutionReverbHighpassPreservesValue) {
-    auto state = LegacyBinaryStateBase();
-    state.LinearParam(ParamIndex::ConvolutionReverbHighpass) = 0.0f;
-    auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyConvolutionReverbHighpass)];
-    state.LinearParam(ParamIndex::LegacyConvolutionReverbHighpass) =
-        legacy_desc.LineariseValue(30.0f, true).Value();
-
-    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
-
-    auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::ConvolutionReverbHighpass)];
-    auto const projected = modern_desc.ProjectValue(state.LinearParam(ParamIndex::ConvolutionReverbHighpass));
-    CHECK_APPROX_EQ(projected, 30.0f, 2.0f);
-    return k_success;
-}
-
-TEST_CASE(TestAdaptBitcrushWetDryToMixOutput) {
-    // Old bit-crush defaults were -6 dB Wet and -6 dB Dry. Modernised should still sound the
-    // same: 50/50 mix at unity output, not a much-louder (or much-quieter) output.
-    auto state = LegacyBinaryStateBase();
-    state.LinearParam(ParamIndex::BitCrushMix) = 0.0f;
-    state.LinearParam(ParamIndex::BitCrushOutput) = 0.0f;
-
-    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
-
-    auto const& mix_desc = k_param_descriptors[ToInt(ParamIndex::BitCrushMix)];
-    auto const& output_desc = k_param_descriptors[ToInt(ParamIndex::BitCrushOutput)];
-    auto const mix = mix_desc.ProjectValue(state.LinearParam(ParamIndex::BitCrushMix));
-    auto const output_amp = output_desc.ProjectValue(state.LinearParam(ParamIndex::BitCrushOutput));
-    CHECK_APPROX_EQ(mix, 0.5f, 0.05f);
-    CHECK_APPROX_EQ(output_amp, 1.0f, 0.05f);
-    return k_success;
-}
-
-TEST_CASE(TestRawCodeStateRoundTrips) {
-    // The encoder only writes Latest, so adapted vs raw decode of a freshly-encoded state should
-    // produce identical results (no legacy migrations apply). This guards against the
-    // skip_param_adaptation flag breaking the normal decode path.
-    auto& scratch_arena = tester.scratch_arena;
-    StateSnapshot state = DefaultStateSnapshot();
-    state.LinearParam(ParamIndex::LegacyCompressorRatio) =
-        k_param_descriptors[ToInt(ParamIndex::LegacyCompressorRatio)].LineariseValue(4.0f, true).Value();
-
-    DynamicArray<u8> bytes {scratch_arena};
-    REQUIRE(CodeState(state,
-                      CodeStateArguments {
-                          .mode = CodeStateArguments::Mode::Encode,
-                          .read_or_write_data = [&](void* d, usize n) -> ErrorCodeOr<void> {
-                              dyn::AppendSpan(bytes, Span<u8 const> {(u8 const*)d, n});
-                              return k_success;
-                          },
-                          .source = StateSource::PresetFile,
-                      })
-                .Succeeded());
-
-    auto const raw = TRY(DecodeFromMemory(bytes, StateSource::PresetFile, true));
-    auto const adapted = TRY(DecodeFromMemory(bytes, StateSource::PresetFile, false));
-    CHECK_APPROX_EQ(raw.LinearParam(ParamIndex::LegacyCompressorRatio),
-                    adapted.LinearParam(ParamIndex::LegacyCompressorRatio),
-                    1e-6f);
-    CHECK_APPROX_EQ(raw.LinearParam(ParamIndex::LegacyCompressorRatio),
-                    state.LinearParam(ParamIndex::LegacyCompressorRatio),
-                    1e-6f);
     return k_success;
 }
 
 TEST_REGISTRATION(RegisterStateCodingTests) {
-    REGISTER_TEST(TestAdaptCompressorRatioFromLegacyDefault);
-    REGISTER_TEST(TestAdaptCompressorRatioFromLegacyNonDefault);
-    REGISTER_TEST(TestAdaptCompressorThresholdFromLegacyDefault);
-    REGISTER_TEST(TestAdaptLayerFilterResonancePreservesQ);
-    REGISTER_TEST(TestAdaptConvolutionReverbHighpassPreservesValue);
-    REGISTER_TEST(TestAdaptBitcrushWetDryToMixOutput);
-    REGISTER_TEST(TestRawCodeStateRoundTrips);
+    REGISTER_TEST(TestAdaptPreservesLegacyAudio);
+    REGISTER_TEST(TestAdaptPreservesLegacyAudioUnderMacros);
     REGISTER_TEST(TestLoadingOldFiles);
     REGISTER_TEST(TestBackwardCompat);
     REGISTER_TEST(TestFuzzingJsonState);
-    REGISTER_TEST(TestNewSerialisation);
+    REGISTER_TEST(TestSerialisation);
     REGISTER_TEST(TestParsersHandleInvalidData);
     REGISTER_TEST(TestAdaptPreAddedLayerVelocityCurvesParams);
 }
