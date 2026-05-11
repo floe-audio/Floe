@@ -19,6 +19,7 @@
 enum class CliArgId : u8 {
     PresetFile,
     ScriptFile,
+    Raw,
     Count,
 };
 
@@ -42,6 +43,16 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
         .value_type = "path",
         .required = false,
         .num_values = 1,
+    },
+    {
+        .id = (u32)CliArgId::Raw,
+        .key = "raw",
+        .description = "Load the preset without applying legacy→modern parameter adaptation. The printed\n"
+                       "values reflect what is actually stored in the file. Cannot be combined with\n"
+                       "--script-file (saving a raw-loaded preset would corrupt it).\n",
+        .value_type = "",
+        .required = false,
+        .num_values = 0,
     },
 });
 
@@ -546,7 +557,13 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         return error;
     });
 
-    auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena), {
+    auto const raw = cli_args[ToInt(CliArgId::Raw)].was_provided;
+    if (raw && cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
+        StdPrintF(StdStream::Err, "Error: --raw cannot be combined with --script-file\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena, raw), {
         StdPrintF(StdStream::Err, "Error: failed to open preset file: {}\n", error);
         return error;
     });

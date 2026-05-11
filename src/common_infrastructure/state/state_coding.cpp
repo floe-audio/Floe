@@ -842,10 +842,10 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     }
 }
 
-static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
-                                               ArenaAllocator& scratch_arena,
-                                               String data,
-                                               bool adapt_for_latest_version) {
+ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
+                                        ArenaAllocator& scratch_arena,
+                                        String data,
+                                        bool adapt_for_latest_version) {
     if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
         for (auto& f : state.param_values)
             f = 999999999.f;
@@ -1270,10 +1270,6 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
     state.extras.origin_preset_hash = RapidHash64(data);
 
     return k_success;
-}
-
-ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String data) {
-    return DecodeMirageJsonState(state, scratch_arena, data, true);
 }
 
 // ==========================================================================================================
@@ -1922,7 +1918,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     }
 
     // =======================================================================================================
-    AdaptNewerParams(state, coder.version, args.source);
+    if (!args.skip_param_adaptation) AdaptNewerParams(state, coder.version, args.source);
 
     // =======================================================================================================
     // Clamp all param values to their valid ranges. This is necessary because experimental param ranges
@@ -1950,8 +1946,10 @@ Optional<PresetFormat> PresetFormatFromPath(String path) {
     return k_nullopt;
 }
 
-ErrorCodeOr<StateSnapshot>
-LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_arena) {
+ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
+                                          Reader& reader,
+                                          ArenaAllocator& scratch_arena,
+                                          bool skip_param_adaptation) {
     StateSnapshot state;
     switch (format) {
         case PresetFormat::Floe: {
@@ -1963,12 +1961,16 @@ LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_aren
                                   return k_success;
                               },
                               .source = StateSource::PresetFile,
+                              .skip_param_adaptation = skip_param_adaptation,
                           }));
             break;
         }
         case PresetFormat::Mirage: {
             auto const file_data = TRY(reader.ReadOrFetchAll(scratch_arena));
-            TRY(DecodeMirageJsonState(state, scratch_arena, {(char const*)file_data.data, file_data.size}));
+            TRY(DecodeMirageJsonState(state,
+                                      scratch_arena,
+                                      {(char const*)file_data.data, file_data.size},
+                                      !skip_param_adaptation));
             break;
         }
         case PresetFormat::Count: PanicIfReached(); break;
@@ -1976,12 +1978,14 @@ LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_aren
     return state;
 }
 
-ErrorCodeOr<StateSnapshot> LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena) {
+ErrorCodeOr<StateSnapshot>
+LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool skip_param_adaptation) {
     StateSnapshot state;
     auto reader = TRY(Reader::FromFile(filepath));
     return LoadPresetFile(PresetFormatFromPath(filepath).ValueOr(PresetFormat::Mirage),
                           reader,
-                          scratch_arena);
+                          scratch_arena,
+                          skip_param_adaptation);
 }
 
 ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
@@ -2005,7 +2009,8 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool w
     return k_success;
 }
 
-ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source) {
+ErrorCodeOr<StateSnapshot>
+DecodeFromMemory(Span<u8 const> data, StateSource source, bool skip_param_adaptation) {
     StateSnapshot state;
     usize read_pos = 0;
     TRY(CodeState(state,
@@ -2019,6 +2024,7 @@ ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource sou
                           return k_success;
                       },
                       .source = source,
+                      .skip_param_adaptation = skip_param_adaptation,
                   }));
     return state;
 }
