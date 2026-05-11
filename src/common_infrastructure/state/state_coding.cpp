@@ -2600,6 +2600,41 @@ TEST_CASE(TestLoadingOldFiles) {
                          ProjectedLayerValue(state, layer_index, LayerParamIndex::LegacyLfoShapeV2)),
                      param_values::LegacyLfoShapeV2::Sine);
         }
+
+        // The on-disk JSON contains:
+        //   CompThr=-28.67 dB, CompRt=2.296875, ConvHP=30 Hz,
+        //   BitcWet=-8 dB, BitcDry=0 dB,
+        //   ChorWet=-8 dB, ChorDry=0 dB,
+        //   ConvWet=-8 dB, ConvDry=0 dB,
+        //   FlRes=30 %.
+        // None of these match a legacy default, so the modernising decode must surface the real
+        // legacy values rather than fall back to anything.
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorThreshold), -28.67f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorRatio), 2.297f, 0.05f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbHighpass), 30.0f, 2.0f);
+
+        // -8 dB wet + 0 dB dry: wet_amp ≈ 0.3981, dry_amp = 1.0
+        // ⇒ mix ≈ 0.3981 / 1.3981 ≈ 0.2848 and output ≈ 1.3981 (~2.9 dB).
+        for (auto const& [mix_pi, output_pi] : Array {
+                 Pair {ParamIndex::BitCrushMix, ParamIndex::BitCrushOutput},
+                 Pair {ParamIndex::ChorusMix, ParamIndex::ChorusOutput},
+                 Pair {ParamIndex::ConvolutionReverbMix, ParamIndex::ConvolutionReverbOutput},
+             }) {
+            CAPTURE(k_param_descriptors[ToInt(mix_pi)].name);
+            CHECK_APPROX_EQ(ProjectedValue(state, mix_pi), 0.2848f, 0.01f);
+            CHECK_APPROX_EQ(ProjectedValue(state, output_pi), 1.3981f, 0.05f);
+        }
+
+        // Effect-filter resonance Q. Bass Pluck's FlRes value (30.000001907 in JSON) rounds to
+        // exactly 30 / 100 = 0.3 in f32, the same as the legacy descriptor default — hitting the
+        // same modernise-skipped bug as the stress-test preset.
+        {
+            constexpr f32 k_on_disk_fl_res = 0.30f;
+            auto const legacy_q = MapFrom01Skew(k_on_disk_fl_res, 0.5f, 2.0f, 5.0f);
+            auto const modern_linear = state.LinearParam(ParamIndex::FilterResonance);
+            auto const modern_q = MapFrom01Skew(modern_linear, 0.5f, 2.0f, 2.0f);
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
     }
 
     SUBCASE("Abstract Chord.mirage-abstract") {
@@ -2621,6 +2656,23 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_EQ(state.param_values[ToInt(ParamIndex::PhaserOn)], 0.0f);
 
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 2, LayerParamIndex::LoopCrossfade), 0.54f, 0.01f);
+
+        // On-disk legacy layer resonances (L0FfRes, L1FfRes, L2FfRes) read directly from the
+        // JSON. The legacy DSP applied LegacySkewResonance (linear^4 · 0.95) into ResonanceToQ;
+        // the modern DSP applies SkewResonance (linear · 0.95) into the same ResonanceToQ. The
+        // modernisation must preserve the audible Q exactly.
+        constexpr Array<f32, 3> k_on_disk_layer_res {0.0626908540725708f,
+                                                     0.22821109771728516f,
+                                                     0.2606429100036621f};
+        for (auto const layer_index : Range(k_num_layers)) {
+            CAPTURE(layer_index);
+            auto const legacy = k_on_disk_layer_res[layer_index];
+            auto const legacy_q = 1.0f / (2.0f * (1.0f - 0.95f * Pow(legacy, 4.0f)));
+            auto const modern_linear = state.LinearParam(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance));
+            auto const modern_q = 1.0f / (2.0f * (1.0f - 0.95f * modern_linear));
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
     }
 
     // Pre-Sv effects
@@ -2711,6 +2763,42 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayFeedback)], 0.8f, 0.2f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayFilterCutoffSemitones)], 60.0f, 3.0f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayMix)], 0.15f, 0.1f);
+
+        // The on-disk JSON contains:
+        //   CompThr=-12 dB, CompRt=2.0, ConvHP=30 Hz, ConvWet=-30 dB, ConvDry=0 dB,
+        //   BitcWet=0 dB, BitcDry=-80 dB, ChorWet=-6 dB, ChorDry=-6 dB, FlRes=30 %.
+        // The modernising decode must surface these as their modern-param equivalents.
+
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorThreshold), -12.0f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorRatio), 2.0f, 0.05f);
+
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbHighpass), 30.0f, 2.0f);
+
+        // BitCrush: 0 dB wet + -80 dB dry ≈ pure wet, so mix≈100 % and output≈unity (~0 dB).
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::BitCrushMix), 1.0f, 0.01f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::BitCrushOutput), 1.0f, 0.01f);
+
+        // Chorus: equal -6 dB wet and dry → 50/50 mix, output sum ≈ unity.
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ChorusMix), 0.5f, 0.02f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ChorusOutput), 1.0f, 0.05f);
+
+        // ConvReverb: -30 dB wet (≈ 0.0316) + 0 dB dry (1.0) → mix ≈ 0.0306, output ≈ 1.032.
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbMix), 0.0306f, 0.01f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbOutput), 1.032f, 0.05f);
+
+        // FilterResonance (effect-filter): the legacy DSP applied `MapFrom01Skew(legacy, 0.5, 2,
+        // 5)` and the modern DSP applies `MapFrom01Skew(modern, 0.5, 2, 2)`. The remap raises
+        // legacy to the 2.5th power, giving Pow(x, 2.5)² == Pow(x, 5) — so the audible Q must be
+        // identical. Note: this preset hits a known bug — FlRes=30 happens to equal the legacy
+        // descriptor's default, so the legacy-overriding heuristic skips the modernise step and
+        // the modern FilterResonance stays at its own default (0), producing the wrong Q.
+        {
+            constexpr f32 k_on_disk_fl_res = 0.30f;
+            auto const legacy_q = MapFrom01Skew(k_on_disk_fl_res, 0.5f, 2.0f, 5.0f);
+            auto const modern_linear = state.LinearParam(ParamIndex::FilterResonance);
+            auto const modern_q = MapFrom01Skew(modern_linear, 0.5f, 2.0f, 2.0f);
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
     }
 
     SUBCASE("Low End.mirage-wraith") {
@@ -2731,12 +2819,161 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::FilterCutoff), 15.0f, 0.5f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 1, LayerParamIndex::FilterCutoff), 15.0f, 0.5f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 2, LayerParamIndex::FilterCutoff), 46.56f, 1.0f);
+
+        // Effect-filter resonance Q. The JSON value (10.379755 %) is clearly different from the
+        // legacy default (30 %), so the modernise step fires and the audible Q should match the
+        // legacy DSP exactly.
+        {
+            constexpr f32 k_on_disk_fl_res = 0.10379755f;
+            auto const legacy_q = MapFrom01Skew(k_on_disk_fl_res, 0.5f, 2.0f, 5.0f);
+            auto const modern_linear = state.LinearParam(ParamIndex::FilterResonance);
+            auto const modern_q = MapFrom01Skew(modern_linear, 0.5f, 2.0f, 2.0f);
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
     }
 
     return k_success;
 }
 
+// Starting point for legacy-modernisation tests: every param at its descriptor default. Tests then
+// zero out the *modern* successor(s) they care about to simulate the real on-disk scenario where
+// the modern param did not yet exist in the older state version (StateSnapshot zero-inits new
+// fields that the binary decoder skipped past).
+static StateSnapshot LegacyBinaryStateBase() { return DefaultStateSnapshot(); }
+
+TEST_CASE(TestAdaptCompressorRatioFromLegacyDefault) {
+    auto state = LegacyBinaryStateBase();
+    state.LinearParam(ParamIndex::CompressorRatio) = 0.0f;
+
+    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+    auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorRatio)];
+    auto const projected = modern_desc.ProjectValue(state.LinearParam(ParamIndex::CompressorRatio));
+    CHECK_APPROX_EQ(projected, 2.0f, 0.05f);
+    return k_success;
+}
+
+TEST_CASE(TestAdaptCompressorRatioFromLegacyNonDefault) {
+    auto state = LegacyBinaryStateBase();
+    state.LinearParam(ParamIndex::CompressorRatio) = 0.0f;
+    auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyCompressorRatio)];
+    state.LinearParam(ParamIndex::LegacyCompressorRatio) = legacy_desc.LineariseValue(4.0f, true).Value();
+
+    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+    auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorRatio)];
+    auto const projected = modern_desc.ProjectValue(state.LinearParam(ParamIndex::CompressorRatio));
+    CHECK_APPROX_EQ(projected, 4.0f, 0.05f);
+    return k_success;
+}
+
+TEST_CASE(TestAdaptCompressorThresholdFromLegacyDefault) {
+    auto state = LegacyBinaryStateBase();
+    state.LinearParam(ParamIndex::CompressorThreshold) = 0.0f;
+
+    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+    auto const projected = state.LinearParam(ParamIndex::CompressorThreshold);
+    CHECK_APPROX_EQ(projected, 0.0f, 0.5f);
+    return k_success;
+}
+
+TEST_CASE(TestAdaptLayerFilterResonancePreservesQ) {
+    // Legacy layer DSP: Q = 1 / (2 · (1 − 0.95 · linear^4))   (LegacySkewResonance + ResonanceToQ)
+    // Modern  layer DSP: Q = 1 / (2 · (1 − 0.95 · linear))    (SkewResonance     + ResonanceToQ)
+    // Modernisation maps modern = legacy^4 so the audible Q stays identical.
+    auto state = LegacyBinaryStateBase();
+    auto const legacy_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyFilterResonance);
+    auto const modern_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::FilterResonance);
+    state.LinearParam(modern_pi) = 0.0f;
+    auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
+    state.LinearParam(legacy_pi) = legacy_desc.LineariseValue(0.30f, true).Value();
+
+    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+    constexpr f32 k_legacy_linear = 0.30f;
+    auto const legacy_skew = Pow(k_legacy_linear, 4.0f) * 0.95f;
+    auto const legacy_q = 1.0f / (2.0f * (1.0f - legacy_skew));
+
+    auto const modern_linear = state.LinearParam(modern_pi);
+    auto const modern_q = 1.0f / (2.0f * (1.0f - 0.95f * modern_linear));
+    CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+    return k_success;
+}
+
+TEST_CASE(TestAdaptConvolutionReverbHighpassPreservesValue) {
+    auto state = LegacyBinaryStateBase();
+    state.LinearParam(ParamIndex::ConvolutionReverbHighpass) = 0.0f;
+    auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyConvolutionReverbHighpass)];
+    state.LinearParam(ParamIndex::LegacyConvolutionReverbHighpass) =
+        legacy_desc.LineariseValue(30.0f, true).Value();
+
+    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+    auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::ConvolutionReverbHighpass)];
+    auto const projected = modern_desc.ProjectValue(state.LinearParam(ParamIndex::ConvolutionReverbHighpass));
+    CHECK_APPROX_EQ(projected, 30.0f, 2.0f);
+    return k_success;
+}
+
+TEST_CASE(TestAdaptBitcrushWetDryToMixOutput) {
+    // Old bit-crush defaults were -6 dB Wet and -6 dB Dry. Modernised should still sound the
+    // same: 50/50 mix at unity output, not a much-louder (or much-quieter) output.
+    auto state = LegacyBinaryStateBase();
+    state.LinearParam(ParamIndex::BitCrushMix) = 0.0f;
+    state.LinearParam(ParamIndex::BitCrushOutput) = 0.0f;
+
+    AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+    auto const& mix_desc = k_param_descriptors[ToInt(ParamIndex::BitCrushMix)];
+    auto const& output_desc = k_param_descriptors[ToInt(ParamIndex::BitCrushOutput)];
+    auto const mix = mix_desc.ProjectValue(state.LinearParam(ParamIndex::BitCrushMix));
+    auto const output_amp = output_desc.ProjectValue(state.LinearParam(ParamIndex::BitCrushOutput));
+    CHECK_APPROX_EQ(mix, 0.5f, 0.05f);
+    CHECK_APPROX_EQ(output_amp, 1.0f, 0.05f);
+    return k_success;
+}
+
+TEST_CASE(TestRawCodeStateRoundTrips) {
+    // The encoder only writes Latest, so adapted vs raw decode of a freshly-encoded state should
+    // produce identical results (no legacy migrations apply). This guards against the
+    // skip_param_adaptation flag breaking the normal decode path.
+    auto& scratch_arena = tester.scratch_arena;
+    StateSnapshot state = DefaultStateSnapshot();
+    state.LinearParam(ParamIndex::LegacyCompressorRatio) =
+        k_param_descriptors[ToInt(ParamIndex::LegacyCompressorRatio)].LineariseValue(4.0f, true).Value();
+
+    DynamicArray<u8> bytes {scratch_arena};
+    REQUIRE(CodeState(state,
+                      CodeStateArguments {
+                          .mode = CodeStateArguments::Mode::Encode,
+                          .read_or_write_data = [&](void* d, usize n) -> ErrorCodeOr<void> {
+                              dyn::AppendSpan(bytes, Span<u8 const> {(u8 const*)d, n});
+                              return k_success;
+                          },
+                          .source = StateSource::PresetFile,
+                      })
+                .Succeeded());
+
+    auto const raw = TRY(DecodeFromMemory(bytes, StateSource::PresetFile, true));
+    auto const adapted = TRY(DecodeFromMemory(bytes, StateSource::PresetFile, false));
+    CHECK_APPROX_EQ(raw.LinearParam(ParamIndex::LegacyCompressorRatio),
+                    adapted.LinearParam(ParamIndex::LegacyCompressorRatio),
+                    1e-6f);
+    CHECK_APPROX_EQ(raw.LinearParam(ParamIndex::LegacyCompressorRatio),
+                    state.LinearParam(ParamIndex::LegacyCompressorRatio),
+                    1e-6f);
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterStateCodingTests) {
+    REGISTER_TEST(TestAdaptCompressorRatioFromLegacyDefault);
+    REGISTER_TEST(TestAdaptCompressorRatioFromLegacyNonDefault);
+    REGISTER_TEST(TestAdaptCompressorThresholdFromLegacyDefault);
+    REGISTER_TEST(TestAdaptLayerFilterResonancePreservesQ);
+    REGISTER_TEST(TestAdaptConvolutionReverbHighpassPreservesValue);
+    REGISTER_TEST(TestAdaptBitcrushWetDryToMixOutput);
+    REGISTER_TEST(TestRawCodeStateRoundTrips);
     REGISTER_TEST(TestLoadingOldFiles);
     REGISTER_TEST(TestBackwardCompat);
     REGISTER_TEST(TestFuzzingJsonState);
