@@ -48,7 +48,7 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 - Where needed, use Clang/GCC 'statement expressions' to initialise a variable to a const to avoid function-wide mutability and unclear encapsulation.
 - Always use `auto` type where possible.
 - Prefer `Range` over C-style for loops: `for (auto index : Range(10))`.
-- Prefer names such as `step_index` over `i` or `j`.
+- Prefer names such as `step_index` over `i` or `j`. `mix_01` over `r`.
 - Don't use anonymous namespaces, prefer static functions
 - Look for natural places to utilise pure functions, reducing the number of functions that mutate state.
 - Consider using the 'options/args/context struct' pattern along with designated initialiser syntax instead of lots of function arguments.
