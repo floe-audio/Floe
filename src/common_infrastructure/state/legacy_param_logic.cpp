@@ -338,17 +338,14 @@ void ModerniseLegacyParamForPresetState(StateSnapshot& state, ParamIndex legacy)
 
     auto& legacy_val = state.LinearParam(legacy);
 
-    // Set the successor param to match the legacy param. Only do so when the legacy is actually
-    // overriding (non-default), otherwise we'd clobber a value the binary CodeState may have
-    // already loaded into the successor slot by stable ID.
-    if (IsLegacyParamOverridingModern(desc, legacy_val)) {
-        if (auto const m = SuccessorOfLegacyValue(legacy, legacy_val)) {
-            state.LinearParam(m->successor_param) = m->successor_linear;
-            ModerniseMacroDestinations(state, legacy);
-        }
+    // Always copy the legacy value into the successor (remapped). When the legacy is at its
+    // default this still seeds the successor with the audio-equivalent of that default, which
+    // is what the old DSP would have produced — preserving audio across the upgrade.
+    if (auto const m = SuccessorOfLegacyValue(legacy, legacy_val)) {
+        state.LinearParam(m->successor_param) = m->successor_linear;
+        ModerniseMacroDestinations(state, legacy);
     }
 
-    // Clear the legacy param so DSP no longer considers it active.
     legacy_val = desc.default_linear_value;
 }
 
