@@ -598,15 +598,7 @@ enum class StateVersion : u16 {
     Latest = LatestPlusOne - 1,
 };
 
-// Modernises from legacy to its immediate sucessor.
-static void ModerniseLegacyParam(StateSnapshot& state, ParamIndex legacy_pi, StateSource source) {
-    switch (source) {
-        case StateSource::Daw: ModerniseLegacyParamForDawState(state, legacy_pi); break;
-        case StateSource::PresetFile: ModerniseLegacyParamForPresetState(state, legacy_pi); break;
-    }
-}
-
-// Overload for layers.
+// Overload for layers — calls the public per-param ModerniseLegacyParam for each layer.
 static void ModerniseLegacyParam(StateSnapshot& state, LayerParamIndex legacy_idx, StateSource source) {
     for (auto const layer_index : Range(k_num_layers))
         ModerniseLegacyParam(state, ParamIndexFromLayerParamIndex(layer_index, legacy_idx), source);
@@ -2962,6 +2954,35 @@ TEST_CASE(TestAdaptPreservesLegacyAudioUnderMacros) {
 
         CHECK_APPROX_EQ(out_amp * mix_01, legacy_wet_amp, 0.01f);
         CHECK_APPROX_EQ(out_amp * (1.0f - mix_01), legacy_dry_amp, 0.01f);
+    }
+
+    SUBCASE("frequency remap (convolution reverb highpass)") {
+        auto const legacy_pi = ParamIndex::LegacyConvolutionReverbHighpass;
+        auto const modern_pi = ParamIndex::ConvolutionReverbHighpass;
+        auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
+        auto const& modern_desc = k_param_descriptors[ToInt(modern_pi)];
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(legacy_pi) = legacy_desc.LineariseValue(50.0f, true).Value();
+        state.LinearParam(modern_pi) = 0;
+        state.LinearParam(ParamIndex::Macro4) = 1.0f;
+        state.macro_destinations[3].items[0] = {.param_index = legacy_pi, .value = 0.6f};
+
+        auto const legacy_hz_at_load =
+            legacy_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                         state.macro_destinations,
+                                                         state.LinearParam(legacy_pi),
+                                                         legacy_pi));
+
+        // Run only the frequency-remap migration block.
+        AdaptNewerParams(state, StateVersion::AddedExtraFilterTypes, StateSource::PresetFile);
+
+        auto const modern_hz_at_load =
+            modern_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                         state.macro_destinations,
+                                                         state.LinearParam(modern_pi),
+                                                         modern_pi));
+        CHECK_APPROX_EQ(modern_hz_at_load, legacy_hz_at_load, 1.0f);
     }
 
     return k_success;

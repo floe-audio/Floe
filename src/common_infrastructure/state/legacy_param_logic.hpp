@@ -73,8 +73,7 @@ Optional<SuccessorValue> TopmostSuccessorOfLegacyValue(ParamIndex legacy, f32 le
 
 void ModerniseMacroDestinations(StateSnapshot& state, ParamIndex legacy);
 
-void ModerniseLegacyParamForDawState(StateSnapshot& state, ParamIndex legacy);
-void ModerniseLegacyParamForPresetState(StateSnapshot& state, ParamIndex legacy);
+void ModerniseLegacyParam(StateSnapshot& state, ParamIndex legacy, StateSource source);
 
 struct WetDryMapping {
     ParamIndex legacy_wet;

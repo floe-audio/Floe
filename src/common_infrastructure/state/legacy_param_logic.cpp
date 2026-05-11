@@ -319,34 +319,59 @@ void ModerniseMacroDestinations(StateSnapshot& state, ParamIndex legacy) {
             if (dest.param_index && *dest.param_index == legacy) dest.param_index = *successor;
 }
 
-void ModerniseLegacyParamForDawState(StateSnapshot& state, ParamIndex legacy) {
-    auto const& desc = k_param_descriptors[ToInt(legacy)];
-    ASSERT(desc.flags.legacy);
-
-    // For DAW, we retain the legacy parameter value - we can't detect if its safe to modernise.
-    // Instead, we modify the _successor_ so that it matches the legacy's default value so that even if the
-    // legacy parameter is automated by the DAW to equal it's default value (and therefore our DSP will detect
-    // the legacy param as non-active and fallback to the sucessor value), it will sound identical and no pop
-    // or jump will occur.
-    if (auto const m = SuccessorOfLegacyValue(legacy, desc.default_linear_value))
-        state.LinearParam(m->successor_param) = m->successor_linear;
-}
-
-void ModerniseLegacyParamForPresetState(StateSnapshot& state, ParamIndex legacy) {
-    auto const& desc = k_param_descriptors[ToInt(legacy)];
-    ASSERT(desc.flags.legacy);
-
+static void MigrateLegacyParamToSuccessor(StateSnapshot& state, ParamIndex legacy) {
+    auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
     auto& legacy_val = state.LinearParam(legacy);
 
-    // Always copy the legacy value into the successor (remapped). When the legacy is at its
-    // default this still seeds the successor with the audio-equivalent of that default, which
-    // is what the old DSP would have produced — preserving audio across the upgrade.
-    if (auto const m = SuccessorOfLegacyValue(legacy, legacy_val)) {
-        state.LinearParam(m->successor_param) = m->successor_linear;
-        ModerniseMacroDestinations(state, legacy);
+    // Target successor value: legacy audio at the loaded macro state. AdjustedLinearValue
+    // applies every macro destination on the legacy at its stored value, then we remap that
+    // effective legacy through the legacy→successor curve. Same approach as the wet/dry path:
+    // load audio matches exactly; later macro movement may drift if the remap is non-linear.
+    auto const target = ({
+        auto const legacy_at_load =
+            AdjustedLinearValue(state.param_values, state.macro_destinations, legacy_val, legacy);
+        SuccessorOfLegacyValue(legacy, legacy_at_load);
+    });
+    if (!target) {
+        legacy_val = legacy_desc.default_linear_value;
+        return;
     }
 
-    legacy_val = desc.default_linear_value;
+    ModerniseMacroDestinations(state, legacy);
+
+    // Back-solve successor base so base + macro contribution at load == target_at_load.
+    auto const successor_pi = target->successor_param;
+    auto const& successor_desc = k_param_descriptors[ToInt(successor_pi)];
+    f32 macro_contrib = 0;
+    for (auto const macro_index : Range(k_num_macros)) {
+        auto const macro_value = state.LinearParam(k_macro_params[macro_index]);
+        for (auto const& d : state.macro_destinations[macro_index].items) {
+            if (!d.param_index) break;
+            if (*d.param_index == successor_pi)
+                macro_contrib += successor_desc.linear_range.Delta() * (macro_value * d.ProjectedValue());
+        }
+    }
+    state.LinearParam(successor_pi) = Clamp(target->successor_linear - macro_contrib,
+                                            successor_desc.linear_range.min,
+                                            successor_desc.linear_range.max);
+
+    legacy_val = legacy_desc.default_linear_value;
+}
+
+void ModerniseLegacyParam(StateSnapshot& state, ParamIndex legacy, StateSource source) {
+    auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
+    ASSERT(legacy_desc.flags.legacy);
+
+    switch (source) {
+        case StateSource::Daw:
+            // Legacy stays put — DAW automation may be writing to it. Seed the successor with
+            // the audible-equivalent of legacy_default so the brief moments where automation
+            // passes through legacy_default (DSP falls back to the successor) don't click.
+            if (auto const seed = SuccessorOfLegacyValue(legacy, legacy_desc.default_linear_value))
+                state.LinearParam(seed->successor_param) = seed->successor_linear;
+            break;
+        case StateSource::PresetFile: MigrateLegacyParamToSuccessor(state, legacy); break;
+    }
 }
 
 struct WetDryToMixOutput {
