@@ -1872,18 +1872,18 @@ fn buildLicenseTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
     return exe;
 }
 
-fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+fn buildPresetTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     common_infrastructure: *std.Build.Step.Compile,
     embedded_files: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     var exe = ctx.b.addExecutable(.{
-        .name = "preset-editor",
+        .name = "preset-tool",
         .root_module = ctx.b.createModule(cfg.module_options),
         .version = ctx.floe_version,
     });
     exe.addCSourceFiles(.{
         .files = &.{
-            "src/preset_editor_tool/preset_editor.cpp",
+            "src/preset_tool/preset_tool.cpp",
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
@@ -1893,7 +1893,7 @@ fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: s
             .gen_cdb_fragments = true,
         }).flags.items,
     });
-    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetEditor");
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetTool");
     exe.linkLibrary(deps.common_infrastructure);
     exe.addIncludePath(ctx.b.path("src"));
     exe.addConfigHeader(cfg.floe_config_h);
@@ -2911,7 +2911,7 @@ fn doTarget(
     }
 
     {
-        const exe = buildPresetEditor(ctx, cfg, .{
+        const exe = buildPresetTool(ctx, cfg, .{
             .common_infrastructure = common_infrastructure,
             .embedded_files = embedded_files,
         });
@@ -2919,7 +2919,7 @@ fn doTarget(
         const install = ctx.b.addInstallArtifact(exe, .{});
         top_level_steps.install_all.dependOn(&install.step);
 
-        // IMPROVE: export preset-editor as a production artifact?
+        // IMPROVE: export preset-tool as a production artifact?
     }
 
     const configured_clap: ?configure_binaries.ConfiguredPlugin = blk: {

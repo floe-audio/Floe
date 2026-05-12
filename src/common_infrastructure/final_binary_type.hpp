@@ -10,7 +10,7 @@ enum class FinalBinaryType : u8 {
     Vst3,
     Packager,
     LicenseTool,
-    PresetEditor,
+    PresetTool,
     WindowsInstaller,
     WindowsUninstaller,
     AuV2,
@@ -26,7 +26,7 @@ constexpr String ToString(FinalBinaryType type) {
         case FinalBinaryType::Vst3: return "vst3"_s;
         case FinalBinaryType::Packager: return "packager"_s;
         case FinalBinaryType::LicenseTool: return "license_tool"_s;
-        case FinalBinaryType::PresetEditor: return "preset_editor"_s;
+        case FinalBinaryType::PresetTool: return "preset_tool"_s;
         case FinalBinaryType::WindowsInstaller: return "windows_installer"_s;
         case FinalBinaryType::WindowsUninstaller: return "windows_uninstaller"_s;
         case FinalBinaryType::AuV2: return "au_v2"_s;
