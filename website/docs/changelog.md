@@ -15,17 +15,47 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 2.0.0-beta.2
-- Filter and EQ frequency parameters now use a logarithmic mapping (equal pixels per octave) so the knob position lines up with the visualiser's frequency axis. Existing presets are migrated automatically.
-- GUI: surface legacy parameter overrides on the main GUI. When a legacy parameter (loaded from a DAW project) is overriding its modern equivalent, a small warning badge appears on the affected control. Clicking the badge opens an explanation and lets you clear the override.
-- GUI: redesign the Legacy Parameters panel to list only currently-active overrides, one per row, with a reset button to clear each override.
-- Add five new LFO shapes: 'Pluck' and 'Pluck Sharp' (curved sawtooth-like shapes for percussive, plucky modulation), 'Pulse Narrow' and 'Pulse Wide' (asymmetric pulse waves at 25% and 75% duty cycle), and 'Trapezoid' (square with sloped edges).
-- GUI: add effect bypass button to each effect in the rack — deactivates the effect's audio processing while keeping it visible for quick re-enabling. The switchboard toggles continue to show/hide effects as before. [Documentation](usage/effects)
-- GUI: add unload button to the convolution reverb IR selector, matching the layer instrument selector
-- Add reproducible playback: new Instance Config panel (accessible from the top-panel menu) with reset-on-transport, reset keyswitch, and seed controls. These reset round robin positions and random sequences so that playback from the same point is identical every time. [Documentation](usage/reproducibility.mdx)
-- Add two random LFO shapes: 'Random Steps' (sample-and-hold; a new random value held for each LFO cycle) and 'Random Glide' (smoothly eases between random values for organic, wandering modulation). Both integrate with the reproducibility system.
-- Add 'Grain Position' as an LFO target, allowing the LFO to sweep the grain position in Granular Fixed mode
-- Support encrypted packages (`.floe-pkg-enc`) that require a license key to install
-- GUI: add MIDI CC Assignments panel for viewing and managing all CC-to-parameter mappings, accessible from the top-panel menu
+### Major new features
+- Added granular synthesis (including a random detune parameter)
+- Added EQ to effects rack
+- Added arpeggiator
+- GUI: split the single main page into separate Layers, Effects and Perform pages
+- Added perform page with access to common controls and visual display, with 'Vary' random-variation control replaces the old randomise buttons; click-position strip lets you choose how much to vary
+- Orignial/Modified toggle on Peform page to audition the original vs modified preset
+- 7 new LFO shapes: Random Steps, Random Glide, Pluck, Pluck Sharp, Pulse Narrow, Pulse Wide, Trapezoid
+- Effects rack improvements:
+  - Bypass button for each effect
+  - Mix knob for each effect
+  - Bypass-all and remove-all buttons on the effects panel header
+  - Right-click reset menus on effect headings and switchboard buttons
+  - New EQ effect
+  - Improve Stereo Widen effect with Bass Mono and Balanced modes
+  - New Modern compressor algorithm alongside the original
+- Third EQ band per layer
+- New EQ band types: low-pass, high-pass and notch
+- Visual graphs added for the layer filter, effect filter, EQ, LFO, convolution reverb pre-filter/post-shelf, and delay filter. EQ and filter graphs have draggable nodes for editing.
+- Undo/redo system added
+- Per-layer stereo width knob
+- Copy/paste/reset added throughout the GUI on right-click menus: parameters, EQ bands, layer tabs, macros, envelope background, and curve maps
+- Reproducible playback added. New panel (3-gots menu -> Instance Config) offers features to reset variability in performances so that you can always render the exact same audio from Floe.
+- Added a new MIDI CC Assignments panel (3-dors menu) for viewing and controls your MIDI CC mappings to Floe parameters
+
+### Improvements
+- Improve parameters:
+  - Filter and EQ frequency controls now use logarithmic mapping
+  - Compressor ratio now skews towards more control for ratios nearer 1:1
+- Improved legacy parameter system
+  - Legacy-override params now show a warning badge
+  - Redesigned legacy parameter panel (3-dots menu -> Legacy Parameters)
+  - 'Modernise' feature to convert params from legacy to modern
+- Effect filter: new 12dB and 24dB low-pass and high-pass types
+- Layer filter type menu reworked: clearer band-pass names, all-pass removed
+- New menu option to rescan all libraries and presets
+- Auto-generated preset descriptions for presets that have none
+- Quality of life improvements:
+  - 'Unload' x-mark button on instrument selector and IR selector to clear the item
+  - 'Unload all instruments' button on the layers page
+- Support encrypted packages (`.floe-pkg-enc`) that require a license key to install, with a paste button on the licence key dialog
 - Fix voices from jumping into the loop region if you toggle the 'reversed' mode of a playing voice.
 - GUI: improve browsers panels:
   - Cards are now expand and collapsible, selecting all items in a card is now done with a separate 'All' button.
