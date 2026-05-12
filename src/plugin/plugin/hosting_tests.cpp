@@ -491,7 +491,7 @@ static void ProcessWithState(tests::Tester& tester,
     // audio data to play. Here, we wait a little while for this to happen otherwise we might get silence.
     {
         auto const floe_custom_ext =
-            (FloeClapTestingExtension const*)plugin->get_extension(plugin, k_floe_clap_extension_id);
+            (FloeClapExtension const*)plugin->get_extension(plugin, k_floe_clap_extension_id);
         REQUIRE(floe_custom_ext);
 
         auto const start = TimePoint::Now();

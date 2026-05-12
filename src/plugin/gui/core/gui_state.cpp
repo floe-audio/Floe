@@ -10,6 +10,7 @@
 #include "foundation/foundation.hpp"
 #include "utils/logger/logger.hpp"
 
+#include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 #include "build_resources/embedded_files.h"
@@ -499,4 +500,31 @@ void GuiUpdate(GuiState& g) {
     DoDeveloperPanel(g.dev_gui);
 
     prefs::WriteIfNeeded(g.prefs);
+}
+
+ErrorCodeOr<void> EncodeGuiState(GuiState const& g, Writer writer) {
+    ArenaAllocator arena {PageAllocator::Instance()};
+    persistent_store::StoreTable store;
+
+    g_mid_panel_subsystem.encode(g.mid_panel_state, store, arena);
+    g_bot_panel_subsystem.encode(g.bottom_panel_state, store, arena);
+    g_prefs_panel_subsystem.encode(g.preferences_panel_state, store, arena);
+    g_info_panel_subsystem.encode(g.info_panel_state, store, arena);
+    for (auto const& layer : g.layer_panel_states)
+        g_layer_panel_subsystem.encode(layer, store, arena);
+
+    return persistent_store::Write(store, writer);
+}
+
+void DecodeGuiState(GuiState& g, String bytes) {
+    if (!bytes.size) return;
+    ArenaAllocator arena {PageAllocator::Instance()};
+    auto const store = persistent_store::Read(arena, bytes);
+
+    g_mid_panel_subsystem.decode(g.mid_panel_state, store);
+    g_bot_panel_subsystem.decode(g.bottom_panel_state, store);
+    g_prefs_panel_subsystem.decode(g.preferences_panel_state, store);
+    g_info_panel_subsystem.decode(g.info_panel_state, store);
+    for (auto& layer : g.layer_panel_states)
+        g_layer_panel_subsystem.decode(layer, store);
 }

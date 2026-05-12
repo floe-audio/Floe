@@ -732,6 +732,20 @@ static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, A
         }
     }
 
+    DynamicArray<u8> saved_gui_state {PageAllocator::Instance()};
+    {
+        auto const floe_ext =
+            (FloeClapExtension const*)inst->plugin->get_extension(inst->plugin, k_floe_clap_extension_id);
+        if (floe_ext && floe_ext->save_gui_state) {
+            if (floe_ext->save_gui_state(inst->plugin, dyn::WriterFor(saved_gui_state)))
+                LogInfo(ModuleName::Standalone,
+                        "Hot-reload: saved gui state ({} bytes)",
+                        saved_gui_state.size);
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to save gui state");
+        }
+    }
+
     UnloadPluginInstance(standalone);
 
     auto const reload_outcome = LoadPluginInstance(standalone, dso_path, arena);
@@ -760,6 +774,20 @@ static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, A
                 LogInfo(ModuleName::Standalone, "Hot-reload: restored plugin state");
             else
                 LogWarning(ModuleName::Standalone, "Hot-reload: failed to restore plugin state");
+        }
+    }
+
+    if (saved_gui_state.size) {
+        auto* new_inst = standalone.plugin_instance;
+        auto const floe_ext =
+            (FloeClapExtension const*)new_inst->plugin->get_extension(new_inst->plugin,
+                                                                      k_floe_clap_extension_id);
+        if (floe_ext && floe_ext->load_gui_state) {
+            if (floe_ext->load_gui_state(new_inst->plugin,
+                                         String {(char const*)saved_gui_state.data, saved_gui_state.size}))
+                LogInfo(ModuleName::Standalone, "Hot-reload: restored gui state");
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to restore gui state");
         }
     }
 

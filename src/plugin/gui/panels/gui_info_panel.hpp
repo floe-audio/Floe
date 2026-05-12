@@ -9,6 +9,7 @@
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 #include "engine/check_for_update.hpp"
+#include "gui/core/gui_subsystem.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/overlays/gui_notifications.hpp"
 
@@ -40,3 +41,5 @@ struct InfoPanelContext {
 };
 
 void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState& state);
+
+extern GuiSubsystem<InfoPanelState> const g_info_panel_subsystem;

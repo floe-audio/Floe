@@ -7,6 +7,7 @@
 #include "common_infrastructure/sample_library/sample_library.hpp"
 
 #include "gui/core/gui_fwd.hpp"
+#include "gui/core/gui_subsystem.hpp"
 
 enum class MidPanelTab : u8 {
     Perform,
@@ -22,6 +23,8 @@ struct MidPanelState {
 };
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);
+
+extern GuiSubsystem<MidPanelState> const g_mid_panel_subsystem;
 
 void MidPanelLayersContent(GuiBuilder& builder,
                            GuiState& g,

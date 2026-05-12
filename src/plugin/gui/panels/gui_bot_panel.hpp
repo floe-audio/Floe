@@ -5,6 +5,8 @@
 
 #include "foundation/foundation.hpp"
 
+#include "gui/core/gui_subsystem.hpp"
+
 struct GuiState;
 
 enum class BottomPanelType : u8 {
@@ -18,3 +20,5 @@ struct BottomPanelState {
 };
 
 void BotPanel(GuiState& g, Rect r);
+
+extern GuiSubsystem<BottomPanelState> const g_bot_panel_subsystem;

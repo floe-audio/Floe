@@ -1227,7 +1227,7 @@ static clap_plugin_posix_fd_support const floe_posix_fd {
     .on_fd = ClapFdSupportOnFd,
 };
 
-static FloeClapTestingExtension const floe_custom_ext {
+static FloeClapExtension const floe_custom_ext {
     .state_change_is_pending = [](clap_plugin_t const* plugin) -> bool {
         ZoneScoped;
         if (PanicOccurred()) return false;
@@ -1239,6 +1239,39 @@ static FloeClapTestingExtension const floe_custom_ext {
                 f;
             });
             return floe.engine->pending_state_change.HasValue();
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .save_gui_state = [](clap_plugin_t const* plugin, Writer writer) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "save_gui_state", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return true;
+            return !EncodeGuiState(*floe.app_window->gui, writer).HasError();
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .load_gui_state = [](clap_plugin_t const* plugin, String bytes) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "load_gui_state", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return true;
+            DecodeGuiState(*floe.app_window->gui, bytes);
+            return true;
         } catch (PanicException) {
             return false;
         }

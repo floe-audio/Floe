@@ -140,8 +140,10 @@ struct FloeClapExtensionHost {
     void* pugl_world;
 };
 
-struct FloeClapTestingExtension {
+struct FloeClapExtension {
     bool (*state_change_is_pending)(clap_plugin const* plugin) = nullptr;
+    bool (*save_gui_state)(clap_plugin const* plugin, Writer writer) = nullptr;
+    bool (*load_gui_state)(clap_plugin const* plugin, String bytes) = nullptr;
 };
 
 enum class IsThreadResult : u8 { No, Yes, Unknown };

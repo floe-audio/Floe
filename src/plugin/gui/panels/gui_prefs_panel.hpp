@@ -10,6 +10,7 @@
 #include "engine/package_installation.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_fwd.hpp"
+#include "gui/core/gui_subsystem.hpp"
 
 struct PreferencesPanelState {
     enum class Tab : u8 {
@@ -34,3 +35,5 @@ struct PreferencesPanelContext {
 };
 
 void DoPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, PreferencesPanelState& state);
+
+extern GuiSubsystem<PreferencesPanelState> const g_prefs_panel_subsystem;

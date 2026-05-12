@@ -93,7 +93,11 @@ struct GuiState : EngineListener {
         .fonts = fonts,
     };
 
-    Array<LayerPanelState, k_num_layers> layer_panel_states;
+    Array<LayerPanelState, k_num_layers> layer_panel_states {{
+        {.layer_index = 0},
+        {.layer_index = 1},
+        {.layer_index = 2},
+    }};
 
     WaveformImagesTable waveform_images {};
     Array<WaveformHashDebounce, k_num_layers> waveform_hash_debounce {};
@@ -123,3 +127,6 @@ struct GuiState : EngineListener {
 };
 
 void GuiUpdate(GuiState& g);
+
+ErrorCodeOr<void> EncodeGuiState(GuiState const& g, Writer writer);
+void DecodeGuiState(GuiState& g, String bytes);

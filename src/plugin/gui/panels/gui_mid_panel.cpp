@@ -298,3 +298,15 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
             .debug_name = "MidPanel",
         });
 }
+
+constexpr u64 k_tab_id = HashFnv1a("mid_panel.tab");
+
+GuiSubsystem<MidPanelState> const g_mid_panel_subsystem {
+    .encode = [](MidPanelState const& s,
+                 persistent_store::StoreTable& out,
+                 ArenaAllocator& arena) { persistent_store::AddValue(out, arena, k_tab_id, s.tab); },
+    .decode =
+        [](MidPanelState& s, persistent_store::StoreTable const& store) {
+            persistent_store::ReadEnum(store, k_tab_id, s.tab);
+        },
+};

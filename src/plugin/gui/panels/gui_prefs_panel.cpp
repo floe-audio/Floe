@@ -696,3 +696,15 @@ void DoPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, P
                       .viewport_config = k_default_modal_viewport,
                   });
 }
+
+constexpr u64 k_tab_id = HashFnv1a("prefs_panel.tab");
+
+GuiSubsystem<PreferencesPanelState> const g_prefs_panel_subsystem {
+    .encode = [](PreferencesPanelState const& s,
+                 persistent_store::StoreTable& out,
+                 ArenaAllocator& arena) { persistent_store::AddValue(out, arena, k_tab_id, s.tab); },
+    .decode =
+        [](PreferencesPanelState& s, persistent_store::StoreTable const& store) {
+            persistent_store::ReadEnum(store, k_tab_id, s.tab);
+        },
+};

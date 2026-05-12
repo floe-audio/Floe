@@ -631,3 +631,19 @@ void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&
                       .viewport_config = k_default_modal_viewport,
                   });
 }
+
+constexpr u64 k_tab_id = HashFnv1a("info_panel.tab");
+constexpr u64 k_opened_before_id = HashFnv1a("info_panel.opened_before");
+
+GuiSubsystem<InfoPanelState> const g_info_panel_subsystem {
+    .encode =
+        [](InfoPanelState const& s, persistent_store::StoreTable& out, ArenaAllocator& arena) {
+            persistent_store::AddValue(out, arena, k_tab_id, s.tab);
+            persistent_store::AddValue(out, arena, k_opened_before_id, s.opened_before);
+        },
+    .decode =
+        [](InfoPanelState& s, persistent_store::StoreTable const& store) {
+            persistent_store::ReadEnum(store, k_tab_id, s.tab);
+            persistent_store::ReadValue(store, k_opened_before_id, s.opened_before);
+        },
+};

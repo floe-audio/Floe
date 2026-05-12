@@ -2537,3 +2537,37 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
         case LayerPageType::Count: PanicIfReached();
     }
 }
+
+static constexpr u64 PageId(u32 layer_index) {
+    constexpr u64 k_ids[] = {
+        HashFnv1a("layer.0.page"),
+        HashFnv1a("layer.1.page"),
+        HashFnv1a("layer.2.page"),
+    };
+    return k_ids[layer_index];
+}
+
+static constexpr u64 ArpShowAllId(u32 layer_index) {
+    constexpr u64 k_ids[] = {
+        HashFnv1a("layer.0.arp_show_all"),
+        HashFnv1a("layer.1.arp_show_all"),
+        HashFnv1a("layer.2.arp_show_all"),
+    };
+    return k_ids[layer_index];
+}
+
+GuiSubsystem<LayerPanelState> const g_layer_panel_subsystem {
+    .encode =
+        [](LayerPanelState const& s, persistent_store::StoreTable& out, ArenaAllocator& arena) {
+            persistent_store::AddValue(out, arena, PageId(s.layer_index), s.selected_page);
+            persistent_store::AddValue(out,
+                                       arena,
+                                       ArpShowAllId(s.layer_index),
+                                       s.arp_step_sequencer_show_all);
+        },
+    .decode =
+        [](LayerPanelState& s, persistent_store::StoreTable const& store) {
+            persistent_store::ReadEnum(store, PageId(s.layer_index), s.selected_page);
+            persistent_store::ReadValue(store, ArpShowAllId(s.layer_index), s.arp_step_sequencer_show_all);
+        },
+};

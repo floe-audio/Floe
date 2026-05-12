@@ -323,3 +323,15 @@ void BotPanel(GuiState& g, Rect const r) {
                       }),
                   });
 }
+
+constexpr u64 k_type_id = HashFnv1a("bottom_panel.type");
+
+GuiSubsystem<BottomPanelState> const g_bot_panel_subsystem {
+    .encode = [](BottomPanelState const& s,
+                 persistent_store::StoreTable& out,
+                 ArenaAllocator& arena) { persistent_store::AddValue(out, arena, k_type_id, s.type); },
+    .decode =
+        [](BottomPanelState& s, persistent_store::StoreTable const& store) {
+            persistent_store::ReadEnum(store, k_type_id, s.type);
+        },
+};
