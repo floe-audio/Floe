@@ -803,16 +803,30 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 
     ArenaAllocator arena {PageAllocator::Instance()};
 
-    auto const cli_args =
-        TRY(ParseCommandLineArgsStandard(arena,
-                                         args,
-                                         k_command_line_args_defs,
-                                         {
-                                             .handle_help_option = true,
-                                             .print_usage_on_error = true,
-                                             .description = "Edit a preset using a Lua script",
-                                             .version = FLOE_VERSION_STRING,
-                                         }));
+    auto const cli_args = TRY(ParseCommandLineArgsStandard(
+        arena,
+        args,
+        k_command_line_args_defs,
+        {
+            .handle_help_option = true,
+            .print_usage_on_error = true,
+            .description = "Edit a preset using a Lua script.\n"
+                           "\n"
+                           "Library names are not stored in preset files (only "
+                           "their hashed IDs are). On startup, this tool loads "
+                           "the library name cache (library_id_cache.bin) "
+                           "written by Floe's library scanner so libraries you "
+                           "have open in Floe resolve to names instead of raw "
+                           "integers. Cache location:\n"
+                           "  Linux:   ~/.local/state/Floe/library_id_cache.bin\n"
+                           "  macOS:   ~/Library/Application Support/Floe/"
+                           "library_id_cache.bin\n"
+                           "  Windows: %APPDATA%\\Floe\\library_id_cache.bin\n"
+                           "Open Floe once after installing a new library to "
+                           "refresh the cache; delete the cache file to force a "
+                           "full rescan on next launch.",
+            .version = FLOE_VERSION_STRING,
+        }));
 
     auto const preset_path = TRY_OR(AbsolutePath(arena, cli_args[ToInt(CliArgId::PresetFile)].values[0]), {
         StdPrintF(StdStream::Err, "Error: failed to resolve preset path\n");
@@ -825,12 +839,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         return ErrorCode {CommonError::InvalidFileFormat};
     }
 
-    // Library names are not stored in preset files (only their hashed IDs are). Load the cache written by
-    // the plugin's library scanner so any libraries the user has open in Floe resolve to names instead of
-    // raw integers. Open Floe once after installing a new library to refresh; delete the cache file to
-    // force a full rescan on next launch.
     LoadLibraryIdCache(arena);
-    StdPrintF(StdStream::Err, "library name cache: {}\n", LibraryIdCachePath(arena, false));
 
     auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena, raw), {
         StdPrintF(StdStream::Err, "Error: failed to open preset file: {}\n", error);
