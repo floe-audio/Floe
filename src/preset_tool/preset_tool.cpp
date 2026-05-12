@@ -21,6 +21,7 @@ enum class CliArgId : u8 {
     PresetFile,
     ScriptFile,
     Raw,
+    Pretty,
     Count,
 };
 
@@ -55,6 +56,20 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
         .required = false,
         .num_values = 0,
     },
+    {
+        .id = (u32)CliArgId::Pretty,
+        .key = "pretty",
+        .description =
+            "Use human-readable identifiers and values: parameters are keyed by 'Module/Name' strings\n"
+            "(e.g. 'Effect/Compressor/Threshold') and values are formatted (e.g. '-12.0 dB', '50%',\n"
+            "'Sine'). Macro destinations use the same string keys. Round-trips with --script-file, but\n"
+            "the string keys and formatted values are NOT stable across Floe versions: a rename or\n"
+            "format change will break old scripts. Use the default numeric mode for scripts you want\n"
+            "to keep working after upgrades.\n",
+        .value_type = "",
+        .required = false,
+        .num_values = 0,
+    },
 });
 
 // Two-way Lua <-> StateSnapshot codec.
@@ -84,6 +99,36 @@ struct LuaReader {
         lua_pop(lua, 1);
     }
 };
+
+// Pretty mode is threaded through the Lua registry rather than every handler signature: only two
+// handlers branch on it, so a global flag avoids churning the uniform Field template.
+constexpr char const* k_pretty_mode_registry_key = "floe_preset_tool_pretty_mode";
+
+static void SetPrettyMode(lua_State* lua, bool pretty) {
+    lua_pushboolean(lua, pretty);
+    lua_setfield(lua, LUA_REGISTRYINDEX, k_pretty_mode_registry_key);
+}
+
+static bool IsPrettyMode(lua_State* lua) {
+    lua_getfield(lua, LUA_REGISTRYINDEX, k_pretty_mode_registry_key);
+    auto const v = lua_toboolean(lua, -1) != 0;
+    lua_pop(lua, 1);
+    return v;
+}
+
+static DynamicArrayBounded<char, 256> ParamPrettyKey(ParamDescriptor const& d) {
+    DynamicArrayBounded<char, 256> key {};
+    dyn::AppendSpan(key, d.ModuleString("/"));
+    if (key.size != 0) dyn::Append(key, '/');
+    dyn::AppendSpan(key, d.name);
+    return key;
+}
+
+static Optional<ParamIndex> FindParamByPrettyKey(String key) {
+    for (auto const i : Range<u16>(k_num_parameters))
+        if (String(ParamPrettyKey(k_param_descriptors[i])) == key) return ParamIndex {i};
+    return k_nullopt;
+}
 
 // In Read functions, the value is on top of the stack on entry. The caller pops it.
 
@@ -119,11 +164,21 @@ struct IntH {
 
 struct ParamValuesH {
     static void Write(lua_State* lua, Array<f32, k_num_parameters> const& vals) {
+        auto const pretty = IsPrettyMode(lua);
         lua_newtable(lua);
         for (auto const i : Range<u16>(vals.size)) {
             auto const& d = k_param_descriptors[i];
-            lua_pushinteger(lua, ParamIndexToId(ParamIndex {i}));
-            lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
+            if (pretty) {
+                auto const key = ParamPrettyKey(d);
+                lua_pushlstring(lua, key.data, key.size);
+                if (auto const formatted = d.LinearValueToString(vals[i]))
+                    lua_pushlstring(lua, formatted->data, formatted->size);
+                else
+                    lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
+            } else {
+                lua_pushinteger(lua, ParamIndexToId(ParamIndex {i}));
+                lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
+            }
             lua_settable(lua, -3);
         }
     }
@@ -131,18 +186,34 @@ struct ParamValuesH {
         if (!lua_istable(lua, -1)) return;
         lua_pushnil(lua);
         while (lua_next(lua, -2) != 0) {
-            if (lua_isinteger(lua, -2) && lua_isnumber(lua, -1)) {
-                auto const param_id = (u32)lua_tointeger(lua, -2);
-                auto const projected = (f32)lua_tonumber(lua, -1);
-                if (auto const param_index = ParamIdToIndex(param_id)) {
+            Optional<ParamIndex> param_index;
+            Optional<f32> new_linear;
+            if (lua_isinteger(lua, -2)) {
+                param_index = ParamIdToIndex((u32)lua_tointeger(lua, -2));
+                if (param_index && lua_isnumber(lua, -1)) {
                     auto const& d = k_param_descriptors[ToInt(*param_index)];
-                    if (auto const new_val = d.LineariseValue(projected, true)) {
-                        // Don't write if only changed by rounding error.
-                        constexpr f32 k_epsilon = 0.0001f;
-                        auto& cur = vals[ToInt(*param_index)];
-                        if (Abs(cur - *new_val) >= k_epsilon) cur = *new_val;
+                    new_linear = d.LineariseValue((f32)lua_tonumber(lua, -1), true);
+                }
+            } else if (lua_isstring(lua, -2)) {
+                size_t key_len;
+                auto const key_str = lua_tolstring(lua, -2, &key_len);
+                param_index = FindParamByPrettyKey({key_str, key_len});
+                if (param_index) {
+                    auto const& d = k_param_descriptors[ToInt(*param_index)];
+                    if (lua_isstring(lua, -1)) {
+                        size_t val_len;
+                        auto const val_str = lua_tolstring(lua, -1, &val_len);
+                        new_linear = d.StringToLinearValue({val_str, val_len});
+                    } else if (lua_isnumber(lua, -1)) {
+                        new_linear = d.LineariseValue((f32)lua_tonumber(lua, -1), true);
                     }
                 }
+            }
+            if (param_index && new_linear) {
+                // Don't write if only changed by rounding error.
+                constexpr f32 k_epsilon = 0.0001f;
+                auto& cur = vals[ToInt(*param_index)];
+                if (Abs(cur - *new_linear) >= k_epsilon) cur = *new_linear;
             }
             lua_pop(lua, 1);
         }
@@ -601,6 +672,7 @@ struct MacroNamesH {
 
 struct MacroDestinationsH {
     static void Write(lua_State* lua, MacroDestinations const& dests) {
+        auto const pretty = IsPrettyMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_macros; ++i) {
             lua_pushinteger(lua, i + 1);
@@ -610,7 +682,12 @@ struct MacroDestinationsH {
                 auto const& dest = dests[i].items[j];
                 lua_pushinteger(lua, j + 1);
                 lua_newtable(lua);
-                lua_pushinteger(lua, ParamIndexToId(*dest.param_index));
+                if (pretty) {
+                    auto const key = ParamPrettyKey(k_param_descriptors[ToInt(*dest.param_index)]);
+                    lua_pushlstring(lua, key.data, key.size);
+                } else {
+                    lua_pushinteger(lua, ParamIndexToId(*dest.param_index));
+                }
                 lua_setfield(lua, -2, "param_index");
                 lua_pushnumber(lua, (f64)dest.value);
                 lua_setfield(lua, -2, "value");
@@ -636,6 +713,11 @@ struct MacroDestinationsH {
                             if (lua_isinteger(lua, -1)) {
                                 auto const param_id = (u32)lua_tointeger(lua, -1);
                                 if (auto const param_index = ParamIdToIndex(param_id))
+                                    dest.param_index = *param_index;
+                            } else if (lua_isstring(lua, -1)) {
+                                size_t len;
+                                auto const str = lua_tolstring(lua, -1, &len);
+                                if (auto const param_index = FindParamByPrettyKey({str, len}))
                                     dest.param_index = *param_index;
                             }
                             lua_pop(lua, 1);
@@ -755,9 +837,12 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         return error;
     });
 
+    auto const pretty = cli_args[ToInt(CliArgId::Pretty)].was_provided;
+
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
 
+    SetPrettyMode(lua, pretty);
     BuildPresetLuaTable(lua, preset_state);
 
     luaL_openlibs(lua);
