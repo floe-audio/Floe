@@ -8,6 +8,7 @@
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/preset_description.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 #include "common_infrastructure/state/macros.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
@@ -15,7 +16,6 @@
 #include "engine/package_installation.hpp"
 #include "engine/undo.hpp"
 #include "processor/processor.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
 
 struct EngineListener {

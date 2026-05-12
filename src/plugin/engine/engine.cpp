@@ -12,6 +12,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/preferences.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
@@ -24,7 +25,6 @@
 #include "processing_utils/arpeggiator.hpp"
 #include "processing_utils/eq_bands.hpp"
 #include "processor/layer_processor.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 #include "shared_engine_systems.hpp"
 
 static void NotifyListener(Engine& engine) {

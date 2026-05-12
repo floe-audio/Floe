@@ -9,11 +9,11 @@
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/state/macros.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "engine/engine.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 static f32 EaseInQuad(f32 x) { return x * x; }
 static f32 EaseOutQuad(f32 x) { return 1.0f - ((1.0f - x) * (1.0f - x)); }

@@ -5,11 +5,11 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 #include "engine/package_installation.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_fwd.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 struct PreferencesPanelState {
     enum class Tab : u8 {

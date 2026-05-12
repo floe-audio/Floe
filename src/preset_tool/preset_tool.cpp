@@ -12,6 +12,7 @@
 
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/global.hpp"
+#include "common_infrastructure/sample_library/library_id_cache.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 
 // IMPROVE: export a Lua LSP def file for the preset table.
@@ -167,8 +168,10 @@ struct InstIdsH {
                 }
                 case InstrumentType::Sampler: {
                     auto const& sid = inst_id.Get<sample_lib::InstrumentId>();
-                    auto const lib = sample_lib::LookupLibraryIdString(sid.library).ValueOr("?"_s);
-                    lua_pushlstring(lua, lib.data, lib.size);
+                    if (auto const lib = sample_lib::LookupLibraryIdString(sid.library))
+                        lua_pushlstring(lua, lib->data, lib->size);
+                    else
+                        lua_pushinteger(lua, (lua_Integer)sid.library);
                     lua_setfield(lua, -2, "library_id");
                     lua_pushlstring(lua, sid.inst_id.data, sid.inst_id.size);
                     lua_setfield(lua, -2, "instrument_id");
@@ -204,7 +207,9 @@ struct InstIdsH {
                             case InstrumentType::Sampler: {
                                 sample_lib::InstrumentId sid;
                                 lua_getfield(lua, -2, "library_id");
-                                if (lua_isstring(lua, -1)) {
+                                if (lua_isinteger(lua, -1)) {
+                                    sid.library = (sample_lib::LibraryId)lua_tointeger(lua, -1);
+                                } else if (lua_isstring(lua, -1)) {
                                     size_t len;
                                     auto str = lua_tolstring(lua, -1, &len);
                                     sid.library = sample_lib::HashLibraryIdString({str, len});
@@ -328,8 +333,10 @@ struct IrIdH {
         }
         auto const& ir_id = opt.Value();
         lua_newtable(lua);
-        auto const lib = sample_lib::LookupLibraryIdString(ir_id.library).ValueOr("?"_s);
-        lua_pushlstring(lua, lib.data, lib.size);
+        if (auto const lib = sample_lib::LookupLibraryIdString(ir_id.library))
+            lua_pushlstring(lua, lib->data, lib->size);
+        else
+            lua_pushinteger(lua, (lua_Integer)ir_id.library);
         lua_setfield(lua, -2, "library_id");
         lua_pushlstring(lua, ir_id.ir_id.data, ir_id.ir_id.size);
         lua_setfield(lua, -2, "ir_id");
@@ -341,7 +348,9 @@ struct IrIdH {
         }
         sample_lib::IrId ir_id;
         lua_getfield(lua, -1, "library_id");
-        if (lua_isstring(lua, -1)) {
+        if (lua_isinteger(lua, -1)) {
+            ir_id.library = (sample_lib::LibraryId)lua_tointeger(lua, -1);
+        } else if (lua_isstring(lua, -1)) {
             size_t len;
             auto str = lua_tolstring(lua, -1, &len);
             ir_id.library = sample_lib::HashLibraryIdString({str, len});
@@ -733,6 +742,13 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         StdPrintF(StdStream::Err, "Error: --raw cannot be combined with --script-file\n");
         return ErrorCode {CommonError::InvalidFileFormat};
     }
+
+    // Library names are not stored in preset files (only their hashed IDs are). Load the cache written by
+    // the plugin's library scanner so any libraries the user has open in Floe resolve to names instead of
+    // raw integers. Open Floe once after installing a new library to refresh; delete the cache file to
+    // force a full rescan on next launch.
+    LoadLibraryIdCache(arena);
+    StdPrintF(StdStream::Err, "library name cache: {}\n", LibraryIdCachePath(arena, false));
 
     auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena, raw), {
         StdPrintF(StdStream::Err, "Error: failed to open preset file: {}\n", error);

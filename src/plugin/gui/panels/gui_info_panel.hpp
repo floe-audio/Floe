@@ -6,11 +6,11 @@
 #include "utils/error_notifications.hpp"
 
 #include "common_infrastructure/sample_library/sample_library.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 #include "engine/check_for_update.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/overlays/gui_notifications.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 struct VoicePool;
 

@@ -10,6 +10,8 @@
 #include "foundation/foundation.hpp"
 #include "utils/logger/logger.hpp"
 
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
+
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
@@ -38,7 +40,6 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/renderer.hpp"
 #include "plugin/plugin.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 static void SampleLibraryChanged(GuiState& g, sample_lib::LibraryId library_id) {
     InvalidateLibraryImages(g.library_images, library_id, *GuiIo().in.renderer);

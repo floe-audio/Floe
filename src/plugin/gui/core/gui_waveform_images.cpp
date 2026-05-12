@@ -3,12 +3,12 @@
 
 #include "gui/core/gui_waveform_images.hpp"
 
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 
 #include "gui_framework/gui_frame.hpp"
 #include "gui_framework/image.hpp"
 #include "processor/sample_processing.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 inline Allocator& PixelsAllocator() { return PageAllocator::Instance(); }
 

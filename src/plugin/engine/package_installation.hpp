@@ -6,9 +6,9 @@
 #include "common_infrastructure/package_format.hpp"
 #include "common_infrastructure/paths.hpp"
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 #include "preset_server/preset_server.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 // This is a higher-level API on top of package_format.hpp.
 //

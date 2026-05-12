@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
+
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/image.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 // Images for a particular sample library.
 struct LibraryImages {

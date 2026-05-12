@@ -6,8 +6,7 @@
 #include "tests/framework.hpp"
 
 #include "common_infrastructure/sample_library/sample_library.hpp"
-
-#include "plugin/sample_lib_server/sample_library_server.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 constexpr auto k_favourite_inst_key_legacy = "favourite-instrument"_s;
 constexpr auto k_favourite_ir_key_legacy = "favourite-ir"_s;

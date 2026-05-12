@@ -5,9 +5,10 @@
 
 #include "os/misc.hpp"
 
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
+
 #include "gui_framework/image.hpp"
 #include "gui_framework/renderer.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 struct WaveformImage {
     using FuturePixels = Future<ImageBytes>;

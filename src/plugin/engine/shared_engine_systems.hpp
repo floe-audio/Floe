@@ -8,12 +8,12 @@
 #include "common_infrastructure/paths.hpp"
 #include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/sentry/sentry.hpp"
 
 #include "check_for_update.hpp"
 #include "clap/plugin.h"
 #include "preset_server/preset_server.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 // Shared across plugin instances of the engine. This usually happens when the plugin is loaded multiple times
 // in the host. Sometimes though, the host will load plugin instances in separate processes for

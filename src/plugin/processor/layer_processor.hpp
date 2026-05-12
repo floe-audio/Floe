@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
@@ -21,7 +22,6 @@
 #include "processing_utils/peak_meter.hpp"
 #include "processing_utils/synced_timings.hpp"
 #include "processing_utils/volume_fade.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 // These are controlled at the master level, but they are used by the layer processor. We let the master
 // processor manage them but each layer gets a reference.

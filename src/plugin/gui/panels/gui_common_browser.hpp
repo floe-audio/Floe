@@ -7,12 +7,12 @@
 
 #include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui_library_images.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui_framework/gui_builder.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 struct Notifications;
 

@@ -14,6 +14,7 @@
 
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/sample_library/audio_file.hpp"
+#include "common_infrastructure/sample_library/library_id_cache.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
 
 #include "build_resources/embedded_files.h"
@@ -37,6 +38,18 @@ static bool
 UpdateLibraryJobs(Server& server, ArenaAllocator& scratch_arena, Optional<DirectoryWatcher>& watcher) {
     ASSERT_EQ(CurrentThreadId(), server.server_thread_id);
     ZoneNamed(outer, true);
+
+    // Used only by the non-production preset_tool id cache below to detect changes.
+    [[maybe_unused]] auto const libraries_hash = [&]() {
+        auto h = HashInitFnv1a();
+        for (auto& node : server.libraries) {
+            HashUpdateFnv1a(h, node.value.lib->id);
+            HashUpdateFnv1a(h, node.value.lib->id_string.ToConstByteSpan());
+        }
+        return h;
+    };
+    [[maybe_unused]] u64 libraries_hash_before {};
+    if constexpr (!PRODUCTION_BUILD) libraries_hash_before = libraries_hash();
 
     while (auto const r = PopCompletedScanFolderResult(server.scan_folders)) {
         auto const error_id = HashMultiple(Array {"sls-scan-folder"_s, r->path});
@@ -305,6 +318,18 @@ UpdateLibraryJobs(Server& server, ArenaAllocator& scratch_arena, Optional<Direct
             auto const& lib = *i.value.lib;
             auto const inserted = server.libraries_by_id.Insert(lib.id, &i);
             ASSERT(inserted);
+        }
+    }
+
+    // Snapshot {id, id_string} pairs for the on-disk cache that preset_tool consumes. preset_tool is a
+    // developer-only tool, so we don't generate this file for end users. This function ticks on every
+    // server iteration; comparing the pre/post hash avoids rewriting when nothing changed.
+    if constexpr (!PRODUCTION_BUILD) {
+        if (libraries_hash() != libraries_hash_before) {
+            DynamicArray<LibraryIdCacheEntry> entries {scratch_arena};
+            for (auto& node : server.libraries)
+                dyn::Append(entries, {node.value.lib->id, node.value.lib->id_string});
+            WriteLibraryIdCache(entries);
         }
     }
 

@@ -1,7 +1,7 @@
 // Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
-#include "sample_lib_server/sample_library_server.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 // Ephemeral for a single frame
 struct GuiFrameContext {
