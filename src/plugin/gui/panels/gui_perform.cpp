@@ -733,9 +733,9 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                   },
                               });
 
-    if (!cache.long_text.size) return;
-
     DoSectionLabel(builder, column, cache.long_is_user_desc ? "DESCRIPTION"_s : "AUTO DESCRIPTION"_s);
+
+    if (!cache.long_text.size) return;
 
     DoBox(builder,
           {
