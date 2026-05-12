@@ -192,6 +192,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                               .contents_align = layout::Alignment::Start,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                           },
+                          .name = "top-panel"_s,
                       });
 
     // Scales the size keeping the aspect ratio, so that it fits within the given height.
@@ -550,6 +551,16 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
     // dots menu
     {
+        bool const screenshot_update_indicator = IsScreenshotRequest("update-indicator"_s);
+        if (screenshot_update_indicator) {
+            check_for_update::State::PaddedVersion const fake {.version = Version {9, 9, 9}};
+            g.shared_engine_systems.check_for_update_state.checking_allowed.Store(true,
+                                                                                  StoreMemoryOrder::Release);
+            g.shared_engine_systems.check_for_update_state.latest_version.Store(fake,
+                                                                                StoreMemoryOrder::Release);
+            g.show_new_version_indicator = true;
+        }
+
         auto const dots_button = do_icon_button(right_icon_buttons_container,
                                                 ICON_FA_ELLIPSIS_VERTICAL,
                                                 "Additional functions and information"_s,
@@ -578,6 +589,11 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                               .imgui_id = popup_id,
                               .viewport_config = k_default_popup_menu_viewport,
                           });
+
+        if (screenshot_update_indicator) {
+            if (auto const r = BoxRect(g.builder, dots_button))
+                g.imgui.RegisterNamedRect("top-panel.dots-button"_s, g.imgui.ViewportRectToWindowRect(*r));
+        }
     }
 
     auto const knob_container = DoBox(builder,
@@ -616,10 +632,6 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             });
 
         g.timbre_slider_is_held = box.is_active;
-        if (g.timbre_slider_is_held) {
-            int b = 0;
-            (void)b;
-        }
 
         if (builder.imgui.WasJustActivated(box.imgui_id, MouseButton::Left))
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);

@@ -4,6 +4,7 @@
 #include "gui/panels/gui_ir_browser.hpp"
 
 #include "engine/favourite_items.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 
 static Optional<IrCursor> CurrentCursor(IrBrowserContext const& context, sample_lib::IrId const& ir_id) {

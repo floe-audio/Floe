@@ -6,6 +6,7 @@
 #include "os/filesystem.hpp"
 
 #include "gui/core/gui_actions.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -39,6 +40,7 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
               .font = FontType::Heading1,
           });
 
+    bool named_first_card = false;
     for (auto lib : context.libraries) {
         if (lib->id == sample_lib::k_builtin_library_id) continue;
 
@@ -57,7 +59,9 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
                                         .contents_align = layout::Alignment::Start,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                     },
+                                    .name = named_first_card ? String {} : "info-panel.first-library-card"_s,
                                 });
+        named_first_card = true;
         DoBox(builder,
               {
                   .parent = card,
@@ -93,7 +97,10 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
         };
 
         do_text_line(fmt::Assign(buffer, "Version: {}", lib->minor_version));
-        if (auto const dir = path::Directory(lib->path)) do_text_line(fmt::Assign(buffer, "Folder: {}", dir));
+        if (auto const dir = path::Directory(lib->path)) {
+            auto const display_dir = IsAnyScreenshotInProgress() ? "/path/to/your/library/folder"_s : *dir;
+            do_text_line(fmt::Assign(buffer, "Folder: {}", display_dir));
+        }
         do_text_line(fmt::Assign(buffer,
                                  "Instruments: {} ({} samples, {} regions)",
                                  lib->insts_by_id.size,
@@ -616,17 +623,34 @@ static void InfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelS
 }
 
 void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState& state) {
+    bool const is_check_for_updates_screenshot = IsScreenshotRequest("check-for-updates"_s);
+    bool const is_uninstall_library_screenshot = IsScreenshotRequest("uninstall-library"_s);
+    if (is_check_for_updates_screenshot || is_uninstall_library_screenshot) {
+        if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
+    }
+    if (is_check_for_updates_screenshot) {
+        state.tab = InfoPanelState::Tab::About;
+        // Inject a fake newer version so the update notification section is visible in the screenshot.
+        check_for_update::State::PaddedVersion const fake {.version = Version {9, 9, 9}};
+        context.check_for_update_state.checking_allowed.Store(true, StoreMemoryOrder::Release);
+        context.check_for_update_state.latest_version.Store(fake, StoreMemoryOrder::Release);
+    } else if (is_uninstall_library_screenshot) {
+        state.tab = InfoPanelState::Tab::Libraries;
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
     if (!state.opened_before) {
         state.opened_before = true;
         if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
             state.tab = InfoPanelState::Tab::About;
     }
+    auto const bounds =
+        Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(WwToPixels(f32x2 {625, 443}));
+    builder.imgui.RegisterNamedRect("info-panel.modal"_s, builder.imgui.ViewportRectToWindowRect(bounds));
     DoBoxViewport(builder,
                   {
-                      .run = [&context, &state](GuiBuilder& b) { InfoPanel(b, context, state); },
-                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          WwToPixels(f32x2 {625, 443})),
+                      .run = [&context, &state](GuiBuilder& builder) { InfoPanel(builder, context, state); },
+                      .bounds = bounds,
                       .imgui_id = state.k_panel_id,
                       .viewport_config = k_default_modal_viewport,
                   });
@@ -634,16 +658,24 @@ void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&
 
 constexpr u64 k_tab_id = HashFnv1a("info_panel.tab");
 constexpr u64 k_opened_before_id = HashFnv1a("info_panel.opened_before");
+constexpr u64 k_open_id = HashFnv1a("info_panel.open");
 
 GuiSubsystem<InfoPanelState> const g_info_panel_subsystem {
     .encode =
-        [](InfoPanelState const& s, persistent_store::StoreTable& out, ArenaAllocator& arena) {
+        [](InfoPanelState const& s,
+           imgui::Context& imgui,
+           persistent_store::StoreTable& out,
+           ArenaAllocator& arena) {
             persistent_store::AddValue(out, arena, k_tab_id, s.tab);
             persistent_store::AddValue(out, arena, k_opened_before_id, s.opened_before);
+            persistent_store::AddValue(out, arena, k_open_id, imgui.IsModalOpen(s.k_panel_id));
         },
     .decode =
-        [](InfoPanelState& s, persistent_store::StoreTable const& store) {
+        [](InfoPanelState& s, imgui::Context& imgui, persistent_store::StoreTable const& store) {
             persistent_store::ReadEnum(store, k_tab_id, s.tab);
             persistent_store::ReadValue(store, k_opened_before_id, s.opened_before);
+            bool open = false;
+            persistent_store::ReadValue(store, k_open_id, open);
+            if (open) imgui.OpenModalViewport(s.k_panel_id);
         },
 };

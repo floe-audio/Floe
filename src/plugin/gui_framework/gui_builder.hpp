@@ -270,6 +270,8 @@ struct BoxConfig {
 
     Optional<imgui::ButtonConfig> button_behaviour = k_nullopt;
     u8 extra_margin_for_mouse_events = 0;
+
+    String name {};
 };
 
 NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash = SourceLocationHash());

@@ -25,4 +25,8 @@ struct LayerPanelState {
 
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent);
 
+// Per-frame hook called before MidPanel rendering, for state changes that must take effect
+// regardless of which tab is currently active.
+void LayerPanelPreUpdate(GuiState& g);
+
 extern GuiSubsystem<LayerPanelState> const g_layer_panel_subsystem;

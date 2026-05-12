@@ -144,6 +144,9 @@ struct FloeClapExtension {
     bool (*state_change_is_pending)(clap_plugin const* plugin) = nullptr;
     bool (*save_gui_state)(clap_plugin const* plugin, Writer writer) = nullptr;
     bool (*load_gui_state)(clap_plugin const* plugin, String bytes) = nullptr;
+    bool (*request_screenshot)(clap_plugin const* plugin, String id_name, String out_path) = nullptr;
+    bool (*screenshot_request_pending)(clap_plugin const* plugin) = nullptr;
+    bool (*load_preset_file)(clap_plugin const* plugin, String path) = nullptr;
 };
 
 enum class IsThreadResult : u8 { No, Yes, Unknown };

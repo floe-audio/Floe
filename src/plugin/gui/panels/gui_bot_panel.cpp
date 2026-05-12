@@ -5,12 +5,14 @@
 
 #include "engine/engine.hpp"
 #include "gui/controls/gui_keyboard.hpp"
+#include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "processor/processor.hpp"
 
 static bool IconButton(GuiBuilder& builder,
                        Box const parent,
@@ -127,6 +129,40 @@ static Optional<s64> OctaveDragger(GuiBuilder& builder,
 static void DoBotPanel(GuiState& g) {
     auto& builder = g.builder;
 
+    struct KeyRangeScreenshot {
+        String region;
+        s64 octave;
+        f32 low;
+        f32 high;
+    };
+    static constexpr KeyRangeScreenshot k_key_range_screenshots[] = {
+        {"key-range-bars"_s, 0, 48, 84},
+        {"key-range-enlarged"_s, 0, 36, 84},
+    };
+    constexpr prefs::SetValueOptions k_silent {.dont_send_on_change_event = true,
+                                               .dont_mark_as_changed = true};
+    auto const prev_octave = prefs::LookupInt(g.prefs, prefs::key::k_gui_keyboard_octave).ValueOr(0);
+    bool key_range_screenshot_active = false;
+    DEFER {
+        if (key_range_screenshot_active)
+            prefs::SetValue(g.prefs, prefs::key::k_gui_keyboard_octave, prev_octave, k_silent);
+    };
+    for (auto const& s : k_key_range_screenshots) {
+        if (!IsScreenshotRequest(s.region)) continue;
+        key_range_screenshot_active = true;
+        g.mid_panel_state.tab = MidPanelTab::Layers;
+        prefs::SetValue(g.prefs, prefs::key::k_gui_keyboard_octave, s.octave, k_silent);
+        auto& main_params = g.engine.processor.main_params;
+        auto const set = [&](LayerParamIndex p, f32 v) {
+            main_params.SetLinearValue(ParamIndexFromLayerParamIndex(0, p), v);
+        };
+        set(LayerParamIndex::KeyRangeLow, s.low);
+        set(LayerParamIndex::KeyRangeHigh, s.high);
+        set(LayerParamIndex::KeyRangeLowFade, 6);
+        set(LayerParamIndex::KeyRangeHighFade, 6);
+        break;
+    }
+
     bool const perform_tab_active = g.mid_panel_state.tab == MidPanelTab::Perform;
 
     auto const root = DoBox(builder,
@@ -139,6 +175,7 @@ static void DoBotPanel(GuiState& g) {
                                     .contents_align = layout::Alignment::Start,
                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                 },
+                                .name = "bot-panel"_s,
                             });
 
     if (!perform_tab_active) {
@@ -257,6 +294,7 @@ static void DoBotPanel(GuiState& g) {
                                                 .size = layout::k_fill_parent,
                                                 .margins = {.l = 0, .r = 3, .tb = 3},
                                             },
+                                            .name = "bot-keyboard"_s,
                                         });
             if (auto const r = BoxRect(builder, keyboard)) {
                 if (auto key = KeyboardGui(g, *r, (int)keyboard_octave)) {
@@ -328,10 +366,11 @@ constexpr u64 k_type_id = HashFnv1a("bottom_panel.type");
 
 GuiSubsystem<BottomPanelState> const g_bot_panel_subsystem {
     .encode = [](BottomPanelState const& s,
+                 imgui::Context&,
                  persistent_store::StoreTable& out,
                  ArenaAllocator& arena) { persistent_store::AddValue(out, arena, k_type_id, s.type); },
     .decode =
-        [](BottomPanelState& s, persistent_store::StoreTable const& store) {
+        [](BottomPanelState& s, imgui::Context&, persistent_store::StoreTable const& store) {
             persistent_store::ReadEnum(store, k_type_id, s.type);
         },
 };

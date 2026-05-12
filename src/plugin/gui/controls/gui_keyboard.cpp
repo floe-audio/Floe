@@ -76,8 +76,8 @@ struct KeyboardLayout {
 
     Rect SharpKeyRect(s32 sharp_key_index_rel_octave, s32 octave, f32 key_y, f32 key_height) const {
         Rect key_r;
-        key_r.x = (f32)RoundPositiveFloat(keyboard_x + sharp_key_x_offset[sharp_key_index_rel_octave] +
-                                          ((f32)octave * natural_key_width * 7));
+        key_r.x = (f32)Round(keyboard_x + sharp_key_x_offset[sharp_key_index_rel_octave] +
+                             ((f32)octave * natural_key_width * 7));
         key_r.y = key_y;
         key_r.w = (f32)RoundPositiveFloat(sharp_key_width);
         key_r.h = key_height;
@@ -515,13 +515,13 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 
         auto const line_draw_start = (f32)Round(Max(layer_start_x, container_left));
         auto const line_draw_end = (f32)Round(Min(layer_end_x, container_right));
-        auto const line_y_rounded = (f32)RoundPositiveFloat(line_y);
+        auto const line_y_rounded = (f32)Round(line_y);
 
         auto const midi_transpose =
             g.engine.processor.main_params.IntValue<s8>(layer_idx, LayerParamIndex::MidiTranspose);
 
         auto const capsule_height = (f32)RoundPositiveFloat(strip_h);
-        auto const capsule_y = (f32)RoundPositiveFloat(strip_y);
+        auto const capsule_y = (f32)Round(strip_y);
         auto const capsule_radius = capsule_height * 0.5f;
 
         auto const fade_in =
@@ -635,8 +635,8 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
             }
 
             if (should_draw && capsule_end_x > capsule_start_x) {
-                auto const clipped_start_x = (f32)RoundPositiveFloat(Max(capsule_start_x, container_left));
-                auto const clipped_end_x = (f32)RoundPositiveFloat(Min(capsule_end_x, container_right));
+                auto const clipped_start_x = (f32)Round(Max(capsule_start_x, container_left));
+                auto const clipped_end_x = (f32)Round(Min(capsule_end_x, container_right));
 
                 if (clipped_end_x > clipped_start_x) {
                     u4 corner_flags = 0;
@@ -699,17 +699,17 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
         }
 
         {
-            auto const stopper_top = (f32)RoundPositiveFloat(strip_y);
-            auto const stopper_bottom = (f32)RoundPositiveFloat(strip_y + strip_h);
+            auto const stopper_top = (f32)Round(strip_y);
+            auto const stopper_bottom = (f32)Round(strip_y + strip_h);
             auto const chevron_x_delta = WwToPixels(5.0f);
 
-            if (layer_start_x >= container_left) {
-                auto const stopper_x = (f32)RoundPositiveFloat(layer_start_x);
+            if (layer_start_x >= 0 && layer_start_x >= container_left) {
+                auto const stopper_x = (f32)Round(layer_start_x);
                 imgui.draw_list->AddRectFilled(f32x2 {stopper_x, stopper_top},
                                                f32x2 {stopper_x + k_stopper_width, stopper_bottom},
                                                line_cols[layer_idx]);
             } else {
-                auto const chevron_left_x = (f32)RoundPositiveFloat(container_left);
+                auto const chevron_left_x = (f32)Round(container_left);
                 auto const chevron_right_x = chevron_left_x + chevron_x_delta;
                 auto const chevron_point = f32x2 {chevron_left_x, strip_y + (0.5f * strip_h)};
 
@@ -729,7 +729,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                                                f32x2 {stopper_x, stopper_bottom},
                                                line_cols[layer_idx]);
             } else {
-                auto const chevron_right_x = (f32)RoundPositiveFloat(container_right);
+                auto const chevron_right_x = (f32)Round(container_right);
                 auto const chevron_left_x = chevron_right_x - chevron_x_delta;
                 auto const chevron_point = f32x2 {chevron_right_x, strip_y + (0.5f * strip_h)};
 
@@ -768,6 +768,9 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
         imgui.OpenPopupMenu(popup_id, id);
 
+    if (IsScreenshotRequest("key-range-enlarged"_s) && !imgui.IsPopupMenuOpen(popup_id))
+        imgui.OpenPopupMenu(popup_id, id);
+
     auto const enlarged_viewport_padding = WwToPixels(4.0f);
 
     keyboard_rect = imgui.RegisterAndConvertRect(keyboard_rect);
@@ -802,8 +805,12 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
                                     .text_gap = 4, // Ww units
                                 });
 
+        if (auto const bounds = g.imgui.curr_viewport->unpadded_bounds; All(bounds.size > 0.0f))
+            imgui.RegisterNamedRect("key-range-enlarged-popup"_s, bounds);
+
         if (auto const bounds = g.imgui.curr_viewport->unpadded_bounds;
-            All(bounds.size > 0.0f) && !bounds.Contains(GuiIo().in.cursor_pos)) {
+            !IsScreenshotRequest("key-range-enlarged"_s) && All(bounds.size > 0.0f) &&
+            !bounds.Contains(GuiIo().in.cursor_pos)) {
             imgui.ClosePopupToLevel(0);
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
@@ -849,7 +856,7 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_oc
                 }
                 b;
             });
-            !all_default) {
+            !all_default || IsScreenshotRequest("key-range-enlarged"_s)) {
             auto const top_display_r =
                 rect_cut::CutTop(r,
                                  WwToPixels(num_active_layers * k_minimal_strip_height_ww) +

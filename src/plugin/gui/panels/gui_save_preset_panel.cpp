@@ -7,6 +7,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
@@ -265,6 +266,11 @@ static void CommitMetadataToEngine(Engine& engine, SavePresetPanelState const& s
 }
 
 void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state) {
+    if (IsScreenshotRequest("save-preset"_s)) {
+        if (!builder.imgui.IsModalOpen(state.k_panel_id))
+            builder.imgui.OpenModalViewport(state.k_panel_id);
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     if (Exchange(state.scroll_to_start, false)) {
@@ -277,7 +283,7 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
         {
             .run =
                 [&context, &state](GuiBuilder& builder) {
-                    auto const root = DoModalRootBox(builder);
+                    auto const root = DoModalRootBox(builder, "save-preset-panel.modal"_s);
 
                     DoModalHeader(builder,
                                   {

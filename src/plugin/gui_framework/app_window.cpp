@@ -12,6 +12,7 @@
 
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
+#include "utils/json/json_writer.hpp"
 
 #include "common_infrastructure/error_reporting.hpp"
 
@@ -655,21 +656,25 @@ static void UpdateAndRender(AppWindow& window) {
 
         if (window.last_result.request_screenshot) {
             ArenaAllocator scratch {PageAllocator::Instance()};
-            auto const region = *window.last_result.request_screenshot;
-            if (auto const shot = window.renderer->Screenshot(region, window_size, scratch)) {
-                auto path = DynamicArray<char>::FromOwnedSpan(
-                    KnownDirectoryWithSubdirectories(scratch,
-                                                     KnownDirectoryType::Documents,
-                                                     Array {"Floe"_s, "Screenshots"},
-                                                     k_nullopt,
-                                                     {.create = true}),
-                    scratch);
-                auto const initial_size = path.size;
-                for (int n = 1;; ++n) {
-                    dyn::Resize(path, initial_size);
-                    fmt::Append(path, "/floe-{}.png", n);
-                    auto const t = GetFileType(path);
-                    if (!t.HasValue() || t.Value() != FileType::File) break;
+            auto const& req = *window.last_result.request_screenshot;
+            if (auto const shot = window.renderer->Screenshot(req.rect, window_size, scratch)) {
+                DynamicArray<char> path {scratch};
+                if (req.output_path.size) {
+                    dyn::AppendSpan(path, (String)req.output_path);
+                } else {
+                    dyn::AppendSpan(path,
+                                    KnownDirectoryWithSubdirectories(scratch,
+                                                                     KnownDirectoryType::Documents,
+                                                                     Array {"Floe"_s, "Screenshots"},
+                                                                     k_nullopt,
+                                                                     {.create = true}));
+                    auto const initial_size = path.size;
+                    for (int n = 1;; ++n) {
+                        dyn::Resize(path, initial_size);
+                        fmt::Append(path, "/floe-{}.png", n);
+                        auto const t = GetFileType(path);
+                        if (!t.HasValue() || t.Value() != FileType::File) break;
+                    }
                 }
                 if (!stbi_write_png(dyn::NullTerminated(path),
                                     shot->size.width,
@@ -677,14 +682,53 @@ static void UpdateAndRender(AppWindow& window) {
                                     3,
                                     shot->rgb.data,
                                     shot->size.width * 3)) {
-                    LogError(ModuleName::Gui, "stbi_write_png failed for {}", path);
+                    LogError(ModuleName::Gui, "stbi_write_png failed");
                 } else {
-                    LogInfo(ModuleName::Gui, "Saved screenshot to {}", path);
+                    LogInfo(ModuleName::Gui, "Saved screenshot");
+
+                    if (req.overlays.size) {
+                        auto const ext = path::Extension((String)path);
+                        DynamicArray<char> json_path {scratch};
+                        dyn::AppendSpan(json_path, ((String)path).SubSpan(0, path.size - ext.size));
+                        dyn::AppendSpan(json_path, ".json"_s);
+
+                        DynamicArray<char> json_buf {scratch};
+                        auto writer = dyn::WriterFor(json_buf);
+                        json::WriteContext ctx {.out = writer, .add_whitespace = true};
+                        auto const write_json = [&]() -> ErrorCodeOr<void> {
+                            TRY(json::WriteObjectBegin(ctx));
+                            TRY(json::WriteKeyArrayBegin(ctx, "overlays"));
+                            auto const inv_w = 1.0f / req.rect.w;
+                            auto const inv_h = 1.0f / req.rect.h;
+                            for (auto const& o : req.overlays) {
+                                TRY(json::WriteObjectBegin(ctx));
+                                TRY(json::WriteKeyValue(ctx, "name", (String)o.name));
+                                TRY(json::WriteKeyValue(ctx, "x", (o.rect.x - req.rect.x) * inv_w));
+                                TRY(json::WriteKeyValue(ctx, "y", (o.rect.y - req.rect.y) * inv_h));
+                                TRY(json::WriteKeyValue(ctx, "w", o.rect.w * inv_w));
+                                TRY(json::WriteKeyValue(ctx, "h", o.rect.h * inv_h));
+                                TRY(json::WriteObjectEnd(ctx));
+                            }
+                            TRY(json::WriteArrayEnd(ctx));
+                            TRY(json::WriteObjectEnd(ctx));
+                            return k_success;
+                        };
+                        if (auto const r = write_json(); r.HasError())
+                            LogError(ModuleName::Gui, "Failed to build overlay JSON: {}", r.Error());
+                        else if (auto const w = WriteFile(json_path, json_buf); w.HasError())
+                            LogError(ModuleName::Gui, "Failed to write overlay JSON: {}", w.Error());
+                        else
+                            LogInfo(ModuleName::Gui, "Saved overlay JSON");
+                    }
                 }
             } else {
                 LogWarning(ModuleName::Gui, "Screenshot not supported by current renderer backend");
             }
             window.last_result.request_screenshot = k_nullopt;
+            if (window.gui) {
+                dyn::Clear(window.frame_state.requested_screenshot_id_name);
+                dyn::Clear(window.frame_state.requested_screenshot_output_path);
+            }
         }
     }
 

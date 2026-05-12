@@ -243,6 +243,8 @@ static void DoResizeCorner(GuiState& g) {
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
                              r.BottomLeft() + f32x2 {line_gap * 2, 0},
                              line_col);
+
+    imgui.RegisterNamedRect("resize-corner"_s, r);
 }
 
 void GuiUpdate(GuiState& g) {
@@ -499,19 +501,21 @@ void GuiUpdate(GuiState& g) {
 
     DoDeveloperPanel(g.dev_gui);
 
+    MaybeFireScreenshot(g);
+
     prefs::WriteIfNeeded(g.prefs);
 }
 
-ErrorCodeOr<void> EncodeGuiState(GuiState const& g, Writer writer) {
+ErrorCodeOr<void> EncodeGuiState(GuiState& g, Writer writer) {
     ArenaAllocator arena {PageAllocator::Instance()};
     persistent_store::StoreTable store;
 
-    g_mid_panel_subsystem.encode(g.mid_panel_state, store, arena);
-    g_bot_panel_subsystem.encode(g.bottom_panel_state, store, arena);
-    g_prefs_panel_subsystem.encode(g.preferences_panel_state, store, arena);
-    g_info_panel_subsystem.encode(g.info_panel_state, store, arena);
+    g_mid_panel_subsystem.encode(g.mid_panel_state, g.imgui, store, arena);
+    g_bot_panel_subsystem.encode(g.bottom_panel_state, g.imgui, store, arena);
+    g_prefs_panel_subsystem.encode(g.preferences_panel_state, g.imgui, store, arena);
+    g_info_panel_subsystem.encode(g.info_panel_state, g.imgui, store, arena);
     for (auto const& layer : g.layer_panel_states)
-        g_layer_panel_subsystem.encode(layer, store, arena);
+        g_layer_panel_subsystem.encode(layer, g.imgui, store, arena);
 
     return persistent_store::Write(store, writer);
 }
@@ -521,10 +525,10 @@ void DecodeGuiState(GuiState& g, String bytes) {
     ArenaAllocator arena {PageAllocator::Instance()};
     auto const store = persistent_store::Read(arena, bytes);
 
-    g_mid_panel_subsystem.decode(g.mid_panel_state, store);
-    g_bot_panel_subsystem.decode(g.bottom_panel_state, store);
-    g_prefs_panel_subsystem.decode(g.preferences_panel_state, store);
-    g_info_panel_subsystem.decode(g.info_panel_state, store);
+    g_mid_panel_subsystem.decode(g.mid_panel_state, g.imgui, store);
+    g_bot_panel_subsystem.decode(g.bottom_panel_state, g.imgui, store);
+    g_prefs_panel_subsystem.decode(g.preferences_panel_state, g.imgui, store);
+    g_info_panel_subsystem.decode(g.info_panel_state, g.imgui, store);
     for (auto& layer : g.layer_panel_states)
-        g_layer_panel_subsystem.decode(layer, store);
+        g_layer_panel_subsystem.decode(layer, g.imgui, store);
 }

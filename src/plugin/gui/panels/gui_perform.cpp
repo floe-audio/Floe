@@ -332,7 +332,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                             });
             if (auto const r = BoxRect(builder, waveform_box)) {
                 if (active) {
-                    DoWaveformElement(g, layer, *r);
+                    DoWaveformElement(g, layer, *r, {.play_mode = k_nullopt});
                 } else {
                     g.imgui.draw_list->AddRectFilled(
                         g.imgui.ViewportRectToWindowRect(*r),
@@ -467,6 +467,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                         .contents_align = layout::Alignment::Start,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                     },
+                                    .name = "perform.variation-strip"_s,
                                 });
 
         auto const vary_btn = DoMidPanelIconButton(
@@ -750,6 +751,12 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
           });
 }
 
+constexpr u64 k_perform_collapsed_id = HashFnv1a("perform-panel-collapsed");
+
+void SetPerformPanelCollapseState(GuiState& g, bool state) {
+    persistent_store::SetFlag(g.shared_engine_systems.persistent_store, k_perform_collapsed_id, state);
+}
+
 void MidPanelPerformContent(GuiBuilder& builder,
                             GuiState& g,
                             GuiFrameContext const& frame_context,
@@ -881,7 +888,6 @@ void MidPanelPerformContent(GuiBuilder& builder,
               },
           });
 
-    constexpr u64 k_perform_collapsed_id = HashFnv1a("perform-panel-collapsed");
     bool const collapsed =
         persistent_store::GetFlag(g.shared_engine_systems.persistent_store, k_perform_collapsed_id);
 

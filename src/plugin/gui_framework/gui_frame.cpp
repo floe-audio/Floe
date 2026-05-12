@@ -7,6 +7,7 @@ GuiFrameInput* g_frame_input {};
 GuiFrameOutput* g_frame_output {};
 
 GuiFrameIo GuiIo() { return {*g_frame_input, *g_frame_output}; }
+bool GuiIoValid() { return g_frame_input && g_frame_output; }
 
 void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out) {
     g_frame_input = in;

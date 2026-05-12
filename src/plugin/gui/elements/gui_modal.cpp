@@ -8,7 +8,7 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 
-Box DoModalRootBox(GuiBuilder& builder) {
+Box DoModalRootBox(GuiBuilder& builder, String name) {
     return DoBox(builder,
                  {
                      .layout {
@@ -16,6 +16,7 @@ Box DoModalRootBox(GuiBuilder& builder) {
                          .contents_direction = layout::Direction::Column,
                          .contents_align = layout::Alignment::Start,
                      },
+                     .name = name,
                  });
 }
 

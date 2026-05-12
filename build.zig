@@ -545,6 +545,7 @@ pub fn build(b: *std.Build) void {
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
         .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused size/colour-map entries from def files"),
         .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
+        .gen_doc_screenshots = b.step("script:gen-doc-screenshots", "Regenerate website screenshot PNGs by running floe_standalone for each known GUI area"),
     };
 
     // The default is to compile everything.
@@ -1611,6 +1612,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/core/gui_file_picker.cpp",
             "gui/core/gui_library_images.cpp",
             "gui/core/gui_prefs.cpp",
+            "gui/core/gui_screenshot.cpp",
             "gui/core/gui_state.cpp",
             "gui/core/gui_waveform_images.cpp",
             "gui/debug/gui_developer_panel.cpp",
@@ -2949,6 +2951,86 @@ fn doTarget(
 
         const install = ctx.b.addInstallArtifact(exe, .{});
         top_level_steps.install_all.dependOn(&install.step);
+
+        if (targetCanRunNatively(cfg.target)) {
+            const screenshot_filter = ctx.b.option(
+                []const u8,
+                "screenshot-id",
+                "Only generate the screenshot matching this id_name (default: all)",
+            );
+            const DocScreenshot = struct {
+                id_name: []const u8,
+                preset: ?[]const u8 = null, // relative to test_files/presets
+            };
+            const doc_screenshots = [_]DocScreenshot{
+                .{ .id_name = "overview", .preset = "Fading Silhouettes.floe-preset" },
+                .{ .id_name = "top-panel", .preset = "Fading Silhouettes.floe-preset" },
+                .{ .id_name = "save-preset", .preset = "Fading Silhouettes.floe-preset" },
+                .{ .id_name = "layer-top-controls", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-main", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-playback", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-playback-granular-speed", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-playback-granular-fixed", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-lfo", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-eq", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-arp", .preset = "arp-screenshot.floe-preset" },
+                .{ .id_name = "layer-config", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layers", .preset = "Harp Trio.floe-preset" },
+                .{ .id_name = "perform", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "perform-variation-strip", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "effects", .preset = "stress-test.mirage-phoenix" },
+                .{ .id_name = "key-range-controls", .preset = "Real Dulcitone.floe-preset" },
+                .{ .id_name = "velocity-curve", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "loop-mode-menu", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "key-range-bars", .preset = "Real Dulcitone.floe-preset" },
+                .{ .id_name = "key-range-enlarged", .preset = "Real Dulcitone.floe-preset" },
+                .{ .id_name = "check-for-updates" },
+                .{ .id_name = "update-indicator" },
+                .{ .id_name = "install-packages" },
+                .{ .id_name = "folders" },
+                .{ .id_name = "instance-config" },
+                .{ .id_name = "midi-cc-assignments", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "uninstall-preset-bank" },
+                .{ .id_name = "uninstall-library" },
+                .{ .id_name = "browser-full" },
+                .{ .id_name = "filter-card" },
+                .{ .id_name = "filter-card-all-selected" },
+                .{ .id_name = "filter-card-body-item-selected" },
+                .{ .id_name = "filter-card-body-tree" },
+                .{ .id_name = "filter-button" },
+                .{ .id_name = "browser-menu" },
+            };
+
+            var matched_any = false;
+            for (doc_screenshots) |shot| {
+                if (screenshot_filter) |filter| {
+                    if (!std.mem.eql(u8, filter, shot.id_name)) continue;
+                }
+                matched_any = true;
+                const out_path = ctx.b.fmt("website/static/images/screenshots/{s}.png", .{shot.id_name});
+                const run = ctx.b.addRunArtifact(exe);
+                run.has_side_effects = true;
+                run.addArg(ctx.b.fmt("--screenshot={s}", .{shot.id_name}));
+                run.addArg(ctx.b.fmt("--screenshot-out={s}", .{out_path}));
+                if (shot.preset) |preset| {
+                    const preset_path = ctx.b.pathJoin(&.{
+                        ctx.b.build_root.path orelse ".",
+                        "test_files",
+                        "presets",
+                        preset,
+                    });
+                    run.addArg(ctx.b.fmt("--preset={s}", .{preset_path}));
+                }
+                run.addArg("--fixed-window-size=18");
+                run.addArg("--log-level=warning");
+                top_level_steps.gen_doc_screenshots.dependOn(&run.step);
+            }
+            if (screenshot_filter) |filter| {
+                if (!matched_any) {
+                    std.debug.panic("No screenshot found with id_name '{s}'", .{filter});
+                }
+            }
+        }
     }
 
     const vst3_sdk = buildVst3Sdk(ctx, cfg);

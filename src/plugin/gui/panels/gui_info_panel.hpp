@@ -9,6 +9,7 @@
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 #include "engine/check_for_update.hpp"
+#include "gui/core/gui_fwd.hpp"
 #include "gui/core/gui_subsystem.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/overlays/gui_notifications.hpp"

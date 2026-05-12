@@ -9,19 +9,13 @@
 
 #include "foundation/foundation.hpp"
 
+#include "app_window_sizes.hpp"
 #include "aspect_ratio.hpp"
 #include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui_frame.hpp"
 
 constexpr bool k_debug_app_window = false;
-
-constexpr UiSize k_gui_aspect_ratio = {10, 7};
-
-constexpr u16 k_min_gui_width = SizeWithAspectRatio(300, k_gui_aspect_ratio).width;
-constexpr u32 k_max_gui_width =
-    SizeWithAspectRatio(LargestRepresentableValue<u16>() - k_gui_aspect_ratio.width, k_gui_aspect_ratio)
-        .width;
 
 constexpr f32 k_default_dpi = 96.0f;
 constexpr f32 k_default_gui_width_inches = 10.0f;

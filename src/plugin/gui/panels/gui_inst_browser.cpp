@@ -4,6 +4,7 @@
 #include "gui/panels/gui_inst_browser.hpp"
 
 #include "engine/favourite_items.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 
 constexpr String k_waveform_library_id_string = "Waveforms - " FLOE_VENDOR;
@@ -424,8 +425,75 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 }
 
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
+
+    bool const is_browser_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-full"_s);
+    bool const is_filter_card_screenshot = context.layer.index == 0 && IsScreenshotRequest("filter-card"_s);
+    bool const is_filter_card_all_selected =
+        context.layer.index == 0 && IsScreenshotRequest("filter-card-all-selected"_s);
+    bool const is_filter_card_body_item =
+        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-item-selected"_s);
+    bool const is_filter_card_body_tree =
+        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-tree"_s);
+    bool const is_any_filter_card_screenshot = is_filter_card_screenshot || is_filter_card_all_selected ||
+                                               is_filter_card_body_item || is_filter_card_body_tree;
+    bool const is_filter_button_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("filter-button"_s);
+    bool const is_browser_menu_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-menu"_s);
+
+    if ((is_browser_screenshot || is_any_filter_card_screenshot || is_filter_button_screenshot ||
+         is_browser_menu_screenshot) &&
+        !builder.imgui.IsModalOpen(state.id))
+        builder.imgui.OpenModalViewport(state.id);
+
     if (!builder.imgui.IsModalOpen(state.id)) return;
     auto const& libs = context.frame_context.libraries;
+
+    if (is_browser_screenshot) {
+        // Add a tag filter so the screenshot is more interesting than an empty browser.
+        auto& tag_filter = state.common_state.Filter(BrowserFilter::Tags);
+        if (!tag_filter.Contains((u64)TagType::Ambient)) tag_filter.Add((u64)TagType::Ambient, "ambient"_s);
+    }
+
+    if (is_any_filter_card_screenshot) {
+        sample_lib::Library const* picked = nullptr;
+        for (auto const l : libs) {
+            if (l->sorted_instruments.size == 0) continue;
+            if (l->name == "Dulcitone"_s) {
+                picked = &*l;
+                break;
+            }
+            if (!picked) picked = &*l;
+        }
+        if (picked) {
+            auto const collapse_id = picked->id ^ HashFnv1a("card-collapse");
+            if (!Contains(state.common_state.expanded_filter_headers, collapse_id))
+                dyn::Append(state.common_state.expanded_filter_headers, collapse_id);
+
+            auto const* root = &picked->root_folders[ToInt(sample_lib::ResourceType::Instrument)];
+
+            auto const add_unique = [&](BrowserFilter f, u64 key, String name) {
+                auto& filter = state.common_state.Filter(f);
+                if (!filter.Contains(key)) filter.Add(key, name);
+            };
+
+            if (is_filter_card_all_selected) {
+                add_unique(BrowserFilter::Library, picked->id, picked->name);
+            } else if (is_filter_card_body_item) {
+                if (auto* child = root->first_child)
+                    add_unique(BrowserFilter::Folder, child->Hash(), child->name);
+            } else if (is_filter_card_body_tree) {
+                FolderNode const* tree = nullptr;
+                for (auto* c = root->first_child; c; c = c->next) {
+                    if (c->name == "Mic Options"_s) {
+                        tree = c;
+                        break;
+                    }
+                    if (!tree && c->first_child) tree = c;
+                }
+                if (tree) add_unique(BrowserFilter::Folder, tree->Hash(), tree->name);
+            }
+        }
+    }
 
     TagsFilters tags_filters {};
     auto libraries =
@@ -579,6 +647,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
+                    .card_name_prefix = is_any_filter_card_screenshot ? "library-card."_s : ""_s,
                 };
                 f;
             }),

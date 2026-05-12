@@ -13,6 +13,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 import data from "@site/static/generated-data.json";
 import staticData from '@site/static/generated-data.json';
 import OSTabs, { OSPanel } from '@site/src/components/OSTabs';
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
 # Installing Floe
 
@@ -103,11 +104,11 @@ Floe can automatically check for available updates. It does this in a simple, no
 
 When a newer version is available, a red dot will appear on the <FAIcon icon="fa-solid fa-ellipsis-v" /> 3-dots menu in Floe's window.
 
-![Floe red dot update indicator](/images/floe-update-red-dot.png)
+<GeneratedScreenshot name="update-indicator" alt="Floe red dot update indicator" />
 
 Open the menu and click "Info" to show you the options: ignore the update, or visit the download or changelog pages. Ignoring the update means the red dot will disappear until a newer version is available.
 
-![Floe info panel update info](/images/floe-update-info-panel.png)
+<GeneratedScreenshot name="check-for-updates" alt="Floe info panel update info" />
 
 ### Disabling automatic update checks
 You can disable automatic update checks by unchecking the "Check for updates" option in Floe's preferences panel.

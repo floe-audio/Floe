@@ -8,6 +8,7 @@
 #include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -218,6 +219,9 @@ static void InstanceConfigPanel(GuiBuilder& builder, InstanceConfigPanelContext&
 void DoInstanceConfigPanel(GuiBuilder& builder,
                            InstanceConfigPanelContext& context,
                            InstanceConfigPanelState& state) {
+    if (IsScreenshotRequest("instance-config"_s) && !builder.imgui.IsModalOpen(state.k_panel_id))
+        builder.imgui.OpenModalViewport(state.k_panel_id);
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     auto viewport_config = k_default_modal_viewport;
@@ -226,6 +230,9 @@ void DoInstanceConfigPanel(GuiBuilder& builder,
     auto const window_size = GuiIo().in.window_size.ToFloat2();
     auto const panel_size = WwToPixels(f32x2 {400, 300});
     auto const bounds = Rect {.pos = 0, .size = window_size}.CentredRect(panel_size);
+
+    builder.imgui.RegisterNamedRect("instance-config-panel.modal"_s,
+                                    builder.imgui.ViewportRectToWindowRect(bounds));
 
     DoBoxViewport(builder,
                   {

@@ -380,6 +380,7 @@ struct FilterCardOptions {
     bool default_collapsed {};
     RightClickMenuState::Function right_click_menu {};
     persistent_store::Store* store {};
+    String name {};
 };
 
 bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
@@ -402,6 +403,7 @@ struct LibraryFilters {
     ThreadsafeErrorNotifications& error_notifications;
     Notifications& notifications;
     ConfirmationDialogState& confirmation_dialog_state;
+    String card_name_prefix {};
 };
 
 // IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
@@ -541,6 +543,7 @@ struct FilterButtonOptions {
     bool no_bottom_margin;
     bool dark_mode = true;
     RightClickMenuState::Function right_click_menu {nullptr};
+    String name {};
 };
 
 struct FilterTreeButtonOptions {

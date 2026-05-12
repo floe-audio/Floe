@@ -19,13 +19,9 @@ struct WaveformHashDebounce {
 };
 
 struct WaveformGuiOptions {
-    bool handles_follow_cursor {};
     // If set, show controls relevant for that play mode (loop handles, sample offset, etc).
     // If nullopt, just display the waveform with voice markers.
     Optional<param_values::PlayMode> play_mode {};
-    // If true, only draw the background and waveform image. No voice markers, no multisample badge,
-    // no loading text, no controls.
-    bool waveform_only {};
 };
 
 void DoWaveformElement(GuiState& g,

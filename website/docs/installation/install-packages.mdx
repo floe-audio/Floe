@@ -11,6 +11,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
 import data from "@site/static/generated-data.json";
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
 Floe can install sample libraries and presets from package files (`.floe-pkg`, `.floe-pkg-enc`, or `.zip`).
 
@@ -37,7 +38,22 @@ To install:
 
 The package files can be deleted after installation. No restart required.
 
-![Floe's GUI](/images/install-package-gui.png)
+<GeneratedScreenshot name="install-packages" alt="Floe Preferences panel showing the Packages tab" />
+
+### What is a package?
+A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**. They use the extension `.floe-pkg`, but they're really ZIP files with a specific structure. Floe also accepts `.zip` packages. Additionally, `.floe-pkg-enc` packages are encrypted and require a license key to install. Packages are [installed](../installation/install-packages) using Floe's _Install package_ button (or manually for unencrypted packages).
+
+A package may contain:
+- Samples Libraries
+- Presets/Preset Banks
+
+Typically, a package contains one sample library, and a bank of factory presets for the library.
+
+But alternatively, a package could also contain only presets, or a collection of sample libraries, or any combination.
+
+Floe doesn't remember packages after installation; they're just a means to get content onto your computer. Packages are created using Floe's [packaging tools](../develop/packaging), or using a ZIP utility.
+
+Want the audio files in an unencrypted package? [Rename it to .zip and extract](../installation/install-packages#manually-installing).
 
 ### Encrypted packages
 
@@ -63,7 +79,7 @@ To do that, use your file browser program (Finder/File Explorer) and create the 
 
 Floe uses separate folders for sample libraries versus presets, so you might want to create one for each. For example, on your _SAMPLES_ hard drive, create folders: "Floe Libraries" and "Floe Presets". Add these 2 folders on Floe's preferences panels and select them as the default installation locations.
 
-Further details about folder management can be found on the [Folders](../key-concepts/folders) page.
+Further details about folder management can be found on the [Folders](../usage/folders) page.
 
 ### How 'Install package' works
 

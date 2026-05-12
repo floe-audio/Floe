@@ -1276,6 +1276,63 @@ static FloeClapExtension const floe_custom_ext {
             return false;
         }
     },
+    .request_screenshot = [](clap_plugin_t const* plugin, String id_name, String out_path) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "request_screenshot_region", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return false;
+            dyn::Assign(floe.app_window->frame_state.requested_screenshot_id_name, id_name);
+            dyn::Assign(floe.app_window->frame_state.requested_screenshot_output_path, out_path);
+            return true;
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .screenshot_request_pending = [](clap_plugin_t const* plugin) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "screenshot_request_pending", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return false;
+            return floe.app_window->frame_state.requested_screenshot_id_name.size != 0;
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .load_preset_file = [](clap_plugin_t const* plugin, String path) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "load_preset_file", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.engine) return false;
+
+            PathArena path_arena {PageAllocator::Instance()};
+            path = TRY_OR(AbsolutePath(path_arena, path), {
+                ReportError(ErrorLevel::Error, SourceLocationHash(), "preset path could not be resolved");
+                return false;
+            });
+            LoadPresetFromFile(*floe.engine, path);
+            return true;
+        } catch (PanicException) {
+            return false;
+        }
+    },
 };
 
 static bool ClapInit(const struct clap_plugin* plugin) {

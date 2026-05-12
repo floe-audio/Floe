@@ -8,6 +8,7 @@
 #include "common_infrastructure/cc_mapping.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -354,13 +355,19 @@ static void MidiCcPanel(GuiBuilder& builder, MidiCcPanelContext& context) {
 }
 
 void DoMidiCcPanel(GuiBuilder& builder, MidiCcPanelContext& context, MidiCcPanelState& state) {
+    if (IsScreenshotRequest("midi-cc-assignments"_s) && !builder.imgui.IsModalOpen(state.k_panel_id))
+        builder.imgui.OpenModalViewport(state.k_panel_id);
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
+
+    auto const bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
+        WwToPixels(f32x2 {560, 450}));
+    builder.imgui.RegisterNamedRect("midi-cc-panel.modal"_s, builder.imgui.ViewportRectToWindowRect(bounds));
 
     DoBoxViewport(builder,
                   {
                       .run = [&context](GuiBuilder& b) { MidiCcPanel(b, context); },
-                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          WwToPixels(f32x2 {560, 450})),
+                      .bounds = bounds,
                       .imgui_id = state.k_panel_id,
                       .viewport_config = k_default_modal_viewport,
                   });

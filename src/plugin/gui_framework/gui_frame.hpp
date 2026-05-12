@@ -155,6 +155,9 @@ struct GuiFrameInput {
     // was set to.
     ArenaStack<String> file_picker_results {};
 
+    DynamicArrayBounded<char, 64> requested_screenshot_id_name {};
+    DynamicArrayBounded<char, 256> requested_screenshot_output_path {};
+
     // WW = Window Width.
     // Similar to CSS vw units, we have a concept of 'window width' relative units. They allow us to make our
     // GUI scale with the window size.
@@ -276,10 +279,22 @@ struct GuiFrameOutput {
     DynamicArray<DrawList*> draw_lists {Malloc::Instance()};
     DrawListAllocator draw_list_allocator {};
 
-    // Set this to request the next rendered frame be saved to disk as a PNG in
-    // ~/Documents/Floe/Screenshots/. Region is in framebuffer pixels (matching window_size); set the
-    // whole-window rect for a full screenshot. Cleared automatically after handling.
-    Optional<Rect> request_screenshot {};
+    // Set this to request the next rendered frame be saved to disk as a PNG. Region is in framebuffer
+    // pixels (matching window_size); set the whole-window rect for a full screenshot. If output_path is
+    // empty, the file is written to ~/Documents/Floe/Screenshots/. Cleared automatically after handling.
+    struct ScreenshotRequest {
+        struct Overlay {
+            DynamicArrayBounded<char, 32> name {};
+            Rect rect {}; // same coord space as `ScreenshotRequest::rect`
+        };
+
+        Rect rect;
+        DynamicArrayBounded<char, 256> output_path {};
+        // If non-empty, a JSON adjacent (output_path with .json extension) is written with overlay rects
+        // normalised to 0-1 fractions of `rect`.
+        DynamicArrayBounded<Overlay, 32> overlays {};
+    };
+    Optional<ScreenshotRequest> request_screenshot {};
 
     // Simple impermanent state.
     struct Wants {
@@ -323,6 +338,7 @@ struct GuiFrameIo {
 // it is invalid to use this data. A large percentage of GUI code needs access to the frame input and output.
 // Rather than pass it around everywhere which will be incredibly noisy, we use this global.
 GuiFrameIo GuiIo();
+bool GuiIoValid();
 // Because of the convenient auto, you may need to specify the type of the input arg.
 inline auto WwToPixels(auto ww) { return ww * GuiIo().in.pixels_per_ww; }
 inline auto PixelsToWw(auto pixels) { return pixels / GuiIo().in.pixels_per_ww; }

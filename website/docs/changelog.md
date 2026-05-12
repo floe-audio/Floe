@@ -25,7 +25,7 @@ For instance: 0.0.1. Don't change the headings.
 - 7 new LFO shapes: Random Steps, Random Glide, Pluck, Pluck Sharp, Pulse Narrow, Pulse Wide, Trapezoid
 - Effects rack improvements:
   - Bypass button for each effect
-  - Mix knob for each effect
+  - Mix knob for each effect - replacing separate Wet and Dry controls where appropriate. Loading presets that were saved with the separate wet/dry parameters are perfectly re-mapped to the new Mix and Output parameters where necessary. Loading an old DAW project with separate wet/dry actives the _legacy parameters_ system.
   - Bypass-all and remove-all buttons on the effects panel header
   - Right-click reset menus on effect headings and switchboard buttons
   - New EQ effect
@@ -39,6 +39,7 @@ For instance: 0.0.1. Don't change the headings.
 - Copy/paste/reset added throughout the GUI on right-click menus: parameters, EQ bands, layer tabs, macros, envelope background, and curve maps
 - Reproducible playback added. New panel (3-gots menu -> Instance Config) offers features to reset variability in performances so that you can always render the exact same audio from Floe.
 - Added a new MIDI CC Assignments panel (3-dors menu) for viewing and controls your MIDI CC mappings to Floe parameters
+- New default background image
 
 ### Improvements
 - Improve parameters:
@@ -67,6 +68,9 @@ For instance: 0.0.1. Don't change the headings.
   - Remove dividers between filter sections
   - Remove "Show Primary Filter Section Header" option. Libraries/folders are now always collapsible - more consistent and intuitive.
 - Library development: removed the ability to add custom tags for instruments/IRs. Only tags from the known set are now allowed. This change allowed for simpler and faster code and enforces standardisation. Non-standard tags are now ignored. https://floe.audio/docs/develop/tags-and-folders
+- Info panel moved from the top of Floe into a menu item within the 3-dots menu.
+- The tabs within a layer have been adjusted: MAIN tab now contains the envelope and the filter, and the old 'Play' tab has been renamed CONFIG.
+- Added ability to reset parameters and groups (try right-clicking on things!) to their default settings OR the settings of the last loaded preset.
 
 ## 1.2.0-beta.1
 Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.

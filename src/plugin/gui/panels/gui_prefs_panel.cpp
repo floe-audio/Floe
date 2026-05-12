@@ -265,20 +265,21 @@ static void FolderPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext&
         }
 
         Optional<String> to_remove {};
-        for (auto const dir : ExtraScanFolders(context.paths, context.prefs, scan_folder_type)) {
-            SetFolderSubtext(subtext_buffer,
-                             dir,
-                             false,
-                             (ScanFolderType)scan_folder_type,
-                             context.sample_lib_server,
-                             context.presets->snapshot);
-            if (auto const o =
-                    PreferencesFolderSelector(builder, rhs_column, dir, subtext_buffer, true, Hash(dir));
-                o.open_pressed || o.delete_pressed) {
-                if (o.open_pressed) OpenFolderInFileBrowser(dir);
-                if (o.delete_pressed) to_remove = dir;
+        if (!IsAnyScreenshotInProgress())
+            for (auto const dir : ExtraScanFolders(context.paths, context.prefs, scan_folder_type)) {
+                SetFolderSubtext(subtext_buffer,
+                                 dir,
+                                 false,
+                                 (ScanFolderType)scan_folder_type,
+                                 context.sample_lib_server,
+                                 context.presets->snapshot);
+                if (auto const o =
+                        PreferencesFolderSelector(builder, rhs_column, dir, subtext_buffer, true, Hash(dir));
+                    o.open_pressed || o.delete_pressed) {
+                    if (o.open_pressed) OpenFolderInFileBrowser(dir);
+                    if (o.delete_pressed) to_remove = dir;
+                }
             }
-        }
         if (to_remove)
             prefs::RemoveValue(context.prefs,
                                ExtraScanFolderDescriptor(context.paths, scan_folder_type).key,
@@ -479,8 +480,10 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
                           });
     }
 
+    Box last_row;
     {
         auto const row = PreferencesRow(builder, root);
+        last_row = row;
         PreferencesLhsTextWidget(builder, row, "Install");
         auto const rhs = PreferencesRhsColumn(builder, row, k_small_gap);
         PreferencesRhsText(builder, rhs, "Install libraries and presets from a package file");
@@ -492,6 +495,10 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
             OpenFilePickerInstallPackage(context.file_picker_state);
         }
     }
+
+    if (auto const r = BoxRect(builder, last_row))
+        builder.imgui.RegisterNamedRect("prefs-install.last-row"_s,
+                                        builder.imgui.ViewportRectToWindowRect(*r));
 }
 
 constexpr f32 k_settings_int_field_width = 30.0f;
@@ -540,15 +547,6 @@ constexpr s64 AlignTo(s64 value, s64 alignment) {
     return value + (alignment - remainder);
 }
 
-// We want a step that is a multiple of the GUI aspect ratio width, but a large enough step so that doing +1
-// step feels like a reasonable change.
-constexpr u16 k_prefs_window_width_step = []() {
-    u16 step = k_gui_aspect_ratio.width;
-    while (step < 100)
-        step += k_gui_aspect_ratio.width;
-    return step;
-}();
-
 static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context) {
     auto const root = DoBox(builder,
                             {
@@ -578,12 +576,12 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
                             .label = "Window size",
                             .tooltip = desc.long_description,
                             .width = k_settings_int_field_width,
-                            .value = prefs::GetValue(context.prefs, desc).value.Get<s64>() /
-                                     k_prefs_window_width_step,
+                            .value =
+                                prefs::GetValue(context.prefs, desc).value.Get<s64>() / k_window_width_step,
                             .constrainer =
                                 [&int_info](s64 value) {
                                     s64 new_value;
-                                    if (__builtin_mul_overflow(value, k_prefs_window_width_step, &new_value))
+                                    if (__builtin_mul_overflow(value, k_window_width_step, &new_value))
                                         new_value = value;
                                     if (int_info.validator) int_info.validator(new_value);
                                     return new_value;
@@ -676,6 +674,15 @@ PreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, Preferen
 
 void DoPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, PreferencesPanelState& state) {
     ASSERT(builder.imgui.CurrentVpWidth() > 0);
+
+    if (IsScreenshotRequest("install-packages"_s)) {
+        if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
+        state.tab = PreferencesPanelState::Tab::Packages;
+    } else if (IsScreenshotRequest("folders"_s)) {
+        if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
+        state.tab = PreferencesPanelState::Tab::Folders;
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     bool init = false;
@@ -687,24 +694,29 @@ void DoPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, P
         if (init) EndReadFolders(context.presets_server, context.presets->handle);
     };
 
-    DoBoxViewport(builder,
-                  {
-                      .run = [&context, &state](GuiBuilder& b) { PreferencesPanel(b, context, state); },
-                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          WwToPixels(f32x2 {625, 443})),
-                      .imgui_id = state.k_panel_id,
-                      .viewport_config = k_default_modal_viewport,
-                  });
+    auto const modal_bounds =
+        Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(WwToPixels(f32x2 {625, 443}));
+    builder.imgui.RegisterNamedRect("prefs-panel.modal"_s,
+                                    builder.imgui.ViewportRectToWindowRect(modal_bounds));
+    DoBoxViewport(
+        builder,
+        {
+            .run = [&context, &state](GuiBuilder& builder) { PreferencesPanel(builder, context, state); },
+            .bounds = modal_bounds,
+            .imgui_id = state.k_panel_id,
+            .viewport_config = k_default_modal_viewport,
+        });
 }
 
 constexpr u64 k_tab_id = HashFnv1a("prefs_panel.tab");
 
 GuiSubsystem<PreferencesPanelState> const g_prefs_panel_subsystem {
     .encode = [](PreferencesPanelState const& s,
+                 imgui::Context&,
                  persistent_store::StoreTable& out,
                  ArenaAllocator& arena) { persistent_store::AddValue(out, arena, k_tab_id, s.tab); },
     .decode =
-        [](PreferencesPanelState& s, persistent_store::StoreTable const& store) {
+        [](PreferencesPanelState& s, imgui::Context&, persistent_store::StoreTable const& store) {
             persistent_store::ReadEnum(store, k_tab_id, s.tab);
         },
 };

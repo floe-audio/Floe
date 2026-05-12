@@ -806,6 +806,18 @@ struct Context {
     Rect current_scissor_rect = {};
     bool scissor_rect_is_active = false;
 
+    // Name → window-space rect registry. Populated by callers wanting a way to look up the rect of a box,
+    // viewport, or any other element from elsewhere in the frame. Cleared at the start of every frame; keys
+    // may reference frame-scoped arena memory so this is cleared before that arena resets.
+    DynamicHashTable<String, Rect> named_rects {Malloc::Instance()};
+
+    void RegisterNamedRect(String name, Rect r) { named_rects.Insert(name, r); }
+    Optional<Rect> NamedRect(String name) const {
+        auto const e = named_rects.Find(name);
+        if (!e) return k_nullopt;
+        return *e;
+    }
+
     TimePoint button_repeat_counter = {};
     TimePoint cursor_blink_counter {};
 

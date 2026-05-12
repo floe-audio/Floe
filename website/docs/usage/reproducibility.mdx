@@ -10,9 +10,13 @@ SPDX-FileCopyrightText: 2026 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+
 Floe has elements that vary between performances: round robin sample selection cycles through different samples for repeated notes, the granular engine uses randomness for grain parameters such as pan, detune, and spread, and the LFO offers random waveforms (Random Steps, Random Glide) which draw a new value each cycle. By default, these are not reset between plays, meaning each performance is slightly different.
 
 The **Instance Config** panel provides controls to make playback exactly reproducible. Open it from the top-panel menu (the three-dots button).
+
+<GeneratedScreenshot name="instance-config" alt="Instance Config Panel GUI" />
 
 ## Reset on transport
 

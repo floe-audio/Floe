@@ -30,8 +30,8 @@ constexpr imgui::ViewportConfig k_default_modal_subviewport {
                              imgui::ViewportScrollbarVisibility::Auto},
 };
 
-// Creates the root container for a panel
-Box DoModalRootBox(GuiBuilder& builder);
+// Creates the root container for a panel. Pass `name` to register a named rect equal to the modal bounds.
+Box DoModalRootBox(GuiBuilder& builder, String name = {});
 
 // Configuration structs for panel components
 struct ModalHeaderConfig {

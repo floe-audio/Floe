@@ -125,6 +125,9 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
     if (menu_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
 
+    if (layer.index == 0 && IsScreenshotRequest("loop-mode-menu"_s) && !g.imgui.IsPopupMenuOpen(popup_id))
+        g.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
+
     // NOTE: bounds is a Box so the run lambda is deferred - capture by value, not by reference.
     if (g.imgui.IsPopupMenuOpen(popup_id))
         DoBoxViewport(
@@ -139,14 +142,16 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
                      default_mode_str = default_mode_str,
                      &g,
                      &layer](GuiBuilder&) {
-                        auto const popup_root = DoBox(g.builder,
-                                                      {
-                                                          .layout {
-                                                              .size = layout::k_hug_contents,
-                                                              .contents_direction = layout::Direction::Column,
-                                                              .contents_align = layout::Alignment::Start,
-                                                          },
-                                                      });
+                        auto const popup_root =
+                            DoBox(g.builder,
+                                  {
+                                      .layout {
+                                          .size = layout::k_hug_contents,
+                                          .contents_direction = layout::Direction::Column,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                      .name = layer.index == 0 ? "loop-mode-menu"_s : String {},
+                                  });
 
                         auto const default_loop_behaviour =
                             ActualLoopBehaviour(layer.instrument,
@@ -256,7 +261,7 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     }
 }
 
-void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box root) {
+static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box root) {
     auto& layer_obj = g.engine.Layer(layer_index);
     auto const inst_name = layer_obj.InstName();
 
@@ -352,6 +357,7 @@ void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
                 return {};
             }},
             .button_behaviour = imgui::ButtonConfig {},
+            .name = layer_index == 0 ? "layer-top.inst-selector"_s : String {},
         });
 
     // Icon box
@@ -400,10 +406,22 @@ void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
     // Right-click menu
     DoInstSelectorRightClickMenu(g, inst_button, layer_index);
 
+    auto const nav_box = DoBox(g.builder,
+                               {
+                                   .parent = selector_box,
+                                   .layout {
+                                       .size = layout::k_hug_contents,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_align = layout::Alignment::Start,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                                   .name = layer_index == 0 ? "layer-top.inst-navigation"_s : String {},
+                               });
+
     // Prev/next buttons
     auto const prev_next = DoMidPanelPrevNextButtons(
         g.builder,
-        selector_box,
+        nav_box,
         {
             .prev_tooltip =
                 "Load the previous instrument\n\nThis is based on the currently selected filters."_s,
@@ -436,7 +454,7 @@ void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
     // Shuffle button
     auto const shuffle_btn = DoMidPanelIconButton(
         g.builder,
-        selector_box,
+        nav_box,
         {.icon = MidPanelIcon::Shuffle,
          .tooltip = "Load a random instrument.\n\nThis is based on the currently selected filters."_s});
     if (shuffle_btn.button_fired) {
@@ -447,7 +465,7 @@ void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_
     // Unload button
     auto const has_instrument = layer_obj.instrument_id.tag != InstrumentType::None;
     auto const unload_btn = DoMidPanelIconButton(g.builder,
-                                                 selector_box,
+                                                 nav_box,
                                                  {
                                                      .icon = MidPanelIcon::Unload,
                                                      .tooltip = "Unload the current instrument."_s,
@@ -571,7 +589,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                       container,
                       params.DescribedValue(layer_index, LayerParamIndex::Mute),
                       params.DescribedValue(layer_index, LayerParamIndex::Solo),
-                      {.vertical = true});
+                      {.vertical = true, .name = layer_index == 0 ? "layer-top.mute-solo"_s : String {}});
 
     // Volume: peak meter + vertical slider
     {
@@ -1381,11 +1399,23 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
         DoMenuParameter(g, row, param, {.width = k_control_width, .label = false});
     }
 
+    auto const key_range_rows = DoBox(g.builder,
+                                      {
+                                          .parent = page,
+                                          .layout {
+                                              .size = layout::k_hug_contents,
+                                              .contents_gap = k_page_row_gap_y,
+                                              .contents_direction = layout::Direction::Column,
+                                              .contents_align = layout::Alignment::Start,
+                                          },
+                                          .name = "key-range-rows"_s,
+                                      });
+
     // Key Range row
     {
         auto const row = DoBox(g.builder,
                                {
-                                   .parent = page,
+                                   .parent = key_range_rows,
                                    .layout {
                                        .size = layout::k_hug_contents,
                                        .contents_gap = k_narrow_control_gap_x,
@@ -1429,7 +1459,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
     {
         auto const row = DoBox(g.builder,
                                {
-                                   .parent = page,
+                                   .parent = key_range_rows,
                                    .layout {
                                        .size = layout::k_hug_contents,
                                        .contents_gap = k_narrow_control_gap_x,
@@ -1479,6 +1509,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                        .contents_direction = layout::Direction::Column,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
+                                   .name = layer_index == 0 ? "velocity-curve"_s : String {},
                                });
         // Label
         DoBox(g.builder,
@@ -1784,6 +1815,29 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
 static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
+
+    if (layer_index == 0) {
+        Optional<param_values::PlayMode> screenshot_mode;
+        if (IsScreenshotRequest("layer-playback-granular-speed"_s))
+            screenshot_mode = param_values::PlayMode::GranularPlayback;
+        else if (IsScreenshotRequest("layer-playback-granular-fixed"_s))
+            screenshot_mode = param_values::PlayMode::GranularFixed;
+        if (screenshot_mode) {
+            prefs::SetValue(g.prefs, ExperimentalParamsPreferenceDescriptor(), true);
+            SetParameterValue(g.engine.processor,
+                              ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode),
+                              (f32)*screenshot_mode,
+                              {});
+            if (*screenshot_mode == param_values::PlayMode::GranularFixed) {
+                SetParameterValue(
+                    g.engine.processor,
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::GranularPosition),
+                    0.30f,
+                    {});
+            }
+            layer.harmony_intervals.AssignBlockwise(MakeHarmonyPreset(Array {-12, 12}));
+        }
+    }
 
     auto const page = DoBox(g.builder,
                             {
@@ -2492,7 +2546,32 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
     }
 }
 
+static bool IsLayerScreenshotRequest() {
+    if (IsScreenshotRequest("layer-top-controls"_s)) return true;
+    if (IsScreenshotRequest("layers"_s)) return true;
+    if (IsScreenshotRequest("layer-playback-granular-speed"_s)) return true;
+    if (IsScreenshotRequest("layer-playback-granular-fixed"_s)) return true;
+    if (IsScreenshotRequest("key-range-controls"_s)) return true;
+    if (IsScreenshotRequest("velocity-curve"_s)) return true;
+    if (IsScreenshotRequest("loop-mode-menu"_s)) return true;
+    for (auto const page : EnumIterator<LayerPageType>()) {
+        DynamicArrayBounded<char, 32> region;
+        fmt::Append(region, "layer-{}", EnumToString(page));
+        if (IsScreenshotRequest(region)) return true;
+    }
+    return false;
+}
+
+void LayerPanelPreUpdate(GuiState& g) {
+    if (g.mid_panel_state.tab == MidPanelTab::Layers) return;
+    if (!IsLayerScreenshotRequest()) return;
+    g.mid_panel_state.tab = MidPanelTab::Layers;
+}
+
 void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box parent) {
+    if (IsScreenshotRequest("key-range-controls"_s) || IsScreenshotRequest("velocity-curve"_s))
+        g.layer_panel_states[layer_index].selected_page = LayerPageType::Config;
+
     auto const root = DoBox(g.builder,
                             {
                                 .parent = parent,
@@ -2516,6 +2595,7 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
                                             .contents_direction = layout::Direction::Column,
                                             .contents_align = layout::Alignment::Start,
                                         },
+                                        .name = layer_index == 0 ? "layer-top.controls"_s : String {},
                                     });
 
     DoInstSelector(g, frame_context, layer_index, top_controls);
@@ -2537,6 +2617,7 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
                                               .size = layout::k_fill_parent,
                                               .contents_padding = {.lr = 15, .tb = 12},
                                           },
+                                          .name = layer_index == 0 ? "layer.page-container"_s : String {},
                                       });
 
     // Page content
@@ -2548,6 +2629,24 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
         case LayerPageType::Arp: DoArpPage(g, layer_index, page_container); break;
         case LayerPageType::Config: DoConfigPage(g, layer_index, page_container); break;
         case LayerPageType::Count: PanicIfReached();
+    }
+
+    if (layer_index == 0) {
+        // Page-switching state adjustments for layer-* screenshots. Capture is handled centrally by
+        // MaybeFireScreenshot once the right page has rendered and registered its named rects.
+        for (auto const page : EnumIterator<LayerPageType>()) {
+            DynamicArrayBounded<char, 32> region;
+            fmt::Append(region, "layer-{}", EnumToString(page));
+            if (!IsScreenshotRequest(region)) continue;
+            g.layer_panel_states[layer_index].selected_page = page;
+            break;
+        }
+
+        if (IsScreenshotRequest("layer-playback-granular-speed"_s) ||
+            IsScreenshotRequest("layer-playback-granular-fixed"_s) ||
+            IsScreenshotRequest("loop-mode-menu"_s)) {
+            g.layer_panel_states[layer_index].selected_page = LayerPageType::Playback;
+        }
     }
 }
 
@@ -2571,7 +2670,10 @@ static constexpr u64 ArpShowAllId(u32 layer_index) {
 
 GuiSubsystem<LayerPanelState> const g_layer_panel_subsystem {
     .encode =
-        [](LayerPanelState const& s, persistent_store::StoreTable& out, ArenaAllocator& arena) {
+        [](LayerPanelState const& s,
+           imgui::Context&,
+           persistent_store::StoreTable& out,
+           ArenaAllocator& arena) {
             persistent_store::AddValue(out, arena, PageId(s.layer_index), s.selected_page);
             persistent_store::AddValue(out,
                                        arena,
@@ -2579,7 +2681,7 @@ GuiSubsystem<LayerPanelState> const g_layer_panel_subsystem {
                                        s.arp_step_sequencer_show_all);
         },
     .decode =
-        [](LayerPanelState& s, persistent_store::StoreTable const& store) {
+        [](LayerPanelState& s, imgui::Context&, persistent_store::StoreTable const& store) {
             persistent_store::ReadEnum(store, PageId(s.layer_index), s.selected_page);
             persistent_store::ReadValue(store, ArpShowAllId(s.layer_index), s.arp_step_sequencer_show_all);
         },

@@ -948,6 +948,7 @@ void DoMuteSoloButtons(GuiState& g,
                                          .contents_direction = direction,
                                          .contents_align = layout::Alignment::Start,
                                      },
+                                     .name = options.name,
                                  });
 
     if (auto const r = BoxRect(g.builder, container)) {

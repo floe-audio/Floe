@@ -143,11 +143,7 @@ static void DrawSpreadRegionRect(DrawList& draw_list,
     draw_list.AddRectFilled(f32x2 {left, window_r.y}, f32x2 {right, window_r.Bottom()}, col);
 }
 
-static void DoWaveformControls(GuiState& g,
-                               LayerProcessor& layer,
-                               Rect r,
-                               PlayModeFeatures const& features,
-                               bool handles_follow_cursor) {
+static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayModeFeatures const& features) {
     if (layer.instrument_id.tag == InstrumentType::WaveformSynth) return;
 
     auto const handle_height = WwToPixels(12.8f);
@@ -298,44 +294,20 @@ static void DoWaveformControls(GuiState& g,
                                          id,
                                          g.engine.processor.main_params.DescribedValue(*tooltip_param));
 
-        bool changed = false;
-        if (handles_follow_cursor) {
-            auto const range_min_x = g.imgui.ViewportPosToWindowPos({r.x, 0}).x;
-            auto const range_max_x = g.imgui.ViewportPosToWindowPos({r.x + r.w, 0}).x;
-
-            static f32 rel_click_x;
-            if (g.imgui.ButtonBehaviour(grabber_r, id, imgui::SliderConfig::k_activation_cfg)) {
-                auto const displayed_val = invert_slider ? (1.0f - value) : value;
-                auto const val_pixel_x = MapFrom01(displayed_val, range_min_x, range_max_x);
-                rel_click_x = GuiIo().in.cursor_pos.x - val_pixel_x;
-            }
-
-            if (g.imgui.IsActive(id, MouseButton::Left)) {
-                auto curr_pos = GuiIo().in.cursor_pos.x - rel_click_x;
-                curr_pos = Clamp(curr_pos, range_min_x, range_max_x);
-                auto new_val = MapTo01(curr_pos, range_min_x, range_max_x);
-                if (invert_slider) new_val = 1.0f - new_val;
-                if (new_val != value) {
-                    value = new_val;
-                    changed = true;
-                }
-            }
-        } else {
-            changed = g.imgui.SliderBehaviourRange({
-                .rect_in_window_coords = grabber_r,
-                .id = id,
-                .min = invert_slider ? 1.0f : 0.0f,
-                .max = invert_slider ? 0.0f : 1.0f,
-                .value = value,
-                .default_value = default_val,
-                .cfg =
-                    {
-                        .sensitivity = k_slider_sensitivity,
-                        .slower_with_shift = true,
-                        .default_on_modifer = true,
-                    },
-            });
-        }
+        auto const changed = g.imgui.SliderBehaviourRange({
+            .rect_in_window_coords = grabber_r,
+            .id = id,
+            .min = invert_slider ? 1.0f : 0.0f,
+            .max = invert_slider ? 0.0f : 1.0f,
+            .value = value,
+            .default_value = default_val,
+            .cfg =
+                {
+                    .sensitivity = k_slider_sensitivity,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+        });
 
         if (g.imgui.ButtonBehaviour(grabber_r,
                                     id,
@@ -698,13 +670,11 @@ void DoWaveformElement(GuiState& g,
         r;
     });
 
-    if (!options.waveform_only)
-        g.imgui.draw_list->AddRectFilled(window_r,
-                                         LiveCol(UiColMap::WaveformLoopBack),
-                                         WwToPixels(k_corner_rounding));
+    g.imgui.draw_list->AddRectFilled(window_r,
+                                     LiveCol(UiColMap::WaveformLoopBack),
+                                     WwToPixels(k_corner_rounding));
 
-    if (!options.waveform_only &&
-        g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
+    if (g.engine.sample_lib_server_async_channel.instrument_loading_percents[(usize)layer.index].Load(
             LoadMemoryOrder::Relaxed) != -1) {
         g.imgui.draw_list->AddTextInRect(window_r,
                                          LiveCol(UiColMap::WaveformLoadingText),
@@ -845,8 +815,6 @@ void DoWaveformElement(GuiState& g,
                 }
             }
 
-            if (options.waveform_only) return;
-
             if (is_multisample && debounce.locked) {
                 DrawHatchPattern(*g.imgui.draw_list,
                                  window_r,
@@ -952,8 +920,7 @@ void DoWaveformElement(GuiState& g,
         }
 
         // Waveform controls: loop handles, offset handle, crossfade handle.
-        if (features.show_loop_controls)
-            DoWaveformControls(g, layer, viewport_r, features, options.handles_follow_cursor);
+        if (features.show_loop_controls) DoWaveformControls(g, layer, viewport_r, features);
 
         // GranularFixed spread indicator from params (visible even with no notes playing).
         if (features.show_grain_position_indicator) {

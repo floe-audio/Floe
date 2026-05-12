@@ -8,6 +8,7 @@
 #include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui_actions.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
@@ -757,6 +758,7 @@ Box DoFilterButton(GuiBuilder& builder,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
                   .tooltip_justification = TooltipJustification::LeftOrRight,
                   .button_behaviour = imgui::ButtonConfig {},
+                  .name = options.name,
               });
 
     bool grey_out = false;
@@ -984,6 +986,7 @@ Box DoFilterCard(GuiBuilder& builder,
                       .margins = {.t = 2, .b = card_collapsed ? 0 : k_browser_spacing / 2},
                       .contents_direction = layout::Direction::Row,
                   },
+                  .name = options.name,
               });
 
     Optional<ImageID> background_image1 {};
@@ -1083,14 +1086,29 @@ Box DoFilterCard(GuiBuilder& builder,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
                   .tooltip_justification = TooltipJustification::LeftOrRight,
                   .button_behaviour = imgui::ButtonConfig {},
+                  .name = options.name.size ? (String)fmt::Format(builder.arena, "{}.header", options.name)
+                                            : String {},
               });
 
-    if (options.right_click_menu)
+    if (options.right_click_menu) {
         DoRightClickMenuForBox(builder,
                                state,
                                card_top,
                                options.common.clicked_key,
                                options.right_click_menu);
+
+        if (options.name == "preset-browser.first-bank-card"_s &&
+            IsScreenshotRequest("uninstall-preset-bank"_s) &&
+            !builder.imgui.IsPopupMenuOpen(k_right_click_menu_popup_id)) {
+            if (auto const rect = BoxRect(builder, card_top)) {
+                auto const window_rect = builder.imgui.ViewportRectToWindowRect(*rect);
+                state.right_click_menu_state.absolute_creator_rect = window_rect;
+                state.right_click_menu_state.do_menu = options.right_click_menu;
+                state.right_click_menu_state.item_hash = options.common.clicked_key;
+                builder.imgui.OpenPopupMenu(k_right_click_menu_popup_id, card_top.imgui_id);
+            }
+        }
+    }
 
     auto const top_row = DoBox(builder,
                                {
@@ -1206,8 +1224,9 @@ Box DoFilterCard(GuiBuilder& builder,
         if (options.store) SaveCollapseStateToStore(*options.store, card_toggled_ids, collapse_id);
     }
 
+    Optional<Box> folder_box {};
     if (!card_collapsed) {
-        auto const folder_box =
+        folder_box =
             DoBox(builder,
                   {
                       .parent = card_content,
@@ -1223,6 +1242,8 @@ Box DoFilterCard(GuiBuilder& builder,
                           .contents_padding = {.tb = 3},
                           .contents_direction = layout::Direction::Column,
                       },
+                      .name = options.name.size ? (String)fmt::Format(builder.arena, "{}.body", options.name)
+                                                : String {},
                   });
 
         // "All" item: selects the root node (all children).
@@ -1233,7 +1254,7 @@ Box DoFilterCard(GuiBuilder& builder,
             {
                 .common =
                     {
-                        .parent = folder_box,
+                        .parent = *folder_box,
                         .id_extra = options.common.id_extra,
                         .is_selected = options.common.is_selected,
                         .text = fmt::Format(builder.arena,
@@ -1258,7 +1279,7 @@ Box DoFilterCard(GuiBuilder& builder,
                 .parent_card_is_selected = is_selected,
             };
             for (auto* child = options.folder->first_child; child; child = child->next)
-                DoFolderFilterAndChildren(builder, state, folder_box, child, context, folder_options);
+                DoFolderFilterAndChildren(builder, state, *folder_box, child, context, folder_options);
         }
 
         // Final border around everything.
@@ -1268,7 +1289,7 @@ Box DoFilterCard(GuiBuilder& builder,
         }
     }
 
-    return card_top;
+    return card_outer;
 }
 
 BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
@@ -1580,6 +1601,12 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                                                   : " IRs"_s,
                                           .default_collapsed = true,
                                           .store = &context.store,
+                                          .name = library_filters.card_name_prefix.size
+                                                      ? (String)fmt::Format(builder.arena,
+                                                                            "{}{}",
+                                                                            library_filters.card_name_prefix,
+                                                                            lib->name)
+                                                      : String {},
                                       });
             } else {
                 if (section.Do(builder) == BrowserSection::State::Collapsed) break;
@@ -1843,6 +1870,7 @@ static void DoMoreOptionsMenu(GuiBuilder& builder, BrowserPopupContext& context)
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
+                                .name = "browser.more-options-menu"_s,
                             });
 
     for (auto const filter_mode : EnumIterator<FilterMode>()) {
@@ -1872,6 +1900,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
+                                .name = "browser.modal"_s,
                             });
 
     {
@@ -2047,6 +2076,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                        .contents_direction = layout::Direction::Column,
                                        .contents_align = layout::Alignment::Start,
                                    },
+                                   .name = "browser.filters-panel"_s,
                                });
 
         {
@@ -2181,6 +2211,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                                      FilterModeDescription(context.state.filter_mode));
                               }},
                               .button_behaviour = imgui::ButtonConfig {},
+                              .name = "browser.mode-selector"_s,
                           });
 
                 DoBox(builder,
@@ -2196,6 +2227,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 auto const popup_id = builder.imgui.MakeId("filtermode");
 
                 if (filter_mode_button.button_fired)
+                    builder.imgui.OpenPopupMenu(popup_id, filter_mode_button.imgui_id);
+
+                if (IsScreenshotRequest("browser-menu"_s) && !builder.imgui.IsPopupMenuOpen(popup_id))
                     builder.imgui.OpenPopupMenu(popup_id, filter_mode_button.imgui_id);
 
                 if (builder.imgui.IsPopupMenuOpen(popup_id))
@@ -2268,6 +2302,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                        .contents_align = layout::Alignment::Start,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                    },
+                                   .name = "browser.results-panel"_s,
                                });
 
         {
@@ -2434,6 +2469,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                             },
                         .no_bottom_margin = true,
                         .dark_mode = false,
+                        .name = "browser.favourites-button"_s,
                     });
             }
 

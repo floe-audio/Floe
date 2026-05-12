@@ -138,10 +138,6 @@ const config = {
                                 label: "Packages",
                                 to: "/packages",
                             },
-                            {
-                                label: "About",
-                                to: "/about",
-                            },
                         ],
                     },
                     {
@@ -176,6 +172,55 @@ const config = {
             {
                 fromExtensions: ["html", "htm"], // /myPage.html -> /myPage
                 redirects: [
+                    {
+                        to: "/docs/beta/getting-started/overview",
+                        from: [
+                            "/docs/beta/key-concepts/general-usage",
+                        ],
+                    },
+                    {
+                        to: "/docs/beta/usage/browsers",
+                        from: [
+                            "/docs/beta/key-concepts/browsers",
+                        ],
+                    },
+                    {
+                        to: "/docs/beta/usage/folders",
+                        from: [
+                            "/docs/beta/key-concepts/folders",
+                        ],
+                    },
+                    {
+                        to: "/docs/beta/getting-started/glossary",
+                        from: [
+                            "/docs/beta/key-concepts/components",
+                        ],
+                    },
+                    // Uncomment when beta promotes to stable:
+                    // {
+                    //     to: "/docs/getting-started/overview",
+                    //     from: [
+                    //         "/docs/key-concepts/general-usage",
+                    //     ],
+                    // },
+                    // {
+                    //     to: "/docs/usage/browsers",
+                    //     from: [
+                    //         "/docs/key-concepts/browsers",
+                    //     ],
+                    // },
+                    // {
+                    //     to: "/docs/usage/folders",
+                    //     from: [
+                    //         "/docs/key-concepts/folders",
+                    //     ],
+                    // },
+                    // {
+                    //     to: "/docs/getting-started/glossary",
+                    //     from: [
+                    //         "/docs/key-concepts/components",
+                    //     ],
+                    // },
                     // Mostly old routes from our previous mdbook-based site.
                     {
                         to: "/docs/installation/install-packages",
@@ -231,7 +276,7 @@ const config = {
                             "/usage/parameters.html",
                         ],
                     },
-                    { to: "/", from: ["/home", "/home.html"] },
+                    { to: "/", from: ["/home", "/home.html", "/about", "/about.html"] },
                     {
                         to: "/packages",
                         from: [

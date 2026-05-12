@@ -7,8 +7,6 @@ import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faGem, faSeedling, faMusic, faBalanceScale } from '@fortawesome/free-solid-svg-icons';
 import PackageCard from '../components/PackageCard';
 import packageDatabase from '@site/static/package-database.json';
 import styles from './index.module.css';
@@ -73,31 +71,6 @@ function FeatureSection({ title, description, image, imageAlt, reverse = false, 
     );
 }
 
-
-function OpenSourceSection() {
-    return (
-        <section className={styles.openSourceSection}>
-            <div className="container">
-                <Heading as="h2">Protected creative freedom</Heading>
-                <p>
-                    Floe is built as open-source software (GPL licensed), meaning its code is freely available for anyone to see and improve. This isn't solely a technical choice — it reflects our values while simultaneously offering real benefits for your music-making workflow.
-                </p>
-
-                <p>
-                    <strong>Your tools won't disappear.</strong> Open source means Floe can keep working on future computers indefinitely — any developer can maintain it. You'll never lose access to your creative workflow because of business decisions or discontinued products.
-                </p>
-
-                <p>
-                    <strong>Better development through collaboration.</strong> Musicians and developers worldwide can contribute improvements, fix issues, and add features that benefit everyone. This collective approach helps Floe evolve faster and serve real creative needs.
-                </p>
-
-                <p>
-                    <strong>Aligned incentives.</strong> Being open source means we can't rely on lock-in or artificial limitations — if we did, developers could fork the code or users could switch. We succeed only by making Floe genuinely useful for your music, which keeps our interests aligned with yours rather than opposed to them.
-                </p>
-            </div>
-        </section>
-    );
-}
 
 export default function Home() {
     const { siteConfig } = useDocusaurusContext();
@@ -268,55 +241,40 @@ export default function Home() {
 
                         <div className={styles.highlightGrid}>
                             <div className={styles.highlightItem}>
-                                <div className={styles.iconContainer}>
-                                    <FontAwesomeIcon icon={faGem} />
-                                </div>
-                                <h3>Professional-grade indie software</h3>
-                                <p>Floe is a passion project by Sam Windell, a developer & sound-designer who also runs sample library company <a href="https://www.frozenplain.com">FrozenPlain</a>. Built on the proven architecture of FrozenPlain's Mirage, used in professional productions for years, Floe is the next evolution. It offers a curated, streamlined approach focused on what matters: performance, simplicity, and usability.</p>
+                                <h3>Open ROMpler</h3>
+                                <p>A sample-based synthesiser/ROMpler available as a CLAP, VST3, or AU plugin for Windows, macOS, and Linux. Compatible with all major DAWs (Logic Pro, Cubase, Studio One, FL Studio, Ableton Live, Reaper, and more), and uses the open Floe sample library format.</p>
                             </div>
 
                             <div className={styles.highlightItem}>
-                                <div className={styles.iconContainer}>
-                                    <FontAwesomeIcon icon={faSeedling} />
-                                </div>
-                                <h3>Built for evolution</h3>
-                                <p>Floe's architecture is designed for extensibility and growth. Every feature addition maintains backward compatibility with your existing DAW projects, libraries, and presets, ensuring your creative investments remain protected as the platform evolves.</p>
+                                <h3>Yours to keep</h3>
+                                <p>No accounts, no subscriptions, no interruptions — your libraries live on your machine in an open format. Because Floe is open-source (GPL), it can keep working indefinitely, so your creative workflow won't disappear because of business decisions.</p>
                             </div>
 
                             <div className={styles.highlightItem}>
-                                <div className={styles.iconContainer}>
-                                    <FontAwesomeIcon icon={faMusic} />
-                                </div>
-                                <h3>Focus on making music</h3>
-                                <p>We want people to enjoy the meaningful creative act of music-making. No accounts, no subscriptions, no interruptions — just musical creation. Openness is at the core of Floe and its libraries.</p>
+                                <h3>FrozenPlain</h3>
+                                <p>Floe and <a href="https://www.frozenplain.com">FrozenPlain</a> are companion projects — both created by Sam Windell, with FrozenPlain's cinematic and ambient libraries primarily shaping Floe's direction. However, Floe is intentionally encapsulated as its own open platform, free to explore wider applications and serve the broader music-making community.</p>
+                                <a href="https://www.frozenplain.com" aria-label="FrozenPlain" className={styles.tileLogoLink}>
+                                    <img
+                                        src="https://www.frozenplain.com/icons/logo-adj.svg"
+                                        alt="FrozenPlain"
+                                        className={styles.tileLogo}
+                                    />
+                                </a>
                             </div>
 
                             <div className={styles.highlightItem}>
-                                <div className={styles.iconContainer}>
-                                    <FontAwesomeIcon icon={faBalanceScale} />
-                                </div>
-                                <h3>Sustainable business</h3>
-                                <p>The plugin is free, sample libraries vary by creator — some free, some paid. This established industry model sustains ongoing development through paid library partnerships while keeping the core platform accessible to everyone.</p>
+                                <h3>Openly built</h3>
+                                <p>Floe is an outlet for a broader passion — open-source, ethical software built for real longevity — with its library-creation tooling (in Lua) freely available to other developers and the wider open-source community.</p>
                             </div>
+
+
+                            <div className={styles.highlightItem}>
+                                <h3>Built on a proven foundation</h3>
+                                <p>Floe builds on the architecture of FrozenPlain's Mirage, refined through years of professional use and shaped by direct feedback from composers working in film and television.</p>
+                            </div>
+
                         </div>
-                    </div>
-                </section>
 
-                <OpenSourceSection />
-
-                {/* Technical specifications */}
-                <section className={styles.technicalSection}>
-                    <div className="container">
-                        <Heading as="h2">Technical Details</Heading>
-                        <div className={styles.technicalContent}>
-                            <ul>
-                                <li><strong>Plugin formats:</strong> CLAP, VST3, AU</li>
-                                <li><strong>Platforms:</strong> Windows, macOS, Linux</li>
-                                <li><strong>Type:</strong> Sample-based synthesiser/ROMpler</li>
-                                <li><strong>Library format:</strong> <em>Floe library format</em> (open - Lua scripting required)</li>
-                                <li><strong>DAW compatibility:</strong> Logic Pro, Cubase, Studio One, FL Studio, Ableton Live, Reaper, and many more</li>
-                            </ul>
-                        </div>
                     </div>
                 </section>
             </Layout>

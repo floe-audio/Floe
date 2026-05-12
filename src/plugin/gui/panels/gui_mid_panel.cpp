@@ -193,6 +193,7 @@ static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, B
                                        .contents_align = layout::Alignment::Middle,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                    },
+                                   .name = "mid-panel.tab-bar"_s,
                                });
 
     if (auto const r = BoxRect(builder, tab_bar))
@@ -229,6 +230,12 @@ static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, B
 }
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
+    for (auto const tab : EnumIterator<MidPanelTab>()) {
+        if (!IsScreenshotRequest(EnumToString(tab))) continue;
+        g.mid_panel_state.tab = tab;
+        break;
+    }
+
     DoBoxViewport(
         g.builder,
         {
@@ -240,6 +247,7 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                                     .size = layout::k_fill_parent,
                                                     .contents_direction = layout::Direction::Column,
                                                 },
+                                                .name = "mid-panel",
                                             });
 
                     // Auto-switch mid-panel tab when a macro destination knob is being
@@ -274,6 +282,7 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                                                        .size = layout::k_fill_parent,
                                                        .contents_padding = {.lr = 8.08f, .b = 6.08f},
                                                    },
+                                                   .name = "mid-panel.content"_s,
                                                });
 
                     switch (current_tab) {
@@ -288,6 +297,8 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                             break;
                         case MidPanelTab::Count: break;
                     }
+
+                    LayerPanelPreUpdate(g);
                 },
             .bounds = bounds,
             .imgui_id = SourceLocationHash(),
@@ -303,10 +314,11 @@ constexpr u64 k_tab_id = HashFnv1a("mid_panel.tab");
 
 GuiSubsystem<MidPanelState> const g_mid_panel_subsystem {
     .encode = [](MidPanelState const& s,
+                 imgui::Context&,
                  persistent_store::StoreTable& out,
                  ArenaAllocator& arena) { persistent_store::AddValue(out, arena, k_tab_id, s.tab); },
     .decode =
-        [](MidPanelState& s, persistent_store::StoreTable const& store) {
+        [](MidPanelState& s, imgui::Context&, persistent_store::StoreTable const& store) {
             persistent_store::ReadEnum(store, k_tab_id, s.tab);
         },
 };

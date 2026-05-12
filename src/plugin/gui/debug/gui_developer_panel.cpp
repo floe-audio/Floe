@@ -679,8 +679,9 @@ static void DoCommandPanel(DeveloperPanel& g, Rect r) {
     }
     if (DevGuiButton(g, "Take Screenshot", "Save Screenshot: F3")) {
         auto const& in = GuiIo().in;
-        GuiIo().out.request_screenshot =
-            Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}};
+        GuiIo().out.request_screenshot = GuiFrameOutput::ScreenshotRequest {
+            .rect = Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}},
+        };
     }
 }
 
@@ -698,8 +699,9 @@ void DoDeveloperPanel(DeveloperPanel& g) {
 
     if (GuiIo().in.Key(KeyCode::F3).presses.size) {
         auto const& in = GuiIo().in;
-        GuiIo().out.request_screenshot =
-            Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}};
+        GuiIo().out.request_screenshot = GuiFrameOutput::ScreenshotRequest {
+            .rect = Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}},
+        };
     }
 
     if (g_show_dev_gui) {

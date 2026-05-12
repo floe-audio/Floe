@@ -7,6 +7,7 @@
 
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/overlays/gui_notifications.hpp"
@@ -321,6 +322,7 @@ void PresetFolderRightClickMenu(GuiBuilder& builder,
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
+                                .name = "preset-browser.folder-menu"_s,
                             });
 
     auto const folder = FindFolderByHash(context, menu_state.item_hash);
@@ -675,6 +677,15 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
 }
 
 void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetBrowserState& state) {
+    constexpr auto k_folders_section_id = HashFnv1a("preset-folders-section");
+
+    bool const is_screenshot_request = IsScreenshotRequest("uninstall-preset-bank"_s);
+    if (is_screenshot_request) {
+        if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
+        if (!Contains(state.common_state.expanded_filter_headers, k_folders_section_id))
+            dyn::Append(state.common_state.expanded_filter_headers, k_folders_section_id);
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     context.Init(builder.arena);
@@ -813,10 +824,9 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             .tags_filters = tags_filters,
             .do_extra_filters_top =
                 [&](GuiBuilder& builder, Box const& parent) {
-                    auto constexpr k_section_id = HashFnv1a("preset-folders-section");
                     BrowserSection section {
                         .state = state.common_state,
-                        .id = k_section_id,
+                        .id = k_folders_section_id,
                         .parent = parent,
                         .heading = "FOLDERS"_s,
                         .multiline_contents = false,
@@ -825,15 +835,22 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                         .store = &context.persistent_store,
                     };
 
-                    auto const do_card = [&](FolderNode const* folder, FilterItemInfo const& info) {
+                    bool named_first_card = false;
+                    auto const do_card = [&](FolderNode const* folder,
+                                             FilterItemInfo const& info) -> Optional<Box> {
                         auto const folder_name =
                             folder->display_name.size ? folder->display_name : folder->name;
-                        if (!MatchesFilterSearch(folder_name, state.common_state.filter_search)) return;
-                        if (section.Do(builder).tag == BrowserSection::State::Collapsed) return;
+                        if (!MatchesFilterSearch(folder_name, state.common_state.filter_search))
+                            return k_nullopt;
+                        if (section.Do(builder).tag == BrowserSection::State::Collapsed) return k_nullopt;
 
                         auto const folder_hash = folder->Hash();
 
-                        DoFilterCard(
+                        auto const card_name =
+                            named_first_card ? String {} : "preset-browser.first-bank-card"_s;
+                        named_first_card = true;
+
+                        return DoFilterCard(
                             builder,
                             state.common_state,
                             info,
@@ -869,13 +886,14 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                 .default_collapsed = true,
                                 .right_click_menu = PresetFolderRightClickMenu,
                                 .store = &context.persistent_store,
+                                .name = card_name,
                             });
                     };
 
                     for (auto const listing : context.presets_snapshot.banks) {
                         auto const info = folders.Find(&listing->node);
                         if (!info) continue;
-                        do_card(&listing->node, *info);
+                        auto _ = do_card(&listing->node, *info);
                     }
                 },
             .do_extra_filters_bottom =

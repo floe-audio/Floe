@@ -11,10 +11,11 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
 import data from "@site/static/generated-data.json";
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
 Floe has a selection of {data["effects-count"]} effects that can be applied to mix of the 3 [layers](./layers). The effects are shown in a list on the right-hand side of the main panel. Audio flows through them from top to bottom.
 
-![Effects](/images/effects.png)
+<GeneratedScreenshot name="effects" alt="Effects panel" />
 
 ## Reordering
 
@@ -34,7 +35,33 @@ Each effect has two controls for its active state:
 
 A bypassed effect appears greyed out in the rack. Click the bypass button again to reactivate it. The close button (✕) on an effect removes it from the rack entirely, same as toggling it off in the switchboard.
 
-## Available effects
+## Mix
+
+Every effect has a _Mix_ knob in its heading area. Mix blends the original incoming audio (the _dry_ signal) with the effect's output (the _wet_ signal):
+
+- At 0%, you hear only the dry signal — the effect is effectively inaudible.
+- At 100%, you hear only the wet signal — the original is fully replaced by the effect's output.
+- In between, the two are crossfaded.
+
+This lets you dial in the strength of an effect without changing any of its other settings — useful for subtle reverb tails, parallel compression, gentle distortion, and so on.
+
+## Notable effects
+### Convolution Reverb
+Floe's convolution reverb effect has numerous impulse responses (IRs) that explore both realism and sound-design. The IRs are selected using one of Floe's powerful _[browsers](./browsers)_, where IRs can be sourced from installed sample libraries that choose to provide them.
+
+#### Impulse Responses
+
+An impulse response (or IR) is a sample that determines the character of the Convolution Reverb on Floe's effects rack.
+
+IRs are chosen using the _[browser](../usage/browsers)_, allowing you to easily find the right IR to colour the sound.
+
+Floe has a built-in set of IRs that can be used without installing any additional libraries, although some sample libraries also include IRs.
+
+### Delay and reverb
+Floe's reverb and delay are very high-quality, originating from Vital's pro-standard effects rack for excellent space design.
+
+
+## All available effects
 
 <table>
   <thead>
@@ -52,11 +79,4 @@ A bypassed effect appears greyed out in the rack. Click the bypass button again 
     ))}
   </tbody>
 </table>
-
-## Notable effects
-### Convolution Reverb
-Floe's convolution reverb effect has numerous impulse responses (IRs) that explore both realism and sound-design. The IRs are selected using one of Floe's powerful _[browsers](../key-concepts/browsers)_, where IRs can be sourced from installed sample libraries that choose to provide them.
-
-### Delay and reverb
-Floe's reverb and delay are very high-quality, originating from Vital's pro-standard effects rack for excellent space design.
 

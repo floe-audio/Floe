@@ -20,7 +20,14 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
                                           .contents_gap = 8,
                                           .contents_direction = layout::Direction::Row,
                                       },
+                                      .name = "layers-row"_s,
                                   });
+
+    if (IsScreenshotRequest("layers"_s)) {
+        g.layer_panel_states[0].selected_page = LayerPageType::Playback;
+        g.layer_panel_states[1].selected_page = LayerPageType::Lfo;
+        g.layer_panel_states[2].selected_page = LayerPageType::Config;
+    }
 
     for (auto const layer_index : Range<u8>(k_num_layers)) {
         auto const layer_box = DoBox(builder,

@@ -328,6 +328,8 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             auto const rect =
                 builder.imgui.RegisterAndConvertRect(layout::GetRect(builder.state->layout, box.layout_id));
 
+            if (config.name.size) builder.imgui.RegisterNamedRect(config.name, rect);
+
             // We want to let our IMGUI system know our margins when it's doing an auto-size otherwise the
             // bottom or rightmost elements might not have the requested spacing around it.
             if (cache.is_auto_sized) {

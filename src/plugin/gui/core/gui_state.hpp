@@ -12,6 +12,7 @@
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_library_images.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/core/gui_waveform_images.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
@@ -78,6 +79,7 @@ struct GuiState : EngineListener {
     BottomPanelState bottom_panel_state {};
     MidPanelState mid_panel_state {};
     MacrosGuiState macros_gui_state {};
+    u32 screenshot_consecutive_clear_frames {};
     f32x2 curve_map_add_point_click_pos {};
 
     Engine& engine;
@@ -128,5 +130,5 @@ struct GuiState : EngineListener {
 
 void GuiUpdate(GuiState& g);
 
-ErrorCodeOr<void> EncodeGuiState(GuiState const& g, Writer writer);
+ErrorCodeOr<void> EncodeGuiState(GuiState& g, Writer writer);
 void DecodeGuiState(GuiState& g, String bytes);

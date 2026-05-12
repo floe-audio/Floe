@@ -576,6 +576,7 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
         if (animation_items.size) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
     }
 
+    named_rects.DeleteAll();
     tab_just_used_to_focus = false;
     viewport_just_created = nullptr;
     curr_viewport = nullptr;
@@ -2197,7 +2198,7 @@ void Context::OpenModalViewport(Id id) {
     modal_just_opened = id;
     dyn::Append(open_modals, viewport);
     UpdateExclusiveFocusViewport();
-    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    if (GuiIoValid()) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 bool Context::IsModalOpen(Id id) {
