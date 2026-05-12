@@ -8,8 +8,10 @@
 #include <clap/host.h>
 #include <pugl/pugl.h>
 #include <pugl/stub.h>
+#include <stb_image_write.h>
 
 #include "foundation/foundation.hpp"
+#include "os/filesystem.hpp"
 
 #include "common_infrastructure/error_reporting.hpp"
 
@@ -650,6 +652,40 @@ static void UpdateAndRender(AppWindow& window) {
                                          window_size,
                                          window.frame_state.native_window);
         if (o.HasError()) LogError(ModuleName::Gui, "GUI render failed: {}", o.Error());
+
+        if (window.last_result.request_screenshot) {
+            ArenaAllocator scratch {PageAllocator::Instance()};
+            auto const region = *window.last_result.request_screenshot;
+            if (auto const shot = window.renderer->Screenshot(region, window_size, scratch)) {
+                auto path = DynamicArray<char>::FromOwnedSpan(
+                    KnownDirectoryWithSubdirectories(scratch,
+                                                     KnownDirectoryType::Documents,
+                                                     Array {"Floe"_s, "Screenshots"},
+                                                     k_nullopt,
+                                                     {.create = true}),
+                    scratch);
+                auto const initial_size = path.size;
+                for (int n = 1;; ++n) {
+                    dyn::Resize(path, initial_size);
+                    fmt::Append(path, "/floe-{}.png", n);
+                    auto const t = GetFileType(path);
+                    if (!t.HasValue() || t.Value() != FileType::File) break;
+                }
+                if (!stbi_write_png(dyn::NullTerminated(path),
+                                    shot->size.width,
+                                    shot->size.height,
+                                    3,
+                                    shot->rgb.data,
+                                    shot->size.width * 3)) {
+                    LogError(ModuleName::Gui, "stbi_write_png failed for {}", path);
+                } else {
+                    LogInfo(ModuleName::Gui, "Saved screenshot to {}", path);
+                }
+            } else {
+                LogWarning(ModuleName::Gui, "Screenshot not supported by current renderer backend");
+            }
+            window.last_result.request_screenshot = k_nullopt;
+        }
     }
 
     window.first_update_made = true;

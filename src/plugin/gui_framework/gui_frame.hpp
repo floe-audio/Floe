@@ -276,6 +276,11 @@ struct GuiFrameOutput {
     DynamicArray<DrawList*> draw_lists {Malloc::Instance()};
     DrawListAllocator draw_list_allocator {};
 
+    // Set this to request the next rendered frame be saved to disk as a PNG in
+    // ~/Documents/Floe/Screenshots/. Region is in framebuffer pixels (matching window_size); set the
+    // whole-window rect for a full screenshot. Cleared automatically after handling.
+    Optional<Rect> request_screenshot {};
+
     // Simple impermanent state.
     struct Wants {
         UpdateInterval update_interval {UpdateInterval::Sleep};

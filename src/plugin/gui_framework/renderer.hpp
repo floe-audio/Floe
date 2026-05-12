@@ -42,6 +42,22 @@ struct Renderer {
 
     virtual ErrorCodeOr<void> Render(Span<DrawList*> draw_lists, UiSize window_size, void* native_window) = 0;
 
+    struct ScreenshotPixels {
+        Span<u8 const> rgb; // tightly packed RGB8, top-left origin
+        UiSize size;
+    };
+
+    // Capture pixels from the most recently rendered frame. region is in framebuffer pixels (matching
+    // window_size used in Render); k_nullopt means the full window. Returns k_nullopt if the backend
+    // doesn't support screenshots or if the capture failed (errors are logged internally).
+    virtual Optional<ScreenshotPixels>
+    Screenshot(Optional<Rect> region, UiSize window_size, Allocator& arena) {
+        (void)region;
+        (void)window_size;
+        (void)arena;
+        return k_nullopt;
+    }
+
     // Texture handles can be invalidated between frames, the application should use this method to check if
     // the ID still has a corresponding texture.
     Optional<TextureHandle> GetTextureFromImage(ImageID id) {

@@ -677,6 +677,11 @@ static void DoCommandPanel(DeveloperPanel& g, Rect r) {
         g_show_dev_gui_on_left = !g_show_dev_gui_on_left;
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
+    if (DevGuiButton(g, "Take Screenshot", "Save Screenshot: F3")) {
+        auto const& in = GuiIo().in;
+        GuiIo().out.request_screenshot =
+            Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}};
+    }
 }
 
 void DoDeveloperPanel(DeveloperPanel& g) {
@@ -684,10 +689,17 @@ void DoDeveloperPanel(DeveloperPanel& g) {
 
     GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::F1));
     GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::F2));
+    GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::F3));
 
     if (GuiIo().in.Key(KeyCode::F1).presses.size) {
         g_show_dev_gui = !g_show_dev_gui;
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    }
+
+    if (GuiIo().in.Key(KeyCode::F3).presses.size) {
+        auto const& in = GuiIo().in;
+        GuiIo().out.request_screenshot =
+            Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}};
     }
 
     if (g_show_dev_gui) {
