@@ -833,6 +833,46 @@ void DoArpStepSequencer(GuiState& g,
                                         ModifyStep(arp_state, j, [](ArpStep& s) { s = {}; });
                                     RecordUndoableStep(g.engine, "Reset all arp steps"_s);
                                 }
+
+                                auto const rotate_steps = [&](bool forwards) {
+                                    DynamicArray<ArpStep> snap {g.scratch_arena};
+                                    snap.Reserve(active_steps);
+                                    for (u32 j = 0; j < active_steps; ++j)
+                                        dyn::Append(snap, arp_state.steps[j].Load(LoadMemoryOrder::Relaxed));
+                                    for (u32 j = 0; j < active_steps; ++j) {
+                                        auto const src = forwards ? (j + active_steps - 1) % active_steps
+                                                                  : (j + 1) % active_steps;
+                                        arp_state.steps[j].Store(snap[src], StoreMemoryOrder::Relaxed);
+                                    }
+                                };
+
+                                if (MenuItem(
+                                        g.builder,
+                                        root,
+                                        {
+                                            .text = "Rotate Steps Forwards"_s,
+                                            .tooltip =
+                                                "Shift every step's data one position forwards; the last step wraps to the first"_s,
+                                            .no_icon_gap = true,
+                                        })
+                                        .button_fired) {
+                                    rotate_steps(true);
+                                    RecordUndoableStep(g.engine, "Rotate arp steps forwards"_s);
+                                }
+
+                                if (MenuItem(
+                                        g.builder,
+                                        root,
+                                        {
+                                            .text = "Rotate Steps Backwards"_s,
+                                            .tooltip =
+                                                "Shift every step's data one position backwards; the first step wraps to the last"_s,
+                                            .no_icon_gap = true,
+                                        })
+                                        .button_fired) {
+                                    rotate_steps(false);
+                                    RecordUndoableStep(g.engine, "Rotate arp steps backwards"_s);
+                                }
                             },
                         .bounds = step_window_rect,
                         .imgui_id = step_popup_id,
