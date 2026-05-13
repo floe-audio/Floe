@@ -1539,6 +1539,19 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer.index);
     if (intervals_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
 
+    DoRightClickMenu(g, intervals_btn, (imgui::Id)(SourceLocationHash() ^ (u64)layer.index), [&](Box root) {
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Reset Value"_s,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            layer.harmony_intervals.AssignBlockwise(MakeHarmonyPreset());
+            RecordUndoableStep(g.engine, "Harmony intervals"_s);
+        }
+    });
+
     if (g.imgui.IsPopupMenuOpen(popup_id) && g.builder.IsInputAndRenderPass()) {
         auto const popup_r = ({
             auto const popup_size = WwToPixels(f32x2 {460, 450});
