@@ -137,6 +137,10 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
 
 static void
 SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path, u64 known_preset_id) {
+    if (preset_path.size) {
+        ASSERT(IsValidUtf8(preset_path));
+        ASSERT(path::IsAbsolute(preset_path));
+    }
     engine.pinned_snapshot.state = state;
     if (preset_path.size) {
         // Preset files always get their name from the filename.
@@ -809,6 +813,10 @@ void LoadPresetFromFile(Engine& engine, String path, u64 known_preset_id) {
 }
 
 void SaveCurrentStateToFile(Engine& engine, String path) {
+    ASSERT(path.size);
+    ASSERT(IsValidUtf8(path));
+    ASSERT(path::IsAbsolute(path));
+
     auto const state = CurrentStateSnapshot(engine);
 
     auto const error_id = HashMultiple(Array {"preset-save"_s, path});

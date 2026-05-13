@@ -1966,6 +1966,9 @@ LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool skip_p
 }
 
 ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
+    ASSERT(path.size);
+    ASSERT(IsValidUtf8(path));
+    ASSERT(path::IsAbsolute(path));
     ArenaAllocatorWithInlineStorage<4000> scratch_arena {Malloc::Instance()};
     if (auto const ext = path::Extension(path); ext != FLOE_PRESET_FILE_EXTENSION) {
         path = fmt::Join(scratch_arena,
