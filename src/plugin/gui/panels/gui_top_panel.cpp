@@ -329,6 +329,20 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     .button_fired) {
                 SetToDefaultState(g.engine);
             }
+
+            String const preset_path = g.engine.pinned_snapshot.preset_path;
+            auto const containing_folder = preset_path.size ? path::Directory(preset_path) : k_nullopt;
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Open Containing Folder",
+                             .mode = containing_folder ? MenuItemOptions::Mode::Active
+                                                       : MenuItemOptions::Mode::Disabled,
+                             .no_icon_gap = true,
+                         })
+                    .button_fired) {
+                if (containing_folder) OpenFolderInFileBrowser(*containing_folder);
+            }
         });
 
         DoBox(builder,
