@@ -817,14 +817,18 @@ void SaveCurrentStateToFile(Engine& engine, String path) {
     ASSERT(IsValidUtf8(path));
     ASSERT(path::IsAbsolute(path));
 
-    auto const state = CurrentStateSnapshot(engine);
+    auto state = CurrentStateSnapshot(engine);
 
     auto const error_id = HashMultiple(Array {"preset-save"_s, path});
     if (auto const outcome = SavePresetFile(
             path,
             state,
             prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()));
-        outcome.Succeeded()) {
+        outcome.HasValue()) {
+        // The file we just wrote is now this snapshot's origin: rebase extras so the GUI no longer
+        // shows "modified" and the new hash identifies the saved preset.
+        state.extras.origin_preset_hash = outcome.Value();
+        state.extras.modified_from_origin_preset = false;
         SetPinnedSnapshot(engine, state, path, 0);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
         engine.error_notifications.RemoveError(error_id);

@@ -17,6 +17,8 @@ struct CodeStateArguments {
     bool write_experimental_params;
     // When decoding, skip the legacy→modern param remapping. No effect when encoding.
     bool skip_param_adaptation;
+    // Optional: receives the hash of the encoded/decoded byte stream.
+    u64* out_hash;
 };
 
 // "Code" as in decode/encode
@@ -42,4 +44,5 @@ ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
                                           ArenaAllocator& scratch_arena,
                                           bool skip_param_adaptation = false);
 
-ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experimental_params);
+// Returns the hash of the encoded preset, suitable for use as origin_preset_hash.
+ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool write_experimental_params);

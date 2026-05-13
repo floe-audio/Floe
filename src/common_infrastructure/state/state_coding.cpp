@@ -1419,6 +1419,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                 .origin_preset_hash = coder.hash,
                 .modified_from_origin_preset = false,
             };
+        if (args.out_hash) *args.out_hash = coder.hash;
     };
 
     // =======================================================================================================
@@ -1965,7 +1966,7 @@ LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool skip_p
                           skip_param_adaptation);
 }
 
-ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
+ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
     ASSERT(path.size);
     ASSERT(IsValidUtf8(path));
     ASSERT(path::IsAbsolute(path));
@@ -1976,6 +1977,7 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool w
     }
 
     auto file = TRY(OpenFile(path, FileMode::Write()));
+    u64 hash = 0;
     TRY(CodeState(const_cast<StateSnapshot&>(state),
                   CodeStateArguments {
                       .mode = CodeStateArguments::Mode::Encode,
@@ -1985,8 +1987,9 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool w
                       },
                       .source = StateSource::PresetFile,
                       .write_experimental_params = write_experiment_params,
+                      .out_hash = &hash,
                   }));
-    return k_success;
+    return hash;
 }
 
 ErrorCodeOr<StateSnapshot>
