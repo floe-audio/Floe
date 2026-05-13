@@ -110,6 +110,18 @@ LogRingBuffer::Snapshot GetLatestLogMessages();
 void InitLogger(LogConfig);
 void ShutdownLogger();
 
+// Set once at startup before spawning threads.
+void SetLogLevel(LogLevel level);
+LogLevel GetLogLevel();
+
+constexpr Optional<LogLevel> ParseLogLevelName(String name) {
+    if (IsEqualToCaseInsensitiveAscii(name, "debug"_s)) return LogLevel::Debug;
+    if (IsEqualToCaseInsensitiveAscii(name, "info"_s)) return LogLevel::Info;
+    if (IsEqualToCaseInsensitiveAscii(name, "warning"_s)) return LogLevel::Warning;
+    if (IsEqualToCaseInsensitiveAscii(name, "error"_s)) return LogLevel::Error;
+    return k_nullopt;
+}
+
 void Trace(ModuleName module_name, String message = {}, SourceLocation loc = SourceLocation::Current());
 
 // A macro unfortunately seems the best way to avoid repeating the same code while keep template

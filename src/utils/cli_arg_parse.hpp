@@ -4,6 +4,7 @@
 #pragma once
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
+#include "utils/logger/logger.hpp"
 
 struct CommandLineArgDefinition {
     u32 id; // normally an enum, used for lookup
@@ -12,6 +13,17 @@ struct CommandLineArgDefinition {
     String value_type; // for --help, e.g. path, time, num, depth
     bool required;
     int num_values; // 0 for no value, -1 for unlimited, else exact number
+};
+
+// Synthetic definition for the universally-supported --log-level flag (handled by ParseCommandLineArgs,
+// not part of any tool's arg list). Listed in --help output via PrintUsage.
+constexpr CommandLineArgDefinition k_log_level_arg_def {
+    .id = 0,
+    .key = "log-level"_s,
+    .description = "Minimum log level to print: debug, info, warning, error"_s,
+    .value_type = "level"_s,
+    .required = false,
+    .num_values = 1,
 };
 
 struct CommandLineArg {
@@ -30,8 +42,11 @@ struct ArgsCstr {
     char const* const* args; // remember the first arg is the program name
 };
 
-PUBLIC ErrorCodeOr<void>
-PrintUsage(Writer writer, String exe_name, String description, Span<CommandLineArgDefinition const> args) {
+PUBLIC ErrorCodeOr<void> PrintUsage(Writer writer,
+                                    String exe_name,
+                                    String description,
+                                    Span<CommandLineArgDefinition const> args,
+                                    Span<CommandLineArgDefinition const> implicit_args = {}) {
     if (description.size) TRY(fmt::FormatToWriter(writer, "{}\n\n", description));
 
     TRY(fmt::FormatToWriter(writer, "Usage: {} [ARGS]\n\n", exe_name));
@@ -54,7 +69,7 @@ PrintUsage(Writer writer, String exe_name, String description, Span<CommandLineA
     };
 
     usize max_key_val_size = 0;
-    for (auto const& arg : args) {
+    auto const measure_arg = [&](CommandLineArgDefinition const& arg) -> ErrorCodeOr<void> {
         usize key_val_size = 0;
         Writer key_val_size_writer {};
         key_val_size_writer.Set<usize>(key_val_size,
@@ -64,7 +79,12 @@ PrintUsage(Writer writer, String exe_name, String description, Span<CommandLineA
                                        });
         TRY(print_arg_key_val(key_val_size_writer, arg));
         max_key_val_size = Max(max_key_val_size, key_val_size);
-    }
+        return k_success;
+    };
+    for (auto const& arg : args)
+        TRY(measure_arg(arg));
+    for (auto const& arg : implicit_args)
+        TRY(measure_arg(arg));
 
     static auto print_arg = [max_key_val_size](Writer writer,
                                                CommandLineArgDefinition const& arg) -> ErrorCodeOr<void> {
@@ -91,10 +111,12 @@ PrintUsage(Writer writer, String exe_name, String description, Span<CommandLineA
             if (arg.required) TRY(print_arg(writer, arg));
     }
 
-    if (FindIf(args, [](auto const& arg) { return !arg.required; })) {
+    if (implicit_args.size || FindIf(args, [](auto const& arg) { return !arg.required; })) {
         TRY(fmt::FormatToWriter(writer, "Optional arguments:\n"));
         for (auto const& arg : args)
             if (!arg.required) TRY(print_arg(writer, arg));
+        for (auto const& arg : implicit_args)
+            TRY(print_arg(writer, arg));
     }
 
     TRY(writer.WriteChar('\n'));
@@ -188,6 +210,7 @@ PUBLIC ErrorCodeCategory const& ErrorCategoryForEnum(CliError) { return g_cli_er
 struct ParseCommandLineArgsOptions {
     bool handle_help_option = true;
     bool print_usage_on_error = true;
+    bool handle_log_level_option = true; // intercepts --log-level and calls SetLogLevel
     String description {};
     String version {}; // if present will be printed on --version
 };
@@ -199,9 +222,13 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
                                                               Span<String const> args,
                                                               Span<CommandLineArgDefinition const> arg_defs,
                                                               ParseCommandLineArgsOptions options = {}) {
+    auto const implicit_args = options.handle_log_level_option
+                                   ? Span<CommandLineArgDefinition const> {&k_log_level_arg_def, 1}
+                                   : Span<CommandLineArgDefinition const> {};
+
     auto error = [&](CliError e) -> ErrorCode {
         if (options.print_usage_on_error)
-            TRY(PrintUsage(writer, program_name, options.description, arg_defs));
+            TRY(PrintUsage(writer, program_name, options.description, arg_defs, implicit_args));
         return ErrorCode {e};
     };
 
@@ -217,13 +244,27 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
 
     for (auto const [key, values, _] : ArgsToKeyValueTable(arena, args)) {
         if (options.handle_help_option && key == "help") {
-            TRY(PrintUsage(writer, program_name, options.description, arg_defs));
+            TRY(PrintUsage(writer, program_name, options.description, arg_defs, implicit_args));
             return ErrorCode {CliError::HelpRequested};
         }
 
         if (options.version.size && key == "version") {
             TRY(fmt::FormatToWriter(writer, "Version {}\n", options.version));
             return ErrorCode {CliError::VersionRequested};
+        }
+
+        if (options.handle_log_level_option && key == k_log_level_arg_def.key) {
+            if (!values.size) {
+                TRY(fmt::FormatToWriter(writer, "Option --{} requires a value\n", key));
+                return error(CliError::InvalidArguments);
+            }
+            auto const level = ParseLogLevelName(values[0]);
+            if (!level) {
+                TRY(fmt::FormatToWriter(writer, "Unknown log level: {}\n", values[0]));
+                return error(CliError::InvalidArguments);
+            }
+            SetLogLevel(*level);
+            continue;
         }
 
         auto const arg_index = FindIf(arg_defs, [&](auto const& arg) { return arg.key == key; });

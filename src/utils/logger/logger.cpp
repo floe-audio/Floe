@@ -245,6 +245,9 @@ void InitLogger(LogConfig config) {
     CountedInit(g_counted_init_flag, [&]() { g_config = config; });
 }
 
+void SetLogLevel(LogLevel level) { g_config.min_level_allowed = level; }
+LogLevel GetLogLevel() { return g_config.min_level_allowed; }
+
 void ShutdownLogger() {
     ZoneScoped;
     CountedDeinit(g_counted_init_flag, []() {

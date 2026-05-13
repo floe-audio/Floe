@@ -190,7 +190,7 @@ struct Tester {
 
         DynamicArray<char>* output_buffer = nullptr; // Optional.
         Tester& tester;
-        LogLevel max_level_allowed = LogLevel::Info;
+        LogLevel max_level_allowed = GetLogLevel();
     };
 
     // public

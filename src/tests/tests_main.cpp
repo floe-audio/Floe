@@ -90,25 +90,6 @@ WINDOWS_FP_TEST_REGISTER_FUNCTIONS
 #endif
 #undef X
 
-static ErrorCodeOr<void> SetLogLevel(tests::Tester& tester, Optional<String> log_level) {
-    if (!log_level) return k_success; // use default
-
-    for (auto const& [level, name] : Array {
-             Pair {LogLevel::Debug, "debug"_s},
-             Pair {LogLevel::Info, "info"_s},
-             Pair {LogLevel::Warning, "warning"_s},
-             Pair {LogLevel::Error, "error"_s},
-         }) {
-        if (IsEqualToCaseInsensitiveAscii(*log_level, name)) {
-            tester.log.max_level_allowed = level;
-            return k_success;
-        }
-    }
-
-    StdPrintF(StdStream::Err, "Unknown log level: {}", *log_level);
-    return ErrorCode {CliError::InvalidArguments};
-}
-
 ErrorCodeOr<int> Main(ArgsCstr args) {
     GlobalInit({
         .init_error_reporting = false,
@@ -124,7 +105,6 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
     enum class CommandLineArgId : u8 {
         Filter,
         List,
-        LogLevel,
         Repeats,
         JUnitXmlOutputPath,
         GithubActionsAnnotationsOutputPath,
@@ -149,14 +129,6 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .value_type = "flag",
             .required = false,
             .num_values = 0,
-        },
-        {
-            .id = (u32)CommandLineArgId::LogLevel,
-            .key = "log-level",
-            .description = "Log level: debug, info, warning, error",
-            .value_type = "level",
-            .required = false,
-            .num_values = 1,
         },
         {
             .id = (u32)CommandLineArgId::Repeats,
@@ -210,7 +182,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
                                                                .print_usage_on_error = true,
                                                            }));
 
-    TRY(SetLogLevel(tester, cli_args[ToInt(CommandLineArgId::LogLevel)].Value()));
+    tester.log.max_level_allowed = GetLogLevel();
 
     if (auto const repeats_str = cli_args[ToInt(CommandLineArgId::Repeats)].Value()) {
         auto const parsed_int = ParseInt(*repeats_str, ParseIntBase::Decimal);
