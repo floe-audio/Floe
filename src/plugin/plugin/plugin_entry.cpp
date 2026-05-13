@@ -118,6 +118,7 @@ static bool ClapEntryInit(char const*) {
         GlobalInit({
             .init_error_reporting = false,
             .set_main_thread = false,
+            .panic_response = PanicResponse::Quarantine,
         });
 
         LogInfo(ModuleName::Clap,

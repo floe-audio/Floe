@@ -469,7 +469,11 @@ static ErrorCodeOr<int> Main(ArgsCstr) {
 
 int main(int argc, char** argv) {
     auto _ = EnterLogicalMainThread();
-    GlobalInit({.init_error_reporting = false, .set_main_thread = true});
+    GlobalInit({
+        .init_error_reporting = false,
+        .set_main_thread = true,
+        .panic_response = PanicResponse::Abort,
+    });
     DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
     auto result = Main({argc, argv});
     if (result.HasError()) {

@@ -110,7 +110,11 @@ static ErrorCodeOr<void> SetLogLevel(tests::Tester& tester, Optional<String> log
 }
 
 ErrorCodeOr<int> Main(ArgsCstr args) {
-    GlobalInit({.init_error_reporting = false, .set_main_thread = true});
+    GlobalInit({
+        .init_error_reporting = false,
+        .set_main_thread = true,
+        .panic_response = PanicResponse::Abort,
+    });
     DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
 
     ZoneScoped;

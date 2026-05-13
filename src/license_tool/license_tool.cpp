@@ -89,7 +89,11 @@ static ErrorCodeOr<int> DoSignLicense(Span<CommandLineArg const> cli_args, Arena
 }
 
 static ErrorCodeOr<int> Main(ArgsCstr args) {
-    GlobalInit({.init_error_reporting = true, .set_main_thread = true});
+    GlobalInit({
+        .init_error_reporting = true,
+        .set_main_thread = true,
+        .panic_response = PanicResponse::Abort,
+    });
     DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
 
     ArenaAllocator arena {PageAllocator::Instance()};

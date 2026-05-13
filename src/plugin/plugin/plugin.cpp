@@ -1308,8 +1308,15 @@ static bool ClapInit(const struct clap_plugin* plugin) {
                         floe.host.version,
                         CurrentThreadId());
 
-        if (StartsWithSpan(FromNullTerminated(floe.host.name), "clap-validator"_s))
+        auto const host_name = FromNullTerminated(floe.host.name);
+        if (StartsWithSpan(host_name, "clap-validator"_s))
             g_plugin_host.Store(PluginHost::ClapValidator, StoreMemoryOrder::Relaxed);
+
+        auto const is_testing_host = StartsWithCaseInsensitiveAscii(host_name, "clap-validator"_s) ||
+                                     StartsWithCaseInsensitiveAscii(host_name, "vstvalidator"_s) ||
+                                     ContainsSpan(host_name, "CLAP-as-AUv2"_s) ||
+                                     ContainsSpan(host_name, "CLAP-as-VST3"_s);
+        if (is_testing_host) SetPanicResponse(PanicResponse::Abort);
 
         if (floe.initialised) return true;
 

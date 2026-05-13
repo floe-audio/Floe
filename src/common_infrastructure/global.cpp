@@ -27,6 +27,11 @@ static u32 g_tracy_init = 0;
 
 Atomic<PluginHost> g_plugin_host {PluginHost::Unknown};
 
+static Atomic<PanicResponse> g_panic_response {PanicResponse::Quarantine};
+
+PanicResponse GetPanicResponse() { return g_panic_response.Load(LoadMemoryOrder::Acquire); }
+void SetPanicResponse(PanicResponse response) { g_panic_response.Store(response, StoreMemoryOrder::Release); }
+
 void GlobalInit(GlobalInitOptions options) {
     if constexpr (k_running_with_thread_sanitizer) {
         // Very unstable to run Valgrind with ThreadSanitizer.
@@ -36,6 +41,8 @@ void GlobalInit(GlobalInitOptions options) {
     if (g_tracy_init++ == 0) StartupTracy();
 
     if (options.set_main_thread) SetThreadName("main", FinalBinaryIsPlugin());
+
+    g_panic_response.Store(options.panic_response, StoreMemoryOrder::Release);
 
     SetPanicHook([](char const* message_c_str, SourceLocation loc, uintptr loc_pc) {
         // We don't have to be signal-safe here.
@@ -68,13 +75,10 @@ void GlobalInit(GlobalInitOptions options) {
             return k_success;
         });
 
-        if constexpr (!PRODUCTION_BUILD) {
+        if constexpr (!PRODUCTION_BUILD)
             if (IsRunningUnderDebugger()) __builtin_debugtrap();
 
-            // Clap-validator seems to hang without this.
-            if (g_plugin_host.Load(LoadMemoryOrder::Relaxed) == PluginHost::ClapValidator) __builtin_abort();
-            if (g_final_binary_type == FinalBinaryType::Tests) __builtin_abort();
-        }
+        if (g_panic_response.Load(LoadMemoryOrder::Acquire) == PanicResponse::Abort) __builtin_abort();
 
         // Step 2: send an error report to Sentry.
         {
