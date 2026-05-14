@@ -2045,9 +2045,37 @@ static int FloeLoadFile(lua_State* lua) {
     return luaL_error(lua, "Floe's loadfile is not supported. Use dofile instead.");
 }
 
+static int LuaPrint(lua_State* lua) {
+    if (GetLogLevel() <= LogLevel::Info) {
+        auto const nargs = lua_gettop(lua);
+        auto& mutex = StdStreamMutex(StdStream::Out);
+        mutex.Lock();
+        DEFER { mutex.Unlock(); };
+        auto writer = StdWriter(StdStream::Out);
+        for (auto const i : ::Range(1, nargs + 1)) {
+            usize len = 0;
+            auto const s = luaL_tolstring(lua, i, &len);
+            if (i > 1) auto _ = writer.WriteChar('\t');
+            if (s) auto _ = writer.WriteChars({s, len});
+            lua_pop(lua, 1);
+        }
+        auto _ = writer.WriteChar('\n');
+    }
+    lua_settop(lua, 0);
+    return 0;
+}
+
 static void ReplaceBaseFunctions(lua_State* L) {
     lua_register(L, "dofile", FloeDoFile);
     lua_register(L, "loadfile", FloeLoadFile);
+
+    static constexpr luaL_Reg k_print_lib[] = {
+        {"print", LuaPrint},
+        {nullptr, nullptr},
+    };
+    lua_getglobal(L, "_G");
+    luaL_setfuncs(L, k_print_lib, 0);
+    lua_pop(L, 1);
 }
 
 constexpr char const* k_floe_lua_helpers = R"aaa(
