@@ -181,7 +181,7 @@ export default function Home() {
                                 <div className={styles.coreValueContent}>
                                     <h3>Professional effects rack</h3>
                                     <p>
-                                        Shape your sound with 10 high-quality effects in customizable order, including pro-standard reverb and delay. Each layer processes individually before flowing through the shared effects chain.
+                                        Shape your sound with 11 high-quality effects in customizable order, including pro-standard reverb and delay. Each layer processes individually before flowing through the shared effects chain.
                                     </p>
                                 </div>
                             </div>
@@ -205,6 +205,33 @@ export default function Home() {
                                     </p>
                                 </div>
                             </div>
+                        </div>
+
+                        <div className={styles.moreFeatures}>
+                            <h3>More Features</h3>
+                            <ul className={styles.featureList}>
+                                <li>Per-layer arpeggiators</li>
+                                <li>Comprehensive granular synthesis</li>
+                                <li>Visual 3-band EQs</li>
+                                <li>Undo/redo system</li>
+                                <li>A/B comparison for preset edits</li>
+                                <li>Autosave</li>
+                                <li>Random variation generator</li>
+                                <li>Core per-layer controls: ADSR, filter, LFO, EQ, tuning, stereo width</li>
+                                <li>Sustain pedal support</li>
+                                <li>Customisable MIDI CC mapping</li>
+                                <li>Pitchbend with controllable range</li>
+                                <li>Velocity-volume curve</li>
+                                <li>Split sounds across keyboard ranges</li>
+                                <li>11 reorderable effects: reverb, distortion, delay, 2 compressors, and more</li>
+                                <li>Install libraries on separate drives</li>
+                                <li>Offline installation</li>
+                                <li>Load a random sound</li>
+                                <li>Options for fully reproducible recordings</li>
+                                <li>4 renamable macro knobs</li>
+                                <li>Resizable vector UI</li>
+                                <li>Copy/paste/reset for all parameters and sections</li>
+                            </ul>
                         </div>
                     </div>
                 </section>
@@ -241,7 +268,7 @@ export default function Home() {
 
                         <div className={styles.highlightGrid}>
                             <div className={styles.highlightItem}>
-                                <h3>Open ROMpler</h3>
+                                <h3>Widely supported</h3>
                                 <p>A sample-based synthesiser/ROMpler available as a CLAP, VST3, or AU plugin for Windows, macOS, and Linux. Compatible with all major DAWs (Logic Pro, Cubase, Studio One, FL Studio, Ableton Live, Reaper, and more), and uses the open Floe sample library format.</p>
                             </div>
 

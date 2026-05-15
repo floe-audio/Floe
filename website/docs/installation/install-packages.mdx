@@ -40,8 +40,14 @@ The package files can be deleted after installation. No restart required.
 
 <GeneratedScreenshot name="install-packages" alt="Floe Preferences panel showing the Packages tab" />
 
+:::note[ZIP files and Safari on macOS]
+If you have a `.zip` package rather than `.floe-pkg`, be aware that Safari automatically extracts ZIP files after downloading. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab. This is not an issue with `.floe-pkg` files.
+:::
+
+## Advanced Details
+
 ### What is a package?
-A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**. They use the extension `.floe-pkg`, but they're really ZIP files with a specific structure. Floe also accepts `.zip` packages. Additionally, `.floe-pkg-enc` packages are encrypted and require a license key to install. Packages are [installed](../installation/install-packages) using Floe's _Install package_ button (or manually for unencrypted packages).
+A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**.
 
 A package may contain:
 - Samples Libraries
@@ -53,17 +59,10 @@ But alternatively, a package could also contain only presets, or a collection of
 
 Floe doesn't remember packages after installation; they're just a means to get content onto your computer. Packages are created using Floe's [packaging tools](../develop/packaging), or using a ZIP utility.
 
-Want the audio files in an unencrypted package? [Rename it to .zip and extract](../installation/install-packages#manually-installing).
-
 ### Encrypted packages
 
 Some packages use the `.floe-pkg-enc` format. These are encrypted and require a license key to install. When you install an encrypted package, Floe will prompt you to paste your license key. The license key is a text block provided by the package developer when you purchase the package.
 
-:::note[ZIP files and Safari on macOS]
-If you have a `.zip` package rather than `.floe-pkg`, be aware that Safari automatically extracts ZIP files after downloading. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab. This is not an issue with `.floe-pkg` files.
-:::
-
-## Advanced Details
 
 ### Install to a custom location
 1. Create custom folders using Finder/File Explorer such as "Floe Libraries" and "Floe Presets"

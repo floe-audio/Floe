@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 import data from "@site/static/generated-data.json";
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
-Floe has a selection of {data["effects-count"]} effects that can be applied to mix of the 3 [layers](./layers). The effects are shown in a list on the right-hand side of the main panel. Audio flows through them from top to bottom.
+Floe has a selection of {data["effects-count"]} reorderable effects that are applied to the mix of the [layers](./layers). Audio flows through the rack from top to bottom.
 
 <GeneratedScreenshot name="effects" alt="Effects panel" />
 
@@ -45,21 +45,10 @@ Every effect has a _Mix_ knob in its heading area. Mix blends the original incom
 
 This lets you dial in the strength of an effect without changing any of its other settings — useful for subtle reverb tails, parallel compression, gentle distortion, and so on.
 
-## Notable effects
-### Convolution Reverb
-Floe's convolution reverb effect has numerous impulse responses (IRs) that explore both realism and sound-design. The IRs are selected using one of Floe's powerful _[browsers](./browsers)_, where IRs can be sourced from installed sample libraries that choose to provide them.
+## Convolution Reverb
+The convolution unit adds a reverb-like effect to the sound by utilising an impulse response (IR) selected using a dedicated [browser](./browsers). Floe offers some realistic reverb room IRs, but also IRs that produce unusual sound effects.
 
-#### Impulse Responses
-
-An impulse response (or IR) is a sample that determines the character of the Convolution Reverb on Floe's effects rack.
-
-IRs are chosen using the _[browser](../usage/browsers)_, allowing you to easily find the right IR to colour the sound.
-
-Floe has a built-in set of IRs that can be used without installing any additional libraries, although some sample libraries also include IRs.
-
-### Delay and reverb
-Floe's reverb and delay are very high-quality, originating from Vital's pro-standard effects rack for excellent space design.
-
+The set of available IRs depend on what sample libraries you have installed and their features. Floe always has a built-in set of impulse responses available. But additionally, some sample libraries expand this collection, such as the community [Antique IRs](/packages/antique-irs) library.
 
 ## All available effects
 

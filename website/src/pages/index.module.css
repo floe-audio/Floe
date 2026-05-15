@@ -179,10 +179,6 @@
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.aspectImageContainer:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 16px 35px rgba(0, 0, 0, 0.15);
-}
 
 .aspectImage {
   width: 100%;
@@ -232,9 +228,6 @@
   transition: all 0.3s ease;
 }
 
-.coreValueItem:hover {
-  transform: translateY(-4px);
-}
 
 
 .coreValueContent {
@@ -261,6 +254,53 @@
   color: var(--ifm-color-primary);
   opacity: 0.8;
   flex-shrink: 0;
+}
+
+/* More Features compact list */
+.moreFeatures {
+  max-width: 900px;
+  margin: 3rem auto 0;
+  text-align: center;
+}
+
+.moreFeatures h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1.25rem;
+  color: var(--ifm-heading-color);
+  font-weight: 600;
+}
+
+.featureList {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  justify-content: center;
+  gap: 0.5rem 4rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.featureList li {
+  position: relative;
+  padding-left: 1.25rem;
+  color: var(--ifm-color-content);
+  line-height: 1.6;
+}
+
+.featureList li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--ifm-color-primary);
+  font-weight: bold;
+}
+
+@media screen and (max-width: 600px) {
+  .featureList {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
 }
 
 /* Ecosystem Section */
@@ -402,21 +442,12 @@
   pointer-events: none;
 }
 
-.highlightItem:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-  border-color: rgba(var(--ifm-color-primary-rgb, 85, 94, 133), 0.12);
-}
 
 [data-theme='dark'] .highlightItem {
   background: rgba(var(--ifm-color-primary-rgb, 116, 129, 179), 0.05);
   border-color: rgba(var(--ifm-color-primary-rgb, 116, 129, 179), 0.1);
 }
 
-[data-theme='dark'] .highlightItem:hover {
-  border-color: rgba(var(--ifm-color-primary-rgb, 116, 129, 179), 0.15);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-}
 
 .tileLogoLink {
   display: inline-block;
@@ -495,10 +526,7 @@
     gap: 1rem;
   }
   
-  .coreValueItem:hover {
-    transform: translateY(-4px) !important;
-  }
-  
+    
   .coreValuesGrid {
     gap: 2rem;
   }
