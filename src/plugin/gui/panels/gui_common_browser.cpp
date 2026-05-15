@@ -1496,6 +1496,7 @@ static void DoLibraryRightClickMenu(GuiBuilder& builder,
                  {
                      .text = fmt::Format(builder.arena, "Open Folder in {}", GetFileBrowserAppName()),
                      .is_selected = false,
+                     .no_icon_gap = true,
                  })
             .button_fired) {
         if (auto const lib_id = find_library(menu_state.item_hash)) {
@@ -1512,6 +1513,7 @@ static void DoLibraryRightClickMenu(GuiBuilder& builder,
                  {
                      .text = "Uninstall (Send library to " TRASH_NAME ")",
                      .is_selected = false,
+                     .no_icon_gap = true,
                  })
             .button_fired) {
         if (auto const lib_id = find_library(menu_state.item_hash)) {
