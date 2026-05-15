@@ -13,26 +13,19 @@
   padding: 6rem 0 8rem;
   position: relative;
   text-align: center;
-  color: var(--ifm-color-content);
-  background: 
-    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(120, 119, 198, 0.15) 0%, transparent 50%),
-    linear-gradient(135deg, 
-      var(--ifm-background-color) 0%, 
-      rgba(var(--ifm-color-primary-rgb, 85, 94, 133), 0.03) 50%, 
-      var(--ifm-background-color) 100%
-    );
+  color: #ffffff;
+  background: url('/images/default-background.jpg') center center / cover no-repeat;
 }
 
-[data-theme='dark'] .hero {
-  background: 
-    radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
-    linear-gradient(135deg, 
-      var(--ifm-background-color) 0%, 
-      rgba(120, 119, 198, 0.02) 50%, 
-      var(--ifm-background-color) 100%
-    );
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  pointer-events: none;
 }
 
 .hero::after {
@@ -52,23 +45,11 @@
   background: #1b1b1d;
 }
 
-.hero::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image: 
-    radial-gradient(circle at 1px 1px, rgba(125,125,125,0.45) 1px, transparent 0);
-  background-size: 20px 20px;
-  opacity: 0.4;
-  pointer-events: none;
-}
-
 .heroContent {
   max-width: 800px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .logoContainer {
