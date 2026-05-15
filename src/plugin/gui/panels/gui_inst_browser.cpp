@@ -647,7 +647,8 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
-                    .card_name_prefix = is_any_filter_card_screenshot ? "library-card."_s : ""_s,
+                    .card_name_prefix =
+                        (is_any_filter_card_screenshot || is_browser_screenshot) ? "library-card."_s : ""_s,
                 };
                 f;
             }),

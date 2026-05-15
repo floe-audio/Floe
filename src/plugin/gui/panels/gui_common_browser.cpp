@@ -8,6 +8,7 @@
 #include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui_actions.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -973,7 +974,13 @@ Box DoFilterCard(GuiBuilder& builder,
     auto& card_toggled_ids =
         options.default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
     if (options.store) LoadCollapseStateFromStore(*options.store, card_toggled_ids, collapse_id);
-    bool const card_collapsed = Contains(card_toggled_ids, collapse_id) != options.default_collapsed;
+    bool card_collapsed = Contains(card_toggled_ids, collapse_id) != options.default_collapsed;
+
+    // For certain screenshots, force a card to be expanded.
+    if (card_collapsed && options.name == "library-card.Lost Reveries"_s &&
+        IsScreenshotRequest("browser-full"_s)) {
+        card_collapsed = false;
+    }
 
     auto const card_outer =
         DoBox(builder,
