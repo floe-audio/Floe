@@ -2534,9 +2534,11 @@ struct LuaCodePrinter {
                         .subtype = InterpretedTypes::FileAttribution,
                     },
                 }),
-                .description = "Sets the attribution information for a particular audio file or folder. "
+                .description = "Sets the attribution information for a particular file or folder. "
                                "If the path is a folder, the attribution requirement will be applied to "
-                               "all audio files in that folder and its subfolders.",
+                               "all audio files in that folder and its subfolders. You can also point "
+                               "it at the library's background_image_path to credit the cover image — "
+                               "when set, a subtle credit line appears on the Perform page.",
             },
             {
                 .name = "add_named_key_range",

@@ -933,6 +933,36 @@ void MidPanelPerformContent(GuiBuilder& builder,
     }
 
     if (!collapsed) {
+        // Background image attribution (subtle, right-aligned)
+        if (auto const bg_lib_id = LibraryForOverallBackground(g.engine)) {
+            if (auto const maybe_lib = frame_context.lib_table.Find(*bg_lib_id)) {
+                if (auto const lib = *maybe_lib; lib && lib->background_image_path) {
+                    if (auto const attr =
+                            lib->files_requiring_attribution.Find(*lib->background_image_path)) {
+                        auto const attribution_text =
+                            attr->license_name.size
+                                ? fmt::Format(g.scratch_arena,
+                                              "Image by {} / {}",
+                                              attr->attributed_to,
+                                              attr->license_name)
+                                : fmt::Format(g.scratch_arena, "Image by {}", attr->attributed_to);
+                        DoBox(builder,
+                              {
+                                  .parent = root,
+                                  .text = attribution_text,
+                                  .font = FontType::BodyItalic,
+                                  .text_colours = Col {.c = Col::White, .alpha = 90},
+                                  .text_justification = TextJustification::CentredRight,
+                                  .layout {
+                                      .size = {layout::k_fill_parent, k_font_body_size},
+                                      .margins = {.r = 10, .b = 4},
+                                  },
+                              });
+                    }
+                }
+            }
+        }
+
         auto const central_panel = DoBox(builder,
                                          {
                                              .parent = root,
