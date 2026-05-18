@@ -256,6 +256,18 @@ void InvalidateLibraryImages(LibraryImagesTable& table,
     }
 }
 
+void InvalidateAllLibraryImages(LibraryImagesTable& table, Renderer& renderer) {
+    ASSERT(g_is_logical_main_thread);
+
+    for (auto [_, imgs, _] : table.table) {
+        imgs.icon_missing = false;
+        imgs.background_missing = false;
+        if (imgs.icon) renderer.DestroyImageID(*imgs.icon);
+        if (imgs.background) renderer.DestroyImageID(*imgs.background);
+        if (imgs.blurred_background) renderer.DestroyImageID(*imgs.blurred_background);
+    }
+}
+
 void Shutdown(LibraryImagesTable& table) {
     ASSERT(g_is_logical_main_thread);
 

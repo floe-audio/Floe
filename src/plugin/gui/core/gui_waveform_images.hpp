@@ -38,4 +38,5 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
 
 void StartFrame(WaveformImagesTable& table, Renderer& renderer);
 void EndFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument const*> possible_instruments);
+void InvalidateAllWaveformImages(WaveformImagesTable& table, Renderer& renderer);
 void Shutdown(WaveformImagesTable& table);

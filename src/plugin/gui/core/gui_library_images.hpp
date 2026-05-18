@@ -62,3 +62,4 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
 void BeginFrame(LibraryImagesTable& table);
 void Shutdown(LibraryImagesTable& table);
 void InvalidateLibraryImages(LibraryImagesTable& table, sample_lib::LibraryId library_id, Renderer& renderer);
+void InvalidateAllLibraryImages(LibraryImagesTable& table, Renderer& renderer);

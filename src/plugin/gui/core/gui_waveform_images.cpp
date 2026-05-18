@@ -210,6 +210,16 @@ void EndFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument co
     });
 }
 
+void InvalidateAllWaveformImages(WaveformImagesTable& table, Renderer& renderer) {
+    for (auto [_, waveform, _] : table.table) {
+        if (waveform.image_id) {
+            renderer.DestroyImageID(*waveform.image_id);
+            waveform.image_id = k_nullopt;
+        }
+        if (waveform.loading_pixels) waveform.loading_pixels->Cancel();
+    }
+}
+
 void Shutdown(WaveformImagesTable& table) {
     for (auto& pixels : table.loading_pixels)
         if (auto image_bytes = pixels.ShutdownAndRelease(10000u)) image_bytes->Free(PixelsAllocator());

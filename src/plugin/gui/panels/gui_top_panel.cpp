@@ -8,8 +8,10 @@
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
 #include "gui/controls/gui_pinned_view_toggle.hpp"
+#include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/core/gui_waveform_images.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -74,6 +76,8 @@ static void DoDotsMenu(GuiState& g) {
             .button_fired) {
         sample_lib_server::RescanAllFolders(g.shared_engine_systems.sample_library_server);
         RescanAllFolders(g.shared_engine_systems.preset_server);
+        InvalidateAllLibraryImages(g.library_images, g.imgui.draw_list->renderer);
+        InvalidateAllWaveformImages(g.waveform_images, g.imgui.draw_list->renderer);
     }
 
     MenuDivider(g.builder, root);
