@@ -410,7 +410,10 @@ static void SetTagsFromStrings(LuaState& ctx, FieldInfo const& info, TagsBitset&
         if (auto const tag = LookupTagName(s))
             tags.Set(ToInt(tag->tag));
         else
-            LogWarning(ModuleName::SampleLibrary, "Unrecognised tag '{}' in {}", s, ctx.filepath);
+            LogWarning(ModuleName::SampleLibrary,
+                       "Unrecognised tag '{}' in {}",
+                       s,
+                       path::Filename(ctx.filepath));
 }
 
 template <>

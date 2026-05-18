@@ -45,8 +45,7 @@ void WriteLibraryIdCache(Span<LibraryIdCacheEntry const> entries) {
                                 }),
                        {
                            LogError(ModuleName::SampleLibraryServer,
-                                    "Failed to open library id cache for write {}: {}",
-                                    path,
+                                    "Failed to open library id cache for write: {}",
                                     error);
                            return;
                        });

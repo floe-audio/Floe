@@ -96,6 +96,9 @@ struct LogConfig {
 
 ErrorCodeOr<void> CleanupOldLogFilesIfNeeded(ArenaAllocator& scratch_arena);
 
+// IMPORTANT: never log file paths or anything that could be deemed personal information. Logs may be used in
+// Sentry reports.
+
 void Log(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message);
 
 template <typename... Args>
