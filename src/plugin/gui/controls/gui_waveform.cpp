@@ -12,6 +12,7 @@
 #include "engine/loop_modes.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/core/gui_waveform_images.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -823,38 +824,39 @@ void DoWaveformElement(GuiState& g,
                                  WwToPixels(1.0f));
             }
 
-            // Multisample badge.
+            // Multisample indicator: small eye icon in the top-right corner with a tooltip
+            // disambiguating "Last Played" vs "Representative".
             if (is_multisample) {
-                // Badge in the top-right corner.
-                auto const badge_pad = WwToPixels(4.5f);
-                auto const badge_font_scaling = 0.72f;
-                String const badge_text =
-                    (last_activated_hash && !debounce.locked) ? "Last Played"_s : "Representative"_s;
+                auto const icon_pad = WwToPixels(4.0f);
+                auto const icon_size = WwToPixels(11.0f);
+                Rect const icon_r = {.xywh {window_r.Right() - icon_size - icon_pad,
+                                            window_r.y + icon_pad,
+                                            icon_size,
+                                            icon_size}};
 
-                // Measure text to size the badge.
-                auto const font = g.fonts.Current();
-                auto const font_size = font->font_size * badge_font_scaling;
-                auto const text_size = font->CalcTextSize(badge_text, {.font_size = font_size});
-                auto const badge_h = text_size.y + WwToPixels(3.0f);
-                auto const badge_w = text_size.x + WwToPixels(10.0f);
-                Rect const badge_r = {
-                    .xywh {window_r.Right() - badge_w - badge_pad, window_r.y + badge_pad, badge_w, badge_h}};
+                {
+                    g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
+                    DEFER { g.fonts.Pop(); };
+                    auto icon_col = FromU32(LiveCol(UiColMap::WaveformMultisampleBadgeText));
+                    icon_col.a = (u8)(icon_col.a * 0.6f);
+                    g.imgui.draw_list->AddTextInRect(icon_r,
+                                                     ToU32(icon_col),
+                                                     ICON_FA_EYE,
+                                                     {
+                                                         .justification = TextJustification::Centred,
+                                                         .overflow_type = TextOverflowType::AllowOverflow,
+                                                         .font_scaling = 0.7f,
+                                                     });
+                }
 
-                auto const badge_rounding = WwToPixels(2.0f);
-                g.imgui.draw_list->AddRectFilled(badge_r,
-                                                 LiveCol(UiColMap::WaveformMultisampleBadgeBack),
-                                                 badge_rounding);
-                g.imgui.draw_list->AddRect(badge_r,
-                                           LiveCol(UiColMap::WaveformMultisampleBadgeBorder),
-                                           badge_rounding);
-                g.imgui.draw_list->AddTextInRect(badge_r,
-                                                 LiveCol(UiColMap::WaveformMultisampleBadgeText),
-                                                 badge_text,
-                                                 {
-                                                     .justification = TextJustification::Centred,
-                                                     .overflow_type = TextOverflowType::AllowOverflow,
-                                                     .font_scaling = badge_font_scaling,
-                                                 });
+                auto const icon_id = g.imgui.MakeId("multisample indicator");
+                g.imgui.RegisterRectForMouseTracking(icon_r, false);
+                g.imgui.SetHot(icon_r, icon_id);
+                String const tooltip_text =
+                    (last_activated_hash && !debounce.locked)
+                        ? "Last-played sample. This instrument contains multiple samples — the one played depends on the note's pitch and velocity."_s
+                        : "Representative sample. This instrument contains multiple samples — the one played depends on the note's pitch and velocity."_s;
+                Tooltip(g, icon_id, icon_r, tooltip_text, {});
             }
 
             // Slice markers: thin vertical lines on the waveform at slice boundaries.
