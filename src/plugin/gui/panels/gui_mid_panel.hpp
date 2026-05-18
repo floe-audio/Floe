@@ -43,4 +43,7 @@ void DrawMidBlurredBackground(GuiState& g,
                               sample_lib::LibraryId library_id,
                               MidBlurredBackgroundOptions const& options);
 void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryId library_id);
-void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryId> lib_id);
+void DrawMidBlurredPanelSurface(GuiState& g,
+                                GuiFrameContext const& frame_context,
+                                Rect window_r,
+                                Optional<sample_lib::LibraryId> lib_id);

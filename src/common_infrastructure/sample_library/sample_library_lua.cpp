@@ -1565,6 +1565,7 @@ struct TableFields<Library> {
         MinorVersion,
         BackgroundImagePath,
         IconImagePath,
+        VignetteIntensity,
         Count,
     };
 
@@ -1695,6 +1696,21 @@ struct TableFields<Library> {
                     .lua_type = LUA_TSTRING,
                     .required = false,
                     .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.icon_image_path = PathFromTop(ctx); },
+                };
+            case Field::VignetteIntensity:
+                return {
+                    .name = "vignette_intensity",
+                    .description_sentence =
+                        "How strongly to darken the mid panel with a vignette when this library is the active background. 0 disables the effect; 100 is the maximum strength. Use this if the background image benefits from extra contrast against the UI.",
+                    .example = "50",
+                    .default_value = "0",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .range = {.min = 0, .max = 100},
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.background_image_vignette_intensity = NumberFromTop<u8>(ctx, info);
+                        },
                 };
             case Field::Count: break;
         }

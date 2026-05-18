@@ -268,6 +268,7 @@ struct Library {
     u32 minor_version {1};
     Optional<LibraryPath> background_image_path {};
     Optional<LibraryPath> icon_image_path {};
+    u8 background_image_vignette_intensity {};
     HashTable<String, Instrument*> insts_by_id {};
     Span<Instrument*> sorted_instruments {};
     Array<FolderNode, ToInt(ResourceType::Count)> root_folders {};

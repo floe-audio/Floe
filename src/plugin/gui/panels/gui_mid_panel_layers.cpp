@@ -42,7 +42,7 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
         if (auto const r = BoxRect(builder, layer_box)) {
             auto const window_r = builder.imgui.ViewportRectToWindowRect(*r);
             auto const layer_lib = g.engine.Layer(layer_index).LibId();
-            DrawMidBlurredPanelSurface(g, window_r, layer_lib ? *layer_lib : overall_lib);
+            DrawMidBlurredPanelSurface(g, frame_context, window_r, layer_lib ? *layer_lib : overall_lib);
         }
 
         DoLayerPanel(g, frame_context, layer_index, layer_box);

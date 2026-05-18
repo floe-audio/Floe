@@ -867,6 +867,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                  });
         if (auto const r = BoxRect(builder, badge))
             DrawMidBlurredPanelSurface(g,
+                                       frame_context,
                                        builder.imgui.ViewportRectToWindowRect(*r),
                                        LibraryForOverallBackground(g.engine));
         DoBox(builder,
@@ -976,6 +977,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
 
         if (auto const r = BoxRect(builder, central_panel))
             DrawMidBlurredPanelSurface(g,
+                                       frame_context,
                                        builder.imgui.ViewportRectToWindowRect(*r),
                                        LibraryForOverallBackground(g.engine));
 

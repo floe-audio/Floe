@@ -3,13 +3,12 @@
 
 #include "gui_mid_panel.hpp"
 
-#include "engine/engine_prefs.hpp"
+#include "gui/core/gui_frame_context.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
-#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/panels/gui_effects.hpp"
 #include "gui/panels/gui_perform.hpp"
 #include "gui_framework/colours.hpp"
@@ -17,7 +16,15 @@
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 
-constexpr bool k_vignette_only_perform_page = false;
+static f32 VignetteIntensityForLibrary(GuiFrameContext const& frame_context,
+                                       Optional<sample_lib::LibraryId> lib_id) {
+    if (!lib_id) return 0;
+    auto const lib_ptr = frame_context.lib_table.Find(*lib_id);
+    if (!lib_ptr) return 0;
+    auto const lib = *lib_ptr;
+    if (!lib) return 0;
+    return (f32)lib->background_image_vignette_intensity / 100.0f;
+}
 
 void DrawMidBlurredBackground(GuiState& g,
                               Rect r,
@@ -82,7 +89,10 @@ constexpr f32 k_vignette_inner_radius = 0.20f;
 constexpr u32 k_vignette_num_bands = 16;
 constexpr f32 k_vignette_panel_opacity = 0.05f;
 
-void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryId> lib_id) {
+void DrawMidBlurredPanelSurface(GuiState& g,
+                                GuiFrameContext const& frame_context,
+                                Rect window_r,
+                                Optional<sample_lib::LibraryId> lib_id) {
     auto const panel_rounding = WwToPixels(k_panel_rounding);
 
     if (lib_id)
@@ -90,9 +100,9 @@ void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib:
     else
         g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
 
-    if (!k_vignette_only_perform_page || g.mid_panel_state.tab == MidPanelTab::Perform) {
+    if (auto const intensity = VignetteIntensityForLibrary(frame_context, lib_id); intensity > 0) {
         g.imgui.draw_list->AddRectFilled(window_r,
-                                         ChangeAlpha(k_vignette_colour, k_vignette_panel_opacity),
+                                         ChangeAlpha(k_vignette_colour, k_vignette_panel_opacity * intensity),
                                          panel_rounding);
     }
 
@@ -141,7 +151,8 @@ static Optional<sample_lib::LibraryId> LibIdForCurrentTab(GuiState& g) {
     }
 }
 
-static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
+static void
+DrawMidPanelBackground(GuiState& g, GuiFrameContext const& frame_context, imgui::Context const& imgui) {
     auto const r = imgui.curr_viewport->unpadded_bounds;
     auto const lib_id = LibIdForCurrentTab(g);
 
@@ -150,15 +161,20 @@ static void DrawMidPanelBackground(GuiState& g, imgui::Context const& imgui) {
     else
         imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
 
-    if (!k_vignette_only_perform_page || g.mid_panel_state.tab == MidPanelTab::Perform)
-        imgui.draw_list->AddVignetteRect(r, k_vignette_colour, k_vignette_inner_radius, k_vignette_num_bands);
+    if (auto const intensity = VignetteIntensityForLibrary(frame_context, lib_id); intensity > 0) {
+        imgui.draw_list->AddVignetteRect(r,
+                                         ChangeAlpha(k_vignette_colour, intensity),
+                                         k_vignette_inner_radius,
+                                         k_vignette_num_bands);
+    }
 }
 
 struct MidPanelTabBarResult {
     Box tab_extra_buttons_box;
 };
 
-static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, Box parent) {
+static MidPanelTabBarResult
+DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     // Full-width row: [left spacer] [centred tabs] [right extras area]
     auto const tab_row = DoBox(builder,
                                {
@@ -197,7 +213,10 @@ static MidPanelTabBarResult DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, B
                                });
 
     if (auto const r = BoxRect(builder, tab_bar))
-        DrawMidBlurredPanelSurface(g, builder.imgui.ViewportRectToWindowRect(*r), LibIdForCurrentTab(g));
+        DrawMidBlurredPanelSurface(g,
+                                   frame_context,
+                                   builder.imgui.ViewportRectToWindowRect(*r),
+                                   LibIdForCurrentTab(g));
 
     Optional<MidPanelTab> new_tab {};
 
@@ -273,7 +292,7 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                     auto const current_tab = g.mid_panel_state.tab;
 
                     auto const tab_extra_buttons_box =
-                        DoMidPanelTabBar(builder, g, root).tab_extra_buttons_box;
+                        DoMidPanelTabBar(builder, g, frame_context, root).tab_extra_buttons_box;
 
                     auto const content = DoBox(builder,
                                                {
@@ -303,7 +322,8 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
             .bounds = bounds,
             .imgui_id = SourceLocationHash(),
             .viewport_config {
-                .draw_background = [&](imgui::Context const& imgui) { DrawMidPanelBackground(g, imgui); },
+                .draw_background =
+                    [&](imgui::Context const& imgui) { DrawMidPanelBackground(g, frame_context, imgui); },
                 .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
             },
             .debug_name = "MidPanel",

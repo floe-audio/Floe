@@ -1561,6 +1561,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
 
         if (auto const r = BoxRect(builder, switchboard))
             DrawMidBlurredPanelSurface(g,
+                                       frame_context,
                                        builder.imgui.ViewportRectToWindowRect(*r),
                                        LibraryForOverallBackground(g.engine));
         DoSwitchboard(g, switchboard);
@@ -1578,6 +1579,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
 
         if (auto const r = BoxRect(builder, rack))
             DrawMidBlurredPanelSurface(g,
+                                       frame_context,
                                        builder.imgui.ViewportRectToWindowRect(*r),
                                        LibraryForOverallBackground(g.engine));
 
