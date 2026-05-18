@@ -618,7 +618,7 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
     auto const is_selected = state.Filter(BrowserFilter::Folder).Contains(folder->Hash());
 
     auto this_info = context.folder_infos.Find(folder);
-    ASSERT(this_info);
+    if (!this_info) return;
 
     if (this_info->total_available == 0) return;
 
