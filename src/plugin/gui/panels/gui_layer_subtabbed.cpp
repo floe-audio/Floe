@@ -722,6 +722,7 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                                         .contents_align = layout::Alignment::Middle,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                     },
+                                    .name = layer_index == 0 ? "layer.page-tabs"_s : String {},
                                 });
 
     auto const experimental_params = prefs::GetBool(g.prefs, ExperimentalParamsPreferenceDescriptor());

@@ -114,7 +114,12 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
         IsScreenshotRequest("layer-playback-granular-fixed"_s) || IsScreenshotRequest("layer-lfo"_s) ||
         IsScreenshotRequest("layer-eq"_s) || IsScreenshotRequest("layer-arp"_s) ||
         IsScreenshotRequest("layer-config"_s)) {
-        return simple("layer.page-container"_s);
+        auto const tabs = named("layer.page-tabs"_s);
+        auto const page = named("layer.page-container"_s);
+        if (!(tabs && page)) return k_nullopt;
+        auto const tl = ::Min(tabs->Min(), page->Min());
+        auto const br = ::Max(tabs->Max(), page->Max());
+        return CaptureSpec {.rect = {.pos = tl, .size = br - tl}};
     }
     if (IsScreenshotRequest("key-range-controls"_s)) return simple("key-range-rows"_s);
     if (IsScreenshotRequest("velocity-curve"_s)) {
