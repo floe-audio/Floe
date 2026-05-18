@@ -411,6 +411,8 @@ fn resolveTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.Ar
 
 const linux_use_pkg_config = std.Build.Module.SystemLib.UsePkgConfig.yes;
 
+const gen_doc_screenshots_step_name = "script:gen-doc-screenshots";
+
 pub fn build(b: *std.Build) void {
     b.reference_trace = 10; // Improve debugging of build.zig itself.
 
@@ -437,11 +439,11 @@ pub fn build(b: *std.Build) void {
             "sanitize-thread",
             "Enable thread sanitiser",
         ) orelse false,
-        .fetch_floe_logos = b.option(
+        .fetch_floe_logos = (b.option(
             bool,
             "fetch-floe-logos",
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
-        ) orelse false,
+        ) orelse false) or std_extras.isStepRequested(b, gen_doc_screenshots_step_name),
         .no_runtime_safety_checks = b.option(
             bool,
             "no-runtime-safety-checks",
@@ -545,7 +547,7 @@ pub fn build(b: *std.Build) void {
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
         .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused size/colour-map entries from def files"),
         .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
-        .gen_doc_screenshots = b.step("script:gen-doc-screenshots", "Regenerate website screenshot PNGs by running floe_standalone for each known GUI area"),
+        .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe_standalone for each known GUI area"),
     };
 
     // The default is to compile everything.

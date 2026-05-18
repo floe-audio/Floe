@@ -406,3 +406,11 @@ pub const WarnStep = struct {
 pub fn addWarn(owner: *std.Build, warn_msg: []const u8) *WarnStep {
     return WarnStep.create(owner, warn_msg);
 }
+
+pub fn isStepRequested(b: *std.Build, step_name: []const u8) bool {
+    const args = std.process.argsAlloc(b.allocator) catch return false;
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, step_name)) return true;
+    }
+    return false;
+}
