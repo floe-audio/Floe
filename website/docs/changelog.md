@@ -37,7 +37,7 @@ For instance: 0.0.1. Don't change the headings.
 - Undo/redo system added
 - Per-layer stereo width knob
 - Copy/paste/reset added throughout the GUI on right-click menus: parameters, EQ bands, layer tabs, macros, envelope background, and curve maps
-- Reproducible playback added. New panel (3-gots menu -> Instance Config) offers features to reset variability in performances so that you can always render the exact same audio from Floe.
+- Reproducible playback added. New panel (3-dots menu -> Instance Config) offers features to reset variability in performances so that you can always render the exact same audio from Floe.
 - Added a new MIDI CC Assignments panel (3-dots menu) for viewing and controls your MIDI CC mappings to Floe parameters
 - New default background image
 - Library-provided background images can declare attribution via `floe.set_attribution_requirement`, shown as a subtle credit on the Perform page

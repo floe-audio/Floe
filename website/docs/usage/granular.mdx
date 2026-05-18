@@ -16,7 +16,6 @@ import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 - A per-layer granular engine that resynthesises the layer's instrument from short, overlapping snippets of audio called _grains_.
 - Two granular modes: _Granular Playback_ (time-stretched movement through the sample) and _Granular Fixed_ (frozen at one position).
 - Selected from the **Play Mode** menu at the top of the layer's [Playback tab](./layers#playback-tab), alongside _Standard Playback_.
-- Pairs naturally with the [Arpeggiator](./arpeggiator), [LFOs](./layers) and [Macros](./macros) for evolving, performance-ready textures.
 
 ## What is granular synthesis?
 
@@ -41,9 +40,8 @@ The two granular modes share the same parameter set, with one exception: _Granul
 In _Granular Playback_ mode the playhead moves continuously through the sample, and grains are spawned from the playhead's current location. The looping controls remain available, so the playhead can loop in the same way as standard playback.
 
 This mode is great for:
-- Time-stretching a sample to fit a slower tempo without pitching it down.
 - Slow, drifting playback of long evolving samples.
-- Playing the sample backwards with the **Reverse** toggle — grains keep their own size and pitch, but the playhead sweeps the sample from end to start.
+- Blurry time-stretching a sample to fit a slower tempo without pitching it down.
 
 ## Granular Fixed
 
@@ -53,6 +51,7 @@ In _Granular Fixed_ mode the playhead is locked at a fixed position in the sampl
 
 This mode is great for:
 - Freezing a moment of a sample into a sustained pad or drone.
+- Using a very large Spread to source grains from all over the sample.
 - Finding interesting timbres hiding inside a longer recording and holding on them.
 - Combining with a slow LFO on Position to create evolving, scanned textures.
 
@@ -79,5 +78,4 @@ The Random section adds per-grain variation so the texture doesn't sound mechani
 ## Tips
 
 - The Position parameter is automatable — pair it with an LFO or a [macro](./macros) for movement that doesn't require you to ride the knob by hand.
-- Granular Fixed mode is monophonic in feel but polyphonic in voicing: each note you play spawns its own independent grain cloud at the chosen position.
 - The volume envelope, filter and effects all apply to the granular output exactly as they would for standard playback, so you can shape granular textures with the same tools you'd use anywhere else in Floe.

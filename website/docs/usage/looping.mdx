@@ -12,29 +12,56 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
-One of the ways that Floe extends into the realm of sample-based synthesis is by offering some powerful looping features.
+## At a glance
+- Each layer can loop its instrument while a note is held, either using loop points baked into the sample library or your own custom loop region.
+- The available modes adapt to the loaded instrument: library authors can offer built-in loops, restrict which modes are usable, or disable looping altogether.
+- Set on the **Loop mode** selector at the bottom of the layer's [Playback tab](./layers#playback-tab); custom loop points are dragged directly on the waveform.
 
-These looping features adapt to whichever instrument is loaded (the instrument being the sound generator that was loaded into a layer). The GUI makes it clear what the available looping options are. 
+## Loop modes
 
-Most instruments allow you to loop the sound in some way - even when the instrument is a multisampled instrument. However, sample library developers can choose to offer built-in loops, only allow certain modes or disable looping altogether.
+The Loop mode menu offers up to six choices, depending on what the loaded instrument supports:
 
-
-<video width="60%" controls>
-  <source src="/images/loop-controls.mp4" type="video/mp4" />
-  Your browser does not support the video tag.
-</video>
-
-### Looping modes
-
-There are 2 loop modes available in Floe: standard wrap-around looping, and ping-pong looping. In the standard mode, the sound will jump back to the start of the loop when it reaches the end. In ping-pong mode, the sound will alternate playing forwards and backwards through the loop. 
+- **Instrument Default**: use whatever the library author chose for each region — including no looping at all.
+- **Built-in Standard** / **Built-in Ping-Pong**: use the library's built-in loop points, but force every loopable region into the chosen direction. Loop handles are shown on the waveform but are not editable.
+- **No Loop**: don't loop, even if the instrument has built-in loops. Some libraries require looping (e.g. sustained pads) and will ignore this.
+- **Standard**: custom wrap-around looping. When the playhead reaches the end of the loop, it jumps back to the start.
+- **Ping-Pong**: custom looping that alternates between playing forwards and backwards through the loop region.
 
 <GeneratedScreenshot name="loop-mode-menu" alt="Loop Mode Menu" />
 
-### Crossfades
+The custom modes are only available when the instrument allows user-defined loops. For multisampled instruments, the same loop region (as a percentage of each sample) is applied to every region.
 
-A crossfade can be applied to smooth the boundary - even in ping-pong mode. It's normally a good idea to use a crossfade in order to avoid clicks at the loop boundary.
+## Editing the loop region
 
-### Additional controls
+When a custom mode is active, three handles appear on the waveform:
 
-As well as looping, you can control whether the sounds are reversed or have their start position offset.
+- **Loop start** and **loop end**: drag horizontally to set the loop boundaries. Double-click to type an exact value.
+- **Crossfade**: drag to set the crossfade length. The shaded region of the waveform highlights the looped portion, and the crossfade is drawn as a sloped overlay at the boundary.
 
+You can also drag inside the loop region itself to move the whole loop without resizing it. Enabling **Reverse** mirrors the entire display — the loop end appears on the left and the loop start on the right — but the underlying loop points are unchanged.
+
+If the instrument has built-in loops that aren't editable, the handles are still drawn so you can see where the loop sits, but they're greyed out and can't be moved.
+
+## Crossfade
+
+A crossfade smooths the boundary so you don't hear a click when the loop wraps. It usually helps to have a small crossfade enabled, especially for sustained or tonal material.
+
+In **Standard** mode, the crossfade fades from a region just before the loop end into the loop start — the same audio is mixed against itself on either side of the wrap.
+
+In **Ping-Pong** mode, the crossfade is applied at the turnaround points where the direction reverses.
+
+Floe automatically clamps the crossfade length so it can never:
+- Exceed the length of the loop region itself.
+- Extend past the start of the sample (the crossfade needs audio before the loop start to fade in from).
+- In ping-pong mode, extend past the end of the sample (the turnaround at the loop end also needs audio on both sides).
+
+If you make the loop region smaller than the current crossfade, the crossfade shrinks to fit. The crossfade handle is hidden when the loop spans the whole sample, since there's no audio outside the loop to fade against.
+
+## Other playback controls
+
+The same waveform also hosts two controls that aren't strictly part of looping but live alongside it:
+
+- **Sample start offset**: the arrow handle at the bottom-left. Drag it to skip the first part of the sample. The skipped region is drawn in a dimmed colour.
+- **Reverse**: a toggle below the waveform. Plays the sample (and any loop) backwards.
+
+When the sample start is moved into the audio, it's a good idea to add a short attack on the volume envelope to avoid clicks.

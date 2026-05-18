@@ -38,7 +38,7 @@ Open a layer's **Arp tab** and click the _Arpeggiator_ button to enable it. Next
 Below the mode controls is the step sequencer. The number of active steps is set by _Length_.
 
 ### Velocity bars
-Each step has a vertical bar. Click and drag inside the sequencer to set velocities — drag across multiple steps to draw a shape. The bars represent **velocity, not volume**. How that velocity becomes loudness is shaped by the _Velocity to volume curve_ on the layer's [Config tab](./layers#config-tab). By default that curve doesn't start at zero, so even a zero-velocity step still produces a quiet sound.
+Each step has a vertical bar. Click and drag inside the sequencer to set velocities — drag across multiple steps to draw a shape. The bars represent **velocity, not volume**. How that velocity becomes loudness is shaped by the [_Velocity to volume curve_](./midi#velocity) on the layer's Config tab. By default that curve doesn't start at zero, so even a zero-velocity step still produces a quiet sound.
 
 This distinction matters most for multisampled instruments that have separate velocity layers: a step's velocity selects which velocity layer is played, not just how loud it is. A low-velocity step on a piano, for example, gives you the soft-velocity samples rather than just a quieter version of the loud ones.
 
@@ -48,7 +48,7 @@ Under each bar you'll find:
 - **Step number / on-off**: click to mute or unmute the step. A disabled step stays silent but keeps its other settings.
 - **Note / interval**: in _Fixed Notes_ mode this is the MIDI note name; in _Played Notes_ mode it's a semitone offset added to whichever held note is being played at that step. Drag to change, or double-click to type a value.
 - **Tie** (link icon): fuses the step with the previous one to create a single, longer note. Tied steps inherit the velocity and gate of the tie-chain's root step.
-- **Gate** (small knob): the proportion of the step duration that the note actually sounds for. 100% is legato; lower values create staccato patterns.
+- **Gate** (small knob): the proportion of the step duration that the note actually sounds for. 100% is legato-like; lower values create staccato patterns. Gated notes still trigger the Release of the volume envelope on the MAIN tab.
 
 Right-click any step for a context menu with options to reset the step, apply its settings to all steps, or rotate the whole pattern forwards/backwards.
 
