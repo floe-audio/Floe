@@ -1154,6 +1154,25 @@ Box DoFilterCard(GuiBuilder& builder,
                       .size = 18.0f,
                   },
               });
+    } else if (!options.library_id) {
+        auto const placeholder = DoBox(builder,
+                                       {
+                                           .parent = top_row,
+                                           .layout {
+                                               .size = 18.0f,
+                                           },
+                                       });
+        if (auto const rect = BoxRect(builder, placeholder)) {
+            auto const window_rect = builder.imgui.ViewportRectToWindowRect(*rect);
+            auto const centre = window_rect.Centre();
+            auto const radius = window_rect.w * 0.5f;
+            auto const split = -k_pi<f32> / 4.0f;
+            auto* dl = builder.imgui.draw_list;
+            dl->PathArcTo(centre, radius, split, split + k_pi<f32>);
+            dl->PathFillConvex(ToU32({.c = Col::Overlay2, .dark_mode = true, .alpha = 90}));
+            dl->PathArcTo(centre, radius, split + k_pi<f32>, split + (k_pi<f32> * 2.0f));
+            dl->PathFillConvex(ToU32({.c = Col::Overlay1, .dark_mode = true, .alpha = 70}));
+        }
     }
 
     auto const title_box = DoBox(
