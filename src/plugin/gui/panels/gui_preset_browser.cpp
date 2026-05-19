@@ -589,6 +589,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
             .multiline_contents = true,
             .default_collapsed = true,
             .dark_mode = true,
+            .keyboard_focusable = true,
             .store = &context.persistent_store,
         };
 
@@ -647,6 +648,7 @@ void PresetBrowserExtraFilters(GuiBuilder& builder,
             .multiline_contents = true,
             .default_collapsed = true,
             .dark_mode = true,
+            .keyboard_focusable = true,
             .store = &context.persistent_store,
         };
 
@@ -831,6 +833,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                         .heading = "FOLDERS"_s,
                         .multiline_contents = false,
                         .dark_mode = true,
+                        .keyboard_focusable = true,
                         .right_click_menu = PresetFolderRightClickMenu,
                         .store = &context.persistent_store,
                     };

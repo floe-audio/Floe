@@ -68,6 +68,7 @@ For instance: 0.0.1. Don't change the headings.
   - Remove 3-dots menu and instead put the filter selection modes (One, AND, OR) at the top of the filters panel.
   - Remove dividers between filter sections
   - Remove "Show Primary Filter Section Header" option. Libraries/folders are now always collapsible - more consistent and intuitive.
+  - Expanded keyboard navigation: section headings, library/preset-bank cards, and filter buttons in the left panel are now reachable with the arrow keys and toggled with Enter
 - Library development: removed the ability to add custom tags for instruments/IRs. Only tags from the known set are now allowed. This change allowed for simpler and faster code and enforces standardisation. Non-standard tags are now ignored. https://floe.audio/docs/develop/tags-and-folders
 - Info panel moved from the top of Floe into a menu item within the 3-dots menu.
 - The tabs within a layer have been adjusted: MAIN tab now contains the envelope and the filter, and the old 'Play' tab has been renamed CONFIG.

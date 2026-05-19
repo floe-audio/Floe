@@ -826,7 +826,19 @@ Box DoFilterButton(GuiBuilder& builder,
               },
           });
 
-    if (button.button_fired) HandleFilterButtonClick(builder, state, options.common);
+    auto const fired_via_keyboard =
+        options.keyboard_focusable ? key_nav::DoItem(builder,
+                                                     state.keyboard_navigation,
+                                                     {
+                                                         .box = button,
+                                                         .panel = BrowserKeyboardNavigation::Panel::Filters,
+                                                         .id = options.common.clicked_key,
+                                                         .is_selected = options.common.is_selected,
+                                                         .is_tab_item = false,
+                                                     })
+                                   : false;
+
+    if (button.button_fired || fired_via_keyboard) HandleFilterButtonClick(builder, state, options.common);
 
     if (options.right_click_menu)
         DoRightClickMenuForBox(builder, state, button, options.common.clicked_key, options.right_click_menu);
@@ -1241,7 +1253,18 @@ Box DoFilterCard(GuiBuilder& builder,
               });
     }
 
-    if (card_top.button_fired) {
+    auto const card_top_fired_via_keyboard =
+        key_nav::DoItem(builder,
+                        state.keyboard_navigation,
+                        {
+                            .box = card_top,
+                            .panel = BrowserKeyboardNavigation::Panel::Filters,
+                            .id = collapse_id,
+                            .is_selected = is_selected,
+                            .is_tab_item = true,
+                        });
+
+    if (card_top.button_fired || card_top_fired_via_keyboard) {
         if (Contains(card_toggled_ids, collapse_id))
             dyn::RemoveValue(card_toggled_ids, collapse_id);
         else
@@ -1373,7 +1396,19 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                       .button_behaviour = imgui::ButtonConfig {},
                   });
 
-        if (heading_container.button_fired) {
+        auto const heading_fired_via_keyboard =
+            keyboard_focusable ? key_nav::DoItem(builder,
+                                                 state.keyboard_navigation,
+                                                 {
+                                                     .box = heading_container,
+                                                     .panel = BrowserKeyboardNavigation::Panel::Filters,
+                                                     .id = id,
+                                                     .is_selected = false,
+                                                     .is_tab_item = true,
+                                                 })
+                               : false;
+
+        if (heading_container.button_fired || heading_fired_via_keyboard) {
             auto& toggled_ids =
                 default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
             if (Contains(toggled_ids, id))
@@ -1564,6 +1599,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
             .multiline_contents = !library_filters.card_view,
             .default_collapsed = !library_filters.card_view,
             .dark_mode = true,
+            .keyboard_focusable = true,
             .store = &context.store,
         };
 
@@ -1736,6 +1772,7 @@ static void DoBrowserLibraryAuthorFilters(GuiBuilder& builder,
             .multiline_contents = true,
             .default_collapsed = true,
             .dark_mode = true,
+            .keyboard_focusable = true,
             .store = &context.store,
         };
 
@@ -1789,6 +1826,7 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
         .bigger_contents_gap = true,
         .default_collapsed = true,
         .dark_mode = true,
+        .keyboard_focusable = true,
         .store = &context.store,
     };
 
@@ -1806,6 +1844,7 @@ void DoBrowserTagsFilters(GuiBuilder& builder,
             .subsection = true,
             .default_collapsed = true,
             .dark_mode = true,
+            .keyboard_focusable = true,
             .store = &context.store,
         };
 
@@ -2497,6 +2536,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                             },
                         .no_bottom_margin = true,
                         .dark_mode = false,
+                        .keyboard_focusable = false,
                         .name = "browser.favourites-button"_s,
                     });
             }

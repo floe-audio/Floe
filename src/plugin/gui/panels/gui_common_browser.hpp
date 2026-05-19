@@ -499,6 +499,7 @@ struct BrowserSection {
     bool skip_root_folder {};
     bool skip_heading {};
     bool dark_mode {};
+    bool keyboard_focusable {};
     RightClickMenuState::Function right_click_menu {};
     persistent_store::Store* store {};
 
@@ -542,6 +543,7 @@ struct FilterButtonOptions {
     ImageID const* icon;
     bool no_bottom_margin;
     bool dark_mode = true;
+    bool keyboard_focusable = true;
     RightClickMenuState::Function right_click_menu {nullptr};
     String name {};
 };
