@@ -168,7 +168,7 @@ StateSnapshot const& DefaultStateSnapshot() {
         s.macro_names = DefaultMacroNames();
         for (auto const i : Range<u8>(s.fx_order.size))
             s.fx_order[i] = (EffectType)i;
-        s.extras.display_name = "Blank"_s;
+        s.extras.display_name = "Blank Preset"_s;
         s.extras.display_category = {};
         s;
     });
