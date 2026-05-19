@@ -36,19 +36,18 @@ void WriteLibraryIdCache(Span<LibraryIdCacheEntry const> entries) {
     ArenaAllocatorWithInlineStorage<2000> scratch {PageAllocator::Instance()};
     auto const path = LibraryIdCachePath(scratch, true);
 
-    auto file = TRY_OR(OpenFile(path,
-                                {
-                                    .capability = FileMode::Capability::Write,
-                                    .win32_share = FileMode::Share::ReadWrite,
-                                    .creation = FileMode::Creation::CreateAlways,
-                                    .everyone_read_write = true,
-                                }),
-                       {
-                           LogError(ModuleName::SampleLibraryServer,
-                                    "Failed to open library id cache for write: {}",
-                                    error);
-                           return;
-                       });
+    auto file = TRY_OR(
+        OpenFile(path,
+                 {
+                     .capability = FileMode::Capability::Write,
+                     .win32_share = FileMode::Share::ReadWrite,
+                     .creation = FileMode::Creation::CreateAlways,
+                     .everyone_read_write = true,
+                 }),
+        {
+            LogError(ModuleName::SampleLibraryServer, "Failed to open library id cache for write: {}", error);
+            return;
+        });
 
     TRY_OR(file.Lock({.type = FileLockOptions::Type::Exclusive}), return);
     DEFER { auto _ = file.Unlock(); };

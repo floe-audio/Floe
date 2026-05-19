@@ -267,8 +267,7 @@ static void CommitMetadataToEngine(Engine& engine, SavePresetPanelState const& s
 
 void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state) {
     if (IsScreenshotRequest("save-preset"_s)) {
-        if (!builder.imgui.IsModalOpen(state.k_panel_id))
-            builder.imgui.OpenModalViewport(state.k_panel_id);
+        if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
     }
 
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;

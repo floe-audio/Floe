@@ -134,8 +134,7 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
         auto const r = named("loop-mode-menu"_s);
         if (!r) return k_nullopt;
         auto const pad = WwToPixels(10.0f);
-        return CaptureSpec {
-            .rect = {.xywh {r->x - pad, r->y - pad, r->w + (pad * 2), r->h + (pad * 2)}}};
+        return CaptureSpec {.rect = {.xywh {r->x - pad, r->y - pad, r->w + (pad * 2), r->h + (pad * 2)}}};
     }
 
     // --- Mid-panel tabs --------------------------------------------------------------------------------

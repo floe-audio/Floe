@@ -360,8 +360,8 @@ void DoMidiCcPanel(GuiBuilder& builder, MidiCcPanelContext& context, MidiCcPanel
 
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
-    auto const bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-        WwToPixels(f32x2 {560, 450}));
+    auto const bounds =
+        Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(WwToPixels(f32x2 {560, 450}));
     builder.imgui.RegisterNamedRect("midi-cc-panel.modal"_s, builder.imgui.ViewportRectToWindowRect(bounds));
 
     DoBoxViewport(builder,
