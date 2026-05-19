@@ -57,6 +57,18 @@ void OpenFilePickerInstallPackage(FilePickerState& state) {
     state.data = FilePickerStateType::InstallPackage;
 }
 
+constexpr u64 k_save_preset_last_path_store_id = HashFnv1a("file_picker.save_preset_last_path");
+constexpr u64 k_load_preset_last_path_store_id = HashFnv1a("file_picker.load_preset_last_path");
+
+static u64 PresetLastPathStoreId(PresetFilePickerMode mode) {
+    switch (mode) {
+        case PresetFilePickerMode::Save: return k_save_preset_last_path_store_id;
+        case PresetFilePickerMode::Load: return k_load_preset_last_path_store_id;
+        case PresetFilePickerMode::Count: PanicIfReached();
+    }
+    return 0;
+}
+
 static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode mode) {
     String result = paths.always_scanned_folder[ToInt(ScanFolderType::Presets)];
 
@@ -68,7 +80,20 @@ static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode
     return result;
 }
 
-void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths) {
+static String
+PresetDefaultFolder(FloePaths const& paths, persistent_store::Store& store, PresetFilePickerMode mode) {
+    auto const r = persistent_store::Get(store, PresetLastPathStoreId(mode));
+    if (r.tag == persistent_store::GetResult::Found) {
+        auto const& data = r.Get<persistent_store::Value const*>()->data;
+        String const stored {(char const*)data.data, data.size};
+        if (path::IsAbsolute(stored)) return stored;
+    }
+    return PresetFileDefaultPath(paths, mode);
+}
+
+void OpenFilePickerSavePreset(FilePickerState& state,
+                              FloePaths const& paths,
+                              persistent_store::Store& store) {
     static constexpr auto k_save_preset_wildcards = Array {String {"*" FLOE_PRESET_FILE_EXTENSION}};
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
@@ -83,7 +108,7 @@ void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths) {
         FilePickerDialogOptions {
             .type = FilePickerDialogOptions::Type::SaveFile,
             .title = "Save Floe Preset",
-            .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Save),
+            .default_folder = PresetDefaultFolder(paths, store, PresetFilePickerMode::Save),
             .default_filename = "untitled" FLOE_PRESET_FILE_EXTENSION,
             .filters = k_filters,
             .allow_multiple_selection = false,
@@ -93,7 +118,9 @@ void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths) {
     state.data = FilePickerStateType::SavePreset;
 }
 
-void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths) {
+void OpenFilePickerLoadPreset(FilePickerState& state,
+                              FloePaths const& paths,
+                              persistent_store::Store& store) {
     static constexpr auto k_preset_wildcards = Array {"*.floe-*"_s, "*.mirage-*"_s};
     static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
         {
@@ -108,13 +135,24 @@ void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths) {
         FilePickerDialogOptions {
             .type = FilePickerDialogOptions::Type::OpenFile,
             .title = "Load Floe Preset",
-            .default_folder = PresetFileDefaultPath(paths, PresetFilePickerMode::Load),
+            .default_folder = PresetDefaultFolder(paths, store, PresetFilePickerMode::Load),
             .filters = k_filters,
             .allow_multiple_selection = false,
         }
             .Clone(out.file_picker_options_arena);
 
     state.data = FilePickerStateType::LoadPreset;
+}
+
+static void
+RememberPresetPath(FilePickerContext const& context, String picked_path, PresetFilePickerMode mode) {
+    dyn::Assign(context.paths.file_picker_last_path[ToInt(mode)], picked_path);
+    auto const dir = path::Directory(picked_path);
+    if (!dir) return;
+    auto& store = context.engine.shared_engine_systems.persistent_store;
+    auto const id = PresetLastPathStoreId(mode);
+    persistent_store::RemoveValue(store, id, k_nullopt);
+    persistent_store::AddValue(store, id, Span<u8 const> {(u8 const*)dir->data, dir->size});
 }
 
 void CheckForFilePickerResults(GuiFrameInput const& frame_input,
@@ -149,15 +187,15 @@ void CheckForFilePickerResults(GuiFrameInput const& frame_input,
             break;
         }
         case FilePickerStateType::SavePreset: {
-            dyn::Assign(context.paths.file_picker_last_path[ToInt(PresetFilePickerMode::Save)],
-                        frame_input.file_picker_results.first->data);
-            SaveCurrentStateToFile(context.engine, frame_input.file_picker_results.first->data);
+            auto const& saved_path = frame_input.file_picker_results.first->data;
+            RememberPresetPath(context, saved_path, PresetFilePickerMode::Save);
+            SaveCurrentStateToFile(context.engine, saved_path);
             break;
         }
         case FilePickerStateType::LoadPreset: {
-            dyn::Assign(context.paths.file_picker_last_path[ToInt(PresetFilePickerMode::Load)],
-                        frame_input.file_picker_results.first->data);
-            LoadPresetFromFile(context.engine, frame_input.file_picker_results.first->data);
+            auto const& loaded_path = frame_input.file_picker_results.first->data;
+            RememberPresetPath(context, loaded_path, PresetFilePickerMode::Load);
+            LoadPresetFromFile(context.engine, loaded_path);
             break;
         }
     }

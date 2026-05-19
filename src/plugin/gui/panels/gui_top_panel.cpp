@@ -488,7 +488,9 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             auto const preset_load =
                 do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
             if (preset_load.button_fired)
-                OpenFilePickerLoadPreset(g.file_picker_state, g.shared_engine_systems.paths);
+                OpenFilePickerLoadPreset(g.file_picker_state,
+                                         g.shared_engine_systems.paths,
+                                         g.shared_engine_systems.persistent_store);
         }
     }
 

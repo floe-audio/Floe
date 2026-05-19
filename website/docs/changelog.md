@@ -73,6 +73,7 @@ For instance: 0.0.1. Don't change the headings.
 - The tabs within a layer have been adjusted: MAIN tab now contains the envelope and the filter, and the old 'Play' tab has been renamed CONFIG.
 - Added ability to reset parameters and groups (try right-clicking on things!) to their default settings OR the settings of the last loaded preset.
 - Lua: add `vignette_intensity` for controlling background image
+- Save and load preset functions now remember the folder that you chose and will use that when you next use the action.
 
 ## 1.2.0-beta.1
 Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.

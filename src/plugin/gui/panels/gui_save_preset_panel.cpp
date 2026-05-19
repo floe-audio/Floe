@@ -362,14 +362,18 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                 button_container,
                                 {.text = "Save As New"_s, .tooltip = "Save the preset as a new file"_s})) {
                             CommitMetadataToEngine(context.engine, state);
-                            OpenFilePickerSavePreset(context.file_picker_state, context.paths);
+                            OpenFilePickerSavePreset(context.file_picker_state,
+                                                     context.paths,
+                                                     context.engine.shared_engine_systems.persistent_store);
                             if (!state.modeless) builder.imgui.CloseTopModal();
                         }
                     } else if (TextButton(builder,
                                           button_container,
                                           {.text = "Save"_s, .tooltip = "Save the preset to a new file"_s})) {
                         CommitMetadataToEngine(context.engine, state);
-                        OpenFilePickerSavePreset(context.file_picker_state, context.paths);
+                        OpenFilePickerSavePreset(context.file_picker_state,
+                                                 context.paths,
+                                                 context.engine.shared_engine_systems.persistent_store);
                         if (!state.modeless) builder.imgui.CloseTopModal();
                     }
                 },

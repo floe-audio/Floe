@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 
 #include "engine/engine.hpp"
@@ -51,9 +52,9 @@ void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
 
 void OpenFilePickerInstallPackage(FilePickerState& state);
 
-void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths);
+void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths, persistent_store::Store& store);
 
-void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths);
+void OpenFilePickerLoadPreset(FilePickerState& state, FloePaths const& paths, persistent_store::Store& store);
 
 void CheckForFilePickerResults(GuiFrameInput const& frame_input,
                                FilePickerState& state,
