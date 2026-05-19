@@ -80,15 +80,20 @@ static String PresetFileDefaultPath(FloePaths const& paths, PresetFilePickerMode
     return result;
 }
 
-static String
-PresetDefaultFolder(FloePaths const& paths, persistent_store::Store& store, PresetFilePickerMode mode) {
+static Optional<String> PersistedPresetFolder(persistent_store::Store& store, PresetFilePickerMode mode) {
     auto const r = persistent_store::Get(store, PresetLastPathStoreId(mode));
-    if (r.tag == persistent_store::GetResult::Found) {
-        auto const& data = r.Get<persistent_store::Value const*>()->data;
-        String const stored {(char const*)data.data, data.size};
-        if (path::IsAbsolute(stored)) return stored;
-    }
-    return PresetFileDefaultPath(paths, mode);
+    if (r.tag != persistent_store::GetResult::Found) return k_nullopt;
+    auto const& data = r.Get<persistent_store::Value const*>()->data;
+    String const stored {(char const*)data.data, data.size};
+    if (!path::IsAbsolute(stored)) return k_nullopt;
+    return stored;
+}
+
+static String FirstTimeSavePresetFolder(FloePaths const& paths, ArenaAllocator& arena) {
+    auto const base = paths.always_scanned_folder[ToInt(ScanFolderType::Presets)];
+    auto const user_dir = path::Join(arena, Array {base, "User"_s});
+    auto _ = CreateDirectory(user_dir, {.create_intermediate_directories = true});
+    return user_dir;
 }
 
 void OpenFilePickerSavePreset(FilePickerState& state,
@@ -104,11 +109,15 @@ void OpenFilePickerSavePreset(FilePickerState& state,
 
     auto& out = GuiIo().out;
 
+    auto const persisted = PersistedPresetFolder(store, PresetFilePickerMode::Save);
+    auto const default_folder =
+        persisted ? *persisted : FirstTimeSavePresetFolder(paths, out.file_picker_options_arena);
+
     out.file_picker_dialog =
         FilePickerDialogOptions {
             .type = FilePickerDialogOptions::Type::SaveFile,
             .title = "Save Floe Preset",
-            .default_folder = PresetDefaultFolder(paths, store, PresetFilePickerMode::Save),
+            .default_folder = default_folder,
             .default_filename = "untitled" FLOE_PRESET_FILE_EXTENSION,
             .filters = k_filters,
             .allow_multiple_selection = false,
@@ -135,7 +144,8 @@ void OpenFilePickerLoadPreset(FilePickerState& state,
         FilePickerDialogOptions {
             .type = FilePickerDialogOptions::Type::OpenFile,
             .title = "Load Floe Preset",
-            .default_folder = PresetDefaultFolder(paths, store, PresetFilePickerMode::Load),
+            .default_folder = PersistedPresetFolder(store, PresetFilePickerMode::Load)
+                                  .ValueOr(PresetFileDefaultPath(paths, PresetFilePickerMode::Load)),
             .filters = k_filters,
             .allow_multiple_selection = false,
         }

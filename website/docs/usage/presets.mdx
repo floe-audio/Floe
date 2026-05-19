@@ -39,7 +39,7 @@ Click the <FAIcon icon="fa-solid fa-floppy-disk" /> save button in the [preset s
 - **Tags** — checkbox-style tags grouped by category (Sound source, Real instrument category, Sound type, and so on). Tags drive the preset browser's filters, so adding accurate tags makes a preset easier to find later. Some categories will grey out remaining tags once a related tag is selected to keep combinations sensible.
 - **Cancel** — close the panel without saving.
 - **Overwrite** — only appears when the current state was loaded from an existing preset file; saves over that file in place.
-- **Save / Save As New** — opens a file picker to choose where on disk to save the `.floe-preset` file. The file name you pick becomes the preset's display name in the browser.
+- **Save / Save As New** — opens a file picker to choose where on disk to save the `.floe-preset` file. The file name you pick becomes the preset's display name in the browser. The first time you save, the picker opens in a `User` folder inside your default preset folder (created automatically); after that, it remembers wherever you last saved.
 
 At a technical level, presets are just portable files (`.floe-preset`) arranged into folders on your computer. You can rename and organise them as you wish using your usual file browser (Finder, File Explorer, etc.) - Floe automatically detects changes in its [preset folders](../usage/folders) and immediately displays the new hierarchy on the preset browser. The name of the preset file is the name you see in Floe's preset browser. The description and tags are stored inside the preset file itself and can only be edited by using Floe to save over the preset.
 
