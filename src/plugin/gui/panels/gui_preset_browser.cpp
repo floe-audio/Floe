@@ -41,20 +41,24 @@ struct PresetCursor {
 
 static Optional<PresetCursor>
 CurrentCursor(PresetBrowserContext const& context, u64 snapshot_hash, u64 known_preset_id) {
-    if (!snapshot_hash) return k_nullopt;
+    if (!snapshot_hash && !known_preset_id) return k_nullopt;
 
     Optional<PresetCursor> first_hash_match;
+    Optional<PresetCursor> known_id_match;
     for (auto const [folder_index, folder] : Enumerate(context.presets_snapshot.folders)) {
         ASSERT(folder->folder);
         for (auto const [preset_index, preset] : Enumerate(folder->folder->presets)) {
-            if (preset.snapshot_hash != snapshot_hash) continue;
             PresetCursor const cursor {folder_index, preset_index};
-            // Disambiguate duplicate-content presets: prefer the file the user actually loaded.
-            if (known_preset_id && preset.full_path_hash == known_preset_id) return cursor;
-            if (!first_hash_match) first_hash_match = cursor;
+            if (known_preset_id && preset.full_path_hash == known_preset_id) {
+                if (preset.snapshot_hash == snapshot_hash) return cursor;
+                if (!known_id_match) known_id_match = cursor;
+            }
+            if (snapshot_hash && preset.snapshot_hash == snapshot_hash && !first_hash_match)
+                first_hash_match = cursor;
         }
     }
 
+    if (known_id_match) return known_id_match;
     return first_hash_match;
 }
 

@@ -829,7 +829,10 @@ void SaveCurrentStateToFile(Engine& engine, String path) {
         // shows "modified" and the new hash identifies the saved preset.
         state.extras.origin_preset_hash = outcome.Value();
         state.extras.modified_from_origin_preset = false;
-        SetPinnedSnapshot(engine, state, path, 0);
+        auto const preserved_known_preset_id = path::Equal(engine.pinned_snapshot.preset_path, path)
+                                                   ? engine.pinned_snapshot.known_preset_id
+                                                   : 0;
+        SetPinnedSnapshot(engine, state, path, preserved_known_preset_id);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
         engine.error_notifications.RemoveError(error_id);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
