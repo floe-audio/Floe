@@ -11,12 +11,6 @@
 
 namespace {
 
-// Same shape as persistent_store::ChunkHeader so this file is trivially inspectable with the same tools.
-struct ChunkHeader {
-    u64 id;
-    u32 size;
-};
-
 constexpr String k_cache_filename = "library_id_cache.bin"_s;
 
 } // namespace
@@ -32,7 +26,7 @@ String LibraryIdCachePath(ArenaAllocator& arena, bool create_parent_dir) {
     return path;
 }
 
-void WriteLibraryIdCache(Span<LibraryIdCacheEntry const> entries) {
+void WriteLibraryIdCache(Span<String const> id_strings) {
     ArenaAllocatorWithInlineStorage<2000> scratch {PageAllocator::Instance()};
     auto const path = LibraryIdCachePath(scratch, true);
 
@@ -58,10 +52,10 @@ void WriteLibraryIdCache(Span<LibraryIdCacheEntry const> entries) {
         auto _ = file.Flush();
     };
 
-    for (auto const& e : entries) {
-        ChunkHeader const header {.id = e.id, .size = (u32)e.id_string.size};
-        TRY_OR(buffered.Writer().WriteBytes({(u8 const*)&header, sizeof(header)}), return);
-        if (e.id_string.size) TRY_OR(buffered.Writer().WriteBytes(e.id_string.ToConstByteSpan()), return);
+    for (auto const& id_string : id_strings) {
+        auto const size = (u32)id_string.size;
+        TRY_OR(buffered.Writer().WriteBytes({(u8 const*)&size, sizeof(size)}), return);
+        if (size) TRY_OR(buffered.Writer().WriteBytes(id_string.ToConstByteSpan()), return);
     }
 }
 
@@ -85,13 +79,12 @@ void LoadLibraryIdCache(ArenaAllocator& arena) {
     auto const* p = (u8 const*)data.data;
     auto const* end = p + data.size;
     while (p < end) {
-        if ((usize)(end - p) < sizeof(ChunkHeader)) break;
-        ChunkHeader header {};
-        __builtin_memcpy_inline(&header, p, sizeof(ChunkHeader));
-        p += sizeof(ChunkHeader);
-        if ((usize)(end - p) < header.size) break;
-        // Re-register so future LookupLibraryIdString calls can resolve this hash to its name.
-        if (header.size) sample_lib::HashLibraryIdString(String {(char const*)p, header.size});
-        p += header.size;
+        if ((usize)(end - p) < sizeof(u32)) break;
+        u32 size;
+        __builtin_memcpy_inline(&size, p, sizeof(size));
+        p += sizeof(size);
+        if ((usize)(end - p) < size) break;
+        if (size) sample_lib::HashLibraryIdString(String {(char const*)p, size});
+        p += size;
     }
 }

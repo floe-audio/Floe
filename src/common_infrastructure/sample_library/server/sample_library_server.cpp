@@ -326,10 +326,10 @@ UpdateLibraryJobs(Server& server, ArenaAllocator& scratch_arena, Optional<Direct
     // server iteration; comparing the pre/post hash avoids rewriting when nothing changed.
     if constexpr (!PRODUCTION_BUILD) {
         if (libraries_hash() != libraries_hash_before) {
-            DynamicArray<LibraryIdCacheEntry> entries {scratch_arena};
+            DynamicArray<String> id_strings {scratch_arena};
             for (auto& node : server.libraries)
-                dyn::Append(entries, {node.value.lib->id, node.value.lib->id_string});
-            WriteLibraryIdCache(entries);
+                dyn::Append(id_strings, node.value.lib->id_string);
+            WriteLibraryIdCache(id_strings);
         }
     }
 
