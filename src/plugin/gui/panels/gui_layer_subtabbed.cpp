@@ -725,11 +725,8 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
                                     .name = layer_index == 0 ? "layer.page-tabs"_s : String {},
                                 });
 
-    auto const experimental_params = prefs::GetBool(g.prefs, ExperimentalParamsPreferenceDescriptor());
-
     for (auto const i : Range(ToInt(LayerPageType::Count))) {
         auto const page_type = (LayerPageType)i;
-        if (page_type == LayerPageType::Arp && !experimental_params) continue;
         bool const is_selected = page_type == layer_state.selected_page;
         bool const tab_has_active_content = ({
             bool result = false;
@@ -1824,7 +1821,6 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
         else if (IsScreenshotRequest("layer-playback-granular-fixed"_s))
             screenshot_mode = param_values::PlayMode::GranularFixed;
         if (screenshot_mode) {
-            prefs::SetValue(g.prefs, ExperimentalParamsPreferenceDescriptor(), true);
             SetParameterValue(g.engine.processor,
                               ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode),
                               (f32)*screenshot_mode,
@@ -1851,18 +1847,14 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-    auto const experimental_params = prefs::GetBool(g.prefs, ExperimentalParamsPreferenceDescriptor());
-
     // Engine type menu
-    if (experimental_params) {
+    {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
         DoMenuParameter(g, page, param, {.width = layout::k_fill_parent, .label = false});
     }
 
-    auto const play_mode =
-        experimental_params ? params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode)
-                            : param_values::PlayMode::Standard;
+    auto const play_mode = params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode);
 
     // Waveform display + info strip
     {

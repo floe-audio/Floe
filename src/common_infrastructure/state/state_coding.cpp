@@ -594,6 +594,10 @@ enum class StateVersion : u16 {
 
     AddedStateExtras,
 
+    // Promoted the granular and arpeggiator parameters from experimental to permanent. No file-format
+    // change; the pre-fill block defaults any of these IDs that are missing in older files.
+    PromotedGranularAndArpParams,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -608,7 +612,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 319,
+    static_assert(k_num_non_experimental_parameters == 382,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -1632,6 +1636,51 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             for (auto const i : Range(k_num_parameters))
                 if (k_param_descriptors[i].flags.experimental)
                     state.param_values[i] = k_param_descriptors[i].default_linear_value;
+
+            // Params promoted from experimental to permanent in PromotedGranularAndArpParams.
+            // Older files may lack these IDs (if experimental was off when saved); default them so
+            // the loaded preset starts from sensible values. If the IDs are present in the file,
+            // they'll be overwritten by the loop below — so presets that *did* use these params
+            // continue to sound identical.
+            if (coder.version < StateVersion::PromotedGranularAndArpParams) {
+                constexpr Array k_promoted_layer_params {
+                    LayerParamIndex::PlayMode,
+                    LayerParamIndex::GranularSpeed,
+                    LayerParamIndex::GranularPosition,
+                    LayerParamIndex::GranularDensity,
+                    LayerParamIndex::GranularLength,
+                    LayerParamIndex::GranularSpread,
+                    LayerParamIndex::GranularSmoothing,
+                    LayerParamIndex::GranularRandomPan,
+                    LayerParamIndex::GranularRandomDetune,
+                    LayerParamIndex::GranularRandomDirection,
+                    LayerParamIndex::GranularHarmony,
+                    LayerParamIndex::ArpOn,
+                    LayerParamIndex::ArpMode,
+                    LayerParamIndex::ArpNoteOrder,
+                    LayerParamIndex::ArpTriggerMode,
+                    LayerParamIndex::ArpRate,
+                    LayerParamIndex::ArpAutoRate,
+                    LayerParamIndex::ArpLength,
+                    LayerParamIndex::ArpHumanise,
+                    LayerParamIndex::ArpOctavePolyrate,
+                    LayerParamIndex::ArpOneShot,
+                };
+                for (auto const layer_index : Range(k_num_layers)) {
+                    for (auto const lp : k_promoted_layer_params) {
+                        auto const idx = ToInt(ParamIndexFromLayerParamIndex(layer_index, lp));
+                        state.param_values[idx] = k_param_descriptors[idx].default_linear_value;
+                    }
+                    // Explicit values for params whose "no behaviour change" state is more important
+                    // than the current default: before these existed, layers always played in Standard
+                    // mode with the arpeggiator off. Pin these so future default changes can't alter
+                    // how old presets sound.
+                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode)) =
+                        (f32)param_values::PlayMode::Standard;
+                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpOn)) =
+                        0.0f;
+                }
+            }
         }
 
         for (auto const i : Range(coder.IsReading() ? num_params : k_num_parameters)) {

@@ -3285,7 +3285,6 @@ consteval auto CreateParams() {
             .name = "Play Mode"_s,
             .gui_label = "Mode"_s,
             .tooltip = "How this layer plays its samples"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularSpeed) = Args {
             .id = id(region, 58), // never change
@@ -3309,7 +3308,6 @@ consteval auto CreateParams() {
             .name = "Granular Speed"_s,
             .gui_label = "Speed"_s,
             .tooltip = "How fast the grain position moves through the sample"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularPosition) = Args {
             .id = id(region, 59), // never change
@@ -3318,7 +3316,6 @@ consteval auto CreateParams() {
             .name = "Granular Position"_s,
             .gui_label = "Position"_s,
             .tooltip = "Where in the sample grains are sourced from"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularDensity) = Args {
             .id = id(region, 60), // never change
@@ -3328,7 +3325,6 @@ consteval auto CreateParams() {
             .gui_label = "Density"_s,
             .tooltip =
                 "Controls how densely grains overlap, relative to the grain length. At the midpoint, grains play end-to-end. Lower values add gaps between grains for a sparse texture; higher values make grains overlap for a denser, richer sound"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
@@ -3337,7 +3333,6 @@ consteval auto CreateParams() {
             .name = "Granular Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Duration of each grain snippet"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularSpread) = Args {
             .id = id(region, 61), // never change
@@ -3356,7 +3351,6 @@ consteval auto CreateParams() {
             .gui_label = "Spread"_s,
             .tooltip =
                 "Region around the playhead where grains can start from. Small values focus grains near the playhead, large values spread them across a wider area"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularSmoothing) = Args {
             .id = id(region, 62), // never change
@@ -3366,7 +3360,6 @@ consteval auto CreateParams() {
             .gui_label = "Smooth"_s,
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularRandomPan) = Args {
             .id = id(region, 63), // never change
@@ -3376,7 +3369,6 @@ consteval auto CreateParams() {
             .gui_label = "Pan"_s,
             .tooltip =
                 "Randomise the stereo position of each grain. At 0% all grains play centred, at 100% grains can be panned anywhere from fully left to fully right"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularRandomDetune) = Args {
             .id = id(region, 64), // never change
@@ -3386,7 +3378,6 @@ consteval auto CreateParams() {
             .gui_label = "Detune"_s,
             .tooltip =
                 "Randomise the pitch of each grain. At 0% all grains play at the original pitch, at 100% grains can be detuned up to a semitone up or down"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularRandomDirection) = Args {
             .id = id(region, 65), // never change
@@ -3396,7 +3387,6 @@ consteval auto CreateParams() {
             .gui_label = "Direction"_s,
             .tooltip =
                 "Chance that grains spawn playing in the opposite direction to the main playhead. At 0% all grains play in the main direction, at 100% there's a 50/50 chance of each grain playing forwards or backwards"_s,
-            .flags = {.experimental = true},
         };
         lp(GranularHarmony) = Args {
             .id = id(region, 66), // never change
@@ -3406,7 +3396,6 @@ consteval auto CreateParams() {
             .gui_label = "Harmony"_s,
             .tooltip =
                 "Chance that grains spawn at one of the selected harmony intervals instead of the root pitch. Configure which intervals are active using the Intervals button"_s,
-            .flags = {.experimental = true},
         };
 
         // Arpeggiator
@@ -3418,7 +3407,6 @@ consteval auto CreateParams() {
             .name = "Arpeggiator"_s,
             .gui_label = "Arpeggiator"_s,
             .tooltip = "Enable/disable the arpeggiator"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpMode) = Args {
             .id = id(region, 74), // never change
@@ -3430,7 +3418,6 @@ consteval auto CreateParams() {
             .name = "Arpeggiator Mode"_s,
             .gui_label = "Mode"_s,
             .tooltip = "Played Notes: arpeggiates held notes. Fixed Notes: plays a recorded note sequence"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpNoteOrder) = Args {
             .id = id(region, 70), // never change
@@ -3442,7 +3429,6 @@ consteval auto CreateParams() {
             .name = "Note Order"_s,
             .gui_label = "Order"_s,
             .tooltip = "Order in which held notes are played"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpTriggerMode) = Args {
             .id = id(region, 71), // never change
@@ -3455,7 +3441,6 @@ consteval auto CreateParams() {
             .gui_label = "Trigger"_s,
             .tooltip =
                 "Free: arpeggiator keeps running when new notes are pressed. Retrigger: arpeggiator restarts from step 1"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpRate) = Args {
             .id = id(region, 72), // never change
@@ -3467,7 +3452,6 @@ consteval auto CreateParams() {
             .name = "Rate"_s,
             .gui_label = "Rate"_s,
             .tooltip = "Arpeggiator rate (synced to host tempo)"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpAutoRate) = Args {
             .id = id(region, 76), // never change
@@ -3477,7 +3461,6 @@ consteval auto CreateParams() {
             .gui_label = "Auto Rate"_s,
             .tooltip =
                 "Automatically pick an arpeggiator rate based on the sliced instrument's loop length and host tempo."_s,
-            .flags = {.experimental = true},
         };
         lp(ArpLength) = Args {
             .id = id(region, 73), // never change
@@ -3486,7 +3469,6 @@ consteval auto CreateParams() {
             .name = "Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Number of active steps in the arpeggiator pattern"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpHumanise) = Args {
             .id = id(region, 75), // never change
@@ -3496,7 +3478,6 @@ consteval auto CreateParams() {
             .gui_label = "Humanise"_s,
             .tooltip =
                 "Add random timing variation to note starts and velocity. Higher values create looser, more human-like performance"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpOctavePolyrate) = Args {
             .id = id(region, 77), // never change
@@ -3509,7 +3490,6 @@ consteval auto CreateParams() {
             .gui_label = "Polyrate"_s,
             .tooltip =
                 "Each octave plays at a different rate. Double means each octave up is 2x faster. 3:2 and 4:3 create polyrhythmic relationships between octaves"_s,
-            .flags = {.experimental = true},
         };
         lp(ArpOneShot) = Args {
             .id = id(region, 78), // never change
@@ -3519,7 +3499,6 @@ consteval auto CreateParams() {
             .gui_label = "One Shot"_s,
             .tooltip =
                 "When enabled, the arpeggiator plays through the sequence once and then stops instead of looping"_s,
-            .flags = {.experimental = true},
         };
     }
 
