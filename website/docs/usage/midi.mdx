@@ -17,6 +17,18 @@ Floe is controllable via MIDI in the typical ways you'd expect from a software i
 
 ## MIDI CC
 
+### Default MIDI CC mappings
+
+Floe applies some default MIDI CC mappings when it starts. These are the defaults out of the box, but you have full control to remove or change them — see the sections below. The default mappings are:
+
+<ul>
+{[...data["default-cc-mappings"]].sort((a, b) => a.cc - b.cc).map((mapping, index) => (
+  <li key={index}><strong>CC {mapping.cc}{mapping.cc === 1 ? " (Modwheel)" : ""}</strong> — {mapping.name.startsWith(mapping.module) ? mapping.name : `${mapping.module} ${mapping.name}`}</li>
+))}
+</ul>
+
+You can disable the whole set via the **Default CC mappings** option in the MIDI CC Assignments panel (or in Preferences). While that option is enabled, the defaults are reapplied every time Floe starts — so removing an individual default mapping only clears it from the current instance until the next restart.
+
 ### MIDI CC Assignments panel
 
 You can view and manage all MIDI CC assignments from the **MIDI CC Assignments** panel. Open it from the top-panel menu (the three-dots button).
@@ -35,7 +47,7 @@ You can remove a mapping by right-clicking on the parameter and selecting **Remo
 
 ### How mappings are saved
 
-MIDI CC mappings are saved with your DAW project. They only apply to the current instance of Floe in your DAW — they won't be applied if you load a new instance of Floe.
+MIDI CC mappings are saved with your DAW project. By default they only apply to the current instance of Floe in your DAW — they won't be applied if you load a new instance. If you want a mapping to apply to every new instance, **pin** it (see below).
 
 Preset files do not save MIDI CC mappings. So you can load presets and your MIDI CC mappings will remain.
 
@@ -47,18 +59,6 @@ You can **pin** a MIDI CC mapping so that it is automatically applied to all new
 - Right-click a parameter that has a CC mapping and select **Pin MIDI CC**.
 
 Pinned mappings are stored globally in your preferences, not in your DAW project.
-
-### Default MIDI CC mappings
-
-Floe applies some default MIDI CC mappings when it starts. You can toggle this on or off in the MIDI CC Assignments panel, or in Preferences. The default mappings are:
-
-<ul>
-{data["default-cc-mappings"].map((mapping, index) => (
-  <li key={index}>CC {mapping.cc}: {mapping.name} ({mapping.module})</li>
-))}
-</ul>
-
-Default mappings are shown with a pin icon in the MIDI CC Assignments panel. If you remove a default mapping, it will reappear when Floe restarts (as long as the default mappings option is enabled).
 
 ## Sustain Pedal
 
