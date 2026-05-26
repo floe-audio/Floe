@@ -1111,7 +1111,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
 
     constexpr f32 k_menu_width = 135;
-    constexpr f32 k_menu_label_width = 50;
+    constexpr f32 k_menu_label_width = 70;
 
     auto const page = DoBox(g.builder,
                             {
@@ -1152,43 +1152,89 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     DoWhitespace(g.builder, page, 10);
 
     // Menu + label rows
-    auto const do_menu_label_row = [&](LayerParamIndex param_index, u64 loc_hash = SourceLocationHash()) {
-        auto const param = params.DescribedValue(layer_index, param_index);
+    auto const do_menu_label_row =
+        [&](LayerParamIndex param_index, String warning_tooltip = {}, u64 loc_hash = SourceLocationHash()) {
+            auto const param = params.DescribedValue(layer_index, param_index);
 
-        auto const row = DoBox(g.builder,
-                               {
-                                   .parent = page,
-                                   .id_extra = loc_hash,
-                                   .layout {
-                                       .size = layout::k_hug_contents,
-                                       .contents_gap = k_page_row_gap_x,
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                   },
-                               });
+            auto const row = DoBox(g.builder,
+                                   {
+                                       .parent = page,
+                                       .id_extra = loc_hash,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                   });
 
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = param.info.gui_label,
-                  .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
-                  .text_justification = TextJustification::CentredRight,
-                  .layout {
-                      .size = {k_menu_label_width, k_font_body_size},
-                  },
-              });
+            auto const label_cell = DoBox(g.builder,
+                                          {
+                                              .parent = row,
+                                              .layout {
+                                                  .size = {k_menu_label_width, k_font_body_size},
+                                                  .contents_padding = {.r = k_page_row_gap_x},
+                                                  .contents_gap = 3,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_align = layout::Alignment::End,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
 
-        DoMenuParameter(g,
-                        row,
-                        param,
-                        {
-                            .width = k_menu_width,
-                            .greyed_out = greyed_out,
-                            .label = false,
-                        });
-    };
+            if (warning_tooltip.size)
+                DoBox(g.builder,
+                      {
+                          .parent = label_cell,
+                          .text = ICON_FA_TRIANGLE_EXCLAMATION,
+                          .size_from_text = true,
+                          .font = FontType::Icons,
+                          .text_colours = {Col {.c = Col::Yellow}},
+                          .tooltip = warning_tooltip,
+                      });
 
-    do_menu_label_row(LayerParamIndex::LfoDestination);
+            DoBox(g.builder,
+                  {
+                      .parent = label_cell,
+                      .text = param.info.gui_label,
+                      .size_from_text = true,
+                      .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                  });
+
+            DoMenuParameter(g,
+                            row,
+                            param,
+                            {
+                                .width = k_menu_width,
+                                .greyed_out = greyed_out,
+                                .label = false,
+                            });
+        };
+
+    auto const dest_warning = ({
+        String s {};
+        if (!greyed_out) {
+            switch (
+                params.IntValue<param_values::LfoDestination>(layer_index, LayerParamIndex::LfoDestination)) {
+                case param_values::LfoDestination::Filter:
+                    if (!params.BoolValue(layer_index, LayerParamIndex::FilterOn))
+                        s = "Filter is off — turn the filter on to hear LFO modulation"_s;
+                    break;
+
+                case param_values::LfoDestination::GranularPosition:
+                    if (!IsGranular(
+                            params.IntValue<param_values::PlayMode>(layer_index, LayerParamIndex::PlayMode)))
+                        s = "Playback mode is not granular — switch to a granular playback mode to hear LFO modulation"_s;
+                    break;
+
+                case param_values::LfoDestination::Volume:
+                case param_values::LfoDestination::Pan:
+                case param_values::LfoDestination::Pitch:
+                case param_values::LfoDestination::Count: break;
+            }
+        }
+        s;
+    });
+
+    do_menu_label_row(LayerParamIndex::LfoDestination, dest_warning);
     do_menu_label_row(LayerParamIndex::LfoShape);
     do_menu_label_row(LayerParamIndex::LfoRestart);
 
