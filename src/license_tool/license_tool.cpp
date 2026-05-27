@@ -34,18 +34,32 @@ static void PrintHex(Span<u8 const> data) {
         StdPrintF(StdStream::Out, "{02x}", byte);
 }
 
+static void PrintCByteArray(Span<u8 const> data) {
+    StdPrintF(StdStream::Out, "{{");
+    for (auto const i : Range(data.size)) {
+        if (i > 0) StdPrintF(StdStream::Out, ", ");
+        StdPrintF(StdStream::Out, "0x{02x}", data[i]);
+    }
+    StdPrintF(StdStream::Out, "}}");
+}
+
 static ErrorCodeOr<int> DoGenerateKeypair() {
     Array<u8, k_ed25519_public_key_size> public_key;
     Array<u8, k_ed25519_secret_key_size> secret_key;
     Ed25519KeypairCreate(public_key.data, secret_key.data);
 
-    StdPrintF(StdStream::Out, "Public key:  ");
+    StdPrintF(StdStream::Out, "Public key (hex):  ");
     PrintHex(public_key);
     StdPrintF(StdStream::Out, "\n");
 
-    StdPrintF(StdStream::Out, "Secret key:  ");
+    StdPrintF(StdStream::Out, "Secret key (hex):  ");
     PrintHex(secret_key);
-    StdPrintF(StdStream::Out, "\n");
+    StdPrintF(StdStream::Out, "\n\n");
+
+    StdPrintF(StdStream::Out, "Add to k_trusted_signing_keys_storage in license.cpp with a fresh id:\n");
+    StdPrintF(StdStream::Out, "    .public_key = ");
+    PrintCByteArray(public_key);
+    StdPrintF(StdStream::Out, ",\n");
 
     return 0;
 }
