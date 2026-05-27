@@ -61,7 +61,17 @@ Floe doesn't remember packages after installation; they're just a means to get c
 
 ### Encrypted packages
 
-Some packages use the `.floe-pkg-enc` format. These are encrypted and require a license key to install. When you install an encrypted package, Floe will prompt you to paste your license key. The license key is a text block provided by the package developer when you purchase the package.
+Some packages use the `.floe-pkg-enc` format. Installation is the same as any other package — click 'Install package' and select the file — with one extra step: Floe prompts for a license key.
+
+![License key prompt](/images/encrypted-package-key-required.png)
+
+Paste the license key provided by the package developer, then click **Activate**. The whole process is offline; no internet connection or account is required.
+
+A license key is personal to you and embeds your identifying information, so don't share it or post it publicly.
+
+Once installed, Floe shows who the package is licensed to:
+
+![Installed encrypted package showing license holder](/images/encrypted-package-installed.png)
 
 
 ### Install to a custom location
