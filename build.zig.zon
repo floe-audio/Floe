@@ -38,8 +38,8 @@
             .hash = "N-V-__8AAJ0IOwDGU09eyNgdU99_TixuQnS6E7dLq1bSlvNA",
         },
         .clap_wrapper = .{
-            .url = "git+https://github.com/SamWindell/clap-wrapper#39b00526d09ed3ac76c1f89033d5c9c76f1243d0",
-            .hash = "N-V-__8AAJE3EACDzuwJJYa8ZnB1Xi0AOCOFiRnwk7i5MkPc",
+            .url = "git+https://github.com/free-audio/clap-wrapper#18a95457242849eb71d2039f8af532f8aed437bb",
+            .hash = "N-V-__8AAOwAEQCOKnfr8pzpb4IUHOXALP7y3_b9a5Gr6Ay4",
         },
         .dr_libs = .{
             .url = "git+https://github.com/mackron/dr_libs#da35f9d6c7374a95353fd1df1d394d44ab66cf01",
