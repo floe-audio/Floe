@@ -1,12 +1,12 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 #include "foundation/foundation.hpp"
 
 #include "clap/host.h"
-#include "processing_utils/midi.hpp"
-#include "processor/param.hpp"
+#include "plugin/processing_utils/midi.hpp"
+#include "plugin/processor/param.hpp"
 
 struct MidiNoteState {
     void NoteOn(MidiChannelNote note, f32 velocity) {
@@ -67,9 +67,12 @@ struct NoteEvent {
     s8 exclusively_for_layer = -1;
 };
 
+// IMPROVE: it would be nice to not have this limitation even though rare.
+constexpr usize k_max_note_events = 100;
+
 struct ProcessBlockChanges {
     ChangedParams changed_params;
     bool tempo_changed;
     Bitset<16> pitchwheel_changed;
-    DynamicArrayBounded<NoteEvent, 100> note_events;
+    DynamicArrayBounded<NoteEvent, k_max_note_events> note_events;
 };

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -68,7 +68,7 @@ class Phaser final : public Effect {
         }
 
         for (auto const frame_index : Range((u32)io_frames.size))
-            io_frames[frame_index] = MixOnOffSmoothing(context, wet[frame_index], io_frames[frame_index]);
+            io_frames[frame_index] = ApplyBypassCrossfade(context, wet[frame_index], io_frames[frame_index]);
 
         return EffectProcessResult::Done;
     }

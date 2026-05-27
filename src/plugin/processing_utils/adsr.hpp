@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Based on code by Nigel Redmon: https://www.earlevel.com/main/2013/06/02/envelope-generators-adsr-part-2/

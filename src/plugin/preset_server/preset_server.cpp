@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "preset_server.hpp"
@@ -13,15 +13,14 @@
 constexpr bool k_skip_duplicate_presets = false;
 
 // If all presets in this folder and all subfolders use the same single library, return that library.
-static bool AllPresetsSingleLibrary(FolderNode const* node,
-                                    Optional<sample_lib::LibraryIdRef>& single_library) {
+static bool AllPresetsSingleLibrary(FolderNode const* node, Optional<sample_lib::LibraryId>& single_library) {
     if (auto const folder = node->user_data.As<PresetFolderListing const>()->folder) {
         if (folder->used_libraries.size > 3) return false;
         if (folder->used_libraries.size != 0) {
             ASSERT(folder->used_libraries.size == 1 || folder->used_libraries.size == 2 ||
                    folder->used_libraries.size == 3);
 
-            Optional<sample_lib::LibraryIdRef> library;
+            Optional<sample_lib::LibraryId> library;
             if (folder->used_libraries.size != 1) {
                 u8 num_proper_libraries = 0;
                 for (auto const& lib : folder->used_libraries) {
@@ -52,8 +51,8 @@ static bool AllPresetsSingleLibrary(FolderNode const* node,
     return true;
 }
 
-Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node) {
-    Optional<sample_lib::LibraryIdRef> single_library {};
+Optional<sample_lib::LibraryId> AllPresetsSingleLibrary(FolderNode const& node) {
+    Optional<sample_lib::LibraryId> single_library {};
     if (AllPresetsSingleLibrary(&node, single_library)) return single_library;
     return k_nullopt;
 }
@@ -133,27 +132,6 @@ static String ExtensionForPreset(PresetFolder::Preset const& preset) {
     }
 }
 
-Optional<usize> PresetFolder::MatchFullPresetPath(String p) const {
-    if (!path::IsWithinDirectory(p, scan_folder)) return k_nullopt;
-
-    PathArena scratch_arena {PageAllocator::Instance()};
-
-    DynamicArray<char> path {scan_folder, scratch_arena};
-    path::JoinAppend(path, folder);
-    auto const path_len = path.size;
-
-    for (auto const [i, preset] : Enumerate(presets)) {
-        path::JoinAppend(path, preset.name);
-        dyn::AppendSpan(path, ExtensionForPreset(preset));
-
-        if (path == p) return i;
-
-        dyn::Resize(path, path_len);
-    }
-
-    return k_nullopt;
-}
-
 String PresetFolder::FullPathForPreset(PresetFolder::Preset const& preset, Allocator& a) const {
     auto path = path::Join(a, Array {scan_folder, folder, preset.name});
     path = fmt::JoinAppendResizeAllocation(a, path, Array {ExtensionForPreset(preset)});
@@ -195,6 +173,22 @@ static Span<FolderNode> CloneFolderNodes(Span<FolderNode> folders, ArenaAllocato
 // Reader thread
 void StartScanningIfNeeded(PresetServer& server) {
     server.enable_scanning.Store(true, StoreMemoryOrder::Relaxed);
+}
+
+// Reader thread
+Optional<String>
+FindPresetMatchingSnapshotHash(PresetServer& server, u64 snapshot_hash, Allocator& allocator) {
+    StartScanningIfNeeded(server);
+
+    server.mutex.Lock();
+    DEFER { server.mutex.Unlock(); };
+
+    for (auto const folder : server.folders) {
+        for (auto const& preset : folder->presets)
+            if (preset.snapshot_hash == snapshot_hash) return folder->FullPathForPreset(preset, allocator);
+    }
+
+    return k_nullopt;
 }
 
 static u64 OldestVersion(Span<u64> versions) {
@@ -265,7 +259,7 @@ BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& ar
             {
                 .folders = preset_folders,
                 .banks = preset_banks,
-                .used_tags = {server.used_tags.table.Clone(arena, CloneType::Deep)},
+                .used_tags = server.used_tags,
                 .used_libraries = {server.used_libraries.table.Clone(arena, CloneType::Deep)},
                 .authors = {server.authors.table.Clone(arena, CloneType::Deep)},
                 .has_preset_type = server.has_preset_type,
@@ -317,21 +311,6 @@ static void DeleteUnusedFolders(PresetServer& server) {
     });
 }
 
-static sample_lib::LibraryIdRef FindOrCloneLibraryIdRef(PresetFolder& folder,
-                                                        sample_lib::LibraryIdRef const& lib_id) {
-    // If we are the first to use this library, we need to clone it into the folder's arena.
-    auto found_result = folder.used_libraries.FindOrInsertGrowIfNeeded(folder.arena, lib_id);
-    if (found_result.inserted) found_result.element.key = lib_id.Clone(folder.arena);
-    return found_result.element.key;
-}
-
-static String FindOrCloneTag(PresetFolder& folder, String tag) {
-    // If we are the first to use this tag, we need to clone it into the folder's arena.
-    auto found_result = folder.used_tags.FindOrInsertGrowIfNeeded(folder.arena, tag);
-    if (found_result.inserted) found_result.element.key = folder.arena.Clone(tag);
-    return found_result.element.key;
-}
-
 static void AddPresetToFolder(PresetFolder& folder,
                               dir_iterator::Entry const& entry,
                               StateSnapshot const& state,
@@ -341,36 +320,41 @@ static void AddPresetToFolder(PresetFolder& folder,
                                                                      folder.preset_array_capacity,
                                                                      folder.arena);
 
-    auto used_libraries = OrderedSet<sample_lib::LibraryIdRef>::Create(folder.arena, k_num_layers + 1);
+    auto used_libraries =
+        OrderedSet<sample_lib::LibraryId, NoHash, sample_lib::LibraryIdLessThanSet>::Create(folder.arena,
+                                                                                            k_num_layers + 1);
 
     for (auto const& inst_id : state.inst_ids) {
         if (auto const& sampled_inst = inst_id.TryGet<sample_lib::InstrumentId>()) {
-            auto const lib_id =
-                FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)sampled_inst->library);
-            used_libraries.InsertWithoutGrowing(lib_id);
+            folder.used_libraries.InsertGrowIfNeeded(folder.arena, sampled_inst->library);
+            used_libraries.InsertWithoutGrowing(sampled_inst->library);
         }
     }
 
     if (state.ir_id) {
-        auto const lib_id = FindOrCloneLibraryIdRef(folder, (sample_lib::LibraryIdRef)state.ir_id->library);
-        if (lib_id != sample_lib::k_builtin_library_id) used_libraries.InsertWithoutGrowing(lib_id);
+        if (state.ir_id->library != sample_lib::k_builtin_library_id) {
+            folder.used_libraries.InsertGrowIfNeeded(folder.arena, state.ir_id->library);
+            used_libraries.InsertWithoutGrowing(state.ir_id->library);
+        }
     }
+
+    ASSERT(state.extras.origin_preset_hash);
 
     dyn::Append(presets,
                 PresetFolder::Preset {
                     .name = folder.arena.Clone(path::FilenameWithoutExtension(entry.subpath)),
                     .metadata {
                         .tags = ({
-                            auto tags = Set<String>::Create(folder.arena, state.metadata.tags.size);
-                            for (auto const tag : state.metadata.tags)
-                                tags.InsertWithoutGrowing(FindOrCloneTag(folder, tag));
-                            tags;
+                            folder.used_tags |= state.metadata.tags;
+                            state.metadata.tags;
                         }),
                         .author = folder.arena.Clone(state.metadata.author),
                         .description = folder.arena.Clone(state.metadata.description),
                     },
+                    .author_hash = Hash(state.metadata.author),
                     .used_libraries = used_libraries,
                     .file_hash = file_hash,
+                    .snapshot_hash = state.extras.origin_preset_hash,
                     .full_path_hash = HashMultiple(Array {folder.scan_folder, folder.folder, entry.subpath}),
                     .file_extension = file_format == PresetFormat::Mirage
                                           ? (String)folder.arena.Clone(path::Extension(entry.subpath))
@@ -513,8 +497,7 @@ struct FoldersAggregateInfo {
         // Tags and libraries point to memory within each folder, so they share the same versioning as the
         // folders.
 
-        for (auto const [tag, tag_hash] : preset.metadata.tags)
-            used_tags.InsertGrowIfNeeded(arena, tag, tag_hash);
+        used_tags |= preset.metadata.tags;
 
         for (auto const [lib_id, lib_id_hash] : preset.used_libraries)
             used_libraries.InsertGrowIfNeeded(arena, lib_id, lib_id_hash);
@@ -839,12 +822,16 @@ struct FoldersAggregateInfo {
                                                               arena);
                 }
             }
+
+            ForEachNode(root, [&](FolderNode* node) {
+                node->Hash(); // Populate the hash cache.
+            });
         }
     }
 
     // Call under the mutex.
     void CopyToServer(PresetServer& server) const {
-        server.used_tags.Assign(used_tags);
+        server.used_tags = used_tags;
         server.used_libraries.Assign(used_libraries);
         server.authors.Assign(authors);
 
@@ -858,8 +845,8 @@ struct FoldersAggregateInfo {
     }
 
     ArenaAllocator& arena;
-    Set<String> used_tags;
-    Set<sample_lib::LibraryIdRef> used_libraries;
+    TagsBitset used_tags {};
+    Set<sample_lib::LibraryId, NoHash> used_libraries;
     Set<String> authors;
     FolderNodeAllocator folder_node_allocator;
     ListingAllocator listing_allocator;
@@ -1035,12 +1022,15 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
 
         auto const file_data = TRY_OR(
             ReadEntireFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}), scratch_arena),
-            continue);
+            {
+                LogDebug(ModuleName::PresetServer, "filesystem: failed to read {}, {}", entry.subpath, error);
+                continue;
+            });
         DEFER {
             if (file_data.size) scratch_arena.Free(file_data.ToByteSpan());
         };
 
-        auto const file_hash = XXH3_64bits(file_data.data, file_data.size) + Hash((String)entry.subpath);
+        auto const file_hash = XXH3_64bits(file_data.data, file_data.size) + HashFnv1a((String)entry.subpath);
 
         if constexpr (k_skip_duplicate_presets) {
             if (server.preset_file_hashes.Contains(file_hash)) continue;
@@ -1048,7 +1038,10 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         }
 
         auto reader = Reader::FromMemory(file_data);
-        auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena, true), continue);
+        auto const snapshot = TRY_OR(LoadPresetFile(*preset_format, reader, scratch_arena), {
+            LogDebug(ModuleName::PresetServer, "preset: failed to read {}, {}", entry.subpath, error);
+            continue;
+        });
 
         if (!preset_folder)
             preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
@@ -1194,6 +1187,10 @@ static void ServerThread(PresetServer& server) {
             }
             dyn::Clear(buf);
         });
+
+        if (server.rescan_all_requested.Exchange(false, RmwMemoryOrder::AcquireRelease))
+            for (auto& f : server.scan_folders)
+                dyn::AppendIfNotAlreadyThere(rescan_folders, &f);
 
         if (watcher) {
             auto const dirs_to_watch = ({
@@ -1355,6 +1352,12 @@ void RescanFolder(PresetServer& server, String folder) {
         dyn::Append(buf, '\0');
         server.is_scanning.Store(true, StoreMemoryOrder::Release);
     });
+    server.work_signaller.Signal();
+}
+
+void RescanAllFolders(PresetServer& server) {
+    server.rescan_all_requested.Store(true, StoreMemoryOrder::Release);
+    server.is_scanning.Store(true, StoreMemoryOrder::Release);
     server.work_signaller.Signal();
 }
 

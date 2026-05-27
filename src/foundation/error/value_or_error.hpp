@@ -5,7 +5,7 @@
 #include "foundation/container/tagged_union.hpp"
 #include "foundation/error/try.hpp"
 
-enum class ResultType {
+enum class ResultType : u8 {
     Error,
     Value,
 };

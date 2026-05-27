@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -30,8 +30,8 @@ constexpr imgui::ViewportConfig k_default_modal_subviewport {
                              imgui::ViewportScrollbarVisibility::Auto},
 };
 
-// Creates the root container for a panel
-Box DoModalRootBox(GuiBuilder& builder);
+// Creates the root container for a panel. Pass `name` to register a named rect equal to the modal bounds.
+Box DoModalRootBox(GuiBuilder& builder, String name = {});
 
 // Configuration structs for panel components
 struct ModalHeaderConfig {
@@ -45,25 +45,28 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config);
 
 struct DividerOptions {
     f32 margin = 0;
-    bool horizontal = 0;
-    bool vertical = 0;
-    bool subtle = 0;
+    bool horizontal = false;
+    bool vertical = false;
+    bool subtle = false;
+    bool dark_mode = false;
 };
 Box DoModalDivider(GuiBuilder& builder,
                    Box parent,
                    DividerOptions options,
                    u64 id_extra = SourceLocationHash());
 
+using ModalTabIndex = u8;
+
 struct ModalTabConfig {
     Optional<String> icon;
     String text;
-    u32 index;
+    ModalTabIndex index;
 };
 
 struct ModalTabBarConfig {
     Box parent;
     Span<ModalTabConfig const> tabs;
-    u32& current_tab_index;
+    ModalTabIndex& current_tab_index;
 };
 
 // Creates a tab bar with configurable tabs
@@ -73,7 +76,7 @@ struct ModalConfig {
     String title;
     bool* modeless {};
     Span<ModalTabConfig const> tabs;
-    u32& current_tab_index;
+    ModalTabIndex& current_tab_index;
 };
 
 // High-level function that creates a complete modal layout within an already open modal window.
@@ -81,9 +84,10 @@ Box DoModal(GuiBuilder& builder, ModalConfig const& config);
 
 bool CheckboxButton(GuiBuilder& builder,
                     Box parent,
-                    String text,
+                    Optional<String> text,
                     bool state,
                     TooltipString tooltip = k_nullopt,
+                    GuiStyleSystem style = GuiStyleSystem::Overlay,
                     u64 id_extra = SourceLocationHash());
 
 struct TextButtonOptions {
@@ -113,6 +117,7 @@ struct TextInputOptions {
     bool border = true;
     bool background = true;
     bool multiline = false;
+    GuiStyleSystem style = GuiStyleSystem::Overlay;
 };
 
 struct TextInputResult {
@@ -131,6 +136,9 @@ struct IntFieldOptions {
     f32 width;
     s64 value;
     FunctionRef<s64(s64 value)> constrainer;
+    GuiStyleSystem style = GuiStyleSystem::Overlay;
+    bool midi_note_names = false;
+    bool greyed_out = false;
 };
 
 Optional<s64> IntField(GuiBuilder& builder,

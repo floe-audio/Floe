@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "state/state_coding.hpp"
@@ -17,6 +17,7 @@
 #include "common_infrastructure/sample_library/mdata.hpp"
 
 #include "config.h"
+#include "legacy_param_logic.hpp"
 #include "state_snapshot.hpp"
 
 using namespace json;
@@ -47,12 +48,12 @@ static f32 FindMenuValue(Span<MenuNameMapping const> mappings, String search_nam
 }
 
 static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
-    if (IsLayerParamOfSpecificType(index, LayerParamIndex::EqType1) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::EqType2)) {
+    if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqType1) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqType2)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::EqType::Peak, {"Peaking", "Peak"}},
-            {(f32)param_values::EqType::LowShelf, {"Low Shelf", "Low-shelf"}},
-            {(f32)param_values::EqType::HighShelf, {"High Shelf", "High-shelf"}},
+            {(f32)param_values::LegacyEqType::Peak, {"Peaking", "Peak"}},
+            {(f32)param_values::LegacyEqType::LowShelf, {"Low Shelf", "Low-shelf"}},
+            {(f32)param_values::LegacyEqType::HighShelf, {"High Shelf", "High-shelf"}},
         });
         return k_types.Items();
     } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LfoRateTempoSynced)) {
@@ -93,46 +94,46 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
         });
         return k_types.Items();
 
-    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LfoDestination)) {
+    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyLfoDestination)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::LfoDestination::Volume, {"Volume"}},
-            {(f32)param_values::LfoDestination::Filter, {"Filter"}},
-            {(f32)param_values::LfoDestination::Pan, {"Pan"}},
-            {(f32)param_values::LfoDestination::Pitch, {"Pitch"}},
+            {(f32)param_values::LegacyLfoDestination::Volume, {"Volume"}},
+            {(f32)param_values::LegacyLfoDestination::Filter, {"Filter"}},
+            {(f32)param_values::LegacyLfoDestination::Pan, {"Pan"}},
+            {(f32)param_values::LegacyLfoDestination::Pitch, {"Pitch"}},
         });
         return k_types.Items();
 
-    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LfoShape)) {
+    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyLfoShape)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::LfoShape::Sine, {"Sine"}},
-            {(f32)param_values::LfoShape::Triangle, {"Triangle"}},
-            {(f32)param_values::LfoShape::Sawtooth, {"Sawtooth"}},
-            {(f32)param_values::LfoShape::Square, {"Square"}},
+            {(f32)param_values::LegacyLfoShapeV1::Sine, {"Sine"}},
+            {(f32)param_values::LegacyLfoShapeV1::Triangle, {"Triangle"}},
+            {(f32)param_values::LegacyLfoShapeV1::Sawtooth, {"Sawtooth"}},
+            {(f32)param_values::LegacyLfoShapeV1::Square, {"Square"}},
         });
         return k_types.Items();
 
-    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::FilterType)) {
+    } else if (IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyFilterType)) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::LayerFilterType::Lowpass, {"Lowpass", "Low-pass"}},
-            {(f32)param_values::LayerFilterType::Bandpass, {"Bandpass", "Band-pass A"}},
-            {(f32)param_values::LayerFilterType::Highpass, {"Highpass", "High-pass"}},
-            {(f32)param_values::LayerFilterType::UnitGainBandpass, {"UnitGainBandpass", "Band-pass B"}},
-            {(f32)param_values::LayerFilterType::BandShelving, {"BandShelving", "Band-shelving"}},
-            {(f32)param_values::LayerFilterType::Notch, {"Notch", "Notch"}},
-            {(f32)param_values::LayerFilterType::Allpass, {"Allpass", "All-pass (Legacy)"}},
-            {(f32)param_values::LayerFilterType::Peak, {"Peak", "Peak"}},
+            {(f32)param_values::LegacyLayerFilterType::Lowpass, {"Lowpass", "Low-pass"}},
+            {(f32)param_values::LegacyLayerFilterType::Bandpass, {"Bandpass", "Band-pass A"}},
+            {(f32)param_values::LegacyLayerFilterType::Highpass, {"Highpass", "High-pass"}},
+            {(f32)param_values::LegacyLayerFilterType::UnitGainBandpass, {"UnitGainBandpass", "Band-pass B"}},
+            {(f32)param_values::LegacyLayerFilterType::BandShelving, {"BandShelving", "Band-shelving"}},
+            {(f32)param_values::LegacyLayerFilterType::Notch, {"Notch", "Notch"}},
+            {(f32)param_values::LegacyLayerFilterType::Allpass, {"Allpass", "All-pass (Legacy)"}},
+            {(f32)param_values::LegacyLayerFilterType::Peak, {"Peak", "Peak"}},
         });
         return k_types.Items();
 
-    } else if (index == ParamIndex::FilterType) {
+    } else if (index == ParamIndex::LegacyFilterType) {
         static constexpr auto k_types = ArrayT<legacy_mappings::MenuNameMapping>({
-            {(f32)param_values::EffectFilterType::LowPass, {"Low Pass", "Low-pass"}},
-            {(f32)param_values::EffectFilterType::HighPass, {"High Pass", "High-pass"}},
-            {(f32)param_values::EffectFilterType::BandPass, {"Band Pass", "Band-pass"}},
-            {(f32)param_values::EffectFilterType::Notch, {"Notch", "Notch"}},
-            {(f32)param_values::EffectFilterType::Peak, {"Peak", "Peak"}},
-            {(f32)param_values::EffectFilterType::LowShelf, {"Low Shelf", "Low-shelf"}},
-            {(f32)param_values::EffectFilterType::HighShelf, {"High Shelf", "High-shelf"}},
+            {(f32)param_values::LegacyEffectFilterType::LowPass, {"Low Pass", "Low-pass"}},
+            {(f32)param_values::LegacyEffectFilterType::HighPass, {"High Pass", "High-pass"}},
+            {(f32)param_values::LegacyEffectFilterType::BandPass, {"Band Pass", "Band-pass"}},
+            {(f32)param_values::LegacyEffectFilterType::Notch, {"Notch", "Notch"}},
+            {(f32)param_values::LegacyEffectFilterType::Peak, {"Peak", "Peak"}},
+            {(f32)param_values::LegacyEffectFilterType::LowShelf, {"Low Shelf", "Low-shelf"}},
+            {(f32)param_values::LegacyEffectFilterType::HighShelf, {"High Shelf", "High-shelf"}},
         });
         return k_types.Items();
 
@@ -151,7 +152,7 @@ static Span<MenuNameMapping const> MenuNameMappingsForParam(ParamIndex index) {
     return {};
 }
 
-enum class ParamProjection {
+enum class ParamProjection : u8 {
     WasPercentNowFraction, // [-100, 100] to [-1, 1] or [0, 100] to [0, 1]
     WasDbNowAmp,
     WasOldBoolNowNewBool, // old: >= 0.5 == true, new: !0 == true
@@ -164,14 +165,14 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
         IsLayerParamOfSpecificType(index, LayerParamIndex::LoopCrossfade) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::SampleOffset) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::LfoAmount) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::FilterResonance) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyFilterResonance) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::FilterEnvAmount) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::EqResonance1) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::EqResonance2) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqResonance1) ||
+        IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqResonance2) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::FilterSustain) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::Pan) || (index == ParamIndex::MasterVelocity) ||
         (index == ParamIndex::MasterTimbre) || (index == ParamIndex::DistortionDrive) ||
-        (index == ParamIndex::StereoWidenWidth) || (index == ParamIndex::FilterResonance)) {
+        (index == ParamIndex::StereoWidenWidth) || (index == ParamIndex::LegacyFilterResonance)) {
         ASSERT(k_param_descriptors[(u32)index].linear_range.min == 0 ||
                k_param_descriptors[(u32)index].linear_range.min == -1);
         ASSERT_EQ(k_param_descriptors[(u32)index].linear_range.max, 1.0f);
@@ -180,11 +181,11 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
 
     if (IsLayerParamOfSpecificType(index, LayerParamIndex::Volume) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::VolumeSustain) ||
-        (index == ParamIndex::MasterVolume) || (index == ParamIndex::BitCrushWet) ||
-        (index == ParamIndex::BitCrushDry) || (index == ParamIndex::CompressorThreshold) ||
-        (index == ParamIndex::ChorusWet) || (index == ParamIndex::ChorusDry) ||
-        (index == ParamIndex::ConvolutionReverbWet) || (index == ParamIndex::ConvolutionReverbDry) ||
-        (index == ParamIndex::BitCrushWet)) {
+        (index == ParamIndex::MasterVolume) || (index == ParamIndex::LegacyBitCrushWet) ||
+        (index == ParamIndex::LegacyBitCrushDry) || (index == ParamIndex::LegacyCompressorThreshold) ||
+        (index == ParamIndex::LegacyChorusWet) || (index == ParamIndex::LegacyChorusDry) ||
+        (index == ParamIndex::LegacyConvolutionReverbWet) ||
+        (index == ParamIndex::LegacyConvolutionReverbDry)) {
         ASSERT(k_param_descriptors[(u32)index].linear_range.min >= 0);
         ASSERT(k_param_descriptors[(u32)index].linear_range.max <
                30); // it's unlikely to have an amp above 30
@@ -205,7 +206,7 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
 
 class JsonStateParser {
   public:
-    enum class ParamValueType { None, Float, String };
+    enum class ParamValueType : u8 { None, Float, String };
     using ParamValue = TaggedUnion<ParamValueType,
                                    TypeAndTag<f32, ParamValueType::Float>,
                                    TypeAndTag<String, ParamValueType::String>>;
@@ -479,6 +480,7 @@ class JsonStateParser {
     usize m_inst_index = 0;
 };
 
+// NOLINTNEXTLINE: performance-enum-size
 enum class StateVersion : u16 {
     Initial = 1,
 
@@ -499,20 +501,122 @@ enum class StateVersion : u16 {
     // Changed Monophonic from bool to enum with Off, Retrigger, and Latch modes.
     AddedMonophonicModeParameter,
 
-    AddedGranular,
+    // We accidentally added a new version that did nothing when a #define was off. At the time it was called
+    // AddedGranularRandomPan (later AddedGranular) in 0b10f9488c6a334cd46a5eb606d2ba48acb7c794. Presets made
+    // using 1.2.0-beta.1 may have this version. It's harmless but we still need to track it.
+    Unused1,
+
+    // Added per-layer harmony interval bitsets for the granular engine.
+    AddedGranularHarmonyIntervals,
+
+    // Library IDs are now stored as u64 hashes instead of strings.
+    LibraryIdAsHash,
+
+    // Added per-instance config: reset-on-transport, reset keyswitch, and seed for reproducible randomness.
+    AddedInstanceConfig,
+
+    // Added new LFO shape parameter (Sine, Triangle, Sawtooth, Square, RandomSteps, RandomGlide). The legacy
+    // LfoShape parameter is now hidden and kept only for DAW automation backwards compatibility.
+    AddedNewLfoShapeParameter,
+
+    // Added new LFO destination parameter with GranularPosition. The legacy LfoDestination parameter is now
+    // hidden and kept only for DAW automation backwards compatibility.
+    AddedNewLfoDestinationParameter,
+
+    // Added per-effect visibility bitset, decoupling GUI visibility from audio activeness.
+    AddedEffectVisibility,
+
+    AddedArpeggiator,
+
+    AddedSliceArpConfig,
+
+    // Added new filter resonance parameter with a linear skew curve (better spread across knob range).
+    // The legacy FilterResonance parameter is now hidden and kept only for DAW automation backwards
+    // compatibility.
+    AddedLinearFilterResonance,
+
+    // Added new filter gain parameter where the value equals the audible gain. The legacy FilterGain
+    // parameter is now hidden and kept only for DAW automation backwards compatibility.
+    AddedLinearFilterGain,
+
+    // Expanded LFO shape parameter with new percussive and pulse waveforms (Pluck, Pluck Sharp, Pulse
+    // Narrow, Pulse Wide, Trapezoid). The previous LfoShape parameter is now hidden as
+    // LegacyLfoShapeV2 and kept only for DAW automation backwards compatibility.
+    ExpandedLfoShapeParameter,
+
+    // Added new filter type variants: per-band 12dB/24dB low-/high-pass and notch on the EQ, plus
+    // 12dB/24dB low-/high-pass on the effect filter. A third EQ band per layer was also added. The
+    // legacy EqType1/2 and FilterType parameters are now hidden and kept only for DAW automation
+    // backwards compatibility.
+    AddedExtraFilterTypes,
+
+    // Switched all filter/EQ frequency parameters to a logarithmic mapping (equal pixels per
+    // octave) so the visualisers can scale linearly with the knob position. The legacy
+    // FilterCutoff, EqFreq1/2/3, ChorusHighpass and ConvolutionReverbHighpass parameters are now
+    // hidden and kept only for DAW automation backwards compatibility.
+    AddedLogFrequencyParams,
+
+    // Reworked the layer filter type menu: removed the All-pass option and renamed the two
+    // band-pass variants ("Band-pass A"/"Band-pass B") to clearer names. The previous FilterType
+    // parameter is now hidden as LegacyFilterType and kept only for DAW automation backwards
+    // compatibility.
+    ReworkedLayerFilterTypeMenu,
+
+    // Added per-layer Stereo Width parameter. For older states, defaults to 0 (no width change).
+    AddedLayerStereoWidth,
+
+    // Added Stereo Widen Mode menu and Bass Mono crossover parameters. Older states default to
+    // Legacy mode so the original (non-constant-power) algorithm continues to be applied to
+    // pre-existing presets and DAW automation.
+    AddedStereoWidenMode,
+
+    // Added a new Vital-based compressor option alongside the original Stillwell Major Tom.
+    // Old presets default to MajorTom so they sound the same. Also added Attack, Release and
+    // Mix parameters used only by the Vital compressor.
+    AddedVitalCompressor,
+
+    // Added unified Mix knob to every effect, plus an Output trim on effects that previously had
+    // separate Wet/Dry pairs (BitCrush, Chorus, ConvolutionReverb). The previous Wet/Dry
+    // parameters are now hidden as legacy and kept only for DAW automation backwards
+    // compatibility. Distortion and StereoWiden gained a Mix knob (default 100% so existing
+    // states are unchanged).
+    AddedEffectMixOutput,
+
+    // Reworked the compressor Threshold and Ratio parameters with more intuitive projections:
+    // Threshold is now linear in dB (range -60..0 dB), and Ratio uses an exponential curve so
+    // 1:1..2:1 occupies more of the knob. The previous CompressorThreshold and CompressorRatio
+    // are now hidden as legacy params and kept only for DAW automation backwards compatibility.
+    ReworkedCompressorThresholdAndRatio,
+
+    // Added a master 3-band parametric EQ effect. Older states default it to off so the sound is
+    // unchanged.
+    AddedEqEffect,
+
+    AddedStateExtras,
+
+    // Promoted the granular and arpeggiator parameters from experimental to permanent. No file-format
+    // change; the pre-fill block defaults any of these IDs that are missing in older files.
+    PromotedGranularAndArpParams,
 
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
 
+// Overload for layers — calls the public per-param ModerniseLegacyParam for each layer.
+static void ModerniseLegacyParam(StateSnapshot& state, LayerParamIndex legacy_idx, StateSource source) {
+    for (auto const layer_index : Range(k_num_layers))
+        ModerniseLegacyParam(state, ParamIndexFromLayerParamIndex(layer_index, legacy_idx), source);
+}
+
 static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSource source) {
-    static_assert(k_num_parameters == (EXPERIMENTAL_GRANULAR ? 249 : 228),
-                  "You have changed the number of parameters. You must now bump the "
-                  "state version number and handle setting any new parameters to "
-                  "backwards-compatible states. In other words, these new parameters "
-                  "should be deactivated when loading an old preset so that the old "
-                  "preset does not sound different. After that's done, change this "
-                  "static_assert to match the new number of parameters.");
+    // Experimental params don't need a state version bump or adaptation code here. They
+    // are automatically defaulted on load if not present in the file (see CodeState).
+    // Non-experimental params DO require a version bump and adaptation code.
+    static_assert(k_num_non_experimental_parameters == 382,
+                  "You have changed the number of non-experimental parameters. You "
+                  "must bump the state version number and handle setting the new "
+                  "parameters to backwards-compatible states so old presets don't "
+                  "sound different. Then update this static_assert.");
 
     // We don't need to adapt parameters if the state is already aware of the new change.
     if (version < StateVersion::AddedLayerVelocityCurves) {
@@ -520,92 +624,25 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
         if (source == StateSource::Daw) {
             // We don't want to adapt parameters from the DAW because there might be automation on them.
-            // We disable the velocity curve by setting it to a 100% straight line.
-            for (auto const layer_index : Range(k_num_layers)) {
-                dyn::AssignAssumingAlreadyEmpty(state.velocity_curve_points[layer_index],
-                                                Array {
-                                                    CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                    CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                });
-            }
+            // Disable the velocity curve by setting it to a flat-1 straight line — the audio engine
+            // still applies the legacy LegacyVelocityMapping + MasterVelocity params on top.
+            for (auto const layer_index : Range(k_num_layers))
+                state.velocity_curve_points[layer_index] =
+                    ModerniseVelocityToCurve(param_values::VelocityMappingMode::None, 0);
         } else {
-            // Adapt LayerParamIndex::VelocityMapping to the new curve and clear out the old param.
+            auto& master_val = state.LinearParam(ParamIndex::MasterVelocity);
+            ASSERT(master_val >= 0.0f && master_val <= 1.0f);
+            auto const velocity_volume_strength = master_val;
+            master_val = 0.0f;
+
             for (auto const layer_index : Range(k_num_layers)) {
                 auto& val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping));
-                auto const velocity_mapping_mode = (param_values::VelocityMappingMode)Round(val);
-
-                // We don't use this param anymore.
+                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping));
+                auto const mode = (param_values::VelocityMappingMode)Round(val);
                 val = (f32)param_values::VelocityMappingMode::None;
 
-                auto& points = state.velocity_curve_points[layer_index];
-                switch (velocity_mapping_mode) {
-                    case param_values::VelocityMappingMode::None:
-                        // Flat at max volume.
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::TopToBottom:
-                        // Linear
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::BottomToTop:
-                        // Inverse linear
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::TopToMiddle:
-                        // Flat until middle, then linear ramp-up to end
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::MiddleOutwards:
-                        // Linear ramp-up to middle, then linear ramp-down to end
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                                                            CurveMap::Point {0.5f, 1.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::MiddleToBottom:
-                        // Linear ramp-down to middle, then flat to end
-                        dyn::AssignAssumingAlreadyEmpty(points,
-                                                        Array {
-                                                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                                                            CurveMap::Point {0.5f, 0.0f, 0.0f},
-                                                            CurveMap::Point {1.0f, 0.0f, 0.0f},
-                                                        });
-                        break;
-                    case param_values::VelocityMappingMode::Count: break;
-                }
-            }
-
-            // Adapt MasterVelocity to the new curves and clear out the old param.
-            auto& val = state.LinearParam(ParamIndex::MasterVelocity);
-            ASSERT(val >= 0.0f && val <= 1.0f);
-            auto const velocity_volume_strength = val;
-            val = 0.0f; // We don't use this param anymore, so set it to 0.
-
-            for (auto& points : state.velocity_curve_points) {
-                // Now, we must scale y values in a linear fashion. The stronger the velocity-volume value,
-                // the more we should bring down the y values of the points nearer to x=0.
-                for (auto& point : points)
-                    point.y = Max(point.y - (point.y * (1.0f - point.x) * velocity_volume_strength), 0.0f);
+                state.velocity_curve_points[layer_index] =
+                    ModerniseVelocityToCurve(mode, velocity_volume_strength);
             }
         }
     }
@@ -636,67 +673,169 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         }
     }
 
-    if (version < StateVersion::AddedMonophonicModeParameter) {
-        if (source == StateSource::Daw) {
-            // We don't want to adapt parameters from the DAW because there might be automation on the bool.
-            // Set new param to default (Off/polyphonic)
-            for (auto const layer_index : Range(k_num_layers)) {
-                state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode)) =
-                    (f32)param_values::MonophonicMode::Off;
-            }
-        } else {
-            // Adapt legacy Monophonic bool to new MonophonicMode enum
-            for (auto const layer_index : Range(k_num_layers)) {
-                auto& bool_val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Monophonic));
+    if (version < StateVersion::AddedMonophonicModeParameter)
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyMonophonicBool, source);
 
-                auto const was_monophonic = bool_val >= 0.5f; // Bool params use 0.0f/1.0f
+    if (version < StateVersion::AddedNewLfoShapeParameter)
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyLfoShape, source);
 
-                // Clear the legacy parameter
-                bool_val = 0.0f;
+    if (version < StateVersion::AddedNewLfoDestinationParameter)
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyLfoDestination, source);
 
-                // Set new parameter: false -> Off, true -> Retrigger (preserve old behaviour)
-                auto& mode_val = state.LinearParam(
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::MonophonicMode));
-                mode_val = was_monophonic ? (f32)param_values::MonophonicMode::Retrigger
-                                          : (f32)param_values::MonophonicMode::Off;
-            }
+    if (version < StateVersion::AddedExtraFilterTypes) {
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqType1, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqType2, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterType, source);
+    }
+
+    if (version < StateVersion::AddedEffectVisibility) {
+        for (auto const i : Range(k_num_effect_types)) {
+            auto const on_param = k_effect_info[i].on_param_index;
+            if (state.param_values[ToInt(on_param)] != 0.0f) state.fx_visible.Set(i);
         }
     }
 
-#if EXPERIMENTAL_GRANULAR
-    if (version < StateVersion::AddedGranular) {
+    if (version < StateVersion::AddedArpeggiator) {
+        for (auto& layer_steps : state.arp_steps)
+            for (auto& s : layer_steps)
+                s = {};
+    }
+
+    if (version < StateVersion::AddedSliceArpConfig) state.slice_arp_configs = {};
+
+    if (version < StateVersion::AddedLinearFilterResonance) {
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyFilterResonance, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqResonance1, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqResonance2, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterResonance, source);
+    }
+
+    if (version < StateVersion::AddedLinearFilterGain)
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterGain, source);
+
+    if (version < StateVersion::AddedLogFrequencyParams) {
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyFilterCutoff, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqFreq1, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqFreq2, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyEqFreq3, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyFilterCutoff, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyChorusHighpass, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyConvolutionReverbHighpass, source);
+    }
+
+    // During a brief in-development period, ArpMode was a 3-value menu: Off=0, Played=1, Fixed=2.
+    // A handful of presets were made in this period. It is now a 2-value menu: Played=0, Fixed=1,
+    // with a separate ArpOn bool. Convert old values.
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto& arp_on =
+            state.param_values[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpOn))];
+        auto& arp_mode =
+            state.param_values[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpMode))];
+        if (arp_on == 0.0f && arp_mode >= 1.0f) {
+            arp_on = 1.0f;
+            arp_mode -= 1.0f;
+        }
+    }
+
+    if (version < StateVersion::ExpandedLfoShapeParameter)
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyLfoShapeV2, source);
+
+    if (version < StateVersion::ReworkedLayerFilterTypeMenu)
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyFilterType, source);
+
+    if (version < StateVersion::AddedLayerStereoWidth)
+        for (auto const layer_index : Range(k_num_layers))
+            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::StereoWidth)) = 0;
+
+    if (version < StateVersion::AddedStereoWidenMode)
+        state.LinearParam(ParamIndex::StereoWidenMode) = (f32)ToInt(param_values::StereoWidenMode::Legacy);
+
+    if (version < StateVersion::AddedVitalCompressor) {
+        // Old presets used the Vintage (Stillwell Major Tom) compressor exclusively; preserve their sound.
+        // Seed Attack and Release (Modern-only params that did not exist yet) to their defaults so
+        // switching modes later gives a sensible starting point rather than zero.
+        state.param_values[ToInt(ParamIndex::CompressorType)] = (f32)param_values::CompressorType::Vintage;
+        for (auto const pi : Array {ParamIndex::CompressorAttack, ParamIndex::CompressorRelease})
+            state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+    }
+
+    if (version < StateVersion::AddedEffectMixOutput) {
+        for (auto const pi : Array {ParamIndex::DistortionMix,
+                                    ParamIndex::StereoWidenMix,
+                                    ParamIndex::FilterMix,
+                                    ParamIndex::CompressorMix})
+            state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+
+        ModerniseWetDryEffect(state, k_bitcrush_wet_dry_mapping, source);
+        ModerniseWetDryEffect(state, k_chorus_wet_dry_mapping, source);
+        ModerniseWetDryEffect(state, k_convolution_reverb_wet_dry_mapping, source);
+    }
+
+    if (version < StateVersion::ReworkedCompressorThresholdAndRatio) {
+        ModerniseLegacyParam(state, ParamIndex::LegacyCompressorThreshold, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyCompressorRatio, source);
+    }
+
+    if (version < StateVersion::AddedEqEffect) {
+        state.param_values[ToInt(ParamIndex::EqOn)] = 0;
+        for (auto const pi : Array {ParamIndex::EqMix,
+                                    ParamIndex::EqType1,
+                                    ParamIndex::EqFreq1,
+                                    ParamIndex::EqResonance1,
+                                    ParamIndex::EqGain1,
+                                    ParamIndex::EqType2,
+                                    ParamIndex::EqFreq2,
+                                    ParamIndex::EqResonance2,
+                                    ParamIndex::EqGain2,
+                                    ParamIndex::EqType3,
+                                    ParamIndex::EqFreq3,
+                                    ParamIndex::EqResonance3,
+                                    ParamIndex::EqGain3})
+            state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+    }
+
+    // When sustain is at max, decay has no audible effect but a short value causes the GUI's
+    // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so
+    // the handle is visually separated.
+    if (source == StateSource::PresetFile) {
+        auto const decay_200ms_linear =
+            k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(0, LayerParamIndex::VolumeDecay))]
+                .LineariseValue(200.0f, true)
+                .Value();
+
         for (auto const layer_index : Range(k_num_layers)) {
-            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode)) =
-                (f32)param_values::PlayMode::Standard;
-
-            auto const set = [&](LayerParamIndex param) {
-                state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, param)) =
-                    k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(0, param))].default_linear_value;
+            struct EnvPair {
+                LayerParamIndex sustain;
+                LayerParamIndex decay;
+                f32 sustain_max_linear;
             };
-            set(LayerParamIndex::GranularSpeed);
-            set(LayerParamIndex::GranularPosition);
-            set(LayerParamIndex::GranularGrains);
-            set(LayerParamIndex::GranularSpread);
-            set(LayerParamIndex::GranularSmoothing);
-            set(LayerParamIndex::GranularLength);
+            for (auto const& env : Array<EnvPair, 2> {{
+                     {LayerParamIndex::VolumeSustain, LayerParamIndex::VolumeDecay, 1.0f},
+                     {LayerParamIndex::FilterSustain, LayerParamIndex::FilterDecay, 1.0f},
+                 }}) {
+                auto const sustain_val =
+                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, env.sustain));
+                auto& decay_val = state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, env.decay));
+                if (sustain_val >= env.sustain_max_linear && decay_val < decay_200ms_linear)
+                    decay_val = decay_200ms_linear;
+            }
         }
     }
-#endif
 }
 
-static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
-                                               ArenaAllocator& scratch_arena,
-                                               String data,
-                                               bool adapt_for_latest_version) {
+ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
+                                        ArenaAllocator& scratch_arena,
+                                        String data,
+                                        bool adapt_for_latest_version) {
     if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
         for (auto& f : state.param_values)
             f = 999999999.f;
         for (auto& t : state.fx_order)
             t = (EffectType)k_num_effect_types;
         for (auto& i : state.inst_ids)
-            i = sample_lib::InstrumentId {.library = "foo"_s, .inst_id = "bar"_s};
+            i = sample_lib::InstrumentId {.library =
+                                              sample_lib::HashLibraryIdStringWithoutRegistration("foo"_s),
+                                          .inst_id = "bar"_s};
         state.ir_id = sample_lib::IrId {
             .library = sample_lib::k_mirage_compat_library_id,
             .ir_id = "Formant 1"_s,
@@ -719,7 +858,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
     } else {
         for (auto& i : state.inst_ids)
             if (auto s = i.TryGet<sample_lib::InstrumentId>())
-                s->library = sample_lib::IdForMdataLibraryAlloc(parser.library_name, scratch_arena);
+                s->library = sample_lib::IdForMdataLibrary(parser.library_name);
     }
 
     // Fill in missing values and convert the existing ones into their new formats
@@ -999,7 +1138,7 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
                 EffectType::Phaser,
                 EffectType::ConvolutionReverb,
             };
-            static_assert(ArraySize(k_effects_order_before_effects_could_be_reordered) == k_num_effect_types);
+            static_assert(ArraySize(k_effects_order_before_effects_could_be_reordered) <= k_num_effect_types);
 
             usize index = 0;
 
@@ -1011,7 +1150,8 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             if (index != k_num_effect_types) {
                 // Next, add any effects that have been added since adding reorderability.
                 for (auto const fx_type : Range(k_num_effect_types))
-                    if (!Find(fallback_order_of_effects, (EffectType)fx_type))
+                    if (!Find(Span<EffectType const> {fallback_order_of_effects.data, index},
+                              (EffectType)fx_type))
                         fallback_order_of_effects[index++] = (EffectType)fx_type;
             }
             ASSERT_EQ(index, fallback_order_of_effects.size);
@@ -1104,13 +1244,13 @@ static ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             }
         }
     }
+
     if (adapt_for_latest_version) AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
-    return k_success;
-}
+    state.extras = {};
+    state.extras.origin_preset_hash = RapidHash64(data);
 
-ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& scratch_arena, String data) {
-    return DecodeMirageJsonState(state, scratch_arena, data, true);
+    return k_success;
 }
 
 // ==========================================================================================================
@@ -1137,15 +1277,30 @@ ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state, ArenaAllocator& sc
 //
 
 struct StateCoder {
+    ALWAYS_INLINE ErrorCodeOr<void> ReadOrWriteData(void* data, usize bytes) {
+        TRY(args.read_or_write_data(data, bytes));
+        if (args.mode == CodeStateArguments::Mode::Decode)
+            HashUpdateFnv1a(hash, Span<u8 const> {(u8 const*)data, bytes});
+        return k_success;
+    }
+
     template <typename Type>
     requires(Arithmetic<Type>)
     ErrorCodeOr<void> CodeNumber(Type& number, StateVersion version_added) {
         return CodeTrivialObject(number, version_added);
     }
 
+    template <usize k_bits>
+    ErrorCodeOr<void> CodeBitset(Bitset<k_bits>& bitset, StateVersion version_added) {
+        constexpr auto k_num_elements = RemoveReference<decltype(bitset)>::k_num_elements;
+        for (usize e = 0; e < k_num_elements; ++e)
+            TRY(CodeNumber(bitset.elements[e], version_added));
+        return k_success;
+    }
+
     template <TriviallyCopyable Type>
     ErrorCodeOr<void> CodeTrivialObject(Type& trivial_obj, StateVersion version_added) {
-        if (version >= version_added) return args.read_or_write_data(&trivial_obj, sizeof(Type));
+        if (version >= version_added) return ReadOrWriteData(&trivial_obj, sizeof(Type));
         return k_success;
     }
 
@@ -1156,12 +1311,12 @@ struct StateCoder {
         if (version >= version_added) {
             u32 size = 0;
             if (IsWriting()) size = CheckedCast<u32>(arr.size);
-            TRY(args.read_or_write_data(&size, sizeof(size)));
+            TRY(ReadOrWriteData(&size, sizeof(size)));
 
             if (size) {
                 if (IsReading())
                     if (!dyn::Resize(arr, size)) return ErrorCode(CommonError::InvalidFileFormat);
-                TRY(args.read_or_write_data((void*)arr.data, size * sizeof(Type)));
+                TRY(ReadOrWriteData((void*)arr.data, size * sizeof(Type)));
             }
         }
         return k_success;
@@ -1171,11 +1326,11 @@ struct StateCoder {
         if (version >= version_added) {
             u16 size = 0;
             if (IsWriting()) size = CheckedCast<u16>(string.size);
-            TRY(args.read_or_write_data(&size, sizeof(size)));
+            TRY(ReadOrWriteData(&size, sizeof(size)));
 
             if (size) {
                 if (IsReading()) string = allocator.AllocateExactSizeUninitialised<char>(size);
-                TRY(args.read_or_write_data((void*)string.data, size));
+                TRY(ReadOrWriteData((void*)string.data, size));
             }
         }
         return k_success;
@@ -1217,6 +1372,7 @@ struct StateCoder {
     CodeStateArguments const& args;
     StateVersion version;
     u32 counter {0};
+    u64 hash = HashInitFnv1a();
 };
 
 ErrorCodeOr<void> CodeLibraryId(StateCoder& coder, sample_lib::LibraryId& library_id) {
@@ -1226,11 +1382,15 @@ ErrorCodeOr<void> CodeLibraryId(StateCoder& coder, sample_lib::LibraryId& librar
         TRY(coder.CodeDynArray(library_author, StateVersion::Initial));
         TRY(coder.CodeDynArray(library_name, StateVersion::Initial));
         if (library_author == sample_lib::k_old_mirage_author)
-            library_id = sample_lib::IdForMdataLibraryInline(library_name);
+            library_id = sample_lib::IdForMdataLibrary(library_name);
         else
-            library_id = sample_lib::IdFromAuthorAndNameInline(library_author, library_name);
+            library_id = sample_lib::IdFromAuthorAndName(library_author, library_name);
+    } else if (coder.IsReading() && coder.version < StateVersion::LibraryIdAsHash) {
+        DynamicArrayBounded<char, k_max_library_id_size> library_id_string;
+        TRY(coder.CodeDynArray(library_id_string, StateVersion::AddLibraryIdInsteadOfNameAndAuthor));
+        library_id = sample_lib::HashLibraryIdString(library_id_string);
     } else {
-        TRY(coder.CodeDynArray(library_id, StateVersion::AddLibraryIdInsteadOfNameAndAuthor));
+        TRY(coder.CodeNumber(library_id, StateVersion::LibraryIdAsHash));
     }
     return k_success;
 }
@@ -1243,6 +1403,27 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         .args = args,
         .version = StateVersion::Initial, // start at Initial so that we always
                                           // write the magic value
+    };
+
+    // When writing a preset file, we don't want to include any extras in the file so we clear the field for
+    // the duration of this function. We restore it back to where since it would be confusing for a 'write'
+    // operation to modify the data.
+    auto const scrub_extras = coder.IsWriting() && args.source == StateSource::PresetFile;
+    auto const initial_extras = state.extras;
+    if (scrub_extras) state.extras = {};
+    DEFER {
+        if (scrub_extras) state.extras = initial_extras;
+    };
+
+    // We have a special behaviour when decoding a preset file: we auto-populate the origin_preset_hash
+    // because it's very useful for us to be able to have a quick unique identifier for snapshots.
+    DEFER {
+        if (args.source == StateSource::PresetFile && coder.IsReading())
+            state.extras = {
+                .origin_preset_hash = coder.hash,
+                .modified_from_origin_preset = false,
+            };
+        if (args.out_hash) *args.out_hash = coder.hash;
     };
 
     // =======================================================================================================
@@ -1346,22 +1527,61 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             }
 
             if (coder.IsReading()) state.velocity_curve_points[i] = points;
+
+            // Harmony intervals.
+            {
+                // Serialise the bitset as raw u64 elements.
+                auto intervals = state.harmony_intervals[i];
+                TRY(coder.CodeBitset(intervals, StateVersion::AddedGranularHarmonyIntervals));
+                if (coder.IsReading()) state.harmony_intervals[i] = intervals;
+            }
+
+            // Arp steps.
+            {
+                auto steps = state.arp_steps[i];
+                for (auto& s : steps) {
+                    TRY(coder.CodeNumber(s.velocity, StateVersion::AddedArpeggiator));
+                    TRY(coder.CodeNumber(s.gate, StateVersion::AddedArpeggiator));
+                    u8 on_val = s.on ? 1 : 0;
+                    TRY(coder.CodeNumber(on_val, StateVersion::AddedArpeggiator));
+                    if (coder.IsReading()) s.on = on_val != 0;
+                    u8 tie_val = s.tie ? 1 : 0;
+                    TRY(coder.CodeNumber(tie_val, StateVersion::AddedArpeggiator));
+                    if (coder.IsReading()) s.tie = tie_val != 0;
+                    TRY(coder.CodeNumber(s.interval, StateVersion::AddedArpeggiator));
+                    TRY(coder.CodeNumber(s.note, StateVersion::AddedArpeggiator));
+                }
+                if (coder.IsReading()) state.arp_steps[i] = steps;
+            }
+
+            // Slice arp config.
+            {
+                auto config = state.slice_arp_configs[i];
+                TRY(coder.CodeNumber(config.start_offset, StateVersion::AddedSliceArpConfig));
+                TRY(coder.CodeNumber(config.loop_length, StateVersion::AddedSliceArpConfig));
+                if (coder.IsReading()) state.slice_arp_configs[i] = config;
+            }
         }
     }
 
     // =======================================================================================================
     {
         u8 num_tags {};
-        if (coder.IsWriting()) num_tags = CheckedCast<u8>(state.metadata.tags.size);
+        DynamicArrayBounded<String, k_max_num_tags> tag_strings {};
+        if (coder.IsWriting()) {
+            state.metadata.tags.ForEachSetBit(
+                [&](usize bit) { dyn::Append(tag_strings, GetTagInfo((TagType)bit).name); });
+            num_tags = CheckedCast<u8>(tag_strings.size);
+        }
         TRY(coder.CodeNumber(num_tags, StateVersion::Initial));
 
         for (auto const i : Range(num_tags)) {
             String tag {};
-            if (coder.IsWriting()) tag = state.metadata.tags[i];
+            if (coder.IsWriting()) tag = tag_strings[i];
             TRY(coder.CodeString(tag, scratch_arena, StateVersion::Initial));
             if (coder.IsReading()) {
                 if (tag.size > k_max_tag_size) return ErrorCode(CommonError::InvalidFileFormat);
-                dyn::Emplace(state.metadata.tags, tag);
+                if (auto const t = LookupTagName(tag)) state.metadata.tags.Set(ToInt(t->tag));
             }
         }
     }
@@ -1389,21 +1609,85 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     // =======================================================================================================
     {
         String instance_id {};
-        if (coder.IsWriting()) instance_id = state.instance_id;
+        if (coder.IsWriting()) instance_id = state.extras.instance_id;
         TRY(coder.CodeString(instance_id, scratch_arena, StateVersion::Initial));
         if (coder.IsReading()) {
             if (instance_id.size > k_max_instance_id_size) return ErrorCode(CommonError::InvalidFileFormat);
-            state.instance_id = instance_id;
+            state.extras.instance_id = instance_id;
         }
     }
 
     // =======================================================================================================
     {
+        // DAW state must always include experimental params: the DAW exposes all parameters via CLAP and
+        // often expects them to round-trip through state save/load.
+        bool const actually_write_experimental =
+            args.write_experimental_params || args.source == StateSource::Daw;
+
         u16 num_params {};
-        if (coder.IsWriting()) num_params = CheckedCast<u16>(k_num_parameters);
+        if (coder.IsWriting())
+            num_params = CheckedCast<u16>(actually_write_experimental ? k_num_parameters
+                                                                      : k_num_non_experimental_parameters);
         TRY(coder.CodeNumber(num_params, StateVersion::Initial));
 
-        for (auto const i : Range(num_params)) {
+        // Pre-fill experimental params with defaults. They may not be present in the file if
+        // they were removed in a newer version. If they are present, they'll be overwritten below.
+        if (coder.IsReading()) {
+            for (auto const i : Range(k_num_parameters))
+                if (k_param_descriptors[i].flags.experimental)
+                    state.param_values[i] = k_param_descriptors[i].default_linear_value;
+
+            // Params promoted from experimental to permanent in PromotedGranularAndArpParams.
+            // Older files may lack these IDs (if experimental was off when saved); default them so
+            // the loaded preset starts from sensible values. If the IDs are present in the file,
+            // they'll be overwritten by the loop below — so presets that *did* use these params
+            // continue to sound identical.
+            if (coder.version < StateVersion::PromotedGranularAndArpParams) {
+                constexpr Array k_promoted_layer_params {
+                    LayerParamIndex::PlayMode,
+                    LayerParamIndex::GranularSpeed,
+                    LayerParamIndex::GranularPosition,
+                    LayerParamIndex::GranularDensity,
+                    LayerParamIndex::GranularLength,
+                    LayerParamIndex::GranularSpread,
+                    LayerParamIndex::GranularSmoothing,
+                    LayerParamIndex::GranularRandomPan,
+                    LayerParamIndex::GranularRandomDetune,
+                    LayerParamIndex::GranularRandomDirection,
+                    LayerParamIndex::GranularHarmony,
+                    LayerParamIndex::ArpOn,
+                    LayerParamIndex::ArpMode,
+                    LayerParamIndex::ArpNoteOrder,
+                    LayerParamIndex::ArpTriggerMode,
+                    LayerParamIndex::ArpRate,
+                    LayerParamIndex::ArpAutoRate,
+                    LayerParamIndex::ArpLength,
+                    LayerParamIndex::ArpHumanise,
+                    LayerParamIndex::ArpOctavePolyrate,
+                    LayerParamIndex::ArpOneShot,
+                };
+                for (auto const layer_index : Range(k_num_layers)) {
+                    for (auto const lp : k_promoted_layer_params) {
+                        auto const idx = ToInt(ParamIndexFromLayerParamIndex(layer_index, lp));
+                        state.param_values[idx] = k_param_descriptors[idx].default_linear_value;
+                    }
+                    // Explicit values for params whose "no behaviour change" state is more important
+                    // than the current default: before these existed, layers always played in Standard
+                    // mode with the arpeggiator off. Pin these so future default changes can't alter
+                    // how old presets sound.
+                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode)) =
+                        (f32)param_values::PlayMode::Standard;
+                    state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpOn)) =
+                        0.0f;
+                }
+            }
+        }
+
+        for (auto const i : Range(coder.IsReading() ? num_params : k_num_parameters)) {
+            if (coder.IsWriting() && !actually_write_experimental &&
+                k_param_descriptors[i].flags.experimental)
+                continue;
+
             u32 id {};
             f32 linear_value {};
 
@@ -1417,7 +1701,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
             if (coder.IsReading()) {
                 auto const param_index = ParamIdToIndex(id);
-                if (!param_index) return ErrorCode(CommonError::InvalidFileFormat);
+                if (!param_index) continue; // Unknown params are skipped (e.g. removed experimental params)
 
                 state.param_values[(usize)*param_index] = linear_value;
             }
@@ -1425,6 +1709,13 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (coder.IsReading()) {
             if (coder.version < StateVersion::AddedLayerVelocityCurves) state.velocity_curve_points = {};
+            if (coder.version < StateVersion::AddedGranularHarmonyIntervals) state.harmony_intervals = {};
+            if (coder.version < StateVersion::AddedArpeggiator) {
+                for (auto& layer_steps : state.arp_steps)
+                    for (auto& s : layer_steps)
+                        s = {};
+            }
+            if (coder.version < StateVersion::AddedSliceArpConfig) state.slice_arp_configs = {};
 
             // In commit e0b15326e9528ca33de7d3c8f905a3449a36d31a we introduced a bug where the LFO amount was
             // inverted prior to all previous versions. We have now fixed this, however, for presets that were
@@ -1456,19 +1747,30 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             TRY(coder.CodeNumber(num_macro_destinations, k_added));
             if (coder.IsReading()) dests = {};
 
+            usize read_dest_index = 0;
             for (auto const dest_index : Range(num_macro_destinations)) {
-                auto& dest = dests.items[dest_index];
-
                 u32 param_id {};
-                if (coder.IsWriting()) param_id = ParamIndexToId(*dest.param_index);
-                TRY(coder.CodeNumber(param_id, k_added));
-                if (coder.IsReading()) {
-                    auto const param_index = ParamIdToIndex(param_id);
-                    if (!param_index) return ErrorCode(CommonError::InvalidFileFormat);
-                    dest.param_index = *param_index;
+                f32 dest_value {};
+
+                if (coder.IsWriting()) {
+                    auto& dest = dests.items[dest_index];
+                    param_id = ParamIndexToId(*dest.param_index);
+                    dest_value = dest.value;
                 }
 
-                TRY(coder.CodeNumber(dest.value, k_added));
+                TRY(coder.CodeNumber(param_id, k_added));
+                TRY(coder.CodeNumber(dest_value, k_added));
+
+                if (coder.IsReading()) {
+                    auto const param_index = ParamIdToIndex(param_id);
+                    if (!param_index) continue; // Experimental params may be removed
+
+                    if (read_dest_index < k_max_macro_destinations) {
+                        dests.items[read_dest_index].param_index = *param_index;
+                        dests.items[read_dest_index].value = dest_value;
+                        ++read_dest_index;
+                    }
+                }
             }
         }
 
@@ -1496,44 +1798,68 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     TRY(coder.CodeIntegrityCheckNumber(StateVersion::Initial));
 
     // =======================================================================================================
-    // It's actually not that abbreviated...
-    if (args.abbreviated_read) {
-        ASSERT(coder.IsReading());
-        return k_success;
+    {
+        u16 num_effects = coder.IsWriting() ? CheckedCast<u16>(k_num_effect_types) : 0;
+        TRY(coder.CodeNumber(num_effects, StateVersion::Initial));
+        if (num_effects > k_num_effect_types) return ErrorCode(CommonError::InvalidFileFormat);
+
+        DynamicArrayBounded<u8, k_num_effect_types> fx_ids;
+        // Code the IDs
+        {
+            if (coder.IsWriting())
+                for (auto const fx_type : state.fx_order)
+                    dyn::Append(fx_ids, k_effect_info[(usize)fx_type].id);
+            else
+                fx_ids.size = num_effects;
+
+            for (auto& fx_id : fx_ids)
+                TRY(coder.CodeNumber(fx_id, StateVersion::Initial));
+        }
+
+        if (coder.IsReading()) {
+            DynamicArrayBounded<EffectType, k_num_effect_types> ordered_effects;
+            for (auto const fx_id : fx_ids) {
+                auto const type =
+                    FindIf(k_effect_info, [fx_id](EffectInfo const& info) { return info.id == fx_id; });
+                if (type.HasValue()) dyn::AppendIfNotAlreadyThere(ordered_effects, (EffectType)*type);
+            }
+
+            // Add any that aren't present in the state.
+            for (auto const i : Range(k_num_effect_types))
+                dyn::AppendIfNotAlreadyThere(ordered_effects, (EffectType)i);
+
+            ASSERT_EQ(ordered_effects.size, k_num_effect_types);
+            for (auto const i : Range(k_num_effect_types))
+                state.fx_order[i] = ordered_effects[i];
+        }
     }
 
     // =======================================================================================================
     {
-        u16 num_effects {};
-        if (coder.IsWriting()) num_effects = CheckedCast<u16>(k_num_effect_types);
-        TRY(coder.CodeNumber(num_effects, StateVersion::Initial));
+        u16 num_visible {};
+        DynamicArrayBounded<u8, k_num_effect_types> visible_ids;
 
-        Array<u8, k_num_effect_types> ordered_effect_ids;
         if (coder.IsWriting()) {
-            for (auto [i, fx_type] : Enumerate(state.fx_order))
-                ordered_effect_ids[i] = k_effect_info[(usize)fx_type].id;
-            if constexpr (RUNTIME_SAFETY_CHECKS_ON) {
-                for (auto const i : Range(ordered_effect_ids.size)) {
-                    for (auto const j : Range(ordered_effect_ids.size))
-                        if (i != j) ASSERT(ordered_effect_ids[i] != ordered_effect_ids[j]);
+            for (auto const i : Range(k_num_effect_types)) {
+                if (state.fx_visible.Get(i)) {
+                    dyn::Append(visible_ids, k_effect_info[i].id);
+                    ++num_visible;
                 }
             }
         }
 
-        TRY(coder.CodeTrivialObject(ordered_effect_ids, StateVersion::Initial));
+        TRY(coder.CodeNumber(num_visible, StateVersion::AddedEffectVisibility));
 
-        if (coder.IsReading()) {
-            for (auto [i, fx_id] : Enumerate(ordered_effect_ids)) {
+        if (coder.IsWriting()) {
+            for (auto const id : visible_ids)
+                TRY(coder.CodeNumber(const_cast<u8&>(id), StateVersion::AddedEffectVisibility));
+        } else {
+            for (auto const _ : Range(num_visible)) {
+                u8 id {};
+                TRY(coder.CodeNumber(id, StateVersion::AddedEffectVisibility));
                 auto const type =
-                    FindIf(k_effect_info, [fx_id](EffectInfo const& info) { return info.id == fx_id; });
-                if (!type.HasValue()) return ErrorCode(CommonError::InvalidFileFormat);
-                state.fx_order[i] = (EffectType)*type;
-            }
-
-            if (num_effects != k_num_effect_types) {
-                static_assert(k_num_effect_types == 10,
-                              "You've changed the number of effects, you must add the new "
-                              "effects here so that the fx_order contains all values");
+                    FindIf(k_effect_info, [id](EffectInfo const& info) { return info.id == id; });
+                if (type.HasValue()) state.fx_visible.Set(*type);
             }
         }
     }
@@ -1549,7 +1875,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (coder.IsWriting() && args.source == StateSource::Daw) {
             DynamicArray<Mapping> mappings_arr {scratch_arena};
-            for (auto [param_index, ccs] : Enumerate(state.param_learned_ccs)) {
+            for (auto [param_index, ccs] : Enumerate(state.extras.param_learned_ccs)) {
                 for (auto const cc_num : Range(128uz))
                     if (ccs.Get(cc_num)) {
                         dyn::Append(mappings_arr,
@@ -1571,14 +1897,66 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             TRY(coder.CodeNumber(m.param_id, StateVersion::Initial));
             if (coder.IsReading() && args.source == StateSource::Daw) {
                 auto const index = ParamIdToIndex(m.param_id);
-                if (!index) return ErrorCode(CommonError::InvalidFileFormat);
-                state.param_learned_ccs[(usize)*index].Set(m.cc_num);
+                if (!index) continue; // Experimental params may be removed
+                state.extras.param_learned_ccs[(usize)*index].Set(m.cc_num);
             }
         }
     }
 
     // =======================================================================================================
-    AdaptNewerParams(state, coder.version, args.source);
+    {
+        constexpr auto k_added = StateVersion::AddedInstanceConfig;
+
+        u8 reset_on_transport {};
+        u8 has_reset_keyswitch {};
+        u8 reset_keyswitch_note {};
+        u8 seed {};
+
+        if (coder.IsWriting()) {
+            reset_on_transport = state.instance_config.reset_on_transport ? 1 : 0;
+            has_reset_keyswitch = state.instance_config.reset_keyswitch.HasValue() ? 1 : 0;
+            reset_keyswitch_note = state.instance_config.reset_keyswitch.ValueOr(0);
+            seed = state.instance_config.seed;
+        }
+
+        TRY(coder.CodeNumber(reset_on_transport, k_added));
+        TRY(coder.CodeNumber(has_reset_keyswitch, k_added));
+        TRY(coder.CodeNumber(reset_keyswitch_note, k_added));
+        TRY(coder.CodeNumber(seed, k_added));
+
+        if (coder.IsReading()) {
+            state.instance_config.reset_on_transport = reset_on_transport != 0;
+            if (has_reset_keyswitch && reset_keyswitch_note <= 127)
+                state.instance_config.reset_keyswitch = (u7)reset_keyswitch_note;
+            else
+                state.instance_config.reset_keyswitch = k_nullopt;
+            state.instance_config.seed = Min(seed, (u8)99);
+        }
+    }
+
+    // =======================================================================================================
+    {
+        constexpr auto k_added = StateVersion::AddedStateExtras;
+
+        TRY(coder.CodeDynArray(state.extras.display_name, k_added));
+        TRY(coder.CodeDynArray(state.extras.display_category, k_added));
+        TRY(coder.CodeNumber(state.extras.origin_preset_hash, k_added));
+        TRY(coder.CodeNumber(state.extras.modified_from_origin_preset, k_added));
+    }
+
+    // =======================================================================================================
+    if (!args.skip_param_adaptation) AdaptNewerParams(state, coder.version, args.source);
+
+    // =======================================================================================================
+    // Clamp all param values to their valid ranges. This is necessary because experimental param ranges
+    // may change between versions, and transformations above could push values out of bounds.
+    if (coder.IsReading()) {
+        for (auto const i : Range(k_num_parameters)) {
+            auto const& info = k_param_descriptors[i];
+            state.param_values[i] =
+                Clamp(state.param_values[i], info.linear_range.min, info.linear_range.max);
+        }
+    }
 
     return k_success;
 }
@@ -1595,8 +1973,10 @@ Optional<PresetFormat> PresetFormatFromPath(String path) {
     return k_nullopt;
 }
 
-ErrorCodeOr<StateSnapshot>
-LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_arena, bool abbreviated_read) {
+ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
+                                          Reader& reader,
+                                          ArenaAllocator& scratch_arena,
+                                          bool skip_param_adaptation) {
     StateSnapshot state;
     switch (format) {
         case PresetFormat::Floe: {
@@ -1608,13 +1988,16 @@ LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_aren
                                   return k_success;
                               },
                               .source = StateSource::PresetFile,
-                              .abbreviated_read = abbreviated_read,
+                              .skip_param_adaptation = skip_param_adaptation,
                           }));
             break;
         }
         case PresetFormat::Mirage: {
             auto const file_data = TRY(reader.ReadOrFetchAll(scratch_arena));
-            TRY(DecodeMirageJsonState(state, scratch_arena, {(char const*)file_data.data, file_data.size}));
+            TRY(DecodeMirageJsonState(state,
+                                      scratch_arena,
+                                      {(char const*)file_data.data, file_data.size},
+                                      !skip_param_adaptation));
             break;
         }
         case PresetFormat::Count: PanicIfReached(); break;
@@ -1623,16 +2006,19 @@ LoadPresetFile(PresetFormat format, Reader& reader, ArenaAllocator& scratch_aren
 }
 
 ErrorCodeOr<StateSnapshot>
-LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool abbreviated_read) {
+LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool skip_param_adaptation) {
     StateSnapshot state;
     auto reader = TRY(Reader::FromFile(filepath));
     return LoadPresetFile(PresetFormatFromPath(filepath).ValueOr(PresetFormat::Mirage),
                           reader,
                           scratch_arena,
-                          abbreviated_read);
+                          skip_param_adaptation);
 }
 
-ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
+ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
+    ASSERT(path.size);
+    ASSERT(IsValidUtf8(path));
+    ASSERT(path::IsAbsolute(path));
     ArenaAllocatorWithInlineStorage<4000> scratch_arena {Malloc::Instance()};
     if (auto const ext = path::Extension(path); ext != FLOE_PRESET_FILE_EXTENSION) {
         path = fmt::Join(scratch_arena,
@@ -1640,6 +2026,7 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
     }
 
     auto file = TRY(OpenFile(path, FileMode::Write()));
+    u64 hash = 0;
     TRY(CodeState(const_cast<StateSnapshot&>(state),
                   CodeStateArguments {
                       .mode = CodeStateArguments::Mode::Encode,
@@ -1648,12 +2035,14 @@ ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state) {
                           return k_success;
                       },
                       .source = StateSource::PresetFile,
-                      .abbreviated_read = false,
+                      .write_experimental_params = write_experiment_params,
+                      .out_hash = &hash,
                   }));
-    return k_success;
+    return hash;
 }
 
-ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource source, bool abbreviated_read) {
+ErrorCodeOr<StateSnapshot>
+DecodeFromMemory(Span<u8 const> data, StateSource source, bool skip_param_adaptation) {
     StateSnapshot state;
     usize read_pos = 0;
     TRY(CodeState(state,
@@ -1667,7 +2056,7 @@ ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource sou
                           return k_success;
                       },
                       .source = source,
-                      .abbreviated_read = abbreviated_read,
+                      .skip_param_adaptation = skip_param_adaptation,
                   }));
     return state;
 }
@@ -1683,13 +2072,13 @@ ErrorCodeOr<StateSnapshot> DecodeFromMemory(Span<u8 const> data, StateSource sou
 //=================================================
 
 TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
-    StateSnapshot state {};
+    StateSnapshot state = DefaultStateSnapshot();
 
-    state.LinearParam(ParamIndexFromLayerParamIndex(0, LayerParamIndex::VelocityMapping)) =
+    state.LinearParam(ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyVelocityMapping)) =
         (f32)param_values::VelocityMappingMode::TopToMiddle;
-    state.LinearParam(ParamIndexFromLayerParamIndex(1, LayerParamIndex::VelocityMapping)) =
+    state.LinearParam(ParamIndexFromLayerParamIndex(1, LayerParamIndex::LegacyVelocityMapping)) =
         (f32)param_values::VelocityMappingMode::MiddleOutwards;
-    state.LinearParam(ParamIndexFromLayerParamIndex(2, LayerParamIndex::VelocityMapping)) =
+    state.LinearParam(ParamIndexFromLayerParamIndex(2, LayerParamIndex::LegacyVelocityMapping)) =
         (f32)param_values::VelocityMappingMode::MiddleToBottom;
 
     SUBCASE("when master velocity is set to 0") {
@@ -1715,7 +2104,8 @@ TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
     // All velocity mapping modes should be set to the none.
     for (auto const layer_index : Range(k_num_layers)) {
         CHECK_APPROX_EQ(
-            state.LinearParam(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::VelocityMapping)),
+            state.LinearParam(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping)),
             (f32)param_values::VelocityMappingMode::None,
             0.01f);
     }
@@ -1798,7 +2188,7 @@ static void CheckStateIsValid(tests::Tester& tester, StateSnapshot const& state)
             }
             case InstrumentType::Sampler: {
                 auto& s = i.Get<sample_lib::InstrumentId>();
-                CHECK(s.library.size);
+                CHECK(s.library);
                 CHECK(s.inst_id.size);
                 break;
             }
@@ -1832,7 +2222,7 @@ TEST_CASE(TestParsersHandleInvalidData) {
     SUBCASE("binary") {
         for ([[maybe_unused]] auto i : Range(0, 20)) {
             auto const data = make_random_data();
-            auto const result = DecodeFromMemory(data.ToByteSpan(), StateSource::PresetFile, false);
+            auto const result = DecodeFromMemory(data.ToByteSpan(), StateSource::PresetFile);
             CHECK(!result.HasValue());
         }
     }
@@ -1840,138 +2230,184 @@ TEST_CASE(TestParsersHandleInvalidData) {
     return k_success;
 }
 
-TEST_CASE(TestNewSerialisation) {
+TEST_CASE(TestSerialisation) {
     auto& scratch_arena = tester.scratch_arena;
 
     for (auto const source : Array {StateSource::PresetFile, StateSource::Daw}) {
-        CAPTURE(source);
+        for (auto const write_experimental_params : Array {false, true}) {
+            CAPTURE(source);
+            CAPTURE(write_experimental_params);
 
-        StateSnapshot state {};
-        auto random_seed = RandomSeed();
-        for (auto [index, param] : Enumerate(state.param_values)) {
-            auto const& info = k_param_descriptors[index];
-            param = RandomFloatInRange(random_seed, info.linear_range.min, info.linear_range.max);
-        }
-
-        for (auto [i, type] : Enumerate(state.fx_order))
-            type = (EffectType)i;
-        Shuffle(state.fx_order, random_seed);
-
-        state.ir_id = sample_lib::IrId {
-            .library = "irlibname.irlib"_s,
-            .ir_id = "irfile"_s,
-        };
-        for (auto [index, inst] : Enumerate(state.inst_ids)) {
-            inst = sample_lib::InstrumentId {
-                .library = (String)fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index),
-                .inst_id = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
-            };
-        }
-
-        for (auto const _ : Range(RandomIntInRange<usize>(random_seed, 0, k_max_num_tags - 1))) {
-            DynamicArrayBounded<char, k_max_tag_size> tag;
-            dyn::Resize(tag, RandomIntInRange<usize>(random_seed, 1, k_max_tag_size));
-            FillRandomAsciiChars(random_seed, tag);
-            dyn::Append(state.metadata.tags, tag);
-        }
-
-        {
-            DynamicArrayBounded<char, k_max_preset_description_size> description;
-            dyn::Resize(description, RandomIntInRange<usize>(random_seed, 1, k_max_preset_description_size));
-            FillRandomAsciiChars(random_seed, description);
-            state.metadata.description = description;
-        }
-
-        {
-            DynamicArrayBounded<char, k_max_preset_author_size> author;
-            dyn::Resize(author, RandomIntInRange<usize>(random_seed, 1, k_max_preset_author_size));
-            FillRandomAsciiChars(random_seed, author);
-            state.metadata.author = author;
-        }
-
-        {
-            dyn::Assign(state.velocity_curve_points[0],
-                        Array {
-                            CurveMap::Point {0.0f, 0.0f, 0.0f},
-                            CurveMap::Point {0.5f, 0.5f, 0.0f},
-                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                        });
-            dyn::Assign(state.velocity_curve_points[1],
-                        Array {
-                            CurveMap::Point {0.0f, 1.0f, 0.0f},
-                            CurveMap::Point {0.5f, 0.5f, 0.0f},
-                            CurveMap::Point {1.0f, 1.0f, 0.0f},
-                        });
-        }
-
-        {
-            state.macro_names = DefaultMacroNames();
-            dyn::Assign(state.macro_names[0], "First Macro"_s);
-            dyn::Assign(state.macro_names[1], "Second"_s);
-
-            state.macro_destinations = {};
-            state.macro_destinations[0].items[0] = {
-                .param_index = ParamIndex::ChorusDepth,
-                .value = 0.4f,
-            };
-            state.macro_destinations[0].items[1] = {
-                .param_index = ParamIndex::ReverbSize,
-                .value = -1.0f,
-            };
-
-            state.macro_destinations[3].items[0] = {
-                .param_index = ParamIndexFromLayerParamIndex(0, LayerParamIndex::EqFreq1),
-                .value = 0.5f,
-            };
-        }
-
-        if (source == StateSource::Daw) {
-            for (auto const param : Range(k_num_parameters)) {
-                if (param % 4 == 0) {
-                    Bitset<128> bits {};
-                    bits.Set(20);
-                    bits.Set(10);
-                    bits.Set(1);
-                    state.param_learned_ccs[param] = bits;
-                }
+            StateSnapshot state {};
+            auto random_seed = RandomSeed();
+            for (auto [index, param] : Enumerate(state.param_values)) {
+                auto const& info = k_param_descriptors[index];
+                param = RandomFloatInRange(random_seed, info.linear_range.min, info.linear_range.max);
             }
-        } else {
-            state.param_learned_ccs = {};
+
+            for (auto [i, type] : Enumerate(state.fx_order))
+                type = (EffectType)i;
+            Shuffle(state.fx_order, random_seed);
+
+            for (auto const i : Range(k_num_effect_types))
+                if (RandomIntInRange<int>(random_seed, 0, 1)) state.fx_visible.Set(i);
+
+            state.ir_id = sample_lib::IrId {
+                .library = sample_lib::HashLibraryIdStringWithoutRegistration("irlibname.irlib"_s),
+                .ir_id = "irfile"_s,
+            };
+            for (auto [index, inst] : Enumerate(state.inst_ids)) {
+                auto const lib_str = fmt::Format(scratch_arena, "TestAuthor{}.TestLib{}", index, index);
+                inst = sample_lib::InstrumentId {
+                    .library = sample_lib::HashLibraryIdStringWithoutRegistration(lib_str),
+                    .inst_id = String(fmt::Format(scratch_arena, "Test/Path{}", index)),
+                };
+            }
+
+            for (auto const _ : Range(RandomIntInRange<usize>(random_seed, 0, k_max_num_tags - 1))) {
+                auto const tag = (TagType)RandomIntInRange<u16>(random_seed, 0, ToInt(TagType::Count) - 1);
+                state.metadata.tags.Set(ToInt(tag));
+            }
+
+            {
+                DynamicArrayBounded<char, k_max_preset_description_size> description;
+                dyn::Resize(description,
+                            RandomIntInRange<usize>(random_seed, 1, k_max_preset_description_size));
+                FillRandomAsciiChars(random_seed, description);
+                state.metadata.description = description;
+            }
+
+            {
+                DynamicArrayBounded<char, k_max_preset_author_size> author;
+                dyn::Resize(author, RandomIntInRange<usize>(random_seed, 1, k_max_preset_author_size));
+                FillRandomAsciiChars(random_seed, author);
+                state.metadata.author = author;
+            }
+
+            {
+                dyn::Assign(state.velocity_curve_points[0],
+                            Array {
+                                CurveMap::Point {0.0f, 0.0f, 0.0f},
+                                CurveMap::Point {0.5f, 0.5f, 0.0f},
+                                CurveMap::Point {1.0f, 1.0f, 0.0f},
+                            });
+                dyn::Assign(state.velocity_curve_points[1],
+                            Array {
+                                CurveMap::Point {0.0f, 1.0f, 0.0f},
+                                CurveMap::Point {0.5f, 0.5f, 0.0f},
+                                CurveMap::Point {1.0f, 1.0f, 0.0f},
+                            });
+            }
+
+            {
+                state.macro_names = DefaultMacroNames();
+                dyn::Assign(state.macro_names[0], "First Macro"_s);
+                dyn::Assign(state.macro_names[1], "Second"_s);
+
+                state.macro_destinations = {};
+                state.macro_destinations[0].items[0] = {
+                    .param_index = ParamIndex::ChorusDepth,
+                    .value = 0.4f,
+                };
+                state.macro_destinations[0].items[1] = {
+                    .param_index = ParamIndex::ReverbSize,
+                    .value = -1.0f,
+                };
+
+                state.macro_destinations[3].items[0] = {
+                    .param_index = ParamIndexFromLayerParamIndex(0, LayerParamIndex::EqFreq1),
+                    .value = 0.5f,
+                };
+            }
+
+            for (auto& intervals : state.harmony_intervals)
+                for (auto const i : Range(k_num_harmony_interval_bits))
+                    if (RandomIntInRange<int>(random_seed, 0, 1)) intervals.Set(i);
+
+            state.instance_config = {
+                .reset_on_transport = true,
+                .reset_keyswitch = (u7)60,
+                .seed = 42,
+            };
+
+            for (auto& config : state.slice_arp_configs) {
+                config.start_offset = RandomIntInRange<u8>(random_seed, 0, 10);
+                config.loop_length = RandomIntInRange<u8>(random_seed, 0, 20);
+            }
+
+            if (source == StateSource::Daw) {
+                for (auto const param : Range(k_num_parameters)) {
+                    if (param % 4 == 0) {
+                        Bitset<128> bits {};
+                        bits.Set(20);
+                        bits.Set(10);
+                        bits.Set(1);
+                        state.extras.param_learned_ccs[param] = bits;
+                    }
+                }
+                dyn::Assign(state.extras.display_name, "TEST"_s);
+                dyn::Assign(state.extras.display_category, "CATEGORY"_s);
+                state.extras.origin_preset_hash = 0x12356789ull;
+                state.extras.modified_from_origin_preset = true;
+            } else {
+                state.extras = {};
+            }
+
+            CheckStateIsValid(tester, state);
+
+            DynamicArray<u8> serialised_data {scratch_arena};
+            REQUIRE(CodeState(state,
+                              CodeStateArguments {
+                                  .mode = CodeStateArguments::Mode::Encode,
+                                  .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                                      dyn::AppendSpan(serialised_data,
+                                                      Span<u8 const> {(u8 const*)data, bytes});
+                                      return k_success;
+                                  },
+                                  .source = source,
+                                  .write_experimental_params = write_experimental_params,
+                              })
+                        .Succeeded());
+
+            bool const actually_wrote_experimental = write_experimental_params || source == StateSource::Daw;
+            if (!actually_wrote_experimental) {
+                for (auto const i : Range(k_num_parameters))
+                    if (k_param_descriptors[i].flags.experimental)
+                        state.param_values[i] = k_param_descriptors[i].default_linear_value;
+            }
+
+            StateSnapshot out_state {};
+            usize read_pos = 0;
+            REQUIRE(CodeState(out_state,
+                              CodeStateArguments {
+                                  .mode = CodeStateArguments::Mode::Decode,
+                                  .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                                      CHECK(read_pos + bytes <= serialised_data.size);
+                                      CopyMemory(data, serialised_data.data + read_pos, bytes);
+                                      read_pos += bytes;
+                                      return k_success;
+                                  },
+                                  .source = source,
+                              })
+                        .Succeeded());
+            CHECK_OP(read_pos, ==, serialised_data.size);
+            CheckStateIsValid(tester, out_state);
+
+            if (source == StateSource::PresetFile) {
+                // When decoding a preset file we expect it to to have populated the hash for us.
+                CHECK(out_state.extras.origin_preset_hash != 0);
+                out_state.extras.origin_preset_hash = 0; // Clear it for correct equality checks below.
+            }
+
+            if (!(state == out_state)) {
+                DynamicArray<char> diff {tester.scratch_arena};
+                AssignDiffDescription(diff, state, out_state);
+                tester.log.Error("{}", diff);
+            }
+            CHECK(state == out_state);
+            if (source == StateSource::Daw)
+                CHECK(state.extras.param_learned_ccs == out_state.extras.param_learned_ccs);
         }
-
-        CheckStateIsValid(tester, state);
-
-        DynamicArray<u8> serialised_data {scratch_arena};
-        REQUIRE(CodeState(state,
-                          CodeStateArguments {
-                              .mode = CodeStateArguments::Mode::Encode,
-                              .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
-                                  dyn::AppendSpan(serialised_data, Span<u8 const> {(u8 const*)data, bytes});
-                                  return k_success;
-                              },
-                              .source = source,
-                          })
-                    .Succeeded());
-
-        StateSnapshot out_state {};
-        usize read_pos = 0;
-        REQUIRE(CodeState(out_state,
-                          CodeStateArguments {
-                              .mode = CodeStateArguments::Mode::Decode,
-                              .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
-                                  CHECK(read_pos + bytes <= serialised_data.size);
-                                  CopyMemory(data, serialised_data.data + read_pos, bytes);
-                                  read_pos += bytes;
-                                  return k_success;
-                              },
-                              .source = source,
-                          })
-                    .Succeeded());
-        CHECK_OP(read_pos, ==, serialised_data.size);
-        CheckStateIsValid(tester, out_state);
-
-        CHECK(state == out_state);
-        if (source == StateSource::Daw) CHECK(state.param_learned_ccs == out_state.param_learned_ccs);
     }
 
     return k_success;
@@ -2125,15 +2561,15 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK(state.inst_ids[1].tag == InstrumentType::Sampler);
         CHECK(state.inst_ids[2].tag == InstrumentType::Sampler);
         if (auto i = state.inst_ids[0].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibrary("Phoenix"_s));
             CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[1].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibrary("Phoenix"_s));
             CHECK_EQ(i->inst_id, "Strings"_s);
         }
         if (auto i = state.inst_ids[2].TryGet<sample_lib::InstrumentId>()) {
-            CHECK_EQ(i->library, sample_lib::IdForMdataLibraryAlloc("Phoenix"_s, scratch_arena));
+            CHECK_EQ(i->library, sample_lib::IdForMdataLibrary("Phoenix"_s));
             CHECK_EQ(i->inst_id, "Choir"_s);
         }
         CHECK(state.ir_id.HasValue());
@@ -2144,6 +2580,9 @@ TEST_CASE(TestLoadingOldFiles) {
 
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::Volume), DbToAmp(-6.0f), 0.01f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::SampleOffset), 0.054875f, 0.005f);
+        CHECK_EQ(ParamToInt<param_values::LegacyLfoShapeV1>(
+                     ProjectedLayerValue(state, 0, LayerParamIndex::LegacyLfoShape)),
+                 param_values::LegacyLfoShapeV1::Sine);
         CHECK_EQ(ParamToInt<param_values::LfoShape>(ProjectedLayerValue(state, 0, LayerParamIndex::LfoShape)),
                  param_values::LfoShape::Sine);
         CHECK_EQ(ParamToInt<param_values::LfoSyncedRate>(
@@ -2180,6 +2619,56 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::ReverbMix)], 0.25f, 0.2f);
     }
 
+    SUBCASE("chained legacy param migration") {
+        auto const state = TRY(decode_file("Bass Pluck Repeater.mirage-phoenix"));
+        for (auto const layer_index : Range(k_num_layers)) {
+            CHECK_EQ(ParamToInt<param_values::LfoShape>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::LfoShape)),
+                     param_values::LfoShape::Sawtooth);
+            CHECK_EQ(ParamToInt<param_values::LegacyLfoShapeV1>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::LegacyLfoShape)),
+                     param_values::LegacyLfoShapeV1::Sine);
+            CHECK_EQ(ParamToInt<param_values::LegacyLfoShapeV2>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::LegacyLfoShapeV2)),
+                     param_values::LegacyLfoShapeV2::Sine);
+        }
+
+        // The on-disk JSON contains:
+        //   CompThr=-28.67 dB, CompRt=2.296875, ConvHP=30 Hz,
+        //   BitcWet=-8 dB, BitcDry=0 dB,
+        //   ChorWet=-8 dB, ChorDry=0 dB,
+        //   ConvWet=-8 dB, ConvDry=0 dB,
+        //   FlRes=30 %.
+        // None of these match a legacy default, so the modernising decode must surface the real
+        // legacy values rather than fall back to anything.
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorThreshold), -28.67f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorRatio), 2.297f, 0.05f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbHighpass), 30.0f, 2.0f);
+
+        // -8 dB wet + 0 dB dry: wet_amp ≈ 0.3981, dry_amp = 1.0
+        // ⇒ mix ≈ 0.3981 / 1.3981 ≈ 0.2848 and output ≈ 1.3981 (~2.9 dB).
+        for (auto const& [mix_pi, output_pi] : Array {
+                 Pair {ParamIndex::BitCrushMix, ParamIndex::BitCrushOutput},
+                 Pair {ParamIndex::ChorusMix, ParamIndex::ChorusOutput},
+                 Pair {ParamIndex::ConvolutionReverbMix, ParamIndex::ConvolutionReverbOutput},
+             }) {
+            CAPTURE(k_param_descriptors[ToInt(mix_pi)].name);
+            CHECK_APPROX_EQ(ProjectedValue(state, mix_pi), 0.2848f, 0.01f);
+            CHECK_APPROX_EQ(ProjectedValue(state, output_pi), 1.3981f, 0.05f);
+        }
+
+        // Effect-filter resonance Q. Bass Pluck's FlRes value (30.000001907 in JSON) rounds to
+        // exactly 30 / 100 = 0.3 in f32, the same as the legacy descriptor default — hitting the
+        // same modernise-skipped bug as the stress-test preset.
+        {
+            constexpr f32 k_on_disk_fl_res = 0.30f;
+            auto const legacy_q = MapFrom01Skew(k_on_disk_fl_res, 0.5f, 2.0f, 5.0f);
+            auto const modern_linear = state.LinearParam(ParamIndex::FilterResonance);
+            auto const modern_q = MapFrom01Skew(modern_linear, 0.5f, 2.0f, 2.0f);
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
+    }
+
     SUBCASE("Abstract Chord.mirage-abstract") {
         auto const state = TRY(decode_file("Abstract Chord.mirage-abstract"));
 
@@ -2189,7 +2678,7 @@ TEST_CASE(TestLoadingOldFiles) {
 
         {
             auto const i = state.inst_ids[2].Get<sample_lib::InstrumentId>();
-            CHECK_EQ(i.library, sample_lib::IdForMdataLibraryAlloc("Abstract Energy"_s, scratch_arena));
+            CHECK_EQ(i.library, sample_lib::IdForMdataLibrary("Abstract Energy"_s));
             CHECK_EQ(i.inst_id, "Drone 2 Atmos"_s);
         }
 
@@ -2199,6 +2688,23 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_EQ(state.param_values[ToInt(ParamIndex::PhaserOn)], 0.0f);
 
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 2, LayerParamIndex::LoopCrossfade), 0.54f, 0.01f);
+
+        // On-disk legacy layer resonances (L0FfRes, L1FfRes, L2FfRes) read directly from the
+        // JSON. The legacy DSP applied LegacySkewResonance (linear^4 · 0.95) into ResonanceToQ;
+        // the modern DSP applies SkewResonance (linear · 0.95) into the same ResonanceToQ. The
+        // modernisation must preserve the audible Q exactly.
+        constexpr Array<f32, 3> k_on_disk_layer_res {0.0626908540725708f,
+                                                     0.22821109771728516f,
+                                                     0.2606429100036621f};
+        for (auto const layer_index : Range(k_num_layers)) {
+            CAPTURE(layer_index);
+            auto const legacy = k_on_disk_layer_res[layer_index];
+            auto const legacy_q = 1.0f / (2.0f * (1.0f - 0.95f * Pow(legacy, 4.0f)));
+            auto const modern_linear = state.LinearParam(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::FilterResonance));
+            auto const modern_q = 1.0f / (2.0f * (1.0f - 0.95f * modern_linear));
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
     }
 
     // Pre-Sv effects
@@ -2230,10 +2736,10 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::Pan), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::TuneCents), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::TuneSemitone), 0.0f, 0.1f);
-        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VelocityMapping), 0.0f, 0.1f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::LegacyVelocityMapping), 0.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolEnvOn), 1.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeAttack), 0.0f, 0.1f);
-        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeDecay), 0.0f, 0.1f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeDecay), 200.0f, 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeSustain), DbToAmp(0.0f), 0.1f);
         CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::VolumeRelease), 15.045f, 0.1f);
         CHECK_EQ(ParamToInt<param_values::LayerFilterType>(
@@ -2289,16 +2795,261 @@ TEST_CASE(TestLoadingOldFiles) {
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayFeedback)], 0.8f, 0.2f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayFilterCutoffSemitones)], 60.0f, 3.0f);
         CHECK_APPROX_EQ(state.param_values[ToInt(ParamIndex::DelayMix)], 0.15f, 0.1f);
+
+        // The on-disk JSON contains:
+        //   CompThr=-12 dB, CompRt=2.0, ConvHP=30 Hz, ConvWet=-30 dB, ConvDry=0 dB,
+        //   BitcWet=0 dB, BitcDry=-80 dB, ChorWet=-6 dB, ChorDry=-6 dB, FlRes=30 %.
+        // The modernising decode must surface these as their modern-param equivalents.
+
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorThreshold), -12.0f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::CompressorRatio), 2.0f, 0.05f);
+
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbHighpass), 30.0f, 2.0f);
+
+        // BitCrush: 0 dB wet + -80 dB dry ≈ pure wet, so mix≈100 % and output≈unity (~0 dB).
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::BitCrushMix), 1.0f, 0.01f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::BitCrushOutput), 1.0f, 0.01f);
+
+        // Chorus: equal -6 dB wet and dry → 50/50 mix, output sum ≈ unity.
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ChorusMix), 0.5f, 0.02f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ChorusOutput), 1.0f, 0.05f);
+
+        // ConvReverb: -30 dB wet (≈ 0.0316) + 0 dB dry (1.0) → mix ≈ 0.0306, output ≈ 1.032.
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbMix), 0.0306f, 0.01f);
+        CHECK_APPROX_EQ(ProjectedValue(state, ParamIndex::ConvolutionReverbOutput), 1.032f, 0.05f);
+
+        // FilterResonance (effect-filter): the legacy DSP applied `MapFrom01Skew(legacy, 0.5, 2,
+        // 5)` and the modern DSP applies `MapFrom01Skew(modern, 0.5, 2, 2)`. The remap raises
+        // legacy to the 2.5th power, giving Pow(x, 2.5)² == Pow(x, 5) — so the audible Q must be
+        // identical. Note: this preset hits a known bug — FlRes=30 happens to equal the legacy
+        // descriptor's default, so the legacy-overriding heuristic skips the modernise step and
+        // the modern FilterResonance stays at its own default (0), producing the wrong Q.
+        {
+            constexpr f32 k_on_disk_fl_res = 0.30f;
+            auto const legacy_q = MapFrom01Skew(k_on_disk_fl_res, 0.5f, 2.0f, 5.0f);
+            auto const modern_linear = state.LinearParam(ParamIndex::FilterResonance);
+            auto const modern_q = MapFrom01Skew(modern_linear, 0.5f, 2.0f, 2.0f);
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
+    }
+
+    SUBCASE("Low End.mirage-wraith") {
+        auto const state = TRY(decode_file("Low End.mirage-wraith"));
+
+        // The JSON stores per-layer high-pass filters enabled with very low cutoffs:
+        // L0=10 Hz, L1=13.219553 Hz, L2=46.564911 Hz. Floe was reporting all three as ~6 kHz
+        // (the legacy default), because the JSON value was being overwritten during legacy
+        // param modernisation. The modern FilterCutoff range is 15..20000 Hz, so values
+        // below 15 should clamp to 15 Hz.
+        for (auto const layer_index : Range(k_num_layers)) {
+            CHECK_EQ(ProjectedLayerValue(state, layer_index, LayerParamIndex::FilterOn), 1.0f);
+            CHECK_EQ(ParamToInt<param_values::LayerFilterType>(
+                         ProjectedLayerValue(state, layer_index, LayerParamIndex::FilterType)),
+                     param_values::LayerFilterType::Highpass);
+        }
+
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 0, LayerParamIndex::FilterCutoff), 15.0f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 1, LayerParamIndex::FilterCutoff), 15.0f, 0.5f);
+        CHECK_APPROX_EQ(ProjectedLayerValue(state, 2, LayerParamIndex::FilterCutoff), 46.56f, 1.0f);
+
+        // Effect-filter resonance Q. The JSON value (10.379755 %) is clearly different from the
+        // legacy default (30 %), so the modernise step fires and the audible Q should match the
+        // legacy DSP exactly.
+        {
+            constexpr f32 k_on_disk_fl_res = 0.10379755f;
+            auto const legacy_q = MapFrom01Skew(k_on_disk_fl_res, 0.5f, 2.0f, 5.0f);
+            auto const modern_linear = state.LinearParam(ParamIndex::FilterResonance);
+            auto const modern_q = MapFrom01Skew(modern_linear, 0.5f, 2.0f, 2.0f);
+            CHECK_APPROX_EQ(modern_q, legacy_q, 1e-4f);
+        }
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestAdaptPreservesLegacyAudio) {
+    SUBCASE("compressor ratio") {
+        auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyCompressorRatio)];
+        auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorRatio)];
+
+        auto check_for_legacy_ratio = [&](f32 legacy_ratio) {
+            auto state = DefaultStateSnapshot();
+            state.LinearParam(ParamIndex::CompressorRatio) = 0;
+            state.LinearParam(ParamIndex::LegacyCompressorRatio) =
+                legacy_desc.LineariseValue(legacy_ratio, true).Value();
+
+            AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+            auto const modern_ratio =
+                modern_desc.ProjectValue(state.LinearParam(ParamIndex::CompressorRatio));
+            CHECK_APPROX_EQ(modern_ratio, legacy_ratio, 0.05f);
+        };
+
+        check_for_legacy_ratio(legacy_desc.ProjectValue(legacy_desc.default_linear_value));
+        check_for_legacy_ratio(4.0f);
+    }
+
+    SUBCASE("compressor threshold") {
+        auto const& legacy_desc = k_param_descriptors[ToInt(ParamIndex::LegacyCompressorThreshold)];
+        auto const expected_db = AmpToDb(legacy_desc.ProjectValue(legacy_desc.default_linear_value));
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(ParamIndex::CompressorThreshold) = 0;
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        // Modern threshold has no projection — the linear value is the dB value.
+        auto const modern_threshold_db = state.LinearParam(ParamIndex::CompressorThreshold);
+        CHECK_APPROX_EQ(modern_threshold_db, expected_db, 0.5f);
+    }
+
+    SUBCASE("layer filter resonance Q") {
+        auto const layer_q = [](f32 skewed) { return 1.0f / (2.0f * (1.0f - skewed)); };
+        auto const legacy_skew = [](f32 linear) { return Pow(linear, 4.0f) * 0.95f; };
+        auto const modern_skew = [](f32 linear) { return linear * 0.95f; };
+
+        constexpr f32 k_legacy_linear = 0.30f;
+        auto const legacy_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyFilterResonance);
+        auto const modern_pi = ParamIndexFromLayerParamIndex(0, LayerParamIndex::FilterResonance);
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(modern_pi) = 0;
+        state.LinearParam(legacy_pi) =
+            k_param_descriptors[ToInt(legacy_pi)].LineariseValue(k_legacy_linear, true).Value();
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        CHECK_APPROX_EQ(layer_q(modern_skew(state.LinearParam(modern_pi))),
+                        layer_q(legacy_skew(k_legacy_linear)),
+                        1e-4f);
+    }
+
+    SUBCASE("convolution reverb highpass") {
+        constexpr f32 k_legacy_hz = 30.0f;
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(ParamIndex::ConvolutionReverbHighpass) = 0;
+        state.LinearParam(ParamIndex::LegacyConvolutionReverbHighpass) =
+            k_param_descriptors[ToInt(ParamIndex::LegacyConvolutionReverbHighpass)]
+                .LineariseValue(k_legacy_hz, true)
+                .Value();
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        auto const modern_hz = k_param_descriptors[ToInt(ParamIndex::ConvolutionReverbHighpass)].ProjectValue(
+            state.LinearParam(ParamIndex::ConvolutionReverbHighpass));
+        CHECK_APPROX_EQ(modern_hz, k_legacy_hz, 2.0f);
+    }
+
+    SUBCASE("bitcrush wet/dry → mix/output") {
+        auto const& wet_desc = k_param_descriptors[ToInt(ParamIndex::LegacyBitCrushWet)];
+        auto const& dry_desc = k_param_descriptors[ToInt(ParamIndex::LegacyBitCrushDry)];
+        auto const wet_default_amp = wet_desc.ProjectValue(wet_desc.default_linear_value);
+        auto const dry_default_amp = dry_desc.ProjectValue(dry_desc.default_linear_value);
+        auto const expected_output_amp = wet_default_amp + dry_default_amp;
+        auto const expected_mix = wet_default_amp / expected_output_amp;
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(ParamIndex::BitCrushMix) = 0;
+        state.LinearParam(ParamIndex::BitCrushOutput) = 0;
+
+        AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
+
+        auto const mix = k_param_descriptors[ToInt(ParamIndex::BitCrushMix)].ProjectValue(
+            state.LinearParam(ParamIndex::BitCrushMix));
+        auto const output_amp = k_param_descriptors[ToInt(ParamIndex::BitCrushOutput)].ProjectValue(
+            state.LinearParam(ParamIndex::BitCrushOutput));
+        CHECK_APPROX_EQ(mix, expected_mix, 0.05f);
+        CHECK_APPROX_EQ(output_amp, expected_output_amp, 0.05f);
+    }
+
+    return k_success;
+}
+
+// A macro on a legacy param must not change the audio heard at load: AdaptNewerParams has to
+// seed the modern successor(s) so that the macro-modulated state still sounds the same.
+TEST_CASE(TestAdaptPreservesLegacyAudioUnderMacros) {
+    SUBCASE("convolution reverb wet/dry → mix/output") {
+        auto const wet_pi = ParamIndex::LegacyConvolutionReverbWet;
+        auto const dry_pi = ParamIndex::LegacyConvolutionReverbDry;
+        auto const mix_pi = ParamIndex::ConvolutionReverbMix;
+        auto const out_pi = ParamIndex::ConvolutionReverbOutput;
+        auto const& wet_desc = k_param_descriptors[ToInt(wet_pi)];
+        auto const& dry_desc = k_param_descriptors[ToInt(dry_pi)];
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(wet_pi) = wet_desc.LineariseValue(0.0f, true).Value();
+        state.LinearParam(dry_pi) = dry_desc.LineariseValue(0.245f, true).Value();
+        state.LinearParam(mix_pi) = 0;
+        state.LinearParam(out_pi) = 0;
+        state.LinearParam(ParamIndex::Macro4) = 1.0f;
+        state.macro_destinations[3].items[0] = {.param_index = wet_pi, .value = 0.7f};
+
+        auto const legacy_wet_amp = wet_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                              state.macro_destinations,
+                                                                              state.LinearParam(wet_pi),
+                                                                              wet_pi));
+        auto const legacy_dry_amp = dry_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                              state.macro_destinations,
+                                                                              state.LinearParam(dry_pi),
+                                                                              dry_pi));
+
+        // Start past the macro-reset migration so our state.macro_destinations setup survives.
+        AdaptNewerParams(state, StateVersion::AddedVitalCompressor, StateSource::PresetFile);
+
+        auto const mix_01 =
+            k_param_descriptors[ToInt(mix_pi)].ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                                state.macro_destinations,
+                                                                                state.LinearParam(mix_pi),
+                                                                                mix_pi));
+        auto const out_amp =
+            k_param_descriptors[ToInt(out_pi)].ProjectValue(AdjustedLinearValue(state.param_values,
+                                                                                state.macro_destinations,
+                                                                                state.LinearParam(out_pi),
+                                                                                out_pi));
+
+        CHECK_APPROX_EQ(out_amp * mix_01, legacy_wet_amp, 0.01f);
+        CHECK_APPROX_EQ(out_amp * (1.0f - mix_01), legacy_dry_amp, 0.01f);
+    }
+
+    SUBCASE("frequency remap (convolution reverb highpass)") {
+        auto const legacy_pi = ParamIndex::LegacyConvolutionReverbHighpass;
+        auto const modern_pi = ParamIndex::ConvolutionReverbHighpass;
+        auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
+        auto const& modern_desc = k_param_descriptors[ToInt(modern_pi)];
+
+        auto state = DefaultStateSnapshot();
+        state.LinearParam(legacy_pi) = legacy_desc.LineariseValue(50.0f, true).Value();
+        state.LinearParam(modern_pi) = 0;
+        state.LinearParam(ParamIndex::Macro4) = 1.0f;
+        state.macro_destinations[3].items[0] = {.param_index = legacy_pi, .value = 0.6f};
+
+        auto const legacy_hz_at_load =
+            legacy_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                         state.macro_destinations,
+                                                         state.LinearParam(legacy_pi),
+                                                         legacy_pi));
+
+        // Run only the frequency-remap migration block.
+        AdaptNewerParams(state, StateVersion::AddedExtraFilterTypes, StateSource::PresetFile);
+
+        auto const modern_hz_at_load =
+            modern_desc.ProjectValue(AdjustedLinearValue(state.param_values,
+                                                         state.macro_destinations,
+                                                         state.LinearParam(modern_pi),
+                                                         modern_pi));
+        CHECK_APPROX_EQ(modern_hz_at_load, legacy_hz_at_load, 1.0f);
     }
 
     return k_success;
 }
 
 TEST_REGISTRATION(RegisterStateCodingTests) {
+    REGISTER_TEST(TestAdaptPreservesLegacyAudio);
+    REGISTER_TEST(TestAdaptPreservesLegacyAudioUnderMacros);
     REGISTER_TEST(TestLoadingOldFiles);
     REGISTER_TEST(TestBackwardCompat);
     REGISTER_TEST(TestFuzzingJsonState);
-    REGISTER_TEST(TestNewSerialisation);
+    REGISTER_TEST(TestSerialisation);
     REGISTER_TEST(TestParsersHandleInvalidData);
     REGISTER_TEST(TestAdaptPreAddedLayerVelocityCurvesParams);
 }

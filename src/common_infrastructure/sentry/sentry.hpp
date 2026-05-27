@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -32,7 +32,7 @@ static_assert(Cloneable<Tag>);
 
 struct ErrorEvent {
     // NOTE: in Sentry, all events are 'issues' regardless of their level
-    enum class Level {
+    enum class Level : u8 {
         Fatal,
         Error,
         Warning,
@@ -145,7 +145,7 @@ static String UniqueErrorFilepath(String folder, Atomic<u64>& seed, Allocator& a
     return path::Join(allocator, Array {folder, filename});
 }
 
-enum class SubmitFileResult {
+enum class SubmitFileResult : u8 {
     DeleteFile,
     LeaveFile,
     HideFile,
@@ -328,7 +328,7 @@ PUBLIC ErrorCodeOr<void> EnvelopeAddHeader(Sentry& sentry, EnvelopeWriter& write
     return k_success;
 }
 
-enum class SessionStatus {
+enum class SessionStatus : u8 {
     Ok,
     EndedNormally,
     Crashed,

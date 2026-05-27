@@ -11,8 +11,9 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
 import data from "@site/static/generated-data.json";
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
-Floe can install sample libraries and presets from package files (`.floe-pkg` or `.zip`).
+Floe can install sample libraries and presets from package files (`.floe-pkg`, `.floe-pkg-enc`, or `.zip`).
 
 ### At a glance
 
@@ -27,7 +28,7 @@ Download your package file(s). Click the 'Install package' button in Floe's Pref
 
 Firstly, if you haven't already, [download & install Floe](/download). Next, load up the Floe plugin in your DAW.
 
-Download your chosen package(s) (`.floe-pkg` or `.zip` files containing sample libraries and presets).
+Download your chosen package(s) (`.floe-pkg`, `.floe-pkg-enc`, or `.zip` files containing sample libraries and presets).
 
 To install:
 1. Open Floe's Preferences panel (<FAIcon icon="fa-solid fa-cog" /> cog icon)
@@ -37,13 +38,41 @@ To install:
 
 The package files can be deleted after installation. No restart required.
 
-![Floe's GUI](/images/install-package-gui.png)
+<GeneratedScreenshot name="install-packages" alt="Floe Preferences panel showing the Packages tab" />
 
 :::note[ZIP files and Safari on macOS]
 If you have a `.zip` package rather than `.floe-pkg`, be aware that Safari automatically extracts ZIP files after downloading. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab. This is not an issue with `.floe-pkg` files.
 :::
 
 ## Advanced Details
+
+### What is a package?
+A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**.
+
+A package may contain:
+- Samples Libraries
+- Presets/Preset Banks
+
+Typically, a package contains one sample library, and a bank of factory presets for the library.
+
+But alternatively, a package could also contain only presets, or a collection of sample libraries, or any combination.
+
+Floe doesn't remember packages after installation; they're just a means to get content onto your computer. Packages are created using Floe's [packaging tools](../develop/packaging), or using a ZIP utility.
+
+### Encrypted packages
+
+Some packages use the `.floe-pkg-enc` format. Installation is the same as any other package — click 'Install package' and select the file — with one extra step: Floe prompts for a license key.
+
+![License key prompt](/images/encrypted-package-key-required.png)
+
+Paste the license key provided by the package developer, then click **Activate**. The whole process is offline; no internet connection or account is required.
+
+A license key is personal to you and embeds your identifying information, so don't share it or post it publicly.
+
+Once installed, Floe shows who the package is licensed to:
+
+![Installed encrypted package showing license holder](/images/encrypted-package-installed.png)
+
 
 ### Install to a custom location
 1. Create custom folders using Finder/File Explorer such as "Floe Libraries" and "Floe Presets"
@@ -59,7 +88,7 @@ To do that, use your file browser program (Finder/File Explorer) and create the 
 
 Floe uses separate folders for sample libraries versus presets, so you might want to create one for each. For example, on your _SAMPLES_ hard drive, create folders: "Floe Libraries" and "Floe Presets". Add these 2 folders on Floe's preferences panels and select them as the default installation locations.
 
-Further details about folder management can be found on the [Folders](../key-concepts/folders) page.
+Further details about folder management can be found on the [Folders](../usage/folders) page.
 
 ### How 'Install package' works
 
@@ -67,7 +96,7 @@ Floe handles the installation process intelligently. It will check existing inst
 
 ### Manually installing
 
-Instead of using the 'install package' button, you can manually install libraries and presets by extracting the package file into the correct folders. Packages are just ZIP files. If you have a `.floe-pkg` file, rename it to `.zip` first and then extract it using any ZIP extraction tool - often just a matter of double-clicking on it.
+Instead of using the 'install package' button, you can manually install libraries and presets by extracting the package file into the correct folders. Unencrypted packages are just ZIP files. If you have a `.floe-pkg` file, rename it to `.zip` first and then extract it using any ZIP extraction tool - often just a matter of double-clicking on it. Note: `.floe-pkg-enc` (encrypted) packages cannot be manually extracted; they must be installed through Floe using a license key.
 
 1. Extract the package file.
 1. Open Floe.
@@ -77,7 +106,7 @@ Instead of using the 'install package' button, you can manually install librarie
 1. Done. No need to restart Floe.
 
 ### Convert floe-pkg to zip
-No conversion needed! Just change the file extension. There are countless ways to do this. As quick guidance for our users:
+No conversion needed! Just change the file extension. This only works for `.floe-pkg` files, not encrypted `.floe-pkg-enc` files. There are countless ways to do this. As quick guidance for our users:
 - On macOS Finder: right-click the file -> Get Info -> edit Name & Extension.
 - On Windows File Explorer: View -> Show -> File name extensions. Then right-click the file and rename.
 

@@ -5,6 +5,7 @@
 
 #include <assert.h>
 
+#include "src/synthesis/effects/compressor.h"
 #include "src/synthesis/effects/delay.h"
 #include "src/synthesis/effects/phaser.h"
 #include "src/synthesis/effects/reverb.h"
@@ -208,5 +209,66 @@ void SetSampleRate(Delay& delay, int sample_rate) {
 }
 
 } // namespace delay
+
+namespace compressor {
+
+// Match the "band" (mid) defaults from vital::MultibandCompressor so a single-band wrapper
+// behaves like a sensible general-purpose compressor.
+constexpr float kBaseAttackMs = 1.4f;
+constexpr float kBaseReleaseMs = 28.0f;
+
+struct Compressor {
+    vital::Compressor compressor {kBaseAttackMs, kBaseReleaseMs, kBaseAttackMs, kBaseReleaseMs};
+    vital::Output in_params[(int)Params::Count];
+    vital::poly_float in_buffer[vital::kMaxBufferSize];
+};
+
+Compressor* Create() {
+    auto compressor = new Compressor();
+    for (int i = 0; i < (int)Params::Count; ++i) {
+        unsigned index = -1;
+        switch ((Params)i) {
+            case Params::UpperThresholdDb: index = vital::Compressor::kUpperThreshold; break;
+            case Params::LowerThresholdDb: index = vital::Compressor::kLowerThreshold; break;
+            case Params::UpperRatio: index = vital::Compressor::kUpperRatio; break;
+            case Params::LowerRatio: index = vital::Compressor::kLowerRatio; break;
+            case Params::OutputGainDb: index = vital::Compressor::kOutputGain; break;
+            case Params::Attack: index = vital::Compressor::kAttack; break;
+            case Params::Release: index = vital::Compressor::kRelease; break;
+            case Params::Mix: index = vital::Compressor::kMix; break;
+            case Params::Count: break;
+        }
+        compressor->compressor.plug(&compressor->in_params[i], index);
+    }
+    return compressor;
+}
+
+void Destroy(Compressor* compressor) { delete compressor; }
+
+void Process(Compressor& compressor, ProcessCompressorArgs args) {
+    assert(args.num_frames <= vital::kMaxBufferSize);
+
+    for (int i = 0; i < (int)Params::Count; ++i) {
+        // The compressor module only ever looks at the first value in the buffer
+        compressor.in_params[i].buffer[0] = vital::poly_float::init(args.params[i]);
+    }
+
+    for (int i = 0; i < args.num_frames; ++i)
+        compressor.in_buffer[i] = vital::utils::toPolyFloatFromUnaligned(&args.in_interleaved[i * 2]);
+
+    compressor.compressor.processWithInput(compressor.in_buffer, args.num_frames);
+
+    for (int i = 0; i < args.num_frames; ++i) {
+        auto const& o = compressor.compressor.output()->buffer[i];
+        args.out_interleaved[i * 2 + 0] = o[0];
+        args.out_interleaved[i * 2 + 1] = o[1];
+    }
+}
+
+void HardReset(Compressor& compressor) { compressor.compressor.reset(vital::constants::kFullMask); }
+
+void SetSampleRate(Compressor& compressor, int sample_rate) { compressor.compressor.setSampleRate(sample_rate); }
+
+} // namespace compressor
 
 } // namespace vitfx

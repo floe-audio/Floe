@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -75,3 +75,8 @@ constexpr auto k_macro_params = ComptimeParamSearch<ComptimeParamSearchOptions {
 }>();
 
 static_assert(k_macro_params.size == k_num_macros);
+
+f32 AdjustedLinearValue(Span<f32 const> param_values,
+                        MacroDestinations const& macros,
+                        f32 linear_value,
+                        ParamIndex param_index);

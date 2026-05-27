@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/elements/gui_param_elements.hpp"
@@ -6,11 +6,14 @@
 #include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
+#include "engine/engine.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
+#include "gui/overlays/gui_confirmation_dialog.hpp"
+#include "gui/panels/gui_legacy_params_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/param.hpp"
@@ -18,16 +21,44 @@
 
 constexpr f32 k_row_button_label_gap_y = 6;
 
-static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices) {
-    auto const root = DoBox(g.builder,
-                            {
-                                .layout {
-                                    .size = layout::k_hug_contents,
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
+bool DoResetSectionMenuItems(GuiState& g,
+                             Box menu_root,
+                             StateSnapshotSection const& section,
+                             String name,
+                             bool no_icon_gap) {
+    bool fired = false;
 
+    if (MenuItem(g.builder,
+                 menu_root,
+                 {
+                     .text = fmt::Format(g.scratch_arena, "Reset {} to Default"_s, name),
+                     .no_icon_gap = no_icon_gap,
+                 })
+            .button_fired) {
+        ApplySectionOfState(g.engine, DefaultStateSnapshot(), section, section);
+        fired = true;
+    }
+
+    if (auto const pinned = PinnedPresetState(g.engine)) {
+        if (MenuItem(g.builder,
+                     menu_root,
+                     {
+                         .text = fmt::Format(g.scratch_arena,
+                                             "Reset {} to \"{}\" state"_s,
+                                             name,
+                                             pinned->extras.display_name),
+                         .no_icon_gap = no_icon_gap,
+                     })
+                .button_fired) {
+            ApplySectionOfState(g.engine, *pinned, section, section);
+            fired = true;
+        }
+    }
+
+    return fired;
+}
+
+static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> param_indices) {
     for (auto const param_index : param_indices) {
         g.imgui.PushId(ToInt(param_index));
         DEFER { g.imgui.PopId(); };
@@ -43,17 +74,40 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                      });
         }
 
-        if (MenuItem(g.builder,
-                     root,
-                     {
-                         .text = "Set to Default Value",
-                         .tooltip = "Set the parameter to its default value"_s,
-                     })
-                .button_fired) {
-            SetParameterValue(g.engine.processor,
-                              param_index,
-                              k_param_descriptors[ToInt(param_index)].default_linear_value,
-                              {});
+        {
+            StateSnapshotSection const param_target_section {ParamSection {param_index}};
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Copy Value"_s,
+                             .tooltip = "Copy this parameter's value"_s,
+                         })
+                    .button_fired) {
+                g.snapshot_clipboard = GuiState::CopiedSection {
+                    .snapshot = CurrentStateSnapshot(g.engine),
+                    .section = param_target_section,
+                };
+            }
+
+            auto const can_paste_param = g.snapshot_clipboard.HasValue() &&
+                                         g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Param;
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Paste Value"_s,
+                             .tooltip = "Overwrite this parameter with the previously copied value"_s,
+                             .mode = can_paste_param ? MenuItemOptions::Mode::Active
+                                                     : MenuItemOptions::Mode::Disabled,
+                         })
+                    .button_fired &&
+                can_paste_param) {
+                ApplySectionOfState(g.engine,
+                                    g.snapshot_clipboard->snapshot,
+                                    g.snapshot_clipboard->section,
+                                    param_target_section);
+            }
         }
 
         if (k_param_descriptors[ToInt(param_index)].value_type == ParamValueType::Float) {
@@ -67,6 +121,35 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
                 g.param_text_editor_to_open = param_index;
             }
         }
+
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Reset Value to Default",
+                         .tooltip = "Reset the parameter to its default value"_s,
+                     })
+                .button_fired) {
+            SetParameterValue(g.engine.processor,
+                              param_index,
+                              k_param_descriptors[ToInt(param_index)].default_linear_value,
+                              {});
+        }
+
+        if (auto const pinned = PinnedPresetState(g.engine)) {
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = fmt::Format(g.scratch_arena,
+                                                 "Reset Value to \"{}\" state",
+                                                 pinned->extras.display_name),
+                             .tooltip = "Reset the parameter to its value in the original state"_s,
+                         })
+                    .button_fired) {
+                SetParameterValue(g.engine.processor, param_index, pinned->LinearParam(param_index), {});
+            }
+        }
+
+        MenuDivider(g.builder, root);
 
         if (IsMidiCCLearnActive(g.engine.processor)) {
             if (MenuItem(g.builder,
@@ -88,47 +171,88 @@ static void DoParamContextMenu(GuiState& g, Span<ParamIndex const> param_indices
             LearnMidiCC(g.engine.processor, param_index);
         }
 
-        auto const persistent_ccs = PersistentCcsForParam(g.prefs, ParamIndexToId(param_index));
+        auto const pinned_ccs = PinnedCcsForParam(g.prefs, ParamIndexToId(param_index));
         auto const ccs_bitset = GetLearnedCCsBitsetForParam(g.engine.processor, param_index);
         bool const closes_popups = ccs_bitset.AnyValuesSet();
         for (auto const cc_num : Range(128uz)) {
             if (!ccs_bitset.Get(cc_num)) continue;
 
+            g.imgui.PushId(cc_num);
+            DEFER { g.imgui.PopId(); };
+
             if (MenuItem(g.builder,
                          root,
                          {
                              .text = fmt::Format(g.scratch_arena, "Remove MIDI CC {}", cc_num),
-                             .tooltip = "Remove the MIDI CC assignment for this parameter"_s,
+                             .tooltip = "Remove and unpin this MIDI CC mapping"_s,
                              .close_on_click = closes_popups,
                          })
                     .button_fired) {
-                UnlearnMidiCC(g.engine.processor, param_index, (u7)cc_num);
+                UnlearnAndUnpinMidiCC(g.engine.processor, g.prefs, param_index, (u7)cc_num);
             }
 
             {
-                bool state = persistent_ccs.Get(cc_num);
-                if (MenuItem(g.builder,
-                             root,
-                             {
-                                 .text = fmt::Format(g.scratch_arena,
-                                                     "Always set MIDI CC {} to this when Floe opens",
-                                                     cc_num),
-                                 .tooltip = "Set this MIDI CC to this parameter value when Floe starts"_s,
-                                 .is_selected = state,
-                                 .close_on_click = closes_popups,
-                             })
+                bool state = pinned_ccs.Get(cc_num);
+                if (MenuItem(
+                        g.builder,
+                        root,
+                        {
+                            .text = fmt::Format(g.scratch_arena, "Pin MIDI CC {}", cc_num),
+                            .tooltip = "When pinned, this mapping is applied to all new Floe instances"_s,
+                            .is_selected = state,
+                            .close_on_click = closes_popups,
+                        })
                         .button_fired) {
                     state = !state;
                     if (state)
-                        AddPersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
+                        PinCcToParam(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
                     else
-                        RemovePersistentCcToParamMapping(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
+                        UnpinCcFromParam(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
                 }
             }
         }
 
-        if (param_indices.size != 1 && param_index != Last(param_indices))
-            DoModalDivider(g.builder, root, {.horizontal = true});
+        if (auto const macro_index = MacroIndexFromParamIndex(param_index)) {
+            MenuDivider(g.builder, root);
+
+            StateSnapshotSection const target_section {MacroSection {*macro_index}};
+
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Copy Macro"_s,
+                             .tooltip = "Copy this macro's value, name and destinations"_s,
+                         })
+                    .button_fired) {
+                g.snapshot_clipboard = GuiState::CopiedSection {
+                    .snapshot = CurrentStateSnapshot(g.engine),
+                    .section = target_section,
+                };
+            }
+
+            auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                                   g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Macro;
+
+            if (MenuItem(
+                    g.builder,
+                    root,
+                    {
+                        .text = "Paste Macro"_s,
+                        .tooltip = "Overwrite this macro with the previously copied macro"_s,
+                        .mode = can_paste ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                    })
+                    .button_fired &&
+                can_paste) {
+                ApplySectionOfState(g.engine,
+                                    g.snapshot_clipboard->snapshot,
+                                    g.snapshot_clipboard->section,
+                                    target_section);
+            }
+
+            DoResetSectionMenuItems(g, root, target_section, "Macro"_s, false);
+        }
+
+        if (param_indices.size != 1 && param_index != Last(param_indices)) MenuDivider(g.builder, root);
     }
 }
 
@@ -145,30 +269,21 @@ void AddParamContextMenuBehaviour(GuiState& g,
                                           hash;
                                       }));
 
-    if (g.builder.imgui.ButtonBehaviour(window_r,
-                                        id,
-                                        {
-                                            .mouse_button = MouseButton::Right,
-                                            .event = MouseButtonEvent::Up,
-                                        })) {
-        g.builder.imgui.OpenPopupMenu(popup_id, id);
-    }
-
-    if (g.builder.imgui.IsPopupMenuOpen(popup_id))
-        DoBoxViewport(g.builder,
-                      {
-                          .run = [&g, indices = ({
-                                          auto const indices =
-                                              g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(
-                                                  params.size);
-                                          for (auto const i : Range(params.size))
-                                              indices[i] = params[i].info.index;
-                                          indices;
-                                      })](GuiBuilder&) { DoParamContextMenu(g, indices); },
-                          .bounds = window_r,
-                          .imgui_id = popup_id,
-                          .viewport_config = k_default_popup_menu_viewport,
-                      });
+    DoRightClickMenu(
+        g,
+        {
+            .button_id = id,
+            .popup_id = popup_id,
+            .interaction_r = window_r,
+            .do_menu_items = [&g, indices = ({
+                                      auto const indices =
+                                          g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(
+                                              params.size);
+                                      for (auto const i : Range(params.size))
+                                          indices[i] = params[i].info.index;
+                                      indices;
+                                  })](Box root) { DoParamContextMenu(g, root, indices); },
+        });
 }
 
 void AddParamContextMenuBehaviour(GuiState& g,
@@ -185,12 +300,14 @@ void AddParamContextMenuBehaviour(GuiState& g, Box const& box, DescribedParamVal
         AddParamContextMenuBehaviour(g, g.imgui.ViewportRectToWindowRect(*viewport_r), box.imgui_id, param);
 }
 
-String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena) {
+String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out) {
     auto const str = param.info.LinearValueToString(param.LinearValue());
     ASSERT(str);
 
     DynamicArray<char> buf {arena};
-    fmt::Append(buf, "{}: {}\n{}", param.info.name, str.Value(), param.info.tooltip);
+    fmt::Append(buf, "{}: {}\n", param.info.name, str.Value());
+    if (greyed_out) fmt::Append(buf, "Not active. ");
+    fmt::Append(buf, "{}", param.info.tooltip);
     if (param.info.value_type == ParamValueType::Int)
         fmt::Append(buf, ". Drag to edit or double-click to type a value");
 
@@ -223,11 +340,64 @@ static void DoParamMenuItems(GuiState& g, ParamIndex param_index) {
     }
 }
 
+// Draws a clickable warning badge in the top-right corner of the control's rect when a legacy
+// parameter is currently overriding `modern_param_index`. Clicking opens a confirmation dialog
+// that lets the user clear the override.
+static void DoLegacyOverrideOverlay(GuiState& g, Rect window_r, ParamIndex modern_param_index) {
+    if (!IsAnyLegacyOverriding(modern_param_index, g.engine.processor.main_params.values)) return;
+
+    auto const badge_size = k_font_icons_size;
+    Rect const badge_r {
+        .x = window_r.Right() - badge_size,
+        .y = window_r.y,
+        .w = badge_size,
+        .h = badge_size,
+    };
+
+    auto const imgui_id =
+        (imgui::Id)(SourceLocationHash() ^ g.imgui.MakeId((u64)ToInt(modern_param_index) | 0x10000ull));
+
+    if (g.imgui.ButtonBehaviour(badge_r,
+                                imgui_id,
+                                {
+                                    .mouse_button = MouseButton::Left,
+                                    .event = MouseButtonEvent::Up,
+                                })) {
+        g.imgui.OpenModalViewport(k_legacy_params_panel_id);
+    }
+
+    Tooltip(g,
+            imgui_id,
+            badge_r,
+            "Overridden by a legacy parameter — click to open the Legacy Parameters panel"_s,
+            {});
+
+    g.fonts.Push(ToInt(FontType::Icons));
+    DEFER { g.fonts.Pop(); };
+
+    auto const icon_col =
+        g.imgui.IsHotOrActive(imgui_id, MouseButton::Left)
+            ? ChangeBrightness(ToU32({.c = g.imgui.IsHot(imgui_id) ? Col::White : Col::Yellow}), 1.3f)
+            : ToU32({.c = Col::Yellow});
+    g.imgui.draw_list->AddTextInRect(badge_r,
+                                     icon_col,
+                                     ICON_FA_TRIANGLE_EXCLAMATION,
+                                     {
+                                         .justification = TextJustification::Centred,
+                                         .overflow_type = TextOverflowType::AllowOverflow,
+                                         .font_scaling = 0.85f,
+                                     });
+}
+
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    MenuParameterComponentOptions const& options) {
+                    MenuParameterComponentOptions options) {
     ASSERT(param.info.value_type == ParamValueType::Menu);
+
+    bool const legacy_override =
+        IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
+    if (legacy_override) options.greyed_out = true;
 
     auto const container = DoBox(g.builder,
                                  {
@@ -254,31 +424,32 @@ Box DoMenuParameter(GuiState& g,
                                     : layout::k_fill_parent;
 
     // Menu text button that opens a popup.
-    auto const menu_btn =
-        DoBox(g.builder,
-              {
-                  .parent = row,
-                  .text = ParamMenuText(param.info.index, param.LinearValue()),
-                  .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                                     : Colours {ColSet {
-                                                           .base = LiveColStruct(UiColMap::MidText),
-                                                           .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                           .active = LiveColStruct(UiColMap::MidTextHot),
-                                                       }},
-                  .text_justification = TextJustification::CentredLeft,
-                  .text_overflow = TextOverflowType::ShowDotsOnRight,
-                  .layout {
-                      .size = {menu_btn_width, k_mid_button_height},
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      if (options.override_tooltip.size) return options.override_tooltip;
-                      return ParamTooltipText(param, g.builder.arena);
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
+    auto const menu_btn = DoBox(
+        g.builder,
+        {
+            .parent = row,
+            .text = options.override_button_text.size ? options.override_button_text
+                                                      : ParamMenuText(param.info.index, param.LinearValue()),
+            .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                               : Colours {ColSet {
+                                                     .base = LiveColStruct(UiColMap::MidText),
+                                                     .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                     .active = LiveColStruct(UiColMap::MidTextHot),
+                                                 }},
+            .text_justification = TextJustification::CentredLeft,
+            .text_overflow = options.allow_text_overflow ? TextOverflowType::AllowOverflow
+                                                         : TextOverflowType::ShowDotsOnRight,
+            .layout {
+                .size = {menu_btn_width, k_mid_button_height},
+            },
+            .tooltip = FunctionRef<String()> {[&]() -> String {
+                if (options.override_tooltip.size) return options.override_tooltip;
+                return ParamTooltipText(param, g.builder.arena);
+            }},
+            .button_behaviour = imgui::ButtonConfig {},
+        });
 
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ param.info.id);
-    if (menu_btn.button_fired) g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
 
     // Popup menu with items.
     if (g.builder.imgui.IsPopupMenuOpen(popup_id))
@@ -292,7 +463,7 @@ Box DoMenuParameter(GuiState& g,
                       });
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
-    if (arrows.prev_fired || arrows.next_fired) {
+    if (!legacy_override && (arrows.prev_fired || arrows.next_fired)) {
         auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
         if (val < param.info.linear_range.min) val = param.info.linear_range.max;
         if (val > param.info.linear_range.max) val = param.info.linear_range.min;
@@ -300,31 +471,43 @@ Box DoMenuParameter(GuiState& g,
     }
 
     // Slider behaviour
+    static bool slider_value_changed_during_interaction = false;
     if (auto const viewport_r = BoxRect(g.builder, menu_btn)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        auto current = param.LinearValue();
-        if (g.builder.imgui.SliderBehaviourRange({
-                .rect_in_window_coords = window_r,
-                .id = menu_btn.imgui_id,
-                .min = param.info.linear_range.min,
-                .max = param.info.linear_range.max,
-                .value = current,
-                .default_value = param.info.default_linear_value,
-                .cfg = {.sensitivity = 20},
-            })) {
-            new_val = current;
+        if (!legacy_override) {
+            if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left)) {
+                slider_value_changed_during_interaction = false;
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+            }
+
+            auto const initial_int_val = param.IntValue<int>();
+            auto current = param.LinearValue();
+            if (g.builder.imgui.SliderBehaviourRange({
+                    .rect_in_window_coords = window_r,
+                    .id = menu_btn.imgui_id,
+                    .min = param.info.linear_range.min,
+                    .max = param.info.linear_range.max,
+                    .value = current,
+                    .default_value = param.info.default_linear_value,
+                    .cfg = {.sensitivity = 20},
+                })) {
+                new_val = current;
+                if ((int)current != initial_int_val) slider_value_changed_during_interaction = true;
+            }
+
+            if (menu_btn.button_fired && !slider_value_changed_during_interaction)
+                g.builder.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
         }
 
-        if (g.imgui.WasJustActivated(menu_btn.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
-
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-
-        if (g.imgui.WasJustDeactivated(menu_btn.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
-
-        AddParamContextMenuBehaviour(g, window_r, menu_btn.imgui_id, param);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     // Label.
@@ -348,8 +531,12 @@ Box DoMenuParameter(GuiState& g,
 Box DoKnobParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    ParameterComponentOptions const& options) {
+                    ParameterComponentOptions options) {
     ASSERT(param.info.value_type == ParamValueType::Float);
+
+    bool const legacy_override =
+        IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
+    if (legacy_override) options.greyed_out = true;
 
     auto container = DoBox(g.builder,
                            {
@@ -363,7 +550,7 @@ Box DoKnobParameter(GuiState& g,
                                },
                                .tooltip = FunctionRef<String()> {[&]() -> String {
                                    if (options.override_tooltip.size) return options.override_tooltip;
-                                   return ParamTooltipText(param, g.builder.arena);
+                                   return ParamTooltipText(param, g.builder.arena, options.greyed_out);
                                }},
                            });
 
@@ -376,55 +563,59 @@ Box DoKnobParameter(GuiState& g,
     if (auto const viewport_r = BoxRect(g.builder, container)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
-            .rect_in_window_coords = window_r,
-            .id = container.imgui_id,
-            .text = options.is_fake ? ""_s : (String)display_string,
-            .min = param.info.linear_range.min,
-            .max = param.info.linear_range.max,
-            .value = val,
-            .default_value = param.info.default_linear_value,
-            .text_input_button_cfg {
-                .mouse_button = MouseButton::Left,
-                .event = MouseButtonEvent::DoubleClick,
-            },
-            .text_input_cfg {
-                .x_padding = WwToPixels(4.0f),
-                .centre_align = true,
-                .escape_unfocuses = true,
-                .select_all_when_opening = true,
-            },
-            .slider_cfg {
-                .sensitivity = 256 / param.info.linear_range.Delta(),
-                .slower_with_shift = true,
-                .default_on_modifer = true,
-            },
-        });
+        if (!legacy_override) {
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = container.imgui_id,
+                .text = options.is_fake ? ""_s : (String)display_string,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = val,
+                .default_value = param.info.default_linear_value,
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg {
+                    .x_padding = WwToPixels(4.0f),
+                    .centre_align = true,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                },
+                .slider_cfg {
+                    .sensitivity = 256 / param.info.linear_range.Delta(),
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
 
-        container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
-        container.is_hot = g.imgui.IsHot(container.imgui_id);
+            container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
+            container.is_hot = g.imgui.IsHot(container.imgui_id);
 
-        if (dragger_result.new_string_value) {
-            if (auto v = param.info.StringToLinearValue(*dragger_result.new_string_value)) {
-                new_val = v;
-                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+            if (dragger_result.new_string_value) {
+                if (auto v = param.info.StringToLinearValue(*dragger_result.new_string_value)) {
+                    new_val = v;
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+                }
             }
+            if (dragger_result.value_changed) new_val = val;
+            param_text_input_result = dragger_result.text_input_result;
+
+            if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            ParameterValuePopup(g, param, container.imgui_id, window_r);
+
+            AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
         }
-        if (dragger_result.value_changed) new_val = val;
-        param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
-
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-
-        if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
-
-        ParameterValuePopup(g, param, container.imgui_id, window_r);
-
-        AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
-        OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     // Focus the text input if requested.
@@ -447,6 +638,15 @@ Box DoKnobParameter(GuiState& g,
                                              .size = {knob_width, knob_height},
                                          },
                                      }))) {
+        auto const current_percent =
+            MapTo01(new_val ? *new_val : val, param.info.linear_range.min, param.info.linear_range.max);
+        auto const modulated_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params.values,
+                                                                   g.engine.processor.main_macro_destinations,
+                                                                   val,
+                                                                   param.info.index),
+                                               param.info.linear_range.min,
+                                               param.info.linear_range.max);
+
         if (options.peak_meter) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
             auto const knob_width_px = window_r.w;
@@ -463,28 +663,22 @@ Box DoKnobParameter(GuiState& g,
             DrawPeakMeter(g.imgui, peak_meter_r, *options.peak_meter, {.flash_when_clipping = false});
         }
 
-        DrawKnob(
-            g.builder.imgui,
-            container.imgui_id,
-            g.builder.imgui.ViewportRectToWindowRect(*r),
-            MapTo01(new_val ? *new_val : val, param.info.linear_range.min, param.info.linear_range.max),
-            {
-                .highlight_col = ToU32(options.knob_highlight_col),
-                .line_col = ToU32(options.knob_line_col),
-                .overload_position = param.info.display_format == ParamDisplayFormat::VolumeAmp
-                                         ? param.info.LineariseValue(1, true)
-                                         : k_nullopt,
-                .outer_arc_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params,
-                                                                 g.engine.processor.main_macro_destinations,
-                                                                 val,
-                                                                 param.info.index),
-                                             param.info.linear_range.min,
-                                             param.info.linear_range.max),
-                .style_system = options.style_system,
-                .greyed_out = options.greyed_out,
-                .is_fake = options.is_fake,
-                .bidirectional = options.bidirectional,
-            });
+        DrawKnob(g.builder.imgui,
+                 container.imgui_id,
+                 g.builder.imgui.ViewportRectToWindowRect(*r),
+                 current_percent,
+                 {
+                     .highlight_col = ToU32(options.knob_highlight_col),
+                     .line_col = ToU32(options.knob_line_col),
+                     .overload_position = param.info.display_format == ParamDisplayFormat::VolumeAmp
+                                              ? param.info.LineariseValue(1, true)
+                                              : k_nullopt,
+                     .outer_arc_percent = modulated_percent,
+                     .style_system = options.style_system,
+                     .greyed_out = options.greyed_out,
+                     .is_fake = options.is_fake,
+                     .bidirectional = options.bidirectional,
+                 });
     }
 
     // Draw text input after the knob so its on top.
@@ -526,11 +720,111 @@ Box DoKnobParameter(GuiState& g,
     return container;
 }
 
+Box DoVerticalSliderParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              VerticalSliderParameterOptions options) {
+    ASSERT(param.info.value_type == ParamValueType::Float);
+
+    bool const legacy_override =
+        IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
+    if (legacy_override) options.greyed_out = true;
+
+    auto container = DoBox(g.builder,
+                           {
+                               .parent = parent,
+                               .id_extra = param.info.id,
+                               .layout {
+                                   .size = {options.width, options.height},
+                               },
+                               .tooltip = FunctionRef<String()> {[&]() -> String {
+                                   if (options.override_tooltip.size) return options.override_tooltip;
+                                   return ParamTooltipText(param, g.builder.arena);
+                               }},
+                           });
+
+    auto val = param.LinearValue();
+    Optional<f32> new_val {};
+
+    // Dragger behaviour.
+    if (auto const viewport_r = BoxRect(g.builder, container)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+        if (!legacy_override) {
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = container.imgui_id,
+                .text = ""_s,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = val,
+                .default_value = param.info.default_linear_value,
+                .slider_cfg {
+                    .sensitivity = 256 / param.info.linear_range.Delta(),
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
+
+            container.is_active = g.imgui.IsActive(container.imgui_id, MouseButton::Left);
+            container.is_hot = g.imgui.IsHot(container.imgui_id);
+
+            if (dragger_result.value_changed) new_val = val;
+
+            if (g.imgui.WasJustActivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(container.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            ParameterValuePopup(g, param, container.imgui_id, window_r);
+
+            AddParamContextMenuBehaviour(g, window_r, container.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        }
+
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
+    }
+
+    // Drawing.
+    if (auto const r = BoxRect(g.builder, container)) {
+        auto const current_percent =
+            MapTo01(new_val ? *new_val : val, param.info.linear_range.min, param.info.linear_range.max);
+        auto const modulated_percent = MapTo01(AdjustedLinearValue(g.engine.processor.main_params.values,
+                                                                   g.engine.processor.main_macro_destinations,
+                                                                   val,
+                                                                   param.info.index),
+                                               param.info.linear_range.min,
+                                               param.info.linear_range.max);
+
+        DrawVerticalSlider(g.builder.imgui,
+                           container.imgui_id,
+                           g.builder.imgui.ViewportRectToWindowRect(*r),
+                           current_percent,
+                           {
+                               .highlight_col = ToU32(options.highlight_col),
+                               .line_col = ToU32(options.line_col),
+                               .modulation_percent = modulated_percent,
+                               .style_system = options.style_system,
+                               .greyed_out = options.greyed_out,
+                               .is_fake = options.is_fake,
+                           });
+    }
+
+    return container;
+}
+
 Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
-                      ButtonParameterComponentOptions const& options) {
+                      ButtonParameterComponentOptions options) {
     bool const state = param.BoolValue();
+
+    bool const legacy_override =
+        IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
+    if (legacy_override) options.greyed_out = true;
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
 
@@ -583,20 +877,112 @@ Box DoButtonParameter(GuiState& g,
           });
 
     // Toggle behaviour.
-    if (container.button_fired)
+    if (!legacy_override && container.button_fired)
         SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
 
-    // Right-click menu.
-    AddParamContextMenuBehaviour(g, container, param);
+    if (!legacy_override) AddParamContextMenuBehaviour(g, container, param);
+
+    if (auto const viewport_r = BoxRect(g.builder, container)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
+    }
 
     return container;
+}
+
+static void
+DoMuteSoloButton(GuiState& g, Box parent, DescribedParamValue const& param, bool is_solo, bool vertical) {
+    auto const state = param.BoolValue();
+    auto const on_back_col =
+        is_solo ? LiveColStruct(UiColMap::SoloButtonBackOn) : LiveColStruct(UiColMap::MuteButtonBackOn);
+
+    Corners const corners = vertical ? (is_solo ? (Corners)0b0011 : (Corners)0b1100)
+                                     : (is_solo ? (Corners)0b0110 : (Corners)0b1001);
+
+    auto const btn = DoBox(
+        g.builder,
+        {
+            .parent = parent,
+            .id_extra = is_solo,
+            .text = is_solo ? "S"_s : "M"_s,
+            .text_colours = state ? Colours {ColSet {
+                                        .base = LiveColStruct(UiColMap::MuteSoloButtonTextOn),
+                                        .hot = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
+                                        .active = LiveColStruct(UiColMap::MuteSoloButtonTextOnHot),
+                                    }}
+                                  : Colours {ColSet {
+                                        .base = LiveColStruct(UiColMap::MidText),
+                                        .hot = LiveColStruct(UiColMap::MidTextHot),
+                                        .active = LiveColStruct(UiColMap::MidTextHot),
+                                    }},
+            .text_justification = TextJustification::Centred,
+            .background_fill_colours = state ? Colours {on_back_col} : Colours {Col {.c = Col::None}},
+            .round_background_corners = corners,
+            .corner_rounding = k_corner_rounding,
+            .layout {
+                .size = layout::k_fill_parent,
+            },
+            .tooltip =
+                FunctionRef<String()> {[&]() -> String { return ParamTooltipText(param, g.builder.arena); }},
+            .button_behaviour = imgui::ButtonConfig {},
+        });
+
+    if (btn.button_fired) SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
+
+    AddParamContextMenuBehaviour(g, btn, param);
+}
+
+void DoMuteSoloButtons(GuiState& g,
+                       Box parent,
+                       DescribedParamValue const& mute_param,
+                       DescribedParamValue const& solo_param,
+                       MuteSoloButtonsOptions const& options) {
+    auto const vertical = options.vertical;
+
+    f32 const w = vertical ? k_mid_button_height : k_mid_button_height * 2;
+    f32 const h = vertical ? k_mid_button_height * 2 : k_mid_button_height;
+    auto const direction = vertical ? layout::Direction::Column : layout::Direction::Row;
+
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .layout {
+                                         .size = {w, h},
+                                         .contents_direction = direction,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                     .name = options.name,
+                                 });
+
+    if (auto const r = BoxRect(g.builder, container)) {
+        auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+        auto const rounding = WwToPixels(k_corner_rounding);
+        g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidDarkSurface), rounding);
+
+        // Divider line between the two buttons
+        if (vertical)
+            g.imgui.draw_list->AddLine({window_r.x, window_r.Centre().y},
+                                       {window_r.Right(), window_r.Centre().y},
+                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+        else
+            g.imgui.draw_list->AddLine({window_r.Centre().x, window_r.y},
+                                       {window_r.Centre().x, window_r.Bottom()},
+                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+    }
+
+    DoMuteSoloButton(g, container, mute_param, false, vertical);
+    DoMuteSoloButton(g, container, solo_param, true, vertical);
 }
 
 Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
-                   IntParameterComponentOptions const& options) {
+                   IntParameterComponentOptions options) {
     ASSERT(param.info.value_type == ParamValueType::Int);
+
+    bool const legacy_override =
+        IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
+    if (legacy_override) options.greyed_out = true;
 
     auto const container = DoBox(g.builder,
                                  {
@@ -646,64 +1032,68 @@ Box DoIntParameter(GuiState& g,
     if (auto const viewport_r = BoxRect(g.builder, dragger_box)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
 
-        auto val = (f32)param.IntValue<int>();
+        if (!legacy_override) {
+            auto val = (f32)param.IntValue<int>();
 
-        imgui::TextInputConfig const text_input_cfg = {
-            .chars_decimal = !options.midi_note_names,
-            .chars_note_names = options.midi_note_names,
-            .tab_focuses_next_input = true,
-            .centre_align = false,
-            .escape_unfocuses = true,
-            .select_all_when_opening = true,
-        };
+            imgui::TextInputConfig const text_input_cfg = {
+                .chars_decimal = !options.midi_note_names,
+                .chars_note_names = options.midi_note_names,
+                .tab_focuses_next_input = true,
+                .centre_align = false,
+                .escape_unfocuses = true,
+                .select_all_when_opening = true,
+            };
 
-        auto const dragger_result = g.builder.imgui.DraggerBehaviour({
-            .rect_in_window_coords = window_r,
-            .id = dragger_box.imgui_id,
-            .text = display_string,
-            .min = param.info.linear_range.min,
-            .max = param.info.linear_range.max,
-            .value = val,
-            .default_value = param.info.default_linear_value,
-            .text_input_button_cfg {
-                .mouse_button = MouseButton::Left,
-                .event = MouseButtonEvent::DoubleClick,
-            },
-            .text_input_cfg = text_input_cfg,
-            .slider_cfg {
-                .sensitivity = 15,
-                .slower_with_shift = true,
-                .default_on_modifer = true,
-            },
-        });
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = dragger_box.imgui_id,
+                .text = display_string,
+                .min = param.info.linear_range.min,
+                .max = param.info.linear_range.max,
+                .value = val,
+                .default_value = param.info.default_linear_value,
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg = text_input_cfg,
+                .slider_cfg {
+                    .sensitivity = 15,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
 
-        if (dragger_result.new_string_value) {
-            if (options.midi_note_names) {
-                if (auto const midi_note = MidiNoteFromName(*dragger_result.new_string_value))
-                    new_val = (f32)midi_note.Value();
-            } else if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal)) {
-                new_val = (f32)Clamp((int)o.Value(),
-                                     (int)param.info.linear_range.min,
-                                     (int)param.info.linear_range.max);
+            if (dragger_result.new_string_value) {
+                if (options.midi_note_names) {
+                    if (auto const midi_note = MidiNoteFromName(*dragger_result.new_string_value))
+                        new_val = (f32)midi_note.Value();
+                } else if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal)) {
+                    new_val = (f32)Clamp((int)o.Value(),
+                                         (int)param.info.linear_range.min,
+                                         (int)param.info.linear_range.max);
+                }
             }
+            if (dragger_result.value_changed) new_val = (f32)(int)val;
+            param_text_input_result = dragger_result.text_input_result;
+
+            if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
         }
-        if (dragger_result.value_changed) new_val = (f32)(int)val;
-        param_text_input_result = dragger_result.text_input_result;
 
-        if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
-            ParameterJustStartedMoving(g.engine.processor, param.info.index);
-
-        if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
-
-        if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
-            ParameterJustStoppedMoving(g.engine.processor, param.info.index);
-
-        AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
-        OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
     }
 
     auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
-    if (arrows.prev_fired || arrows.next_fired) {
+    if (!legacy_override && (arrows.prev_fired || arrows.next_fired)) {
         auto val = (f32)(param.IntValue<int>() + (arrows.prev_fired ? -1 : 1));
         val = Clamp(val, param.info.linear_range.min, param.info.linear_range.max);
         SetParameterValue(g.engine.processor, param.info.index, val, {});
@@ -726,6 +1116,133 @@ Box DoIntParameter(GuiState& g,
     }
 
     // Label.
+    if (options.label)
+        DoBox(g.builder,
+              {
+                  .parent = container,
+                  .text = options.override_label.size ? options.override_label : param.info.gui_label,
+                  .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                     : Colours {LiveColStruct(UiColMap::MidText)},
+                  .text_justification = TextJustification::Centred,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+              });
+
+    return container;
+}
+
+Box DoPercentDraggerParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              PercentDraggerOptions options) {
+    bool const legacy_override =
+        IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
+    if (legacy_override) options.greyed_out = true;
+
+    auto const container = DoBox(g.builder,
+                                 {
+                                     .parent = parent,
+                                     .id_extra = (u64)param.info.id,
+                                     .layout {
+                                         .size = layout::k_hug_contents,
+                                         .contents_gap = k_row_button_label_gap_y,
+                                         .contents_direction = layout::Direction::Column,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
+
+    auto const row = DoMidPanelPrevNextRow(g.builder, container, options.width);
+
+    auto const percent = (int)Round(param.LinearValue() * 100);
+    auto const display_string = fmt::Format(g.scratch_arena, "{}%", percent);
+    Optional<f32> new_val {};
+    Optional<imgui::TextInputResult> param_text_input_result {};
+
+    auto const dragger_box = DoBox(
+        g.builder,
+        {
+            .parent = row,
+            .text = display_string,
+            .text_colours = Colours {options.greyed_out ? LiveColStruct(UiColMap::MidTextDimmed)
+                                                        : LiveColStruct(UiColMap::MidText)},
+            .text_justification = TextJustification::CentredLeft,
+            .text_overflow = TextOverflowType::AllowOverflow,
+            .layout {
+                .size = {layout::k_fill_parent, k_mid_button_height},
+            },
+            .tooltip =
+                FunctionRef<String()> {[&]() -> String { return ParamTooltipText(param, g.builder.arena); }},
+        });
+
+    if (auto const viewport_r = BoxRect(g.builder, dragger_box)) {
+        auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);
+
+        if (!legacy_override) {
+            auto val = (f32)percent;
+
+            auto const dragger_result = g.builder.imgui.DraggerBehaviour({
+                .rect_in_window_coords = window_r,
+                .id = dragger_box.imgui_id,
+                .text = display_string,
+                .min = 0,
+                .max = 100,
+                .value = val,
+                .default_value = Round(param.info.default_linear_value * 100),
+                .text_input_button_cfg {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::DoubleClick,
+                },
+                .text_input_cfg {
+                    .chars_decimal = true,
+                    .tab_focuses_next_input = true,
+                    .centre_align = false,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                },
+                .slider_cfg {
+                    .sensitivity = 15,
+                    .slower_with_shift = true,
+                    .default_on_modifer = true,
+                },
+            });
+
+            if (dragger_result.new_string_value) {
+                if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal))
+                    new_val = Clamp((f32)o.Value(), 0.0f, 100.0f) / 100.0f;
+            }
+            if (dragger_result.value_changed) new_val = Round(val) / 100.0f;
+            param_text_input_result = dragger_result.text_input_result;
+
+            if (g.imgui.WasJustActivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStartedMoving(g.engine.processor, param.info.index);
+
+            if (new_val) SetParameterValue(g.engine.processor, param.info.index, *new_val, {});
+
+            if (g.imgui.WasJustDeactivated(dragger_box.imgui_id, MouseButton::Left))
+                ParameterJustStoppedMoving(g.engine.processor, param.info.index);
+
+            AddParamContextMenuBehaviour(g, window_r, dragger_box.imgui_id, param);
+            OverlayMacroDestinationRegion(g, window_r, param.info.index);
+        }
+
+        DoLegacyOverrideOverlay(g, window_r, param.info.index);
+    }
+
+    auto const arrows = DoMidPanelPrevNextButtons(g.builder, row, {.greyed_out = options.greyed_out});
+    if (!legacy_override && (arrows.prev_fired || arrows.next_fired)) {
+        auto val = Clamp((f32)(percent + (arrows.prev_fired ? -1 : 1)) / 100.0f, 0.0f, 1.0f);
+        SetParameterValue(g.engine.processor, param.info.index, val, {});
+    }
+
+    if (param_text_input_result) {
+        if (auto const rel_r = BoxRect(g.builder, dragger_box)) {
+            auto const r = g.builder.imgui.ViewportRectToWindowRect(*rel_r);
+            DrawParameterTextInput(g.builder.imgui, r, *param_text_input_result);
+        }
+    }
+
     if (options.label)
         DoBox(g.builder,
               {

@@ -7,10 +7,19 @@ GuiFrameInput* g_frame_input {};
 GuiFrameOutput* g_frame_output {};
 
 GuiFrameIo GuiIo() { return {*g_frame_input, *g_frame_output}; }
+bool GuiIoValid() { return g_frame_input && g_frame_output; }
 
 void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out) {
     g_frame_input = in;
     g_frame_output = out;
 }
 
-Atomic<bool> g_request_gui_update {};
+static Array<Atomic<bool>, k_max_num_floe_instances> g_request_gui_update {};
+
+void RequestGuiUpdate(FloeInstanceIndex index) {
+    g_request_gui_update[index].Store(true, StoreMemoryOrder::Release);
+}
+
+bool ConsumeGuiUpdateRequest(FloeInstanceIndex index) {
+    return g_request_gui_update[index].Exchange(false, RmwMemoryOrder::Acquire);
+}

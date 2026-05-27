@@ -1,29 +1,34 @@
-// Copyright 2018-2025 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "engine/engine.hpp"
 #include "gui/controls/gui_envelope.hpp"
+#include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_library_images.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/core/gui_waveform_images.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
-#include "gui/overlays/gui_confirmation_dialog_state.hpp"
+#include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/overlays/gui_notifications.hpp"
 #include "gui/panels/gui_bot_panel.hpp"
-#include "gui/panels/gui_feedback_panel_state.hpp"
-#include "gui/panels/gui_info_panel_state.hpp"
-#include "gui/panels/gui_inst_browser_state.hpp"
-#include "gui/panels/gui_ir_browser_state.hpp"
-#include "gui/panels/gui_layer_common.hpp"
+#include "gui/panels/gui_feedback_panel.hpp"
+#include "gui/panels/gui_info_panel.hpp"
+#include "gui/panels/gui_inst_browser.hpp"
+#include "gui/panels/gui_instance_config_panel.hpp"
+#include "gui/panels/gui_ir_browser.hpp"
+#include "gui/panels/gui_layer_subtabbed.hpp"
 #include "gui/panels/gui_library_dev_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
-#include "gui/panels/gui_prefs_panel_state.hpp"
+#include "gui/panels/gui_midi_cc_panel.hpp"
+#include "gui/panels/gui_prefs_panel.hpp"
 #include "gui/panels/gui_preset_browser.hpp"
 #include "gui/panels/gui_save_preset_panel.hpp"
 #include "gui_framework/fonts.hpp"
@@ -41,10 +46,12 @@ struct DraggingFX {
     f32x2 relative_grab_point {};
 };
 
-struct GuiState {
+struct GuiState : EngineListener {
     NON_COPYABLE(GuiState);
     GuiState(Engine& engine);
     ~GuiState();
+
+    void OnEngineChange() override;
 
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator, Kb(512)};
@@ -66,10 +73,13 @@ struct GuiState {
     SavePresetPanelState save_preset_panel_state {};
     PresetBrowserState preset_browser_state {};
     LibraryDevPanelState library_dev_panel_state {};
+    MidiCcPanelState midi_cc_panel_state {};
+    InstanceConfigPanelState instance_config_panel_state {};
     bool show_new_version_indicator {};
     BottomPanelState bottom_panel_state {};
     MidPanelState mid_panel_state {};
     MacrosGuiState macros_gui_state {};
+    u32 screenshot_consecutive_clear_frames {};
     f32x2 curve_map_add_point_click_pos {};
 
     Engine& engine;
@@ -85,9 +95,14 @@ struct GuiState {
         .fonts = fonts,
     };
 
-    Array<LayerPanelState, k_num_layers> layer_panel_states;
+    Array<LayerPanelState, k_num_layers> layer_panel_states {{
+        {.layer_index = 0},
+        {.layer_index = 1},
+        {.layer_index = 2},
+    }};
 
     WaveformImagesTable waveform_images {};
+    Array<WaveformHashDebounce, k_num_layers> waveform_hash_debounce {};
     Optional<ImageID> floe_logo_image {};
 
     LibraryImagesTable library_images {};
@@ -99,6 +114,12 @@ struct GuiState {
 
     Optional<ParamIndex> param_text_editor_to_open {};
 
+    struct CopiedSection {
+        StateSnapshot snapshot;
+        StateSnapshotSection section {ParamSection {}};
+    };
+    Optional<CopiedSection> snapshot_clipboard {};
+
     TimePoint redraw_counter = {};
 
     bool timbre_slider_is_held {};
@@ -108,3 +129,6 @@ struct GuiState {
 };
 
 void GuiUpdate(GuiState& g);
+
+ErrorCodeOr<void> EncodeGuiState(GuiState& g, Writer writer);
+void DecodeGuiState(GuiState& g, String bytes);

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <clap/entry.h>
@@ -105,7 +105,7 @@ static Atomic<u32> g_inside_call {0};
 
 // init and deinit are never called at the same time as any other clap function, including itself.
 // Might be called more than once. See the clap docs for full details.
-static bool ClapEntryInit(char const* plugin_path) {
+static bool ClapEntryInit(char const*) {
     if (PanicOccurred()) return false;
 
     try {
@@ -115,14 +115,10 @@ static bool ClapEntryInit(char const* plugin_path) {
 
         if (Exchange(g_init, true)) return true; // already initialised
 
-        bool const force_log_to_stderr =
-            !PRODUCTION_BUILD && plugin_path &&
-            NullTermStringsEqual(plugin_path, k_clap_init_log_to_stderr_sentinel);
-
         GlobalInit({
             .init_error_reporting = false,
             .set_main_thread = false,
-            .force_log_to_stderr = force_log_to_stderr,
+            .panic_response = PanicResponse::Quarantine,
         });
 
         LogInfo(ModuleName::Clap,

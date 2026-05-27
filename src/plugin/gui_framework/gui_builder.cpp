@@ -53,8 +53,23 @@ static void Run(GuiBuilder& builder, GuiBuilder::CurrentViewportState* state) {
         builder.state = state;
         DEFER { builder.state = initial_state; };
 
+        state->viewport_cache = {
+            .is_auto_sized = Any(builder.imgui.curr_viewport->cfg.auto_size),
+            .draw_list = builder.imgui.draw_list,
+            .pixels_per_ww = GuiIo().in.pixels_per_ww,
+        };
+
+        // Load/save the box count from last frame to reduce chances of needing reallocations.
+        if (auto prev = builder.prev_box_counts.Find(state->cfg.imgui_id)) {
+            state->boxes.Reserve(builder.arena, *prev);
+            layout::ReserveItemsCapacity(state->layout, builder.arena, *prev);
+        }
+        DEFER {
+            builder.prev_box_counts.FindOrInsert(state->cfg.imgui_id, 0).element.data =
+                (u32)state->boxes.size;
+        };
+
         {
-            layout::ReserveItemsCapacity(state->layout, builder.arena, 2048);
             ZoneNamedN(prof1, "Builder: create layout", true);
             state->cfg.run(builder);
         }
@@ -88,6 +103,7 @@ static void Run(GuiBuilder& builder, GuiBuilder::CurrentViewportState* state) {
                         case imgui::ViewportPositioning::ParentRelative: break;
                         case imgui::ViewportPositioning::WindowAbsolute:
                         case imgui::ViewportPositioning::AutoPosition:
+                        case imgui::ViewportPositioning::WindowCentred:
                             r.pos = builder.imgui.ViewportPosToWindowPos(r.pos);
                             break;
                     }
@@ -95,7 +111,8 @@ static void Run(GuiBuilder& builder, GuiBuilder::CurrentViewportState* state) {
                 }
                 case BoxViewportConfig::BoundsType::Rect: r = p->cfg.bounds.Get<Rect>(); break;
             }
-            ASSERT(All(r.size > 0));
+            if (p->cfg.viewport_config.positioning != imgui::ViewportPositioning::WindowCentred)
+                ASSERT(All(r.size > 0));
             r;
         });
     }
@@ -206,17 +223,17 @@ Optional<Rect> BoxRect(GuiBuilder& builder, Box const& box) {
     return layout::GetRect(builder.state->layout, box.layout_id);
 }
 
-Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
-    ZoneScoped;
+NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
     auto const id =
         builder.imgui.MakeId(loc_hash ^ config.id_extra ^ (config.parent ? config.parent->imgui_id : 0));
-    ASSERT(config.parent || builder.state->pass != GuiBuilderPass::LayoutBoxes ||
-               builder.state->layout.num_items == 0,
-           "DoBox requires a parent unless it's the first item (root)");
+    ASSERT_HOT(config.parent || builder.state->pass != GuiBuilderPass::LayoutBoxes ||
+                   builder.state->layout.num_items == 0,
+               "DoBox requires a parent unless it's the first item (root)");
+    auto const& cache = builder.state->viewport_cache;
     auto const font = builder.fonts.atlas[ToInt(config.font)];
-    auto const font_size = config.font_size != 0 ? WwToPixels(config.font_size) : font->font_size;
-    ASSERT(font_size > 0);
-    ASSERT(font_size < 10000);
+    auto const font_size = config.font_size != 0 ? config.font_size * cache.pixels_per_ww : font->font_size;
+    ASSERT_HOT(font_size > 0);
+    ASSERT_HOT(font_size < 10000);
 
     // IMPORTANT: if the string is very long, it needs to be word-wrapped manually by including newlines in
     // the text. This is necessary because our text rendering system is bad at doing huge amounts of
@@ -226,7 +243,6 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
     switch (builder.state->pass) {
         case GuiBuilderPass::LayoutBoxes: {
-            ZoneNamedN(tracy_layout, "Builder: layout boxes", true);
             auto const box = Box {
                 .layout_id =
                     layout::CreateItem(builder.state->layout, builder.arena, ({
@@ -237,12 +253,12 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
                                            // If the size is a pixel size (not one of the special
                                            // values), convert it to pixels.
-                                           if (layout.size[0] > 0) layout.size[0] *= GuiIo().in.pixels_per_ww;
-                                           if (layout.size[1] > 0) layout.size[1] *= GuiIo().in.pixels_per_ww;
+                                           if (layout.size[0] > 0) layout.size[0] *= cache.pixels_per_ww;
+                                           if (layout.size[1] > 0) layout.size[1] *= cache.pixels_per_ww;
 
-                                           layout.margins.lrtb *= GuiIo().in.pixels_per_ww;
-                                           layout.contents_gap *= GuiIo().in.pixels_per_ww;
-                                           layout.contents_padding.lrtb *= GuiIo().in.pixels_per_ww;
+                                           layout.margins.lrtb *= cache.pixels_per_ww;
+                                           layout.contents_gap *= cache.pixels_per_ww;
+                                           layout.contents_padding.lrtb *= cache.pixels_per_ww;
 
                                            // Root items need a real size.
                                            if (builder.state->layout.num_items == 0) {
@@ -263,7 +279,8 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                                                           });
                                                    ASSERT(layout.size[1] > 0);
                                                    if (config.size_from_text_preserve_height)
-                                                       layout.size.y = WwToPixels(config.layout.size.y);
+                                                       layout.size.y =
+                                                           config.layout.size.y * cache.pixels_per_ww;
                                                } else {
                                                    // We can't know the text size until we know the
                                                    // parent width.
@@ -295,7 +312,6 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             return box;
         }
         case GuiBuilderPass::HandleInputAndRender: {
-            ZoneNamedN(tracy_input, "Builder: handle input and render", true);
             auto box_ptr = builder.state->boxes.Find(id, id);
 
             if (!box_ptr) {
@@ -312,9 +328,11 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             auto const rect =
                 builder.imgui.RegisterAndConvertRect(layout::GetRect(builder.state->layout, box.layout_id));
 
+            if (config.name.size) builder.imgui.RegisterNamedRect(config.name, rect);
+
             // We want to let our IMGUI system know our margins when it's doing an auto-size otherwise the
             // bottom or rightmost elements might not have the requested spacing around it.
-            if (Any(builder.imgui.curr_viewport->cfg.auto_size)) {
+            if (cache.is_auto_sized) {
                 auto const margins = layout::GetMargins(builder.state->layout, box.layout_id);
                 auto bb = layout::GetRect(builder.state->layout, box.layout_id);
                 bb.size += margins.lrtb.yw;
@@ -333,6 +351,11 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                     builder.imgui.ButtonBehaviour(mouse_rect, box.imgui_id, *config.button_behaviour);
                 box.is_active = builder.imgui.IsActive(box.imgui_id, config.button_behaviour->mouse_button);
                 box.is_hot = builder.imgui.IsHot(box.imgui_id);
+            } else if (config.parent_dictates_hot_and_active) {
+                // Mirror the parent's state onto our persistent fields so descendants that also opt in
+                // see the originating button's state through us, not a default-false value.
+                box.is_active = config.parent->is_active;
+                box.is_hot = config.parent->is_hot;
             }
 
             //
@@ -362,7 +385,7 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                 // exclusively for the mouse so we should use the mouse rectangle.
                 if (config.background_fill_colours.s.base.c == Col::None) r = mouse_rect;
 
-                auto const rounding = Min(WwToPixels(config.corner_rounding), Min(r.w, r.h) / 2);
+                auto const rounding = Min(cache.WwToPixels(config.corner_rounding), Min(r.w, r.h) / 2);
 
                 u32 col_u32 = ToU32(background_fill);
                 if (config.background_fill_auto_hot_active_overlay) {
@@ -378,15 +401,12 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
                 switch (config.background_shape) {
                     case BackgroundShape::Rectangle:
-                        builder.imgui.draw_list->AddRectFilled(r,
-                                                               col_u32,
-                                                               rounding,
-                                                               config.round_background_corners);
+                        cache.draw_list->AddRectFilled(r, col_u32, rounding, config.round_background_corners);
                         break;
                     case BackgroundShape::Circle: {
                         auto const centre = r.Centre();
                         auto const radius = Min(r.w, r.h) / 2;
-                        builder.imgui.draw_list->AddCircleFilled(centre, radius, col_u32);
+                        cache.draw_list->AddCircleFilled(centre, radius, col_u32);
                         return box;
                     }
                     case BackgroundShape::Count: PanicIfReached();
@@ -422,15 +442,16 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
                 // Convert ImageID to TextureHandle for rendering
                 if (auto const texture = GuiIo().in.renderer->GetTextureFromImage(*config.background_tex)) {
-                    auto const rounding = Min(WwToPixels(config.corner_rounding), Min(rect.w, rect.h) / 2);
-                    builder.imgui.draw_list->AddImageRounded(*texture,
-                                                             rect.Min(),
-                                                             rect.Max(),
-                                                             uv0,
-                                                             uv1,
-                                                             col,
-                                                             rounding,
-                                                             config.round_background_corners);
+                    auto const rounding =
+                        Min(cache.WwToPixels(config.corner_rounding), Min(rect.w, rect.h) / 2);
+                    cache.draw_list->AddImageRounded(*texture,
+                                                     rect.Min(),
+                                                     rect.Max(),
+                                                     uv0,
+                                                     uv1,
+                                                     col,
+                                                     rounding,
+                                                     config.round_background_corners);
                 }
             }
 
@@ -463,25 +484,28 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
                 if (config.border_edges == 0b1111) {
                     auto const rounding =
-                        config.round_background_corners ? WwToPixels(config.corner_rounding) : 0;
-                    builder.imgui.draw_list->AddRect(r,
-                                                     col_u32,
-                                                     rounding,
-                                                     config.round_background_corners,
-                                                     config.border_width_pixels);
+                        config.round_background_corners ? cache.WwToPixels(config.corner_rounding) : 0;
+                    cache.draw_list->AddRect(r,
+                                             col_u32,
+                                             rounding,
+                                             config.round_background_corners,
+                                             config.border_width_pixels);
                 } else {
-                    builder.imgui.draw_list->AddBorderEdges(r,
-                                                            col_u32,
-                                                            config.border_edges,
-                                                            config.border_width_pixels);
+                    cache.draw_list->AddBorderEdges(r,
+                                                    col_u32,
+                                                    config.border_edges,
+                                                    config.border_width_pixels);
                 }
             }
 
             if (config.text.size) {
+                auto const effective_wrap_width = wrap_width == k_wrap_to_parent ? rect.w : wrap_width;
                 auto text_pos = rect.pos;
                 Optional<f32x2> text_size;
                 if (config.text_justification != TextJustification::TopLeft) {
-                    text_size = builder.fonts.CalcTextSize(config.text, {.font_size = font_size});
+                    text_size = builder.fonts.CalcTextSize(
+                        config.text,
+                        {.font_size = font_size, .wrap_width = effective_wrap_width});
                     text_pos = AlignWithin(rect, *text_size, config.text_justification);
                 }
 
@@ -500,16 +524,17 @@ Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                     });
                 }
 
-                builder.imgui.draw_list->AddText(
-                    text_pos,
-                    ToU32(is_hot      ? config.text_colours.s.hot
-                          : is_active ? config.text_colours.s.active
-                                      : config.text_colours.s.base),
-                    text,
-                    {
-                        .wrap_width = wrap_width == k_wrap_to_parent ? rect.w : wrap_width,
-                        .font_size = font_size,
-                    });
+                cache.draw_list->AddText(text_pos,
+                                         ToU32(is_hot      ? config.text_colours.s.hot
+                                               : is_active ? config.text_colours.s.active
+                                                           : config.text_colours.s.base),
+                                         text,
+                                         {
+                                             .wrap_width = effective_wrap_width,
+                                             .font_size = font_size,
+                                             .multiline_alignment = config.multiline_alignment,
+                                             .multiline_alignment_width = rect.w,
+                                         });
             }
 
             if (config.tooltip.tag != TooltipStringType::None) {

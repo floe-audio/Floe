@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <IconsFontAwesome6.h>
@@ -7,8 +7,12 @@
 
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
+#include "gui/controls/gui_pinned_view_toggle.hpp"
+#include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/core/gui_waveform_images.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
@@ -32,7 +36,7 @@ static Optional<ImageID> LogoImage(GuiState& g) {
     return g.floe_logo_image;
 }
 
-static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
+static void DoDotsMenu(GuiState& g) {
     auto const root = DoBox(g.builder,
                             {
                                 .layout {
@@ -42,10 +46,11 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
                                 },
                             });
 
+    // State
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "Reset State",
+                     .text = "Load Blank Preset",
                      .tooltip = "Set all parameters to their default values, clear all instruments and IRs"_s,
                  })
             .button_fired) {
@@ -55,7 +60,7 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "Reset Audio Engine",
+                     .text = "Panic (Stop All Sound)",
                      .tooltip = "Stops all audio and clears all playing notes"_s,
                  })
             .button_fired) {
@@ -65,40 +70,72 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "Randomise All Parameters",
-                     .tooltip = "Randomise all parameters and load random instruments and IRs"_s,
+                     .text = "Rescan Libraries & Presets",
+                     .tooltip = "Force a full rescan of all sample library and preset folders"_s,
                  })
             .button_fired) {
-        RandomiseAllParameterValues(g.engine.processor);
-        for (auto& layer : g.engine.processor.layer_processors) {
-            InstBrowserContext context {
-                .layer = layer,
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            LoadRandomInstrument(context, g.inst_browser_state[layer.index]);
-        }
-        {
-            IrBrowserContext ir_context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .library_images = g.library_images,
-                .engine = g.engine,
-                .prefs = g.prefs,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            LoadRandomIr(ir_context, g.ir_browser_state);
+        sample_lib_server::RescanAllFolders(g.shared_engine_systems.sample_library_server);
+        RescanAllFolders(g.shared_engine_systems.preset_server);
+        InvalidateAllLibraryImages(g.library_images, g.imgui.draw_list->renderer);
+        InvalidateAllWaveformImages(g.waveform_images, g.imgui.draw_list->renderer);
+    }
+
+    MenuDivider(g.builder, root);
+
+    // Windows
+    {
+        auto const info_item = MenuItem(g.builder,
+                                        root,
+                                        {
+                                            .text = "Info",
+                                            .tooltip = "Open the info window"_s,
+                                        });
+        if (info_item.button_fired) g.imgui.OpenModalViewport(g.info_panel_state.k_panel_id);
+
+        if (g.show_new_version_indicator) {
+            if (auto const r = BoxRect(g.builder, info_item)) {
+                f32 const radius = 3.5f;
+                f32x2 const centre {r->Right() - 10, r->CentreY()};
+                g.imgui.draw_list->AddCircleFilled(g.imgui.ViewportPosToWindowPos(centre),
+                                                   radius,
+                                                   ToU32({.c = Col::Red}));
+            }
         }
     }
 
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "MIDI CC Assignments",
+                     .tooltip = "View and manage all MIDI CC-to-parameter assignments"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.midi_cc_panel_state.k_panel_id);
+    }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Instance Config",
+                     .tooltip = "Configure per-instance settings such as randomisation behaviour"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.instance_config_panel_state.k_panel_id);
+    }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Share Feedback",
+                     .tooltip = "Open the feedback panel to share your thoughts about Floe"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.feedback_panel_state.k_panel_id);
+    }
+
+    MenuDivider(g.builder, root);
+
+    // Advanced
     if (MenuItem(
             g.builder,
             root,
@@ -114,17 +151,7 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "Share Feedback",
-                     .tooltip = "Open the feedback panel to share your thoughts about Floe"_s,
-                 })
-            .button_fired) {
-        g.imgui.OpenModalViewport(g.feedback_panel_state.k_panel_id);
-    }
-
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Library Developer Panel",
+                     .text = "Library Developer Tools",
                      .tooltip = "Open the developer panel for tools to help develop libraries"_s,
                  })
             .button_fired) {
@@ -142,6 +169,8 @@ static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
             g.shared_engine_systems.AddMirageFoldersIfNeeded();
         }
     }
+
+    MenuDivider(g.builder, root);
 
     if (MenuItem(g.builder,
                  root,
@@ -167,6 +196,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                               .contents_align = layout::Alignment::Start,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                           },
+                          .name = "top-panel"_s,
                       });
 
     // Scales the size keeping the aspect ratio, so that it fits within the given height.
@@ -198,95 +228,14 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
               .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
           });
 
-    auto preset_box = DoBox(builder,
-                            {
-                                .parent = root,
-                                .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
-                                .round_background_corners = 0b1111,
-                                .layout {
-                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                    .contents_padding = {.l = 7, .r = 4, .tb = 2},
-                                    .contents_direction = layout::Direction::Row,
-                                    .contents_align = layout::Alignment::Start,
-                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                },
-                            });
-
-    auto preset_box_left =
-        DoBox(builder,
-              {
-                  .parent = preset_box,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_direction = layout::Direction::Column,
-                  },
-                  .tooltip = FunctionRef<String()> {[&arena = builder.arena, &engine = g.engine]() -> String {
-                      DynamicArray<char> buffer {arena};
-                      dyn::Assign(buffer, "Open presets window"_s);
-                      fmt::Append(buffer, "\nCurrent preset: {}", engine.last_snapshot.name_or_path.Name());
-                      if (engine.last_snapshot.state.metadata.description.size) {
-                          dyn::AppendSpan(buffer, "\n\n"_s);
-                          dyn::AppendSpan(buffer, engine.last_snapshot.state.metadata.description);
-                      }
-                      return buffer.ToOwnedSpan();
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
-
-    if (preset_box_left.button_fired) {
-        g.imgui.OpenModalViewport(g.preset_browser_state.k_panel_id);
-        g.preset_browser_state.common_state.absolute_button_rect =
-            g.imgui.ViewportRectToWindowRect(*BoxRect(builder, preset_box_left));
-    }
-    if (preset_box_left.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-
-    DoBox(builder,
-          {
-              .parent = preset_box_left,
-              .text = fmt::Format(builder.arena,
-                                  "{}{}",
-                                  g.engine.last_snapshot.name_or_path.Name(),
-                                  StateChangedSinceLastSnapshot(g.engine) ? " (modified)"_s : ""_s),
-              .text_colours =
-                  ColSet {
-                      .base {.c = Col::Text, .dark_mode = true},
-                      .hot {.c = Col::Highlight},
-                      .active {.c = Col::Highlight},
-                  },
-              .parent_dictates_hot_and_active = true,
-              .layout {
-                  .size = {layout::k_fill_parent, k_font_body_size},
-              },
-          });
-
-    // IMPROVE: should this be a text input that changes the description?
-    DoBox(builder,
-          {
-              .parent = preset_box_left,
-              .text = g.engine.last_snapshot.state.metadata.description.size
-                          ? (String)g.engine.last_snapshot.state.metadata.description
-                          : "No description"_s,
-              .font = FontType::BodyItalic,
-              .text_colours =
-                  ColSet {
-                      .base {.c = Col::Subtext0, .dark_mode = true},
-                      .hot {.c = Col::Subtext1, .dark_mode = true},
-                      .active {.c = Col::Subtext1, .dark_mode = true},
-                  },
-              .text_overflow = TextOverflowType::ShowDotsOnRight,
-              .parent_dictates_hot_and_active = true,
-              .layout {
-                  .size = {layout::k_fill_parent, k_font_body_italic_size},
-              },
-          });
-
     auto const do_icon_button = [&](Box parent,
                                     String icon,
                                     String tooltip,
                                     f32 font_scale,
                                     f32 padding_x,
                                     Col colour = {.c = Col::Subtext1, .dark_mode = true},
-                                    u64 id_extra = SourceLocationHash()) {
+                                    u64 id_extra = SourceLocationHash(),
+                                    bool disabled = false) {
         // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
         auto const button = DoBox(builder,
                                   {
@@ -309,8 +258,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   .text_colours =
                       ColSet {
                           .base = colour,
-                          .hot {.c = Col::Highlight},
-                          .active {.c = Col::Highlight},
+                          .hot = disabled ? colour : Col {.c = Col::Highlight},
+                          .active = disabled ? colour : Col {.c = Col::Highlight},
                       },
                   .parent_dictates_hot_and_active = true,
               });
@@ -318,97 +267,231 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
     };
 
     {
-        auto const preset_next =
-            do_icon_button(preset_box,
-                           ICON_FA_CARET_LEFT,
-                           "Load previous preset\n\nThis is based on the currently selected filters."_s,
-                           1.0f,
-                           3);
-        if (preset_next.button_fired) {
-            PresetBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .preset_server = g.shared_engine_systems.preset_server,
-                .library_images = g.library_images,
-                .prefs = g.prefs,
-                .engine = g.engine,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            context.Init(g.scratch_arena);
-            DEFER { context.Deinit(); };
+        auto preset_box = DoBox(builder,
+                                {
+                                    .parent = root,
+                                    .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
+                                    .round_background_corners = 0b1111,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_padding = {.l = 7, .r = 4, .tb = 2},
+                                        .contents_direction = layout::Direction::Row,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                    },
+                                });
 
-            LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Backward);
+        // Don't allow multi-line description to overflow.
+        bool pop_clip_rect = false;
+        if (auto const r = BoxRect(g.builder, preset_box)) {
+            g.imgui.draw_list->PushClipRect(g.imgui.ViewportRectToWindowRect(*r));
+            pop_clip_rect = true;
         }
-        if (preset_next.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-    }
+        DEFER {
+            if (pop_clip_rect) g.imgui.draw_list->PopClipRect();
+        };
 
-    {
-        auto const preset_prev =
-            do_icon_button(preset_box,
-                           ICON_FA_CARET_RIGHT,
-                           "Load next preset\n\nThis is based on the currently selected filters."_s,
-                           1.0f,
-                           3);
-        if (preset_prev.button_fired) {
-            PresetBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .preset_server = g.shared_engine_systems.preset_server,
-                .library_images = g.library_images,
-                .prefs = g.prefs,
-                .engine = g.engine,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            context.Init(g.scratch_arena);
-            DEFER { context.Deinit(); };
+        auto preset_box_left = DoBox(
+            builder,
+            {
+                .parent = preset_box,
+                .layout {
+                    .size = {layout::k_fill_parent, k_font_body_size + k_font_body_italic_size},
+                    .contents_direction = layout::Direction::Column,
+                },
+                .tooltip = FunctionRef<String()> {[&arena = builder.arena, &engine = g.engine]() -> String {
+                    DynamicArray<char> buffer {arena};
+                    dyn::Assign(buffer, "Open presets window"_s);
+                    fmt::Append(buffer,
+                                "\nCurrent preset: {}",
+                                engine.pinned_snapshot.state.extras.display_name);
+                    if (engine.pinned_snapshot.state.metadata.description.size) {
+                        dyn::AppendSpan(buffer, "\n\n"_s);
+                        dyn::AppendSpan(buffer, engine.pinned_snapshot.state.metadata.description);
+                    }
+                    return buffer.ToOwnedSpan();
+                }},
+                .button_behaviour = imgui::ButtonConfig {},
+            });
 
-            LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Forward);
+        if (preset_box_left.button_fired) {
+            g.imgui.OpenModalViewport(g.preset_browser_state.k_panel_id);
+            g.preset_browser_state.common_state.absolute_button_rect =
+                g.imgui.ViewportRectToWindowRect(*BoxRect(builder, preset_box_left));
         }
-        if (preset_prev.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-    }
+        if (preset_box_left.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
 
-    {
-        auto const preset_random =
-            do_icon_button(preset_box,
-                           ICON_FA_SHUFFLE,
-                           "Load a random preset\n\nThis is based on the currently selected filters."_s,
-                           0.9f,
-                           3);
-        if (preset_random.button_fired) {
-            PresetBrowserContext context {
-                .sample_library_server = g.shared_engine_systems.sample_library_server,
-                .preset_server = g.shared_engine_systems.preset_server,
-                .library_images = g.library_images,
-                .prefs = g.prefs,
-                .engine = g.engine,
-                .notifications = g.notifications,
-                .persistent_store = g.shared_engine_systems.persistent_store,
-                .confirmation_dialog_state = g.confirmation_dialog_state,
-                .frame_context = frame_context,
-            };
-            context.Init(g.scratch_arena);
-            DEFER { context.Deinit(); };
+        DoRightClickMenu(g, preset_box_left, builder.imgui.MakeId("PresetRClick"), [&](Box root) {
+            if (MenuItem(
+                    g.builder,
+                    root,
+                    {
+                        .text = "Load Blank Preset",
+                        .tooltip =
+                            "Set all parameters to their default values, clear all instruments and IRs"_s,
+                        .no_icon_gap = true,
+                    })
+                    .button_fired) {
+                SetToDefaultState(g.engine);
+            }
 
-            LoadRandomPreset(context, g.preset_browser_state);
+            String const preset_path = g.engine.pinned_snapshot.preset_path;
+            auto const containing_folder = preset_path.size ? path::Directory(preset_path) : k_nullopt;
+            if (MenuItem(g.builder,
+                         root,
+                         {
+                             .text = "Open Containing Folder",
+                             .mode = containing_folder ? MenuItemOptions::Mode::Active
+                                                       : MenuItemOptions::Mode::Disabled,
+                             .no_icon_gap = true,
+                         })
+                    .button_fired) {
+                if (containing_folder) OpenFolderInFileBrowser(*containing_folder);
+            }
+        });
+
+        DoBox(builder,
+              {
+                  .parent = preset_box_left,
+                  .text = fmt::Format(builder.arena,
+                                      "{}{}",
+                                      g.engine.pinned_snapshot.state.extras.display_name,
+                                      StateModifiedFromPinned(g.engine) ? " (modified)"_s : ""_s),
+                  .text_colours =
+                      ColSet {
+                          .base {.c = Col::Text, .dark_mode = true},
+                          .hot {.c = Col::Highlight},
+                          .active {.c = Col::Highlight},
+                      },
+                  .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+              });
+
+        {
+            // IMPROVE: should this be a text input that changes the description?
+            auto const& desc_cache = g.engine.pinned_snapshot.description_cache;
+            String const desc_text = desc_cache.short_is_user_desc || !desc_cache.short_text.size
+                                         ? (String)desc_cache.short_text
+                                         : (String)fmt::Format(builder.arena, "{}", desc_cache.short_text);
+            DoBox(builder,
+                  {
+                      .parent = preset_box_left,
+                      .text = desc_text,
+                      .font = FontType::BodyItalic,
+                      .text_colours =
+                          ColSet {
+                              .base {.c = Col::Subtext0, .dark_mode = true},
+                              .hot {.c = Col::Subtext1, .dark_mode = true},
+                              .active {.c = Col::Subtext1, .dark_mode = true},
+                          },
+                      .text_overflow = TextOverflowType::ShowDotsOnRight,
+                      .parent_dictates_hot_and_active = true,
+                      .layout {
+                          .size = {layout::k_fill_parent, k_font_body_italic_size},
+                      },
+                  });
         }
-        if (preset_random.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
-    }
 
-    {
-        auto const preset_save =
-            do_icon_button(preset_box, ICON_FA_FLOPPY_DISK, "Save the current state as a preset"_s, 0.8f, 3);
-        if (preset_save.button_fired) g.imgui.OpenModalViewport(g.save_preset_panel_state.k_panel_id);
-    }
+        {
+            auto const preset_next =
+                do_icon_button(preset_box,
+                               ICON_FA_CARET_LEFT,
+                               "Load previous preset\n\nThis is based on the currently selected filters."_s,
+                               1.0f,
+                               3);
+            if (preset_next.button_fired) {
+                PresetBrowserContext context {
+                    .sample_library_server = g.shared_engine_systems.sample_library_server,
+                    .preset_server = g.shared_engine_systems.preset_server,
+                    .library_images = g.library_images,
+                    .prefs = g.prefs,
+                    .engine = g.engine,
+                    .notifications = g.notifications,
+                    .persistent_store = g.shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g.confirmation_dialog_state,
+                    .frame_context = frame_context,
+                };
+                context.Init(g.scratch_arena);
+                DEFER { context.Deinit(); };
 
-    {
-        auto const preset_load =
-            do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
-        if (preset_load.button_fired)
-            OpenFilePickerLoadPreset(g.file_picker_state, g.shared_engine_systems.paths);
+                LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Backward);
+            }
+            if (preset_next.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
+        }
+
+        {
+            auto const preset_prev =
+                do_icon_button(preset_box,
+                               ICON_FA_CARET_RIGHT,
+                               "Load next preset\n\nThis is based on the currently selected filters."_s,
+                               1.0f,
+                               3);
+            if (preset_prev.button_fired) {
+                PresetBrowserContext context {
+                    .sample_library_server = g.shared_engine_systems.sample_library_server,
+                    .preset_server = g.shared_engine_systems.preset_server,
+                    .library_images = g.library_images,
+                    .prefs = g.prefs,
+                    .engine = g.engine,
+                    .notifications = g.notifications,
+                    .persistent_store = g.shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g.confirmation_dialog_state,
+                    .frame_context = frame_context,
+                };
+                context.Init(g.scratch_arena);
+                DEFER { context.Deinit(); };
+
+                LoadAdjacentPreset(context, g.preset_browser_state, SearchDirection::Forward);
+            }
+            if (preset_prev.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
+        }
+
+        {
+            auto const preset_random =
+                do_icon_button(preset_box,
+                               ICON_FA_SHUFFLE,
+                               "Load a random preset\n\nThis is based on the currently selected filters."_s,
+                               0.9f,
+                               3);
+            if (preset_random.button_fired) {
+                PresetBrowserContext context {
+                    .sample_library_server = g.shared_engine_systems.sample_library_server,
+                    .preset_server = g.shared_engine_systems.preset_server,
+                    .library_images = g.library_images,
+                    .prefs = g.prefs,
+                    .engine = g.engine,
+                    .notifications = g.notifications,
+                    .persistent_store = g.shared_engine_systems.persistent_store,
+                    .confirmation_dialog_state = g.confirmation_dialog_state,
+                    .frame_context = frame_context,
+                };
+                context.Init(g.scratch_arena);
+                DEFER { context.Deinit(); };
+
+                LoadRandomPreset(context, g.preset_browser_state);
+            }
+            if (preset_random.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
+        }
+
+        {
+            auto const preset_save = do_icon_button(preset_box,
+                                                    ICON_FA_FLOPPY_DISK,
+                                                    "Save the current state as a preset"_s,
+                                                    0.8f,
+                                                    3);
+            if (preset_save.button_fired) g.imgui.OpenModalViewport(g.save_preset_panel_state.k_panel_id);
+        }
+
+        {
+            auto const preset_load =
+                do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
+            if (preset_load.button_fired)
+                OpenFilePickerLoadPreset(g.file_picker_state,
+                                         g.shared_engine_systems.paths,
+                                         g.shared_engine_systems.persistent_store);
+        }
     }
 
     auto right_icon_buttons_container = DoBox(builder,
@@ -418,6 +501,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                                       .size = layout::k_hug_contents,
                                                   },
                                               });
+    DoExperimentalModeIndicatorIfNeeded(builder, right_icon_buttons_container, g.prefs);
+
     // preferences
     {
         auto const prefs_button =
@@ -425,23 +510,38 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         if (prefs_button.button_fired) g.imgui.OpenModalViewport(g.preferences_panel_state.k_panel_id);
     }
 
-    // info
     {
-        auto const info_button =
-            do_icon_button(right_icon_buttons_container, ICON_FA_CIRCLE_INFO, "Open info window"_s, 0.9f, 5);
-        if (info_button.button_fired) g.imgui.OpenModalViewport(g.info_panel_state.k_panel_id);
+        auto const can_undo = g.engine.undo_history.CanUndo();
+        auto const next = g.engine.undo_history.NextUndoName();
+        auto const tooltip =
+            next ? (String)fmt::Format(builder.arena, "Undo: {}", *next) : "Nothing to undo"_s;
+        auto const undo_button =
+            do_icon_button(right_icon_buttons_container,
+                           ICON_FA_ARROW_ROTATE_LEFT,
+                           tooltip,
+                           0.9f,
+                           5,
+                           Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_undo ? (u8)255 : (u8)60},
+                           SourceLocationHash(),
+                           !can_undo);
+        if (undo_button.button_fired && can_undo) Undo(g.engine);
+    }
 
-        if (g.show_new_version_indicator) {
-            DoBox(builder,
-                  {
-                      .parent = info_button,
-                      .background_fill_colours = Col {.c = Col::Red},
-                      .background_shape = BackgroundShape::Circle,
-                      .layout {
-                          .size = 7,
-                      },
-                  });
-        }
+    {
+        auto const can_redo = g.engine.undo_history.CanRedo();
+        auto const next = g.engine.undo_history.NextRedoName();
+        auto const tooltip =
+            next ? (String)fmt::Format(builder.arena, "Redo: {}", *next) : "Nothing to redo"_s;
+        auto const redo_button =
+            do_icon_button(right_icon_buttons_container,
+                           ICON_FA_ARROW_ROTATE_RIGHT,
+                           tooltip,
+                           0.9f,
+                           5,
+                           Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_redo ? (u8)255 : (u8)60},
+                           SourceLocationHash(),
+                           !can_redo);
+        if (redo_button.button_fired && can_redo) Redo(g.engine);
     }
 
     // attribution
@@ -457,22 +557,49 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
     // dots menu
     {
+        bool const screenshot_update_indicator = IsScreenshotRequest("update-indicator"_s);
+        if (screenshot_update_indicator) {
+            check_for_update::State::PaddedVersion const fake {.version = Version {9, 9, 9}};
+            g.shared_engine_systems.check_for_update_state.checking_allowed.Store(true,
+                                                                                  StoreMemoryOrder::Release);
+            g.shared_engine_systems.check_for_update_state.latest_version.Store(fake,
+                                                                                StoreMemoryOrder::Release);
+            g.show_new_version_indicator = true;
+        }
+
         auto const dots_button = do_icon_button(right_icon_buttons_container,
                                                 ICON_FA_ELLIPSIS_VERTICAL,
                                                 "Additional functions and information"_s,
                                                 1.0f,
                                                 6);
+        if (g.show_new_version_indicator) {
+            DoBox(builder,
+                  {
+                      .parent = dots_button,
+                      .background_fill_colours = Col {.c = Col::Red},
+                      .background_shape = BackgroundShape::Circle,
+                      .layout {
+                          .size = 7,
+                      },
+                  });
+        }
+
         auto const popup_id = builder.imgui.MakeId("DotsMenu");
         if (dots_button.button_fired) builder.imgui.OpenPopupMenu(popup_id, dots_button.imgui_id);
 
         if (builder.imgui.IsPopupMenuOpen(popup_id))
             DoBoxViewport(builder,
                           {
-                              .run = [&g, &frame_context](GuiBuilder&) { DoDotsMenu(g, frame_context); },
+                              .run = [&g](GuiBuilder&) { DoDotsMenu(g); },
                               .bounds = dots_button,
                               .imgui_id = popup_id,
                               .viewport_config = k_default_popup_menu_viewport,
                           });
+
+        if (screenshot_update_indicator) {
+            if (auto const r = BoxRect(g.builder, dots_button))
+                g.imgui.RegisterNamedRect("top-panel.dots-button"_s, g.imgui.ViewportRectToWindowRect(*r));
+        }
     }
 
     auto const knob_container = DoBox(builder,
@@ -511,10 +638,6 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             });
 
         g.timbre_slider_is_held = box.is_active;
-        if (g.timbre_slider_is_held) {
-            int b = 0;
-            (void)b;
-        }
 
         if (builder.imgui.WasJustActivated(box.imgui_id, MouseButton::Left))
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
@@ -533,7 +656,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                               {
                                                   .parent = root,
                                                   .layout {
-                                                      .size = {22.0f, 37.06f},
+                                                      .size = {k_peak_meter_standard_width, 37.06f},
                                                   },
                                               })))
         DrawPeakMeter(g.imgui,

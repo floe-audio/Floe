@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "foundation/foundation.hpp"
@@ -56,7 +56,8 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         library.name = arena.Clone(header.Name());
         library.minor_version = header.version;
         library.author = "FrozenPlain";
-        library.id = IdForMdataLibraryAlloc(library.name, arena);
+        library.id_string = IdStringForMdataLibraryAlloc(library.name, arena);
+        library.id = HashLibraryIdString(library.id_string);
     }
 
     {
@@ -485,6 +486,17 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
 
     if (auto const o = detail::PostReadBookkeeping(*library, result_arena, scratch_arena); o.HasError())
         PanicIfReached();
+
+    // The PERFORM page didn't used to exist. We need to utilise some vignette on old libraries.
+    if (IsAnyOf(HashFnv1a(library->name),
+                Array {
+                    HashFnv1a("Feedback Loops"),
+                    HashFnv1a("Isolated Signals"),
+                    HashFnv1a("Music Box Suite"),
+                    HashFnv1a("Music Box Suite Free"),
+                    HashFnv1a("Paranormal"),
+                }))
+        library->background_image_vignette_intensity = 100;
 
     // In the MDATA format when velocity-feathering was enabled for an instrument, adjacent velocity layers
     // were automatically made to overlap. We recreate that old behaviour here, taking into account that now

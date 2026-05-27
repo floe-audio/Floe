@@ -5,15 +5,17 @@ SPDX-License-Identifier: CC0-1.0
 
 This is the Floe repository, an audio plugin written in C++ and built using the Zig build system. Floe is a sample library platform for performing, finding and transforming sounds from sample libraries - more like a ROMpler or sample-based synth than a traditional sampler. It's available on Linux, Windows, and macOS.
 
-Floe, at it's core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
+Floe, at its core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
 
 Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:github-publish-release` to promote the beta website to stable.
 
 # Commands
 Building is done inside a Nix flake shell. You can use `nix develop` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop --command <command>`. All these commands should be prefixed with `nix develop --command` if you're not already in the shell:
 - **Check for compilation errors**: `zb <step>`. This is a wrapper around `zig build` that provides clean output - just "Build succeeded" or a clear summary of errors. Run it without any output filtering (no grep/tail/head). If you changed something GUI related - use the step `install:clap` - this will cause a hot-reload of the plugin for the user. For a full-check of all source files omit the step. Default arguments are usually fine, but you can pass extra args: `zb -Dtargets=native -Dbuild-mode=development`. Cross-compiling is supported with `-Dtargets=linux`, `windows`, `mac_arm`, or `mac_x86`. Add `-Dsanitize-thread` to enable Clang's thread sanitizer. Note: `zb` is only for compilation - use `zig build` directly for other build commands like scripts.
-- **Update the GUI for the user**:
+- `zig build install:all`: builds and installs all binaries to `zig-out` folder.
+- Use `--log-level=warning` for all `zig-out/bin` binaries unless debug logs are needed.
 - Compile and run unit tests: `zig build test -- --filter=*`. `--filter` should match the whole name, or use wildcards. You can use `--filter` multiple times to match multiple cases.
+- **Benchmarks**: Build with `zb install:all -Dbuild-mode=performance_profiling`, then time with `hyperfine './zig-out/bin/benchmarks --filter=Name'`. Use `./zig-out/bin/benchmarks --list` to see available benchmarks. Define benchmarks with `BENCHMARK_REGISTRATION`/`REGISTER_BENCHMARK` in the same cpp file as the code, then add the registration function to `src/benchmarks/benchmarks_main.cpp`. See `src/benchmarks/framework.hpp` for the API.
 - Format all code using clang-tidy: `zig build script:format`
 - Check spelling : `zig build script:check-spelling`
   - Be prepared to add exceptions to ignored-spellings.dic since our spell-check is not smart and will often think non-words are words. We use British English.
@@ -21,9 +23,10 @@ Building is done inside a Nix flake shell. You can use `nix develop` to enter th
 
 # Source code overview
 Here are some notable subdirectories, though there are plenty more.
-- `src/foundation/`: our 'standard library' with data structures and core utilities. All code depends on this.
+- `src/foundation/`: our 'standard library' with data structures and core utilities. All code depends on this. A single `#include "foundation/foundation.hpp"` includes ALL headers from the foundation.
 - `src/os/`: OS abstraction layer.
 - `src/utils/`: more specific utilities that are not necessary Floe-specific, building on OS and foundation.
+- `src/plugin/gui_framework/gui_builder.hpp`, `src/plugin/gui_framework/layout.hpp` and `src/plugin/gui_framework/gui_imgui.hpp` are the most important for understanding how to write GUI code featuring extensive documentation in the headers.
 - `src/common_infrastructure/`: Floe-specific code that's used by the plugin and also installers and other tools.
 - `src/plugin/`: the actual plugin code, including audio processing and GUI.
 - `website/`: Docusaurus website source code.
@@ -39,7 +42,17 @@ Floe uses a few third-party libraries. These are typically managed by the Zig pa
 # Style
 - No C++ STL/standard library.
 - We write in a Zig-like style: closer to modern C than C++.
+- Liberally use ASSERT macros (or ASSERT_HOT if the codepath is known to be hot).
 - See `.clang-tidy`'s readability-identifier-naming section for naming conventions.
+- When working with enums use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed. When defining enums, specify the size type (typically ` : u8`).
+- **Keep comments to a bare minimum**. Use them more as section markers and notes. Never explain what is evident from reading the code. Prefer renaming variables/functions to be clearer/longer rather than augmenting them with comments.
+- Where needed, use Clang/GCC 'statement expressions' to initialise a variable to a const to avoid function-wide mutability and unclear encapsulation.
+- Always use `auto` type where possible.
+- Prefer `Range` over C-style for loops: `for (auto index : Range(10))`.
+- Prefer names such as `step_index` over `i` or `j`. `mix_01` over `r`.
+- Don't use anonymous namespaces, prefer static functions
+- Look for natural places to utilise pure functions, reducing the number of functions that mutate state.
+- Consider using the 'options/args/context struct' pattern along with designated initialiser syntax instead of lots of function arguments.
 
 # Github Issues
 We extensively use Github issues to track work. Use `gh` to query and manage issues. Our issues often include lots of details and design.

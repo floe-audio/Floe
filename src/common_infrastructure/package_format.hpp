@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -25,7 +25,8 @@ constexpr String k_libraries_subdir = "Libraries";
 constexpr String k_presets_subdir = "Presets";
 constexpr auto k_component_subdirs = Array {k_libraries_subdir, k_presets_subdir};
 constexpr String k_file_extension = ".floe-pkg"_s;
-constexpr auto k_package_extensions = Array {k_file_extension, ".zip"};
+constexpr String k_encrypted_file_extension = ".floe-pkg-enc"_s;
+constexpr auto k_package_extensions = Array {k_file_extension, k_encrypted_file_extension, ".zip"};
 
 inline bool HasPackageExtension(String path) {
     auto const ext = path::Extension(path);
@@ -38,7 +39,7 @@ enum class ComponentType : u8 { Library, Presets, Count };
 
 String ComponentTypeString(ComponentType type);
 
-enum class PackageError {
+enum class PackageError : u8 {
     FileCorrupted,
     NotFloePackage,
     InvalidLibrary,

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "foundation/foundation.hpp"
@@ -12,6 +12,7 @@
 #define TEST_REGISTER_FUNCTIONS                                                                              \
     X(RegisterAlgorithmTests)                                                                                \
     X(RegisterAllocatorTests)                                                                                \
+    X(RegisterArpeggiatorTests)                                                                              \
     X(RegisterAssertFTests)                                                                                  \
     X(RegisterAtomicQueueTests)                                                                              \
     X(RegisterAtomicRefListTests)                                                                            \
@@ -26,6 +27,8 @@
     X(RegisterCliArgParseTests)                                                                              \
     X(RegisterDebugTests)                                                                                    \
     X(RegisterDynamicArrayTests)                                                                             \
+    X(RegisterUndoHistoryTests)                                                                              \
+    X(RegisterEncryptedPackageTests)                                                                         \
     X(RegisterErrorCodeTests)                                                                                \
     X(RegisterErrorNotificationsTests)                                                                       \
     X(RegisterFilesystemTests)                                                                               \
@@ -41,6 +44,8 @@
     X(RegisterJsonWriterTests)                                                                               \
     X(RegisterLayerProcessorTests)                                                                           \
     X(RegisterLayoutTests)                                                                                   \
+    X(RegisterLfoTests)                                                                                      \
+    X(RegisterLicenseTests)                                                                                  \
     X(RegisterLibraryLuaTests)                                                                               \
     X(RegisterLibraryMdataTests)                                                                             \
     X(RegisterLinkedListTests)                                                                               \
@@ -52,6 +57,7 @@
     X(RegisterPackageFormatTests)                                                                            \
     X(RegisterPackageInstallationTests)                                                                      \
     X(RegisterParamDescriptorTests)                                                                          \
+    X(RegisterParamTests)                                                                                    \
     X(RegisterPathPoolTests)                                                                                 \
     X(RegisterPathTests)                                                                                     \
     X(RegisterPersistentStoreTests)                                                                          \
@@ -62,12 +68,14 @@
     X(RegisterScanFoldersTests)                                                                              \
     X(RegisterSamplePlayheadTests)                                                                           \
     X(RegisterSentryTests)                                                                                   \
+    X(RegisterLegacyParamLogicTests)                                                                         \
     X(RegisterStateCodingTests)                                                                              \
     X(RegisterStringTests)                                                                                   \
     X(RegisterTaggedUnionTests)                                                                              \
     X(RegisterThreadPoolTests)                                                                               \
     X(RegisterThreadingTests)                                                                                \
     X(RegisterVersionTests)                                                                                  \
+    X(RegisterVoiceTests)                                                                                    \
     X(RegisterVolumeFadeTests)                                                                               \
     X(RegisterWebTests)                                                                                      \
     X(RegisterWriterTests)
@@ -82,36 +90,21 @@ WINDOWS_FP_TEST_REGISTER_FUNCTIONS
 #endif
 #undef X
 
-static ErrorCodeOr<void> SetLogLevel(tests::Tester& tester, Optional<String> log_level) {
-    if (!log_level) return k_success; // use default
-
-    for (auto const& [level, name] : Array {
-             Pair {LogLevel::Debug, "debug"_s},
-             Pair {LogLevel::Info, "info"_s},
-             Pair {LogLevel::Warning, "warning"_s},
-             Pair {LogLevel::Error, "error"_s},
-         }) {
-        if (IsEqualToCaseInsensitiveAscii(*log_level, name)) {
-            tester.log.max_level_allowed = level;
-            return k_success;
-        }
-    }
-
-    StdPrintF(StdStream::Err, "Unknown log level: {}", *log_level);
-    return ErrorCode {CliError::InvalidArguments};
-}
-
 ErrorCodeOr<int> Main(ArgsCstr args) {
-    GlobalInit({.init_error_reporting = false, .set_main_thread = true});
+    GlobalInit({
+        .init_error_reporting = false,
+        .set_main_thread = true,
+        .panic_response = PanicResponse::Abort,
+    });
     DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
 
     ZoneScoped;
 
     tests::Tester tester;
 
-    enum class CommandLineArgId : u32 {
+    enum class CommandLineArgId : u8 {
         Filter,
-        LogLevel,
+        List,
         Repeats,
         JUnitXmlOutputPath,
         GithubActionsAnnotationsOutputPath,
@@ -130,12 +123,12 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .num_values = -1,
         },
         {
-            .id = (u32)CommandLineArgId::LogLevel,
-            .key = "log-level",
-            .description = "Log level: debug, info, warning, error",
-            .value_type = "level",
+            .id = (u32)CommandLineArgId::List,
+            .key = "list",
+            .description = "List available tests and exit",
+            .value_type = "flag",
             .required = false,
-            .num_values = 1,
+            .num_values = 0,
         },
         {
             .id = (u32)CommandLineArgId::Repeats,
@@ -189,7 +182,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
                                                                .print_usage_on_error = true,
                                                            }));
 
-    TRY(SetLogLevel(tester, cli_args[ToInt(CommandLineArgId::LogLevel)].Value()));
+    tester.log.max_level_allowed = GetLogLevel();
 
     if (auto const repeats_str = cli_args[ToInt(CommandLineArgId::Repeats)].Value()) {
         auto const parsed_int = ParseInt(*repeats_str, ParseIntBase::Decimal);
@@ -207,6 +200,23 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
     WINDOWS_FP_TEST_REGISTER_FUNCTIONS
 #endif
 #undef X
+
+    if (cli_args[ToInt(CommandLineArgId::List)].was_provided) {
+        auto const filter_patterns = cli_args[ToInt(CommandLineArgId::Filter)].values;
+        for (auto const& test_case : tester.test_cases) {
+            if (filter_patterns.size) {
+                bool matches_any_pattern = false;
+                for (auto const& pattern : filter_patterns)
+                    if (MatchWildcard(pattern, test_case.title)) {
+                        matches_any_pattern = true;
+                        break;
+                    }
+                if (!matches_any_pattern) continue;
+            }
+            StdPrintF(StdStream::Out, "{}\n", test_case.title);
+        }
+        return 0;
+    }
 
     return RunAllTests(
         tester,

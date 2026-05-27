@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
@@ -37,6 +37,7 @@ struct FolderNode {
     FolderNode* parent {};
     FolderNode* first_child {};
     FolderNode* next {};
+    mutable u64 cached_hash {};
     TypeErasedUserData user_data {};
 };
 

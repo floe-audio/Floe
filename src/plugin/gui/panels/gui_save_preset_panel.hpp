@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
@@ -23,7 +23,8 @@ struct SavePresetPanelContext {
 struct SavePresetPanelState {
     static constexpr u64 k_panel_id = HashFnv1a("save-preset-panel");
     StateMetadata metadata;
-    bool scroll_to_start;
+    StateMetadata last_synced_engine_metadata;
+    bool scroll_to_start {};
     bool modeless {};
 };
 
@@ -31,6 +32,4 @@ void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine);
 
 void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state);
 
-bool DoTagsGui(GuiBuilder& builder,
-               DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
-               Box const& root);
+bool DoTagsGui(GuiBuilder& builder, TagsBitset& tags, Box const& root);

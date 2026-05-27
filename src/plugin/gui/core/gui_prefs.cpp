@@ -1,8 +1,9 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/core/gui_prefs.hpp"
 
+#include "engine/engine_prefs.hpp"
 #include "gui_framework/app_window.hpp"
 
 prefs::Descriptor SettingDescriptor(GuiPreference setting) {
@@ -28,7 +29,7 @@ prefs::Descriptor SettingDescriptor(GuiPreference setting) {
             return {
                 .key = "show-instance-name"_s,
                 .value_requirements = prefs::ValueType::Bool,
-                .default_value = true,
+                .default_value = false,
                 .gui_label = "Show instance name",
                 .long_description = "Show the name of the instance in the top panel GUI.",
             };

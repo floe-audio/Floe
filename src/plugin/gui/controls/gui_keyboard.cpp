@@ -1,80 +1,85 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/controls/gui_keyboard.hpp"
 
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
+#include "gui/elements/gui_constants.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/key_range.hpp"
 
-enum class NoteEdge { Left, Right };
+enum class NoteEdge : u8 { Left, Right };
 
-enum class DisplayType { Minimal, Full };
+enum class DisplayType : u8 { Minimal, Full };
 
 struct TopDisplayOptions {
     f32x2 start_pos;
     f32 width;
     s32 starting_octave;
+    s8 num_octaves;
     DisplayType display_type;
     f32 strip_height;
     f32 strip_gap;
     f32 text_gap = 0.0f;
 };
 
-constexpr bool IsWhiteNote(s32 key_in_octave) {
-    constexpr u16 k_white_key_bitset = 0b101011010101;
-    return (k_white_key_bitset & (1 << (11 - key_in_octave))) != 0;
+constexpr bool IsNaturalNote(s32 key_in_octave) {
+    constexpr u16 k_natural_key_bitset = 0b101011010101;
+    return (k_natural_key_bitset & (1 << (11 - key_in_octave))) != 0;
 }
 
 struct KeyboardLayout {
-    f32 white_key_width;
-    f32 black_key_width;
-    f32 black_key_x_offset[5];
+    f32 natural_key_width;
+    f32 sharp_key_width;
+    f32 sharp_key_x_offset[5];
     f32 keyboard_x;
     f32 keyboard_width;
     u7 lowest_key_shown;
+    s8 num_octaves;
 
-    static KeyboardLayout Create(f32 keyboard_x, f32 keyboard_w, s32 starting_octave) {
+    static KeyboardLayout Create(f32 keyboard_x, f32 keyboard_w, s32 starting_octave, s8 num_octaves) {
         KeyboardLayout layout = {};
         layout.keyboard_x = keyboard_x;
         layout.keyboard_width = keyboard_w;
         layout.lowest_key_shown = CheckedCast<u7>((starting_octave + k_octave_default_offset) * 12);
+        layout.num_octaves = num_octaves;
 
-        constexpr auto k_white_key_width_factor = 1.0f / (k_num_octaves_shown * 7.0f);
-        layout.white_key_width = keyboard_w * k_white_key_width_factor;
-        layout.black_key_width = (layout.white_key_width * (0.5f * 118.52f / 100.0f));
+        auto const k_natural_key_width_factor = 1.0f / (num_octaves * 7.0f);
+        layout.natural_key_width = keyboard_w * k_natural_key_width_factor;
+        layout.sharp_key_width = (layout.natural_key_width * (0.5f * 118.52f / 100.0f));
 
-        auto const d1 = ((layout.white_key_width * 3) - (layout.black_key_width * 2)) / 3;
-        auto const d2 = ((layout.white_key_width * 4) - (layout.black_key_width * 3)) / 4;
+        auto const d1 = ((layout.natural_key_width * 3) - (layout.sharp_key_width * 2)) / 3;
+        auto const d2 = ((layout.natural_key_width * 4) - (layout.sharp_key_width * 3)) / 4;
 
-        layout.black_key_x_offset[0] = d1; // c#
-        layout.black_key_x_offset[1] = (d1 * 2) + layout.black_key_width; // d#
-        layout.black_key_x_offset[2] = (layout.white_key_width * 3) + d2; // f#
-        layout.black_key_x_offset[3] = (layout.white_key_width * 3) + (d2 * 2) + layout.black_key_width; // g#
-        layout.black_key_x_offset[4] =
-            ((layout.white_key_width * 3) + (d2 * 3) + (layout.black_key_width * 2)); // a#
+        layout.sharp_key_x_offset[0] = d1; // c#
+        layout.sharp_key_x_offset[1] = (d1 * 2) + layout.sharp_key_width; // d#
+        layout.sharp_key_x_offset[2] = (layout.natural_key_width * 3) + d2; // f#
+        layout.sharp_key_x_offset[3] =
+            (layout.natural_key_width * 3) + (d2 * 2) + layout.sharp_key_width; // g#
+        layout.sharp_key_x_offset[4] =
+            ((layout.natural_key_width * 3) + (d2 * 3) + (layout.sharp_key_width * 2)); // a#
 
         return layout;
     }
 
-    Rect WhiteKeyRect(s32 white_key_index, f32 key_y, f32 key_height) const {
-        f32 const gap = 1;
+    Rect NaturalKeyRect(s32 natural_key_index, f32 key_y, f32 key_height) const {
+        f32 const gap = 2;
         Rect key_r;
-        key_r.x = keyboard_x + (f32)white_key_index * white_key_width;
+        key_r.x = keyboard_x + (f32)natural_key_index * natural_key_width;
         key_r.y = key_y;
-        key_r.w = white_key_width - gap;
+        key_r.w = natural_key_width - gap;
         key_r.h = key_height;
         return key_r;
     }
 
-    Rect BlackKeyRect(s32 black_key_index_rel_octave, s32 octave, f32 key_y, f32 key_height) const {
+    Rect SharpKeyRect(s32 sharp_key_index_rel_octave, s32 octave, f32 key_y, f32 key_height) const {
         Rect key_r;
-        key_r.x = (f32)RoundPositiveFloat(keyboard_x + black_key_x_offset[black_key_index_rel_octave] +
-                                          ((f32)octave * white_key_width * 7));
+        key_r.x = (f32)Round(keyboard_x + sharp_key_x_offset[sharp_key_index_rel_octave] +
+                             ((f32)octave * natural_key_width * 7));
         key_r.y = key_y;
-        key_r.w = (f32)RoundPositiveFloat(black_key_width);
+        key_r.w = (f32)RoundPositiveFloat(sharp_key_width);
         key_r.h = key_height;
         return key_r;
     }
@@ -90,17 +95,17 @@ struct KeyboardLayout {
         constexpr u8 k_key_color_index[] = {0, 0, 1, 1, 2, 3, 2, 4, 3, 5, 4, 6};
 
         Rect rect;
-        if (IsWhiteNote(key_in_octave)) {
-            auto const white_index = k_key_color_index[key_in_octave];
-            rect = WhiteKeyRect((octave * 7) + white_index, 0, 0);
+        if (IsNaturalNote(key_in_octave)) {
+            auto const natural_index = k_key_color_index[key_in_octave];
+            rect = NaturalKeyRect((octave * 7) + natural_index, 0, 0);
 
-            // We want the top edge of the key, so for white keys we need to subtract the necessary cut-out
-            // that the adjacent black key makes.
+            // We want the top edge of the key, so for natural keys we need to subtract the necessary
+            // cut-out that the adjacent sharp key makes.
 
             bool left_cutout = false;
             bool right_cutout = false;
 
-            switch (white_index) {
+            switch (natural_index) {
                 case 0: { // C
                     right_cutout = true;
                     break;
@@ -139,34 +144,62 @@ struct KeyboardLayout {
             else if (left_cutout && edge == NoteEdge::Left)
                 rect.x = KeyTopEdgeX(midi_key - 1, NoteEdge::Right);
         } else
-            rect = BlackKeyRect(k_key_color_index[key_in_octave], octave, 0, 0);
+            rect = SharpKeyRect(k_key_color_index[key_in_octave], octave, 0, 0);
 
         if (edge == NoteEdge::Right) return rect.Right();
         return rect.x;
     }
 };
 
-static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave) {
+static Optional<KeyboardGuiKeyPressed>
+InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     auto& imgui = g.imgui;
 
     auto const keyboard = g.engine.processor.notes_currently_held.GetBlockwise();
     auto const& voices_per_midi_key = g.engine.processor.voice_pool.voices_per_midi_note_for_gui;
 
-    auto const col_black_key = ToU32(Col {.c = Col::Background0, .dark_mode = true});
-    auto const col_black_key_outline = ToU32(Col {.c = Col::Background0, .dark_mode = true});
-    auto const col_black_key_hover = ToU32(Col {.c = Col::Background1, .dark_mode = true});
-    auto const col_black_key_down = ToU32({.c = Col::Highlight});
-    auto const col_white_key = ToU32(Col {.c = Col::Text, .dark_mode = true});
-    auto const col_white_key_hover = ToU32(Col {.c = Col::Subtext1, .dark_mode = true});
-    auto const col_white_key_down = ToU32({.c = Col::Highlight});
+    auto const col_natural_key_top = Hsl(205, 7, 12);
+    auto const col_natural_key_bot = Hsl(205, 7, 16);
+    auto const col_natural_key_top_hover = Hsl(205, 7, 18);
+    auto const col_natural_key_bot_hover = Hsl(205, 7, 22);
+    auto const col_natural_key_divider = Hsl(205, 8, 3);
 
-    auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave);
+    auto const col_sharp_rim_top = Hsl(205, 7, 34);
+    auto const col_sharp_face_top = Hsl(205, 5, 29);
+    auto const col_sharp_face_bot = Hsl(205, 6, 23);
+    auto const col_sharp_rim_bot = Hsl(205, 7, 16);
 
-    f32 const white_height = r.h;
-    auto const black_height = (f32)RoundPositiveFloat(r.h * 0.65f);
+    auto const col_sharp_rim_top_hover = Hsl(205, 7, 40);
+    auto const col_sharp_face_top_hover = Hsl(205, 5, 35);
+    auto const col_sharp_face_bot_hover = Hsl(205, 6, 29);
+    auto const col_sharp_rim_bot_hover = Hsl(205, 7, 22);
+
+    auto const col_pressed_accent = ToU32({.c = Col::Highlight200});
+
+    auto const layout = KeyboardLayout::Create(r.x, r.w, starting_octave, num_octaves);
+
+    f32 const natural_height = r.h;
+    auto const sharp_height = (f32)RoundPositiveFloat(r.h * 0.65f);
     f32 const active_voice_marker_h = r.h * (11.93f / 100.0f);
 
     Optional<KeyboardGuiKeyPressed> result {};
+
+    auto const instance_config = g.engine.processor.instance_config.Load(LoadMemoryOrder::Relaxed);
+    auto const keyswitch_note =
+        instance_config.reset_keyswitch.HasValue() ? (s32)instance_config.reset_keyswitch.Value() : -1;
+    auto const col_keyswitch = ToU32(Col {.c = Col::Blue, .dark_mode = true, .alpha = 200});
+
+    auto const draw_keyswitch_marker = [&](s32 key, Rect key_rect, bool) {
+        if (key != keyswitch_note) return;
+        f32 const marker_h = Max(3.0f, key_rect.h * 0.08f);
+        Rect marker_r {
+            .x = key_rect.x,
+            .y = key_rect.y + key_rect.h - marker_h,
+            .w = key_rect.w,
+            .h = marker_h,
+        };
+        imgui.draw_list->AddRectFilled(marker_r, col_keyswitch);
+    };
 
     auto const overlay_key = [&](s32 key, Rect key_rect, UiColMap col_index) {
         auto const num_active_voices = voices_per_midi_key[(usize)key].Load(LoadMemoryOrder::Relaxed);
@@ -183,16 +216,21 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
     constexpr imgui::ButtonConfig k_click_cfg = {.mouse_button = MouseButton::Left,
                                                  .event = MouseButtonEvent::Down};
 
-    imgui.PushId("white");
-    for (auto const i : Range(k_num_octaves_shown * 7)) {
-        s32 const this_white_key = i % 7;
+    // Draw a backdrop in the divider colour. The 1px gaps between natural keys reveal it as thin
+    // dark separators.
+    imgui.draw_list->AddRectFilled(imgui.RegisterAndConvertRect(r).ExpandLeft(1).ExpandBottom(1).ExpandTop(1),
+                                   col_natural_key_divider);
+
+    imgui.PushId("natural");
+    for (auto const i : Range(num_octaves * 7)) {
+        s32 const this_natural_key = i % 7;
         s32 const this_octave = i / 7;
-        constexpr s32 k_white_key_nums[] = {0, 2, 4, 5, 7, 9, 11};
-        s32 const this_rel_key = k_white_key_nums[this_white_key] + (this_octave * 12);
+        constexpr s32 k_natural_key_nums[] = {0, 2, 4, 5, 7, 9, 11};
+        s32 const this_rel_key = k_natural_key_nums[this_natural_key] + (this_octave * 12);
         s32 const this_abs_key = layout.lowest_key_shown + this_rel_key;
         if (this_abs_key > 127) continue;
 
-        auto key_r = layout.WhiteKeyRect(i, r.y, white_height);
+        auto key_r = layout.NaturalKeyRect(i, r.y, natural_height);
 
         key_r = imgui.RegisterAndConvertRect(key_r);
         auto const id = imgui.MakeId((u32)i);
@@ -209,12 +247,37 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
         if (imgui.WasJustDeactivated(id, k_click_cfg.mouse_button))
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
-        u32 col = col_white_key;
-        if (imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key))
-            col = col_white_key_down;
-        if (imgui.IsHot(id)) col = col_white_key_hover;
-        imgui.draw_list->AddRectFilled(key_r, col);
-        overlay_key(this_abs_key, key_r, UiColMap::KeyboardWhiteVoiceOverlay);
+        bool const is_down =
+            imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key);
+        bool const is_hot = imgui.IsHot(id);
+        u32 col_top = col_natural_key_top;
+        u32 col_bot = col_natural_key_bot;
+        if (is_hot) {
+            col_top = col_natural_key_top_hover;
+            col_bot = col_natural_key_bot_hover;
+        }
+        f32 const mid_y = key_r.y + (key_r.h * 0.5f);
+        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, key_r.y}, f32x2 {key_r.Right(), mid_y}, col_top);
+        imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, mid_y},
+                                                 f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                                 col_top,
+                                                 col_top,
+                                                 col_bot,
+                                                 col_bot);
+        if (is_down) {
+            auto highlight = FromU32(col_pressed_accent);
+            highlight.a = 0;
+            imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, key_r.y},
+                                                     f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                                     ToU32(highlight),
+                                                     ToU32(highlight),
+                                                     col_pressed_accent,
+                                                     col_pressed_accent);
+        }
+        overlay_key(this_abs_key, key_r, UiColMap::KeyboardNaturalVoiceOverlay);
+        draw_keyswitch_marker(this_abs_key, key_r, false);
+
+        if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
 
         // Show the octave number if it's middle-C.
         if (this_abs_key == 60) {
@@ -226,7 +289,7 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
             text_r.y += key_r.h - text_height;
             text_r.h = text_height;
             g.imgui.draw_list->AddTextInRect(text_r,
-                                             ToU32(Col {.c = Col::Background2, .dark_mode = true}),
+                                             ToU32(Col {.c = Col::Overlay2, .dark_mode = true}),
                                              "C3",
                                              {
                                                  .justification = TextJustification::Centred,
@@ -237,16 +300,16 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
     }
     imgui.PopId();
 
-    imgui.PushId("black");
-    for (auto const i : Range(k_num_octaves_shown * 5)) {
-        s32 const this_black_key = i % 5;
+    imgui.PushId("sharp");
+    for (auto const i : Range(num_octaves * 5)) {
+        s32 const this_sharp_key = i % 5;
         s32 const this_octave = i / 5;
-        constexpr s32 k_black_key_nums[] = {1, 3, 6, 8, 10};
-        s32 const this_rel_key = k_black_key_nums[this_black_key] + (this_octave * 12);
+        constexpr s32 k_sharp_key_nums[] = {1, 3, 6, 8, 10};
+        s32 const this_rel_key = k_sharp_key_nums[this_sharp_key] + (this_octave * 12);
         s32 const this_abs_key = layout.lowest_key_shown + this_rel_key;
         if (this_abs_key > 127) continue;
 
-        auto key_r = layout.BlackKeyRect(this_black_key, this_octave, r.y, black_height);
+        auto key_r = layout.SharpKeyRect(this_sharp_key, this_octave, r.y, sharp_height);
 
         key_r = imgui.RegisterAndConvertRect(key_r);
         auto const id = imgui.MakeId((u32)i);
@@ -263,19 +326,59 @@ static Optional<KeyboardGuiKeyPressed> InternalKeyboardGui(GuiState& g, Rect r, 
         if (imgui.WasJustDeactivated(id, k_click_cfg.mouse_button))
             result = KeyboardGuiKeyPressed {.is_down = false, .note = CheckedCast<u7>(this_abs_key)};
 
-        u32 col = col_black_key;
-        if (imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key))
-            col = col_black_key_down;
-        if (imgui.IsHot(id)) col = col_black_key_hover;
+        bool const is_down =
+            imgui.IsActive(id, k_click_cfg.mouse_button) || keyboard.Get((usize)this_abs_key);
+        bool const is_hot = imgui.IsHot(id);
 
-        if (col != col_black_key) {
-            imgui.draw_list->AddRectFilled(key_r, col_black_key_outline);
-            key_r.x += 1;
-            key_r.w -= 2;
-            key_r.h -= 1;
+        u32 rim_top = col_sharp_rim_top;
+        u32 face_top = col_sharp_face_top;
+        u32 face_bot = col_sharp_face_bot;
+        u32 rim_bot = col_sharp_rim_bot;
+        if (is_hot) {
+            rim_top = col_sharp_rim_top_hover;
+            face_top = col_sharp_face_top_hover;
+            face_bot = col_sharp_face_bot_hover;
+            rim_bot = col_sharp_rim_bot_hover;
         }
-        imgui.draw_list->AddRectFilled(key_r, col);
-        overlay_key(this_abs_key, key_r, UiColMap::KeyboardBlackVoiceOverlay);
+        // border
+        imgui.draw_list->AddRectFilled(key_r, col_natural_key_divider);
+        key_r.x += 1;
+        key_r.w -= 2;
+        key_r.h -= 1;
+
+        f32 const rim_top_h = 1.5f;
+        f32 const rim_bot_h = WwToPixels(4.0f);
+        f32 const face_top_y = key_r.y + rim_top_h;
+        f32 const face_bot_y = key_r.y + key_r.h - rim_bot_h;
+        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, key_r.y}, f32x2 {key_r.Right(), face_top_y}, rim_top);
+        imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, face_top_y},
+                                                 f32x2 {key_r.Right(), face_bot_y},
+                                                 face_top,
+                                                 face_top,
+                                                 face_bot,
+                                                 face_bot);
+        if (is_down) {
+            auto highlight = FromU32(col_pressed_accent);
+            highlight.a = 0;
+            imgui.draw_list->AddRectFilledMultiColor(f32x2 {key_r.x, key_r.y},
+                                                     f32x2 {key_r.Right(), face_bot_y},
+                                                     ToU32(highlight),
+                                                     ToU32(highlight),
+                                                     col_pressed_accent,
+                                                     col_pressed_accent);
+        }
+        imgui.draw_list->AddRectFilled(f32x2 {key_r.x, face_bot_y},
+                                       f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                       rim_bot);
+        if (is_down) {
+            imgui.draw_list->AddRectFilled(f32x2 {key_r.x, face_bot_y},
+                                           f32x2 {key_r.Right(), key_r.y + key_r.h},
+                                           WithAlphaU8(col_pressed_accent, 190));
+        }
+        overlay_key(this_abs_key, key_r, UiColMap::KeyboardSharpVoiceOverlay);
+        draw_keyswitch_marker(this_abs_key, key_r, true);
+
+        if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
     }
     imgui.PopId();
 
@@ -297,9 +400,10 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 
     auto const layout = KeyboardLayout::Create(imgui.ViewportPosToWindowPos(options.start_pos.x).x,
                                                options.width,
-                                               options.starting_octave);
+                                               options.starting_octave,
+                                               options.num_octaves);
     auto const highest_key_shown =
-        CheckedCast<u7>(Min(layout.lowest_key_shown + (k_num_octaves_shown * 12) - 1, 127));
+        CheckedCast<u7>(Min(layout.lowest_key_shown + (layout.num_octaves * 12) - 1, 127));
 
     constexpr auto k_line_width = 2.0f;
     constexpr auto k_stopper_width = k_line_width;
@@ -411,13 +515,13 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 
         auto const line_draw_start = (f32)Round(Max(layer_start_x, container_left));
         auto const line_draw_end = (f32)Round(Min(layer_end_x, container_right));
-        auto const line_y_rounded = (f32)RoundPositiveFloat(line_y);
+        auto const line_y_rounded = (f32)Round(line_y);
 
         auto const midi_transpose =
             g.engine.processor.main_params.IntValue<s8>(layer_idx, LayerParamIndex::MidiTranspose);
 
         auto const capsule_height = (f32)RoundPositiveFloat(strip_h);
-        auto const capsule_y = (f32)RoundPositiveFloat(strip_y);
+        auto const capsule_y = (f32)Round(strip_y);
         auto const capsule_radius = capsule_height * 0.5f;
 
         auto const fade_in =
@@ -531,8 +635,8 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
             }
 
             if (should_draw && capsule_end_x > capsule_start_x) {
-                auto const clipped_start_x = (f32)RoundPositiveFloat(Max(capsule_start_x, container_left));
-                auto const clipped_end_x = (f32)RoundPositiveFloat(Min(capsule_end_x, container_right));
+                auto const clipped_start_x = (f32)Round(Max(capsule_start_x, container_left));
+                auto const clipped_end_x = (f32)Round(Min(capsule_end_x, container_right));
 
                 if (clipped_end_x > clipped_start_x) {
                     u4 corner_flags = 0;
@@ -595,17 +699,17 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
         }
 
         {
-            auto const stopper_top = (f32)RoundPositiveFloat(strip_y);
-            auto const stopper_bottom = (f32)RoundPositiveFloat(strip_y + strip_h);
+            auto const stopper_top = (f32)Round(strip_y);
+            auto const stopper_bottom = (f32)Round(strip_y + strip_h);
             auto const chevron_x_delta = WwToPixels(5.0f);
 
-            if (layer_start_x >= container_left) {
-                auto const stopper_x = (f32)RoundPositiveFloat(layer_start_x);
+            if (layer_start_x >= 0 && layer_start_x >= container_left) {
+                auto const stopper_x = (f32)Round(layer_start_x);
                 imgui.draw_list->AddRectFilled(f32x2 {stopper_x, stopper_top},
                                                f32x2 {stopper_x + k_stopper_width, stopper_bottom},
                                                line_cols[layer_idx]);
             } else {
-                auto const chevron_left_x = (f32)RoundPositiveFloat(container_left);
+                auto const chevron_left_x = (f32)Round(container_left);
                 auto const chevron_right_x = chevron_left_x + chevron_x_delta;
                 auto const chevron_point = f32x2 {chevron_left_x, strip_y + (0.5f * strip_h)};
 
@@ -625,7 +729,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                                                f32x2 {stopper_x, stopper_bottom},
                                                line_cols[layer_idx]);
             } else {
-                auto const chevron_right_x = (f32)RoundPositiveFloat(container_right);
+                auto const chevron_right_x = (f32)Round(container_right);
                 auto const chevron_left_x = chevron_right_x - chevron_x_delta;
                 auto const chevron_point = f32x2 {chevron_right_x, strip_y + (0.5f * strip_h)};
 
@@ -645,7 +749,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 constexpr auto k_minimal_strip_height_ww = 6.0f; // Ww units
 constexpr auto k_minimal_strip_gap_px = 1.0f; // pixels
 
-static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_rect) {
+static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves, Rect keyboard_rect) {
     auto& imgui = g.imgui;
 
     auto const abs_r = imgui.RegisterAndConvertRect(r);
@@ -658,11 +762,13 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
     constexpr auto k_seconds_delay_before_enlarge = 0.1;
 
     if (imgui.WasJustMadeHot(id))
-        GuiIo().out.AddTimedWakeup(TimePoint::Now() + k_seconds_delay_before_enlarge,
-                                   "enlarged-keyboard-display");
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), TimePoint::Now() + k_seconds_delay_before_enlarge);
 
     if (imgui.IsHot(id) && !imgui.IsPopupMenuOpen(popup_id) &&
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
+        imgui.OpenPopupMenu(popup_id, id);
+
+    if (IsScreenshotRequest("key-range-enlarged"_s) && !imgui.IsPopupMenuOpen(popup_id))
         imgui.OpenPopupMenu(popup_id, id);
 
     auto const enlarged_viewport_padding = WwToPixels(4.0f);
@@ -692,14 +798,19 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                                     .start_pos = 0,
                                     .width = keyboard_rect.w,
                                     .starting_octave = starting_octave,
+                                    .num_octaves = num_octaves,
                                     .display_type = DisplayType::Full,
                                     .strip_height = 18, // Ww units
                                     .strip_gap = 8, // Ww units
                                     .text_gap = 4, // Ww units
                                 });
 
+        if (auto const bounds = g.imgui.curr_viewport->unpadded_bounds; All(bounds.size > 0.0f))
+            imgui.RegisterNamedRect("key-range-enlarged-popup"_s, bounds);
+
         if (auto const bounds = g.imgui.curr_viewport->unpadded_bounds;
-            All(bounds.size > 0.0f) && !bounds.Contains(GuiIo().in.cursor_pos)) {
+            !IsScreenshotRequest("key-range-enlarged"_s) && All(bounds.size > 0.0f) &&
+            !bounds.Contains(GuiIo().in.cursor_pos)) {
             imgui.ClosePopupToLevel(0);
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
@@ -709,6 +820,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
                                     .start_pos = r.pos,
                                     .width = r.w,
                                     .starting_octave = starting_octave,
+                                    .num_octaves = num_octaves,
                                     .display_type = DisplayType::Minimal,
                                     .strip_height = k_minimal_strip_height_ww,
                                     .strip_gap = PixelsToWw(k_minimal_strip_gap_px),
@@ -717,7 +829,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, Rect keyboard_r
     }
 }
 
-Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_octave) {
+Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
     if (auto const num_active_layers = ({
             u8 n = 0;
             for (auto const& layer : g.engine.processor.layer_processors)
@@ -744,17 +856,17 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_oc
                 }
                 b;
             });
-            !all_default) {
+            !all_default || IsScreenshotRequest("key-range-enlarged"_s)) {
             auto const top_display_r =
                 rect_cut::CutTop(r,
                                  WwToPixels(num_active_layers * k_minimal_strip_height_ww) +
                                      ((num_active_layers - 1) * k_minimal_strip_gap_px));
 
-            TopDisplay(g, top_display_r, starting_octave, r);
+            TopDisplay(g, top_display_r, starting_octave, num_octaves, r);
         }
     }
 
     rect_cut::CutTop(r, WwToPixels(4.0f));
 
-    return InternalKeyboardGui(g, r, starting_octave);
+    return InternalKeyboardGui(g, r, starting_octave, num_octaves);
 }

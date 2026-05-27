@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <lauxlib.h>
@@ -13,6 +13,7 @@
 #include "os/filesystem.hpp"
 #include "os/misc.hpp"
 #include "tests/framework.hpp"
+#include "utils/logger/logger.hpp"
 
 #include "sample_library.hpp"
 
@@ -168,7 +169,7 @@ struct LuaState {
     [[maybe_unused]] LuaState &ctx, [[maybe_unused]] void *obj, [[maybe_unused]] const struct FieldInfo &info
 #define FIELD_OBJ (*(Type*)obj)
 
-enum class InterpretedTypes : u32 {
+enum class InterpretedTypes : u8 {
     Library,
     Instrument,
     ImpulseResponse,
@@ -179,6 +180,7 @@ enum class InterpretedTypes : u32 {
     RegionAudioProps,
     RegionTimbreLayering,
     RegionPlayback,
+    RegionSlice,
     TriggerCriteria,
     FileAttribution,
     NamedKeyRange,
@@ -258,7 +260,7 @@ concept InterpretableType = requires {
     // There's other requirements too but this will do for now.
 };
 
-enum class UserdataTypes : u32 { Library, Instrument, SoundSource, Ir, Count };
+enum class UserdataTypes : u8 { Library, Instrument, SoundSource, Ir, Count };
 static constexpr char const* k_userdata_type_names[] = {
     "library",
     "instrument",
@@ -402,11 +404,23 @@ static Span<String> SetArrayOfStrings(LuaState& ctx, FieldInfo field_info, bool 
     return list.ToOwnedSpan();
 }
 
+static void SetTagsFromStrings(LuaState& ctx, FieldInfo const& info, TagsBitset& tags) {
+    auto const strings = SetArrayOfStrings(ctx, info, true);
+    for (auto const& s : strings)
+        if (auto const tag = LookupTagName(s))
+            tags.Set(ToInt(tag->tag));
+        else
+            LogWarning(ModuleName::SampleLibrary,
+                       "Unrecognised tag '{}' in {}",
+                       s,
+                       path::Filename(ctx.filepath));
+}
+
 template <>
 struct TableFields<ImpulseResponse::AudioProperties> {
     using Type = ImpulseResponse::AudioProperties;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         GainDb,
         Count,
     };
@@ -433,7 +447,7 @@ template <>
 struct TableFields<Region::AudioProperties> {
     using Type = Region::AudioProperties;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         GainDb,
         StartOffsetFrames,
         TuneCents,
@@ -509,7 +523,7 @@ template <>
 struct TableFields<Region::Playback> {
     using Type = Region::Playback;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         KeytrackRequirement,
         Count,
     };
@@ -544,7 +558,7 @@ template <>
 struct TableFields<Region::TimbreLayering> {
     using Type = Region::TimbreLayering;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         LayerRange,
         Count,
     };
@@ -582,10 +596,58 @@ struct TableFields<Region::TimbreLayering> {
 };
 
 template <>
+struct TableFields<Region::Slice> {
+    using Type = Region::Slice;
+
+    enum class Field : u8 {
+        StartFrame,
+        IntendedLength,
+        Count,
+    };
+    static constexpr FieldInfo FieldInfo(Field f) {
+        switch (f) {
+            case Field::StartFrame:
+                return {
+                    .name = "start_frame",
+                    .description_sentence = "The frame position in the audio file where this slice begins.",
+                    .example = "0",
+                    .lua_type = LUA_TNUMBER,
+                    .required = true,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const val = luaL_checkinteger(ctx.lua, -1);
+                            if (val < 0)
+                                luaL_error(ctx.lua, "'%s' should be a positive integer", info.name.data);
+                            FIELD_OBJ.start_frame = (u32)val;
+                        },
+                };
+            case Field::IntendedLength:
+                return {
+                    .name = "length_proportion",
+                    .description_sentence =
+                        "A unitless value representing the relative duration of this slice when played in a tempo-synced sequence, similar to CSS flex-grow. The system sums all length_proportion values to determine the total number of steps, and each slice's proportion determines its playback duration.",
+                    .example = "4",
+                    .lua_type = LUA_TNUMBER,
+                    .required = true,
+                    .range = {1, 1000000},
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const val = luaL_checkinteger(ctx.lua, -1);
+                            if (val < 1) luaL_error(ctx.lua, "'%s' must be at least 1", info.name.data);
+                            FIELD_OBJ.length_proportion = (u32)val;
+                        },
+                };
+            case Field::Count: break;
+        }
+        return {};
+    }
+};
+
+template <>
 struct TableFields<Region::TriggerCriteria> {
     using Type = Region::TriggerCriteria;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Event,
         KeyRange,
         VelocityRange,
@@ -764,7 +826,7 @@ template <>
 struct TableFields<BuiltinLoop> {
     using Type = BuiltinLoop;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Start,
         End,
         Crossfade,
@@ -861,7 +923,7 @@ template <>
 struct TableFields<Region::Loop> {
     using Type = Region::Loop;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         BuiltinLoop,
         LoopRequirement,
         Count,
@@ -931,7 +993,7 @@ struct TableFields<Region> {
     static_assert(ArraySize(k_trigger_event_names) == ToInt(TriggerEvent::Count) + 1);
     static_assert(ArraySize(k_trigger_event_descriptions) == ToInt(TriggerEvent::Count) + 1);
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Path,
         RootKey,
         TriggerCriteria,
@@ -939,6 +1001,9 @@ struct TableFields<Region> {
         TimbreLayering,
         AudioProperties,
         Playback,
+        Slices,
+        LoopBeats,
+        NativeBpm,
         Count,
     };
 
@@ -1015,6 +1080,80 @@ struct TableFields<Region> {
                     .required = false,
                     .set = [](SET_FIELD_VALUE_ARGS) { InterpretTable(ctx, -1, FIELD_OBJ.playback); },
                 };
+            case Field::Slices:
+                return {
+                    .name = "slices",
+                    .description_sentence =
+                        "An array of slices that divide this region's audio into segments for tempo-synced playback. Each slice defines a start frame and a relative length. The system sums all length_proportion values to determine the total number of steps; each slice's proportion of the total determines its playback duration in the sequence.",
+                    .example = "{}",
+                    .default_value = "no slices",
+                    .lua_type = LUA_TTABLE,
+                    .required = false,
+                    .is_array = LUA_TTABLE,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            DynamicArray<Region::Slice> slices {ctx.result_arena};
+                            lua_len(ctx.lua, -1);
+                            auto const len = lua_tointeger(ctx.lua, -1);
+                            lua_pop(ctx.lua, 1);
+                            slices.Reserve(CheckedCast<usize>(len));
+
+                            for (lua_Integer i = 1; i <= len; i++) {
+                                lua_rawgeti(ctx.lua, -1, i);
+                                if (lua_type(ctx.lua, -1) != LUA_TTABLE)
+                                    luaL_error(ctx.lua,
+                                               "'%s' element %d: expected a table",
+                                               info.name.data,
+                                               (int)i);
+                                Region::Slice slice {};
+                                InterpretTable(ctx, -1, slice);
+                                dyn::Append(slices, slice);
+                                lua_pop(ctx.lua, 1);
+                            }
+
+                            for (usize i = 1; i < slices.size; i++)
+                                if (slices[i].start_frame <= slices[i - 1].start_frame)
+                                    luaL_error(ctx.lua,
+                                               "'%s': slices must be in ascending order of start_frame",
+                                               info.name.data);
+
+                            FIELD_OBJ.slices = slices.ToOwnedSpan();
+                        },
+                };
+            case Field::LoopBeats:
+                return {
+                    .name = "loop_beats",
+                    .description_sentence =
+                        "The musical length of the loop in beats (e.g. 4 for a 1-bar loop in 4/4, 8 for 2 bars). Required when slices are set. Used by the arpeggiator's auto-rate to pick a tempo division that matches the loop's native timing.",
+                    .example = "4",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .range = {1, 255},
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const val = luaL_checkinteger(ctx.lua, -1);
+                            if (val < 1 || val > 255)
+                                luaL_error(ctx.lua, "'%s' must be between 1 and 255", info.name.data);
+                            FIELD_OBJ.loop_beats = (u8)val;
+                        },
+                };
+            case Field::NativeBpm:
+                return {
+                    .name = "native_bpm",
+                    .description_sentence =
+                        "The BPM the loop was recorded at. Required when slices are set. Used by the arpeggiator's auto-rate together with loop_beats to compute each step's native duration.",
+                    .example = "120",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .range = {1, 999},
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const val = luaL_checknumber(ctx.lua, -1);
+                            if (val < 1.0 || val > 999.0)
+                                luaL_error(ctx.lua, "'%s' must be between 1 and 999", info.name.data);
+                            FIELD_OBJ.native_bpm = (f32)val;
+                        },
+                };
             case Field::Count: break;
         }
         return {};
@@ -1025,7 +1164,7 @@ template <>
 struct TableFields<FileAttribution> {
     using Type = FileAttribution;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Title,
         LicenseName,
         LicenseUrl,
@@ -1092,7 +1231,7 @@ template <>
 struct TableFields<NamedKeyRange> {
     using Type = NamedKeyRange;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         KeyRange,
         Count,
@@ -1171,7 +1310,7 @@ template <>
 struct TableFields<ImpulseResponse> {
     using Type = ImpulseResponse;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         Id,
         Path,
@@ -1263,13 +1402,7 @@ struct TableFields<ImpulseResponse> {
                     .lua_type = LUA_TTABLE,
                     .required = false,
                     .is_array = LUA_TSTRING,
-                    .set =
-                        [](SET_FIELD_VALUE_ARGS) {
-                            auto const tags = SetArrayOfStrings(ctx, info, true);
-                            FIELD_OBJ.tags = Set<String>::Create(ctx.result_arena, tags.size);
-                            for (auto const& t : tags)
-                                FIELD_OBJ.tags.InsertWithoutGrowing(t);
-                        },
+                    .set = [](SET_FIELD_VALUE_ARGS) { SetTagsFromStrings(ctx, info, FIELD_OBJ.tags); },
                 };
             case Field::Description:
                 return {
@@ -1302,7 +1435,7 @@ template <>
 struct TableFields<Instrument> {
     using Type = Instrument;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         Id,
         Folder,
@@ -1395,13 +1528,7 @@ struct TableFields<Instrument> {
                     .lua_type = LUA_TTABLE,
                     .required = false,
                     .is_array = LUA_TSTRING,
-                    .set =
-                        [](SET_FIELD_VALUE_ARGS) {
-                            auto const tags = SetArrayOfStrings(ctx, info, true);
-                            FIELD_OBJ.tags = Set<String>::Create(ctx.result_arena, tags.size);
-                            for (auto const t : tags)
-                                FIELD_OBJ.tags.InsertWithoutGrowing(t);
-                        },
+                    .set = [](SET_FIELD_VALUE_ARGS) { SetTagsFromStrings(ctx, info, FIELD_OBJ.tags); },
                 };
             case Field::WaveformFilepath:
                 return {
@@ -1427,7 +1554,7 @@ template <>
 struct TableFields<Library> {
     using Type = Library;
 
-    enum class Field : u32 {
+    enum class Field : u8 {
         Name,
         Tagline,
         LibraryUrl,
@@ -1438,6 +1565,7 @@ struct TableFields<Library> {
         MinorVersion,
         BackgroundImagePath,
         IconImagePath,
+        VignetteIntensity,
         Count,
     };
 
@@ -1519,11 +1647,13 @@ struct TableFields<Library> {
                     .required = false,
                     .set =
                         [](SET_FIELD_VALUE_ARGS) {
-                            FIELD_OBJ.id = StringFromTop(ctx);
-                            if (FIELD_OBJ.id.size > k_max_library_id_size)
+                            auto const id_string = StringFromTop(ctx);
+                            if (id_string.size > k_max_library_id_size)
                                 luaL_error(ctx.lua,
                                            "Library ID must be less than %d characters long.",
                                            (int)k_max_library_id_size);
+                            FIELD_OBJ.id_string = id_string;
+                            FIELD_OBJ.id = HashLibraryIdString(id_string);
                         },
                 };
             case Field::AuthorUrl:
@@ -1566,6 +1696,21 @@ struct TableFields<Library> {
                     .lua_type = LUA_TSTRING,
                     .required = false,
                     .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.icon_image_path = PathFromTop(ctx); },
+                };
+            case Field::VignetteIntensity:
+                return {
+                    .name = "vignette_intensity",
+                    .description_sentence =
+                        "How strongly to darken the mid panel with a vignette when this library is the active background. 0 disables the effect; 100 is the maximum strength. Use this if the background image benefits from extra contrast against the UI.",
+                    .example = "50",
+                    .default_value = "0",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .range = {.min = 0, .max = 100},
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            FIELD_OBJ.background_image_vignette_intensity = NumberFromTop<u8>(ctx, info);
+                        },
                 };
             case Field::Count: break;
         }
@@ -1919,9 +2064,37 @@ static int FloeLoadFile(lua_State* lua) {
     return luaL_error(lua, "Floe's loadfile is not supported. Use dofile instead.");
 }
 
+static int LuaPrint(lua_State* lua) {
+    if (GetLogLevel() <= LogLevel::Info) {
+        auto const nargs = lua_gettop(lua);
+        auto& mutex = StdStreamMutex(StdStream::Out);
+        mutex.Lock();
+        DEFER { mutex.Unlock(); };
+        auto writer = StdWriter(StdStream::Out);
+        for (auto const i : ::Range(1, nargs + 1)) {
+            usize len = 0;
+            auto const s = luaL_tolstring(lua, i, &len);
+            if (i > 1) auto _ = writer.WriteChar('\t');
+            if (s) auto _ = writer.WriteChars({s, len});
+            lua_pop(lua, 1);
+        }
+        auto _ = writer.WriteChar('\n');
+    }
+    lua_settop(lua, 0);
+    return 0;
+}
+
 static void ReplaceBaseFunctions(lua_State* L) {
     lua_register(L, "dofile", FloeDoFile);
     lua_register(L, "loadfile", FloeLoadFile);
+
+    static constexpr luaL_Reg k_print_lib[] = {
+        {"print", LuaPrint},
+        {nullptr, nullptr},
+    };
+    lua_getglobal(L, "_G");
+    luaL_setfuncs(L, k_print_lib, 0);
+    lua_pop(L, 1);
 }
 
 constexpr char const* k_floe_lua_helpers = R"aaa(
@@ -2271,7 +2444,7 @@ WordWrap(String string, Writer writer, u32 width, Optional<String> line_prefix =
 }
 
 struct LuaCodePrinter {
-    enum PrintModeFlags : u32 {
+    enum PrintModeFlags : u8 {
         PrintModeFlagsDocumentedExample = 1,
         PrintModeFlagsPlaceholderFieldValue = 2,
         PrintModeFlagsPlaceholderFieldKey = 4,
@@ -2380,9 +2553,11 @@ struct LuaCodePrinter {
                         .subtype = InterpretedTypes::FileAttribution,
                     },
                 }),
-                .description = "Sets the attribution information for a particular audio file or folder. "
+                .description = "Sets the attribution information for a particular file or folder. "
                                "If the path is a folder, the attribution requirement will be applied to "
-                               "all audio files in that folder and its subfolders.",
+                               "all audio files in that folder and its subfolders. You can also point "
+                               "it at the library's background_image_path to credit the cover image — "
+                               "when set, a subtle credit line appears on the Perform page.",
             },
             {
                 .name = "add_named_key_range",
@@ -2500,6 +2675,7 @@ struct LuaCodePrinter {
                 case InterpretedTypes::RegionPlayback:
                     struct_fields[i] = FieldInfosSpan<Region::Playback>();
                     break;
+                case InterpretedTypes::RegionSlice: struct_fields[i] = FieldInfosSpan<Region::Slice>(); break;
                 case InterpretedTypes::RegionTimbreLayering:
                     struct_fields[i] = FieldInfosSpan<Region::TimbreLayering>();
                     break;
@@ -2679,8 +2855,8 @@ struct LuaCodePrinter {
             if (!(mode.placeholder_field_index.type == field.type &&
                   mode.placeholder_field_index.index == field.index)) {
                 // if the given field doesn't match the placeholder then unset the placeholder bits
-                flags &= ~PrintModeFlagsPlaceholderFieldKey;
-                flags &= ~PrintModeFlagsPlaceholderFieldValue;
+                flags &= (u32)~PrintModeFlagsPlaceholderFieldKey;
+                flags &= (u32)~PrintModeFlagsPlaceholderFieldValue;
             }
             flags;
         });
@@ -2825,7 +3001,7 @@ ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments
     TRY(printer.PrintWholeLua(
         writer,
         {
-            .mode_flags = include_comments ? LuaCodePrinter::PrintModeFlagsDocumentedExample : 0,
+            .mode_flags = include_comments ? LuaCodePrinter::PrintModeFlagsDocumentedExample : 0u,
         }));
     return k_success;
 }
@@ -2940,6 +3116,7 @@ TEST_CASE(TestIncorrectParameters) {
                         .mode_flags = LuaCodePrinter::PrintModeFlagsPlaceholderFieldValue,
                         .placeholder_field_index = {(InterpretedTypes)type, field_index},
                     }));
+                if (!ContainsSpan(Span<char const>(buf), "<PLACEHOLDER>"_s)) continue;
                 auto const lua = fmt::FormatStringReplace(arena,
                                                           buf,
                                                           ArrayT<fmt::StringReplacement>({
@@ -3072,12 +3249,12 @@ TEST_CASE(TestBasicFile) {
     })
     local instrument = floe.new_instrument(library, {
         name = "Inst1",
-        tags = {"tag1"},
+        tags = {"acoustic"},
         folder = "Folders/Sub",
     })
     local instrument2 = floe.new_instrument(library, {
         name = "Inst2",
-        tags = {"tag1", "tag2"},
+        tags = {"acoustic", "warm"},
     })
     local proto = {
         trigger_criteria = { auto_map_key_range_group = "group1" },
@@ -3126,9 +3303,9 @@ TEST_CASE(TestBasicFile) {
         REQUIRE(inst2_ptr);
         auto inst2 = *inst2_ptr;
         CHECK_EQ(inst2->name, "Inst2"_s);
-        REQUIRE(inst2->tags.size == 2);
-        CHECK(inst2->tags.Contains("tag1"_s));
-        CHECK(inst2->tags.Contains("tag2"_s));
+        REQUIRE(inst2->tags.NumSet() == 2);
+        CHECK(inst2->tags.Get(ToInt(TagType::Acoustic)));
+        CHECK(inst2->tags.Get(ToInt(TagType::Warm)));
     }
 
     {
@@ -3140,8 +3317,8 @@ TEST_CASE(TestBasicFile) {
         CHECK_EQ(inst1->folder->name, "Sub"_s);
         REQUIRE(inst1->folder->parent);
         CHECK_EQ(inst1->folder->parent->name, "Folders"_s);
-        REQUIRE(inst1->tags.size == 1);
-        CHECK(inst1->tags.Contains("tag1"_s));
+        REQUIRE(inst1->tags.NumSet() == 1);
+        CHECK(inst1->tags.Get(ToInt(TagType::Acoustic)));
 
         CHECK_EQ(inst1->audio_file_path_for_waveform, "foo/file.flac"_s);
 
@@ -3266,6 +3443,312 @@ TEST_CASE(TestErrorHandling) {
     return k_success;
 }
 
+TEST_CASE(TestSlices) {
+    auto& arena = tester.scratch_arena;
+    ArenaAllocator result_arena {PageAllocator::Instance()};
+
+    SUBCASE("valid slices") {
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            loop_beats = 4,
+            native_bpm = 120,
+            slices = {
+                { start_frame = 0, length_proportion = 4 },
+                { start_frame = 22050, length_proportion = 4 },
+                { start_frame = 44100, length_proportion = 2 },
+                { start_frame = 66150, length_proportion = 6 },
+            },
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        if (auto err = r.TryGet<Error>()) tester.log.Error("Error: {}, {}", err->code, err->message);
+        REQUIRE(!r.Is<Error>());
+
+        auto& lib = *r.Get<Library*>();
+        auto inst_ptr = lib.insts_by_id.Find("Inst1");
+        REQUIRE(inst_ptr);
+        auto inst = *inst_ptr;
+        REQUIRE(inst->regions.size == 1);
+        auto const& region = inst->regions[0];
+
+        // Original proportions {4, 4, 2, 6} have GCD 2 and are simplified to {2, 2, 1, 3}.
+        REQUIRE(region.slices.size == 4);
+        CHECK_EQ(region.slices[0].start_frame, 0u);
+        CHECK_EQ(region.slices[0].length_proportion, 2u);
+        CHECK_EQ(region.slices[1].start_frame, 22050u);
+        CHECK_EQ(region.slices[1].length_proportion, 2u);
+        CHECK_EQ(region.slices[2].start_frame, 44100u);
+        CHECK_EQ(region.slices[2].length_proportion, 1u);
+        CHECK_EQ(region.slices[3].start_frame, 66150u);
+        CHECK_EQ(region.slices[3].length_proportion, 3u);
+    }
+
+    SUBCASE("no slices is valid") {
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Samples/sound.flac",
+            root_key = 60,
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        REQUIRE(!r.Is<Error>());
+        auto& lib = *r.Get<Library*>();
+        auto inst = *lib.insts_by_id.Find("Inst1");
+        CHECK_EQ(inst->regions[0].slices.size, 0u);
+    }
+
+    SUBCASE("slices not in ascending order is an error") {
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            loop_beats = 4,
+            native_bpm = 120,
+            slices = {
+                { start_frame = 44100, length_proportion = 4 },
+                { start_frame = 22050, length_proportion = 4 },
+            },
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        CHECK(r.Is<Error>());
+    }
+
+    SUBCASE("slices with multiple regions is an error") {
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            loop_beats = 4,
+            native_bpm = 120,
+            slices = {
+                { start_frame = 0, length_proportion = 4 },
+                { start_frame = 22050, length_proportion = 4 },
+            },
+        })
+        floe.add_region(instrument, {
+            path = "Samples/other.flac",
+            root_key = 64,
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        CHECK(r.Is<Error>());
+    }
+
+    SUBCASE("sum of proportions exceeds max steps is an error (coprime, not simplifiable)") {
+        // 33 + 32 = 65 > k_arp_max_steps (64). GCD is 1, so no simplification saves it.
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            loop_beats = 4,
+            native_bpm = 120,
+            slices = {
+                { start_frame = 0, length_proportion = 33 },
+                { start_frame = 22050, length_proportion = 32 },
+            },
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        CHECK(r.Is<Error>());
+    }
+
+    SUBCASE("proportions are simplified by GCD to fit within max steps") {
+        // {100, 100} would exceed max_steps, but GCD=100 simplifies to {1, 1}.
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            loop_beats = 4,
+            native_bpm = 120,
+            slices = {
+                { start_frame = 0, length_proportion = 100 },
+                { start_frame = 22050, length_proportion = 100 },
+            },
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        REQUIRE(!r.Is<Error>());
+        auto& lib = *r.Get<Library*>();
+        auto inst = *lib.insts_by_id.Find("Inst1");
+        REQUIRE(inst->regions[0].slices.size == 2);
+        CHECK_EQ(inst->regions[0].slices[0].length_proportion, 1u);
+        CHECK_EQ(inst->regions[0].slices[1].length_proportion, 1u);
+    }
+
+    SUBCASE("single slice is valid") {
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            loop_beats = 4,
+            native_bpm = 120,
+            slices = {
+                { start_frame = 0, length_proportion = 1 },
+            },
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        REQUIRE(!r.Is<Error>());
+        auto& lib = *r.Get<Library*>();
+        auto inst = *lib.insts_by_id.Find("Inst1");
+        REQUIRE(inst->regions[0].slices.size == 1);
+        CHECK_EQ(inst->regions[0].slices[0].start_frame, 0u);
+        CHECK_EQ(inst->regions[0].slices[0].length_proportion, 1u);
+    }
+
+    SUBCASE("slices without loop_beats is an error") {
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            native_bpm = 120,
+            slices = {
+                { start_frame = 0, length_proportion = 1 },
+            },
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        CHECK(r.Is<Error>());
+    }
+
+    SUBCASE("slices without native_bpm is an error") {
+        auto r = ReadLua(R"aaa(
+        local library = floe.new_library({
+            name = "Lib",
+            tagline = "tagline",
+            author = "Sam",
+            background_image_path = "",
+            icon_image_path = "",
+        })
+        local instrument = floe.new_instrument(library, {
+            name = "Inst1",
+        })
+        floe.add_region(instrument, {
+            path = "Loops/drum_loop.flac",
+            root_key = 60,
+            loop_beats = 4,
+            slices = {
+                { start_frame = 0, length_proportion = 1 },
+            },
+        })
+        return library
+        )aaa",
+                         FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                         result_arena,
+                         arena);
+        CHECK(r.Is<Error>());
+    }
+
+    return k_success;
+}
+
 } // namespace sample_lib
 
 TEST_REGISTRATION(RegisterLibraryLuaTests) {
@@ -3276,4 +3759,5 @@ TEST_REGISTRATION(RegisterLibraryLuaTests) {
     REGISTER_TEST(sample_lib::TestIncorrectParameters);
     REGISTER_TEST(sample_lib::TestErrorHandling);
     REGISTER_TEST(sample_lib::TestAutoMapKeyRange);
+    REGISTER_TEST(sample_lib::TestSlices);
 }

@@ -1,9 +1,9 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include "foundation/foundation.hpp"
 
-enum class WebError : u32 {
+enum class WebError : u8 {
     ApiError,
     NetworkError,
     Non200Response,

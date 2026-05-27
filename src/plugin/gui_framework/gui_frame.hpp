@@ -1,9 +1,12 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 #include "foundation/foundation.hpp"
 #include "os/misc.hpp"
+#include "utils/debug/debug.hpp"
+
+#include "common_infrastructure/constants.hpp"
 
 #include "draw_list.hpp"
 #include "renderer.hpp"
@@ -152,6 +155,9 @@ struct GuiFrameInput {
     // was set to.
     ArenaStack<String> file_picker_results {};
 
+    DynamicArrayBounded<char, 64> requested_screenshot_id_name {};
+    DynamicArrayBounded<char, 256> requested_screenshot_output_path {};
+
     // WW = Window Width.
     // Similar to CSS vw units, we have a concept of 'window width' relative units. They allow us to make our
     // GUI scale with the window size.
@@ -186,7 +192,7 @@ enum class CursorType : u8 {
 };
 
 struct FilePickerDialogOptions {
-    enum class Type { SaveFile, OpenFile, SelectFolder };
+    enum class Type : u8 { SaveFile, OpenFile, SelectFolder };
 
     struct FileFilter {
         FileFilter Clone(Allocator& a, CloneType t = CloneType::Deep) const {
@@ -207,6 +213,7 @@ struct FilePickerDialogOptions {
             .default_filename = default_filename.Clone(a, t),
             .filters = a.Clone(filters, t),
             .allow_multiple_selection = allow_multiple_selection,
+            .force_default_folder = force_default_folder,
         };
     }
 
@@ -216,11 +223,14 @@ struct FilePickerDialogOptions {
     Optional<String> default_filename {};
     Span<FileFilter const> filters {};
     bool allow_multiple_selection {};
+    // Windows only. If true, default_folder overrides Windows' per-app MRU; otherwise it's only a hint
+    // used when no MRU exists for the dialog.
+    bool force_default_folder {};
 };
 
 // Fill this struct every frame to instruct the framework about the application's needs.
 struct GuiFrameOutput {
-    enum class UpdateInterval {
+    enum class UpdateInterval : u8 {
         // 1. GUI will sleep until there's user interaction, a timed wakeup fired or the global 'request
         // update' bool is set.
         Sleep,
@@ -234,18 +244,28 @@ struct GuiFrameOutput {
     };
 
     // Only elevates, never decreases importance.
-    void IncreaseUpdateInterval(UpdateInterval r) {
-        if (ToInt(r) > ToInt(wants.update_interval)) wants.update_interval = r;
+    void IncreaseUpdateInterval(UpdateInterval r, SourceLocation loc = SourceLocation::Current()) {
+        if (ToInt(r) > ToInt(wants.update_interval)) {
+            wants.update_interval = r;
+            TracyMessageEx({.colour = 0xffffffff}, "{} {}", __FUNCTION__, loc);
+        }
     }
 
-    void AddTimedWakeup(TimePoint time, char const* timer_name) {
-        (void)timer_name;
-        dyn::AppendIfNotAlreadyThere(timed_wakeups, time);
+    // Set or update a timed wakeup. If this ID already has a wakeup, its time is replaced. The caller
+    // is responsible for creating a unique ID by whatever means they want: SourceLocationHash(),
+    // Hash("my name"), or an existing ID they have.
+    void SetTimedWakeup(u64 id, TimePoint time) {
+        if (auto* existing = timed_wakeups.Find(id))
+            *existing = time;
+        else
+            timed_wakeups.Insert(id, time);
     }
 
-    // Set this if you want to be woken up at certain times in the future. Out-of-date wakeups will be removed
-    // for you.
-    DynamicArray<TimePoint> timed_wakeups {Malloc::Instance()};
+    // Remove a timed wakeup by ID. No-op if the ID doesn't exist.
+    void RemoveTimedWakeup(u64 id) { timed_wakeups.Delete(id); }
+
+    // Wakeups keyed by caller-chosen ID. Out-of-date wakeups will be removed for you.
+    DynamicHashTable<u64, TimePoint> timed_wakeups {Malloc::Instance()};
 
     // Rectangles that will wake up the GUI when the mouse enters/leaves it.
     DynamicArray<MouseTrackedRect> mouse_tracked_rects {Malloc::Instance()};
@@ -263,6 +283,23 @@ struct GuiFrameOutput {
     DynamicArray<DrawList*> draw_lists {Malloc::Instance()};
     DrawListAllocator draw_list_allocator {};
 
+    // Set this to request the next rendered frame be saved to disk as a PNG. Region is in framebuffer
+    // pixels (matching window_size); set the whole-window rect for a full screenshot. If output_path is
+    // empty, the file is written to ~/Documents/Floe/Screenshots/. Cleared automatically after handling.
+    struct ScreenshotRequest {
+        struct Overlay {
+            DynamicArrayBounded<char, 32> name {};
+            Rect rect {}; // same coord space as `ScreenshotRequest::rect`
+        };
+
+        Rect rect;
+        DynamicArrayBounded<char, 256> output_path {};
+        // If non-empty, a JSON adjacent (output_path with .json extension) is written with overlay rects
+        // normalised to 0-1 fractions of `rect`.
+        DynamicArrayBounded<Overlay, 32> overlays {};
+    };
+    Optional<ScreenshotRequest> request_screenshot {};
+
     // Simple impermanent state.
     struct Wants {
         UpdateInterval update_interval {UpdateInterval::Sleep};
@@ -271,6 +308,11 @@ struct GuiFrameOutput {
         Bitset<ToInt(KeyCode::Count)> keyboard_keys {};
         bool mouse_capture = false;
         bool mouse_scroll = false;
+
+        // Set this to wake the GUI on every mouse-motion event (not just enter/exit of tracked rects).
+        // Use sparingly: only while you actively need to follow the cursor (e.g. drawing a hover
+        // playhead). Costs nothing while the cursor is still — only motion events trigger redraws.
+        bool mouse_motion_redraw = false;
 
         // Set this to the cursor that you want
         CursorType cursor_type = CursorType::Default;
@@ -282,13 +324,13 @@ struct GuiFrameOutput {
 
 struct GuiFrameIo {
     // Returns true when it ticks
-    bool WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds) {
+    bool WakeupAtTimedInterval(TimePoint& counter, f64 interval_seconds, u64 id) {
         bool triggered = false;
         if (in.current_time >= counter) {
             counter = in.current_time + interval_seconds;
             triggered = true;
         }
-        out.AddTimedWakeup(counter, __FUNCTION__);
+        out.SetTimedWakeup(id, counter);
         return triggered;
     }
 
@@ -300,12 +342,16 @@ struct GuiFrameIo {
 // it is invalid to use this data. A large percentage of GUI code needs access to the frame input and output.
 // Rather than pass it around everywhere which will be incredibly noisy, we use this global.
 GuiFrameIo GuiIo();
+bool GuiIoValid();
 // Because of the convenient auto, you may need to specify the type of the input arg.
 inline auto WwToPixels(auto ww) { return ww * GuiIo().in.pixels_per_ww; }
 inline auto PixelsToWw(auto pixels) { return pixels / GuiIo().in.pixels_per_ww; }
 
-// Set this at any time from any thread to request a GUI update at some point in the future.
-extern Atomic<bool> g_request_gui_update;
+// These are totally safe with regards to threads and lifetimes since they just work with global atomic bools.
+// The GUI doesn't even have to exist.
+// [threadsafe]
+void RequestGuiUpdate(FloeInstanceIndex index);
+bool ConsumeGuiUpdateRequest(FloeInstanceIndex index);
 
 // Internal.
 void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out);

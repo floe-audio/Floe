@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -6,11 +6,12 @@
 
 #include "common_infrastructure/constants.hpp"
 
-enum class LayerParamIndex : u16 {
+enum class LayerParamIndex : u8 {
     Volume,
     Mute,
     Solo,
     Pan,
+    StereoWidth,
     TuneCents,
     TuneSemitone,
     LoopMode,
@@ -25,8 +26,11 @@ enum class LayerParamIndex : u16 {
     VolumeSustain,
     VolumeRelease,
     FilterOn,
+    LegacyFilterCutoff,
     FilterCutoff,
+    LegacyFilterResonance,
     FilterResonance,
+    LegacyFilterType,
     FilterType,
     FilterEnvAmount,
     FilterAttack,
@@ -34,25 +38,39 @@ enum class LayerParamIndex : u16 {
     FilterSustain,
     FilterRelease,
     LfoOn,
-    LfoShape,
+    LegacyLfoShape,
     LfoRestart,
     LfoAmount,
-    LfoDestination,
+    LegacyLfoDestination,
     LfoRateTempoSynced,
     LfoRateHz,
     LfoSyncSwitch,
+    LegacyLfoShapeV2,
+    LfoShape,
+    LfoDestination,
     EqOn,
+    LegacyEqFreq1,
     EqFreq1,
+    LegacyEqResonance1,
     EqResonance1,
     EqGain1,
+    LegacyEqType1,
     EqType1,
+    LegacyEqFreq2,
     EqFreq2,
+    LegacyEqResonance2,
     EqResonance2,
     EqGain2,
+    LegacyEqType2,
     EqType2,
-    VelocityMapping, // Legacy
+    LegacyEqFreq3,
+    EqFreq3,
+    EqResonance3,
+    EqGain3,
+    EqType3,
+    LegacyVelocityMapping,
     Keytrack,
-    Monophonic, // Legacy
+    LegacyMonophonicBool,
     MonophonicMode,
     MidiTranspose,
     PitchBendRange,
@@ -61,15 +79,28 @@ enum class LayerParamIndex : u16 {
     KeyRangeLowFade,
     KeyRangeHighFade,
 
-#if EXPERIMENTAL_GRANULAR
     PlayMode,
     GranularSpeed,
     GranularPosition,
-    GranularGrains,
+    GranularDensity,
     GranularLength,
     GranularSpread,
     GranularSmoothing,
-#endif
+    GranularRandomPan,
+    GranularRandomDetune,
+    GranularRandomDirection,
+    GranularHarmony,
+
+    ArpOn,
+    ArpMode,
+    ArpNoteOrder,
+    ArpTriggerMode,
+    ArpRate,
+    ArpAutoRate,
+    ArpLength,
+    ArpHumanise,
+    ArpOctavePolyrate,
+    ArpOneShot,
 
     Count,
 };
@@ -90,34 +121,54 @@ enum class ParamIndex : u16 {
 
     DistortionType,
     DistortionDrive,
+    DistortionMix,
     DistortionOn,
 
     BitCrushBits,
     BitCrushBitRate,
-    BitCrushWet,
-    BitCrushDry,
+    LegacyBitCrushWet,
+    LegacyBitCrushDry,
+    BitCrushMix,
+    BitCrushOutput,
     BitCrushOn,
 
+    LegacyCompressorThreshold,
     CompressorThreshold,
+    LegacyCompressorRatio,
     CompressorRatio,
     CompressorGain,
     CompressorAutoGain,
     CompressorOn,
+    CompressorType,
+    CompressorAttack,
+    CompressorRelease,
+    CompressorMix,
 
     FilterOn,
+    LegacyFilterCutoff,
     FilterCutoff,
+    LegacyFilterResonance,
     FilterResonance,
+    LegacyFilterGain,
     FilterGain,
+    LegacyFilterType,
     FilterType,
+    FilterMix,
 
     StereoWidenWidth,
     StereoWidenOn,
+    StereoWidenMode,
+    StereoWidenBassMono,
+    StereoWidenMix,
 
     ChorusRate,
+    LegacyChorusHighpass,
     ChorusHighpass,
     ChorusDepth,
-    ChorusWet,
-    ChorusDry,
+    LegacyChorusWet,
+    LegacyChorusDry,
+    ChorusMix,
+    ChorusOutput,
     ChorusOn,
 
     DelayMode,
@@ -141,9 +192,27 @@ enum class ParamIndex : u16 {
     PhaserMix,
     PhaserOn,
 
+    EqOn,
+    EqMix,
+    EqType1,
+    EqFreq1,
+    EqResonance1,
+    EqGain1,
+    EqType2,
+    EqFreq2,
+    EqResonance2,
+    EqGain2,
+    EqType3,
+    EqFreq3,
+    EqResonance3,
+    EqGain3,
+
+    LegacyConvolutionReverbHighpass,
     ConvolutionReverbHighpass,
-    ConvolutionReverbWet,
-    ConvolutionReverbDry,
+    LegacyConvolutionReverbWet,
+    LegacyConvolutionReverbDry,
+    ConvolutionReverbMix,
+    ConvolutionReverbOutput,
     ConvolutionReverbOn,
 
     ReverbDecayTimeMs,
@@ -178,6 +247,7 @@ enum class ParamDisplayFormat : u8 {
     VolumeDbRange,
     Cents,
     Semitones,
+    Ratio,
 };
 
 enum class ParamValueType : u8 {
@@ -189,7 +259,12 @@ enum class ParamValueType : u8 {
 
 struct ParamFlags {
     u8 not_automatable : 1;
-    u8 hidden : 1;
+    u8 legacy : 1;
+    // Experimental params may be removed or changed in future versions without breaking compatibility, they
+    // don't require a StateVersion bump, and are defaulted on load if not present in the file. We store
+    // params as {id, value} pairs - unknown IDs are skipped on load, so removed experimental params are
+    // harmlessly ignored.
+    u8 experimental : 1;
 };
 
 enum class ParameterModule : u8 {
@@ -203,13 +278,17 @@ enum class ParameterModule : u8 {
     Master,
     Macro,
 
-    Lfo,
-    Loop,
-    Filter,
+    Main,
     Playback,
-    Granular,
+    Lfo,
     Eq,
+    Config,
+    Arp,
+
     VolEnv,
+    Filter,
+    Loop,
+    Granular,
 
     Distortion,
     Reverb,
@@ -223,6 +302,7 @@ enum class ParameterModule : u8 {
 
     Band1,
     Band2,
+    Band3,
 
     Count
 };
@@ -230,36 +310,105 @@ enum class ParameterModule : u8 {
 constexpr String k_parameter_module_strings[] = {
     "",
 
-    "Layer 1",    "Layer 2",    "Layer 3",
+    "Layer 1",
+    "Layer 2",
+    "Layer 3",
 
-    "Effect",     "Master",     "Macro",
+    "Effect",
+    "Master",
+    "Macro",
 
-    "LFO",        "Loop",       "Filter",  "Playback",    "Granular", "EQ",     "Volume Envelope",
+    "Main",
+    "Playback",
+    "LFO",
+    "EQ",
+    "Config",
+    "Arp",
 
-    "Distortion", "Reverb",     "Delay",   "StereoWiden", "Chorus",   "Phaser", "Convolution Reverb",
-    "Bitcrush",   "Compressor",
+    "Volume Envelope",
+    "Filter",
+    "Loop",
+    "Granular",
 
-    "Band 1",     "Band 2",
+    "Distortion",
+    "Reverb",
+    "Delay",
+    "StereoWiden",
+    "Chorus",
+    "Phaser",
+    "Convolution Reverb",
+    "Bitcrush",
+    "Compressor",
+
+    "Band 1",
+    "Band 2",
+    "Band 3",
 };
 
 static_assert(ArraySize(k_parameter_module_strings) == ToInt(ParameterModule::Count));
 
 using ParamModules = Array<ParameterModule, 4>;
 
+constexpr Optional<u8> LayerIndexFromModule(ParameterModule m) {
+    switch (m) {
+        case ParameterModule::Layer1: return (u8)0;
+        case ParameterModule::Layer2: return (u8)1;
+        case ParameterModule::Layer3: return (u8)2;
+        default: return k_nullopt;
+    }
+}
+
+constexpr ParameterModule LayerModuleFromIndex(u8 layer_index) {
+    switch (layer_index) {
+        case 0: return ParameterModule::Layer1;
+        case 1: return ParameterModule::Layer2;
+        case 2: return ParameterModule::Layer3;
+    }
+    PanicIfReached();
+    return ParameterModule::None;
+}
+
 namespace param_values {
+
+enum class LegacyEqType : u8 { // never reorder
+    Peak,
+    LowShelf,
+    HighShelf,
+    Count,
+};
+constexpr auto k_legacy_eq_type_strings = ArrayT<String>({
+    "Peak",
+    "Low-shelf",
+    "High-shelf",
+});
+static_assert(k_legacy_eq_type_strings.size == ToInt(LegacyEqType::Count));
 
 enum class EqType : u8 { // never reorder
     Peak,
     LowShelf,
     HighShelf,
+    Notch,
+    LowPass12,
+    LowPass24,
+    HighPass12,
+    HighPass24,
     Count,
 };
 constexpr auto k_eq_type_strings = ArrayT<String>({
     "Peak",
     "Low-shelf",
     "High-shelf",
+    "Notch",
+    "Low-pass 12dB",
+    "Low-pass 24dB",
+    "High-pass 12dB",
+    "High-pass 24dB",
 });
 static_assert(k_eq_type_strings.size == ToInt(EqType::Count));
+
+constexpr bool EqTypeUsesGain(EqType t) {
+    return t == EqType::Peak || t == EqType::LowShelf || t == EqType::HighShelf;
+}
 
 enum class LoopMode : u8 { // never reorder
     InstrumentDefault,
@@ -330,26 +479,84 @@ constexpr auto k_lfo_restart_mode_strings = ArrayT<String>({
 });
 static_assert(k_lfo_restart_mode_strings.size == ToInt(LfoRestartMode::Count));
 
-enum class LfoDestination : u8 { // never reorder
+enum class LegacyLfoDestination : u8 { // never reorder
     Volume,
     Filter,
     Pan,
     Pitch,
     Count,
 };
-constexpr auto k_lfo_destinations_strings = ArrayT<String>({
+constexpr auto k_legacy_lfo_destination_strings = ArrayT<String>({
     "Volume",
     "Filter",
     "Pan",
     "Pitch",
 });
-static_assert(k_lfo_destinations_strings.size == ToInt(LfoDestination::Count));
+static_assert(k_legacy_lfo_destination_strings.size == ToInt(LegacyLfoDestination::Count));
+
+enum class LfoDestination : u8 { // never reorder
+    Volume,
+    Filter,
+    Pan,
+    Pitch,
+    GranularPosition,
+    Count,
+};
+constexpr auto k_lfo_destination_strings = ArrayT<String>({
+    "Volume",
+    "Filter",
+    "Pan",
+    "Pitch",
+    "Grain Position",
+});
+static_assert(k_lfo_destination_strings.size == ToInt(LfoDestination::Count));
+
+enum class LegacyLfoShapeV1 : u8 { // oldest. never reorder
+    Sine,
+    Triangle,
+    Sawtooth,
+    Square,
+    Count,
+};
+constexpr auto k_legacy_lfo_shape_strings = ArrayT<String>({
+    "Sine",
+    "Triangle",
+    "Sawtooth",
+    "Square",
+});
+static_assert(k_legacy_lfo_shape_strings.size == ToInt(LegacyLfoShapeV1::Count));
+
+enum class LegacyLfoShapeV2 : u8 { // never reorder
+    Sine,
+    Triangle,
+    Sawtooth,
+    Square,
+    RandomSteps,
+    RandomGlide,
+    Count,
+};
+constexpr auto k_legacy_lfo_shape_v2_strings = ArrayT<String>({
+    "Sine",
+    "Triangle",
+    "Sawtooth",
+    "Square",
+    "Random Steps",
+    "Random Glide",
+});
+static_assert(k_legacy_lfo_shape_v2_strings.size == ToInt(LegacyLfoShapeV2::Count));
 
 enum class LfoShape : u8 { // never reorder
     Sine,
     Triangle,
     Sawtooth,
     Square,
+    RandomSteps,
+    RandomGlide,
+    Pluck,
+    PluckSharp,
+    PulseNarrow,
+    PulseWide,
+    Trapezoid,
     Count,
 };
 constexpr auto k_lfo_shape_strings = ArrayT<String>({
@@ -357,10 +564,17 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
     "Triangle",
     "Sawtooth",
     "Square",
+    "Random Steps",
+    "Random Glide",
+    "Pluck",
+    "Pluck Sharp",
+    "Pulse Narrow",
+    "Pulse Wide",
+    "Trapezoid",
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
 
-enum class LayerFilterType : u8 { // never reorder
+enum class LegacyLayerFilterType : u8 { // never reorder
     Lowpass,
     Bandpass,
     Highpass,
@@ -371,19 +585,40 @@ enum class LayerFilterType : u8 { // never reorder
     Peak,
     Count,
 };
-constexpr auto k_layer_filter_type_strings = ArrayT<String>({
+constexpr auto k_legacy_layer_filter_type_strings = ArrayT<String>({
     "Low-pass",
     "Band-pass A",
     "High-pass",
     "Band-pass B",
     "Band-shelving",
     "Notch",
-    "All-pass (Legacy)", // TODO: remove this
+    "All-pass",
+    "Peak",
+});
+static_assert(k_legacy_layer_filter_type_strings.size == ToInt(LegacyLayerFilterType::Count));
+
+enum class LayerFilterType : u8 { // never reorder
+    Lowpass,
+    Highpass,
+    Bandpass,
+    BandpassResonant,
+    BandShelving,
+    Notch,
+    Peak,
+    Count,
+};
+constexpr auto k_layer_filter_type_strings = ArrayT<String>({
+    "Low-pass",
+    "High-pass",
+    "Band-pass",
+    "Band-pass (resonant)",
+    "Band-shelving",
+    "Notch",
     "Peak",
 });
 static_assert(k_layer_filter_type_strings.size == ToInt(LayerFilterType::Count));
 
-enum class EffectFilterType : u8 { // never reorder
+enum class LegacyEffectFilterType : u8 { // never reorder
     LowPass,
     HighPass,
     BandPass,
@@ -393,7 +628,7 @@ enum class EffectFilterType : u8 { // never reorder
     HighShelf,
     Count,
 };
-constexpr auto k_effect_filter_type_strings = ArrayT<String>({
+constexpr auto k_legacy_effect_filter_type_strings = ArrayT<String>({
     "Low-pass",
     "High-pass",
     "Band-pass",
@@ -402,7 +637,36 @@ constexpr auto k_effect_filter_type_strings = ArrayT<String>({
     "Low-shelf",
     "High-shelf",
 });
+static_assert(k_legacy_effect_filter_type_strings.size == ToInt(LegacyEffectFilterType::Count));
+
+enum class EffectFilterType : u8 { // never reorder
+    LowPass12,
+    LowPass24,
+    HighPass12,
+    HighPass24,
+    BandPass,
+    Notch,
+    Peak,
+    LowShelf,
+    HighShelf,
+    Count,
+};
+constexpr auto k_effect_filter_type_strings = ArrayT<String>({
+    "Low-pass 12dB",
+    "Low-pass 24dB",
+    "High-pass 12dB",
+    "High-pass 24dB",
+    "Band-pass",
+    "Notch",
+    "Peak",
+    "Low-shelf",
+    "High-shelf",
+});
 static_assert(k_effect_filter_type_strings.size == ToInt(EffectFilterType::Count));
+
+constexpr bool EffectFilterTypeUsesGain(EffectFilterType t) {
+    return t == EffectFilterType::Peak || t == EffectFilterType::LowShelf || t == EffectFilterType::HighShelf;
+}
 
 enum class DistortionType : u8 { // never reorder
     TubeLog,
@@ -430,6 +694,17 @@ constexpr auto k_distortion_type_strings = ArrayT<String>({
     "Ring Mod",
 });
 static_assert(k_distortion_type_strings.size == ToInt(DistortionType::Count));
+
+enum class CompressorType : u8 { // never reorder
+    Vintage,
+    Modern,
+    Count,
+};
+constexpr auto k_compressor_type_strings = ArrayT<String>({
+    "Vintage",
+    "Modern",
+});
+static_assert(k_compressor_type_strings.size == ToInt(CompressorType::Count));
 
 enum class DelaySyncedTime : u8 { // never reorder
     // NOLINTBEGIN(readability-identifier-naming)
@@ -510,6 +785,19 @@ constexpr auto k_monophonic_mode_strings = ArrayT<String>({
 });
 static_assert(k_monophonic_mode_strings.size == ToInt(MonophonicMode::Count));
 
+enum class StereoWidenMode : u8 { // never reorder
+    Balanced,
+    BassMono,
+    Legacy,
+    Count,
+};
+constexpr auto k_stereo_widen_mode_strings = ArrayT<String>({
+    "Balanced",
+    "Bass Mono",
+    "Legacy",
+});
+static_assert(k_stereo_widen_mode_strings.size == ToInt(StereoWidenMode::Count));
+
 enum class PlayMode : u8 {
     Standard,
     GranularPlayback,
@@ -523,25 +811,149 @@ constexpr auto k_play_mode_strings = ArrayT<String>({
 });
 static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
 
+enum class ArpMode : u8 { // never reorder
+    Played,
+    Fixed,
+    Count,
+};
+constexpr auto k_arp_type_strings = ArrayT<String>({
+    "Played Notes",
+    "Fixed Notes",
+});
+static_assert(k_arp_type_strings.size == ToInt(ArpMode::Count));
+
+enum class ArpNoteOrder : u8 { // never reorder
+    Chord,
+    Up,
+    Down,
+    UpDown,
+    DownUp,
+    Random,
+    RandomNoRepeat,
+    UpX2,
+    DownX2,
+    UpDownX2,
+    Converge,
+    Diverge,
+    Thumb,
+    UpPlus,
+    Count,
+};
+constexpr auto k_arp_note_order_strings = ArrayT<String>({
+    "Chord",
+    "Up",
+    "Down",
+    "Up/Down",
+    "Down/Up",
+    "Random",
+    "Random No Repeat",
+    "Up x2",
+    "Down x2",
+    "Up/Down x2",
+    "Converge",
+    "Diverge",
+    "Thumb",
+    "Up+",
+});
+static_assert(k_arp_note_order_strings.size == ToInt(ArpNoteOrder::Count));
+
+enum class ArpOctavePolyrate : u8 { // never reorder
+    Off,
+    Double,
+    ThreeToTwo,
+    FourToThree,
+    Count,
+};
+constexpr auto k_arp_octave_polyrate_strings = ArrayT<String>({
+    "Off",
+    "Double at octaves",
+    "3:2 at octaves",
+    "4:3 at octaves",
+});
+static_assert(k_arp_octave_polyrate_strings.size == ToInt(ArpOctavePolyrate::Count));
+
+enum class ArpTriggerMode : u8 { // never reorder
+    Free,
+    Retrigger,
+    Count,
+};
+constexpr auto k_arp_trigger_mode_strings = ArrayT<String>({
+    "Free",
+    "Retrigger",
+});
+static_assert(k_arp_trigger_mode_strings.size == ToInt(ArpTriggerMode::Count));
+
+enum class ArpSyncedRate : u8 { // never reorder
+    // NOLINTBEGIN(readability-identifier-naming)
+    _1_64T,
+    _1_64,
+    _1_64D,
+    _1_32T,
+    _1_32,
+    _1_32D,
+    _1_16T,
+    _1_16,
+    _1_16D,
+    _1_8T,
+    _1_8,
+    _1_8D,
+    _1_4T,
+    _1_4,
+    _1_4D,
+    _1_2T,
+    _1_2,
+    _1_2D,
+    _1_1T,
+    _1_1,
+    _1_1D,
+    _2_1T,
+    _2_1,
+    _2_1D,
+    _4_1T,
+    _4_1,
+    _4_1D,
+    Count,
+    // NOLINTEND(readability-identifier-naming)
+};
+constexpr auto k_arp_synced_rate_strings = ArrayT<String>({
+    "1/64T", "1/64", "1/64D", "1/32T", "1/32", "1/32D", "1/16T", "1/16", "1/16D",
+    "1/8T",  "1/8",  "1/8D",  "1/4T",  "1/4",  "1/4D",  "1/2T",  "1/2",  "1/2D",
+    "1/1T",  "1/1",  "1/1D",  "2/1T",  "2/1",  "2/1D",  "4/1T",  "4/1",  "4/1D",
+});
+static_assert(k_arp_synced_rate_strings.size == ToInt(ArpSyncedRate::Count));
+
 } // namespace param_values
 
 struct ParamDescriptor {
     enum class MenuType : u8 {
         None,
         LoopMode,
+        LegacyEqType,
         EqType,
         LfoSyncedRate,
         LfoRestartMode,
+        LegacyLfoDestination,
         LfoDestination,
+        LegacyLfoShape,
+        LegacyLfoShapeV2,
         LfoShape,
+        LegacyLayerFilterType,
         LayerFilterType,
+        LegacyEffectFilterType,
         EffectFilterType,
         DistortionType,
+        CompressorType,
         DelaySyncedTime,
         DelayMode,
         VelocityMappingMode,
         MonophonicMode,
+        StereoWidenMode,
         PlayMode,
+        ArpMode,
+        ArpNoteOrder,
+        ArpTriggerMode,
+        ArpSyncedRate,
+        ArpOctavePolyrate,
         Count,
     };
 
@@ -575,36 +987,115 @@ struct ParamDescriptor {
         // https://math.stackexchange.com/questions/1832177/sigmoid-function-with-fixed-bounds-and-variable-steepness-partially-solved
         // https://colab.research.google.com/drive/1uaMKr-1dAX231Z7Bdew4MKj-c4vDD604?usp=sharing
 
+        enum class Type : u8 {
+            Exponential,
+            LinearThenExponential,
+            // Log: equal pixels per octave. linear ∈ [0,1] maps to projected ∈ [range.min, range.max]
+            // via exp2(lerp(log2(min), log2(max), t)). `exponent` is unused. range.min must be > 0.
+            Log,
+        };
+
         constexpr f32 ProjectValue(f32 linear_value, Range linear_range_) const {
-            if (exponent == 1) return linear_range_.Remap(linear_value, range);
+            switch (type) {
+                case Type::Log: {
+                    auto const log2 = [](f32 x) {
+                        if consteval {
+                            return constexpr_math::Log2f(x);
+                        }
+                        return Log2(x);
+                    };
+                    auto const exp2 = [](f32 x) {
+                        if consteval {
+                            return constexpr_math::Exp2f(x);
+                        }
+                        return Exp2(x);
+                    };
+                    auto const value_01 = linear_range_.RamapTo01(linear_value);
+                    auto const lo = log2(range.min);
+                    auto const hi = log2(range.max);
+                    return exp2(lo + (value_01 * (hi - lo)));
+                }
+                case Type::LinearThenExponential: {
+                    auto const value_01 = linear_range_.RamapTo01(linear_value);
+                    if (value_01 <= split_01) {
+                        auto const t = value_01 / split_01;
+                        return range.min + (t * (split_value - range.min));
+                    } else {
+                        auto const t = (value_01 - split_01) / (1.0f - split_01);
+                        return split_value + (Pow(t, exponent) * (range.max - split_value));
+                    }
+                }
+                case Type::Exponential: {
+                    if (exponent == 1) return linear_range_.Remap(linear_value, range);
 
-            if (linear_range_.min == -1 && linear_range_.max == 1) {
-                if (linear_value >= 0)
-                    return Abs(range.max) * Pow(linear_value, exponent);
-                else
-                    return -Abs(range.min) * Pow(-linear_value, exponent);
+                    if (linear_range_.min == -1 && linear_range_.max == 1) {
+                        if (linear_value >= 0)
+                            return Abs(range.max) * Pow(linear_value, exponent);
+                        else
+                            return -Abs(range.min) * Pow(-linear_value, exponent);
+                    }
+
+                    auto const value_01 = linear_range_.RamapTo01(linear_value);
+                    return range.min + (Pow(value_01, exponent) * range.Delta());
+                }
             }
-
-            auto const value_01 = linear_range_.RamapTo01(linear_value);
-            return range.min + (Pow(value_01, exponent) * range.Delta());
+            throw "";
         }
 
-        template <f32 (*pow_fn)(f32, f32)>
         constexpr f32 LineariseValue(Range linear_range_, f32 projected_value) const {
-            if (exponent == 1) return range.Remap(projected_value, linear_range_);
+            auto const pow_fn = [](f32 base, f32 exp) {
+                if consteval {
+                    return constexpr_math::Powf(base, exp);
+                }
+                return Pow(base, exp);
+            };
+            switch (type) {
+                case Type::Log: {
+                    auto const log2 = [](f32 x) {
+                        if consteval {
+                            return constexpr_math::Log2f(x);
+                        }
+                        return Log2(x);
+                    };
+                    auto const lo = log2(range.min);
+                    auto const hi = log2(range.max);
+                    auto const value_01 = (log2(projected_value) - lo) / (hi - lo);
+                    return linear_range_.min + (value_01 * linear_range_.Delta());
+                }
+                case Type::LinearThenExponential: {
+                    if (projected_value <= split_value) {
+                        auto const t = (split_value == range.min)
+                                           ? 0.0f
+                                           : (projected_value - range.min) / (split_value - range.min);
+                        auto const value_01 = t * split_01;
+                        return linear_range_.min + (value_01 * linear_range_.Delta());
+                    } else {
+                        auto const t = (projected_value - split_value) / (range.max - split_value);
+                        auto const value_01 = split_01 + (pow_fn(t, 1.0f / exponent) * (1.0f - split_01));
+                        return linear_range_.min + (value_01 * linear_range_.Delta());
+                    }
+                }
+                case Type::Exponential: {
+                    if (exponent == 1) return range.Remap(projected_value, linear_range_);
 
-            if (linear_range_.min == -1 && linear_range_.max == 1) {
-                if (projected_value >= 0)
-                    return pow_fn(projected_value / range.max, 1 / exponent);
-                else
-                    return -pow_fn((-projected_value) / (-range.min), 1 / exponent);
+                    if (linear_range_.min == -1 && linear_range_.max == 1) {
+                        if (projected_value >= 0)
+                            return pow_fn(projected_value / range.max, 1 / exponent);
+                        else
+                            return -pow_fn((-projected_value) / (-range.min), 1 / exponent);
+                    }
+                    auto const value_01 = range.RamapTo01(projected_value);
+                    return linear_range_.min + (pow_fn(value_01, 1 / exponent) * linear_range_.Delta());
+                }
             }
-            auto const value_01 = range.RamapTo01(projected_value);
-            return linear_range_.min + (pow_fn(value_01, 1 / exponent) * linear_range_.Delta());
+            throw "";
         }
 
         Range range;
         f32 exponent;
+        Type type = Type::Exponential;
+        f32 split_01 = 0; // For LinearThenExponential: normalized split position in [0, 1]
+        f32 split_value = 0; // For LinearThenExponential: projected value at the split point
     };
 
     constexpr ParamDescriptor() = default;
@@ -667,7 +1158,7 @@ struct ParamDescriptor {
         else if (projected_value < projection_range.min || projected_value > projection_range.max)
             return k_nullopt;
 
-        if (projection) return projection->LineariseValue<Pow<f32>>(linear_range, projected_value);
+        if (projection) return projection->LineariseValue(linear_range, projected_value);
 
         return projected_value;
     }
@@ -676,10 +1167,7 @@ struct ParamDescriptor {
     Optional<DynamicArrayBounded<char, 128>> LinearValueToString(f32 linear_value) const;
 
     constexpr bool IsEffectParam() const { return module_parts[0] == ParameterModule::Effect; }
-    constexpr bool IsLayerParam() const {
-        return module_parts[0] == ParameterModule::Layer1 || module_parts[0] == ParameterModule::Layer2 ||
-               module_parts[0] == ParameterModule::Layer3;
-    }
+    constexpr bool IsLayerParam() const { return LayerIndexFromModule(module_parts[0]).HasValue(); }
 
     DynamicArrayBounded<char, 128> ModuleString(String separator = "/") const {
         DynamicArrayBounded<char, 128> result {};
@@ -713,6 +1201,27 @@ constexpr ParamIndex ParamIndexFromLayerParamIndex(u32 layer_index, LayerParamIn
     return ParamIndex((layer_index * (u32)LayerParamIndex::Count) + (u32)layer_param_index);
 }
 
+constexpr Optional<u8> MacroIndexFromParamIndex(ParamIndex p) {
+    switch (p) {
+        case ParamIndex::Macro1: return (u8)0;
+        case ParamIndex::Macro2: return (u8)1;
+        case ParamIndex::Macro3: return (u8)2;
+        case ParamIndex::Macro4: return (u8)3;
+        default: return k_nullopt;
+    }
+}
+
+constexpr ParamIndex ParamIndexFromMacroIndex(u8 macro_index) {
+    switch (macro_index) {
+        case 0: return ParamIndex::Macro1;
+        case 1: return ParamIndex::Macro2;
+        case 2: return ParamIndex::Macro3;
+        case 3: return ParamIndex::Macro4;
+    }
+    PanicIfReached();
+    return ParamIndex::Macro1;
+}
+
 constexpr bool IsLayerParamOfSpecificType(ParamIndex global_index, LayerParamIndex layer_index) {
     for (auto const i : Range(k_num_layers))
         if (global_index == ParamIndexFromLayerParamIndex(i, layer_index)) return true;
@@ -736,20 +1245,33 @@ constexpr Optional<LayerParamIndexAndLayer> LayerParamIndexAndLayerFor(ParamInde
 constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
     using namespace param_values;
     switch (type) {
+        case ParamDescriptor::MenuType::LegacyEqType: return k_legacy_eq_type_strings;
         case ParamDescriptor::MenuType::EqType: return k_eq_type_strings;
         case ParamDescriptor::MenuType::LoopMode: return k_loop_mode_strings;
         case ParamDescriptor::MenuType::LfoSyncedRate: return k_lfo_synced_rate_strings;
         case ParamDescriptor::MenuType::LfoRestartMode: return k_lfo_restart_mode_strings;
-        case ParamDescriptor::MenuType::LfoDestination: return k_lfo_destinations_strings;
+        case ParamDescriptor::MenuType::LegacyLfoDestination: return k_legacy_lfo_destination_strings;
+        case ParamDescriptor::MenuType::LfoDestination: return k_lfo_destination_strings;
+        case ParamDescriptor::MenuType::LegacyLfoShape: return k_legacy_lfo_shape_strings;
+        case ParamDescriptor::MenuType::LegacyLfoShapeV2: return k_legacy_lfo_shape_v2_strings;
         case ParamDescriptor::MenuType::LfoShape: return k_lfo_shape_strings;
+        case ParamDescriptor::MenuType::LegacyLayerFilterType: return k_legacy_layer_filter_type_strings;
         case ParamDescriptor::MenuType::LayerFilterType: return k_layer_filter_type_strings;
+        case ParamDescriptor::MenuType::LegacyEffectFilterType: return k_legacy_effect_filter_type_strings;
         case ParamDescriptor::MenuType::EffectFilterType: return k_effect_filter_type_strings;
         case ParamDescriptor::MenuType::DistortionType: return k_distortion_type_strings;
+        case ParamDescriptor::MenuType::CompressorType: return k_compressor_type_strings;
         case ParamDescriptor::MenuType::DelaySyncedTime: return k_delay_synced_time_strings;
         case ParamDescriptor::MenuType::DelayMode: return k_delay_mode_strings;
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
         case ParamDescriptor::MenuType::MonophonicMode: return k_monophonic_mode_strings;
+        case ParamDescriptor::MenuType::StereoWidenMode: return k_stereo_widen_mode_strings;
         case ParamDescriptor::MenuType::PlayMode: return k_play_mode_strings;
+        case ParamDescriptor::MenuType::ArpMode: return k_arp_type_strings;
+        case ParamDescriptor::MenuType::ArpNoteOrder: return k_arp_note_order_strings;
+        case ParamDescriptor::MenuType::ArpTriggerMode: return k_arp_trigger_mode_strings;
+        case ParamDescriptor::MenuType::ArpSyncedRate: return k_arp_synced_rate_strings;
+        case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -871,8 +1393,7 @@ constexpr ValConfig Volume(VolumeOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = p,
-        .default_linear_value =
-            p.LineariseValue<constexpr_math::Powf>(linear_range, DbToAmp(opts.default_db)),
+        .default_linear_value = p.LineariseValue(linear_range, DbToAmp(opts.default_db)),
         .display_format = ParamDisplayFormat::VolumeAmp,
     };
 }
@@ -897,8 +1418,7 @@ constexpr ValConfig Gain(GainOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = projection,
-        .default_linear_value =
-            projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_db),
+        .default_linear_value = projection.LineariseValue(linear_range, opts.default_db),
         .display_format = ParamDisplayFormat::VolumeDbRange,
     };
 }
@@ -912,8 +1432,7 @@ constexpr ValConfig Ms(MsOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = opts.projection,
-        .default_linear_value =
-            opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_ms),
+        .default_linear_value = opts.projection.LineariseValue(linear_range, opts.default_ms),
         .display_format = ParamDisplayFormat::Ms,
     };
 }
@@ -951,8 +1470,7 @@ constexpr ValConfig Hz(HzOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = opts.projection,
-        .default_linear_value =
-            opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_hz),
+        .default_linear_value = opts.projection.LineariseValue(linear_range, opts.default_hz),
         .display_format = ParamDisplayFormat::Hz,
     };
 }
@@ -961,6 +1479,14 @@ struct FilterOptions {
     f32 default_hz;
 };
 constexpr ValConfig Filter(FilterOptions opts) {
+    return Hz({
+        .projection = {.range = {15, 20000}, .exponent = 0, .type = ParamDescriptor::Projection::Type::Log},
+        .default_hz = opts.default_hz,
+    });
+}
+// Old pow-skewed mapping, retained only for backwards-compatibility shadow params that read DAW
+// automation written before the switch to log mapping.
+constexpr ValConfig LegacyFilter(FilterOptions opts) {
     return Hz({
         .projection = {{15, 20000}, 2.8f},
         .default_hz = opts.default_hz,
@@ -989,8 +1515,7 @@ constexpr ValConfig CustomProjected(CustomProjectedOptions opts) {
     return ValConfig {
         .linear_range = linear_range,
         .projection = opts.projection,
-        .default_linear_value =
-            opts.projection.LineariseValue<constexpr_math::Powf>(linear_range, opts.default_val),
+        .default_linear_value = opts.projection.LineariseValue(linear_range, opts.default_val),
         .display_format = opts.display_format,
     };
 }
@@ -1003,7 +1528,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     constexpr u32 k_ids_per_region = 160; // never change
 
-    enum class IdRegion {
+    enum class IdRegion : u8 {
         Master = 0, // never change
         Layer1 = 1, // never change
         Layer2 = 2, // never change
@@ -1054,7 +1579,7 @@ consteval auto CreateParams() {
         .gui_label = "Velo"_s,
         .tooltip =
             "The amount that the MIDI velocity affects the volume of notes; 100% means notes will be silent when the velocity is very soft, and 0% means that notes will play full volume regardless of the velocity"_s,
-        .flags = {.hidden = true},
+        .flags = {.legacy = true},
     };
     mp(MasterTimbre) = Args {
         .id = id(IdRegion::Master, 2), // never change
@@ -1122,6 +1647,14 @@ consteval auto CreateParams() {
         .gui_label = "Drive"_s,
         .tooltip = "Distortion amount"_s,
     };
+    mp(DistortionMix) = Args {
+        .id = id(IdRegion::Master, 115), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Distortion},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the distorted signal"_s,
+    };
     mp(DistortionOn) = Args {
         .id = id(IdRegion::Master, 5), // never change
         .value_config = val_config_helpers::Bool({.default_state = false}),
@@ -1152,21 +1685,39 @@ consteval auto CreateParams() {
         .gui_label = "Samp Rate"_s,
         .tooltip = "Sample rate"_s,
     };
-    mp(BitCrushWet) = Args {
+    mp(LegacyBitCrushWet) = Args {
         .id = id(IdRegion::Master, 8), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
-        .name = "Wet"_s,
+        .name = "Legacy Wet"_s,
         .gui_label = "Wet"_s,
-        .tooltip = "Processed signal volume"_s,
+        .tooltip = "Legacy processed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
     };
-    mp(BitCrushDry) = Args {
+    mp(LegacyBitCrushDry) = Args {
         .id = id(IdRegion::Master, 9), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
-        .name = "Dry"_s,
+        .name = "Legacy Dry"_s,
         .gui_label = "Dry"_s,
-        .tooltip = "Unprocessed signal volume"_s,
+        .tooltip = "Legacy unprocessed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(BitCrushMix) = Args {
+        .id = id(IdRegion::Master, 109), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the bitcrushed signal"_s,
+    };
+    mp(BitCrushOutput) = Args {
+        .id = id(IdRegion::Master, 110), // never change
+        .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Output"_s,
+        .gui_label = "Output"_s,
+        .tooltip = "Output level after the mix"_s,
     };
     mp(BitCrushOn) = Args {
         .id = id(IdRegion::Master, 10), // never change
@@ -1178,20 +1729,53 @@ consteval auto CreateParams() {
     };
 
     // =====================================================================================================
-    mp(CompressorThreshold) = Args {
+    mp(LegacyCompressorThreshold) = Args {
         .id = id(IdRegion::Master, 11), // never change
         .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Legacy Threshold"_s,
+        .gui_label = "Threshold"_s,
+        .tooltip = "Legacy threshold parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(CompressorThreshold) = Args {
+        .id = id(IdRegion::Master, 118), // never change
+        .value_config =
+            ParamDescriptor::ConstructorArgs::ValueConfig {
+                .linear_range = {-60, 0},
+                .projection = k_nullopt,
+                .default_linear_value = 0,
+                .display_format = ParamDisplayFormat::VolumeDbRange,
+            },
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Threshold"_s,
         .gui_label = "Threshold"_s,
         .tooltip =
             "The threshold that the audio has to pass above before the compression should start taking place"_s,
     };
-    mp(CompressorRatio) = Args {
+    mp(LegacyCompressorRatio) = Args {
         .id = id(IdRegion::Master, 12), // never change
         .value_config = val_config_helpers::CustomLinear({
             .range = {1, 20},
             .default_val = 2,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Legacy Ratio"_s,
+        .gui_label = "Ratio"_s,
+        .tooltip = "Legacy ratio parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(CompressorRatio) = Args {
+        .id = id(IdRegion::Master, 119), // never change
+        .value_config = ({
+            ParamDescriptor::Projection const projection {{1.0f, 20.0f}, 2.66f};
+            ParamDescriptor::Range const linear_range = {0, 1};
+            ParamDescriptor::ConstructorArgs::ValueConfig {
+                .linear_range = linear_range,
+                .projection = projection,
+                .default_linear_value = projection.LineariseValue(linear_range, 2.0f),
+                .display_format = ParamDisplayFormat::Ratio,
+            };
         }),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Ratio"_s,
@@ -1223,6 +1807,41 @@ consteval auto CreateParams() {
         .gui_label = "Compressor",
         .tooltip = "Enable/disable the compression effect"_s,
     };
+    mp(CompressorType) = Args {
+        .id = id(IdRegion::Master, 33), // never change
+        .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::CompressorType,
+            .default_val = (u32)CompressorType::Modern,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "The compressor algorithm to use"_s,
+    };
+    mp(CompressorAttack) = Args {
+        .id = id(IdRegion::Master, 34), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Attack"_s,
+        .gui_label = "Attack"_s,
+        .tooltip = "How quickly the compressor responds to a rise in level"_s,
+    };
+    mp(CompressorRelease) = Args {
+        .id = id(IdRegion::Master, 35), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Release"_s,
+        .gui_label = "Release"_s,
+        .tooltip = "How quickly the compressor recovers after the level drops"_s,
+    };
+    mp(CompressorMix) = Args {
+        .id = id(IdRegion::Master, 36), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Compressor},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the compressed signal"_s,
+    };
 
     // =====================================================================================================
     mp(FilterOn) = Args {
@@ -1233,40 +1852,87 @@ consteval auto CreateParams() {
         .gui_label = "Filter"_s,
         .tooltip = "Enable/disable the filter"_s,
     };
-    mp(FilterCutoff) = Args {
+    mp(LegacyFilterCutoff) = Args {
         .id = id(IdRegion::Master, 17), // never change
+        .value_config = val_config_helpers::LegacyFilter({.default_hz = 5000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Cutoff Frequency"_s,
+        .gui_label = "Cutoff"_s,
+        .tooltip = "Legacy cutoff parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(FilterCutoff) = Args {
+        .id = id(IdRegion::Master, 106), // never change
         .value_config = val_config_helpers::Filter({.default_hz = 5000}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Cutoff Frequency"_s,
         .gui_label = "Cutoff"_s,
         .tooltip = "Frequency of filter effect"_s,
     };
-    mp(FilterResonance) = Args {
+    mp(LegacyFilterResonance) = Args {
         .id = id(IdRegion::Master, 18), // never change
         .value_config = val_config_helpers::Percent({.default_percent = 30}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(FilterResonance) = Args {
+        .id = id(IdRegion::Master, 29), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Resonance"_s,
         .gui_label = "Reso"_s,
         .tooltip = "The intensity of the volume peak at the cutoff frequency"_s,
     };
-    mp(FilterGain) = Args {
+    mp(LegacyFilterGain) = Args {
         .id = id(IdRegion::Master, 19), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Legacy gain parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(FilterGain) = Args {
+        .id = id(IdRegion::Master, 30), // never change
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Gain"_s,
         .gui_label = "Gain"_s,
-        .tooltip = "Volume gain of shelf filter"_s,
+        .tooltip = "Volume gain of shelf/peak filter"_s,
     };
-    mp(FilterType) = Args {
+    mp(LegacyFilterType) = Args {
         .id = id(IdRegion::Master, 20), // never change
         .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::LegacyEffectFilterType,
+            .default_val = (u32)LegacyEffectFilterType::LowPass,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Legacy Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Legacy type parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(FilterType) = Args {
+        .id = id(IdRegion::Master, 105), // never change
+        .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::EffectFilterType,
-            .default_val = (u32)EffectFilterType::LowPass,
+            .default_val = (u32)EffectFilterType::LowPass24,
         }),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Type"_s,
         .gui_label = "Type"_s,
         .tooltip = "Filter type"_s,
+    };
+    mp(FilterMix) = Args {
+        .id = id(IdRegion::Master, 117), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Filter},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the filtered signal"_s,
     };
 
     // =====================================================================================================
@@ -1289,6 +1955,39 @@ consteval auto CreateParams() {
         .gui_label = "Stereo Widen On"_s,
         .tooltip = "Turn the stereo widen effect on or off"_s,
     };
+    mp(StereoWidenMode) = Args {
+        .id = id(IdRegion::Master, 31), // never change
+        .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::StereoWidenMode,
+            .default_val = (u32)param_values::StereoWidenMode::Balanced,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
+        .name = "Mode"_s,
+        .gui_label = "Mode"_s,
+        .tooltip =
+            "Stereo widening algorithm: Balanced (constant-power M/S), Legacy (original behaviour, kept for old presets), or Bass Mono (mono below the crossover, widened above)"_s,
+    };
+    mp(StereoWidenBassMono) = Args {
+        .id = id(IdRegion::Master, 32), // never change
+        .value_config = val_config_helpers::Hz({
+            .projection = {.range = {20, 1000},
+                           .exponent = 0,
+                           .type = ParamDescriptor::Projection::Type::Log},
+            .default_hz = 120,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
+        .name = "Bass Mono"_s,
+        .gui_label = "Bass Mono"_s,
+        .tooltip = "Frequencies below this point are summed to mono (Bass Mono mode only)"_s,
+    };
+    mp(StereoWidenMix) = Args {
+        .id = id(IdRegion::Master, 116), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the stereo-widened signal"_s,
+    };
 
     // =====================================================================================================
     mp(ChorusRate) = Args {
@@ -1299,8 +1998,17 @@ consteval auto CreateParams() {
         .gui_label = "Rate"_s,
         .tooltip = "Chorus modulation rate"_s,
     };
-    mp(ChorusHighpass) = Args {
+    mp(LegacyChorusHighpass) = Args {
         .id = id(IdRegion::Master, 24), // never change
+        .value_config = val_config_helpers::LegacyFilter({.default_hz = 1000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Chorus},
+        .name = "Legacy High-pass"_s,
+        .gui_label = "High-pass"_s,
+        .tooltip = "Legacy high-pass parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ChorusHighpass) = Args {
+        .id = id(IdRegion::Master, 107), // never change
         .value_config = val_config_helpers::Filter({.default_hz = 1000}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "High-pass"_s,
@@ -1315,21 +2023,39 @@ consteval auto CreateParams() {
         .gui_label = "Depth"_s,
         .tooltip = "Chorus effect intensity"_s,
     };
-    mp(ChorusWet) = Args {
+    mp(LegacyChorusWet) = Args {
         .id = id(IdRegion::Master, 26), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
-        .name = "Wet"_s,
+        .name = "Legacy Wet"_s,
         .gui_label = "Wet"_s,
-        .tooltip = "Processed signal volume"_s,
+        .tooltip = "Legacy processed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
     };
-    mp(ChorusDry) = Args {
+    mp(LegacyChorusDry) = Args {
         .id = id(IdRegion::Master, 27), // never change
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
-        .name = "Dry"_s,
+        .name = "Legacy Dry"_s,
         .gui_label = "Dry"_s,
-        .tooltip = "Unprocessed signal volume"_s,
+        .tooltip = "Legacy unprocessed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ChorusMix) = Args {
+        .id = id(IdRegion::Master, 111), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .modules = {ParameterModule::Effect, ParameterModule::Chorus},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the chorused signal"_s,
+    };
+    mp(ChorusOutput) = Args {
+        .id = id(IdRegion::Master, 112), // never change
+        .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
+        .modules = {ParameterModule::Effect, ParameterModule::Chorus},
+        .name = "Output"_s,
+        .gui_label = "Output"_s,
+        .tooltip = "Output level after the mix"_s,
     };
     mp(ChorusOn) = Args {
         .id = id(IdRegion::Master, 28), // never change
@@ -1522,29 +2248,173 @@ consteval auto CreateParams() {
     };
 
     // =====================================================================================================
-    mp(ConvolutionReverbHighpass) = Args {
+    mp(EqOn) = Args {
+        .id = id(IdRegion::Master, 120), // never change
+        .value_config = val_config_helpers::Bool({.default_state = false}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq},
+        .name = "On"_s,
+        .gui_label = "EQ"_s,
+        .tooltip = "Enable/disable the equaliser effect"_s,
+    };
+    mp(EqMix) = Args {
+        .id = id(IdRegion::Master, 121), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Mix between the wet and dry signals"_s,
+    };
+    mp(EqType1) = Args {
+        .id = id(IdRegion::Master, 122), // never change
+        .value_config = val_config_helpers::Menu(
+            {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::LowShelf}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Band 1: type of EQ band"_s,
+    };
+    mp(EqFreq1) = Args {
+        .id = id(IdRegion::Master, 123), // never change
+        .value_config = val_config_helpers::Filter({.default_hz = 100}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Frequency"_s,
+        .gui_label = "Freq"_s,
+        .tooltip = "Band 1: frequency of this band"_s,
+    };
+    mp(EqResonance1) = Args {
+        .id = id(IdRegion::Master, 124), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 20}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Band 1: sharpness of the peak"_s,
+    };
+    mp(EqGain1) = Args {
+        .id = id(IdRegion::Master, 125), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
+        .name = "Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Band 1: volume gain at the frequency"_s,
+    };
+    mp(EqType2) = Args {
+        .id = id(IdRegion::Master, 126), // never change
+        .value_config = val_config_helpers::Menu(
+            {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::Peak}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Band 2: type of EQ band"_s,
+    };
+    mp(EqFreq2) = Args {
+        .id = id(IdRegion::Master, 127), // never change
+        .value_config = val_config_helpers::Filter({.default_hz = 1000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Frequency"_s,
+        .gui_label = "Freq"_s,
+        .tooltip = "Band 2: frequency of this band"_s,
+    };
+    mp(EqResonance2) = Args {
+        .id = id(IdRegion::Master, 128), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 20}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Band 2: sharpness of the peak"_s,
+    };
+    mp(EqGain2) = Args {
+        .id = id(IdRegion::Master, 129), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
+        .name = "Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Band 2: volume gain at the frequency"_s,
+    };
+    mp(EqType3) = Args {
+        .id = id(IdRegion::Master, 130), // never change
+        .value_config = val_config_helpers::Menu(
+            {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::HighShelf}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Type"_s,
+        .gui_label = "Type"_s,
+        .tooltip = "Band 3: type of EQ band"_s,
+    };
+    mp(EqFreq3) = Args {
+        .id = id(IdRegion::Master, 131), // never change
+        .value_config = val_config_helpers::Filter({.default_hz = 8000}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Frequency"_s,
+        .gui_label = "Freq"_s,
+        .tooltip = "Band 3: frequency of this band"_s,
+    };
+    mp(EqResonance3) = Args {
+        .id = id(IdRegion::Master, 132), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 20}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Resonance"_s,
+        .gui_label = "Reso"_s,
+        .tooltip = "Band 3: sharpness of the peak"_s,
+    };
+    mp(EqGain3) = Args {
+        .id = id(IdRegion::Master, 133), // never change
+        .value_config = val_config_helpers::Gain({.default_db = 0}),
+        .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
+        .name = "Gain"_s,
+        .gui_label = "Gain"_s,
+        .tooltip = "Band 3: volume gain at the frequency"_s,
+    };
+
+    // =====================================================================================================
+    mp(LegacyConvolutionReverbHighpass) = Args {
         .id = id(IdRegion::Master, 65), // never change
+        .value_config = val_config_helpers::LegacyFilter({.default_hz = 30}),
+        .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
+        .name = "Legacy High-pass"_s,
+        .gui_label = "High-pass"_s,
+        .tooltip = "Legacy high-pass parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ConvolutionReverbHighpass) = Args {
+        .id = id(IdRegion::Master, 108), // never change
         .value_config = val_config_helpers::Filter({.default_hz = 30}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
         .name = "High-pass"_s,
         .gui_label = "High-pass"_s,
         .tooltip = "Wet high-pass filter cutoff"_s,
     };
-    mp(ConvolutionReverbWet) = Args {
+    mp(LegacyConvolutionReverbWet) = Args {
         .id = id(IdRegion::Master, 66), // never change
         .value_config = val_config_helpers::Volume({.default_db = -30}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
-        .name = "Wet"_s,
+        .name = "Legacy Wet"_s,
         .gui_label = "Wet"_s,
-        .tooltip = "Processed signal volume"_s,
+        .tooltip = "Legacy processed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
     };
-    mp(ConvolutionReverbDry) = Args {
+    mp(LegacyConvolutionReverbDry) = Args {
         .id = id(IdRegion::Master, 67), // never change
         .value_config = val_config_helpers::Volume({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
-        .name = "Dry"_s,
+        .name = "Legacy Dry"_s,
         .gui_label = "Dry"_s,
-        .tooltip = "Unprocessed signal volume"_s,
+        .tooltip = "Legacy unprocessed-signal volume. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(ConvolutionReverbMix) = Args {
+        .id = id(IdRegion::Master, 113), // never change
+        .value_config = val_config_helpers::Percent({.default_percent = 25}),
+        .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
+        .name = "Mix"_s,
+        .gui_label = "Mix"_s,
+        .tooltip = "Blend between the dry input and the convolution reverb signal"_s,
+    };
+    mp(ConvolutionReverbOutput) = Args {
+        .id = id(IdRegion::Master, 114), // never change
+        .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
+        .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
+        .name = "Output"_s,
+        .gui_label = "Output"_s,
+        .tooltip = "Output level after the mix"_s,
     };
     mp(ConvolutionReverbOn) = Args {
         .id = id(IdRegion::Master, 68), // never change
@@ -1591,7 +2461,7 @@ consteval auto CreateParams() {
 
     mp(ReverbLowShelfCutoff) = Args {
         .id = id(IdRegion::Master, 72), // never change
-        .value_config = val_config_helpers::Semitones({.default_val = 128}),
+        .value_config = val_config_helpers::Semitones({.default_val = 40}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Low Cutoff"_s,
         .gui_label = "Lo-Shelf"_s,
@@ -1689,7 +2559,7 @@ consteval auto CreateParams() {
         .name = "Mix"_s,
         .gui_label = "Mix"_s,
         .tooltip = "Processed signal volume"_s,
-        .related_params_group = 0,
+        .related_params_group = 8,
     };
 
     mp(ReverbOn) = Args {
@@ -1764,6 +2634,17 @@ consteval auto CreateParams() {
             .gui_label = "Pan"_s,
             .tooltip = "Left/right balance"_s,
         };
+        lp(StereoWidth) = Args {
+            .id = id(region, 95), // never change
+            .value_config = val_config_helpers::BidirectionalPercent({
+                .default_percent = 0,
+                .display_format = ParamDisplayFormat::Percent,
+            }),
+            .modules = {layer_module},
+            .name = "Stereo Width"_s,
+            .gui_label = "Stereo"_s,
+            .tooltip = "Layer stereo width: negative narrows toward mono, positive widens"_s,
+        };
         lp(TuneCents) = Args {
             .id = id(region, 4), // never change
             .value_config =
@@ -1794,7 +2675,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::LoopMode,
                 .default_val = (u32)LoopMode::InstrumentDefault,
             }),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Loop Mode"_s,
             .gui_label = "Loop"_s,
             .tooltip = "The mode for looping the samples"_s,
@@ -1802,7 +2683,7 @@ consteval auto CreateParams() {
         lp(LoopStart) = Args {
             .id = id(region, 7), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Start"_s,
             .gui_label = "Start"_s,
             .tooltip = "Loop-start"_s,
@@ -1810,7 +2691,7 @@ consteval auto CreateParams() {
         lp(LoopEnd) = Args {
             .id = id(region, 8), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 100}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "End"_s,
             .gui_label = "End"_s,
             .tooltip = "Loop-end"_s,
@@ -1818,7 +2699,7 @@ consteval auto CreateParams() {
         lp(LoopCrossfade) = Args {
             .id = id(region, 9), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 1}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Crossfade Size"_s,
             .gui_label = "XFade"_s,
             .tooltip = "Crossfade length; this smooths the transition from the loop-end to the loop-start"_s,
@@ -1826,7 +2707,7 @@ consteval auto CreateParams() {
         lp(SampleOffset) = Args {
             .id = id(region, 11), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Sample Start Offset"_s,
             .gui_label = "Start"_s,
             .tooltip = "Change the starting point of the sample"_s,
@@ -1834,7 +2715,7 @@ consteval auto CreateParams() {
         lp(Reverse) = Args {
             .id = id(region, 12), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Loop},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Reverse On"_s,
             .gui_label = "Reverse"_s,
             .tooltip = "Play the sound in reverse"_s,
@@ -1844,7 +2725,7 @@ consteval auto CreateParams() {
         lp(VolEnvOn) = Args {
             .id = id(region, 13), // never change
             .value_config = val_config_helpers::Bool({.default_state = true}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "On"_s,
             .gui_label = "Volume Envelope"_s,
             .tooltip =
@@ -1853,7 +2734,7 @@ consteval auto CreateParams() {
         lp(VolumeAttack) = Args {
             .id = id(region, 14), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 0}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Attack"_s,
             .gui_label = "Attack"_s,
             .tooltip = "Volume fade-in length"_s,
@@ -1861,7 +2742,7 @@ consteval auto CreateParams() {
         lp(VolumeDecay) = Args {
             .id = id(region, 15), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 1000}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Decay"_s,
             .gui_label = "Decay"_s,
             .tooltip = "Volume ramp-down length (after the attack)"_s,
@@ -1869,7 +2750,7 @@ consteval auto CreateParams() {
         lp(VolumeSustain) = Args {
             .id = id(region, 16), // never change
             .value_config = val_config_helpers::Sustain({.default_db = 0}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Sustain"_s,
             .gui_label = "Sustain"_s,
             .tooltip = "Volume level to sustain (after decay)"_s,
@@ -1877,7 +2758,7 @@ consteval auto CreateParams() {
         lp(VolumeRelease) = Args {
             .id = id(region, 17), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 800}),
-            .modules = {layer_module, ParameterModule::VolEnv},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Release"_s,
             .gui_label = "Release"_s,
             .tooltip = "Volume fade-out length (after the note is released)"_s,
@@ -1887,34 +2768,64 @@ consteval auto CreateParams() {
         lp(FilterOn) = Args {
             .id = id(region, 18), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "On"_s,
             .gui_label = "Filter"_s,
             .tooltip = "Enable/disable the filter"_s,
         };
-        lp(FilterCutoff) = Args {
+        lp(LegacyFilterCutoff) = Args {
             .id = id(region, 19), // never change
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 6000}),
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
+            .name = "Legacy Cutoff Frequency"_s,
+            .gui_label = "Cut"_s,
+            .tooltip = "Legacy cutoff parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(FilterCutoff) = Args {
+            .id = id(region, 90), // never change
             .value_config = val_config_helpers::Filter({.default_hz = 6000}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Cutoff Frequency"_s,
-            .gui_label = "Cutoff"_s,
+            .gui_label = "Cut"_s,
             .tooltip = "The frequency at which the filter should take effect"_s,
         };
-        lp(FilterResonance) = Args {
+        lp(LegacyFilterResonance) = Args {
             .id = id(region, 20), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 25}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
+            .name = "Legacy Resonance"_s,
+            .gui_label = "Res"_s,
+            .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(FilterResonance) = Args {
+            .id = id(region, 69), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Resonance"_s,
-            .gui_label = "Reso"_s,
+            .gui_label = "Res"_s,
             .tooltip = "The intensity of the volume peak at the cutoff frequency"_s,
         };
-        lp(FilterType) = Args {
+        lp(LegacyFilterType) = Args {
             .id = id(region, 21), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyLayerFilterType,
+                .default_val = (u32)LegacyLayerFilterType::Lowpass,
+            }),
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
+            .name = "Legacy Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Legacy filter type parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(FilterType) = Args {
+            .id = id(region, 94), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LayerFilterType,
                 .default_val = (u32)LayerFilterType::Lowpass,
             }),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Type"_s,
             .gui_label = "Type"_s,
             .tooltip = "Filter type"_s,
@@ -1925,15 +2836,15 @@ consteval auto CreateParams() {
                 .default_percent = 0,
                 .display_format = ParamDisplayFormat::Percent,
             }),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Envelope Amount"_s,
-            .gui_label = "Envelope"_s,
+            .gui_label = "Env"_s,
             .tooltip = "How strongly the envelope should control the filter cutoff"_s,
         };
         lp(FilterAttack) = Args {
             .id = id(region, 23), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 0}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Attack"_s,
             .gui_label = "Attack"_s,
             .tooltip = "Length of initial ramp-up"_s,
@@ -1941,7 +2852,7 @@ consteval auto CreateParams() {
         lp(FilterDecay) = Args {
             .id = id(region, 24), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 1000}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Decay"_s,
             .gui_label = "Decay"_s,
             .tooltip = "Length ramp-down after attack"_s,
@@ -1949,7 +2860,7 @@ consteval auto CreateParams() {
         lp(FilterSustain) = Args {
             .id = id(region, 25), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 100}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Sustain"_s,
             .gui_label = "Sustain"_s,
             .tooltip = "Level to sustain after decay has completed"_s,
@@ -1957,7 +2868,7 @@ consteval auto CreateParams() {
         lp(FilterRelease) = Args {
             .id = id(region, 26), // never change
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 800}),
-            .modules = {layer_module, ParameterModule::Filter},
+            .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Release"_s,
             .gui_label = "Release"_s,
             .tooltip = "Length of ramp-down after note is released"_s,
@@ -1972,16 +2883,17 @@ consteval auto CreateParams() {
             .gui_label = "LFO"_s,
             .tooltip = "Enable/disable the Low Frequency Oscillator (LFO)"_s,
         };
-        lp(LfoShape) = Args {
+        lp(LegacyLfoShape) = Args {
             .id = id(region, 28), // never change
             .value_config = val_config_helpers::Menu({
-                .type = ParamDescriptor::MenuType::LfoShape,
-                .default_val = (u32)LfoShape::Sine,
+                .type = ParamDescriptor::MenuType::LegacyLfoShape,
+                .default_val = (u32)LegacyLfoShapeV1::Sine,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
-            .name = "Shape"_s,
+            .name = "Legacy Shape"_s,
             .gui_label = "Shape"_s,
-            .tooltip = "Oscillator shape"_s,
+            .tooltip = "Legacy LFO shape parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
         };
         lp(LfoRestart) = Args {
             .id = id(region, 29), // never change
@@ -1998,7 +2910,7 @@ consteval auto CreateParams() {
         lp(LfoAmount) = Args {
             .id = id(region, 30), // never change
             .value_config = val_config_helpers::BidirectionalPercent({
-                .default_percent = 0,
+                .default_percent = 50,
                 .display_format = ParamDisplayFormat::Percent,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
@@ -2006,16 +2918,17 @@ consteval auto CreateParams() {
             .gui_label = "Amount"_s,
             .tooltip = "Intensity of the LFO effect"_s,
         };
-        lp(LfoDestination) = Args {
+        lp(LegacyLfoDestination) = Args {
             .id = id(region, 31), // never change
             .value_config = val_config_helpers::Menu({
-                .type = ParamDescriptor::MenuType::LfoDestination,
-                .default_val = (u32)LfoDestination::Volume,
+                .type = ParamDescriptor::MenuType::LegacyLfoDestination,
+                .default_val = (u32)LegacyLfoDestination::Volume,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
-            .name = "Target"_s,
+            .name = "Target (Legacy)"_s,
             .gui_label = "Target"_s,
-            .tooltip = "The parameter that the LFO will modulate"_s,
+            .tooltip = "Legacy LFO target parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
         };
         lp(LfoRateTempoSynced) = Args {
             .id = id(region, 32), // never change
@@ -2044,6 +2957,41 @@ consteval auto CreateParams() {
             .gui_label = "Sync"_s,
             .tooltip = "Sync the LFO speed to the host"_s,
         };
+        lp(LegacyLfoShapeV2) = Args {
+            .id = id(region, 67), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyLfoShapeV2,
+                .default_val = (u32)LegacyLfoShapeV2::Sine,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Legacy Shape V2"_s,
+            .gui_label = "Shape"_s,
+            .tooltip =
+                "Legacy LFO shape parameter (v2). Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(LfoShape) = Args {
+            .id = id(region, 82), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LfoShape,
+                .default_val = (u32)LfoShape::Sine,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Shape"_s,
+            .gui_label = "Shape"_s,
+            .tooltip = "Oscillator shape, including random and percussive waveforms"_s,
+        };
+        lp(LfoDestination) = Args {
+            .id = id(region, 68), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LfoDestination,
+                .default_val = (u32)LfoDestination::Volume,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Target"_s,
+            .gui_label = "Target"_s,
+            .tooltip = "The parameter that the LFO will modulate"_s,
+        };
 
         // =================================================================================================
         lp(EqOn) = Args {
@@ -2054,17 +3002,36 @@ consteval auto CreateParams() {
             .gui_label = "EQ"_s,
             .tooltip = "Turn on or off the equaliser effect for this layer"_s,
         };
-        lp(EqFreq1) = Args {
+        lp(LegacyEqFreq1) = Args {
             .id = id(region, 36), // never change
-            .value_config = val_config_helpers::Filter({.default_hz = 8000}),
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 8000}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
+            .name = "Legacy Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip =
+                "Legacy band 1 frequency parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqFreq1) = Args {
+            .id = id(region, 91), // never change
+            .value_config = val_config_helpers::Filter({.default_hz = 100}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Frequency"_s,
             .gui_label = "Freq"_s,
             .tooltip = "Band 1: frequency of this band"_s,
         };
-        lp(EqResonance1) = Args {
+        lp(LegacyEqResonance1) = Args {
             .id = id(region, 37), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
+            .name = "Legacy Resonance"_s,
+            .gui_label = "Reso"_s,
+            .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqResonance1) = Args {
+            .id = id(region, 79), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Resonance"_s,
             .gui_label = "Reso"_s,
@@ -2078,27 +3045,58 @@ consteval auto CreateParams() {
             .gui_label = "Gain"_s,
             .tooltip = "Band 1: volume gain at the frequency"_s,
         };
-        lp(EqType1) = Args {
+        lp(LegacyEqType1) = Args {
             .id = id(region, 39), // never change
             .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyEqType,
+                .default_val = (u32)LegacyEqType::Peak,
+            }),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
+            .name = "Legacy Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Legacy type parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqType1) = Args {
+            .id = id(region, 84), // never change
+            .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
-                .default_val = (u32)EqType::Peak,
+                .default_val = (u32)EqType::LowShelf,
             }),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Type"_s,
             .gui_label = "Type"_s,
             .tooltip = "Band 1: type of EQ band"_s,
         };
-        lp(EqFreq2) = Args {
+        lp(LegacyEqFreq2) = Args {
             .id = id(region, 40), // never change
-            .value_config = val_config_helpers::Filter({.default_hz = 500}),
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 500}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
+            .name = "Legacy Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip =
+                "Legacy band 2 frequency parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqFreq2) = Args {
+            .id = id(region, 92), // never change
+            .value_config = val_config_helpers::Filter({.default_hz = 1000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Frequency"_s,
             .gui_label = "Freq"_s,
             .tooltip = "Band 2: frequency of this band"_s,
         };
-        lp(EqResonance2) = Args {
+        lp(LegacyEqResonance2) = Args {
             .id = id(region, 41), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
+            .name = "Legacy Resonance"_s,
+            .gui_label = "Reso"_s,
+            .tooltip = "Legacy resonance parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqResonance2) = Args {
+            .id = id(region, 80), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Resonance"_s,
@@ -2113,8 +3111,20 @@ consteval auto CreateParams() {
             .gui_label = "Gain"_s,
             .tooltip = "Band 2: volume gain at the frequency"_s,
         };
-        lp(EqType2) = Args {
+        lp(LegacyEqType2) = Args {
             .id = id(region, 43), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyEqType,
+                .default_val = (u32)LegacyEqType::Peak,
+            }),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
+            .name = "Legacy Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Legacy type parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqType2) = Args {
+            .id = id(region, 85), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
                 .default_val = (u32)EqType::Peak,
@@ -2124,38 +3134,83 @@ consteval auto CreateParams() {
             .gui_label = "Type"_s,
             .tooltip = "Band 2: type of EQ band"_s,
         };
+        lp(LegacyEqFreq3) = Args {
+            .id = id(region, 86), // never change
+            .value_config = val_config_helpers::LegacyFilter({.default_hz = 2000}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Legacy Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip =
+                "Legacy band 3 frequency parameter. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(EqFreq3) = Args {
+            .id = id(region, 93), // never change
+            .value_config = val_config_helpers::Filter({.default_hz = 10000}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Frequency"_s,
+            .gui_label = "Freq"_s,
+            .tooltip = "Band 3: frequency of this band"_s,
+        };
+        lp(EqResonance3) = Args {
+            .id = id(region, 87), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 20}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Resonance"_s,
+            .gui_label = "Reso"_s,
+            .tooltip = "Band 3: sharpness of the peak"_s,
+        };
+        lp(EqGain3) = Args {
+            .id = id(region, 88), // never change
+            .value_config = val_config_helpers::Gain({.default_db = 0}),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Gain"_s,
+            .gui_label = "Gain"_s,
+            .tooltip = "Band 3: volume gain at the frequency"_s,
+        };
+        lp(EqType3) = Args {
+            .id = id(region, 89), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::EqType,
+                .default_val = (u32)EqType::HighShelf,
+            }),
+            .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
+            .name = "Type"_s,
+            .gui_label = "Type"_s,
+            .tooltip = "Band 3: type of EQ band"_s,
+        };
 
         // =================================================================================================
-        lp(VelocityMapping) = Args {
+        lp(LegacyVelocityMapping) = Args {
             .id = id(region, 44), // never change
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::VelocityMappingMode,
                 .default_val = (u32)VelocityMappingMode::None,
             }),
-            .modules = {layer_module, ParameterModule::Playback},
-            .name = "Velocity Mapping"_s,
+            .modules = {layer_module, ParameterModule::Config},
+            .name = "Legacy Velocity Mapping"_s,
             .gui_label = "Velocity Mapping"_s,
             .tooltip =
                 "Choose how MIDI velocity should affect the volume of this layer. There are 6 modes that can be selected for this parameter via the buttons on the GUI. By setting one layer to be quiet at high velocities and another layer to be quiet at low velocities you can create an instrument that sounds different based on how hard the notes are played. (0) Ignore velocity, always play full volume. (1) Loudest at high velocity, quietist at low velocity (2) Loudest at low velocity, quietist at high velocity (3) Loudest at high velocity, quietist at middle velocity and below (4) Loudest at middle velocity, quietist at both high and low velocities (5) Loudest at bottom velocity, quietist at middle velocity and above,"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(Keytrack) = Args {
             .id = id(region, 45), // never change
             .value_config = val_config_helpers::Bool({.default_state = true}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Keytrack On"_s,
             .gui_label = "Keytrack"_s,
             .tooltip =
                 "Tune the sound to match the key played; if disabled it will always play the sound at its root pitch"_s,
         };
-        lp(Monophonic) = Args {
+        lp(LegacyMonophonicBool) = Args {
             .id = id(region, 46), // never change
             .value_config = val_config_helpers::Bool({.default_state = false}),
-            .modules = {layer_module, ParameterModule::Playback},
-            .name = "Monophonic On"_s,
+            .modules = {layer_module, ParameterModule::Config},
+            .name = "Legacy Monophonic On"_s,
             .gui_label = "Monophonic"_s,
             .tooltip = "Only allow one voice of each sound to play at a time"_s,
-            .flags = {.hidden = true},
+            .flags = {.legacy = true},
         };
         lp(MonophonicMode) = Args {
             .id = id(region, 55), // never change
@@ -2163,7 +3218,7 @@ consteval auto CreateParams() {
                 .type = ParamDescriptor::MenuType::MonophonicMode,
                 .default_val = (u32)MonophonicMode::Off,
             }),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Monophonic Mode"_s,
             .gui_label = "Monophonic"_s,
             .tooltip =
@@ -2172,7 +3227,7 @@ consteval auto CreateParams() {
         lp(MidiTranspose) = Args {
             .id = id(region, 48), // never change
             .value_config = val_config_helpers::Int({.range = {-36, 36}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "MIDI Transpose On"_s,
             .gui_label = "Transpose"_s,
             .tooltip =
@@ -2181,7 +3236,7 @@ consteval auto CreateParams() {
         lp(KeyRangeLow) = Args {
             .id = id(region, 50), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range Low"_s,
             .gui_label = "Key Range Low"_s,
             .tooltip =
@@ -2190,7 +3245,7 @@ consteval auto CreateParams() {
         lp(KeyRangeHigh) = Args {
             .id = id(region, 51), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 127}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range High"_s,
             .gui_label = "Key Range High"_s,
             .tooltip =
@@ -2199,7 +3254,7 @@ consteval auto CreateParams() {
         lp(KeyRangeLowFade) = Args {
             .id = id(region, 52), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range Low Fade"_s,
             .gui_label = "Key Range Low Fade"_s,
             .tooltip = "The length of the volume fade-in at the low end of the key range"_s,
@@ -2207,7 +3262,7 @@ consteval auto CreateParams() {
         lp(KeyRangeHighFade) = Args {
             .id = id(region, 53), // never change
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range High Fade"_s,
             .gui_label = "Key Range High Fade"_s,
             .tooltip = "The length of the volume fade-out at the high end of the key range"_s,
@@ -2215,12 +3270,11 @@ consteval auto CreateParams() {
         lp(PitchBendRange) = Args {
             .id = id(region, 54), // never change
             .value_config = val_config_helpers::Int({.range = {0, 60}, .default_val = 2}),
-            .modules = {layer_module, ParameterModule::Playback},
+            .modules = {layer_module, ParameterModule::Config},
             .name = "Pitch Bend Range"_s,
             .gui_label = "Pitch Bend Range"_s,
             .tooltip = "The pitch range in semitones of the MIDI pitch wheel"_s,
         };
-#if EXPERIMENTAL_GRANULAR
         lp(PlayMode) = Args {
             .id = id(region, 56), // never change
             .value_config = val_config_helpers::Menu({
@@ -2234,8 +3288,23 @@ consteval auto CreateParams() {
         };
         lp(GranularSpeed) = Args {
             .id = id(region, 58), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 100}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .value_config = ({
+                ParamDescriptor::Range const linear_range = {0, 1};
+                ParamDescriptor::Projection const projection {
+                    .range = {0, 8},
+                    .exponent = 3.0f,
+                    .type = ParamDescriptor::Projection::Type::LinearThenExponential,
+                    .split_01 = 0.5f,
+                    .split_value = 1.0f,
+                };
+                val_config_helpers::ValConfig {
+                    .linear_range = linear_range,
+                    .projection = projection,
+                    .default_linear_value = projection.LineariseValue(linear_range, 1),
+                    .display_format = ParamDisplayFormat::Percent,
+                };
+            }),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Speed"_s,
             .gui_label = "Speed"_s,
             .tooltip = "How fast the grain position moves through the sample"_s,
@@ -2243,32 +3312,41 @@ consteval auto CreateParams() {
         lp(GranularPosition) = Args {
             .id = id(region, 59), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Position"_s,
             .gui_label = "Position"_s,
             .tooltip = "Where in the sample grains are sourced from"_s,
         };
-        lp(GranularGrains) = Args {
+        lp(GranularDensity) = Args {
             .id = id(region, 60), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
-            .modules = {layer_module, ParameterModule::Granular},
-            .name = "Granular Grains"_s,
-            .gui_label = "Grains"_s,
+            .value_config = val_config_helpers::Percent({.default_percent = 50}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Granular Density"_s,
+            .gui_label = "Density"_s,
             .tooltip =
-                "Number of concurrent grains. Low values produce sparse textures, high values create dense clouds"_s,
+                "Controls how densely grains overlap, relative to the grain length. At the midpoint, grains play end-to-end. Lower values add gaps between grains for a sparse texture; higher values make grains overlap for a denser, richer sound"_s,
         };
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 50}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .value_config = val_config_helpers::Ms({.projection = {{5, 1000}, 1.5f}, .default_ms = 200}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Duration of each grain snippet"_s,
         };
         lp(GranularSpread) = Args {
             .id = id(region, 61), // never change
-            .value_config = val_config_helpers::Percent({.default_percent = 50}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .value_config = ({
+                ParamDescriptor::Range const linear_range {0.005f, 1};
+                ParamDescriptor::Projection const projection {linear_range, 2.0f};
+                val_config_helpers::ValConfig {
+                    .linear_range = linear_range,
+                    .projection = projection,
+                    .default_linear_value = projection.LineariseValue(linear_range, 0.05f),
+                    .display_format = ParamDisplayFormat::Percent,
+                };
+            }),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Spread"_s,
             .gui_label = "Spread"_s,
             .tooltip =
@@ -2277,13 +3355,151 @@ consteval auto CreateParams() {
         lp(GranularSmoothing) = Args {
             .id = id(region, 62), // never change
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
-            .modules = {layer_module, ParameterModule::Granular},
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Granular Smoothing"_s,
-            .gui_label = "Smoothing"_s,
+            .gui_label = "Smooth"_s,
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
         };
-#endif
+        lp(GranularRandomPan) = Args {
+            .id = id(region, 63), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 20}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Granular Random Pan"_s,
+            .gui_label = "Pan"_s,
+            .tooltip =
+                "Randomise the stereo position of each grain. At 0% all grains play centred, at 100% grains can be panned anywhere from fully left to fully right"_s,
+        };
+        lp(GranularRandomDetune) = Args {
+            .id = id(region, 64), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Granular Random Detune"_s,
+            .gui_label = "Detune"_s,
+            .tooltip =
+                "Randomise the pitch of each grain. At 0% all grains play at the original pitch, at 100% grains can be detuned up to a semitone up or down"_s,
+        };
+        lp(GranularRandomDirection) = Args {
+            .id = id(region, 65), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Granular Random Direction"_s,
+            .gui_label = "Direction"_s,
+            .tooltip =
+                "Chance that grains spawn playing in the opposite direction to the main playhead. At 0% all grains play in the main direction, at 100% there's a 50/50 chance of each grain playing forwards or backwards"_s,
+        };
+        lp(GranularHarmony) = Args {
+            .id = id(region, 66), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Granular Harmony"_s,
+            .gui_label = "Harmony"_s,
+            .tooltip =
+                "Chance that grains spawn at one of the selected harmony intervals instead of the root pitch. Configure which intervals are active using the Intervals button"_s,
+        };
+
+        // Arpeggiator
+        // =================================================================================================
+        lp(ArpOn) = Args {
+            .id = id(region, 81), // never change
+            .value_config = val_config_helpers::Bool({.default_state = false}),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Arpeggiator"_s,
+            .gui_label = "Arpeggiator"_s,
+            .tooltip = "Enable/disable the arpeggiator"_s,
+        };
+        lp(ArpMode) = Args {
+            .id = id(region, 74), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpMode,
+                .default_val = (u32)param_values::ArpMode::Played,
+            }),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Arpeggiator Mode"_s,
+            .gui_label = "Mode"_s,
+            .tooltip = "Played Notes: arpeggiates held notes. Fixed Notes: plays a recorded note sequence"_s,
+        };
+        lp(ArpNoteOrder) = Args {
+            .id = id(region, 70), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpNoteOrder,
+                .default_val = (u32)param_values::ArpNoteOrder::Up,
+            }),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Note Order"_s,
+            .gui_label = "Order"_s,
+            .tooltip = "Order in which held notes are played"_s,
+        };
+        lp(ArpTriggerMode) = Args {
+            .id = id(region, 71), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpTriggerMode,
+                .default_val = (u32)param_values::ArpTriggerMode::Free,
+            }),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Trigger"_s,
+            .gui_label = "Trigger"_s,
+            .tooltip =
+                "Free: arpeggiator keeps running when new notes are pressed. Retrigger: arpeggiator restarts from step 1"_s,
+        };
+        lp(ArpRate) = Args {
+            .id = id(region, 72), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpSyncedRate,
+                .default_val = (u32)param_values::ArpSyncedRate::_1_8,
+            }),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Rate"_s,
+            .gui_label = "Rate"_s,
+            .tooltip = "Arpeggiator rate (synced to host tempo)"_s,
+        };
+        lp(ArpAutoRate) = Args {
+            .id = id(region, 76), // never change
+            .value_config = val_config_helpers::Bool({.default_state = true}),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Auto Rate"_s,
+            .gui_label = "Auto Rate"_s,
+            .tooltip =
+                "Automatically pick an arpeggiator rate based on the sliced instrument's loop length and host tempo."_s,
+        };
+        lp(ArpLength) = Args {
+            .id = id(region, 73), // never change
+            .value_config = val_config_helpers::Int({.range = {1, k_arp_max_steps}, .default_val = 8}),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Length"_s,
+            .gui_label = "Length"_s,
+            .tooltip = "Number of active steps in the arpeggiator pattern"_s,
+        };
+        lp(ArpHumanise) = Args {
+            .id = id(region, 75), // never change
+            .value_config = val_config_helpers::Percent({.default_percent = 5}),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Humanise"_s,
+            .gui_label = "Humanise"_s,
+            .tooltip =
+                "Add random timing variation to note starts and velocity. Higher values create looser, more human-like performance"_s,
+        };
+        lp(ArpOctavePolyrate) = Args {
+            .id = id(region, 77), // never change
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpOctavePolyrate,
+                .default_val = (u32)param_values::ArpOctavePolyrate::Off,
+            }),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Oct Polyrate"_s,
+            .gui_label = "Polyrate"_s,
+            .tooltip =
+                "Each octave plays at a different rate. Double means each octave up is 2x faster. 3:2 and 4:3 create polyrhythmic relationships between octaves"_s,
+        };
+        lp(ArpOneShot) = Args {
+            .id = id(region, 78), // never change
+            .value_config = val_config_helpers::Bool({.default_state = false}),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "One Shot"_s,
+            .gui_label = "One Shot"_s,
+            .tooltip =
+                "When enabled, the arpeggiator plays through the sequence once and then stops instead of looping"_s,
+        };
     }
 
     // =====================================================================================================
@@ -2315,9 +3531,19 @@ constexpr auto k_create_params_result = CreateParams();
 constexpr auto k_param_descriptors = k_create_params_result.params;
 constexpr auto k_id_map = k_create_params_result.id_map;
 
+constexpr usize k_num_experimental_parameters = []() {
+    usize n = 0;
+    for (auto& p : k_param_descriptors)
+        if (p.flags.experimental) ++n;
+    return n;
+}();
+
+constexpr usize k_num_non_experimental_parameters = k_num_parameters - k_num_experimental_parameters;
+
 struct ComptimeParamSearchOptions {
     ParamModules modules {};
     Optional<ParamIndex> skip {};
+    Optional<ParamIndex> skip2 {};
 };
 
 template <ComptimeParamSearchOptions k_criteria>
@@ -2333,6 +3559,7 @@ constexpr auto ComptimeParamSearch() {
 
     constexpr auto k_matches_criteria = [k_modules](ParamDescriptor p) {
         if (k_criteria.skip && *k_criteria.skip == p.index) return false;
+        if (k_criteria.skip2 && *k_criteria.skip2 == p.index) return false;
         return StartsWithSpan(p.module_parts, k_modules);
     };
 
@@ -2351,6 +3578,7 @@ constexpr auto ComptimeParamSearch() {
     Sort(result, [](ParamIndex a, ParamIndex b) {
         auto const& a_desc = k_param_descriptors[ToInt(a)];
         auto const& b_desc = k_param_descriptors[ToInt(b)];
+        if (a_desc.grouping_within_module == b_desc.grouping_within_module) return a < b;
         return a_desc.grouping_within_module < b_desc.grouping_within_module;
     });
 
@@ -2384,7 +3612,7 @@ Type ParamToInt(f32 value) {
     return (Type)i;
 }
 
-enum class NoLongerExistingParam : u16 {
+enum class NoLongerExistingParam : u8 {
     ConvolutionLegacyMirageIrName,
 
     Layer1LoopOnSwitch,
@@ -2440,7 +3668,7 @@ enum class NoLongerExistingParam : u16 {
     Count,
 };
 
-enum class ParamExistance {
+enum class ParamExistance : u8 {
     StillExists,
     NoLongerExists,
 };
@@ -2451,3 +3679,5 @@ using LegacyParam = TaggedUnion<ParamExistance,
 
 Optional<LegacyParam> ParamFromLegacyId(String id);
 Optional<DynamicArrayBounded<char, 64>> ParamToLegacyId(LegacyParam index);
+
+bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_parameters> linear_param_values);

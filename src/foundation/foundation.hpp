@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -44,3 +44,4 @@
 #include "memory/allocators.hpp" // IWYU pragma: export
 #include "memory/cloneable.hpp" // IWYU pragma: export
 #include "universal_defs.hpp" // IWYU pragma: export
+#include "zig_std/zig_std.hpp" // IWYU pragma: export

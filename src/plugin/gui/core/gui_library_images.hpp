@@ -1,11 +1,12 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
+
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/image.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 // Images for a particular sample library.
 struct LibraryImages {
@@ -39,7 +40,7 @@ struct LibraryImagesTable {
     // but the Futures and table is never freed - they are small and very infrequently changing - simplifying
     // lifetime management.
     ArenaAllocator arena {PageAllocator::Instance()}; // Never reset.
-    HashTable<sample_lib::LibraryId, LibraryImages> table;
+    HashTable<sample_lib::LibraryId, LibraryImages, NoHash> table;
 };
 
 enum class LibraryImagesTypes : u8 {
@@ -53,12 +54,12 @@ BITWISE_OPERATORS(LibraryImagesTypes)
 // needed. Use needed_types to trigger loading only for the images you need.
 LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                imgui::Context& imgui,
-                               sample_lib::LibraryIdRef const& library_id,
+                               sample_lib::LibraryId library_id,
                                sample_lib_server::Server& server,
+                               FloeInstanceIndex instance_index,
                                LibraryImagesTypes needed_types = LibraryImagesTypes::All);
 
 void BeginFrame(LibraryImagesTable& table);
 void Shutdown(LibraryImagesTable& table);
-void InvalidateLibraryImages(LibraryImagesTable& table,
-                             sample_lib::LibraryIdRef library_id,
-                             Renderer& renderer);
+void InvalidateLibraryImages(LibraryImagesTable& table, sample_lib::LibraryId library_id, Renderer& renderer);
+void InvalidateAllLibraryImages(LibraryImagesTable& table, Renderer& renderer);

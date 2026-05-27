@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -83,7 +83,7 @@ struct Filter {
     Coeffs coeffs;
 };
 
-enum class Type {
+enum class Type : u8 {
     LowPass,
     HighPass,
     BandPassCsg,
@@ -436,6 +436,28 @@ class SmoothedCoefficients {
     rbj_filter::Coeffs m_coeffs = {};
 };
 
+inline f32 EqResonanceToQ(f32 linear) { return MapFrom01Skew(linear, 0.5f, 8.0f, 2.0f); }
+inline f32 EffectFilterResonanceToQ(f32 linear) { return MapFrom01Skew(linear, 0.5f, 2.0f, 2.0f); }
+
+// Magnitude response of a normalised biquad at frequency_hz, in dB. Uses f64 internally for
+// numerical stability near Nyquist.
+inline f32 MagnitudeDb(Coeffs const& c, f32 frequency_hz, f32 fs) {
+    auto const w = 2.0 * k_pi<f64> * (f64)frequency_hz / (f64)fs;
+    auto const cos_w = Cos(w);
+    auto const cos_2w = Cos(2.0 * w);
+    auto const b0 = (f64)c.b0;
+    auto const b1 = (f64)c.b1;
+    auto const b2 = (f64)c.b2;
+    auto const a1 = (f64)c.a1;
+    auto const a2 = (f64)c.a2;
+    auto const num = (b0 * b0) + (b1 * b1) + (b2 * b2) + (2.0 * ((b0 * b1) + (b1 * b2)) * cos_w) +
+                     (2.0 * b0 * b2 * cos_2w);
+    auto const den = 1.0 + (a1 * a1) + (a2 * a2) + (2.0 * (a1 + (a1 * a2)) * cos_w) + (2.0 * a2 * cos_2w);
+    if (den <= 0) return 0;
+    auto const mag2 = num / den;
+    return (f32)(10.0 * Log10(Max(mag2, 1e-30)));
+}
+
 } // namespace rbj_filter
 
 // ===============================================================================
@@ -448,7 +470,7 @@ class SmoothedCoefficients {
 
 namespace sv_filter {
 
-enum class Type {
+enum class Type : u8 {
     Lowpass,
     Bandpass,
     Highpass,
@@ -469,9 +491,43 @@ inline f32 ResonanceToQ(f32 resonance) {
     return 1.0f / (2.0f * (1.0f - resonance));
 }
 
-inline f32 SkewResonance(f32 percent) {
-    constexpr f32 k_multiplier = 0.95f; // Just to make it sound better.
-    return Pow(percent, 4.0f) * k_multiplier;
+inline f32 SkewResonance(f32 percent) { return percent * 0.95f; }
+
+// Closed-form magnitude response of the TPT SVF at eval_hz, in dB. Derived from the analog
+// prototype |H(jω)|² evaluated at the bilinear-prewarped normalised frequency
+// ω = tan(π·eval_hz/fs) / tan(π·fc/fs). BandShelving uses the same fixed shelf gain as the DSP.
+inline f32 MagnitudeDb(Type type, f32 fc, f32 fs, f32 res, f32 eval_hz) {
+    auto const q = ResonanceToQ(res);
+    auto const r = 1.0f / (2.0f * q);
+    auto const g_fc = Tan(k_pi<f32> * fc / fs);
+    auto const g_eval = Tan(k_pi<f32> * eval_hz / fs);
+    auto const w = g_eval / g_fc;
+    auto const w2 = w * w;
+    auto const one_minus_w2 = 1.0f - w2;
+    auto const two_r_w = 2.0f * r * w;
+    auto const den = (one_minus_w2 * one_minus_w2) + (two_r_w * two_r_w);
+    f32 num = 0;
+    switch (type) {
+        case Type::Lowpass: num = 1.0f; break;
+        case Type::Highpass: num = w2 * w2; break;
+        case Type::Bandpass: num = w2; break;
+        case Type::UnitGainBandpass: num = two_r_w * two_r_w; break;
+        case Type::Notch: num = one_minus_w2 * one_minus_w2; break;
+        case Type::Allpass: num = den; break;
+        case Type::Peak: {
+            auto const one_plus_w2 = 1.0f + w2;
+            num = one_plus_w2 * one_plus_w2;
+            break;
+        }
+        case Type::BandShelving: {
+            auto const six_r_w = 6.0f * r * w;
+            num = (one_minus_w2 * one_minus_w2) + (six_r_w * six_r_w);
+            break;
+        }
+    }
+    if (den <= 0) return 0;
+    auto const mag2 = num / den;
+    return 10.0f * Log10(Max(mag2, 1e-30f));
 }
 
 struct CachedHelpers {

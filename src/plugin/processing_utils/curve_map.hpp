@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -8,7 +8,10 @@
 
 struct CurveMap {
     struct Point {
-        bool operator==(Point const& other) const = default;
+        // unique_id is excluded: it's a GUI-only identifier, not part of semantic state.
+        bool operator==(Point const& other) const {
+            return x == other.x && y == other.y && curve == other.curve;
+        }
 
         // Normalised 0.0-1.0.
         f32 x, y;
@@ -123,4 +126,9 @@ struct CurveMap {
     AtomicSwapBuffer<FloatArray, true> lookup_table;
     Points points;
     u32 id_counter {2};
+};
+
+constexpr auto k_default_velocity_curve_points = Array {
+    CurveMap::Point {0.0f, 0.3f, 0.0f},
+    CurveMap::Point {1.0f, 1.0f, 0.0f},
 };

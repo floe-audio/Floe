@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -7,7 +7,7 @@
 #include "effect.hpp"
 #include "processing_utils/audio_processing_context.hpp"
 
-enum DistFunction {
+enum DistFunction : u8 {
     DistFunctionTubeLog,
     DistFunctionTubeAsym3,
     DistFunctionSinFunc,
@@ -161,6 +161,7 @@ struct Distortion final : public Effect {
         }
 
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DistortionDrive)) amount = *p;
+        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DistortionMix)) mix_param = *p;
     }
 
     EffectProcessResult

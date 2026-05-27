@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -130,7 +130,7 @@ class Semaphore {
 // of release-consume ordering is being revised, and the use of memory_order_consume is temporarily
 // discouraged"
 
-enum class LoadMemoryOrder {
+enum class LoadMemoryOrder : u8 {
     Relaxed = __ATOMIC_RELAXED,
 
     // Ensures all memory operations declared after actually happen after it.
@@ -142,7 +142,7 @@ enum class LoadMemoryOrder {
     SequentiallyConsistent = __ATOMIC_SEQ_CST,
 };
 
-enum class StoreMemoryOrder {
+enum class StoreMemoryOrder : u8 {
     Relaxed = __ATOMIC_RELAXED,
 
     // Ensures that all memory operations declared before it actually happen before it.
@@ -155,7 +155,7 @@ enum class StoreMemoryOrder {
 };
 
 // Read-Modify-Write memory order
-enum class RmwMemoryOrder {
+enum class RmwMemoryOrder : u8 {
     Relaxed = __ATOMIC_RELAXED,
     Acquire = __ATOMIC_ACQUIRE,
     Release = __ATOMIC_RELEASE,
@@ -236,8 +236,8 @@ struct Atomic {
 };
 
 // futex
-enum class WaitResult { WokenOrSpuriousOrNotExpected, TimedOut };
-enum class NumWaitingThreads { One, All };
+enum class WaitResult : u8 { WokenOrSpuriousOrNotExpected, TimedOut };
+enum class NumWaitingThreads : u8 { One, All };
 // Checks if value == expected, if so, it waits until wake() is called, if not, it returns. Can also return
 // spuriously. Similar to std::atomic<>::wait().
 WaitResult WaitIfValueIsExpected(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {});
@@ -626,7 +626,7 @@ template <typename Type>
 struct Future {
     using ValueType = Type;
 
-    enum class Status : u32 {
+    enum class Status : u8 {
         Inactive, // Unscheduled, no result.
         Pending, // Scheduled to be filled but not started yet. Consumer must not read result.
         Running, // In progress. Consumer must not read result.

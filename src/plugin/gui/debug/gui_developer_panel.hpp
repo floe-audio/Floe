@@ -22,4 +22,4 @@ bool DoBasicTextButton(imgui::Context& imgui,
                        imgui::Id id,
                        String str);
 
-void DoBasicWhiteText(imgui::Context& imgui, Rect viewport_r, String str);
+f32 DoBasicWhiteText(imgui::Context& imgui, Rect viewport_r, String str);

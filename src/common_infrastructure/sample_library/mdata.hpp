@@ -210,7 +210,7 @@ struct InstrumentInfo {
     Index sampler_region_index_for_gui_waveform = k_invalid_md_index;
 };
 
-enum InstExtendedFlags {
+enum InstExtendedFlags : u8 {
     InstExtendedFlagsNone = 0,
     InstExtendedFlagsGroupsAreXfadeLayers = 1 << 0,
     InstExtendedFlagsFeatherVelocityLayers = 1 << 1,

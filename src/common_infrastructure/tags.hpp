@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -30,7 +30,7 @@ enum class TagCategory : u8 {
     Count,
 };
 
-enum class TagType : u16 {
+enum class TagType : u8 {
     Acoustic,
     FieldRecording,
     FoundSounds,
@@ -224,6 +224,13 @@ enum class TagType : u16 {
     Count,
 };
 
+using TagsBitset = Bitset<ToInt(TagType::Count)>;
+
+enum class TagCategoryImportance : u8 {
+    Primary,
+    Secondary,
+};
+
 struct TagCategoryInfo {
     String name;
     String question;
@@ -233,6 +240,7 @@ struct TagCategoryInfo {
     String font_awesome_icon;
     Span<TagCategory const> exclude_categories;
     Span<TagType const> exclude_tags;
+    TagCategoryImportance importance;
 };
 
 struct TagInfo {
@@ -496,6 +504,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🔊",
                 .font_awesome_icon = ICON_FA_VOLUME_HIGH,
+                .importance = TagCategoryImportance::Primary,
             };
         }
         case TagCategory::RealInstrument: {
@@ -538,6 +547,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .font_awesome_icon = ICON_FA_GUITAR,
                 .exclude_categories = k_exclude_categories,
                 .exclude_tags = k_exclude_tags,
+                .importance = TagCategoryImportance::Primary,
             };
         }
         case TagCategory::NumberOfPlayers: {
@@ -564,6 +574,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .font_awesome_icon = ICON_FA_USERS,
                 .exclude_categories = k_exclude_categories,
                 .exclude_tags = k_exclude_tags,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::Material: {
@@ -589,6 +600,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🪵",
                 .font_awesome_icon = ICON_FA_TREE,
                 .exclude_tags = k_exclude_tags,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::ReverbType: {
@@ -615,6 +627,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🏛️",
                 .font_awesome_icon = ICON_FA_LANDMARK,
                 .exclude_categories = k_exclude_categories,
+                .importance = TagCategoryImportance::Primary,
             };
         }
         case TagCategory::MoodPositive: {
@@ -635,6 +648,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🙂",
                 .font_awesome_icon = ICON_FA_FACE_SMILE,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::MoodNegative: {
@@ -656,6 +670,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "😟",
                 .font_awesome_icon = ICON_FA_FACE_FROWN,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::MoodMixed: {
@@ -674,6 +689,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "😐",
                 .font_awesome_icon = ICON_FA_FACE_MEH,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::MoodThematic: {
@@ -699,6 +715,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🎭",
                 .font_awesome_icon = ICON_FA_MASKS_THEATER,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::Pitch: {
@@ -715,6 +732,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🎶",
                 .font_awesome_icon = ICON_FA_MUSIC,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::SoundTypeLong: {
@@ -734,6 +752,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "➡️",
                 .font_awesome_icon = ICON_FA_RIGHT_LONG,
                 .exclude_categories = k_sound_type_exclude_categories,
+                .importance = TagCategoryImportance::Primary,
             };
         }
         case TagCategory::SoundTypeShort: {
@@ -752,6 +771,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "↔️",
                 .font_awesome_icon = ICON_FA_ARROW_RIGHT,
                 .exclude_categories = k_sound_type_exclude_categories,
+                .importance = TagCategoryImportance::Primary,
             };
         }
         case TagCategory::SoundTypeSequence: {
@@ -768,6 +788,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🔁",
                 .font_awesome_icon = ICON_FA_REPEAT,
                 .exclude_categories = k_sound_type_exclude_categories,
+                .importance = TagCategoryImportance::Primary,
             };
         }
         case TagCategory::SoundTypeRole: {
@@ -787,6 +808,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🎛️",
                 .font_awesome_icon = ICON_FA_LAYER_GROUP,
                 .exclude_categories = k_sound_type_exclude_categories,
+                .importance = TagCategoryImportance::Primary,
             };
         }
         case TagCategory::TimbreModulation: {
@@ -804,6 +826,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🚂",
                 .font_awesome_icon = ICON_FA_WAVE_SQUARE,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::TimbreRealTone: {
@@ -827,6 +850,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🎷",
                 .font_awesome_icon = ICON_FA_DRUM_STEELPAN,
                 .exclude_tags = k_exclude_tags,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::TimbreSynthTechnique: {
@@ -847,6 +871,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🎚️",
                 .font_awesome_icon = ICON_FA_SLIDERS,
                 .exclude_tags = k_exclude_tags,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::TimbreFrequency: {
@@ -866,6 +891,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "💎",
                 .font_awesome_icon = ICON_FA_GEM,
                 .exclude_tags = k_exclude_tags,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::Genre: {
@@ -883,6 +909,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🎵",
                 .font_awesome_icon = ICON_FA_MUSIC,
+                .importance = TagCategoryImportance::Secondary,
             };
         }
         case TagCategory::Count: break;
@@ -947,7 +974,7 @@ PUBLIC Optional<TagAndCategory> LookupTagName(String name) {
         }
 
         constexpr void Insert(String name, TagAndCategory tag_and_category) {
-            auto const hash = Hash(name);
+            auto const hash = HashFnv1a(name);
             auto& element = elements[Lookup(name, hash)];
             element.key = name;
             element.value = tag_and_category;
@@ -955,7 +982,7 @@ PUBLIC Optional<TagAndCategory> LookupTagName(String name) {
         }
 
         constexpr Optional<TagAndCategory> Find(String name) const {
-            auto& element = elements[Lookup(name, Hash(name))];
+            auto& element = elements[Lookup(name, HashFnv1a(name))];
             if (element.hash == 0) return k_nullopt;
             return element.value;
         }

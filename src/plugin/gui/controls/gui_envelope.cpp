@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/controls/gui_envelope.hpp"
@@ -6,7 +6,9 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
@@ -35,7 +37,7 @@ DrawEnvelopeRangeLines(imgui::Context& imgui, EnvelopeXRange range, imgui::Id id
 
 static void
 DrawEnvelopeHandle(imgui::Context& imgui, f32x2 point, imgui::Id id, f32 handle_size, bool greyed_out) {
-    auto const handle_visible_size = handle_size / 10;
+    auto const handle_visible_size = WwToPixels(k_graph_handle_radius);
     auto const hover_col = LiveCol(UiColMap::EnvelopeHandleHover);
     auto col = greyed_out ? LiveCol(UiColMap::EnvelopeHandleGreyedOut) : LiveCol(UiColMap::EnvelopeHandle);
     if (imgui.IsHot(id)) {
@@ -123,7 +125,15 @@ static void DrawEnvelopeVoiceMarkers(GuiState& g,
             y;
         });
 
-        DrawVoiceMarkerLine(imgui, f32x2 {cursor_x, cursor_y}, bottom_left.y - cursor_y, bottom_left.x, line);
+        DrawVoiceMarkerLine(imgui,
+                            f32x2 {cursor_x, cursor_y},
+                            bottom_left.y - cursor_y,
+                            bottom_left.x,
+                            line,
+                            {});
+
+        auto const dot_col = ChangeAlpha(LiveCol(UiColMap::WaveformLoopVoiceMarkers), 0.5f);
+        imgui.draw_list->AddCircleFilled(f32x2 {cursor_x, cursor_y}, WwToPixels(2.5f), dot_col);
     }
 }
 
@@ -173,6 +183,68 @@ void DoEnvelopeGui(GuiState& g,
             ids[i] = ParamIndexFromLayerParamIndex(layer.index, adsr_layer_params[i]);
         ids;
     });
+
+    // Background right-click menu. Registered before the grabber regions so they take precedence
+    // where they overlap.
+    {
+        auto const bg_id = imgui.MakeId("envelope-bg");
+        auto const popup_id = imgui.MakeId("envelope-bg-popup");
+        auto const window_r = imgui.ViewportRectToWindowRect(viewport_r);
+
+        EnvelopeSection const env_target {.layer_index = layer.index,
+                                          .kind = type == GuiEnvelopeType::Volume
+                                                      ? EnvelopeSection::Kind::Volume
+                                                      : EnvelopeSection::Kind::Filter};
+        String const env_label = type == GuiEnvelopeType::Volume ? "Volume Envelope"_s : "Filter Envelope"_s;
+
+        DoRightClickMenu(
+            g,
+            {
+                .button_id = bg_id,
+                .popup_id = popup_id,
+                .interaction_r = window_r,
+                .do_menu_items =
+                    [&](Box root) {
+                        StateSnapshotSection const target_section {env_target};
+
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {
+                                         .text = fmt::Format(g.scratch_arena, "Copy {}"_s, env_label),
+                                         .no_icon_gap = true,
+                                     })
+                                .button_fired) {
+                            g.snapshot_clipboard = GuiState::CopiedSection {
+                                .snapshot = CurrentStateSnapshot(g.engine),
+                                .section = target_section,
+                            };
+                        }
+
+                        auto const can_paste =
+                            g.snapshot_clipboard.HasValue() &&
+                            g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Envelope &&
+                            g.snapshot_clipboard->section.Get<EnvelopeSection>().kind == env_target.kind;
+
+                        if (MenuItem(g.builder,
+                                     root,
+                                     {
+                                         .text = fmt::Format(g.scratch_arena, "Paste {}"_s, env_label),
+                                         .mode = can_paste ? MenuItemOptions::Mode::Active
+                                                           : MenuItemOptions::Mode::Disabled,
+                                         .no_icon_gap = true,
+                                     })
+                                .button_fired &&
+                            can_paste) {
+                            ApplySectionOfState(g.engine,
+                                                g.snapshot_clipboard->snapshot,
+                                                g.snapshot_clipboard->section,
+                                                target_section);
+                        }
+
+                        DoResetSectionMenuItems(g, root, target_section, env_label);
+                    },
+            });
+    }
 
     auto const attack_imgui_id = imgui.MakeId("attack");
     auto const dec_sus_imgui_id = imgui.MakeId("dec-sus");

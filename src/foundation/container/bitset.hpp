@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Similar idea to std::bitset
@@ -35,10 +35,15 @@ struct Bitset {
         return result;
     }
 
-    template <typename Function>
-    void ForEachSetBit(Function&& function) const {
-        for (auto const bit : Range(k_bits))
-            if (Get(bit)) function(bit);
+    void ForEachSetBit(auto&& function) const {
+        for (auto const element_index : Range(k_num_elements)) {
+            auto element = elements[element_index];
+            while (element) {
+                auto const bit = (usize)__builtin_ctzg(element);
+                function((element_index * k_bits_per_element) + bit);
+                element &= element - 1;
+            }
+        }
     }
 
     constexpr void SetToValue(usize bit, bool value) {
@@ -72,8 +77,8 @@ struct Bitset {
         elements[bit / k_bits_per_element] ^= ElementType(1) << bit % k_bits_per_element;
     }
 
-    constexpr Bool Get(usize bit) const {
-        ASSERT(bit < k_bits);
+    ALWAYS_INLINE constexpr Bool Get(usize bit) const {
+        ASSERT_HOT(bit < k_bits);
         return elements[bit / k_bits_per_element] & (ElementType(1) << bit % k_bits_per_element);
     }
 

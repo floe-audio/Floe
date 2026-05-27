@@ -1,9 +1,12 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/panels/gui_macros.hpp"
 
+#include <IconsFontAwesome6.h>
+
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -142,6 +145,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                            .macro_index = macro_index,
                                            .destination_index = *remove_destination_index,
                                        });
+                RecordUndoableStep(g.engine, "Remove macro destination"_s);
 
                 // Another annoying hack. When the we remove the value we are shifting the memory in the
                 // contiguous array. The next time we run this code the IMGUI ID is still active, and because
@@ -176,6 +180,10 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 builder.imgui.PushId(dest_knob_index);
                 DEFER { builder.imgui.PopId(); };
                 auto const imgui_id = builder.imgui.MakeId("destination-knob"_s);
+
+                if (builder.imgui.WasJustActivated(imgui_id, MouseButton::Left))
+                    BeginUndoableStep(g.engine, "Macro destination amount"_s);
+                if (builder.imgui.WasJustDeactivated(imgui_id, MouseButton::Left)) EndUndoableStep(g.engine);
 
                 auto norm_value = MapTo01(dest.value, -1, 1);
                 if (builder.imgui.SliderBehaviourFraction({
@@ -212,7 +220,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 }
 
                 if (builder.imgui.WasJustMadeHot(imgui_id))
-                    GuiIo().out.AddTimedWakeup(TimePoint::Now() + 0.5, "macros_destination_knob_hot");
+                    GuiIo().out.SetTimedWakeup(SourceLocationHash(), TimePoint::Now() + 0.5);
 
                 if (builder.imgui.IsActive(imgui_id, MouseButton::Left) ||
                     (builder.imgui.IsHot(imgui_id) && builder.imgui.SecondsSpentHot() > 0.5)) {
@@ -235,13 +243,51 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 if (builder.imgui.IsHotOrActive(imgui_id, MouseButton::Left)) {
                     dyn::Append(g.macros_gui_state.draw_overlays, [&dest, r = knob_r](GuiState& g) {
                         auto const& descriptor = k_param_descriptors[ToInt(*dest.param_index)];
-                        auto const str = fmt::Format(g.builder.arena,
-                                                     "{}\n{}\n{.0}%",
-                                                     descriptor.gui_label,
-                                                     descriptor.ModuleString(" › "_s),
-                                                     dest.ProjectedValue() * 100);
+                        auto const str =
+                            fmt::Format(g.builder.arena,
+                                        "{}\n{}\n{.0}%{}",
+                                        descriptor.gui_label,
+                                        descriptor.ModuleString(" › "_s),
+                                        dest.ProjectedValue() * 100,
+                                        descriptor.flags.legacy ? "\n(legacy parameter)"_s : ""_s);
                         DrawPopupTextbox(g, str, r);
                     });
+                }
+
+                if (k_param_descriptors[ToInt(*dest.param_index)].flags.legacy) {
+                    auto const badge_size = knob_r.w * 0.55f;
+                    Rect const badge_r {
+                        .x = knob_r.Right() - (badge_size * 0.85f),
+                        .y = knob_r.y - (badge_size * 0.15f),
+                        .w = badge_size,
+                        .h = badge_size,
+                    };
+
+                    auto const badge_imgui_id = builder.imgui.MakeId("legacy-dest-badge"_s);
+                    Tooltip(
+                        g,
+                        badge_imgui_id,
+                        badge_r,
+                        "Targets a legacy parameter — kept for DAW automation. Macro modulation will only be audible while the legacy override is active."_s,
+                        {});
+
+                    builder.imgui.overlay_draw_list->AddCircleFilled(
+                        badge_r.Centre(),
+                        badge_r.w * 0.5f,
+                        ToU32(Col {.c = Col::Background0, .dark_mode = true}),
+                        12);
+
+                    builder.fonts.Push(ToInt(FontType::Icons));
+                    DEFER { builder.fonts.Pop(); };
+                    builder.imgui.overlay_draw_list->AddTextInRect(
+                        badge_r,
+                        ToU32({.c = Col::Yellow}),
+                        ICON_FA_TRIANGLE_EXCLAMATION,
+                        {
+                            .justification = TextJustification::Centred,
+                            .overflow_type = TextOverflowType::AllowOverflow,
+                            .font_scaling = 0.7f,
+                        });
                 }
 
                 {
@@ -355,21 +401,8 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
         auto const name_input = DoBox(builder,
                                       {
                                           .parent = container,
-                                          .background_fill_colours =
-                                              ColSet {
-                                                  .base = {},
-                                                  .hot = {.c = Col::Background0, .dark_mode = true},
-                                                  .active = {.c = Col::Background0, .dark_mode = true},
-                                              },
-                                          .border_colours =
-                                              ColSet {
-                                                  .base = {},
-                                                  .hot = {.c = Col::Overlay1, .dark_mode = true},
-                                                  .active = {.c = Col::Subtext0, .dark_mode = true},
-                                              },
-                                          .round_background_corners = 0b1111,
                                           .layout {
-                                              .size = {100, k_font_body_size},
+                                              .size = {100, k_font_body_size + 6},
                                           },
                                       });
 
@@ -395,6 +428,21 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                     },
             });
 
+            bool const focused = builder.imgui.TextInputHasFocus(name_input.imgui_id);
+            bool const hot = builder.imgui.IsHot(name_input.imgui_id);
+            auto const rounding = WwToPixels(k_corner_rounding);
+
+            if (focused) {
+                builder.imgui.draw_list->AddRectFilled(window_r,
+                                                       ToU32({.c = Col::Background2, .dark_mode = true}),
+                                                       rounding);
+            }
+
+            auto const border_col = focused ? Col {.c = Col::Overlay2, .dark_mode = true}
+                                    : hot   ? Col {.c = Col::Overlay1, .dark_mode = true}
+                                            : Col {.c = Col::Surface1, .dark_mode = true};
+            builder.imgui.draw_list->AddRect(window_r, ToU32(border_col), rounding);
+
             DrawTextInput(builder.imgui,
                           result,
                           {
@@ -405,6 +453,9 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
 
             if (result.enter_pressed || result.buffer_changed)
                 dyn::AssignFitInCapacity(g.engine.macro_names[macro_index], result.text);
+
+            if (g.imgui.TextInputJustUnfocused(name_input.imgui_id))
+                RecordUndoableStep(g.engine, "Macro rename");
         }
 
         if (remove_button) {
@@ -480,6 +531,7 @@ void OverlayMacroDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_
                                        .param = param_index,
                                        .macro_index = *g.macros_gui_state.macro_destination_select_mode,
                                    });
+            RecordUndoableStep(g.engine, "Add macro destination"_s);
             g.macros_gui_state.macro_destination_select_mode.Clear();
         }
 

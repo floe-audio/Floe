@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <pugl/pugl.h>
 #include <pugl/stub.h>
@@ -357,7 +357,7 @@ ErrorCodeOr<void> WriteWaveFile(String filename, ArenaAllocator& scratch_arena, 
     return k_success;
 }
 
-enum class StateProperties : u32 {
+enum class StateProperties : u8 {
     Ir = 1 << 0,
     Sine = 1 << 1,
     WhiteNoise = 1 << 2,
@@ -374,7 +374,7 @@ inline auto operator&(StateProperties a, StateProperties b) { return ToInt(a) & 
 static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StateProperties properties) {
     StateSnapshot state;
 
-    state.instance_id = "foo-123"_s;
+    state.extras.instance_id = "foo-123"_s;
 
     for (auto const index : Range(k_num_effect_types))
         state.fx_order[index] = (EffectType)index;
@@ -407,7 +407,7 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
     if (properties & StateProperties::SampleInst) {
         // TODO: we need to somehow get a library that is widely available: e.g. on CI.
         state.inst_ids[layer_assignment_index] = sample_lib::InstrumentId {
-            .library = sample_lib::IdForMdataLibraryAlloc("Wraith", arena),
+            .library = sample_lib::IdForMdataLibrary("Wraith"),
             .inst_id = "Endless Stride"_s,
         };
         layer_assignment_index = (layer_assignment_index + 1) % k_num_layers;
@@ -443,7 +443,6 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
                           return k_success;
                       },
                       .source = StateSource::Daw,
-                      .abbreviated_read = false,
                   }));
 
     return buffer.ToOwnedSpan();
@@ -492,7 +491,7 @@ static void ProcessWithState(tests::Tester& tester,
     // audio data to play. Here, we wait a little while for this to happen otherwise we might get silence.
     {
         auto const floe_custom_ext =
-            (FloeClapTestingExtension const*)plugin->get_extension(plugin, k_floe_clap_extension_id);
+            (FloeClapExtension const*)plugin->get_extension(plugin, k_floe_clap_extension_id);
         REQUIRE(floe_custom_ext);
 
         auto const start = TimePoint::Now();

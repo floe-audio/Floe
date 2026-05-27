@@ -1,23 +1,49 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/elements/gui_popup_menu.hpp"
 
+#include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_modal.hpp"
 
 Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const& options, u64 id_extra) {
+    auto const background_colours = [&]() -> Colours {
+        switch (options.style_system) {
+            case GuiStyleSystem::MidPanel: return LiveColStruct(UiColMap::MidDarkSurface);
+            case GuiStyleSystem::Overlay:
+            case GuiStyleSystem::TopBottomPanels: return Col {.c = Col::Background2};
+        }
+        return Col {.c = Col::Background2};
+    }();
+
+    auto const text_colours = [&]() -> Colours {
+        switch (options.style_system) {
+            case GuiStyleSystem::MidPanel:
+                return ColSet {
+                    .base = LiveColStruct(UiColMap::MidText),
+                    .hot = LiveColStruct(UiColMap::MidTextHot),
+                    .active = LiveColStruct(UiColMap::MidTextHot),
+                };
+            case GuiStyleSystem::Overlay:
+            case GuiStyleSystem::TopBottomPanels: return Col {.c = Col::Text};
+        }
+        return Col {.c = Col::Text};
+    }();
+
     auto const button =
         DoBox(builder,
               {
                   .parent = parent,
                   .id_extra = id_extra,
-                  .background_fill_colours = Col {.c = Col::Background2},
+                  .background_fill_colours = background_colours,
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
+                  .corner_rounding = k_corner_rounding,
                   .layout {
                       .size = {options.width, layout::k_hug_contents},
                       .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
-                      .contents_gap = k_menu_item_padding_x,
+                      .contents_gap = 4,
                       .contents_align = layout::Alignment::Justify,
                   },
                   .tooltip = options.tooltip,
@@ -28,8 +54,13 @@ Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const&
           {
               .parent = button,
               .text = options.text,
-              .size_from_text = true,
               .font = FontType::Body,
+              .text_colours = text_colours,
+              .text_overflow = TextOverflowType::ShowDotsOnRight,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {layout::k_fill_parent, k_font_body_size},
+              },
           });
 
     DoBox(builder,
@@ -38,6 +69,8 @@ Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const&
               .text = ICON_FA_CARET_DOWN,
               .size_from_text = true,
               .font = FontType::Icons,
+              .text_colours = text_colours,
+              .parent_dictates_hot_and_active = true,
           });
 
     return button;
@@ -107,4 +140,58 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
     }
 
     return item;
+}
+
+Box MenuDivider(GuiBuilder& builder, Box parent, u64 id_extra) {
+    return DoModalDivider(builder, parent, {.margin = 4, .horizontal = true, .subtle = true}, id_extra);
+}
+
+void DoRightClickMenu(GuiState& g, RightClickMenuOptions const& options) {
+    if (g.imgui.ButtonBehaviour(options.interaction_r,
+                                options.button_id,
+                                {
+                                    .mouse_button = MouseButton::Right,
+                                    .event = MouseButtonEvent::Up,
+                                })) {
+        g.imgui.OpenPopupMenu(options.popup_id, options.button_id);
+    }
+
+    if (!g.imgui.IsPopupMenuOpen(options.popup_id)) return;
+
+    DoBoxViewport(g.builder,
+                  {
+                      .run =
+                          [&g, do_menu_items = options.do_menu_items](GuiBuilder&) {
+                              auto const root = DoBox(g.builder,
+                                                      {
+                                                          .layout {
+                                                              .size = layout::k_hug_contents,
+                                                              .contents_direction = layout::Direction::Column,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+                              do_menu_items(root);
+                          },
+                      .bounds = options.popup_anchor_r.ValueOr(options.interaction_r),
+                      .imgui_id = options.popup_id,
+                      .viewport_config = k_default_popup_menu_viewport,
+                  });
+}
+
+void DoRightClickMenu(GuiState& g,
+                      Box const& box,
+                      imgui::Id popup_id,
+                      TrivialFunctionRef<void(Box root)> do_menu_items,
+                      Optional<Rect> popup_anchor_r) {
+    auto const r = BoxRect(g.builder, box);
+    if (!r) return;
+    auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+    DoRightClickMenu(g,
+                     {
+                         .button_id = box.imgui_id,
+                         .popup_id = popup_id,
+                         .interaction_r = window_r,
+                         .popup_anchor_r = popup_anchor_r,
+                         .do_menu_items = do_menu_items,
+                     });
 }

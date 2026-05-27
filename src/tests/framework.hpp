@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -109,7 +109,7 @@ struct Subcase {
     bool entered;
 };
 
-enum class FailureAction { FailAndExitTest, FailAndContinue, LogWarningAndContinue };
+enum class FailureAction : u8 { FailAndExitTest, FailAndContinue, LogWarningAndContinue };
 
 class PassedSubcaseStacks {
   public:
@@ -190,7 +190,7 @@ struct Tester {
 
         DynamicArray<char>* output_buffer = nullptr; // Optional.
         Tester& tester;
-        LogLevel max_level_allowed = LogLevel::Info;
+        LogLevel max_level_allowed = GetLogLevel();
     };
 
     // public

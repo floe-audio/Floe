@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -7,20 +7,23 @@
 
 #include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/preferences.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
+#include "common_infrastructure/tags.hpp"
 
 #include "gui/core/gui_library_images.hpp"
-#include "gui/overlays/gui_confirmation_dialog_state.hpp"
+#include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui_framework/gui_builder.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
 struct Notifications;
 
 constexpr auto k_browser_item_height = 20.0f;
-constexpr auto k_browser_spacing = 8.0f;
+constexpr auto k_browser_spacing = 7.0f;
 
 constexpr auto k_untagged_tag_name = "<untagged>"_s;
 
-enum class SearchDirection { Forward, Backward };
+enum class SearchDirection : u8 { Forward, Backward };
+
+enum class LoopControl : u8 { Continue, Break };
 
 enum class FilterMode : u8 {
     Single, // Only one filter can be selected at a time.
@@ -40,7 +43,7 @@ struct RightClickMenuState {
     u64 item_hash {}; // The hash of the item that opened the menu.
 };
 
-struct SelectedHashes {
+struct FilterSelection {
     using DisplayName = DynamicArrayBounded<char, 24>;
 
     struct SelectedHash {
@@ -48,46 +51,62 @@ struct SelectedHashes {
         DisplayName display_name {};
     };
 
-    void Clear() { dyn::Clear(hashes); }
-    bool Contains(u64 hash) const {
-        for (auto const& h : hashes)
-            if (h.hash == hash) return true;
-        return false;
-    }
-    void Remove(u64 hash) {
-        dyn::RemoveValueIfSwapLast(hashes, [hash](SelectedHash const& h) { return h.hash == hash; });
-    }
-    void Add(u64 hash, String display_name) {
-        if (hashes.size >= hashes.Capacity()) return;
-        dyn::Append(
-            hashes,
-            {
-                .hash = hash,
-                .display_name = ({
-                    DisplayName n;
-                    if (display_name.size > DisplayName::Capacity()) {
-                        constexpr auto k_ellipsis = "…"_s;
-                        display_name = display_name.SubSpan(
-                            0,
-                            FindUtf8TruncationPoint(display_name, DisplayName::Capacity() - k_ellipsis.size));
-                        n = display_name;
-                        dyn::AppendSpan(n, k_ellipsis);
-                    } else {
-                        n = display_name;
-                    }
-                    n;
-                }),
-            });
-    }
-    auto HasSelected() const { return hashes.size; }
+    struct HashesData {
+        DynamicArrayBounded<SelectedHash, 16> items {};
+    };
 
-    auto begin() { return hashes.begin(); }
-    auto end() { return hashes.end(); }
-    auto begin() const { return hashes.begin(); }
-    auto end() const { return hashes.end(); }
+    struct TagsData {
+        TagsBitset bitset {};
+        bool selected_untagged {};
+    };
+
+    enum class Type : u8 { Hashes, Tags, Bool };
+
+    using Union = TaggedUnion<Type,
+                              TypeAndTag<bool, Type::Bool>,
+                              TypeAndTag<TagsData, Type::Tags>,
+                              TypeAndTag<HashesData, Type::Hashes>>;
+
+    bool HasSelected() const;
+    bool Contains(u64 key) const;
+    void Add(u64 key, String display_name);
+    void Remove(u64 key);
+    void Toggle(u64 key, String display_name);
+    void Clear();
+    void ClearToOne();
+
+    // Calls f(String display_name, u64 key) for each selected item. The callback must return LoopControl;
+    // returning Break stops iteration.
+    template <FunctionWithSignature<LoopControl, String, u64> F>
+    void ForEachSelected(F&& f) const {
+        switch (data.tag) {
+            case Type::Hashes:
+                for (auto const& h : data.Get<HashesData>().items)
+                    if (f((String)h.display_name, h.hash) == LoopControl::Break) return;
+                break;
+            case Type::Tags: {
+                auto& tags = data.Get<TagsData>();
+                bool stop = false;
+                tags.bitset.ForEachSetBit([&](usize bit) {
+                    if (stop) return;
+                    if (f(GetTagInfo((TagType)bit).name, (u64)bit) == LoopControl::Break) stop = true;
+                });
+                if (stop) return;
+                if (tags.selected_untagged) f(k_untagged_tag_name, HashFnv1a("untagged"));
+                break;
+            }
+            case Type::Bool:
+                if (data.Get<bool>()) f(String {}, 1);
+                break;
+        }
+    }
+
+    static FilterSelection Hashes(String name) { return {.name = name, .data = HashesData {}}; }
+    static FilterSelection Tags(String name) { return {.name = name, .data = TagsData {}}; }
+    static FilterSelection Bool(String name) { return {.name = name, .data = false}; }
 
     String name;
-    DynamicArrayBounded<SelectedHash, 16> hashes {};
+    Union data;
 };
 
 struct BrowserKeyboardNavigation {
@@ -156,67 +175,156 @@ struct BrowserKeyboardNavigation {
     Input input {};
 };
 
+enum class BrowserFilter : u8 {
+    Library,
+    LibraryAuthor,
+    Folder,
+    Tags,
+    Favourites,
+    CommonCount,
+};
+
+// We actually allow more than CommonCount filters to be tracked. If a browser needs more than the standard
+// set, it can append them, starting with index ToInt(CommonCount). This way they are all stored in the same
+// array and the common state can access them to implement the common behaviour.
+static constexpr usize k_max_browser_filters = 8;
+static_assert(k_max_browser_filters >= ToInt(BrowserFilter::CommonCount));
+
 struct CommonBrowserState {
-    auto AllHashes() {
-        DynamicArrayBounded<SelectedHashes*, 7> all_hashes;
-        static_assert(decltype(all_hashes)::Capacity() >= (4 + decltype(other_selected_hashes)::Capacity()));
-        dyn::AppendAssumeCapacity(all_hashes, &selected_library_hashes);
-        dyn::AppendAssumeCapacity(all_hashes, &selected_library_author_hashes);
-        dyn::AppendAssumeCapacity(all_hashes, &selected_tags_hashes);
-        dyn::AppendAssumeCapacity(all_hashes, &selected_folder_hashes);
-        for (auto& hashes : other_selected_hashes)
-            dyn::AppendAssumeCapacity(all_hashes, hashes);
-        return all_hashes;
-    }
-
-    auto AllHashes() const { return const_cast<CommonBrowserState*>(this)->AllHashes(); }
-
     bool HasFilters() const {
-        if (favourites_only) return true;
-        for (auto const& h : AllHashes())
-            if (h->HasSelected()) return true;
+        for (auto const& f : filters)
+            if (f.HasSelected()) return true;
         return false;
     }
 
     void ClearAll() {
-        for (auto& h : AllHashes())
-            h->Clear();
-        favourites_only = false;
+        for (auto& f : filters)
+            f.Clear();
     }
 
     void ClearToOne() {
-        if (favourites_only) {
-            ClearAll();
-            return;
-        }
-
         bool found_one = false;
-        for (auto& hashes : AllHashes()) {
-            if (hashes->hashes.size) {
+        for (auto& f : filters) {
+            if (f.HasSelected()) {
                 if (found_one)
-                    hashes->Clear();
+                    f.Clear();
                 else {
                     found_one = true;
-                    dyn::Remove(hashes->hashes, 1, hashes->hashes.size - 1);
+                    f.ClearToOne();
                 }
             }
         }
     }
 
+    FilterSelection& Filter(BrowserFilter i) { return filters[(usize)i]; }
+    FilterSelection const& Filter(BrowserFilter i) const { return filters[(usize)i]; }
+
+    // Allow browser-specific filter index enums that extend FilterIndex.
+    template <Enum EnumT>
+    requires(!Same<EnumT, BrowserFilter>)
+    FilterSelection& Filter(EnumT i) {
+        return filters[(usize)i];
+    }
+    template <Enum EnumT>
+    requires(!Same<EnumT, BrowserFilter>)
+    FilterSelection const& Filter(EnumT i) const {
+        return filters[(usize)i];
+    }
+
     Rect absolute_button_rect {}; // Absolute rectangle of the button that opened the browser.
-    SelectedHashes selected_library_hashes {"Library"};
-    SelectedHashes selected_library_author_hashes {"Library Author"};
-    SelectedHashes selected_tags_hashes {"Tag"};
-    SelectedHashes selected_folder_hashes {"Folder"};
-    bool favourites_only {};
-    DynamicArrayBounded<u64, 16> collapsed_filter_headers {};
+    DynamicArrayBounded<FilterSelection, k_max_browser_filters> filters {};
+
+    // We track both states so we know how to handle default_collapsed requests.
+    DynamicArray<u64> collapsed_filter_headers {Malloc::Instance()};
+    DynamicArray<u64> expanded_filter_headers {Malloc::Instance()};
+
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<char, 100> filter_search {};
-    DynamicArrayBounded<SelectedHashes*, 3> other_selected_hashes {};
     FilterMode filter_mode = FilterMode::Single;
+    bool scroll_items_to_start {};
     RightClickMenuState right_click_menu_state {};
     BrowserKeyboardNavigation keyboard_navigation {};
 };
+
+inline bool IsSingleFolderFilterSelected(CommonBrowserState const& state, u64 section_folder_hash) {
+    auto const& folder_filter = state.Filter(BrowserFilter::Folder);
+    if (folder_filter.data.tag != FilterSelection::Type::Hashes) return false;
+    auto const& items = folder_filter.data.Get<FilterSelection::HashesData>().items;
+    if (items.size != 1) return false;
+
+    // The section folder must be the one selected; descendant sections (e.g. when the filter matches
+    // ancestors) still need their heading to disambiguate.
+    if (items[0].hash != section_folder_hash) return false;
+
+    // In OR mode with other active filters, items may match those filters but live outside the folder,
+    // so the folder heading is still informative.
+    if (state.filter_mode == FilterMode::MultipleOr) {
+        for (auto const [index, filter] : Enumerate(state.filters))
+            if (index != (usize)BrowserFilter::Folder && filter.HasSelected()) return false;
+    }
+    return true;
+}
+
+// Combines per-value matches according to the filter mode: AND requires all selected values to match,
+// OR requires any. Single mode only has one selected value, so either policy works.
+template <typename Predicate>
+bool MatchesFilterValues(FilterSelection const& filter, FilterMode mode, Predicate&& matches_value) {
+    // OR: start false, flip to true on the first match, then stop.
+    // AND: start true, flip to false on the first non-match, then stop.
+    bool const is_or = mode == FilterMode::MultipleOr;
+    bool result = !is_or;
+    filter.ForEachSelected([&](String name, u64 key) {
+        bool const matched = matches_value(name, key);
+        if (is_or && matched) {
+            result = true;
+            return LoopControl::Break;
+        }
+        if (!is_or && !matched) {
+            result = false;
+            return LoopControl::Break;
+        }
+        return LoopControl::Continue;
+    });
+    return result;
+}
+
+// Returns true if the item should be hidden. matches_filter(index, filter) should return true if the item
+// matches that filter. AND mode: skip if any active filter doesn't match. OR mode: skip if no active filter
+// matches.
+bool IsFilteredOut(CommonBrowserState const& state, auto&& matches_filter) {
+    bool filtering_on = false;
+    for (auto const [index, filter] : Enumerate(state.filters)) {
+        if (!filter.HasSelected()) continue;
+        filtering_on = true;
+
+        bool const matched = matches_filter(index, filter);
+
+        switch (state.filter_mode) {
+            case FilterMode::Single:
+            case FilterMode::MultipleAnd:
+                if (!matched) return true;
+                break;
+            case FilterMode::MultipleOr:
+                if (matched) return false;
+                break;
+            case FilterMode::Count: PanicIfReached();
+        }
+    }
+    return filtering_on && state.filter_mode == FilterMode::MultipleOr;
+}
+
+// Unlike other filters where an item has a single value (e.g. one library), items can have multiple tags
+// and the user can select multiple tags. This function resolves the inner AND/OR logic within the Tags
+// filter into a single bool for IsFilteredOut.
+bool ItemMatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_tags, FilterMode mode);
+
+inline void InitCommonFilters(CommonBrowserState& state) {
+    dyn::Append(state.filters, FilterSelection::Hashes("Library"_s));
+    dyn::Append(state.filters, FilterSelection::Hashes("Library Author"_s));
+    dyn::Append(state.filters, FilterSelection::Hashes("Folder"_s));
+    dyn::Append(state.filters, FilterSelection::Tags("Tag"_s));
+    dyn::Append(state.filters, FilterSelection::Bool("Favourites"_s));
+}
 
 // Ephemeral
 struct BrowserPopupContext {
@@ -225,6 +333,7 @@ struct BrowserPopupContext {
     prefs::Preferences& preferences;
     persistent_store::Store& store;
     CommonBrowserState& state;
+    FloeInstanceIndex instance_index;
 };
 
 struct FilterItemInfo {
@@ -233,7 +342,10 @@ struct FilterItemInfo {
 };
 
 struct TagsFilters {
-    HashTable<String, FilterItemInfo> tags;
+    Array<FilterItemInfo, ToInt(TagType::Count)> tags {};
+    TagsBitset available_tags {};
+    FilterItemInfo untagged_info {};
+    bool has_untagged {};
 };
 
 bool RootNodeLessThan(FolderNode const* const& a,
@@ -250,26 +362,37 @@ struct FilterButtonCommonOptions {
     bool is_selected;
     String text;
     TooltipString tooltip = k_nullopt;
-    SelectedHashes& hashes;
-    u64 clicked_hash;
+    FilterSelection& filter;
+    u64 clicked_key;
     FilterMode filter_mode;
 };
 
 struct FilterCardOptions {
     FilterButtonCommonOptions common;
-    Optional<sample_lib::LibraryIdRef> library_id; // For images.
+    Optional<sample_lib::LibraryId> library_id; // For images.
     LibraryImagesTable& library_images;
     sample_lib_server::Server& sample_library_server;
+    FloeInstanceIndex instance_index;
     String subtext;
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
+    String all_items_suffix {}; // Appended after "All <name>" in the tree, e.g. " Instruments".
+    bool default_collapsed {};
     RightClickMenuState::Function right_click_menu {};
+    persistent_store::Store* store {};
+    String name {};
 };
+
+bool LibraryIdLessThanFilterInfo(sample_lib::LibraryId const& a,
+                                 FilterItemInfo const&,
+                                 sample_lib::LibraryId const& b,
+                                 FilterItemInfo const&);
 
 struct LibraryFilters {
     sample_lib_server::LibrariesTable const& libraries_table;
     LibraryImagesTable& library_images;
-    OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo> libraries;
+    FloeInstanceIndex instance_index;
+    OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo> libraries;
     OrderedHashTable<String, FilterItemInfo> library_authors;
     bool card_view {};
     sample_lib::ResourceType resource_type {};
@@ -280,6 +403,7 @@ struct LibraryFilters {
     ThreadsafeErrorNotifications& error_notifications;
     Notifications& notifications;
     ConfirmationDialogState& confirmation_dialog_state;
+    String card_name_prefix {};
 };
 
 // IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
@@ -318,8 +442,8 @@ struct BrowserPopupOptions {
 
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
-    TrivialFunctionRef<void(GuiBuilder&, Box const& parent, u8& num_sections)> do_extra_filters_top {};
-    TrivialFunctionRef<void(GuiBuilder&, Box const& parent, u8& num_sections)> do_extra_filters_bottom {};
+    TrivialFunctionRef<void(GuiBuilder&, Box const& parent)> do_extra_filters_top {};
+    TrivialFunctionRef<void(GuiBuilder&, Box const& parent)> do_extra_filters_bottom {};
     bool has_extra_filters {};
     FilterItemInfo const& favourites_filter_info;
 
@@ -329,6 +453,25 @@ struct BrowserPopupOptions {
 Box DoBrowserItemsRoot(GuiBuilder& builder);
 
 struct BrowserItemsSectionOptions {};
+
+static constexpr u64 k_browser_collapse_store_id = HashFnv1a("browser-section-collapse-state");
+
+// Load a persisted section-collapse override into the in-memory toggled_ids array.
+inline void
+LoadCollapseStateFromStore(persistent_store::Store& store, DynamicArray<u64>& toggled_ids, u64 section_id) {
+    if (persistent_store::GetFlag(store, k_browser_collapse_store_id ^ section_id)) {
+        if (!Contains(toggled_ids, section_id)) dyn::Append(toggled_ids, section_id);
+    }
+}
+
+// Persist the current section-collapse state after a toggle.
+inline void SaveCollapseStateToStore(persistent_store::Store& store,
+                                     DynamicArray<u64> const& toggled_ids,
+                                     u64 section_id) {
+    persistent_store::SetFlag(store,
+                              k_browser_collapse_store_id ^ section_id,
+                              Contains(toggled_ids, section_id));
+}
 
 struct BrowserSection {
     enum class State : u8 {
@@ -343,7 +486,6 @@ struct BrowserSection {
     Result Do(GuiBuilder& builder);
 
     CommonBrowserState& state;
-    u8* num_sections_rendered; // Optional.
     u64 id;
     ::Box parent;
     Optional<String> heading;
@@ -353,8 +495,13 @@ struct BrowserSection {
     bool multiline_contents;
     bool subsection;
     bool bigger_contents_gap {false};
+    bool default_collapsed {false};
     bool skip_root_folder {};
+    bool skip_heading {};
+    bool dark_mode {};
+    bool keyboard_focusable {};
     RightClickMenuState::Function right_click_menu {};
+    persistent_store::Store* store {};
 
     // Don't set these, they are set internally.
     Box box_cache {};
@@ -363,7 +510,7 @@ struct BrowserSection {
     u8 is_box_init : 1 = 0;
 };
 
-enum class ItemIconType { None, Image, Font };
+enum class ItemIconType : u8 { None, Image, Font };
 using ItemIcon = TaggedUnion<ItemIconType,
                              TypeAndTag<String, ItemIconType::Font>,
                              TypeAndTag<ImageID, ItemIconType::Image>>;
@@ -395,13 +542,18 @@ struct FilterButtonOptions {
     FilterButtonCommonOptions common;
     ImageID const* icon;
     bool no_bottom_margin;
+    bool dark_mode = true;
+    bool keyboard_focusable = true;
     RightClickMenuState::Function right_click_menu {nullptr};
+    String name {};
 };
 
 struct FilterTreeButtonOptions {
     FilterButtonCommonOptions common;
     bool is_active;
     u8 indent;
+    Optional<FontType> font_override {};
+    String display_text {}; // If set, rendered instead of common.text (common.text is still used for hashes).
 };
 
 Box DoFilterButton(GuiBuilder& builder,
@@ -426,9 +578,5 @@ void DoRightClickMenuForBox(GuiBuilder& builder,
                             Box const& box,
                             u64 item_hash,
                             RightClickMenuState::Function const& do_menu);
-
-bool ShowPrimaryFilterSectionHeader(CommonBrowserState const& state,
-                                    prefs::Preferences const& preferences,
-                                    u64 section_heading_id);
 
 bool MatchesFilterSearch(String filter_text, String search_text);

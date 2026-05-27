@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -7,7 +7,7 @@
 
 #include "resources.h"
 
-enum class ComponentTypes : u32 {
+enum class ComponentTypes : u8 {
     Clap,
 #ifdef VST3_PLUGIN_BINARY_NAME
     VST3,

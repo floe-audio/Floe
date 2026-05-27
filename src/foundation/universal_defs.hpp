@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // This file contains things that we want in all of our files.
@@ -79,7 +79,7 @@ using u8x4 = __attribute__((ext_vector_type(4))) u8;
 using b8x2 = __attribute__((ext_vector_type(2))) u8;
 
 // ==========================================================================================================
-enum class Arch {
+enum class Arch : u8 {
     X86_64, // NOLINT(readability-identifier-naming)
     Aarch64,
 };
@@ -91,7 +91,7 @@ constexpr auto k_arch = Arch::X86_64;
 #error "Unsupported architecture"
 #endif
 
-enum class Endianness {
+enum class Endianness : u8 {
     Little,
     Big,
 };
@@ -359,6 +359,12 @@ using IndexSequenceFor = MakeIndexSequence<sizeof...(Types)>;
 // ==========================================================================================================
 #define ALWAYS_INLINE __attribute__((always_inline))
 
+#if OPTIMISED_BUILD
+#define NO_UBSAN __attribute__((no_sanitize("undefined")))
+#else
+#define NO_UBSAN
+#endif
+
 #define STRINGIFY_HELPER(x) #x
 #define STRINGIFY(x)        STRINGIFY_HELPER(x)
 
@@ -389,21 +395,18 @@ extern thread_local bool g_in_crash_handler;
     _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wassume\"")                        \
         __builtin_assume(!!(expression)) _Pragma("clang diagnostic pop")
 
-// NOTE: The expression may be discarded so it mustn't have side effects.
 // NOTE: We don't panic if PanicOccurred() is true because if a panic has happened the state of the program
 // can't be trusted to assert anything about it. Instead, we are just in a 'damage control' mode.
 #define ASSERT(expression, ...)                                                                              \
     do {                                                                                                     \
-        if constexpr (RUNTIME_SAFETY_CHECKS_ON) {                                                            \
-            if (!(expression) && !PanicOccurred()) Panic("assertion failed: " #expression " " __VA_ARGS__);  \
-        } else                                                                                               \
-            ASSUME(expression);                                                                              \
+        if (!(expression) && !PanicOccurred()) Panic("assertion failed: " #expression " " __VA_ARGS__);      \
     } while (0)
 
-// For use in hot code paths - this will be removed in production builds
+// For use in hot code paths.
+// IMPORTANT: The expression may be discarded so it mustn't have side effects.
 #define ASSERT_HOT(expression, ...)                                                                          \
     do {                                                                                                     \
-        if constexpr (RUNTIME_SAFETY_CHECKS_ON && !PRODUCTION_BUILD) {                                       \
+        if constexpr (RUNTIME_SAFETY_CHECKS_ON && !OPTIMISED_BUILD) {                                        \
             if (!(expression) && !PanicOccurred()) Panic("assertion failed: " #expression " " __VA_ARGS__);  \
         } else                                                                                               \
             ASSUME(expression);                                                                              \
@@ -418,7 +421,7 @@ PanicIfReached(SourceLocation loc = SourceLocation::Current()) {
 
 // ================================================================================================
 template <Integral T>
-consteval T LargestRepresentableValue() {
+constexpr T LargestRepresentableValue() {
     if constexpr (SignedInt<T>)
         return (1ull << ((sizeof(T) * 8ull) - 1ull)) - 1;
     else if constexpr (UnsignedInt<T>)
@@ -429,7 +432,7 @@ consteval T LargestRepresentableValue() {
 }
 
 template <Integral T>
-consteval T SmallestRepresentableValue() {
+constexpr T SmallestRepresentableValue() {
     if constexpr (SignedInt<T>)
         return (T)(-(1ull << ((sizeof(T) * 8ull) - 1)));
     else if constexpr (UnsignedInt<T>)

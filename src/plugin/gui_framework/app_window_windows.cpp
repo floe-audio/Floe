@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <windows.h>
@@ -212,8 +212,7 @@ RunFilePicker(FilePickerDialogOptions const& args, ArenaAllocator& arena, HWND p
             ASSERT(item);
             DEFER { item->Release(); };
 
-            constexpr bool k_forced_default_folder = false;
-            if constexpr (k_forced_default_folder)
+            if (args.force_default_folder)
                 f->SetFolder(item);
             else
                 f->SetDefaultFolder(item);

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -34,7 +34,7 @@ ErrorCodeOr<u32> ChecksumForFile(String path, ArenaAllocator& scratch_arena);
 ErrorCodeOr<ChecksumTable>
 ChecksumsForFolder(String folder, ArenaAllocator& arena, ArenaAllocator& scratch_arena);
 
-enum class CompareChecksumsResult { Same, Differ, SameButHasExtraFiles };
+enum class CompareChecksumsResult : u8 { Same, Differ, SameButHasExtraFiles };
 
 struct CompareChecksumsOptions {
     bool ignore_path_nesting = false; // Consider foo/file.txt == bar/file.txt if the checksums match.

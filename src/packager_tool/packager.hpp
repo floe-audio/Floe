@@ -1,15 +1,16 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include "utils/cli_arg_parse.hpp"
 
-enum class PackagerCliArgId : u32 {
+enum class PackagerCliArgId : u8 {
     LibraryFolder,
     PresetFolder,
     InputPackages,
     OutputPackageFolder,
     PackageName,
     OutputPackageInfoJsonFile,
+    Encrypt,
     Count,
 };
 
@@ -62,6 +63,15 @@ auto constexpr k_packager_command_line_args_defs = MakeCommandLineArgDefs<Packag
         .value_type = "path",
         .required = false,
         .num_values = 1,
+    },
+    {
+        .id = (u32)PackagerCliArgId::Encrypt,
+        .key = "encrypt",
+        .description = "Encrypt the output package. A random content key is generated and printed to stdout. "
+                       "Output will be .floe-pkg-enc instead of .floe-pkg.",
+        .value_type = {},
+        .required = false,
+        .num_values = 0,
     },
 });
 

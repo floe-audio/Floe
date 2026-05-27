@@ -7,33 +7,30 @@
 #include "common_infrastructure/sample_library/sample_library.hpp"
 
 #include "gui/core/gui_fwd.hpp"
+#include "gui/core/gui_subsystem.hpp"
 
 enum class MidPanelTab : u8 {
-    All,
-    Layer1,
-    Layer2,
-    Layer3,
+    Perform,
+    Layers,
     Effects,
     Count,
 };
 
 struct MidPanelState {
-    MidPanelTab tab = MidPanelTab::All;
+    MidPanelTab tab = MidPanelTab::Perform;
+    f32 last_random_variation_amount = 0;
+    f32 last_strip_fire_x = 0;
 };
 
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context);
 
-// Internal: called from MidPanel, accepting a parent box instead of creating their own viewport
-struct GuiBuilder;
-struct Box;
-void MidPanelCombinedContent(GuiBuilder& builder,
-                             GuiState& g,
-                             GuiFrameContext const& frame_context,
-                             Box parent);
+extern GuiSubsystem<MidPanelState> const g_mid_panel_subsystem;
 
-namespace imgui {
-struct Context;
-}
+void MidPanelLayersContent(GuiBuilder& builder,
+                           GuiState& g,
+                           GuiFrameContext const& frame_context,
+                           Box parent,
+                           Box tab_extra_buttons_box);
 
 struct MidBlurredBackgroundOptions {
     f32 opacity = 1;
@@ -43,7 +40,10 @@ struct MidBlurredBackgroundOptions {
 void DrawMidBlurredBackground(GuiState& g,
                               Rect r,
                               Rect clipped_to,
-                              sample_lib::LibraryIdRef library_id,
+                              sample_lib::LibraryId library_id,
                               MidBlurredBackgroundOptions const& options);
-void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryIdRef library_id);
-void DrawMidBlurredPanelSurface(GuiState& g, Rect window_r, Optional<sample_lib::LibraryIdRef> lib_id);
+void DrawMidPanelBackgroundImage(GuiState& g, sample_lib::LibraryId library_id);
+void DrawMidBlurredPanelSurface(GuiState& g,
+                                GuiFrameContext const& frame_context,
+                                Rect window_r,
+                                Optional<sample_lib::LibraryId> lib_id);

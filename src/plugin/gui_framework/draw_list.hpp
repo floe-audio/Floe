@@ -7,13 +7,15 @@
 
 #include "utils/basic_dynamic_array.hpp"
 
+#include "fonts.hpp"
 #include "renderer.hpp"
 
 // We ubiquitously use ABGR format colours stored as u32.
 
 enum class TextOverflowType : u8 { AllowOverflow, ShowDotsOnRight, ShowDotsOnLeft, Count };
+enum class TextAlignment : u8 { Left, Centre, Right };
 
-enum class TextJustification {
+enum class TextJustification : u8 {
     Left = 1,
     Right = 2,
     VerticallyCentred = 4,
@@ -59,6 +61,9 @@ struct AddTextOptions {
     // The final font size is the font_size * font_scaling.
     f32 font_scaling = 1;
     f32 font_size = 0; // 0 means use default font size.
+
+    MultilineTextAlignment multiline_alignment = MultilineTextAlignment::Left;
+    f32 multiline_alignment_width = 0; // Width to align within. 0 means use wrap_width.
 };
 
 // Same as AddTextOptions, but with additional Rect-related options.
@@ -147,6 +152,11 @@ struct DrawList {
     void AddCircle(f32x2 centre, f32 radius, u32 col, u32 num_segments = 12, f32 thickness = 1.0f);
 
     void AddCircleFilled(f32x2 centre, f32 radius, u32 col, u32 num_segments = 12);
+
+    // Draws a vignette effect: darkening edges that fade toward the centre. colour is the edge colour
+    // (typically black with some alpha). inner_radius_fraction: 0-1, how far from centre the darkening
+    // starts. subdivisions: grid resolution per axis for smooth radial falloff.
+    void AddVignetteRect(Rect r, u32 colour, f32 inner_radius_fraction = 0.3f, u32 subdivisions = 16);
 
     void AddDropShadow(f32x2 a,
                        f32x2 b,
@@ -398,6 +408,7 @@ struct DrawListAllocator {
     void Clear() {
         lists.Clear();
         arena.FreeAll();
+        lists = {}; // Arena is freed, we must not retain pointers into it.
     }
 
     DrawList* Allocate(Renderer& r, Fonts const& f) { return lists.Prepend(arena, r, f); }

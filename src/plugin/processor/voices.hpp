@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -42,6 +42,7 @@ struct VoiceSoundSource {
         f32 xfade_vol = 1;
         OnePoleLowPassFilter<f32> xfade_vol_smoother = {};
         PlayHead playhead {};
+        Optional<u32> slice_end_frame {};
     };
 
     struct WaveformSource {
@@ -80,7 +81,7 @@ struct Voice {
 
     u16 index = 0;
 
-    unsigned random_seed = (unsigned)RandomSeed();
+    u32x4 random_seed = {};
 
     sv_filter::CachedHelpers filter_coeffs = {};
     sv_filter::Data<f32x2> filters = {};
@@ -95,6 +96,7 @@ struct Voice {
     LFO lfo = {};
 
     OnePoleLowPassFilter<f32x2> gain_smoother;
+    OnePoleLowPassFilter<f32> stereo_width_smoother = {};
 
     VolumeFade volume_fade;
     adsr::Processor vol_env = {};
@@ -129,6 +131,7 @@ struct GrainMarkerForGui {
 
 struct VoiceGrainMarkersForGui {
     Array<GrainMarkerForGui, k_max_grains_per_voice> grains {};
+    u16 intensity {}; // Voice gain packed into u16, same as VoiceWaveformMarkerForGui::intensity.
     u8 num_active {};
     u8 layer_index {};
 };
@@ -200,6 +203,8 @@ struct VoicePool {
     void PrepareToPlay();
     void EndAllVoicesInstantly();
 
+    u64* master_random_seed {}; // Points to AudioProcessor::master_random_seed. Audio thread only.
+
     u64 voice_start_counter = 0;
     u16 voice_id_counter = 0;
     Atomic<u32> num_active_voices = 0;
@@ -211,6 +216,8 @@ struct VoicePool {
     AtomicSwapBuffer<Array<VoiceGrainMarkersForGui, k_num_voices>, true> grain_markers_for_gui {};
     Array<Atomic<s16>, 128> voices_per_midi_note_for_gui {};
     Array<Atomic<f32>, k_num_layers> last_velocity = {};
+
+    Array<Atomic<u64>, k_num_layers> last_activated_audio_data_hash {};
 
     AtomicQueue<SampleLogItem, 32> sample_log_queue {};
 
@@ -248,6 +255,8 @@ struct VoiceStartParams {
 
         f32 initial_timbre_param_value_01 {};
         DynamicArrayBounded<Region, k_max_num_voice_sound_sources> voice_sample_params {};
+        Optional<u32> slice_start_frame {};
+        Optional<u32> slice_end_frame {};
     };
 
     struct WaveformParams {
@@ -259,11 +268,18 @@ struct VoiceStartParams {
                                TypeAndTag<SamplerParams, InstrumentType::Sampler>,
                                TypeAndTag<WaveformParams, InstrumentType::WaveformSynth>>;
 
+    struct LfoStartState {
+        u32 phase = 0;
+        u32 random_state = 0; // 0 sentinel = "uninitialised, derive fresh from master seed"
+        f32 prev_random = 0;
+        f32 next_random = 0;
+    };
+
     f32 initial_pitch;
     MidiChannelNote midi_key_trigger;
     u7 note_num;
     f32 note_vel;
-    unsigned int lfo_start_phase;
+    LfoStartState lfo_start_state;
     u32 num_frames_before_starting;
     Params params;
     bool disable_vol_env;

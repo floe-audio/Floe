@@ -105,11 +105,3 @@ close-released-issues version:
   done < <(echo "$issues")
   
   echo "Completed: $success succeeded, $failed encountered warnings"
-
-
-# IMPROVE: (June 2024) cppcheck v2.14.0 and v2.14.1 thinks there are syntax errors in valid code. It could be a cppcheck bug or it could be an incompatibility in how we are using it. Regardless, we should try again in the future and see if it's fixed. If it works it should run alongside clang-tidy in CI, etc.
-# cppcheck arch_os_pair=native_arch_os_pair:
-#   # IMPROVE: use --check-level=exhaustive?
-#   # IMPROVE: investigate other flags such as --enable=constVariable
-#   cppcheck --project={{justfile_directory()}}/{{cache_dir}}/compile_commands_{{arch_os_pair}}.json --cppcheck-build-dir={{justfile_directory()}}/.zig-cache --enable=unusedFunction --error-exitcode=2
-

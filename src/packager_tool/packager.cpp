@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "packager.hpp"
@@ -11,7 +11,9 @@
 #include "utils/json/json_writer.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
+#include "common_infrastructure/encrypted_package.hpp"
 #include "common_infrastructure/global.hpp"
+#include "common_infrastructure/license.hpp"
 #include "common_infrastructure/package_format.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
@@ -181,7 +183,14 @@ struct PackageInfo {
         Set<String> instrument_tags;
     };
 
-    OrderedHashTable<sample_lib::LibraryId, Library> libraries;
+    static bool LibraryLessThan(sample_lib::LibraryId const& a,
+                                Library const&,
+                                sample_lib::LibraryId const& b,
+                                Library const&) {
+        return sample_lib::LibraryIdLessThan(a, b);
+    }
+
+    OrderedHashTable<sample_lib::LibraryId, Library, NoHash, LibraryLessThan> libraries;
     OrderedHashTable<String, u32> preset_folders; // path -> num presets
     OrderedHashTable<String, u32> preset_tags;
     usize package_size {0}; // total size of the package in bytes
@@ -220,10 +229,12 @@ static void AddLibrary(PackageInfo& info,
             if (!inst_result.inserted) SinglyLinkedListPrepend(inst_result.element.data, instrument);
         }
 
-        for (auto const [tag, _] : inst->tags) {
-            auto tag_result = lib_result.element.data.instrument_tags.FindOrInsertGrowIfNeeded(arena, tag);
-            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag);
-        }
+        inst->tags.ForEachSetBit([&](usize bit) {
+            auto const tag_name = GetTagInfo((TagType)bit).name;
+            auto tag_result =
+                lib_result.element.data.instrument_tags.FindOrInsertGrowIfNeeded(arena, tag_name);
+            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag_name);
+        });
     }
 }
 
@@ -242,13 +253,14 @@ AddPresetIfNeeded(PackageInfo& info, String path_in_zip, ArenaAllocator& arena, 
         ++found.element.data;
     }
 
-    if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile, true); outcome.HasValue()) {
+    if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile); outcome.HasValue()) {
         auto const& state = outcome.Value();
-        for (auto const tag : state.metadata.tags) {
-            auto tag_result = info.preset_tags.FindOrInsertGrowIfNeeded(arena, tag, 0);
-            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag);
+        state.metadata.tags.ForEachSetBit([&](usize bit) {
+            auto const tag_name = GetTagInfo((TagType)bit).name;
+            auto tag_result = info.preset_tags.FindOrInsertGrowIfNeeded(arena, tag_name, 0);
+            if (tag_result.inserted) tag_result.element.key = arena.Clone(tag_name);
             ++tag_result.element.data;
-        }
+        });
     }
 }
 
@@ -325,7 +337,11 @@ static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena
 }
 
 static ErrorCodeOr<int> Main(ArgsCstr args) {
-    GlobalInit({.init_error_reporting = true, .set_main_thread = true});
+    GlobalInit({
+        .init_error_reporting = true,
+        .set_main_thread = true,
+        .panic_response = PanicResponse::Abort,
+    });
     DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
 
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -538,6 +554,10 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         auto const package_name = PackageName(arena, lib_for_package_name, cli_args);
         if (generate_package_info) package_info.name = package_name;
 
+        Array<u8, encrypted_package::k_key_size> package_key {};
+        bool const should_encrypt = cli_args[ToInt(PackagerCliArgId::Encrypt)].was_provided;
+        if (should_encrypt) CryptoRandomBytes(package_key.data, encrypted_package::k_key_size);
+
         if (create_package) {
             String const folder = TRY_OR(
                 AbsolutePath(arena, cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].values[0]),
@@ -555,16 +575,41 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                     return error;
                 });
 
-            auto const package_path = path::Join(arena, Array {folder, package_name});
+            if (should_encrypt) {
+                auto const encrypted = TRY_OR(encrypted_package::Encrypt(zip_data, package_key, arena), {
+                    StdPrintF(StdStream::Err, "Error: failed to encrypt package: {}\n", error);
+                    return error;
+                });
 
-            TRY_OR(WriteFile(package_path, zip_data), {
-                StdPrintF(StdStream::Err,
-                          "Error: failed to write package file to '{}': {}\n",
-                          package_path,
-                          error);
-                return error;
-            });
-            StdPrintF(StdStream::Out, "Successfully created package: {}\n", package_path);
+                auto enc_name = fmt::Format(arena,
+                                            "{}{}",
+                                            path::FilenameWithoutExtension(package_name),
+                                            encrypted_package::k_file_extension);
+                auto const enc_path = path::Join(arena, Array {folder, String(enc_name)});
+                TRY_OR(WriteFile(enc_path, encrypted), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to write encrypted package to '{}': {}\n",
+                              enc_path,
+                              error);
+                    return error;
+                });
+                StdPrintF(StdStream::Out, "Successfully created encrypted package: {}\n", enc_path);
+                StdPrintF(StdStream::Out, "Package key: ");
+                for (auto const byte : package_key)
+                    StdPrintF(StdStream::Out, "{02x}", byte);
+                StdPrintF(StdStream::Out, "\n");
+                StdPrintF(StdStream::Out, "Store this key securely - it is needed to sign license keys.\n");
+            } else {
+                auto const package_path = path::Join(arena, Array {folder, package_name});
+                TRY_OR(WriteFile(package_path, zip_data), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to write package file to '{}': {}\n",
+                              package_path,
+                              error);
+                    return error;
+                });
+                StdPrintF(StdStream::Out, "Successfully created package: {}\n", package_path);
+            }
         }
 
         if (generate_package_info) package_info.package_size = zip_data.size;

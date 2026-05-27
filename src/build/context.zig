@@ -14,12 +14,12 @@ pub const BgfxApi = enum { vulkan, direct3d11, metal };
 
 pub const Options = struct {
     build_mode: BuildMode,
-    granular: bool,
-    mid_panel_tabs: bool,
     windows_installer_require_admin: bool,
     enable_tracy: bool,
     sanitize_thread: bool,
     fetch_floe_logos: bool,
+    no_runtime_safety_checks: bool,
+    include_git_hash: bool,
     targets: ?[]const u8,
 };
 
@@ -79,10 +79,12 @@ pub const TopLevelSteps = struct {
     pluginval: *std.Build.Step,
     valgrind: *std.Build.Step,
     test_windows_install: *std.Build.Step,
+    benchmark: *std.Build.Step,
     ci: *std.Build.Step,
     ci_basic: *std.Build.Step,
 
     // Scripts.
+    benchmark_ci: *std.Build.Step,
     clang_tidy: *std.Build.Step,
     format_step: *std.Build.Step,
     create_gh_release: *std.Build.Step,
@@ -93,6 +95,8 @@ pub const TopLevelSteps = struct {
     website_dev: *std.Build.Step,
     website_promote: *std.Build.Step,
     remove_unused_gui_defs: *std.Build.Step,
+    update_copyright_years: *std.Build.Step,
+    gen_doc_screenshots: *std.Build.Step,
 };
 
 pub const TargetConfig = struct {
@@ -113,6 +117,7 @@ pub const TargetConfig = struct {
             hasher.update(std.mem.asBytes(&options.enable_tracy));
             hasher.update(std.mem.asBytes(&options.sanitize_thread));
             hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
+            hasher.update(std.mem.asBytes(&options.no_runtime_safety_checks));
             break :blk hasher.final();
         };
 
@@ -147,8 +152,7 @@ pub const TargetConfig = struct {
                 .FLOE_DOWNLOAD_URL = constants.floe_download_url,
                 .FLOE_CHANGELOG_URL = constants.floe_changelog_url,
                 .FLOE_SOURCE_CODE_URL = constants.floe_source_code_url,
-                .EXPERIMENTAL_GRANULAR = options.granular,
-                .EXPERIMENTAL_MID_PANEL_TABS = options.mid_panel_tabs,
+
                 .FLOE_PROJECT_ROOT_PATH = ctx.b.build_root.path.?,
                 .FLOE_PROJECT_CACHE_PATH = ctx.b.pathJoin(&.{
                     ctx.b.build_root.path.?,

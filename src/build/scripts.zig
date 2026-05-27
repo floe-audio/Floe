@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Rather than bash scripts, we use Zig for our scripting needs because:
@@ -48,6 +48,10 @@ pub fn main() !u8 {
         return runWebsitePromoteBetaToStable(&context);
     } else if (std.mem.eql(u8, command, "remove-unused-gui-defs")) {
         return runRemoveUnusedGuiDefs(&context);
+    } else if (std.mem.eql(u8, command, "update-copyright-years")) {
+        return runUpdateCopyrightYears(&context);
+    } else if (std.mem.eql(u8, command, "benchmark-ci")) {
+        return runBenchmarkCi(&context);
     } else {
         std.log.err("Unknown command: {s}\n", .{command});
         return 1;
@@ -274,6 +278,94 @@ fn removeUnusedDefEntries(
     }
 
     return removed_count;
+}
+
+fn runUpdateCopyrightYears(context: *Context) !u8 {
+    const allocator = context.allocator;
+    const stdout = std.io.getStdOut().writer();
+
+    const source_files = try std_extras.findSourceFiles(allocator, .{
+        .dir_path = "src",
+        .extensions = &.{ ".cpp", ".hpp", ".h", ".mm", ".zig" },
+        .exclude_folders = &.{},
+    });
+
+    var updated_count: usize = 0;
+
+    for (source_files) |file| {
+        const full_path = try std.fs.path.join(allocator, &.{ "src", file });
+
+        // Get git years for this file, excluding commits that only updated copyright years.
+        const git_result = std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = &.{
+                "git",                                      "log",
+                "--format=%ad",                             "--date=format:%Y",
+                "--follow",                                 "--invert-grep",
+                "--grep=run script:update-copyright-years", "--fixed-strings",
+                "--",                                       full_path,
+            },
+        }) catch continue;
+
+        if (git_result.term != .Exited or git_result.term.Exited != 0) continue;
+        if (git_result.stdout.len == 0) continue;
+
+        var git_min_year: u16 = std.math.maxInt(u16);
+        var git_max_year: u16 = 0;
+        var year_lines = std.mem.splitScalar(u8, std.mem.trim(u8, git_result.stdout, " \n\r\t"), '\n');
+        while (year_lines.next()) |line| {
+            const year = std.fmt.parseInt(u16, std.mem.trim(u8, line, " \r\t"), 10) catch continue;
+            git_min_year = @min(git_min_year, year);
+            git_max_year = @max(git_max_year, year);
+        }
+        if (git_max_year == 0) continue;
+
+        // Read file and find copyright line.
+        const contents = std.fs.cwd().readFileAlloc(allocator, full_path, 1024 * 1024 * 4) catch continue;
+
+        const marker = "// Copyright ";
+        const suffix = " Sam Windell";
+        const marker_pos = std.mem.indexOf(u8, contents, marker) orelse continue;
+        const after_marker = contents[marker_pos + marker.len ..];
+        const suffix_pos = std.mem.indexOf(u8, after_marker, suffix) orelse continue;
+        const year_part = after_marker[0..suffix_pos];
+
+        // Parse existing years.
+        var existing_first: u16 = 0;
+        var existing_last: u16 = 0;
+        if (std.mem.indexOf(u8, year_part, "-")) |dash| {
+            existing_first = std.fmt.parseInt(u16, year_part[0..dash], 10) catch continue;
+            existing_last = std.fmt.parseInt(u16, year_part[dash + 1 ..], 10) catch continue;
+        } else {
+            existing_first = std.fmt.parseInt(u16, year_part, 10) catch continue;
+            existing_last = existing_first;
+        }
+
+        // Only ever increase dates.
+        const new_first = @min(existing_first, git_min_year);
+        const new_last = @max(existing_last, git_max_year);
+
+        if (new_first == existing_first and new_last == existing_last) continue;
+
+        // Build new year string and splice into file contents.
+        const new_year_part = if (new_first == new_last)
+            try std.fmt.allocPrint(allocator, "{d}", .{new_first})
+        else
+            try std.fmt.allocPrint(allocator, "{d}-{d}", .{ new_first, new_last });
+
+        const new_contents = try std.mem.concat(allocator, u8, &.{
+            contents[0 .. marker_pos + marker.len],
+            new_year_part,
+            contents[marker_pos + marker.len + suffix_pos ..],
+        });
+
+        try std.fs.cwd().writeFile(.{ .sub_path = full_path, .data = new_contents });
+        try stdout.print("{s}: {s} -> {s}\n", .{ full_path, year_part, new_year_part });
+        updated_count += 1;
+    }
+
+    try stdout.print("\n{d} files updated.\n", .{updated_count});
+    return 0;
 }
 
 fn runCreateGithubRelease(context: *Context) !u8 {
@@ -752,9 +844,20 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
             },
             struct {
                 fn wait(process: *std.process.Child, done_inner: *std.atomic.Value(bool), build_args: []const []const u8) void {
-                    _ = process.wait() catch |err| {
-                        ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
-                    };
+                    if (builtin.os.tag == .windows) {
+                        // On Windows, process.wait() closes the process handle and sets
+                        // process.id to undefined, racing with killProcess in the timeout
+                        // path (TerminateProcess on the stale handle then fails with
+                        // INVALID_HANDLE). Just observe exit; the main thread does the
+                        // single wait() afterwards.
+                        std.os.windows.WaitForSingleObjectEx(process.id, std.os.windows.INFINITE, false) catch |err| {
+                            ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
+                        };
+                    } else {
+                        _ = process.wait() catch |err| {
+                            ciLog("Error", build_args, "failed to wait for process: {any}", .{err});
+                        };
+                    }
 
                     done_inner.store(true, .release);
                 }
@@ -1110,4 +1213,188 @@ fn tempFilePath(allocator: std.mem.Allocator, env_map: *std.process.EnvMap) ![]c
     const filename = codec.Encoder.encode(b64_buf, &bytes);
 
     return try std.fs.path.join(allocator, &.{ dir, filename });
+}
+
+/// Run benchmarks with hyperfine and track results with Bencher.
+///
+/// Requires the following environment variables:
+///   BENCHER_API_TOKEN - Bencher API token for authentication.
+///
+/// Optional environment variables:
+///   BENCHER_PROJECT  - Bencher project slug (default: "floe-benchmarks").
+///   BENCHER_BRANCH   - Branch name to track (default: "develop").
+///   BENCHER_TESTBED  - Testbed name (default: "ubuntu-latest").
+///   GITHUB_TOKEN     - GitHub token for posting check annotations.
+fn runBenchmarkCi(context: *Context) !u8 {
+    const allocator = context.allocator;
+    const stderr_writer = std.io.getStdErr().writer();
+
+    const project = context.env_map.get("BENCHER_PROJECT") orelse "floe-benchmarks";
+    const branch = context.env_map.get("BENCHER_BRANCH") orelse "develop";
+    const testbed = context.env_map.get("BENCHER_TESTBED") orelse "ubuntu-latest";
+    const bencher_token = context.env_map.get("BENCHER_API_TOKEN") orelse {
+        try stderr_writer.writeAll("BENCHER_API_TOKEN environment variable is not set\n");
+        return 1;
+    };
+    const github_token = context.env_map.get("GITHUB_TOKEN");
+
+    // Step 1: Build benchmarks.
+    {
+        try stderr_writer.writeAll("[benchmark-ci] Building benchmarks...\n");
+
+        const zig_exe = context.env_map.get("ZIG_EXE") orelse {
+            try stderr_writer.writeAll("ZIG_EXE environment variable is not set\n");
+            return 1;
+        };
+
+        const result = try std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = &.{ zig_exe, "build", "install:all", "-Dtargets=native", "-Dbuild-mode=performance_profiling" },
+        });
+
+        if (result.term != .Exited or result.term.Exited != 0) {
+            try stderr_writer.writeAll("[benchmark-ci] Build failed:\n");
+            if (result.stdout.len > 0) try stderr_writer.writeAll(result.stdout);
+            if (result.stderr.len > 0) try stderr_writer.writeAll(result.stderr);
+            return 1;
+        }
+
+        try stderr_writer.writeAll("[benchmark-ci] Build succeeded.\n");
+    }
+
+    const benchmarks_exe = "zig-out/bin/benchmarks";
+
+    // Step 2: List available benchmarks.
+    var benchmark_names = std.ArrayList([]const u8).init(allocator);
+    {
+        const result = try std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = &.{ benchmarks_exe, "--list" },
+        });
+
+        if (result.term != .Exited or result.term.Exited != 0) {
+            try stderr_writer.writeAll("[benchmark-ci] Failed to list benchmarks:\n");
+            if (result.stdout.len > 0) try stderr_writer.writeAll(result.stdout);
+            if (result.stderr.len > 0) try stderr_writer.writeAll(result.stderr);
+            return 1;
+        }
+
+        var lines = std.mem.splitScalar(u8, std.mem.trim(u8, result.stdout, " \n\r\t"), '\n');
+        while (lines.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \r\t");
+            if (trimmed.len > 0) {
+                try benchmark_names.append(trimmed);
+            }
+        }
+    }
+
+    if (benchmark_names.items.len == 0) {
+        try stderr_writer.writeAll("[benchmark-ci] No benchmarks found.\n");
+        return 1;
+    }
+
+    try stderr_writer.print("[benchmark-ci] Found {d} benchmarks:\n", .{benchmark_names.items.len});
+    for (benchmark_names.items) |name| {
+        try stderr_writer.print("  {s}\n", .{name});
+    }
+
+    // Step 3: Build the hyperfine command.
+    // hyperfine --export-json results.json --warmup 1 --command-name 'Name1' './benchmarks --filter=Name1' ...
+    const results_file = "benchmark_results.json";
+
+    var hyperfine_args = std.ArrayList([]const u8).init(allocator);
+    try hyperfine_args.append("hyperfine");
+    try hyperfine_args.append("--export-json");
+    try hyperfine_args.append(results_file);
+    try hyperfine_args.append("--warmup");
+    try hyperfine_args.append("1");
+
+    for (benchmark_names.items) |name| {
+        try hyperfine_args.append("--command-name");
+        try hyperfine_args.append(name);
+        try hyperfine_args.append(try std.fmt.allocPrint(allocator, "{s} --filter={s}", .{ benchmarks_exe, name }));
+    }
+
+    // Step 4: Build the bencher run command.
+    // bencher run --project X --token X --branch X --testbed X --threshold-measure latency
+    //   --threshold-test t_test --threshold-max-sample-size 64 --threshold-upper-boundary 0.99
+    //   --thresholds-reset --err --adapter json --file results.json "hyperfine ..."
+    var bencher_args = std.ArrayList([]const u8).init(allocator);
+    try bencher_args.append("bencher");
+    try bencher_args.append("run");
+    try bencher_args.append("--project");
+    try bencher_args.append(project);
+    try bencher_args.append("--token");
+    try bencher_args.append(bencher_token);
+    try bencher_args.append("--branch");
+    try bencher_args.append(branch);
+    try bencher_args.append("--testbed");
+    try bencher_args.append(testbed);
+    try bencher_args.append("--threshold-measure");
+    try bencher_args.append("latency");
+    try bencher_args.append("--threshold-test");
+    try bencher_args.append("t_test");
+    try bencher_args.append("--threshold-max-sample-size");
+    try bencher_args.append("64");
+    try bencher_args.append("--threshold-upper-boundary");
+    try bencher_args.append("0.99");
+    try bencher_args.append("--thresholds-reset");
+    try bencher_args.append("--err");
+    try bencher_args.append("--adapter");
+    try bencher_args.append("shell_hyperfine");
+    try bencher_args.append("--file");
+    try bencher_args.append(results_file);
+
+    if (github_token) |token| {
+        try bencher_args.append("--github-actions");
+        try bencher_args.append(token);
+    }
+
+    // The final positional argument is the command for bencher to execute.
+    // We need to join the hyperfine args into a single shell command string.
+    {
+        var cmd_buf = std.ArrayList(u8).init(allocator);
+        for (hyperfine_args.items, 0..) |arg, i| {
+            if (i > 0) try cmd_buf.append(' ');
+            // Shell-quote arguments that contain special characters.
+            if (std.mem.indexOfAny(u8, arg, " /'\"\t") != null) {
+                try cmd_buf.append('\'');
+                try cmd_buf.appendSlice(arg);
+                try cmd_buf.append('\'');
+            } else {
+                try cmd_buf.appendSlice(arg);
+            }
+        }
+        try bencher_args.append(cmd_buf.items);
+    }
+
+    try stderr_writer.writeAll("[benchmark-ci] Running benchmarks with Bencher...\n");
+
+    var child = std.process.Child.init(bencher_args.items, allocator);
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+
+    const result = child.spawnAndWait() catch |err| {
+        try stderr_writer.print("[benchmark-ci] Failed to run bencher: {}\n", .{err});
+        if (err == error.FileNotFound)
+            try stderr_writer.writeAll("[benchmark-ci] Is the 'bencher' CLI installed and on PATH?\n");
+        return 1;
+    };
+
+    switch (result) {
+        .Exited => |code| {
+            if (code != 0) {
+                try stderr_writer.print("[benchmark-ci] bencher run failed with exit code {d}\n", .{code});
+                return code;
+            }
+        },
+        else => {
+            try stderr_writer.print("[benchmark-ci] bencher run terminated unexpectedly: {any}\n", .{result});
+            return 1;
+        },
+    }
+
+    try stderr_writer.writeAll("[benchmark-ci] Benchmarks completed successfully.\n");
+    return 0;
 }

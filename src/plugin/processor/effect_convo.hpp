@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -31,12 +31,14 @@ class ConvolutionReverb final : public Effect {
 
     void ProcessChangesInternal(ProcessBlockChanges const& changes,
                                 AudioProcessingContext const& context) override {
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbHighpass))
+        if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::ConvolutionReverbHighpass))
             m_filter_coeffs.Set(rbj_filter::Type::HighPass, context.sample_rate, *p, 1, 0);
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbWet))
-            m_wet_dry.SetWet(*p);
-        if (auto p = changes.changed_params.ProjectedValue(ParamIndex::ConvolutionReverbDry))
-            m_wet_dry.SetDry(*p);
+        if (AnyChanged(changes.changed_params, k_convolution_reverb_wet_dry_mapping)) {
+            auto const e = EffectiveWetDryFromMixOutputOrLegacy(changes.changed_params.params,
+                                                                k_convolution_reverb_wet_dry_mapping);
+            m_wet_dry.SetWet(e.wet_amp);
+            m_wet_dry.SetDry(e.dry_amp);
+        }
     }
 
     EffectProcessResult
@@ -90,7 +92,7 @@ class ConvolutionReverb final : public Effect {
                 UpdateRemainingTailLength(Max(wet, frame));
             }
 
-            wet = MixOnOffSmoothing(context, wet, frame);
+            wet = ApplyBypassCrossfade(context, wet, frame);
             frame = wet;
         }
 

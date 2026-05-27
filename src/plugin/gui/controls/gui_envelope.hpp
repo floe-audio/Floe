@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -9,7 +9,7 @@
 #include "gui/core/gui_fwd.hpp"
 #include "processor/layer_processor.hpp"
 
-enum class GuiEnvelopeType { Volume, Filter, Count };
+enum class GuiEnvelopeType : u8 { Volume, Filter, Count };
 
 constexpr usize k_num_adsr_params = 4;
 

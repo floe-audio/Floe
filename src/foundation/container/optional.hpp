@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -6,7 +6,7 @@
 #include "foundation/universal_defs.hpp"
 
 struct NulloptType {
-    enum class Construct { Token };
+    enum class Construct : u8 { Token };
     explicit constexpr NulloptType(Construct) noexcept {}
     constexpr operator bool() const { return false; }
 };
@@ -67,15 +67,9 @@ class [[nodiscard]] Optional<Type> {
         return false;
     }
 
-    constexpr Type* NullableValue() {
-        if (has_value) return &value;
-        return nullptr;
-    }
+    ALWAYS_INLINE constexpr Type* NullableValue() { return has_value ? &value : nullptr; }
+    ALWAYS_INLINE constexpr Type const* NullableValue() const { return has_value ? &value : nullptr; }
 
-    constexpr Type const* NullableValue() const {
-        if (has_value) return &value;
-        return nullptr;
-    }
     constexpr void Clear() { has_value = false; }
 
     constexpr bool HasValue() const { return has_value; }
@@ -87,7 +81,7 @@ class [[nodiscard]] Optional<Type> {
         ASSERT(has_value);
         return value;
     }
-    constexpr explicit operator bool() const { return has_value; }
+    ALWAYS_INLINE constexpr explicit operator bool() const { return has_value; }
     constexpr Type* operator->() { return &Value(); }
     constexpr Type& operator*() { return Value(); }
     constexpr Type const* operator->() const { return &Value(); }

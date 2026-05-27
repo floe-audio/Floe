@@ -4,7 +4,7 @@
 #include "tests/framework.hpp"
 
 TEST_CASE(TestTaggedUnion) {
-    enum class E {
+    enum class E : u8 {
         A,
         B,
         C,

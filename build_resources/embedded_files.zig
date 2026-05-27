@@ -31,6 +31,9 @@ export fn EmbeddedRoboto() c.BinaryData {
 export fn EmbeddedRobotoItalic() c.BinaryData {
     return embeddedFile("fonts/Roboto-Italic.ttf");
 }
+export fn EmbeddedOutfitSemiBold() c.BinaryData {
+    return embeddedFile("fonts/Outfit-SemiBold.ttf");
+}
 
 export fn EmbeddedDefaultBackground() c.BinaryData {
     return embeddedFile("images/default-background.jpg");

@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include "foundation/foundation.hpp"
@@ -13,7 +13,7 @@ struct LibraryDevPanelContext {
 };
 
 struct LibraryDevPanelState {
-    enum class Tab : u32 {
+    enum class Tab : u8 {
         TagBuilder,
         Utilities,
         Count,

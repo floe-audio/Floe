@@ -1,9 +1,11 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 #include "foundation/foundation.hpp"
+
+#include "gui/core/gui_subsystem.hpp"
 
 struct GuiState;
 
@@ -18,3 +20,5 @@ struct BottomPanelState {
 };
 
 void BotPanel(GuiState& g, Rect r);
+
+extern GuiSubsystem<BottomPanelState> const g_bot_panel_subsystem;

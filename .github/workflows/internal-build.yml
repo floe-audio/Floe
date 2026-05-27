@@ -16,4 +16,6 @@ permissions:
 jobs:
   build:
     uses: ./.github/workflows/production-build.yml
+    with:
+      include-git-hash: true
     secrets: inherit

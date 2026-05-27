@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -24,9 +24,8 @@ PUBLIC inline void FillMemory(void* ptr, u8 value, usize num_bytes) {
     FillMemory({(u8*)ptr, num_bytes}, value);
 }
 
-PUBLIC inline void CopyMemory(void* destination, void const* source, usize num_bytes) {
-    for (auto const i : Range(num_bytes))
-        ((u8*)destination)[i] = ((u8 const*)source)[i];
+PUBLIC ALWAYS_INLINE void CopyMemory(void* destination, void const* source, usize num_bytes) {
+    __builtin_memcpy(destination, source, num_bytes);
 }
 
 PUBLIC inline void CopyMemory(Span<u8> destination, Span<u8 const> source) {
@@ -110,7 +109,7 @@ PUBLIC constexpr void WriteAndIncrement(UnsignedInt auto& pos, DestType* dest, T
                   }) {
         __builtin_memcpy(&dest[pos], src.data, src.size * sizeof(DestType));
         pos += src.size;
-    } else if constexpr (Fundamental<Type> && sizeof(Type) == sizeof(DestType)) {
+    } else if constexpr ((Fundamental<Type> || Trivial<Type>) && sizeof(Type) == sizeof(DestType)) {
         dest[pos] = (DestType)src;
         pos += 1;
     } else {

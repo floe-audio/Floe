@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Contains a section of code from the LLVM project that is licenced differently, see below for full details.
@@ -168,7 +168,7 @@ struct TypeDescriptor {
     u16 info;
     char name[1];
 
-    enum Kind { TkInteger = 0x0000, TkFloat = 0x0001, TkUnknown = 0xffff };
+    enum Kind : u16 { TkInteger = 0x0000, TkFloat = 0x0001, TkUnknown = 0xffff };
 };
 
 struct Value {

@@ -11,10 +11,11 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 -->
 
 import data from "@site/static/generated-data.json";
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
-Floe has a selection of {data["effects-count"]} effects that can be applied to mix of the 3 [layers](./layers). The effects are shown in a list on the right-hand side of the main panel. Audio flows through them from top to bottom.
+Floe has a selection of {data["effects-count"]} reorderable effects that are applied to the mix of the [layers](./layers). Audio flows through the rack from top to bottom.
 
-![Effects](/images/effects.png)
+<GeneratedScreenshot name="effects" alt="Effects panel" />
 
 ## Reordering
 
@@ -25,7 +26,31 @@ Floe has a selection of {data["effects-count"]} effects that can be applied to m
 
 You can change the ordering of the effects by dragging and dropping the effect names — either the name in the rack or the name next to the on/off switch.
 
-## Available effects
+## Enabling and bypassing
+
+Each effect has two controls for its active state:
+
+- **Switchboard toggle** (left sidebar): Toggles the effect on or off. When toggled off, the effect is both deactivated and hidden from the rack.
+- **Bypass button** (power icon in the effect heading): Deactivates the effect's audio processing but keeps it visible in the rack. This is useful for quickly A/B comparing with and without an effect, or for keeping your effect chain layout while temporarily disabling an effect.
+
+A bypassed effect appears greyed out in the rack. Click the bypass button again to reactivate it. The close button (✕) on an effect removes it from the rack entirely, same as toggling it off in the switchboard.
+
+## Mix
+
+Every effect has a _Mix_ knob in its heading area. Mix blends the original incoming audio (the _dry_ signal) with the effect's output (the _wet_ signal):
+
+- At 0%, you hear only the dry signal — the effect is effectively inaudible.
+- At 100%, you hear only the wet signal — the original is fully replaced by the effect's output.
+- In between, the two are crossfaded.
+
+This lets you dial in the strength of an effect without changing any of its other settings — useful for subtle reverb tails, parallel compression, gentle distortion, and so on.
+
+## Convolution Reverb
+The convolution unit adds a reverb-like effect to the sound by utilising an impulse response (IR) selected using a dedicated [browser](./browsers). Floe offers some realistic reverb room IRs, but also IRs that produce unusual sound effects.
+
+The set of available IRs depend on what sample libraries you have installed and their features. Floe always has a built-in set of impulse responses available. But additionally, some sample libraries expand this collection, such as the community [Antique IRs](/packages/antique-irs) library.
+
+## All available effects
 
 <table>
   <thead>
@@ -43,11 +68,4 @@ You can change the ordering of the effects by dragging and dropping the effect n
     ))}
   </tbody>
 </table>
-
-## Notable effects
-### Convolution Reverb
-Floe's convolution reverb effect has numerous impulse responses (IRs) that explore both realism and sound-design. The IRs are selected using one of Floe's powerful _[browsers](../key-concepts/browsers)_, where IRs can be sourced from installed sample libraries that choose to provide them.
-
-### Delay and reverb
-Floe's reverb and delay are very high-quality, originating from Vital's pro-standard effects rack for excellent space design.
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <clap/audio-buffer.h>
@@ -27,6 +27,7 @@
 #include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/global.hpp"
 
+#include "plugin/gui_framework/app_window_sizes.hpp"
 #include "plugin/plugin/plugin.hpp"
 
 // A very simple 'standalone' host for development purposes.
@@ -141,9 +142,14 @@ struct PluginInstance {
     ClapEntrySource entry_source; // owns the library handle for this load cycle
 };
 
+// Some backends (notably JACK) can change their buffer size at runtime or deliver sizes different
+// from what was reported at init time, despite miniaudio's noFixedSizedCallback=false. We use a
+// generous max buffer size to handle this.
+constexpr usize k_max_audio_buffer_frames = 8192;
+
 // Controls audio thread access to the plugin instance. The main thread transitions through these
 // states to safely hand off and reclaim the plugin instance without races.
-enum class PluginInstanceState : u32 {
+enum class PluginInstanceState : u8 {
     // No plugin loaded. Audio thread outputs silence.
     Inactive,
     // Plugin is loaded and active. Audio thread calls process().
@@ -163,7 +169,7 @@ struct Standalone {
 
     // Audio/MIDI devices persist across reloads
     Array<Span<f32>, 2> audio_buffers {};
-    enum class AudioStreamState { Closed, Open, CloseRequested };
+    enum class AudioStreamState : u8 { Closed, Open, CloseRequested };
     Atomic<AudioStreamState> audio_stream_state {AudioStreamState::Closed};
     PortMidiStream* midi_stream {};
     Optional<ma_device> audio_device {};
@@ -172,6 +178,8 @@ struct Standalone {
     PuglView* gui_view {};
     bool view_realized {};
 
+    bool force_midi_channel_zero = false;
+    Optional<UiSize> fixed_window_size {};
     bool quit = false;
 
     // Plugin instance access is controlled by plugin_instance_state. The pointer is only valid
@@ -263,7 +271,9 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
                     .port_index = 0,
                     .data =
                         {
-                            (u8)Pm_MessageStatus(events.events[i].message),
+                            (u8)(standalone->force_midi_channel_zero
+                                     ? (Pm_MessageStatus(events.events[i].message) & 0b11110000)
+                                     : Pm_MessageStatus(events.events[i].message)),
                             (u8)Pm_MessageData1(events.events[i].message),
                             (u8)Pm_MessageData2(events.events[i].message),
                         },
@@ -367,15 +377,18 @@ static bool OpenAudio(Standalone& standalone) {
     config.pUserData = &standalone;
     config.periodSizeInFrames = 1024; // only a hint
     config.performanceProfile = ma_performance_profile_low_latency;
+    config.noFixedSizedCallback =
+        false; // ensure the callback always receives exactly internalPeriodSizeInFrames
     config.noClip = true;
     config.noPreSilencedOutputBuffer = true;
 
     if (ma_device_init(nullptr, &config, &*standalone.audio_device) != MA_SUCCESS) return false;
 
-    constexpr usize k_max_frames = 2096;
-    auto alloc = PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(k_max_frames * 2);
-    standalone.audio_buffers[0] = alloc.SubSpan(0, k_max_frames);
-    standalone.audio_buffers[1] = alloc.SubSpan(k_max_frames, k_max_frames);
+    auto const frames =
+        Max((usize)standalone.audio_device->playback.internalPeriodSizeInFrames, k_max_audio_buffer_frames);
+    auto alloc = PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(frames * 2);
+    standalone.audio_buffers[0] = alloc.SubSpan(0, frames);
+    standalone.audio_buffers[1] = alloc.SubSpan(frames, frames);
 
     ma_device_start(&*standalone.audio_device);
 
@@ -485,7 +498,7 @@ ErrorCodeCategory const pugl_error_category {
 };
 inline ErrorCodeCategory const& ErrorCategoryForEnum(PuglStatus) { return pugl_error_category; }
 
-enum class StandaloneError {
+enum class StandaloneError : u8 {
     DeviceError,
     PluginInterfaceError,
 };
@@ -551,8 +564,7 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
         if (!success && entry_source.library_handle) UnloadLibrary(*entry_source.library_handle);
     };
 
-    entry_source.entry->init(entry_source.library_handle.HasValue() ? k_clap_init_log_to_stderr_sentinel
-                                                                    : nullptr);
+    entry_source.entry->init(nullptr);
     DEFER {
         if (!success) entry_source.entry->deinit();
     };
@@ -593,10 +605,8 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
 
     ASSERT(standalone.audio_device);
     auto const period_size = standalone.audio_device->playback.internalPeriodSizeInFrames;
-    inst->plugin->activate(inst->plugin,
-                           standalone.audio_device->sampleRate,
-                           period_size / 2,
-                           period_size * 2);
+    auto const max_block_size = Max(period_size, (ma_uint32)k_max_audio_buffer_frames);
+    inst->plugin->activate(inst->plugin, standalone.audio_device->sampleRate, period_size, max_block_size);
 
     inst->plugin->start_processing(inst->plugin);
 
@@ -610,7 +620,12 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
     u32 clap_height;
     TRY_CLAP(inst->gui->get_size(inst->plugin, &clap_width, &clap_height));
 
-    {
+    if (standalone.fixed_window_size) {
+        // Override the plugin's preferred size with our fixed value. PUGL_CONFIGURE will commit it
+        // via set_size once the parent view is mapped at the matching physical size below.
+        clap_width = standalone.fixed_window_size->width;
+        clap_height = standalone.fixed_window_size->height;
+    } else {
         auto const original_width = clap_width;
         auto const original_height = clap_height;
         TRY_CLAP(inst->gui->adjust_size(inst->plugin, &clap_width, &clap_height));
@@ -628,7 +643,17 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
                                  (PuglSpan)size.height));
         puglSetSizeHint(standalone.gui_view, PUGL_CURRENT_SIZE, (PuglSpan)size.width, (PuglSpan)size.height);
 
-        {
+        if (standalone.fixed_window_size) {
+            TRY_PUGL(puglSetViewHint(standalone.gui_view, PUGL_RESIZABLE, false));
+            TRY_PUGL(puglSetSizeHint(standalone.gui_view,
+                                     PUGL_MIN_SIZE,
+                                     (PuglSpan)size.width,
+                                     (PuglSpan)size.height));
+            TRY_PUGL(puglSetSizeHint(standalone.gui_view,
+                                     PUGL_MAX_SIZE,
+                                     (PuglSpan)size.width,
+                                     (PuglSpan)size.height));
+        } else {
             clap_gui_resize_hints resize_hints;
             TRY_CLAP(inst->gui->get_resize_hints(inst->plugin, &resize_hints));
             if (resize_hints.can_resize_vertically && resize_hints.can_resize_horizontally) {
@@ -724,6 +749,20 @@ static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, A
         }
     }
 
+    DynamicArray<u8> saved_gui_state {PageAllocator::Instance()};
+    {
+        auto const floe_ext =
+            (FloeClapExtension const*)inst->plugin->get_extension(inst->plugin, k_floe_clap_extension_id);
+        if (floe_ext && floe_ext->save_gui_state) {
+            if (floe_ext->save_gui_state(inst->plugin, dyn::WriterFor(saved_gui_state)))
+                LogInfo(ModuleName::Standalone,
+                        "Hot-reload: saved gui state ({} bytes)",
+                        saved_gui_state.size);
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to save gui state");
+        }
+    }
+
     UnloadPluginInstance(standalone);
 
     auto const reload_outcome = LoadPluginInstance(standalone, dso_path, arena);
@@ -755,11 +794,37 @@ static void HotReloadPlugin(Standalone& standalone, Optional<String> dso_path, A
         }
     }
 
+    if (saved_gui_state.size) {
+        auto* new_inst = standalone.plugin_instance;
+        auto const floe_ext =
+            (FloeClapExtension const*)new_inst->plugin->get_extension(new_inst->plugin,
+                                                                      k_floe_clap_extension_id);
+        if (floe_ext && floe_ext->load_gui_state) {
+            if (floe_ext->load_gui_state(new_inst->plugin,
+                                         String {(char const*)saved_gui_state.data, saved_gui_state.size}))
+                LogInfo(ModuleName::Standalone, "Hot-reload: restored gui state");
+            else
+                LogWarning(ModuleName::Standalone, "Hot-reload: failed to restore gui state");
+        }
+    }
+
     LogInfo(ModuleName::Standalone, "Hot-reload: plugin reloaded successfully");
 }
 
-static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
+struct RunOptions {
+    Optional<String> dso_path;
+    bool force_midi_channel_zero;
+    Optional<String> screenshot_region;
+    Optional<String> screenshot_out_path;
+    Optional<String> preset_path;
+    Optional<UiSize> fixed_window_size;
+};
+
+static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
+    auto const& dso_path = options.dso_path;
     Standalone standalone {};
+    standalone.force_midi_channel_zero = options.force_midi_channel_zero;
+    standalone.fixed_window_size = options.fixed_window_size;
 
     // Modify detection if given a plugin path.
     bool const is_external_plugin = dso_path.HasValue();
@@ -824,7 +889,39 @@ static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
     TRY(LoadPluginInstance(standalone, dso_path, arena));
     DEFER { UnloadPluginInstance(standalone); };
 
+    if (options.preset_path) {
+        auto* inst = standalone.plugin_instance;
+        auto const floe_ext =
+            (FloeClapExtension const*)inst->plugin->get_extension(inst->plugin, k_floe_clap_extension_id);
+        if (floe_ext && floe_ext->load_preset_file) {
+            if (floe_ext->load_preset_file(inst->plugin, *options.preset_path))
+                LogInfo(ModuleName::Standalone, "Loaded preset");
+            else
+                LogWarning(ModuleName::Standalone, "Failed to load preset");
+        }
+    }
+
+    if (options.screenshot_region) {
+        auto* inst = standalone.plugin_instance;
+        auto const floe_ext =
+            (FloeClapExtension const*)inst->plugin->get_extension(inst->plugin, k_floe_clap_extension_id);
+        if (floe_ext && floe_ext->request_screenshot) {
+            if (floe_ext->request_screenshot(inst->plugin,
+                                             *options.screenshot_region,
+                                             *options.screenshot_out_path))
+                LogInfo(ModuleName::Standalone,
+                        "Requested screenshot of region '{}'",
+                        *options.screenshot_region);
+            else
+                LogWarning(ModuleName::Standalone,
+                           "Failed to request screenshot of region '{}'",
+                           *options.screenshot_region);
+        }
+    }
+
     ArenaAllocator scratch_arena {PageAllocator::Instance()};
+
+    bool screenshot_request_was_pending = false;
 
     while (!standalone.quit) {
         auto const has_active_plugin =
@@ -834,7 +931,22 @@ static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
             if (inst->callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
                 inst->plugin->on_main_thread(inst->plugin);
 
-            if (inst->resize_hints_changed.Exchange(false, RmwMemoryOrder::Relaxed)) {
+            if (options.screenshot_region) {
+                auto const floe_ext =
+                    (FloeClapExtension const*)inst->plugin->get_extension(inst->plugin,
+                                                                          k_floe_clap_extension_id);
+                if (floe_ext && floe_ext->screenshot_request_pending) {
+                    bool const pending = floe_ext->screenshot_request_pending(inst->plugin);
+                    if (screenshot_request_was_pending && !pending) {
+                        LogInfo(ModuleName::Standalone, "Screenshot captured, exiting");
+                        standalone.quit = true;
+                    }
+                    screenshot_request_was_pending = pending;
+                }
+            }
+
+            if (inst->resize_hints_changed.Exchange(false, RmwMemoryOrder::Relaxed) &&
+                !standalone.fixed_window_size) {
                 clap_gui_resize_hints resize_hints;
                 if (inst->gui->get_resize_hints(inst->plugin, &resize_hints)) {
                     if (resize_hints.can_resize_vertically && resize_hints.can_resize_horizontally) {
@@ -856,7 +968,7 @@ static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
 
             if (auto const requested_clap_size =
                     inst->requested_resize.Exchange(k_invalid_ui_size, RmwMemoryOrder::AcquireRelease);
-                requested_clap_size != k_invalid_ui_size) {
+                requested_clap_size != k_invalid_ui_size && !standalone.fixed_window_size) {
                 auto const physical_pixels = *ClapPixelsToPhysicalPixels(standalone.gui_view,
                                                                          requested_clap_size.width,
                                                                          requested_clap_size.height);
@@ -911,8 +1023,20 @@ static ErrorCodeOr<void> Run(Optional<String> dso_path, ArenaAllocator& arena) {
 }
 
 static int Main(ArgsCstr args) {
-    enum class CommandLineArgId : u32 {
+    GlobalInit({
+        .init_error_reporting = true,
+        .set_main_thread = true,
+        .panic_response = PanicResponse::Abort,
+    });
+    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+
+    enum class CommandLineArgId : u8 {
         ClapPluginPath,
+        ForceMidiChannelZero,
+        Screenshot,
+        ScreenshotOut,
+        Preset,
+        FixedWindowSize,
         Count,
     };
 
@@ -926,6 +1050,48 @@ static int Main(ArgsCstr args) {
             .required = false,
             .num_values = 1,
         },
+        {
+            .id = (u32)CommandLineArgId::ForceMidiChannelZero,
+            .key = "force-midi-channel-zero",
+            .description = "Rewrite all incoming MIDI messages to channel 0.",
+            .value_type = {},
+            .required = false,
+            .num_values = 0,
+        },
+        {
+            .id = (u32)CommandLineArgId::Screenshot,
+            .key = "screenshot",
+            .description =
+                "Request a screenshot of a named region (e.g. 'perform'). Region names are defined by the GUI subsystems. Requires --screenshot-out. The program exits after the screenshot is captured.",
+            .value_type = "region",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)CommandLineArgId::ScreenshotOut,
+            .key = "screenshot-out",
+            .description = "Output path for the PNG produced by --screenshot.",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)CommandLineArgId::Preset,
+            .key = "preset",
+            .description = "Path to a Floe preset file (.floe-preset) to load on startup.",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)CommandLineArgId::FixedWindowSize,
+            .key = "fixed-window-size",
+            .description =
+                "Force a fixed (non-resizable) window size. The value is the abstract size number from the 'Window size' field in Floe's preferences.",
+            .value_type = "size",
+            .required = false,
+            .num_values = 1,
+        },
     });
 
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -933,13 +1099,40 @@ static int Main(ArgsCstr args) {
     if (cli_args_outcome.HasError()) return cli_args_outcome.Error();
     auto const cli_args = cli_args_outcome.ReleaseValue();
 
-    GlobalInit({
-        .init_error_reporting = true,
-        .set_main_thread = true,
-    });
-    DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
+    auto const screenshot_region = cli_args[ToInt(CommandLineArgId::Screenshot)].Value();
+    auto const screenshot_out_path = cli_args[ToInt(CommandLineArgId::ScreenshotOut)].Value();
+    if (screenshot_region.HasValue() != screenshot_out_path.HasValue()) {
+        LogError(ModuleName::Standalone, "--screenshot and --screenshot-out must be provided together");
+        return 1;
+    }
 
-    auto const o = Run(cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(), arena);
+    Optional<UiSize> fixed_window_size {};
+    if (auto const width_str = cli_args[ToInt(CommandLineArgId::FixedWindowSize)].Value()) {
+        auto const parsed = ParseInt(*width_str, ParseIntBase::Decimal);
+        s64 pixels;
+        if (!parsed || __builtin_mul_overflow(*parsed, k_window_width_step, &pixels) ||
+            pixels < k_min_gui_width || pixels > (s64)k_max_gui_width) {
+            LogError(ModuleName::Standalone,
+                     "Invalid --fixed-window-size '{}': value * {} pixels must be in [{}, {}]",
+                     *width_str,
+                     k_window_width_step,
+                     k_min_gui_width,
+                     k_max_gui_width);
+            return 1;
+        }
+        fixed_window_size = SizeWithAspectRatio((u16)pixels, k_gui_aspect_ratio);
+    }
+
+    auto const o = Run(
+        {
+            .dso_path = cli_args[ToInt(CommandLineArgId::ClapPluginPath)].Value(),
+            .force_midi_channel_zero = cli_args[ToInt(CommandLineArgId::ForceMidiChannelZero)].was_provided,
+            .screenshot_region = screenshot_region,
+            .screenshot_out_path = screenshot_out_path,
+            .preset_path = cli_args[ToInt(CommandLineArgId::Preset)].Value(),
+            .fixed_window_size = fixed_window_size,
+        },
+        arena);
     if (o.HasError()) {
         LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());
         return 1;

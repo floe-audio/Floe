@@ -1,11 +1,11 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
 
-enum class PathOrMemoryType { File, Memory };
+enum class PathOrMemoryType : u8 { File, Memory };
 using PathOrMemory = TaggedUnion<PathOrMemoryType,
                                  TypeAndTag<String, PathOrMemoryType::File>,
                                  TypeAndTag<Span<u8 const>, PathOrMemoryType::Memory>>;
@@ -42,6 +42,16 @@ struct Reader {
     }
     static Reader FromMemory(Span<char const> mem) { return FromMemory(mem.ToByteSpan()); }
 
+    using ReadAtCallback = ErrorCodeOr<usize> (*)(void* context, u64 offset, void* buffer, usize buffer_size);
+    static Reader FromCallback(usize total_size, ReadAtCallback callback, void* context) {
+        Reader r {};
+        r.size = total_size;
+        r.pos = 0;
+        r.read_callback = callback;
+        r.read_callback_context = context;
+        return r;
+    }
+
     static ErrorCodeOr<Reader> FromPathOrMemory(PathOrMemory p) {
         switch (p.tag) {
             case PathOrMemoryType::File: return FromFile(p.Get<String>());
@@ -57,7 +67,9 @@ struct Reader {
         auto bytes = Min(bytes_out.size, size - pos);
         if (!bytes) return bytes;
 
-        if (memory) {
+        if (read_callback) {
+            bytes = TRY(read_callback(read_callback_context, pos, bytes_out.data, bytes));
+        } else if (memory) {
             CopyMemory(bytes_out.data, memory + pos, bytes);
         } else {
             TRY(file->Seek((s64)(file_base_pos + pos), File::SeekOrigin::Start));
@@ -86,4 +98,6 @@ struct Reader {
     u8 const* memory {}; // valid if in-memory
     usize file_base_pos {};
     Optional<File> file {}; // valid if its a file
+    ReadAtCallback read_callback {}; // valid if callback-based
+    void* read_callback_context {};
 };

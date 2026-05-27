@@ -8,6 +8,12 @@ name: Production Build
 
 on:
   workflow_call:
+    inputs:
+      include-git-hash:
+        description: 'Include git commit hash in the version string'
+        required: false
+        default: false
+        type: boolean
 
 env:
   SENTRY_DSN: ${{ secrets.SENTRY_DSN_PRODUCTION }}
@@ -27,7 +33,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
 
-      - run: nix develop --command zig build release -Dbuild-mode=production -Dtargets=mac_arm,mac_x86 -Dfetch-floe-logos=true
+      - run: nix develop --command zig build release -Dbuild-mode=production -Dtargets=mac_arm,mac_x86 -Dfetch-floe-logos=true ${{ inputs.include-git-hash && '-Dinclude-git-hash=true' || '' }}
         env:
           MACOS_APP_STORE_CONNECT_API_KEY_JSON: ${{ secrets.MACOS_APP_STORE_CONNECT_API_KEY_JSON }}
           MACOS_DEV_INSTALLER_CERT_P12_PASSWORD: ${{ secrets.MACOS_DEV_INSTALLER_CERT_P12_PASSWORD }}
@@ -72,7 +78,7 @@ jobs:
           Write-Host "AZURE_DLIB_PATH=$($dlib.FullName)"
           echo "AZURE_DLIB_PATH=$($dlib.FullName)" >> $env:GITHUB_ENV
 
-      - run: zig build release -Dbuild-mode=production -Dtargets=windows -Dfetch-floe-logos=true
+      - run: zig build release -Dbuild-mode=production -Dtargets=windows -Dfetch-floe-logos=true ${{ inputs.include-git-hash && '-Dinclude-git-hash=true' || '' }}
         env:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -99,7 +105,7 @@ jobs:
       - uses: DeterminateSystems/flakehub-cache-action@main
 
       - name: Build Linux release
-        run: nix develop --command zig build release -Dbuild-mode=production -Dtargets=linux -Dfetch-floe-logos=true
+        run: nix develop --command zig build release -Dbuild-mode=production -Dtargets=linux -Dfetch-floe-logos=true ${{ inputs.include-git-hash && '-Dinclude-git-hash=true' || '' }}
 
       - uses: actions/upload-artifact@v4
         with:

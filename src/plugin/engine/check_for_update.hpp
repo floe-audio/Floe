@@ -17,7 +17,7 @@ struct State {
     };
     static_assert(sizeof(PaddedVersion) == 8, "padding might be wrong");
 
-    enum class StateEnum { Inactive, ShouldCheck, Checked };
+    enum class StateEnum : u8 { Inactive, ShouldCheck, Checked };
 
     Atomic<StateEnum> state = StateEnum::Inactive;
     Atomic<PaddedVersion> latest_version {}; // stable version

@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
@@ -6,7 +6,7 @@
 
 #include "gui/core/gui_frame_context.hpp"
 #include "gui/core/gui_fwd.hpp"
-#include "gui/overlays/gui_confirmation_dialog_state.hpp"
+#include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 #include "preset_server/preset_server.hpp"
 
@@ -41,19 +41,26 @@ struct PresetBrowserContext {
     PresetServerReadHandle preset_read_handle;
 };
 
+enum class PresetBrowserFilter : u8 {
+    Author = (usize)BrowserFilter::CommonCount,
+    PresetType,
+    Count,
+};
+
+static_assert(ToInt(PresetBrowserFilter::Count) <= k_max_browser_filters);
+
 // Persistent
 struct PresetBrowserState {
     static constexpr u64 k_panel_id = HashFnv1a("preset-browser");
-    SelectedHashes selected_author_hashes {"Author"};
     bool scroll_to_show_selected = false;
 
-    // This is contains PresetFormat as u64. We use a dynamic array of u64 so we can share the same code as
-    // the other types of selected_* filters.
-    SelectedHashes selected_preset_types {"Preset Type"};
-
-    CommonBrowserState common_state {
-        .other_selected_hashes = Array {&selected_author_hashes, &selected_preset_types},
-    };
+    CommonBrowserState common_state = [] {
+        CommonBrowserState s {};
+        InitCommonFilters(s);
+        dyn::Append(s.filters, FilterSelection::Hashes("Author"_s));
+        dyn::Append(s.filters, FilterSelection::Hashes("Preset Type"_s));
+        return s;
+    }();
 };
 
 void LoadAdjacentPreset(PresetBrowserContext const& context,

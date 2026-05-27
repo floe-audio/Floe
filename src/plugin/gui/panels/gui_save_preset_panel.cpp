@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/panels/gui_save_preset_panel.hpp"
@@ -7,12 +7,17 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
+#include "gui/core/gui_screenshot.hpp"
+#include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 
 void OnEngineStateChange(SavePresetPanelState& state, Engine const& engine) {
-    state.metadata = engine.state_metadata;
-    state.scroll_to_start = true;
+    if (state.last_synced_engine_metadata != engine.state_metadata) {
+        state.last_synced_engine_metadata = engine.state_metadata;
+        state.metadata = engine.state_metadata;
+        state.scroll_to_start = true;
+    }
 }
 
 static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
@@ -32,22 +37,8 @@ static prefs::Descriptor RememberedAuthorPrefsDescriptor() {
     return desc;
 }
 
-bool DoTagsGui(GuiBuilder& builder,
-               DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags>& tags,
-               Box const& root) {
-    Bitset<ToInt(TagType::Count)> selected_tags = {};
-    for (auto const tag : tags) {
-        for (auto const category : EnumIterator<TagCategory>()) {
-            if (category == TagCategory::ReverbType) continue;
-
-            for (auto const& category_tag : Tags(category).tags) {
-                if (GetTagInfo(category_tag).name == tag) {
-                    selected_tags.Set(ToInt(category_tag));
-                    break;
-                }
-            }
-        }
-    }
+bool DoTagsGui(GuiBuilder& builder, TagsBitset& tags, Box const& root) {
+    auto& selected_tags = tags;
 
     bool result = false;
 
@@ -143,10 +134,7 @@ bool DoTagsGui(GuiBuilder& builder,
 
             if (button.button_fired) {
                 result = true;
-                if (is_selected)
-                    dyn::RemoveValue(tags, tag_info.name);
-                else
-                    dyn::Append(tags, tag_info.name);
+                selected_tags.SetToValue(ToInt(tag), !is_selected);
             }
         }
     }
@@ -272,10 +260,16 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
 constexpr u32 k_save_panel_contents_imgui_id = (u32)SourceLocationHash();
 
 static void CommitMetadataToEngine(Engine& engine, SavePresetPanelState const& state) {
+    if (engine.state_metadata == state.metadata) return;
     engine.state_metadata = state.metadata;
+    RecordUndoableStep(engine, "Edit preset metadata"_s);
 }
 
 void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePresetPanelState& state) {
+    if (IsScreenshotRequest("save-preset"_s)) {
+        if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     if (Exchange(state.scroll_to_start, false)) {
@@ -288,7 +282,7 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
         {
             .run =
                 [&context, &state](GuiBuilder& builder) {
-                    auto const root = DoModalRootBox(builder);
+                    auto const root = DoModalRootBox(builder, "save-preset-panel.modal"_s);
 
                     DoModalHeader(builder,
                                   {
@@ -330,18 +324,36 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                   },
                               });
 
+                    DoExperimentalModeIndicatorIfNeeded(builder, button_container, context.prefs);
+
                     if (TextButton(builder,
                                    button_container,
                                    {.text = "Cancel"_s, .tooltip = "Cancel and close"_s}))
                         builder.imgui.CloseTopModal();
 
-                    if (auto const existing_path = context.engine.last_snapshot.name_or_path.Path()) {
+                    if (context.engine.pinned_snapshot.preset_path_needs_lookup) {
+                        auto& preset_server = context.engine.shared_engine_systems.preset_server;
+                        auto const path = FindPresetMatchingSnapshotHash(
+                            preset_server,
+                            context.engine.pinned_snapshot.state.extras.origin_preset_hash,
+                            builder.arena);
+                        if (path) {
+                            dyn::Assign(context.engine.pinned_snapshot.preset_path, *path);
+                            context.engine.pinned_snapshot.preset_path_needs_lookup = false;
+                        } else if (!AreFoldersScanning(preset_server)) {
+                            // Not found in preset index, and no scanning is occurring.
+                            context.engine.pinned_snapshot.preset_path_needs_lookup = false;
+                        }
+                    }
+
+                    if (auto const& existing_path = context.engine.pinned_snapshot.preset_path;
+                        existing_path.size) {
                         if (TextButton(
                                 builder,
                                 button_container,
                                 {.text = "Overwrite"_s, .tooltip = "Overwrite the existing preset"_s})) {
                             CommitMetadataToEngine(context.engine, state);
-                            SaveCurrentStateToFile(context.engine, *existing_path);
+                            SaveCurrentStateToFile(context.engine, existing_path);
                             if (!state.modeless) builder.imgui.CloseTopModal();
                         }
 
@@ -350,14 +362,18 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                 button_container,
                                 {.text = "Save As New"_s, .tooltip = "Save the preset as a new file"_s})) {
                             CommitMetadataToEngine(context.engine, state);
-                            OpenFilePickerSavePreset(context.file_picker_state, context.paths);
+                            OpenFilePickerSavePreset(context.file_picker_state,
+                                                     context.paths,
+                                                     context.engine.shared_engine_systems.persistent_store);
                             if (!state.modeless) builder.imgui.CloseTopModal();
                         }
                     } else if (TextButton(builder,
                                           button_container,
                                           {.text = "Save"_s, .tooltip = "Save the preset to a new file"_s})) {
                         CommitMetadataToEngine(context.engine, state);
-                        OpenFilePickerSavePreset(context.file_picker_state, context.paths);
+                        OpenFilePickerSavePreset(context.file_picker_state,
+                                                 context.paths,
+                                                 context.engine.shared_engine_systems.persistent_store);
                         if (!state.modeless) builder.imgui.CloseTopModal();
                     }
                 },

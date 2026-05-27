@@ -1,0 +1,120 @@
+---
+id: browsers
+title: Browsers
+hide_table_of_contents: true
+description: Comprehensive guide to using Floe's browsers for presets, instruments, and impulse responses.
+---
+
+<!--
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+
+One of Floe's core goals is to provide a fast and fluid way to find and load sounds across large sound pools: the _browsers_ are the main way to do this.
+
+You may spend a lot of time with the browsers. They're used in several places on the interface:
+- Presets
+- Instruments for each layer
+- Impulse responses for the Convolution Reverb effect
+
+All browsers work the same, with some minor differences depending on context.
+
+<GeneratedScreenshot name="browser-full" alt="Browser Panel" />
+
+## Overview
+
+The fundamental design is a two-panel layout: filters on the left, and results on the right (loadable items).
+
+Similar to if you were shopping online for t-shirts: you might use filters to narrow down the results by size, colour, price range, etc., and then browse the results that match your criteria. 
+
+The same principle applies here, except we use filters such as library, tag, or folder to instantly narrow down results of presets, instruments, or impulse responses.
+
+Initially however, Floe starts in the simple 'ONE' filter mode. This mode lets you select only one filter at a time. If you click on another filter, it replaces the existing one. You can change to AND or OR mode using the multi-mode menu **(3)**.
+
+When no filters are applied, all items are shown in the results list.
+
+- **1**: filters panel: filters to narrow down the results. Here we can see filters for libraries (Celtic Harp, Dulcitone, Lost Reveries, etc.) and folders within those libraries (Core, Extras, Mic Options, etc.). Clicking on these will filter down the results on the right panel (2).
+- **2**: the results list, showing items that match the current filter settings. Click these to load them. **Double-click** to load and close the browser in one action.
+- Numbers in brackets next to each filter, like _(26)_, show how many items match that filter. If you were to select this filter, the results list would narrow down to those matching items (unless you are using multi-select modes and already have filters).
+- **Search libraries/tags**: filters search box: type here to narrow down the available filters.
+- **Search instruments**: results search box: type here to filter the results list by name.
+- **Favourites**: on each item in the results list you can click the <FAIcon icon="fa-regular fa-star" /> star that appear on the right when you hover over an item. This adds it to your favourites list, which can be accessed using the _Favourites_ button.
+- **Left/right arrows** <FAIcon icon="fa-solid fa-caret-left" /><FAIcon icon="fa-solid fa-caret-right" />: navigate to the previous/next item in the results list.
+- **Random icon** <FAIcon icon="fa-solid fa-shuffle" />: load a random item from the results list.
+- **Location arrow** <FAIcon icon="fa-solid fa-location-arrow" />: scroll to the currently loaded item in the results list.
+- **Unload instrument**: unload the currently selected item. You can also click again on the loaded item in the results list to unload it.
+
+## Filter buttons
+
+Simple filters are small buttons, used for tags, authors and other simple filters. Click on them to filter down the results list.
+
+<GeneratedScreenshot name="filter-button" alt="Filter button" />
+
+## Filter cards
+Additionally, Floe has filter _cards_. They look quite different from the small filter buttons, but they actually function mostly in the same way, they just offer more information and house a tree-like structure of folders (also just a type of filter button).
+
+Cards are used for _sample libraries_ in the instrument and IR browsers, and for _preset banks_ in the preset browser.
+
+Cards are made up of two sections, the _header_ (**1**) and the _body_ (**2**). Both sections can be clicked.
+
+<GeneratedScreenshot name="filter-card" alt="Browser Filter Card" />
+
+### Selecting in filter cards
+
+Click on the header (**1**) to expand or collapse the entire sample library or preset bank. Inside every card is an _All Items_ button that selects all items within. Alternatively, click on individual items in the body (**2**) to select specific folders within the library or bank — notice the item individually shows a gold left edge.
+
+<GeneratedScreenshot name="filter-card-all-selected" alt="Filter card all selected" />
+<GeneratedScreenshot name="filter-card-body-item-selected" alt="Filter card single item selected" />
+
+- **Subtle gold background**: indicates the filter is selected.
+- **Gold left edge**: indicates the filter is actively contributing to the results list.
+
+
+### Folder trees
+
+Items in the body (**2**) are sometimes hierarchical. You can see that some items are more indented than others. In this case, _Close_ and _Room_ are subfolders of _Mic Options_. 
+If you select a parent folder, the results list also shows items that match the subfolders. You can see _Mic Options_ is selected (it has a gold background), but also the gold left edge border extends to _Close_ and _Room_ indicating they are included in the filtering of the results list.
+
+<GeneratedScreenshot name="filter-card-body-tree" alt="Filter card item tree selected" />
+
+Developers typically don't use much hierarchy, but it can be an intuitive categorisation mechanism.
+
+Just because a parent folder has subfolders does not mean that it doesn't include its own items too (albeit this is less common). Imagine folders on your computer: a folder can contain files as well as subfolders. So sometimes you will find items that do cannot be found searching through the subfolders alone.
+
+### Right-click
+
+You can often right-click on filter cards to bring up additional options.
+
+## Multi-select mode
+
+By default, the browsers are in single-select mode: clicking on a new filter replaces the existing filter.
+
+Use the ONE/AND/OR menu in the top to switch to a multi-select mode.
+
+<GeneratedScreenshot name="browser-menu" alt="Browser more-options menu" />
+
+- **AND** mode means that all selected filters must be matched for an item to appear in the results list. The more filters you select, the narrower the results become.
+- **OR** mode means that items matching any of the selected filters will appear in the results list. The more filters you select, the broader the results become.
+
+Selected filters appear as dismissable buttons at the top of the results list, with an _AND_/_OR_ label between them showing how they're combined.
+
+In AND mode, Floe greys-out filters that wouldn't add to the result set (no items would match the combined filter), helping you avoid dead-end combinations.
+
+## Keyboard navigation
+
+The browsers support keyboard navigation using the arrow keys and enter. 
+
+The focused item is denoted by a blue outline box. This box is initially hidden but becomes visible when you press any arrow key.
+
+- Up/down arrows to move the selection in the results list.
+- Enter/return to 'click' the currently highlighted item.
+- Left/right arrows or tab to move between the filters panel and results list.
+- CTRL+F (CMD+F on Mac) to focus the results search box.
+- Home/End to jump to the start/end of the results list.
+- Hold CTRL (CMD on Mac) and use the up/down arrows to jump by to the previous/next folder.
+- Page Up/Page Down to jump up/down by 8 items at a time.
+
+Filter cards are keyboard-navigable, but filter buttons are not currently.
+

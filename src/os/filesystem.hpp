@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -6,7 +6,7 @@
 
 #include "misc.hpp"
 
-enum class FilesystemError : u32 {
+enum class FilesystemError : u8 {
     PathDoesNotExist,
     PathAlreadyExists,
     TooManyFilesOpen,
@@ -134,7 +134,7 @@ struct FileMode {
 };
 
 struct FileLockOptions {
-    enum class Type { Exclusive, Shared };
+    enum class Type : u8 { Exclusive, Shared };
     Type type = Type::Exclusive;
     bool non_blocking = false;
 };
@@ -167,7 +167,7 @@ struct File {
     ~File();
 
     ErrorCodeOr<u64> CurrentPosition();
-    enum class SeekOrigin { Start, End, Current };
+    enum class SeekOrigin : u8 { Start, End, Current };
     ErrorCodeOr<void> Seek(s64 const offset, SeekOrigin origin);
     ErrorCodeOr<u64> FileSize();
 
@@ -356,7 +356,7 @@ ErrorCodeOr<MutableString> TemporaryDirectoryOnSameFilesystemAs(String existing_
 ErrorCodeOr<MutableString>
 TemporaryDirectoryWithinFolder(String existing_abs_folder, Allocator& a, u64& seed);
 
-enum class FileType { File, Directory };
+enum class FileType : u8 { File, Directory };
 
 ErrorCodeOr<FileType> GetFileType(String path);
 
@@ -401,7 +401,7 @@ ErrorCodeOr<void> CreateDirectory(String path, CreateDirectoryOptions options = 
 ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& a);
 
 struct DeleteOptions {
-    enum class Type { Any, File, DirectoryRecursively, DirectoryOnlyIfEmpty };
+    enum class Type : u8 { Any, File, DirectoryRecursively, DirectoryOnlyIfEmpty };
     Type type = Type::Any;
     bool fail_if_not_exists = true; // returns FilesystemError::PathDoesNotExist
 };
@@ -410,7 +410,7 @@ ErrorCodeOr<void> Delete(String path, DeleteOptions options);
 // Returns true if there was a bundle and it was successfully deleted
 ErrorCodeOr<bool> DeleteDirectoryIfMacBundle(String dir);
 
-enum class ExistingDestinationHandling {
+enum class ExistingDestinationHandling : u8 {
     Skip, // Keep the existing file without reporting an error
     Overwrite, // Overwrite it if it exists
     Fail, // Fail if it exists
@@ -585,7 +585,7 @@ struct DirectoryWatcher {
 
     using ChangeTypeFlags = u32;
     struct ChangeType {
-        enum : ChangeTypeFlags {
+        enum : u8 {
             Added = 1 << 0,
             Deleted = 1 << 1,
             Modified = 1 << 2,
@@ -677,7 +677,7 @@ struct DirectoryWatcher {
     };
 
     struct WatchedDirectory {
-        enum class State {
+        enum class State : u8 {
             NeedsWatching,
             NeedsUnwatching,
             Watching,

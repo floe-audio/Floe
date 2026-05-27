@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 const std = @import("std");
@@ -320,6 +320,13 @@ pub fn loadEnvFile(dir: std.fs.Dir, env_map: *std.process.EnvMap) !void {
     }
 }
 
+pub fn envAsBool(b: *std.Build, key: []const u8) ?bool {
+    const val = b.graph.env_map.get(key) orelse return null;
+    if (std.mem.eql(u8, val, "true") or std.mem.eql(u8, val, "1")) return true;
+    if (std.mem.eql(u8, val, "false") or std.mem.eql(u8, val, "0")) return false;
+    return null;
+}
+
 pub fn pathExists(path: []const u8) bool {
     std.fs.accessAbsolute(path, .{}) catch |err| switch (err) {
         error.FileNotFound => return false,
@@ -398,4 +405,12 @@ pub const WarnStep = struct {
 
 pub fn addWarn(owner: *std.Build, warn_msg: []const u8) *WarnStep {
     return WarnStep.create(owner, warn_msg);
+}
+
+pub fn isStepRequested(b: *std.Build, step_name: []const u8) bool {
+    const args = std.process.argsAlloc(b.allocator) catch return false;
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, step_name)) return true;
+    }
+    return false;
 }

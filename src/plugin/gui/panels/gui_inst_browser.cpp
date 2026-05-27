@@ -1,12 +1,15 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/panels/gui_inst_browser.hpp"
 
 #include "engine/favourite_items.hpp"
+#include "gui/core/gui_state.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 
-constexpr sample_lib::LibraryIdRef k_waveform_library_id = "Waveforms - " FLOE_VENDOR;
+constexpr String k_waveform_library_id_string = "Waveforms - " FLOE_VENDOR;
+constexpr sample_lib::LibraryId k_waveform_library_id =
+    sample_lib::HashLibraryIdStringWithoutRegistration(k_waveform_library_id_string);
 
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
@@ -37,81 +40,28 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
 
-    bool filtering_on = false;
-
-    if (state.common_state.favourites_only) {
-        filtering_on = true;
-        if (!IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst))) {
-            if (common_state.filter_mode == FilterMode::MultipleAnd ||
-                common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (common_state.filter_mode == FilterMode::MultipleOr) return false;
+    return IsFilteredOut(common_state, [&](usize index, FilterSelection const& filter) -> bool {
+        switch ((BrowserFilter)index) {
+            case BrowserFilter::Favourites:
+                return IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst));
+            case BrowserFilter::Folder:
+                return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
+                    return IsInsideFolder(inst.folder, key);
+                });
+            case BrowserFilter::Library:
+                return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
+                    return inst.library.id == key;
+                });
+            case BrowserFilter::LibraryAuthor:
+                return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
+                    return inst.library.author_hash == key;
+                });
+            case BrowserFilter::Tags:
+                return ItemMatchesTagFilter(filter, inst.tags, common_state.filter_mode);
+            case BrowserFilter::CommonCount: break;
         }
-    }
-
-    if (common_state.selected_folder_hashes.HasSelected()) {
-        filtering_on = true;
-        for (auto const& folder_hash : common_state.selected_folder_hashes) {
-            if (!IsInsideFolder(inst.folder, folder_hash.hash)) {
-                if (common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (common_state.filter_mode == FilterMode::MultipleOr) return false;
-            }
-        }
-    }
-
-    if (common_state.selected_library_hashes.HasSelected()) {
-        filtering_on = true;
-        if (!common_state.selected_library_hashes.Contains(Hash(inst.library.id))) {
-            if (common_state.filter_mode == FilterMode::MultipleAnd)
-                return true;
-            else if (common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (common_state.filter_mode == FilterMode::MultipleOr)
-                return false;
-            else if (common_state.filter_mode == FilterMode::MultipleAnd &&
-                     common_state.selected_library_hashes.hashes.size != 1)
-                return true;
-        }
-    }
-
-    if (common_state.selected_library_author_hashes.HasSelected()) {
-        filtering_on = true;
-        if (!common_state.selected_library_author_hashes.Contains(Hash(inst.library.author))) {
-            if (common_state.filter_mode == FilterMode::MultipleAnd)
-                return true;
-            else if (common_state.filter_mode == FilterMode::Single)
-                return true;
-        } else {
-            if (common_state.filter_mode == FilterMode::MultipleOr) return false;
-        }
-    }
-
-    if (common_state.selected_tags_hashes.HasSelected()) {
-        filtering_on = true;
-        for (auto const& selected_hash : common_state.selected_tags_hashes)
-            if (!(inst.tags.ContainsSkipKeyCheck(selected_hash.hash) ||
-                  (selected_hash.hash == Hash(k_untagged_tag_name) && inst.tags.size == 0))) {
-                if (common_state.filter_mode == FilterMode::MultipleAnd)
-                    return true;
-                else if (common_state.filter_mode == FilterMode::Single)
-                    return true;
-            } else {
-                if (common_state.filter_mode == FilterMode::MultipleOr) return false;
-            }
-    }
-
-    if (filtering_on && common_state.filter_mode == FilterMode::MultipleOr) {
-        // Filtering is applied, but the item does not match any of the selected filters.
-        return true;
-    }
-
-    return false;
+        return false;
+    });
 }
 
 static Optional<InstrumentCursor> IterateInstrument(InstBrowserContext const& context,
@@ -176,19 +126,50 @@ static Optional<InstrumentCursor> IterateInstrument(InstBrowserContext const& co
     return k_nullopt;
 }
 
+static sample_lib::InstrumentId InstrumentIdFromCursor(InstBrowserContext const& context,
+                                                       InstrumentCursor const& cursor) {
+    auto const& lib = *context.frame_context.libraries[cursor.lib_index];
+    auto const& inst = *lib.sorted_instruments[cursor.inst_index];
+    return {
+        .library = lib.id,
+        .inst_id = inst.id,
+    };
+}
+
 static void LoadInstrument(InstBrowserContext const& context,
                            InstBrowserState& state,
                            InstrumentCursor const& cursor,
                            bool scroll) {
-    auto const& lib = *context.frame_context.libraries[cursor.lib_index];
-    auto const& inst = *lib.sorted_instruments[cursor.inst_index];
-    LoadInstrument(context.engine,
-                   context.layer.index,
-                   sample_lib::InstrumentId {
-                       .library = lib.id,
-                       .inst_id = inst.id,
-                   });
+    LoadInstrument(context.engine, context.layer.index, InstrumentIdFromCursor(context, cursor));
     if (scroll) state.scroll_to_show_selected = true;
+}
+
+static Optional<InstrumentCursor> PickRandomInstrumentCursor(InstBrowserContext const& context,
+                                                             InstBrowserState& state) {
+    auto const first =
+        IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
+    if (!first) return k_nullopt;
+
+    auto cursor = *first;
+
+    usize num_instruments = 1;
+    while (true) {
+        if (auto const next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false)) {
+            cursor = *next;
+            if (cursor == *first) break;
+            ++num_instruments;
+        } else {
+            break;
+        }
+    }
+
+    auto const random_pos = RandomIntInRange<usize>(context.engine.random_seed, 0, num_instruments - 1);
+
+    cursor = *first;
+    for (usize i = 0; i < random_pos; ++i)
+        cursor = *IterateInstrument(context, state, cursor, SearchDirection::Forward, false);
+
+    return cursor;
 }
 
 void LoadAdjacentInstrument(InstBrowserContext const& context,
@@ -232,30 +213,15 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
 }
 
 void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state) {
-    auto const first =
-        IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
-    if (!first) return;
+    if (auto const cursor = PickRandomInstrumentCursor(context, state))
+        LoadInstrument(context, state, *cursor, true);
+}
 
-    auto cursor = *first;
-
-    usize num_instruments = 1;
-    while (true) {
-        if (auto const next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false)) {
-            cursor = *next;
-            if (cursor == *first) break;
-            ++num_instruments;
-        } else {
-            break;
-        }
-    }
-
-    auto const random_pos = RandomIntInRange<usize>(context.engine.random_seed, 0, num_instruments - 1);
-
-    cursor = *first;
-    for (usize i = 0; i < random_pos; ++i)
-        cursor = *IterateInstrument(context, state, cursor, SearchDirection::Forward, false);
-
-    LoadInstrument(context, state, cursor, true);
+Optional<sample_lib::InstrumentId> RandomInstrumentId(InstBrowserContext const& context,
+                                                      InstBrowserState& state) {
+    if (auto const cursor = PickRandomInstrumentCursor(context, state))
+        return InstrumentIdFromCursor(context, *cursor);
+    return k_nullopt;
 }
 
 static void InstBrowserWaveformItems(GuiBuilder& builder,
@@ -277,6 +243,7 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
     sample_lib::Library const pseudo_lib {
         .name = "Waveforms"_s,
         .id = k_waveform_library_id,
+        .id_string = k_waveform_library_id_string,
         .author = FLOE_VENDOR,
         .file_format_specifics = sample_lib::LuaSpecifics {},
     };
@@ -288,6 +255,7 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
         sample_lib::Instrument const pseudo_inst {
             .library = pseudo_lib,
             .name = k_waveform_type_names[ToInt(waveform_type)],
+            .id = k_waveform_type_names[ToInt(waveform_type)],
             .folder = &pseudo_folder,
         };
 
@@ -350,7 +318,8 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& inst = *lib.sorted_instruments[cursor.inst_index];
         auto const& folder = inst.folder;
-        auto const folder_hash = folder->Hash();
+        auto folder_hash = folder->Hash();
+        HashUpdate(folder_hash, lib.id);
         auto const new_folder = folder_hash != previous_folder_hash;
 
         if (new_folder) {
@@ -361,6 +330,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
                 .id = folder_hash,
                 .parent = root,
                 .folder = folder,
+                .skip_heading = IsSingleFolderFilterSelected(common_state, folder->Hash()),
             };
         }
 
@@ -370,61 +340,62 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
             auto const is_current = context.layer.instrument_id == inst_id;
             auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
 
-            // TODO: a Panic was hit here where the GUI changed between layout and render passes while
-            // updating a floe.lua file. It's rare though.
-            auto const item = DoBrowserItem(builder,
-                                            common_state,
-                                            {
-                                                .parent = folder_section->Do(builder).Get<Box>(),
-                                                .id_extra = inst_hash,
-                                                .text = inst.name,
-                                                .tooltip = FunctionRef<String()>([&]() -> String {
-                                                    DynamicArray<char> buf {builder.arena};
-                                                    fmt::Append(buf,
-                                                                "{} from {} by {}.\n\n",
-                                                                inst.name,
-                                                                inst.library.name,
-                                                                inst.library.author);
+            auto const item =
+                DoBrowserItem(builder,
+                              common_state,
+                              {
+                                  .parent = folder_section->Do(builder).Get<Box>(),
+                                  .id_extra = inst_hash,
+                                  .text = inst.name,
+                                  .tooltip = FunctionRef<String()>([&]() -> String {
+                                      DynamicArray<char> buf {builder.arena};
+                                      fmt::Append(buf,
+                                                  "{} from {} by {}.\n\n",
+                                                  inst.name,
+                                                  inst.library.name,
+                                                  inst.library.author);
 
-                                                    if (inst.description)
-                                                        fmt::Append(buf, "{}", inst.description);
+                                      if (inst.description) fmt::Append(buf, "{}", inst.description);
 
-                                                    fmt::Append(buf, "\n\nTags: ");
-                                                    if (inst.tags.size == 0)
-                                                        fmt::Append(buf, "None");
-                                                    else {
-                                                        for (auto const [t, _] : inst.tags)
-                                                            fmt::Append(buf, "{}, ", t);
-                                                        dyn::Pop(buf, 2);
-                                                    }
+                                      fmt::Append(buf, "\n\nTags: ");
+                                      if (!inst.tags.AnyValuesSet())
+                                          fmt::Append(buf, "None");
+                                      else {
+                                          bool first = true;
+                                          inst.tags.ForEachSetBit([&](usize bit) {
+                                              if (!first) fmt::Append(buf, ", ");
+                                              first = false;
+                                              fmt::Append(buf, "{}", GetTagInfo((TagType)bit).name);
+                                          });
+                                      }
 
-                                                    return buf.ToOwnedSpan();
-                                                }),
-                                                .item_id = inst_hash,
-                                                .is_current = is_current,
-                                                .is_favourite = is_favourite,
-                                                .is_tab_item = new_folder,
-                                                .icons = ({
-                                                    if (&lib != previous_library) {
-                                                        previous_library = &lib;
-                                                        auto const imgs =
-                                                            GetLibraryImages(context.library_images,
+                                      return buf.ToOwnedSpan();
+                                  }),
+                                  .item_id = inst_hash,
+                                  .is_current = is_current,
+                                  .is_favourite = is_favourite,
+                                  .is_tab_item = new_folder,
+                                  .icons = ({
+                                      if (&lib != previous_library) {
+                                          previous_library = &lib;
+                                          auto const imgs = GetLibraryImages(context.library_images,
                                                                              builder.imgui,
                                                                              lib.id,
                                                                              context.sample_library_server,
+                                                                             context.engine.instance_index,
                                                                              LibraryImagesTypes::Icon);
-                                                        if (imgs.icon)
-                                                            lib_icon = *imgs.icon;
-                                                        else
-                                                            lib_icon = ItemIconType::None;
-                                                    }
-                                                    decltype(BrowserItemOptions::icons) result {};
-                                                    dyn::Emplace(result, lib_icon);
-                                                    result;
-                                                }),
-                                                .notifications = context.notifications,
-                                                .store = context.persistent_store,
-                                            });
+                                          if (imgs.icon)
+                                              lib_icon = *imgs.icon;
+                                          else
+                                              lib_icon = ItemIconType::None;
+                                      }
+                                      decltype(BrowserItemOptions::icons) result {};
+                                      dyn::Emplace(result, lib_icon);
+                                      result;
+                                  }),
+                                  .notifications = context.notifications,
+                                  .store = context.persistent_store,
+                              });
 
             if (is_current) {
                 if (auto const r = BoxRect(builder, item.box)) {
@@ -454,12 +425,81 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 }
 
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
+
+    bool const is_browser_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-full"_s);
+    bool const is_filter_card_screenshot = context.layer.index == 0 && IsScreenshotRequest("filter-card"_s);
+    bool const is_filter_card_all_selected =
+        context.layer.index == 0 && IsScreenshotRequest("filter-card-all-selected"_s);
+    bool const is_filter_card_body_item =
+        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-item-selected"_s);
+    bool const is_filter_card_body_tree =
+        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-tree"_s);
+    bool const is_any_filter_card_screenshot = is_filter_card_screenshot || is_filter_card_all_selected ||
+                                               is_filter_card_body_item || is_filter_card_body_tree;
+    bool const is_filter_button_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("filter-button"_s);
+    bool const is_browser_menu_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-menu"_s);
+
+    if ((is_browser_screenshot || is_any_filter_card_screenshot || is_filter_button_screenshot ||
+         is_browser_menu_screenshot) &&
+        !builder.imgui.IsModalOpen(state.id))
+        builder.imgui.OpenModalViewport(state.id);
+
     if (!builder.imgui.IsModalOpen(state.id)) return;
     auto const& libs = context.frame_context.libraries;
 
-    HashTable<String, FilterItemInfo> tags {};
+    if (is_browser_screenshot) {
+        // Add a tag filter so the screenshot is more interesting than an empty browser.
+        auto& tag_filter = state.common_state.Filter(BrowserFilter::Tags);
+        if (!tag_filter.Contains((u64)TagType::Ambient)) tag_filter.Add((u64)TagType::Ambient, "ambient"_s);
+    }
+
+    if (is_any_filter_card_screenshot) {
+        sample_lib::Library const* picked = nullptr;
+        for (auto const l : libs) {
+            if (l->sorted_instruments.size == 0) continue;
+            if (l->name == "Dulcitone"_s) {
+                picked = &*l;
+                break;
+            }
+            if (!picked) picked = &*l;
+        }
+        if (picked) {
+            auto const collapse_id = picked->id ^ HashFnv1a("card-collapse");
+            if (!Contains(state.common_state.expanded_filter_headers, collapse_id))
+                dyn::Append(state.common_state.expanded_filter_headers, collapse_id);
+
+            auto const* root = &picked->root_folders[ToInt(sample_lib::ResourceType::Instrument)];
+
+            auto const add_unique = [&](BrowserFilter f, u64 key, String name) {
+                auto& filter = state.common_state.Filter(f);
+                if (!filter.Contains(key)) filter.Add(key, name);
+            };
+
+            if (is_filter_card_all_selected) {
+                add_unique(BrowserFilter::Library, picked->id, picked->name);
+            } else if (is_filter_card_body_item) {
+                if (auto* child = root->first_child)
+                    add_unique(BrowserFilter::Folder, child->Hash(), child->name);
+            } else if (is_filter_card_body_tree) {
+                FolderNode const* tree = nullptr;
+                for (auto* c = root->first_child; c; c = c->next) {
+                    if (c->name == "Mic Options"_s) {
+                        tree = c;
+                        break;
+                    }
+                    if (!tree && c->first_child) tree = c;
+                }
+                if (tree) add_unique(BrowserFilter::Folder, tree->Hash(), tree->name);
+            }
+        }
+    }
+
+    TagsFilters tags_filters {};
     auto libraries =
-        OrderedHashTable<sample_lib::LibraryIdRef, FilterItemInfo>::Create(builder.arena, libs.size + 1);
+        OrderedHashTable<sample_lib::LibraryId, FilterItemInfo, NoHash, LibraryIdLessThanFilterInfo>::Create(
+            builder.arena,
+            libs.size + 1);
     auto library_authors = OrderedHashTable<String, FilterItemInfo>::Create(builder.arena, libs.size + 1);
 
     auto folders = HashTable<FolderNode const*, FilterItemInfo>::Create(builder.arena, 16);
@@ -471,7 +511,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         if (l->sorted_instruments.size == 0) continue;
 
         auto& lib = libraries.FindOrInsertWithoutGrowing(l->id, {}).element.data;
-        auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}).element.data;
+        auto& author = library_authors.FindOrInsertWithoutGrowing(l->author, {}, l->author_hash).element.data;
 
         root_folder.InsertGrowIfNeeded(builder.arena,
                                        &l->root_folders[ToInt(sample_lib::ResourceType::Instrument)]);
@@ -500,13 +540,15 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 ++i.total_available;
             }
 
-            for (auto const& [tag, tag_hash] : inst->tags) {
-                auto& i = tags.FindOrInsertGrowIfNeeded(builder.arena, tag, {}, tag_hash).element.data;
+            inst->tags.ForEachSetBit([&](usize bit) {
+                tags_filters.available_tags.Set(bit);
+                auto& i = tags_filters.tags[bit];
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
-            }
-            if (!inst->tags.size) {
-                auto& i = tags.FindOrInsertGrowIfNeeded(builder.arena, k_untagged_tag_name, {}).element.data;
+            });
+            if (!inst->tags.AnyValuesSet()) {
+                tags_filters.has_untagged = true;
+                auto& i = tags_filters.untagged_info;
                 if (!skip) ++i.num_used_in_items_lists;
                 ++i.total_available;
             }
@@ -518,20 +560,23 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             {
                 .id_extra = SourceLocationHash(),
                 .is_selected =
-                    state.common_state.selected_library_hashes.Contains(Hash(k_waveform_library_id)),
-                .text = "Waveforms",
-                .hashes = state.common_state.selected_library_hashes,
-                .clicked_hash = Hash(k_waveform_library_id),
+                    state.common_state.Filter(BrowserFilter::Library).Contains(k_waveform_library_id),
+                .text = "Built-in Waveforms",
+                .filter = state.common_state.Filter(BrowserFilter::Library),
+                .clicked_key = k_waveform_library_id,
                 .filter_mode = state.common_state.filter_mode,
             },
         .library_id = k_waveform_library_id,
         .library_images = context.library_images,
         .sample_library_server = context.sample_library_server,
+        .instance_index = context.engine.instance_index,
         .subtext = "Basic waveforms built into Floe",
+        .default_collapsed = true,
+        .store = &context.persistent_store,
     };
 
     FilterItemInfo const waveform_info = {
-        .num_used_in_items_lists = state.common_state.HasFilters() ? 0 : ToInt(WaveformType::Count),
+        .num_used_in_items_lists = state.common_state.HasFilters() ? 0u : ToInt(WaveformType::Count),
         .total_available = ToInt(WaveformType::Count),
     };
 
@@ -545,14 +590,16 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
+            .instance_index = context.engine.instance_index,
         },
         BrowserPopupOptions {
             .title = fmt::Format(builder.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
                 auto const window_height = GuiIo().in.window_size.height;
-                auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
-                auto const available_height = window_height - button_bottom - 20;
-                PixelsToWw(available_height);
+                auto const& button_rect = state.common_state.absolute_button_rect;
+                auto const space_below = window_height - button_rect.Bottom() - 20;
+                auto const space_above = button_rect.y - 20;
+                PixelsToWw(Max(space_below, space_above));
             }),
             .rhs_width = 300,
             .filters_col_width = 250,
@@ -589,6 +636,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 Optional<LibraryFilters> f = LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
                     .library_images = context.library_images,
+                    .instance_index = context.engine.instance_index,
                     .libraries = libraries,
                     .library_authors = library_authors,
                     .card_view = true,
@@ -599,13 +647,13 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
+                    .card_name_prefix =
+                        (is_any_filter_card_screenshot || is_browser_screenshot) ? "library-card."_s : ""_s,
                 };
                 f;
             }),
             .tags_filters = ({
-                Optional<TagsFilters> f = TagsFilters {
-                    .tags = tags,
-                };
+                Optional<TagsFilters> f = tags_filters;
                 f;
             }),
             .favourites_filter_info = favourites_info,

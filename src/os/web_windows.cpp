@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <windows.h>
@@ -13,7 +13,7 @@
 #include "misc.hpp"
 #include "web.hpp"
 
-enum class HttpMethod { Get, Post };
+enum class HttpMethod : u8 { Get, Post };
 
 static Optional<String> WinhttpErrorMessage(DWORD code) {
     switch (code) {

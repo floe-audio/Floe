@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -232,7 +232,7 @@ class PageAllocator final : public Allocator {
     }
 };
 
-enum class StdStream { Out, Err };
+enum class StdStream : u8 { Out, Err };
 
 // Unbuffered, signal-safe on Unix
 ErrorCodeOr<void> StdPrint(StdStream stream, String str);

@@ -111,6 +111,11 @@ struct ButtonConfig {
     // Internal. Specify that this element does not live inside the typical content of a viewport, instead
     // it's inside the padding or scrollbar.
     bool32 is_non_viewport_content : 1 = false;
+
+    // Don't call SetHot. Without this, a secondary ButtonBehaviour call on a parent (e.g. for a
+    // right-click menu) that runs after child buttons would overwrite the child's hot state. The
+    // caller must ensure SetHot was already called for this ID, typically via a prior ButtonBehaviour.
+    bool32 dont_set_hot : 1 = false;
 };
 
 struct SliderConfig {
@@ -182,7 +187,10 @@ enum class ViewportMode : u8 {
 enum class ViewportPositioning : u8 {
     ParentRelative, // rect is viewport-relative (default)
     WindowAbsolute, // rect is already in window coordinates
-    AutoPosition, // rect is avoid-rect in window coords; actual position is calculated
+    AutoPosition, // rect is avoid-rect in window coords; actual position is calculated. Alternatively, you
+                  // can positions you own rectangle (perhaps using BestPopupPos) and then place it using
+                  // WindowAbsolute.
+    WindowCentred, // centre in window; rect pos is ignored; size is clamped to window; works with auto_size
 };
 
 enum class ViewportScrollbarVisibility : u8 {
@@ -306,6 +314,9 @@ struct Viewport {
     f32x2 scroll_offset = {}; // The pixel offset from scrollbars.
     f32x2 scroll_max = {};
     b8x2 has_scrollbar = false;
+
+    enum class SizeResolutionState : u8 { NotPending, PendingSizeResolution, Ready };
+    SizeResolutionState size_resolution = SizeResolutionState::NotPending;
 };
 
 // Data about interactions with a text input, and data required to draw a text input.
@@ -357,7 +368,7 @@ struct TextInputResult {
 f32x2 TextInputTextPos(String text, Rect r, TextInputConfig cfg, Fonts const& fonts);
 
 // Tries to find a appropriate position for a popup, given the constraints.
-enum class PopupJustification { AboveOrBelow, LeftOrRight };
+enum class PopupJustification : u8 { AboveOrBelow, LeftOrRight };
 f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustification justification);
 
 struct Context {
@@ -597,9 +608,9 @@ struct Context {
     // Any Begin* call must be paired with an EndViewport. Use DEFER { imgui.EndViewport(); };. There's 2 core
     // overloads: either pass a unique name that will be converted to an ID, or make an ID first.
     //
-    // IMPORTANT: what the rectangle argument menas depends on the config's positioning. See
-    // ViewportPositioning. Additionally, for auto_width/auto_height viewports, the corresponding dimension in
-    // the rectangle is ignored.
+    // IMPORTANT: what the rectangle argument means depends on the config's positioning. See
+    // ViewportPositioning. For auto_width/auto_height viewports, the corresponding size dimension is ignored.
+    // For WindowCentred, the position is ignored (it's computed automatically).
     void BeginViewport(ViewportConfig const& config, Rect r, String unique_name);
     void BeginViewport(ViewportConfig const& config, Id id, Rect r, String debug_name = {});
 
@@ -630,6 +641,10 @@ struct Context {
     }
     bool ScrollViewportToShowRectangle(Rect r);
 
+    bool IsViewportFirstSizedFrame() const {
+        return curr_viewport->size_resolution == Viewport::SizeResolutionState::Ready;
+    }
+
     // Handy shortcuts.
     f32 CurrentVpWidth() const { return curr_viewport->bounds.w; }
     f32 CurrentVpHeight() const { return curr_viewport->bounds.h; }
@@ -652,6 +667,11 @@ struct Context {
     void CloseAllPopups();
     void CloseTopPopupOnly();
     bool DidPopupMenuJustOpen(Id id);
+
+    // Tell the framework that if the cursor is in this rect next frame, it should not apply the
+    // default viewport scroll behaviour to mouse-wheel events. Used for widgets that repurpose the
+    // scroll wheel (e.g. to adjust a parameter). Call every frame from the widget.
+    void ConsumeScrollAtRect(Rect rect_in_window_coords);
 
     //
     // Modal viewports
@@ -684,6 +704,17 @@ struct Context {
 
     void PushScissorStack();
     void PopScissorStack();
+
+    //
+    // Animations
+    //
+    // Tween a value toward a target over time, keyed by Id. Based on
+    // https://rxi.github.io/a_simple_ui_animation_system.html
+
+    // By default, restarting an in-flight animation continues from its current animated value (good for
+    // state transitions). Pass restart = true for one-shot effects that should snap back to `initial`.
+    void StartAnimation(Id id, f32 initial, f32 duration_seconds, bool restart = false);
+    f32 GetAnimatedValue(Id id, f32 target);
 
     //
     //
@@ -775,6 +806,18 @@ struct Context {
     Rect current_scissor_rect = {};
     bool scissor_rect_is_active = false;
 
+    // Name → window-space rect registry. Populated by callers wanting a way to look up the rect of a box,
+    // viewport, or any other element from elsewhere in the frame. Cleared at the start of every frame; keys
+    // may reference frame-scoped arena memory so this is cleared before that arena resets.
+    DynamicHashTable<String, Rect> named_rects {Malloc::Instance()};
+
+    void RegisterNamedRect(String name, Rect r) { named_rects.Insert(name, r); }
+    Optional<Rect> NamedRect(String name) const {
+        auto const e = named_rects.Find(name);
+        if (!e) return k_nullopt;
+        return *e;
+    }
+
     TimePoint button_repeat_counter = {};
     TimePoint cursor_blink_counter {};
 
@@ -786,6 +829,11 @@ struct Context {
     ActiveItem active_item_last_frame = {};
     Id hot_item_last_frame = k_null_id;
     Id hovered_item_last_frame = k_null_id;
+
+    // Filled during a frame by widgets that want to eat mouse scroll. Checked at the start of the
+    // next frame before applying scroll to a viewport.
+    DynamicArrayBounded<Rect, 16> scroll_consumer_rects = {};
+    DynamicArrayBounded<Rect, 16> scroll_consumer_rects_last_frame = {};
 
     Id hot_item = k_null_id;
     Id temp_hot_item = k_null_id;
@@ -803,6 +851,16 @@ struct Context {
     bool temp_keyboard_focus_item_is_popup = false;
 
     DynamicArray<Id> id_stack {Malloc::Instance()};
+
+    struct AnimationItem {
+        Id id;
+        f32 progress;
+        f32 duration;
+        f32 initial;
+        f32 prev;
+    };
+    static constexpr usize k_max_animation_items = 32;
+    DynamicArrayBounded<AnimationItem, k_max_animation_items> animation_items {};
 };
 
 } // namespace imgui

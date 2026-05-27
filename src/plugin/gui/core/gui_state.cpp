@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/core/gui_state.hpp"
@@ -10,6 +10,9 @@
 #include "foundation/foundation.hpp"
 #include "utils/logger/logger.hpp"
 
+#include "common_infrastructure/persistent_store.hpp"
+#include "common_infrastructure/sample_library/server/sample_library_server.hpp"
+
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
 #include "gui/core/gui_file_picker.hpp"
@@ -17,7 +20,6 @@
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
-#include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 #include "gui/overlays/gui_loading_overlay.hpp"
@@ -34,13 +36,13 @@
 #include "gui/panels/gui_package_install.hpp"
 #include "gui/panels/gui_prefs_panel.hpp"
 #include "gui/panels/gui_top_panel.hpp"
+#include "gui_framework/app_window.hpp"
+#include "gui_framework/gui_frame.hpp"
 #include "gui_framework/gui_imgui.hpp"
-#include "gui_framework/image.hpp"
 #include "gui_framework/renderer.hpp"
 #include "plugin/plugin.hpp"
-#include "sample_lib_server/sample_library_server.hpp"
 
-static void SampleLibraryChanged(GuiState& g, sample_lib::LibraryIdRef library_id) {
+static void SampleLibraryChanged(GuiState& g, sample_lib::LibraryId library_id) {
     InvalidateLibraryImages(g.library_images, library_id, *GuiIo().in.renderer);
 }
 
@@ -70,6 +72,9 @@ static void CreateFontsIfNeeded(FontAtlas& fonts) {
                 case FontType::Heading1: load_font(roboto_ttf, k_font_heading1_size, def_ranges); break;
                 case FontType::Heading2: load_font(roboto_ttf, k_font_heading2_size, def_ranges); break;
                 case FontType::Heading3: load_font(roboto_ttf, k_font_heading3_size, def_ranges); break;
+                case FontType::LargeTitle:
+                    load_font(EmbeddedOutfitSemiBold(), k_font_large_title_size, def_ranges);
+                    break;
                 case FontType::Icons: {
                     auto const icons_ttf = EmbeddedFontAwesome();
                     auto constexpr k_icon_ranges = Array {GlyphRange {ICON_MIN_FA, ICON_MAX_FA}};
@@ -96,16 +101,15 @@ GuiState::GuiState(Engine& engine)
               .error_notifications = engine.error_notifications,
               .result_added_callback = []() {},
               .library_changed_callback =
-                  [&gui = *this](sample_lib::LibraryIdRef library_id_ref) {
-                      sample_lib::LibraryId lib_id {library_id_ref};
+                  [&gui = *this](sample_lib::LibraryId lib_id) {
                       gui.main_thread_callbacks.Push([&gui, lib_id]() { SampleLibraryChanged(gui, lib_id); });
-                      g_request_gui_update.Store(true, StoreMemoryOrder::Relaxed);
+                      RequestGuiUpdate(gui.engine.instance_index);
                   },
           })) {
     Trace(ModuleName::Gui);
 
-    ASSERT(!engine.stated_changed_callback);
-    engine.stated_changed_callback = [this]() { OnEngineStateChange(save_preset_panel_state, this->engine); };
+    ASSERT(!engine.listener);
+    engine.listener = this;
 
     // The GUI has opened, we can check for updates if needed. We don't want to do this before because it has
     // no use until the GUI is open.
@@ -117,7 +121,7 @@ GuiState::~GuiState() {
     Shutdown(library_images);
     Shutdown(waveform_images);
 
-    engine.stated_changed_callback = {};
+    engine.listener = nullptr;
 
     sample_lib_server::CloseAsyncCommsChannel(engine.shared_engine_systems.sample_library_server,
                                               sample_lib_server_async_channel);
@@ -126,6 +130,11 @@ GuiState::~GuiState() {
         engine.processor.gui_note_click_state.Store({.is_held = false}, StoreMemoryOrder::Release);
         engine.host.request_process(&engine.host);
     }
+}
+
+void GuiState::OnEngineChange() {
+    RequestGuiUpdate(engine.instance_index);
+    OnEngineStateChange(save_preset_panel_state, engine);
 }
 
 bool Tooltip(GuiState& g, imgui::Id id, Rect r, char const* fmt, ...);
@@ -234,6 +243,8 @@ static void DoResizeCorner(GuiState& g) {
     imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
                              r.BottomLeft() + f32x2 {line_gap * 2, 0},
                              line_col);
+
+    imgui.RegisterNamedRect("resize-corner"_s, r);
 }
 
 void GuiUpdate(GuiState& g) {
@@ -301,8 +312,8 @@ void GuiUpdate(GuiState& g) {
         dyn::Append(available_instruments, &l.instrument);
     }
 
-    StartFrame(g.waveform_images, *frame_input.renderer, available_instruments);
-    DEFER { EndFrame(g.waveform_images); };
+    StartFrame(g.waveform_images, *frame_input.renderer);
+    DEFER { EndFrame(g.waveform_images, *frame_input.renderer, available_instruments); };
 
     imgui.BeginFrame(
         {
@@ -344,6 +355,21 @@ void GuiUpdate(GuiState& g) {
             .notifications = g.notifications,
         };
         DoLibraryDevPanel(g.builder, context, g.library_dev_panel_state);
+    }
+
+    {
+        MidiCcPanelContext context {
+            .processor = g.engine.processor,
+            .prefs = g.prefs,
+        };
+        DoMidiCcPanel(g.builder, context, g.midi_cc_panel_state);
+    }
+
+    {
+        InstanceConfigPanelContext context {
+            .processor = g.engine.processor,
+        };
+        DoInstanceConfigPanel(g.builder, context, g.instance_config_panel_state);
     }
 
     {
@@ -475,5 +501,34 @@ void GuiUpdate(GuiState& g) {
 
     DoDeveloperPanel(g.dev_gui);
 
+    MaybeFireScreenshot(g);
+
     prefs::WriteIfNeeded(g.prefs);
+}
+
+ErrorCodeOr<void> EncodeGuiState(GuiState& g, Writer writer) {
+    ArenaAllocator arena {PageAllocator::Instance()};
+    persistent_store::StoreTable store;
+
+    g_mid_panel_subsystem.encode(g.mid_panel_state, g.imgui, store, arena);
+    g_bot_panel_subsystem.encode(g.bottom_panel_state, g.imgui, store, arena);
+    g_prefs_panel_subsystem.encode(g.preferences_panel_state, g.imgui, store, arena);
+    g_info_panel_subsystem.encode(g.info_panel_state, g.imgui, store, arena);
+    for (auto const& layer : g.layer_panel_states)
+        g_layer_panel_subsystem.encode(layer, g.imgui, store, arena);
+
+    return persistent_store::Write(store, writer);
+}
+
+void DecodeGuiState(GuiState& g, String bytes) {
+    if (!bytes.size) return;
+    ArenaAllocator arena {PageAllocator::Instance()};
+    auto const store = persistent_store::Read(arena, bytes);
+
+    g_mid_panel_subsystem.decode(g.mid_panel_state, g.imgui, store);
+    g_bot_panel_subsystem.decode(g.bottom_panel_state, g.imgui, store);
+    g_prefs_panel_subsystem.decode(g.preferences_panel_state, g.imgui, store);
+    g_info_panel_subsystem.decode(g.info_panel_state, g.imgui, store);
+    for (auto& layer : g.layer_panel_states)
+        g_layer_panel_subsystem.decode(layer, g.imgui, store);
 }

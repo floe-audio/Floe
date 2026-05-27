@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <dlfcn.h>
@@ -582,7 +582,7 @@ static void SignalHandler(int signal_num, siginfo_t* info, void* context) {
                 g_in_crash_handler = true;
                 auto& prev_action = g_previous_signal_actions[index];
 
-                enum class Type { HandlerFunction, HandlerWithInfoFunction };
+                enum class Type : u8 { HandlerFunction, HandlerWithInfoFunction };
 
                 using HandlerFunction = TaggedUnion<
                     Type,

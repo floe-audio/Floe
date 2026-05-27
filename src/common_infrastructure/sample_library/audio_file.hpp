@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -9,7 +9,7 @@
 
 constexpr String k_raw_16_bit_stereo_44100_format_ext = ".r16";
 
-enum class AudioFileError {
+enum class AudioFileError : u8 {
     FileHasInvalidData,
     NotFlacOrWav,
     NotMonoOrStereo,

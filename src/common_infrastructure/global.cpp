@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "global.hpp"
@@ -25,6 +25,13 @@ static void ShutdownTracy() {
 
 static u32 g_tracy_init = 0;
 
+Atomic<PluginHost> g_plugin_host {PluginHost::Unknown};
+
+static Atomic<PanicResponse> g_panic_response {PanicResponse::Quarantine};
+
+PanicResponse GetPanicResponse() { return g_panic_response.Load(LoadMemoryOrder::Acquire); }
+void SetPanicResponse(PanicResponse response) { g_panic_response.Store(response, StoreMemoryOrder::Release); }
+
 void GlobalInit(GlobalInitOptions options) {
     if constexpr (k_running_with_thread_sanitizer) {
         // Very unstable to run Valgrind with ThreadSanitizer.
@@ -35,10 +42,10 @@ void GlobalInit(GlobalInitOptions options) {
 
     if (options.set_main_thread) SetThreadName("main", FinalBinaryIsPlugin());
 
+    g_panic_response.Store(options.panic_response, StoreMemoryOrder::Release);
+
     SetPanicHook([](char const* message_c_str, SourceLocation loc, uintptr loc_pc) {
         // We don't have to be signal-safe here.
-
-        if (!PRODUCTION_BUILD && IsRunningUnderDebugger()) __builtin_debugtrap();
 
         ArenaAllocatorWithInlineStorage<2000> arena {PageAllocator::Instance()};
 
@@ -67,6 +74,11 @@ void GlobalInit(GlobalInitOptions options) {
             }
             return k_success;
         });
+
+        if constexpr (!PRODUCTION_BUILD)
+            if (IsRunningUnderDebugger()) __builtin_debugtrap();
+
+        if (g_panic_response.Load(LoadMemoryOrder::Acquire) == PanicResponse::Abort) __builtin_abort();
 
         // Step 2: send an error report to Sentry.
         {
@@ -109,26 +121,7 @@ void GlobalInit(GlobalInitOptions options) {
                     "Failed to initialize stacktrace state: {}",
                     *err);
 
-    InitLogger({.destination = ({
-                    LogConfig::Destination d;
-                    if (options.force_log_to_stderr) {
-                        d = LogConfig::Destination::Stderr;
-                    } else {
-                        switch (g_final_binary_type) {
-                            case FinalBinaryType::Clap:
-                            case FinalBinaryType::AuV2:
-                            case FinalBinaryType::Vst3: d = LogConfig::Destination::File; break;
-                            case FinalBinaryType::Standalone:
-                            case FinalBinaryType::Packager:
-                            case FinalBinaryType::PresetEditor:
-                            case FinalBinaryType::WindowsInstaller:
-                            case FinalBinaryType::WindowsUninstaller:
-                            case FinalBinaryType::DocsGenerator:
-                            case FinalBinaryType::Tests: d = LogConfig::Destination::Stderr; break;
-                        }
-                    }
-                    d;
-                })});
+    InitLogger({});
 
     InitLogFolderIfNeeded();
 

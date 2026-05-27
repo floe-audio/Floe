@@ -4,7 +4,7 @@
 
 #include "foundation/foundation.hpp"
 
-enum class GuiStyleSystem {
+enum class GuiStyleSystem : u8 {
     MidPanel, // On top of an image background, uses transparent black/white shades often.
     Overlay, // Modals and popups, often light-mode and bold.
     TopBottomPanels, // Dark-mode, bold.
@@ -26,3 +26,5 @@ constexpr f32 k_menu_item_padding_y = 3;
 constexpr f32 k_library_icon_standard_size = 20;
 constexpr f32 k_small_knob_width = 28.90f;
 constexpr f32x2 k_tooltip_pad = {7.6f, 6.4f};
+constexpr f32 k_peak_meter_standard_width = 21.0f;
+constexpr f32 k_graph_handle_radius = 3.5f;

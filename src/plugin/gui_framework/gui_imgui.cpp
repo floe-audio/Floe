@@ -477,13 +477,7 @@ void Context::PushId(uintptr num) { dyn::Append(id_stack, MakeId(num)); }
 
 void Context::PopId() { dyn::Pop(id_stack); }
 
-// Simple seeded FNV-1a.
-static u64 SeededHash(Span<u8 const> data, u64 seed) {
-    auto hash = HashInit();
-    for (auto const d : Array {AsBytes(seed), data})
-        HashUpdate(hash, d);
-    return hash;
-}
+static u64 SeededHash(Span<u8 const> data, u64 seed) { return RapidHash64(seed, data.data, data.size); }
 
 Id Context::MakeId(String str) const {
     auto const seed = Last(id_stack);
@@ -508,10 +502,7 @@ Context::Context(ArenaAllocator& scratch) : scratch_arena(scratch) {
     textedit_text_utf8.Reserve(Kb(4));
 }
 
-bool Context::IsRectVisible(Rect r) const {
-    Rect const& c = current_scissor_rect;
-    return Rect::DoRectsIntersect(r, c);
-}
+bool Context::IsRectVisible(Rect r) const { return Rect::DoRectsIntersect(r, current_scissor_rect); }
 
 // Hot
 bool Context::IsHot(Id id) const { return hot_item == id; }
@@ -541,10 +532,51 @@ bool Context::WasJustUnhovered(Id id) const {
     return !IsHovered(id) && hovered_item_last_frame == hovered_item;
 }
 
+void Context::StartAnimation(Id id, f32 initial, f32 duration_seconds, bool restart) {
+    for (auto& item : animation_items) {
+        if (item.id == id) {
+            item.initial = restart ? initial : item.prev;
+            item.prev = item.initial;
+            item.duration = duration_seconds;
+            item.progress = 0;
+            return;
+        }
+    }
+    dyn::Append(animation_items,
+                AnimationItem {
+                    .id = id,
+                    .progress = 0,
+                    .duration = duration_seconds,
+                    .initial = initial,
+                    .prev = initial,
+                });
+}
+
+f32 Context::GetAnimatedValue(Id id, f32 target) {
+    for (auto& item : animation_items) {
+        if (item.id == id) {
+            f32 const p = 1.0f - ((1.0f - item.progress) * (1.0f - item.progress));
+            item.prev = item.initial + (p * (target - item.initial));
+            return item.prev;
+        }
+    }
+    return target;
+}
+
 void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     ASSERT_EQ(viewport_stack.size, 0u);
     ASSERT_EQ(current_popup_stack.size, 0u);
 
+    {
+        f32 const dt = GuiIo().in.delta_time;
+        for (usize i = animation_items.size; i-- > 0;) {
+            animation_items[i].progress += dt / animation_items[i].duration;
+            if (animation_items[i].progress >= 1.0f) dyn::RemoveSwapLast(animation_items, i);
+        }
+        if (animation_items.size) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+    }
+
+    named_rects.DeleteAll();
     tab_just_used_to_focus = false;
     viewport_just_created = nullptr;
     curr_viewport = nullptr;
@@ -566,7 +598,14 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     }
     dyn::Clear(sorted_viewports);
 
-    if (frame_input.mouse_scroll_delta_in_lines != 0 && hovered_viewport) {
+    bool scroll_consumed_by_widget = false;
+    for (auto const& r : scroll_consumer_rects_last_frame)
+        if (r.Contains(frame_input.cursor_pos)) {
+            scroll_consumed_by_widget = true;
+            break;
+        }
+
+    if (frame_input.mouse_scroll_delta_in_lines != 0 && hovered_viewport && !scroll_consumed_by_widget) {
         Viewport* viewport = hovered_viewport;
         Viewport* final_viewport = nullptr;
         while (true) {
@@ -591,10 +630,8 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     // Reset stuff
     //
 
-    for (auto& v : viewports) {
-        if (!v->active) v->prev_content_size = {};
+    for (auto& v : viewports)
         v->active = false;
-    }
 
     UpdateExclusiveFocusViewport();
 
@@ -645,8 +682,16 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
                   "ApplicationViewport");
 }
 
+void Context::ConsumeScrollAtRect(Rect rect_in_window_coords) {
+    if (scroll_consumer_rects.size < scroll_consumer_rects.Capacity())
+        dyn::Append(scroll_consumer_rects, rect_in_window_coords);
+}
+
 void Context::EndFrame() {
     EndViewport(); // k_root_viewport_id
+
+    scroll_consumer_rects_last_frame = scroll_consumer_rects;
+    dyn::Clear(scroll_consumer_rects);
 
     ASSERT_EQ(viewport_stack.size, 0u); // All BeginViewport calls must have an EndViewport.
     ASSERT_EQ(current_popup_stack.size, 0u);
@@ -809,10 +854,12 @@ void Context::EndFrame() {
 
     if (temp_hot_item != hot_item)
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+
     if (temp_active_item.just_activated) {
         temp_hot_item = k_null_id;
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
+
     if (tab_to_focus_next_input)
         frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
@@ -984,8 +1031,8 @@ static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
 
         if (id != creator_of_next) {
             if (imgui.WasJustMadeHot(id))
-                GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
-                                           "popup close");
+                GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                           GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
             if (imgui.SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
                 imgui.ClosePopupToLevel(imgui.current_popup_stack.size);
         }
@@ -1350,7 +1397,9 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     if (!result.HasSelection()) {
         if (starting_cursor != stb_state.cursor || reset_cursor)
             ResetTextInputCursorAnim();
-        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter, k_text_cursor_blink_rate))
+        else if (GuiIo().WakeupAtTimedInterval(cursor_blink_counter,
+                                               k_text_cursor_blink_rate,
+                                               SourceLocationHash()))
             text_cursor_is_shown = !text_cursor_is_shown;
     }
 
@@ -1392,8 +1441,10 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
 
     auto const& font = *it.imgui.draw_list->fonts.Current();
 
+    f32 x_offset = 0;
+
     if (!it.pos) {
-        // First call.
+        // First call: walk to selection_start, tracking the current line's start so we can compute x_offset.
         it.pos = text.data;
         auto line_start = it.pos;
 
@@ -1406,46 +1457,17 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
                 it.pos = IncrementUTF8Characters(it.pos, 1);
             }
         }
-        auto const start_pos = it.pos;
-        auto const start_line_start = line_start;
-        auto const start_line_index = it.line_index;
-
+        x_offset =
+            font.CalcTextSize({line_start, (usize)(it.pos - line_start)}, {.font_size = font.font_size}).x;
         it.remaining_chars = (u32)(selection_end - selection_start);
-
-        // We have the start of the selection and the line index. To complete this rect we need to iterate
-        // until either the end of the line or the end of the selection.
-        for (auto _ : Range(it.remaining_chars)) {
-            ASSERT(it.remaining_chars);
-            --it.remaining_chars;
-
-            if (*it.pos == '\n') {
-                line_start = it.pos + 1;
-                it.line_index++;
-                ++it.pos;
-                break;
-            }
-            it.pos = IncrementUTF8Characters(it.pos, 1);
-        }
-
-        char const* end_pos = it.pos;
-
-        Rect const result = {
-            .x = text_pos.x + font.CalcTextSize({start_line_start, (usize)(start_pos - start_line_start)},
-                                                {.font_size = font.font_size})
-                                  .x,
-            .y = text_pos.y - 2 + (start_line_index * font.font_size),
-            .w =
-                font.CalcTextSize({start_pos, (usize)(end_pos - start_pos)}, {.font_size = font.font_size}).x,
-            .h = font.font_size + 4};
-
-        return result;
+    } else if (it.remaining_chars == 0) {
+        return k_nullopt;
     }
-
-    if (it.remaining_chars == 0) return k_nullopt;
 
     auto const start_pos = it.pos;
     auto const start_line_index = it.line_index;
 
+    // Walk until end-of-line or end-of-selection.
     for (auto _ : Range(it.remaining_chars)) {
         ASSERT(it.remaining_chars);
         --it.remaining_chars;
@@ -1461,10 +1483,10 @@ Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIter
     auto const end_pos = it.pos;
 
     return Rect {
-        .x = text_pos.x,
-        .y = text_pos.y - 2 + (start_line_index * font.font_size),
+        .x = text_pos.x + x_offset,
+        .y = text_pos.y + (start_line_index * font.font_size),
         .w = font.CalcTextSize({start_pos, (usize)(end_pos - start_pos)}, {.font_size = font.font_size}).x,
-        .h = font.font_size + 4};
+        .h = font.font_size};
 }
 
 Context::PopupMenuButtonBehaviourResult
@@ -1477,8 +1499,8 @@ Context::PopupMenuButtonBehaviour(Rect r, Id button_id, Id popup_id, ButtonConfi
         // We're already in a popup viewport. We support auto-opening child popups when hovering. This is
         // common behaviour for quickly navigating through nested menus.
         if (WasJustMadeHot(button_id))
-            GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_popup_open_and_close_delay_sec,
-                                       "Popup open");
+            GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                       GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
         if ((button_fired || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
             !IsPopupMenuOpen(popup_id)) {
             ClosePopupToLevel(current_popup_stack.size);
@@ -1509,14 +1531,10 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
     if (temp_hot_item != id) RegisterRectForMouseTracking(r);
 
     // Set the hot/active states if necessary.
-    SetHot(r, id, cfg.is_non_viewport_content);
+    if (!cfg.dont_set_hot) SetHot(r, id, cfg.is_non_viewport_content);
     auto const is_hot = IsHot(id);
 
-    if (IsHot(id) && mouse_down) {
-        SetActive(id, cfg.mouse_button);
-        int b = 0;
-        (void)b;
-    }
+    if (IsHot(id) && mouse_down) SetActive(id, cfg.mouse_button);
     auto const is_active = IsActive(id, cfg.mouse_button);
 
     auto button_fired = ({
@@ -1554,7 +1572,9 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
         if (WasJustActivated(id, cfg.mouse_button))
             button_repeat_counter = GuiIo().in.current_time + k_button_repeat_rate;
         else if (is_active) {
-            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate))
+            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter,
+                                              k_button_repeat_rate,
+                                              SourceLocationHash()))
                 button_fired = true;
         }
     }
@@ -1619,6 +1639,7 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
     auto const auto_width = cfg.auto_size.x;
     auto auto_height = cfg.auto_size.y;
     auto const auto_pos = cfg.positioning == ViewportPositioning::AutoPosition;
+    auto const window_centred = cfg.positioning == ViewportPositioning::WindowCentred;
     auto const no_scroll_x = cfg.scrollbar_visibility.x == ViewportScrollbarVisibility::Never;
     auto const no_scroll_y = cfg.scrollbar_visibility.y == ViewportScrollbarVisibility::Never;
     auto const scrollbar_inside_padding = cfg.scrollbar_inside_padding;
@@ -1630,8 +1651,10 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
     // have window-relative coords. Contained+ParentRelative remains viewport-relative.
     auto const is_window_coordinates = is_floating || cfg.positioning != ViewportPositioning::ParentRelative;
 
-    ASSERT(r.x >= 0);
-    ASSERT(r.y >= 0);
+    if (!window_centred) {
+        ASSERT(r.x >= 0);
+        ASSERT(r.y >= 0);
+    }
 
     dyn::Assign(viewport->debug_name, debug_name);
     viewport->active = true;
@@ -1706,6 +1729,11 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
                                  has_parent_popup ? PopupJustification::LeftOrRight
                                                   : PopupJustification::AboveOrBelow);
             r.pos = Trunc(r.pos);
+        }
+        if (window_centred) {
+            auto const window_size = GuiIo().in.window_size.ToFloat2();
+            r.size = Min(r.size, window_size);
+            r.pos = Max((window_size - r.size) / 2, f32x2 {0, 0});
         }
     }
 
@@ -1842,6 +1870,8 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
 
         if (viewport->has_scrollbar.y && !auto_height && !no_scroll_y) {
             if (scrollbar_inside_padding) {
+                ASSERT(viewport->cfg.padding.r > 0,
+                       "scrollbar_inside_padding requires non-zero right padding");
                 viewport->cfg.scrollbar_width = viewport->cfg.padding.r;
                 viewport->cfg.scrollbar_padding = 0;
             }
@@ -1867,6 +1897,8 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
 
         if (viewport->has_scrollbar.x && !auto_width && !no_scroll_x) {
             if (scrollbar_inside_padding) {
+                ASSERT(viewport->cfg.padding.b > 0,
+                       "scrollbar_inside_padding requires non-zero bottom padding");
                 viewport->cfg.scrollbar_width = viewport->cfg.padding.b;
                 viewport->cfg.scrollbar_padding = 0;
             }
@@ -1938,6 +1970,16 @@ void Context::EndViewport() {
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
+    switch (viewport->size_resolution) {
+        case Viewport::SizeResolutionState::PendingSizeResolution:
+            viewport->size_resolution = Viewport::SizeResolutionState::Ready;
+            break;
+        case Viewport::SizeResolutionState::Ready:
+            viewport->size_resolution = Viewport::SizeResolutionState::NotPending;
+            break;
+        case Viewport::SizeResolutionState::NotPending: break;
+    }
+
     PopRectFromCurrentScissorStack();
     PopId();
     if (!viewport->parent_viewport) PopScissorStack();
@@ -1955,13 +1997,21 @@ void Context::EndViewport() {
 }
 
 bool Context::ScrollViewportToShowRectangle(Rect r) {
-    if (!Rect::DoRectsIntersect(RegisterAndConvertRect(r),
-                                curr_viewport->clipping_rect.ReducedVertically(r.h))) {
+    auto const window_r = RegisterAndConvertRect(r);
+    bool scrolled = false;
+    if (curr_viewport->scroll_max.y > 0 &&
+        !Rect::DoRectsIntersect(window_r, curr_viewport->clipping_rect.ReducedVertically(r.h))) {
         SetYScroll(curr_viewport,
                    Clamp(r.CentreY() - (CurrentVpHeight() / 2), 0.0f, curr_viewport->scroll_max.y));
-        return true;
+        scrolled = true;
     }
-    return false;
+    if (curr_viewport->scroll_max.x > 0 &&
+        !Rect::DoRectsIntersect(window_r, curr_viewport->clipping_rect.ReducedHorizontally(r.w))) {
+        SetXScroll(curr_viewport,
+                   Clamp(r.CentreX() - (CurrentVpWidth() / 2), 0.0f, curr_viewport->scroll_max.x));
+        scrolled = true;
+    }
+    return scrolled;
 }
 
 void Context::PushScissorStack() { dyn::Append(scissor_stacks, DynamicArray<Rect>(Malloc::Instance())); }
@@ -2097,6 +2147,7 @@ void Context::OpenPopupMenu(Id id, Id creator_of_this_popup) {
     auto popup = FindOrCreateViewport(id);
     popup->cfg.mode = ViewportMode::PopupMenu;
     popup->prev_content_size = f32x2 {0, 0};
+    popup->size_resolution = Viewport::SizeResolutionState::PendingSizeResolution;
     popup->creator_of_this_popup_menu = is_first_popup ? k_null_id : creator_of_this_popup;
 
     popup_menu_just_opened = id;
@@ -2143,10 +2194,11 @@ void Context::OpenModalViewport(Id id) {
     auto viewport = FindOrCreateViewport(id);
     viewport->cfg.mode = ViewportMode::Modal;
     viewport->prev_content_size = f32x2 {0, 0};
+    viewport->size_resolution = Viewport::SizeResolutionState::PendingSizeResolution;
     modal_just_opened = id;
     dyn::Append(open_modals, viewport);
     UpdateExclusiveFocusViewport();
-    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    if (GuiIoValid()) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
 bool Context::IsModalOpen(Id id) {
@@ -2230,10 +2282,12 @@ Context::DraggerResult Context::DraggerBehaviour(DraggerBehaviourArgs const& arg
 
 bool Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
     SetHot(rect_in_window_coords, id);
+    RegisterRectForMouseTracking(rect_in_window_coords);
 
     constexpr auto k_delay_secs = 0.5;
 
-    if (WasJustMadeHot(id)) GuiIo().out.AddTimedWakeup(GuiIo().in.current_time + k_delay_secs, "Tooltip");
+    if (WasJustMadeHot(id))
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_delay_secs);
 
     return IsHot(id) && SecondsSpentHot() >= k_delay_secs;
 }

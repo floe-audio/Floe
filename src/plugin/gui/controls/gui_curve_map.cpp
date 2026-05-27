@@ -1,4 +1,4 @@
-// Copyright 2026 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/controls/gui_curve_map.hpp"
@@ -6,6 +6,8 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_modal.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
@@ -35,6 +37,7 @@ DrawCurvedSegment(DrawList& graphics, f32x2 p0, f32x2 p1, float curve_value, int
 
 void DoCurveMap(GuiState& g,
                 CurveMap& curve_map,
+                u8 layer_index,
                 Rect rect,
                 Optional<f32> velocity_marker,
                 String additional_tooltip) {
@@ -65,7 +68,7 @@ void DoCurveMap(GuiState& g,
     auto const point_color = LiveCol(UiColMap::CurveMapPoint);
     auto const point_hover_color = LiveCol(UiColMap::CurveMapPointHover);
 
-    imgui.PushId("curve-map-points");
+    imgui.PushId((uintptr)&curve_map);
     DEFER { imgui.PopId(); };
 
     constexpr auto k_remove_all = LargestRepresentableValue<usize>();
@@ -73,6 +76,47 @@ void DoCurveMap(GuiState& g,
     Optional<f32x2> new_point_at_window_pos {};
 
     bool changed_values = false;
+
+    StateSnapshotSection const curve_target_section {VelocityCurveSection {layer_index}};
+
+    auto const append_common_menu_items = [&](Box root) {
+        MenuDivider(g.builder, root);
+
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Copy Curve"_s,
+                         .tooltip = "Copy this curve's points"_s,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            g.snapshot_clipboard = GuiState::CopiedSection {
+                .snapshot = CurrentStateSnapshot(g.engine),
+                .section = curve_target_section,
+            };
+        }
+
+        auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                               g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::VelocityCurve;
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Paste Curve"_s,
+                         .tooltip = "Overwrite this curve with the previously copied curve"_s,
+                         .mode = can_paste ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                         .no_icon_gap = true,
+                     })
+                .button_fired &&
+            can_paste) {
+            ApplySectionOfState(g.engine,
+                                g.snapshot_clipboard->snapshot,
+                                g.snapshot_clipboard->section,
+                                curve_target_section);
+            imgui.ClearActive();
+        }
+
+        if (DoResetSectionMenuItems(g, root, curve_target_section, "Curve"_s)) imgui.ClearActive();
+    };
 
     for (auto const working_index : Range(working.size)) {
         auto& working_point = working[working_index];
@@ -162,6 +206,7 @@ void DoCurveMap(GuiState& g,
                                             .button_fired) {
                                         new_point_at_window_pos = g.curve_map_add_point_click_pos;
                                     }
+                                    append_common_menu_items(root);
                                 },
                             .bounds = Rect {.pos = g.curve_map_add_point_click_pos}.Expanded(grabber_radius),
                             .imgui_id = right_click_id,
@@ -194,6 +239,10 @@ void DoCurveMap(GuiState& g,
                 auto const inverted = next_working_point.y > working_point.y;
 
                 f32 percent = MapTo01(working_point.curve * (inverted ? -1.0f : 1.0f), -1.0f, 1.0f);
+
+                if (imgui.WasJustActivated(imgui_id, MouseButton::Left))
+                    BeginUndoableStep(g.engine, "Curve shape"_s);
+                if (imgui.WasJustDeactivated(imgui_id, MouseButton::Left)) EndUndoableStep(g.engine);
 
                 if (imgui.SliderBehaviourFraction({
                         .rect_in_window_coords = curve_shaper_rect,
@@ -272,6 +321,7 @@ void DoCurveMap(GuiState& g,
                                                 .button_fired) {
                                             new_point_at_window_pos = g.curve_map_add_point_click_pos;
                                         }
+                                        append_common_menu_items(root);
                                     },
                                 .bounds =
                                     Rect {.pos = g.curve_map_add_point_click_pos}.Expanded(grabber_radius),
@@ -304,55 +354,29 @@ void DoCurveMap(GuiState& g,
             // Right-click menu
             {
                 auto const right_click_id = imgui.MakeId(SourceLocationHash());
-
-                if (imgui.ButtonBehaviour(grabber_rect,
-                                          imgui_id,
-                                          {
-                                              .mouse_button = MouseButton::Right,
-                                              .event = MouseButtonEvent::Up,
-                                          })) {
-                    imgui.OpenPopupMenu(right_click_id, imgui_id);
-                }
-
-                if (g.imgui.IsPopupMenuOpen(right_click_id))
-                    DoBoxViewport(g.builder,
-                                  {
-                                      .run =
-                                          [&](GuiBuilder&) {
-                                              auto const root = DoBox(
-                                                  g.builder,
-                                                  {
-                                                      .layout {
-                                                          .size = layout::k_hug_contents,
-                                                          .contents_direction = layout::Direction::Column,
-                                                          .contents_align = layout::Alignment::Start,
-                                                      },
-                                                  });
-                                              if (MenuItem(g.builder,
-                                                           root,
-                                                           {
-                                                               .text = "Remove Point"_s,
-                                                               .no_icon_gap = true,
-                                                           })
-                                                      .button_fired) {
-                                                  remove_real_index = (usize)working_point.real_index;
-                                                  imgui.ClearActive();
-                                              }
-                                              if (MenuItem(g.builder,
-                                                           root,
-                                                           {
-                                                               .text = "Remove All Points"_s,
-                                                               .no_icon_gap = true,
-                                                           })
-                                                      .button_fired) {
-                                                  remove_real_index = k_remove_all;
-                                                  imgui.ClearActive();
-                                              }
-                                          },
-                                      .bounds = grabber_rect,
-                                      .imgui_id = right_click_id,
-                                      .viewport_config = k_default_popup_menu_viewport,
-                                  });
+                DoRightClickMenu(
+                    g,
+                    {
+                        .button_id = imgui_id,
+                        .popup_id = right_click_id,
+                        .interaction_r = grabber_rect,
+                        .do_menu_items =
+                            [&](Box root) {
+                                if (MenuItem(g.builder, root, {.text = "Remove Point"_s, .no_icon_gap = true})
+                                        .button_fired) {
+                                    remove_real_index = (usize)working_point.real_index;
+                                    imgui.ClearActive();
+                                }
+                                if (MenuItem(g.builder,
+                                             root,
+                                             {.text = "Remove All Points"_s, .no_icon_gap = true})
+                                        .button_fired) {
+                                    remove_real_index = k_remove_all;
+                                    imgui.ClearActive();
+                                }
+                                append_common_menu_items(root);
+                            },
+                    });
             }
 
             auto const drag_activation_cfg = ({
@@ -361,6 +385,11 @@ void DoCurveMap(GuiState& g,
                 cfg;
             });
             imgui.ButtonBehaviour(grabber_rect, imgui_id, drag_activation_cfg);
+
+            if (imgui.WasJustActivated(imgui_id, drag_activation_cfg.mouse_button))
+                BeginUndoableStep(g.engine, "Move curve point"_s);
+            if (imgui.WasJustDeactivated(imgui_id, drag_activation_cfg.mouse_button))
+                EndUndoableStep(g.engine);
 
             if (imgui.IsActive(imgui_id, drag_activation_cfg.mouse_button)) {
                 // Dragging point
@@ -411,6 +440,9 @@ void DoCurveMap(GuiState& g,
             curve_map.Clear();
         else
             curve_map.RemoveIndex(*remove_real_index);
+        RecordUndoableStep(g.engine,
+                           *remove_real_index == k_remove_all ? "Remove all curve points"_s
+                                                              : "Remove curve point"_s);
     }
 
     if (new_point_at_window_pos) {
@@ -423,6 +455,7 @@ void DoCurveMap(GuiState& g,
             1.0f);
 
         curve_map.AddPoint({new_point.x, new_point.y, 0});
+        RecordUndoableStep(g.engine, "Add curve point"_s);
     }
 
     if (changed_values) curve_map.RenderCurveToLookupTable();
@@ -433,6 +466,7 @@ void DoCurveMap(GuiState& g,
                             f32x2 {rect.x + (*velocity_marker * rect.w), rect.y + (rect.h * (1.0f - value))},
                             rect.h * value,
                             rect.x,
-                            k_nullopt);
+                            k_nullopt,
+                            {});
     }
 }

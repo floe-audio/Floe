@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -12,7 +12,7 @@
 //   and only ever non-personal external state. For example, never log a filepath. It could contain a
 //   username. On the other hand, information about the CPU is fine because it's not personal.
 
-enum class LogLevel { Debug, Info, Warning, Error };
+enum class LogLevel : u8 { Debug, Info, Warning, Error };
 
 struct WriteLogLineOptions {
     bool ansi_colors = false;
@@ -46,7 +46,7 @@ struct LogRingBuffer {
     u16 read {};
 };
 
-enum class ModuleName {
+enum class ModuleName : u8 {
     Global,
     Main,
     Package,
@@ -91,12 +91,13 @@ ErrorCodeOr<void> WriteLogLine(Writer writer,
                                WriteLogLineOptions options);
 
 struct LogConfig {
-    enum class Destination { Stderr, File };
-    Destination destination = Destination::Stderr;
     LogLevel min_level_allowed = PRODUCTION_BUILD ? LogLevel::Info : LogLevel::Debug;
 };
 
 ErrorCodeOr<void> CleanupOldLogFilesIfNeeded(ArenaAllocator& scratch_arena);
+
+// IMPORTANT: never log file paths or anything that could be deemed personal information. Logs may be used in
+// Sentry reports.
 
 void Log(ModuleName module_name, LogLevel level, FunctionRef<ErrorCodeOr<void>(Writer)> write_message);
 
@@ -111,6 +112,18 @@ LogRingBuffer::Snapshot GetLatestLogMessages();
 
 void InitLogger(LogConfig);
 void ShutdownLogger();
+
+// Set once at startup before spawning threads.
+void SetLogLevel(LogLevel level);
+LogLevel GetLogLevel();
+
+constexpr Optional<LogLevel> ParseLogLevelName(String name) {
+    if (IsEqualToCaseInsensitiveAscii(name, "debug"_s)) return LogLevel::Debug;
+    if (IsEqualToCaseInsensitiveAscii(name, "info"_s)) return LogLevel::Info;
+    if (IsEqualToCaseInsensitiveAscii(name, "warning"_s)) return LogLevel::Warning;
+    if (IsEqualToCaseInsensitiveAscii(name, "error"_s)) return LogLevel::Error;
+    return k_nullopt;
+}
 
 void Trace(ModuleName module_name, String message = {}, SourceLocation loc = SourceLocation::Current());
 

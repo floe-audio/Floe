@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <minwindef.h>
@@ -32,7 +32,7 @@
 constexpr auto k_page_class_name = L"floe-page";
 constexpr auto k_divider_class_name = L"floe-divider";
 
-enum class ProgressBarMode { None, Marquee, Normal };
+enum class ProgressBarMode : u8 { None, Marquee, Normal };
 
 struct Widget {
     static constexpr usize k_max_children = 10;
@@ -1065,7 +1065,7 @@ static LRESULT CALLBACK PageWindowProc(HWND window, UINT msg, WPARAM w_param, LP
     return DefWindowProcW(window, msg, w_param, l_param);
 }
 
-enum class InstallerCliArgs { Autorun, Count };
+enum class InstallerCliArgs : u8 { Autorun, Count };
 
 auto constexpr k_cli_arg_defs = MakeCommandLineArgDefs<InstallerCliArgs>({
     {

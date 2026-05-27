@@ -80,7 +80,7 @@ struct SectionedKey {
 // NOTE: GlobalString and GlobalInt could be combined and stored using KeyValueUnion, but it makes the API a
 // little less ergonomic because we'd then have to explicitly specify the KeyValueUnion type when creating a
 // key, rather than just String or s64.
-enum class KeyType : u32 { GlobalString, GlobalInt, Sectioned };
+enum class KeyType : u8 { GlobalString, GlobalInt, Sectioned };
 
 // Our HashTable implementation currently requires keys to be default constructible.
 constexpr auto TaggedUnionDefaultValue(KeyType) { return ""_s; }

@@ -14,12 +14,78 @@ For instance: 0.0.1. Don't change the headings.
 -->
 
 # Changelog
+## 2.0.0-beta.2
+Our biggest update to date. This follows on from 1.2.0-beta.1; we chose to skip 1.2.0 and jump straight to 2.0.0.
+
+### Major new features
+- Added granular synthesis (including a random detune parameter)
+- Added EQ to effects rack
+- Added arpeggiator
+- GUI: split the single main page into separate Layers, Effects and Perform pages
+- Added perform page with access to common controls and visual display, with 'Vary' random-variation control replaces the old randomise buttons; click-position strip lets you choose how much to vary
+- Original/Modified toggle on Perform page to audition the original vs modified preset
+- 7 new LFO shapes: Random Steps, Random Glide, Pluck, Pluck Sharp, Pulse Narrow, Pulse Wide, Trapezoid
+- Effects rack improvements:
+  - Bypass button for each effect
+  - Mix knob for each effect - replacing separate Wet and Dry controls where appropriate. Loading presets that were saved with the separate wet/dry parameters are perfectly re-mapped to the new Mix and Output parameters where necessary. Loading an old DAW project with separate wet/dry actives the _legacy parameters_ system.
+  - Bypass-all and remove-all buttons on the effects panel header
+  - Right-click reset menus on effect headings and switchboard buttons
+  - New EQ effect
+  - Improve Stereo Widen effect with Bass Mono and Balanced modes
+  - New Modern compressor algorithm alongside the original
+- Third EQ band per layer
+- New EQ band types: low-pass, high-pass and notch
+- Visual graphs added for the layer filter, effect filter, EQ, LFO, convolution reverb pre-filter/post-shelf, and delay filter. EQ and filter graphs have draggable nodes for editing.
+- Undo/redo system added
+- Per-layer stereo width knob
+- Copy/paste/reset added throughout the GUI on right-click menus: parameters, EQ bands, layer tabs, macros, envelope background, and curve maps
+- Reproducible playback added. New panel (3-dots menu -> Instance Config) offers features to reset variability in performances so that you can always render the exact same audio from Floe.
+- Added a new MIDI CC Assignments panel (3-dots menu) for viewing and controls your MIDI CC mappings to Floe parameters
+- New default background image
+- Library-provided background images can declare attribution via `floe.set_attribution_requirement`, shown as a subtle credit on the Perform page
+
+### Improvements
+- Improve parameters:
+  - Filter and EQ frequency controls now use logarithmic mapping
+  - Compressor ratio now skews towards more control for ratios nearer 1:1
+- Improved legacy parameter system
+  - Legacy-override params now show a warning badge
+  - Redesigned legacy parameter panel (3-dots menu -> Legacy Parameters)
+  - 'Modernise' feature to convert params from legacy to modern
+- Effect filter: new 12dB and 24dB low-pass and high-pass types
+- Layer filter type menu reworked: clearer band-pass names, all-pass removed
+- New menu option to rescan all libraries and presets
+- Auto-generated preset descriptions for presets that have none
+- Quality of life improvements:
+  - 'Unload' x-mark button on instrument selector and IR selector to clear the item
+  - 'Unload all instruments' button on the layers page
+- Support encrypted packages (`.floe-pkg-enc`) that require a license key to install, with a paste button on the licence key dialog
+- Fix voices from jumping into the loop region if you toggle the 'reversed' mode of a playing voice.
+- GUI: improve browsers panels:
+  - Cards are now expand and collapsible, selecting all items in a card is now done with a separate 'All' button.
+  - Left panel (filters) is now dark to better differentiate it and make the cards and icons look nicer.
+  - Sections are collapsed by default, but retains the collapse/expand state across Floe sessions.
+  - Fix toggle not working for Favourites button
+  - Use smaller radius corner rounding for tag buttons to match the rest of the UI
+  - Remove 3-dots menu and instead put the filter selection modes (One, AND, OR) at the top of the filters panel.
+  - Remove dividers between filter sections
+  - Remove "Show Primary Filter Section Header" option. Libraries/folders are now always collapsible - more consistent and intuitive.
+  - Expanded keyboard navigation: section headings, library/preset-bank cards, and filter buttons in the left panel are now reachable with the arrow keys and toggled with Enter
+- Library development: removed the ability to add custom tags for instruments/IRs. Only tags from the known set are now allowed. This change allowed for simpler and faster code and enforces standardisation. Non-standard tags are now ignored. https://floe.audio/docs/develop/tags-and-folders
+- Info panel moved from the top of Floe into a menu item within the 3-dots menu.
+- The tabs within a layer have been adjusted: MAIN tab now contains the envelope and the filter, and the old 'Play' tab has been renamed CONFIG.
+- Added ability to reset parameters and groups (try right-clicking on things!) to their default settings OR the settings of the last loaded preset.
+- Lua: add `vignette_intensity` for controlling background image
+- Save and load preset functions now remember the folder that you chose and will use that when you next use the action.
+- LFO: show a warning icon next to the Target label when the selected destination is silent (Filter target with the filter off, or Grain Position target when not in a granular playback mode).
+- macOS: fix keyboard text input not working in some hosts such as Logic Pro, while still letting the host receive its own keyboard shortcuts
+
 ## 1.2.0-beta.1
 Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.
 - GUI: improve crispness of all visuals
 - GUI: minor visual improvements throughout: even spacing, move layer menu labels to left, standardised colours, updated popup menus, legacy parameters and error panels to the new style
 - GUI: add instrument info strip with info about sample length, root key, number of samples
-- GUI: split loop controls into a new Engine tab, ready for new engine mode that need more space
+- GUI: split loop controls into a new Playback tab, ready for new engine mode that need more space
 - GUI: notifications now appear on top of the window you have open and can be closed
 - Add 'Copy to Clipboard' for errors
 - Support installing packages with `.floe-pkg` as well as `.zip`
@@ -147,7 +213,7 @@ In latch mode, the note only ends when all notes are released; new key-presses a
   - Macros parameters allow for controlling multiple other parameters at once with a single knob and with a custom name
   - On the Macros tab, you can add and remove the parameters that are linked to each macro and control the strength of the link
 - Add pitch wheel support: configure the bend range using the 'Pitch Bend Range' parameter on each layer.
-- Add key range controls for splitting the keyboard into zones for each layer. These ranges are shown above the keyboard. They are controlled using new parameters on the Play tab of each layer.
+- Add key range controls for splitting the keyboard into zones for each layer. These ranges are shown above the keyboard. They are controlled using new parameters on the Config tab of each layer.
 - Fix velocity curves being clear when randomising parameters
 - Add more information to the velocity curve tooltips
 - New documentation pages for velocity curves

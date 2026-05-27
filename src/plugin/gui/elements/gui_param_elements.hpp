@@ -1,9 +1,10 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "gui/core/gui_fwd.hpp"
 #include "gui/elements/gui_constants.hpp"
@@ -31,20 +32,22 @@ struct ParameterComponentOptions {
 Box DoKnobParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    ParameterComponentOptions const& options = {});
+                    ParameterComponentOptions options = {});
 
 struct MenuParameterComponentOptions {
     f32 width = layout::k_hug_contents;
     bool greyed_out = false;
     bool label = true;
+    bool allow_text_overflow = false;
     String override_tooltip {};
     String override_label {};
+    String override_button_text {}; // If non-empty, shown on the button instead of the menu item text.
 };
 
 Box DoMenuParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
-                    MenuParameterComponentOptions const& options = {});
+                    MenuParameterComponentOptions options = {});
 
 struct ButtonParameterComponentOptions {
     f32 width = layout::k_hug_contents;
@@ -59,7 +62,7 @@ struct ButtonParameterComponentOptions {
 Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
-                      ButtonParameterComponentOptions const& options = {});
+                      ButtonParameterComponentOptions options = {});
 
 struct IntParameterComponentOptions {
     f32 width; // Required, no auto-width.
@@ -74,9 +77,57 @@ struct IntParameterComponentOptions {
 Box DoIntParameter(GuiState& g,
                    Box parent,
                    DescribedParamValue const& param,
-                   IntParameterComponentOptions const& options);
+                   IntParameterComponentOptions options);
 
-String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena);
+struct PercentDraggerOptions {
+    f32 width;
+    bool greyed_out = false;
+    bool label = true;
+    String override_label {};
+};
+
+Box DoPercentDraggerParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              PercentDraggerOptions options);
+
+struct MuteSoloButtonsOptions {
+    bool vertical = false; // If true, buttons stack vertically (M on top, S on bottom).
+    String name {};
+};
+
+void DoMuteSoloButtons(GuiState& g,
+                       Box parent,
+                       DescribedParamValue const& mute_param,
+                       DescribedParamValue const& solo_param,
+                       MuteSoloButtonsOptions const& options = {});
+
+struct VerticalSliderParameterOptions {
+    f32 width;
+    f32 height;
+    Col highlight_col = {Col::Highlight};
+    Col line_col = {Col::Background0};
+    GuiStyleSystem style_system {};
+    bool greyed_out = false;
+    bool is_fake = false;
+    String override_tooltip {};
+};
+
+Box DoVerticalSliderParameter(GuiState& g,
+                              Box parent,
+                              DescribedParamValue const& param,
+                              VerticalSliderParameterOptions options);
+
+// Adds the standard pair of "Reset {name} to Default" / "Reset {name} to "<preset>" state" menu items for a
+// snapshot section. The pinned-preset item is only shown when a preset is loaded. Returns true on the frame
+// either item fires, so the caller can run post-reset cleanup.
+bool DoResetSectionMenuItems(GuiState& g,
+                             Box menu_root,
+                             StateSnapshotSection const& section,
+                             String name,
+                             bool no_icon_gap = true);
+
+String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out = false);
 
 void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);
 void AddParamContextMenuBehaviour(GuiState& g,

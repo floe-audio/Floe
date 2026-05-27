@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "installer.hpp"
@@ -24,7 +24,7 @@
 #include "gui.hpp"
 #include "registry.hpp"
 
-enum class Pages : u32 {
+enum class Pages : u8 {
     Configuration,
     Installing,
     Summary,

@@ -1,0 +1,1590 @@
+// Copyright 2024-2026 Sam Windell
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include "gui_effects.hpp"
+
+#include <IconsFontAwesome6.h>
+
+#include "os/threading.hpp"
+
+#include "common_infrastructure/descriptors/param_descriptors.hpp"
+
+#include "engine/engine.hpp"
+#include "gui/controls/gui_filter_graphs.hpp"
+#include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_common_elements.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_param_elements.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
+#include "gui/panels/gui_ir_browser.hpp"
+#include "gui/panels/gui_macros.hpp"
+#include "gui/panels/gui_mid_panel.hpp"
+#include "gui_framework/colours.hpp"
+#include "gui_framework/gui_builder.hpp"
+#include "gui_framework/gui_imgui.hpp"
+#include "gui_framework/gui_live_edit.hpp"
+#include "processor/effect.hpp"
+
+constexpr f32 k_fx_controls_gap_x = 28;
+constexpr f32 k_fx_controls_gap_y = 8;
+constexpr f32 k_fx_heading_h = 18;
+constexpr f32 k_fx_heading_text_pad_lr = 8;
+constexpr f32 k_fx_icon_width = 20.5f;
+
+constexpr auto k_phaser_params = ComptimeParamSearch<ComptimeParamSearchOptions {
+    .modules = {ParameterModule::Effect, ParameterModule::Phaser},
+    .skip = ParamIndex::PhaserOn,
+    .skip2 = ParamIndex::PhaserMix,
+}>();
+
+struct FXColours {
+    UiColMap back;
+    UiColMap highlight;
+    UiColMap button;
+};
+
+static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window_r, EffectType type) {
+    auto const right_click_id = g.imgui.MakeId(SourceLocationHash() + ToInt(type));
+    auto const name = k_effect_info[ToInt(type)].name;
+
+    DoRightClickMenu(
+        g,
+        {
+            .button_id = button_id,
+            .popup_id = right_click_id,
+            .interaction_r = window_r,
+            .do_menu_items =
+                [&](Box root) {
+                    StateSnapshotSection const target {
+                        ModuleTabSection {ParameterModule::Effect, EffectTypeToParameterModule(type)}};
+                    DoResetSectionMenuItems(g, root, target, name);
+                },
+        });
+}
+
+static FXColours GetFxColMap(EffectType type) {
+    using enum UiColMap;
+    switch (type) {
+        case EffectType::Distortion: return {DistortionBack, DistortionHighlight, DistortionButton};
+        case EffectType::BitCrush: return {BitCrushBack, BitCrushHighlight, BitCrushButton};
+        case EffectType::Compressor: return {CompressorBack, CompressorHighlight, CompressorButton};
+        case EffectType::FilterEffect: return {FilterBack, FilterHighlight, FilterButton};
+        case EffectType::StereoWiden: return {StereoBack, StereoHighlight, StereoButton};
+        case EffectType::Chorus: return {ChorusBack, ChorusHighlight, ChorusButton};
+        case EffectType::Reverb: return {ReverbBack, ReverbHighlight, ReverbButton};
+        case EffectType::Delay: return {DelayBack, DelayHighlight, DelayButton};
+        case EffectType::ConvolutionReverb: return {ConvolutionBack, ConvolutionHighlight, ConvolutionButton};
+        case EffectType::Phaser: return {PhaserBack, PhaserHighlight, PhaserButton};
+        case EffectType::Eq: return {FxEqBack, FxEqHighlight, FxEqButton};
+        case EffectType::Count: PanicIfReached();
+    }
+    return {};
+}
+
+static void DoKnobJoiningLine(GuiState& g, Box knob1, Box knob2) {
+    if (auto const r1 = BoxRect(g.builder, knob1)) {
+        if (auto const r2 = BoxRect(g.builder, knob2)) {
+            auto const wr1 = g.imgui.ViewportRectToWindowRect(*r1);
+            auto const wr2 = g.imgui.ViewportRectToWindowRect(*r2);
+            auto const thickness = WwToPixels(3.0f);
+            auto const pad = WwToPixels(6.0f);
+            auto const y = wr1.CentreY() - (thickness / 2) - WwToPixels(7.4f);
+            g.imgui.draw_list->AddLine({wr1.Right() + pad, y},
+                                       {wr2.x - pad, y},
+                                       LiveCol(UiColMap::FXKnobJoiningLine),
+                                       thickness);
+        }
+    }
+}
+
+static Box DoEffectHeading(GuiState& g, Effect& fx, Box parent) {
+    auto const cols = GetFxColMap(fx.type);
+    auto const name = k_effect_info[ToInt(fx.type)].name;
+
+    auto const heading_btn = DoBox(g.builder,
+                                   {
+                                       .parent = parent,
+                                       .id_extra = ToInt(fx.type),
+                                       .background_fill_colours = LiveColStruct(cols.back),
+                                       .round_background_corners = 0b0010,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                           .contents_padding {.lr = k_fx_heading_text_pad_lr},
+                                       },
+                                       .button_behaviour = imgui::ButtonConfig {},
+                                   });
+
+    DoBox(g.builder,
+          {
+              .parent = heading_btn,
+              .text = name,
+              .size_from_text = true,
+              .size_from_text_preserve_height = true,
+              .text_colours =
+                  ColSet {
+                      .base = LiveColStruct(UiColMap::MidText),
+                      .hot = LiveColStruct(UiColMap::MidText),
+                      .active = LiveColStruct(UiColMap::MidText),
+                  },
+              .text_justification = TextJustification::CentredLeft,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {1, k_fx_heading_h},
+              },
+              .tooltip = FunctionRef<String()> {[&]() -> String {
+                  return fmt::Format(g.scratch_arena, "{}", k_effect_info[ToInt(fx.type)].description);
+              }},
+          });
+
+    return heading_btn;
+}
+
+static Box DoEffectParamContainer(GuiBuilder& builder, Box parent, u64 loc_hash = SourceLocationHash()) {
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .layout {
+                         .size = {layout::k_fill_parent, layout::k_hug_contents},
+                         .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                         .contents_direction = layout::Direction::Row,
+                         .contents_multiline = true,
+                         .contents_align = layout::Alignment::Middle,
+                     },
+                 },
+                 loc_hash);
+}
+
+static void DoIrSelectorRightClickMenu(GuiState& g, Box selector_button) {
+    auto const right_click_id = g.imgui.MakeId("ir-selector-popup");
+
+    DoRightClickMenu(g, selector_button, right_click_id, [&](Box root) {
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = "Unload IR"_s,
+                         .mode = !g.engine.processor.convo.ir_id ? MenuItemOptions::Mode::Disabled
+                                                                 : MenuItemOptions::Mode::Active,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            LoadConvolutionIr(g.engine, k_nullopt);
+        }
+    });
+}
+
+static void DoImpulseResponseSelector(GuiState& g,
+                                      GuiFrameContext const& frame_context,
+                                      Box param_container,
+                                      bool greyed_out) {
+    auto const ir_name = IrName(g.engine);
+
+    // Selector row
+    auto const selector_row = DoBox(g.builder,
+                                    {
+                                        .parent = param_container,
+                                        .layout {
+                                            .size = {193, layout::k_hug_contents},
+                                            .contents_padding {.r = 3},
+                                            .contents_direction = layout::Direction::Column,
+                                        },
+                                    });
+
+    // Row for button + arrows + shuffle
+    auto const btn_row = DoMidPanelPrevNextRow(g.builder, selector_row, layout::k_fill_parent);
+
+    // IR name button
+    auto const ir_btn =
+        DoBox(g.builder,
+              {
+                  .parent = btn_row,
+                  .text = ir_name,
+                  .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                             : Colours {ColSet {
+                                                   .base = LiveColStruct(UiColMap::MidText),
+                                                   .hot = LiveColStruct(UiColMap::MidTextHot),
+                                                   .active = LiveColStruct(UiColMap::MidTextOn),
+                                               }},
+                  .text_justification = TextJustification::CentredLeft,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_mid_button_height},
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      return fmt::Format(g.scratch_arena,
+                                         "Impulse: {}\n{}{}",
+                                         ir_name,
+                                         greyed_out ? "Not active. " : "",
+                                         "The impulse response to use");
+                  }},
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
+
+    if (ir_btn.button_fired) {
+        g.imgui.OpenModalViewport(g.ir_browser_state.k_panel_id);
+        if (auto const r = BoxRect(g.builder, ir_btn))
+            g.ir_browser_state.common_state.absolute_button_rect = g.imgui.ViewportRectToWindowRect(*r);
+    }
+
+    DoIrSelectorRightClickMenu(g, ir_btn);
+
+    IrBrowserContext context {
+        .sample_library_server = g.shared_engine_systems.sample_library_server,
+        .library_images = g.library_images,
+        .engine = g.engine,
+        .prefs = g.prefs,
+        .notifications = g.notifications,
+        .persistent_store = g.shared_engine_systems.persistent_store,
+        .confirmation_dialog_state = g.confirmation_dialog_state,
+        .frame_context = frame_context,
+    };
+
+    // Prev/next arrows
+    auto const prev_next = DoMidPanelPrevNextButtons(
+        g.builder,
+        btn_row,
+        {
+            .greyed_out = greyed_out,
+            .prev_tooltip = "Previous IR.\n\nThis is based on the currently selected filters."_s,
+            .next_tooltip = "Next IR.\n\nThis is based on the currently selected filters."_s,
+        });
+    if (prev_next.prev_fired) LoadAdjacentIr(context, g.ir_browser_state, SearchDirection::Backward);
+    if (prev_next.next_fired) LoadAdjacentIr(context, g.ir_browser_state, SearchDirection::Forward);
+
+    // Shuffle button
+    auto const shuffle_btn = DoMidPanelIconButton(
+        g.builder,
+        btn_row,
+        {.icon = MidPanelIcon::Shuffle,
+         .tooltip = "Load a random IR.\n\nThis is based on the currently selected filters."_s,
+         .greyed_out = greyed_out});
+    if (shuffle_btn.button_fired) LoadRandomIr(context, g.ir_browser_state);
+
+    // Unload button
+    auto const has_ir = g.engine.processor.convo.ir_id.HasValue();
+    auto const unload_btn = DoMidPanelIconButton(g.builder,
+                                                 btn_row,
+                                                 {
+                                                     .icon = MidPanelIcon::Unload,
+                                                     .tooltip = "Unload the current IR."_s,
+                                                     .greyed_out = greyed_out || !has_ir,
+                                                 });
+    if (unload_btn.button_fired && has_ir) LoadConvolutionIr(g.engine, k_nullopt);
+
+    // Label below
+    DoBox(g.builder,
+          {
+              .parent = selector_row,
+              .text = "Impulse"_s,
+              .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                         : Colours {LiveColStruct(UiColMap::MidText)},
+              .text_justification = TextJustification::Centred,
+              .layout {
+                  .size = {layout::k_fill_parent, k_font_body_size},
+              },
+          });
+}
+
+struct EffectSectionInfo {
+    Effect* fx;
+    Box container;
+};
+
+// Switchboard: effect toggle buttons arranged in a single column.
+static void DoSwitchboard(GuiState& g, Box root) {
+    auto ordered_effects =
+        DecodeEffectsArray(g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
+                           g.engine.processor.effects_ordered_by_type);
+
+    Array<Box, k_num_effect_types> slots {};
+
+    for (auto const slot : Range(k_num_effect_types)) {
+        slots[slot] = DoBox(g.builder,
+                            {
+                                .parent = root,
+                                .id_extra = (u64)slot,
+                                .layout {
+                                    .size = {120.0f, 18.0f},
+                                },
+                            });
+    }
+
+    if (g.builder.IsInputAndRenderPass()) {
+        auto& draw_list = *g.imgui.draw_list;
+        auto const corner_rounding = WwToPixels(k_corner_rounding);
+
+        usize fx_index = 0;
+        for (auto const slot : Range(k_num_effect_types)) {
+            auto const window_slot_r =
+                g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[slot]).Value());
+
+            // Drop zone: if dragging and cursor is over this slot (or it's the current drop slot)
+            if (g.dragging_fx_switch &&
+                (window_slot_r.Contains(GuiIo().in.cursor_pos) || g.dragging_fx_switch->drop_slot == slot)) {
+                if (g.dragging_fx_switch->drop_slot != slot)
+                    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+                g.dragging_fx_switch->drop_slot = slot;
+                draw_list.AddRectFilled(window_slot_r, LiveCol(UiColMap::FXButtonDropZone), corner_rounding);
+            } else {
+                // Normal slot
+                auto fx = ordered_effects[fx_index++];
+                if (g.dragging_fx_switch && fx == g.dragging_fx_switch->fx) fx = ordered_effects[fx_index++];
+
+                auto const fx_cols = GetFxColMap(fx->type);
+                bool const is_visible = g.engine.fx_visible.Get(ToInt(fx->type));
+
+                // Toggle button: register behaviour
+                auto const btn_id = g.imgui.MakeId(SourceLocationHash() + ToInt(fx->type));
+                bool const fired = g.imgui.ButtonBehaviour(window_slot_r, btn_id, {});
+                bool const is_hot = g.imgui.IsHot(btn_id);
+                bool const is_active = g.imgui.IsActive(btn_id, MouseButton::Left);
+
+                // Toggle icon (coloured when on, grey when off)
+                auto const icon_text = is_visible ? ICON_FA_TOGGLE_ON ""_s : ICON_FA_TOGGLE_OFF ""_s;
+                auto const icon_col = is_visible ? LiveCol(fx_cols.button)
+                                                 : ((is_hot || is_active) ? LiveCol(UiColMap::MidIcon)
+                                                                          : LiveCol(UiColMap::MidIcon));
+                auto const icon_width = WwToPixels(k_fx_icon_width);
+                auto const icon_r = window_slot_r.WithW(icon_width);
+
+                {
+                    g.fonts.Push(ToInt(FontType::Icons));
+                    DEFER { g.fonts.Pop(); };
+                    draw_list.AddTextInRect(
+                        icon_r,
+                        icon_col,
+                        icon_text,
+                        {.justification = TextJustification::CentredLeft, .font_scaling = 0.75f});
+                }
+
+                // Text label
+                auto const text_r = window_slot_r.CutLeft(icon_width);
+                auto const text_col = LiveCol(UiColMap::MidText);
+                draw_list.AddTextInRect(text_r,
+                                        text_col,
+                                        k_effect_info[ToInt(fx->type)].name,
+                                        {.justification = TextJustification::CentredLeft});
+
+                DoEffectRightClickMenu(g, btn_id, window_slot_r, fx->type);
+
+                if (fired) {
+                    bool const new_state = !is_visible;
+                    BeginUndoableStep(g.engine, new_state ? "Add FX"_s : "Remove FX"_s);
+                    DEFER { EndUndoableStep(g.engine); };
+                    SetParameterValue(g.engine.processor,
+                                      k_effect_info[ToInt(fx->type)].on_param_index,
+                                      new_state ? 1.0f : 0.0f,
+                                      {});
+                    g.engine.fx_visible.SetToValue(ToInt(fx->type), new_state);
+                }
+
+                auto const window_grab_r = ({
+                    auto w = 18.0f;
+                    auto r = window_slot_r;
+                    r.x += r.w - w;
+                    r.w = w;
+                    r;
+                });
+
+                // Grab handle icon (show only on hover)
+                g.imgui.RegisterRectForMouseTracking(window_grab_r);
+                if (is_hot || window_grab_r.Contains(GuiIo().in.cursor_pos)) {
+                    g.fonts.Push(ToInt(FontType::Icons));
+                    DEFER { g.fonts.Pop(); };
+                    draw_list.AddTextInRect(
+                        window_grab_r,
+                        LiveCol(UiColMap::FXButtonGripIcon),
+                        ICON_FA_ARROWS_UP_DOWN ""_s,
+                        {.justification = TextJustification::CentredRight, .font_scaling = 0.7f});
+                }
+                if (window_grab_r.Contains(GuiIo().in.cursor_pos))
+                    GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+
+                // Drag start detection
+                if (is_active && !g.dragging_fx_switch) {
+                    auto const click_pos = GuiIo().in.mouse_buttons[0].last_press.point;
+                    auto const current_pos = GuiIo().in.cursor_pos;
+                    auto const delta = current_pos - click_pos;
+
+                    constexpr f32 k_wiggle_room = 3;
+                    if (Sqrt((delta.x * delta.x) + (delta.y * delta.y)) > k_wiggle_room)
+                        g.dragging_fx_switch =
+                            DraggingFX {btn_id, fx, slot, GuiIo().in.cursor_pos - window_slot_r.pos};
+                }
+            }
+        }
+
+        // Floating switch during drag
+        if (g.dragging_fx_switch) {
+            auto const fx_cols = GetFxColMap(g.dragging_fx_switch->fx->type);
+            bool const is_visible_drag = g.engine.fx_visible.Get(ToInt(g.dragging_fx_switch->fx->type));
+
+            Rect btn_r = g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0]).Value());
+            btn_r.pos = GuiIo().in.cursor_pos - g.dragging_fx_switch->relative_grab_point;
+
+            // Toggle icon
+            auto const icon_text = is_visible_drag ? String {ICON_FA_TOGGLE_ON} : String {ICON_FA_TOGGLE_OFF};
+            auto const icon_col = is_visible_drag ? LiveCol(fx_cols.button) : LiveCol(UiColMap::MidIcon);
+            auto const icon_width = WwToPixels(k_fx_icon_width);
+            auto const icon_r = btn_r.WithW(icon_width);
+
+            {
+                g.fonts.Push(ToInt(FontType::Icons));
+                DEFER { g.fonts.Pop(); };
+                draw_list.AddTextInRect(
+                    icon_r,
+                    icon_col,
+                    icon_text,
+                    {.justification = TextJustification::CentredLeft, .font_scaling = 0.75f});
+            }
+
+            // Text label
+            auto const text_r = btn_r.CutLeft(icon_width);
+            auto const text_col = LiveCol(UiColMap::MidText);
+            draw_list.AddTextInRect(text_r,
+                                    text_col,
+                                    k_effect_info[ToInt(g.dragging_fx_switch->fx->type)].name,
+                                    {.justification = TextJustification::CentredLeft});
+
+            GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+        }
+
+        // Handle release
+        if (g.dragging_fx_switch && g.imgui.WasJustDeactivated(g.dragging_fx_switch->id, MouseButton::Left)) {
+            MoveEffectToNewSlot(ordered_effects, g.dragging_fx_switch->fx, g.dragging_fx_switch->drop_slot);
+            g.engine.processor.desired_effects_order.Store(EncodeEffectsArray(ordered_effects),
+                                                           StoreMemoryOrder::Release);
+            g.engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged,
+                                                   RmwMemoryOrder::Release);
+            g.engine.processor.host.request_process(&g.engine.processor.host);
+            RecordUndoableStep(g.engine, "FX order");
+            g.dragging_fx_switch.Clear();
+        }
+    }
+}
+
+// Per-effect-type parameter controls.
+static void DoEffectParams(GuiState& g,
+                           GuiFrameContext const& frame_context,
+                           Effect& fx,
+                           Box param_container,
+                           Col highlight_col,
+                           bool greyed_out) {
+
+    auto& engine = g.engine;
+    auto& params = engine.processor.main_params;
+    constexpr f32 k_knob_w = 30.0f;
+
+    switch (fx.type) {
+        case EffectType::StereoWiden: {
+            auto const mode = params.IntValue<param_values::StereoWidenMode>(ParamIndex::StereoWidenMode);
+
+            DoMenuParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::StereoWidenMode),
+                            {.greyed_out = greyed_out});
+
+            DoKnobParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::StereoWidenWidth),
+                            {
+                                .width = k_knob_w,
+                                .knob_highlight_col = highlight_col,
+                                .greyed_out = greyed_out,
+                                .bidirectional = true,
+                            });
+
+            if (mode == param_values::StereoWidenMode::BassMono) {
+                DoKnobParameter(g,
+                                param_container,
+                                params.DescribedValue(ParamIndex::StereoWidenBassMono),
+                                {
+                                    .width = k_knob_w,
+                                    .knob_highlight_col = highlight_col,
+                                    .greyed_out = greyed_out,
+                                });
+            }
+            break;
+        }
+
+        case EffectType::Distortion: {
+            DoMenuParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::DistortionType),
+                            {.greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::DistortionDrive),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            break;
+        }
+
+        case EffectType::BitCrush: {
+            DoIntParameter(g,
+                           param_container,
+                           params.DescribedValue(ParamIndex::BitCrushBits),
+                           {.width = 52.0f, .greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::BitCrushBitRate),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::BitCrushOutput),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            break;
+        }
+
+        case EffectType::Compressor: {
+            auto const type =
+                params.DescribedValue(ParamIndex::CompressorType).IntValue<param_values::CompressorType>();
+
+            DoMenuParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::CompressorType),
+                            {.greyed_out = greyed_out});
+
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::CompressorThreshold),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::CompressorRatio),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+
+            if (type == param_values::CompressorType::Modern) {
+                DoKnobParameter(
+                    g,
+                    param_container,
+                    params.DescribedValue(ParamIndex::CompressorAttack),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+                DoKnobParameter(
+                    g,
+                    param_container,
+                    params.DescribedValue(ParamIndex::CompressorRelease),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            }
+
+            DoKnobParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::CompressorGain),
+                            {
+                                .width = k_knob_w,
+                                .knob_highlight_col = highlight_col,
+                                .greyed_out = greyed_out,
+                                .bidirectional = true,
+                            });
+
+            if (type == param_values::CompressorType::Vintage) {
+                DoButtonParameter(g,
+                                  param_container,
+                                  params.DescribedValue(ParamIndex::CompressorAutoGain),
+                                  {.width = layout::k_hug_contents,
+                                   .height = k_fx_heading_h,
+                                   .greyed_out = greyed_out,
+                                   .on_colour = highlight_col});
+            }
+
+            break;
+        }
+
+        case EffectType::FilterEffect: {
+            bool const using_gain = engine.processor.filter_effect.IsUsingGainParam(params);
+
+            // Visualiser takes up its own row (full width of the param container).
+            auto const vis_box = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = {250, 90},
+                                           },
+                                       });
+            if (auto const r = BoxRect(g.builder, vis_box)) DoEffectFilterGraph(g, *r, greyed_out);
+
+            DoMenuParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::FilterType),
+                            {.greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::FilterCutoff),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::FilterResonance),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            if (using_gain)
+                DoKnobParameter(g,
+                                param_container,
+                                params.DescribedValue(ParamIndex::FilterGain),
+                                {
+                                    .width = k_knob_w,
+                                    .knob_highlight_col = highlight_col,
+                                    .greyed_out = greyed_out || !using_gain,
+                                    .bidirectional = true,
+                                });
+            else
+                // We leave space for the gain knob even when it's not active so that the layout doesn't jump
+                // around while the user is interacting with it.
+                DoBox(g.builder, {.parent = param_container, .layout {.size = {k_knob_w, 1}}});
+
+            break;
+        }
+
+        case EffectType::Chorus: {
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::ChorusRate),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::ChorusDepth),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::ChorusHighpass),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::ChorusOutput),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            break;
+        }
+
+        case EffectType::Reverb: {
+            constexpr f32 k_reverb_vis_w = 200;
+            constexpr f32 k_reverb_vis_h = 70;
+            constexpr f32 k_reverb_pair_gap = 16;
+
+            ParameterComponentOptions const knob_opts {
+                .width = k_knob_w,
+                .knob_highlight_col = highlight_col,
+                .greyed_out = greyed_out,
+            };
+
+            auto const reverb_root = DoBox(g.builder,
+                                           {
+                                               .parent = param_container,
+                                               .layout {
+                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                   .contents_gap = {0, k_fx_controls_gap_y * 2},
+                                                   .contents_direction = layout::Direction::Column,
+                                                   .contents_align = layout::Alignment::Start,
+                                               },
+                                           });
+
+            auto const vis_row = DoBox(g.builder,
+                                       {
+                                           .parent = reverb_root,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = {k_fx_controls_gap_x, 0},
+                                               .contents_direction = layout::Direction::Row,
+                                           },
+                                       });
+
+            // Pre-filter group: visualiser + Pre LP / Pre HP stacked vertically.
+            auto const pre_group = DoBox(g.builder,
+                                         {
+                                             .parent = vis_row,
+                                             .layout {
+                                                 .size = layout::k_hug_contents,
+                                                 .contents_gap = {k_reverb_pair_gap, 0},
+                                                 .contents_direction = layout::Direction::Row,
+                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                             },
+                                         });
+            auto const pre_vis =
+                DoBox(g.builder, {.parent = pre_group, .layout {.size = {k_reverb_vis_w, k_reverb_vis_h}}});
+            if (auto const r = BoxRect(g.builder, pre_vis)) DoReverbPreFilterGraph(g, *r, greyed_out);
+            auto const pre_knobs = DoBox(g.builder,
+                                         {
+                                             .parent = pre_group,
+                                             .layout {
+                                                 .size = layout::k_hug_contents,
+                                                 .contents_gap = {0, k_fx_controls_gap_y},
+                                                 .contents_direction = layout::Direction::Column,
+                                             },
+                                         });
+            DoKnobParameter(g,
+                            pre_knobs,
+                            params.DescribedValue(ParamIndex::ReverbPreLowPassCutoff),
+                            knob_opts);
+            DoKnobParameter(g,
+                            pre_knobs,
+                            params.DescribedValue(ParamIndex::ReverbPreHighPassCutoff),
+                            knob_opts);
+
+            // Post-shelf group: visualiser + 2x2 grid (Lo-Shelf,Lo-Gain / Hi-Shelf,Hi-Gain).
+            auto const post_group = DoBox(g.builder,
+                                          {
+                                              .parent = vis_row,
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_gap = {k_reverb_pair_gap, 0},
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
+            auto const post_vis =
+                DoBox(g.builder, {.parent = post_group, .layout {.size = {k_reverb_vis_w, k_reverb_vis_h}}});
+            if (auto const r = BoxRect(g.builder, post_vis)) DoReverbPostShelfGraph(g, *r, greyed_out);
+            auto const post_grid = DoBox(g.builder,
+                                         {
+                                             .parent = post_group,
+                                             .layout {
+                                                 .size = layout::k_hug_contents,
+                                                 .contents_gap = {0, k_fx_controls_gap_y},
+                                                 .contents_direction = layout::Direction::Column,
+                                             },
+                                         });
+            for (auto const row_pair : Array<Array<ParamIndex, 2>, 2> {{
+                     {ParamIndex::ReverbLowShelfCutoff, ParamIndex::ReverbLowShelfGain},
+                     {ParamIndex::ReverbHighShelfCutoff, ParamIndex::ReverbHighShelfGain},
+                 }}) {
+                auto const row = DoBox(g.builder,
+                                       {
+                                           .parent = post_grid,
+                                           .id_extra = (u64)row_pair[0],
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = {k_fx_controls_gap_x, 0},
+                                               .contents_direction = layout::Direction::Row,
+                                           },
+                                       });
+                auto const k0 = DoKnobParameter(g, row, params.DescribedValue(row_pair[0]), knob_opts);
+                auto const k1 = DoKnobParameter(g, row, params.DescribedValue(row_pair[1]), knob_opts);
+                DoKnobJoiningLine(g, k0, k1);
+            }
+
+            // Bottom row: remaining reverb knobs.
+            auto const knob_row = DoBox(g.builder,
+                                        {
+                                            .parent = reverb_root,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                                .contents_direction = layout::Direction::Row,
+                                                .contents_multiline = true,
+                                                .contents_align = layout::Alignment::Middle,
+                                            },
+                                        });
+
+            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbDecayTimeMs), knob_opts);
+            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbSize), knob_opts);
+            DoKnobParameter(g, knob_row, params.DescribedValue(ParamIndex::ReverbDelay), knob_opts);
+
+            auto const chorus_box = DoBox(g.builder,
+                                          {
+                                              .parent = knob_row,
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .margins = {.l = 8},
+                                                  .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                                  .contents_direction = layout::Direction::Row,
+                                              },
+                                          });
+            auto const mod_rate = DoKnobParameter(g,
+                                                  chorus_box,
+                                                  params.DescribedValue(ParamIndex::ReverbChorusFrequency),
+                                                  knob_opts);
+            auto const depth = DoKnobParameter(g,
+                                               chorus_box,
+                                               params.DescribedValue(ParamIndex::ReverbChorusAmount),
+                                               knob_opts);
+            DoKnobJoiningLine(g, mod_rate, depth);
+            break;
+        }
+
+        case EffectType::Phaser: {
+            Optional<Box> group_container {};
+            u8 previous_group = 0;
+            Box prev_knob {};
+            for (auto const i : Range(k_phaser_params.size)) {
+                auto const& info = k_param_descriptors[ToInt(k_phaser_params[i])];
+                auto knob_parent = param_container;
+                if (info.grouping_within_module != 0) {
+                    if (!group_container || info.grouping_within_module != previous_group) {
+                        group_container =
+                            DoBox(g.builder,
+                                  {
+                                      .parent = param_container,
+                                      .id_extra = (u64)i,
+                                      .layout {
+                                          .size = layout::k_hug_contents,
+                                          .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                          .contents_direction = layout::Direction::Row,
+                                      },
+                                  });
+                    }
+                    knob_parent = *group_container;
+                    if (info.grouping_within_module == previous_group) {
+                        auto const knob = DoKnobParameter(g,
+                                                          knob_parent,
+                                                          params.DescribedValue(k_phaser_params[i]),
+                                                          {.width = k_knob_w,
+                                                           .knob_highlight_col = highlight_col,
+                                                           .greyed_out = greyed_out});
+                        DoKnobJoiningLine(g, prev_knob, knob);
+                        prev_knob = knob;
+                        previous_group = info.grouping_within_module;
+                        continue;
+                    }
+                    previous_group = info.grouping_within_module;
+                } else {
+                    group_container = {};
+                    previous_group = 0;
+                }
+                prev_knob = DoKnobParameter(
+                    g,
+                    knob_parent,
+                    params.DescribedValue(k_phaser_params[i]),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            }
+            break;
+        }
+
+        case EffectType::Delay: {
+            bool const synced = params.BoolValue(ParamIndex::DelayTimeSyncSwitch);
+
+            auto const time_group = DoBox(g.builder,
+                                          {
+                                              .parent = param_container,
+                                              .layout {
+                                                  .size = {150, layout::k_hug_contents},
+                                                  .contents_gap = {0, k_fx_controls_gap_y},
+                                                  .contents_direction = layout::Direction::Column,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
+
+            constexpr f32 k_time_row_h = (k_knob_w * 0.96f) + 2 + k_font_body_size;
+            auto const time_row = DoBox(g.builder,
+                                        {
+                                            .parent = time_group,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, k_time_row_h},
+                                                .contents_gap = synced ? 4 : k_fx_controls_gap_x,
+                                                .contents_align = layout::Alignment::Middle,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                            },
+                                        });
+            // Time params (conditional)
+            if (synced) {
+                DoMenuParameter(g,
+                                time_row,
+                                params.DescribedValue(ParamIndex::DelayTimeSyncedL),
+                                {.greyed_out = greyed_out});
+                DoMenuParameter(g,
+                                time_row,
+                                params.DescribedValue(ParamIndex::DelayTimeSyncedR),
+                                {.greyed_out = greyed_out});
+            } else {
+                auto const left_knob = DoKnobParameter(
+                    g,
+                    time_row,
+                    params.DescribedValue(ParamIndex::DelayTimeLMs),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+                auto const right_knob = DoKnobParameter(
+                    g,
+                    time_row,
+                    params.DescribedValue(ParamIndex::DelayTimeRMs),
+                    {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+                DoKnobJoiningLine(g, left_knob, right_knob);
+            }
+
+            DoButtonParameter(g,
+                              time_group,
+                              params.DescribedValue(ParamIndex::DelayTimeSyncSwitch),
+                              {.width = layout::k_hug_contents,
+                               .height = k_fx_heading_h,
+                               .greyed_out = greyed_out,
+                               .on_colour = highlight_col});
+
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::DelayFeedback),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+
+            DoMenuParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::DelayMode),
+                            {.greyed_out = greyed_out});
+
+            auto sub = DoBox(g.builder,
+                             {
+                                 .parent = param_container,
+                                 .layout {
+                                     .size = layout::k_hug_contents,
+                                     .contents_gap = {k_fx_controls_gap_x, k_fx_controls_gap_y},
+                                     .contents_direction = layout::Direction::Row,
+                                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                 },
+                             });
+            constexpr f32 k_delay_vis_w = 200;
+            constexpr f32 k_delay_vis_h = 70;
+            auto const filter_vis =
+                DoBox(g.builder, {.parent = sub, .layout {.size = {k_delay_vis_w, k_delay_vis_h}}});
+            if (auto const r = BoxRect(g.builder, filter_vis)) DoDelayFilterGraph(g, *r, greyed_out);
+            auto const cutoff_knob = DoKnobParameter(
+                g,
+                sub,
+                params.DescribedValue(ParamIndex::DelayFilterCutoffSemitones),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            auto const spread_knob = DoKnobParameter(
+                g,
+                sub,
+                params.DescribedValue(ParamIndex::DelayFilterSpread),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobJoiningLine(g, cutoff_knob, spread_knob);
+            break;
+        }
+
+        case EffectType::ConvolutionReverb: {
+            DoImpulseResponseSelector(g, frame_context, param_container, greyed_out);
+
+            auto const hp_vis = DoBox(g.builder,
+                                      {
+                                          .parent = param_container,
+                                          .layout {
+                                              .size = {200, 70},
+                                          },
+                                      });
+            if (auto const r = BoxRect(g.builder, hp_vis))
+                DoConvolutionReverbHighpassGraph(g, *r, greyed_out);
+
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::ConvolutionReverbHighpass),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::ConvolutionReverbOutput),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            break;
+        }
+
+        case EffectType::Eq: {
+            constexpr f32 k_eq_vis_w = 320;
+            constexpr f32 k_eq_vis_h = 140;
+            constexpr f32 k_small_knob_w = 24.0f;
+
+            auto const eq_root = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = {16, 0},
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                           },
+                                       });
+
+            auto const vis =
+                DoBox(g.builder, {.parent = eq_root, .layout {.size = {k_eq_vis_w, k_eq_vis_h}}});
+            if (auto const r = BoxRect(g.builder, vis)) DoEffectEqGraph(g, *r, greyed_out);
+
+            auto const bands_container = DoBox(g.builder,
+                                               {
+                                                   .parent = eq_root,
+                                                   .layout {
+                                                       .size = layout::k_hug_contents,
+                                                       .contents_gap = 8,
+                                                       .contents_direction = layout::Direction::Column,
+                                                       .contents_align = layout::Alignment::Start,
+                                                   },
+                                               });
+
+            constexpr Array<Array<ParamIndex, 4>, k_num_eq_bands> k_band_params {{
+                {ParamIndex::EqType1, ParamIndex::EqFreq1, ParamIndex::EqResonance1, ParamIndex::EqGain1},
+                {ParamIndex::EqType2, ParamIndex::EqFreq2, ParamIndex::EqResonance2, ParamIndex::EqGain2},
+                {ParamIndex::EqType3, ParamIndex::EqFreq3, ParamIndex::EqResonance3, ParamIndex::EqGain3},
+            }};
+
+            for (auto const band_idx : Range(k_num_eq_bands)) {
+                auto const& bp = k_band_params[band_idx];
+                auto const band_number = (u8)(band_idx + 1);
+
+                auto const row = DoBox(g.builder,
+                                       {
+                                           .parent = bands_container,
+                                           .id_extra = band_number,
+                                           .layout {
+                                               .size = layout::k_hug_contents,
+                                               .contents_gap = 20,
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Start,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                           },
+                                       });
+
+                auto const label_and_menu =
+                    DoBox(g.builder,
+                          {
+                              .parent = row,
+                              .layout {
+                                  .size = layout::k_hug_contents,
+                                  .contents_gap = 5,
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                          });
+
+                DoBox(g.builder,
+                      {
+                          .parent = label_and_menu,
+                          .text = fmt::Format(g.scratch_arena, "{}", band_number),
+                          .text_colours =
+                              LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                          .text_justification = TextJustification::CentredLeft,
+                          .layout {
+                              .size = {8, k_font_body_size},
+                          },
+                      });
+
+                DoMenuParameter(g,
+                                label_and_menu,
+                                params.DescribedValue(bp[0]),
+                                {
+                                    .width = 110,
+                                    .greyed_out = greyed_out,
+                                    .label = false,
+                                });
+
+                ParameterComponentOptions const small_knob_opts {
+                    .width = k_small_knob_w,
+                    .knob_highlight_col = highlight_col,
+                    .style_system = GuiStyleSystem::MidPanel,
+                    .greyed_out = greyed_out,
+                };
+                DoKnobParameter(g, row, params.DescribedValue(bp[1]), small_knob_opts);
+                DoKnobParameter(g, row, params.DescribedValue(bp[2]), small_knob_opts);
+
+                auto const eq_type = params.DescribedValue(bp[0]).IntValue<param_values::EqType>();
+                auto const gain_greyed = greyed_out || !param_values::EqTypeUsesGain(eq_type);
+                DoKnobParameter(g,
+                                row,
+                                params.DescribedValue(bp[3]),
+                                {
+                                    .width = k_small_knob_w,
+                                    .knob_highlight_col = highlight_col,
+                                    .style_system = GuiStyleSystem::MidPanel,
+                                    .greyed_out = gain_greyed,
+                                    .bidirectional = true,
+                                });
+            }
+            break;
+        }
+
+        case EffectType::Count: PanicIfReached(); break;
+    }
+}
+
+// Effect sections: heading + params + divider for each active effect.
+static DynamicArrayBounded<EffectSectionInfo, k_num_effect_types>
+DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, EffectsArray& ordered_effects) {
+    auto& params = g.engine.processor.main_params;
+    auto& dragging_fx_unit = g.dragging_fx_unit;
+    DynamicArrayBounded<EffectSectionInfo, k_num_effect_types> effect_sections;
+
+    for (auto fx : ordered_effects) {
+        if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
+
+        g.imgui.PushId((u64)fx->type);
+        DEFER { g.imgui.PopId(); };
+
+        bool const is_being_dragged = dragging_fx_unit && dragging_fx_unit->fx == fx;
+
+        auto const cols = GetFxColMap(fx->type);
+        auto const highlight_col = LiveColStruct(cols.highlight);
+
+        auto const section = DoBox(g.builder,
+                                   {
+                                       .parent = root,
+                                       .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                                       .border_edges = 0b0001,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                       },
+                                   });
+
+        auto const left_pane = DoBox(g.builder,
+                                     {
+                                         .parent = section,
+                                         .layout {
+                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .contents_padding = {.b = 8},
+                                             .contents_direction = layout::Direction::Column,
+                                             .contents_align = layout::Alignment::Start,
+                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                         },
+                                     });
+
+        auto const heading_btn = DoEffectHeading(g, *fx, left_pane);
+        if (auto const r = BoxRect(g.builder, heading_btn))
+            DoEffectRightClickMenu(g, heading_btn.imgui_id, g.imgui.ViewportRectToWindowRect(*r), fx->type);
+        bool const bypassed = !EffectIsOn(params, fx);
+
+        if (!is_being_dragged) {
+            // Drag start on heading
+            if (g.imgui.WasJustActivated(heading_btn.imgui_id, MouseButton::Left)) {
+                dragging_fx_unit =
+                    DraggingFX {heading_btn.imgui_id, fx, FindSlotInEffects(ordered_effects, fx), {}};
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+            }
+            if (g.imgui.IsHotOrActive(heading_btn.imgui_id, MouseButton::Left))
+                GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+        }
+
+        auto const params_row = DoBox(g.builder,
+                                      {
+                                          .parent = left_pane,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_padding = {.lr = 12, .tb = 8},
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                          },
+                                      });
+
+        auto const param_container = DoEffectParamContainer(g.builder, params_row);
+
+        auto const common_controls =
+            DoBox(g.builder,
+                  {
+                      .parent = section,
+                      .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
+                      .border_edges = 0b1000,
+                      .layout {
+                          .size = {layout::k_hug_contents, layout::k_fill_parent},
+                          .contents_padding = {.l = 16, .r = 4, .tb = 4},
+                          .contents_gap = 8,
+                          .contents_direction = layout::Direction::Row,
+                          .contents_align = layout::Alignment::Middle,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                      },
+                  });
+
+        DoEffectParams(g, frame_context, *fx, param_container, highlight_col, bypassed);
+
+        DoKnobParameter(g,
+                        common_controls,
+                        params.DescribedValue(k_effect_info[ToInt(fx->type)].mix_param_index),
+                        {.width = 30.0f, .knob_highlight_col = highlight_col, .greyed_out = bypassed});
+
+        auto const icon_col = DoBox(g.builder,
+                                    {
+                                        .parent = common_controls,
+                                        .layout {
+                                            .size = layout::k_hug_contents,
+                                            .contents_gap = 4,
+                                            .contents_direction = layout::Direction::Column,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                    });
+
+        {
+            auto const close_btn = DoBox(
+                g.builder,
+                {
+                    .parent = icon_col,
+                    .text = String {ICON_FA_XMARK},
+                    .font = FontType::Icons,
+                    .text_colours =
+                        ColSet {
+                            .base = LiveColStruct(UiColMap::MidIcon),
+                            .hot = LiveColStruct(UiColMap::MidTextHot),
+                            .active = LiveColStruct(UiColMap::MidTextHot),
+                        },
+                    .text_justification = TextJustification::Centred,
+                    .layout {
+                        .size = {19, 17},
+                    },
+                    .tooltip = FunctionRef<String()> {[&]() -> String {
+                        return fmt::Format(g.scratch_arena, "Remove {}", k_effect_info[ToInt(fx->type)].name);
+                    }},
+                    .button_behaviour = imgui::ButtonConfig {},
+                });
+            if (close_btn.button_fired) {
+                BeginUndoableStep(g.engine, "Remove FX"_s);
+                DEFER { EndUndoableStep(g.engine); };
+                SetParameterValue(g.engine.processor, k_effect_info[ToInt(fx->type)].on_param_index, 0, {});
+                g.engine.fx_visible.SetToValue(ToInt(fx->type), false);
+            }
+        }
+
+        {
+            bool const is_on = !bypassed;
+            auto const bypass_btn = DoBox(
+                g.builder,
+                {
+                    .parent = icon_col,
+                    .text = String {ICON_FA_POWER_OFF},
+                    .font = FontType::Icons,
+                    .text_colours =
+                        ColSet {
+                            .base = is_on ? LiveColStruct(cols.highlight) : LiveColStruct(UiColMap::MidIcon),
+                            .hot = LiveColStruct(UiColMap::MidTextHot),
+                            .active = LiveColStruct(UiColMap::MidTextHot),
+                        },
+                    .text_justification = TextJustification::Centred,
+                    .layout {
+                        .size = {19, 17},
+                    },
+                    .tooltip = FunctionRef<String()> {[&]() -> String {
+                        return fmt::Format(g.scratch_arena,
+                                           "{} {}",
+                                           is_on ? "Bypass" : "Activate",
+                                           k_effect_info[ToInt(fx->type)].name);
+                    }},
+                    .button_behaviour = imgui::ButtonConfig {},
+                });
+            if (bypass_btn.button_fired)
+                SetParameterValue(g.engine.processor,
+                                  k_effect_info[ToInt(fx->type)].on_param_index,
+                                  is_on ? 0.0f : 1.0f,
+                                  {});
+        }
+
+        dyn::Append(effect_sections, EffectSectionInfo {fx, section});
+    }
+
+    return effect_sections;
+}
+
+// Drag-and-drop for both effect unit reordering and switchboard reordering.
+static void DoEffectDragAndDrop(GuiState& g,
+                                Span<EffectSectionInfo const> effect_sections,
+                                EffectsArray& ordered_effects) {
+    if (!g.builder.IsInputAndRenderPass()) return;
+    auto& engine = g.engine;
+
+    // Effect unit drag (heading drag to reorder sections)
+    if (g.dragging_fx_unit && g.imgui.IsViewportHovered(g.imgui.curr_viewport)) {
+        // Find closest section boundary
+
+        EffectSectionInfo zeroth_section {};
+
+        EffectSectionInfo const* closest_section = nullptr;
+        {
+            f32 const rel_y_pos = g.imgui.WindowPosToViewportPos(GuiIo().in.cursor_pos).y;
+
+            f32 distance = FLT_MAX;
+
+            // Use the top of the first visible effect section as the zeroth boundary
+            if (effect_sections.size) {
+                if (auto const r = BoxRect(g.builder, effect_sections[0].container)) {
+                    distance = Abs(r->y - rel_y_pos);
+                    zeroth_section = {
+                        .fx = effect_sections[0].fx,
+                        .container = effect_sections[0].container,
+                    };
+                    closest_section = &zeroth_section;
+                }
+            }
+
+            for (auto const& section : effect_sections) {
+                if (auto const r = BoxRect(g.builder, section.container)) {
+                    if (f32 const d = Abs(r->Bottom() - rel_y_pos); d < distance) {
+                        distance = d;
+                        closest_section = &section;
+                    }
+                }
+            }
+        }
+
+        ASSERT(closest_section);
+
+        auto const closest_slot = ({
+            usize dest = 0;
+            auto const source = FindSlotInEffects(ordered_effects, g.dragging_fx_unit->fx);
+            dest = FindSlotInEffects(ordered_effects, closest_section->fx);
+            if (dest < source && closest_section != &zeroth_section) ++dest;
+            dest;
+        });
+
+        // Highlight closest section boundary
+        if (auto const r = BoxRect(g.builder, closest_section->container)) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+            // Zeroth section: highlight top edge (above first section); others: highlight bottom edge
+            Edges const edge = (closest_section == &zeroth_section) ? Edges {0b0100} : Edges {0b0001};
+            g.imgui.draw_list->AddBorderEdges(window_r, LiveCol(UiColMap::FXDividerLineDropZone), edge);
+        }
+
+        if (g.dragging_fx_unit->drop_slot != closest_slot)
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+        g.dragging_fx_unit->drop_slot = closest_slot;
+    }
+
+    // Floating heading during drag
+    if (g.dragging_fx_unit) {
+        GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+
+        auto const drag_cols = GetFxColMap(g.dragging_fx_unit->fx->type);
+        auto const text = k_effect_info[ToInt(g.dragging_fx_unit->fx->type)].name;
+
+        auto const cursor_pos = GuiIo().in.cursor_pos;
+        auto const heading_h = WwToPixels(k_fx_heading_h);
+        auto const pad_lr = WwToPixels(k_fx_heading_text_pad_lr);
+        auto const text_w = g.fonts.CalcTextSize(text, {}).x;
+        auto const rounding = WwToPixels(k_corner_rounding);
+
+        auto const floating_r = Rect {
+            .x = cursor_pos.x + heading_h,
+            .y = cursor_pos.y,
+            .w = text_w + (pad_lr * 2),
+            .h = heading_h,
+        };
+
+        g.imgui.draw_list->AddRectFilled(floating_r,
+                                         ChangeBrightness(WithAlphaU8(LiveCol(drag_cols.back), 255), 0.6f),
+                                         rounding);
+        g.imgui.draw_list->AddTextInRect(floating_r,
+                                         LiveCol(UiColMap::MidText),
+                                         text,
+                                         {.justification = TextJustification::Centred});
+
+        // Auto-scroll
+        {
+            auto const space_around_cursor = 100.0f;
+            Rect spacer_r;
+            spacer_r.pos = GuiIo().in.cursor_pos;
+            spacer_r.y -= space_around_cursor / 2;
+            spacer_r.w = 1;
+            spacer_r.h = space_around_cursor;
+
+            auto wnd = g.imgui.curr_viewport;
+            if (!Rect::DoRectsIntersect(spacer_r, wnd->clipping_rect.ReducedVertically(spacer_r.h))) {
+                bool const going_up = GuiIo().in.cursor_pos.y < wnd->clipping_rect.CentreY();
+                auto const d = WwToPixels(210.0f) * GuiIo().in.delta_time;
+                GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.016, SourceLocationHash());
+                g.imgui.SetYScroll(
+                    wnd,
+                    Clamp(wnd->scroll_offset.y + (going_up ? -d : d), 0.0f, wnd->scroll_max.y));
+            }
+        }
+    }
+
+    // Handle release for both drag types
+    bool effects_order_changed = false;
+
+    if (g.dragging_fx_unit && g.imgui.WasJustDeactivated(g.dragging_fx_unit->id, MouseButton::Left)) {
+        MoveEffectToNewSlot(ordered_effects, g.dragging_fx_unit->fx, g.dragging_fx_unit->drop_slot);
+        effects_order_changed = true;
+        g.dragging_fx_unit.Clear();
+    }
+
+    if (g.dragging_fx_switch && g.imgui.WasJustDeactivated(g.dragging_fx_switch->id, MouseButton::Left)) {
+        MoveEffectToNewSlot(ordered_effects, g.dragging_fx_switch->fx, g.dragging_fx_switch->drop_slot);
+        effects_order_changed = true;
+        g.dragging_fx_switch.Clear();
+    }
+
+    if (effects_order_changed) {
+        engine.processor.desired_effects_order.Store(EncodeEffectsArray(ordered_effects),
+                                                     StoreMemoryOrder::Release);
+        engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);
+        engine.processor.host.request_process(&engine.processor.host);
+        RecordUndoableStep(engine, "FX order");
+    }
+}
+
+static void DoEffects(GuiState& g, GuiFrameContext const& frame_context, Box strip_parent) {
+    DoBoxViewport(g.builder,
+                  {
+                      .run =
+                          [&](GuiBuilder&) {
+                              auto ordered_effects = DecodeEffectsArray(
+                                  g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
+                                  g.engine.processor.effects_ordered_by_type);
+
+                              auto const effects_col =
+                                  DoBox(g.builder,
+                                        {
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                            },
+                                        });
+
+                              auto const effect_sections =
+                                  DoEffectSections(g, frame_context, effects_col, ordered_effects);
+                              DoEffectDragAndDrop(g, effect_sections, ordered_effects);
+
+                              // Add gap at bottom so you can see the last border.
+                              DoBox(g.builder, {.parent = effects_col, .layout {.size = {1, 9}}});
+                          },
+                      .bounds = strip_parent,
+                      .imgui_id = SourceLocationHash(),
+                      .viewport_config =
+                          {
+                              .draw_scrollbars = DrawMidPanelScrollbars,
+                              .padding = {.r = k_scrollbar_width},
+                              .scrollbar_padding = k_scrollbar_rhs_space,
+                              .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
+                                                       imgui::ViewportScrollbarVisibility::Auto},
+                              .scrollbar_inside_padding = true,
+                          },
+                      .debug_name = "EffectsStrip",
+                  });
+}
+
+void MidPanelEffectsContent(GuiBuilder& builder,
+                            GuiState& g,
+                            GuiFrameContext const& frame_context,
+                            Box parent,
+                            Box tab_extra_buttons_box) {
+    // Add randomise button to heading.
+    {
+        auto const rand_btn =
+            DoMidPanelIconButton(builder,
+                                 tab_extra_buttons_box,
+                                 {.icon = MidPanelIcon::Shuffle,
+                                  .tooltip = "Randomise which effects are on and shuffle their order"_s});
+
+        if (rand_btn.button_fired) {
+            BeginUndoableStep(g.engine, "Randomise effects"_s);
+            DEFER { EndUndoableStep(g.engine); };
+            for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+                bool const on = RandomIntInRange<u32>(g.engine.random_seed, 0, 1) != 0;
+                g.engine.fx_visible.SetToValue(ToInt(fx->type), on);
+                SetParameterValue(g.engine.processor,
+                                  k_effect_info[ToInt(fx->type)].on_param_index,
+                                  on ? 1.0f : 0.0f,
+                                  {});
+            }
+
+            auto ordered_effects =
+                DecodeEffectsArray(g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
+                                   g.engine.processor.effects_ordered_by_type);
+            Shuffle(ordered_effects, g.engine.random_seed);
+            g.engine.processor.desired_effects_order.Store(EncodeEffectsArray(ordered_effects),
+                                                           StoreMemoryOrder::Relaxed);
+        }
+    }
+
+    // Add bypass-all and remove-all buttons to heading.
+    {
+        auto const& params = g.engine.processor.main_params;
+        bool any_visible = false;
+        bool any_on = false;
+        for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+            if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
+            any_visible = true;
+            if (EffectIsOn(params, fx)) {
+                any_on = true;
+                break;
+            }
+        }
+
+        auto const power_btn =
+            DoMidPanelIconButton(builder,
+                                 tab_extra_buttons_box,
+                                 {.icon = MidPanelIcon::Power,
+                                  .tooltip = any_on ? "Bypass all effects"_s : "Activate all effects"_s,
+                                  .greyed_out = !any_visible,
+                                  .is_on = any_on});
+
+        if (power_btn.button_fired && any_visible) {
+            BeginUndoableStep(g.engine, "Bypass all effects"_s);
+            DEFER { EndUndoableStep(g.engine); };
+            f32 const new_value = any_on ? 0.0f : 1.0f;
+            for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+                if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
+                SetParameterValue(g.engine.processor,
+                                  k_effect_info[ToInt(fx->type)].on_param_index,
+                                  new_value,
+                                  {});
+            }
+        }
+
+        auto const remove_btn = DoMidPanelIconButton(
+            builder,
+            tab_extra_buttons_box,
+            {.icon = MidPanelIcon::Unload, .tooltip = "Remove all effects"_s, .greyed_out = !any_visible});
+
+        if (remove_btn.button_fired && any_visible) {
+            BeginUndoableStep(g.engine, "Remove all effects"_s);
+            DEFER { EndUndoableStep(g.engine); };
+            for (auto const fx : g.engine.processor.effects_ordered_by_type) {
+                if (!g.engine.fx_visible.Get(ToInt(fx->type))) continue;
+                SetParameterValue(g.engine.processor, k_effect_info[ToInt(fx->type)].on_param_index, 0, {});
+                g.engine.fx_visible.SetToValue(ToInt(fx->type), false);
+            }
+        }
+    }
+
+    auto const root = DoBox(builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.t = 6.08f},
+                                    .contents_gap = 8,
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Middle,
+                                },
+                            });
+
+    // Switchboard
+    {
+        auto const switchboard = DoBox(builder,
+                                       {
+                                           .parent = root,
+                                           .layout {
+                                               .size = {layout::k_hug_contents, layout::k_fill_parent},
+                                               .contents_padding = {.l = 8, .t = 4, .r = 8, .b = 6},
+                                               .contents_gap = 2,
+                                               .contents_direction = layout::Direction::Column,
+                                               .contents_align = layout::Alignment::Start,
+                                           },
+                                       });
+
+        if (auto const r = BoxRect(builder, switchboard))
+            DrawMidBlurredPanelSurface(g,
+                                       frame_context,
+                                       builder.imgui.ViewportRectToWindowRect(*r),
+                                       LibraryForOverallBackground(g.engine));
+        DoSwitchboard(g, switchboard);
+    }
+
+    // Effects rack
+    {
+        auto const rack = DoBox(builder,
+                                {
+                                    .parent = root,
+                                    .layout {
+                                        .size = layout::k_fill_parent,
+                                    },
+                                });
+
+        if (auto const r = BoxRect(builder, rack))
+            DrawMidBlurredPanelSurface(g,
+                                       frame_context,
+                                       builder.imgui.ViewportRectToWindowRect(*r),
+                                       LibraryForOverallBackground(g.engine));
+
+        DoEffects(g, frame_context, rack);
+    }
+}

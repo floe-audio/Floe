@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -27,7 +27,7 @@ struct AttributionsStore {
         Optional<String> attribution_url;
     };
 
-    enum class Mode { Read, Write };
+    enum class Mode : u8 { Read, Write };
 
     bool SerialiseNumber(Integral auto& value) {
         if (mode == Mode::Read) {

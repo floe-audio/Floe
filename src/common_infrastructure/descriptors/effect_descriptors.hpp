@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
@@ -18,6 +18,7 @@ enum class EffectType : u8 {
     Delay,
     ConvolutionReverb,
     Phaser,
+    Eq,
     Count,
 };
 
@@ -28,6 +29,7 @@ struct EffectInfo {
     String name;
     u8 id;
     ParamIndex on_param_index;
+    ParamIndex mix_param_index;
 };
 
 constexpr auto k_effect_info = []() {
@@ -42,6 +44,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Distortion",
                     .id = 1, // never change
                     .on_param_index = ParamIndex::DistortionOn,
+                    .mix_param_index = ParamIndex::DistortionMix,
                 };
                 break;
             case EffectType::BitCrush:
@@ -51,6 +54,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Bit Crush",
                     .id = 2, // never change
                     .on_param_index = ParamIndex::BitCrushOn,
+                    .mix_param_index = ParamIndex::BitCrushMix,
                 };
                 break;
             case EffectType::Compressor:
@@ -59,6 +63,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Compressor",
                     .id = 3, // never change
                     .on_param_index = ParamIndex::CompressorOn,
+                    .mix_param_index = ParamIndex::CompressorMix,
                 };
                 break;
             case EffectType::FilterEffect:
@@ -68,6 +73,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Filter",
                     .id = 4, // never change
                     .on_param_index = ParamIndex::FilterOn,
+                    .mix_param_index = ParamIndex::FilterMix,
                 };
                 break;
             case EffectType::StereoWiden:
@@ -76,6 +82,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Stereo Widen",
                     .id = 5, // never change
                     .on_param_index = ParamIndex::StereoWidenOn,
+                    .mix_param_index = ParamIndex::StereoWidenMix,
                 };
                 break;
             case EffectType::Chorus:
@@ -85,6 +92,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Chorus",
                     .id = 6, // never change
                     .on_param_index = ParamIndex::ChorusOn,
+                    .mix_param_index = ParamIndex::ChorusMix,
                 };
                 break;
             case EffectType::Reverb:
@@ -94,6 +102,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Reverb",
                     .id = 7, // never change
                     .on_param_index = ParamIndex::ReverbOn,
+                    .mix_param_index = ParamIndex::ReverbMix,
                 };
                 break;
             case EffectType::Delay:
@@ -103,6 +112,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Delay",
                     .id = 11, // never change
                     .on_param_index = ParamIndex::DelayOn,
+                    .mix_param_index = ParamIndex::DelayMix,
                 };
                 break;
             case EffectType::ConvolutionReverb:
@@ -112,6 +122,7 @@ constexpr auto k_effect_info = []() {
                     .name = "Convol Reverb",
                     .id = 10, // never change
                     .on_param_index = ParamIndex::ConvolutionReverbOn,
+                    .mix_param_index = ParamIndex::ConvolutionReverbMix,
                 };
                 break;
             case EffectType::Phaser:
@@ -120,6 +131,17 @@ constexpr auto k_effect_info = []() {
                     .name = "Phaser",
                     .id = 9, // never change
                     .on_param_index = ParamIndex::PhaserOn,
+                    .mix_param_index = ParamIndex::PhaserMix,
+                };
+                break;
+            case EffectType::Eq:
+                info = {
+                    .description =
+                        "Three-band parametric equaliser. Each band can be configured as a peak, shelf, notch, low-pass or high-pass filter.",
+                    .name = "EQ",
+                    .id = 8, // never change
+                    .on_param_index = ParamIndex::EqOn,
+                    .mix_param_index = ParamIndex::EqMix,
                 };
                 break;
 
@@ -133,3 +155,21 @@ constexpr auto k_effect_info = []() {
     }
     return result;
 }();
+
+constexpr ParameterModule EffectTypeToParameterModule(EffectType type) {
+    switch (type) {
+        case EffectType::Distortion: return ParameterModule::Distortion;
+        case EffectType::BitCrush: return ParameterModule::Bitcrush;
+        case EffectType::Compressor: return ParameterModule::Compressor;
+        case EffectType::FilterEffect: return ParameterModule::Filter;
+        case EffectType::StereoWiden: return ParameterModule::StereoWiden;
+        case EffectType::Chorus: return ParameterModule::Chorus;
+        case EffectType::Reverb: return ParameterModule::Reverb;
+        case EffectType::Delay: return ParameterModule::Delay;
+        case EffectType::ConvolutionReverb: return ParameterModule::ConvolutionReverb;
+        case EffectType::Phaser: return ParameterModule::Phaser;
+        case EffectType::Eq: return ParameterModule::Eq;
+        case EffectType::Count: break;
+    }
+    return ParameterModule::None;
+}

@@ -1,10 +1,10 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 #include "foundation/foundation.hpp"
 
-enum class MidiMessageType {
+enum class MidiMessageType : u8 {
     None = 0,
     NoteOff = 8,
     NoteOn = 9,
@@ -101,7 +101,7 @@ struct MidiMessage {
 // be sent/received before the value MSB, otherwise it will be treated as 7-bit (MSB only)."
 
 struct RpnDetector {
-    enum class State {
+    enum class State : u8 {
         ExpectingFirstParamNum,
         ExpectingParamNumLsb,
         ExpectingParamNumMsb,

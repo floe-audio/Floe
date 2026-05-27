@@ -3,11 +3,83 @@
 
 #include "sample_library.hpp"
 
+#include "os/threading.hpp"
 #include "tests/framework.hpp"
+
+#include "common_infrastructure/constants.hpp"
 
 namespace sample_lib {
 
-usize IdFromAuthorAndName(String author, String name, MutableString out) {
+struct LibraryIdStringRegistryData {
+    ArenaAllocatorWithInlineStorage<256> arena;
+    HashTable<LibraryId, String, NoHash> table;
+};
+
+alignas(LibraryIdStringRegistryData) static u8 g_registry_storage[sizeof(LibraryIdStringRegistryData)];
+static LibraryIdStringRegistryData* g_registry {};
+static MutexThin g_registry_mutex {};
+
+static LibraryIdStringRegistryData& LibraryIdStringRegistry() {
+    if (!g_registry) {
+        g_registry =
+            PLACEMENT_NEW(g_registry_storage) LibraryIdStringRegistryData {.arena = {Malloc::Instance()}};
+        g_registry->table.InsertGrowIfNeeded(g_registry->arena,
+                                             k_builtin_library_id,
+                                             k_builtin_library_id_string);
+        g_registry->table.InsertGrowIfNeeded(g_registry->arena,
+                                             k_mirage_compat_library_id,
+                                             k_mirage_compat_library_id_string);
+    }
+    return *g_registry;
+}
+
+static void RegisterLibraryIdString(LibraryId id, String id_string) {
+    if (!id || !id_string.size) return;
+    g_registry_mutex.Lock();
+    DEFER { g_registry_mutex.Unlock(); };
+    auto& reg = LibraryIdStringRegistry();
+    auto result = reg.table.FindOrInsertGrowIfNeeded(reg.arena, id, {});
+    if (result.inserted) result.element.data = reg.arena.Clone(id_string);
+}
+
+Optional<String> LookupLibraryIdString(LibraryId id) {
+    g_registry_mutex.Lock();
+    DEFER { g_registry_mutex.Unlock(); };
+    auto& reg = LibraryIdStringRegistry();
+    if (auto s = reg.table.Find(id)) return *s;
+    return k_nullopt;
+}
+
+bool LibraryIdLessThan(LibraryId a, LibraryId b) {
+    auto const [str_a, str_b] = [&]() {
+        g_registry_mutex.Lock();
+        DEFER { g_registry_mutex.Unlock(); };
+        auto& reg = LibraryIdStringRegistry();
+        return Pair<String*, String*> {
+            reg.table.Find(a),
+            reg.table.Find(b),
+        };
+    }();
+    if (str_a && str_b) return *str_a < *str_b;
+    if (str_a) return true;
+    if (str_b) return false;
+    return a < b;
+}
+
+LibraryId HashLibraryIdString(String id_string) {
+    auto const id = HashLibraryIdStringWithoutRegistration(id_string);
+    RegisterLibraryIdString(id, id_string);
+    return id;
+}
+
+bool LibraryIdLessThanSet(LibraryId const& a,
+                          DummyValueType const&,
+                          LibraryId const& b,
+                          DummyValueType const&) {
+    return LibraryIdLessThan(a, b);
+}
+
+static usize IdStringFromAuthorAndName(String author, String name, MutableString out) {
     ASSERT(author.size <= k_max_library_author_size);
     ASSERT(name.size <= k_max_library_name_size);
     ASSERT(out.size >= author.size + name.size + k_default_library_id_separator.size);
@@ -18,22 +90,26 @@ usize IdFromAuthorAndName(String author, String name, MutableString out) {
     return pos;
 }
 
-LibraryId IdFromAuthorAndNameInline(String author, String name) {
-    LibraryId id {};
-    id.size = IdFromAuthorAndName(author, name, {id.data, id.Capacity()});
-    return id;
+DynamicArrayBounded<char, k_max_library_id_size> IdStringFromAuthorAndNameInline(String author, String name) {
+    DynamicArrayBounded<char, k_max_library_id_size> result {};
+    result.size = IdStringFromAuthorAndName(author, name, {result.data, result.Capacity()});
+    return result;
 }
 
-LibraryIdRef IdFromAuthorAndNameAlloc(String author, String name, Allocator& allocator) {
+String IdStringFromAuthorAndNameAlloc(String author, String name, Allocator& allocator) {
     auto const result = allocator.AllocateExactSizeUninitialised<char>(author.size + name.size +
                                                                        k_default_library_id_separator.size);
-    IdFromAuthorAndName(author, name, result);
+    IdStringFromAuthorAndName(author, name, result);
     return result;
+}
+
+LibraryId IdFromAuthorAndName(String author, String name) {
+    return HashLibraryIdString(IdStringFromAuthorAndNameInline(author, name));
 }
 
 constexpr auto k_mirage_library_id_suffix = " - FrozenPlain - OG"_s;
 
-usize IdForMdataLibrary(String name, MutableString out) {
+static usize IdStringForMdataLibrary(String name, MutableString out) {
     ASSERT(name.size + k_mirage_library_id_suffix.size <= k_max_library_id_size);
     usize pos = 0;
     WriteAndIncrement(pos, out, name);
@@ -41,18 +117,20 @@ usize IdForMdataLibrary(String name, MutableString out) {
     return pos;
 }
 
-LibraryId IdForMdataLibraryInline(String name) {
-    LibraryId id {};
-    id.size = IdForMdataLibrary(name, {id.data, id.Capacity()});
-    return id;
-}
-
-LibraryIdRef IdForMdataLibraryAlloc(String name, Allocator& arena) {
-    auto const result =
-        arena.AllocateExactSizeUninitialised<char>(name.size + k_mirage_library_id_suffix.size);
-    IdForMdataLibrary(name, result);
+DynamicArrayBounded<char, k_max_library_id_size> IdStringForMdataLibraryInline(String name) {
+    DynamicArrayBounded<char, k_max_library_id_size> result {};
+    result.size = IdStringForMdataLibrary(name, {result.data, result.Capacity()});
     return result;
 }
+
+String IdStringForMdataLibraryAlloc(String name, Allocator& arena) {
+    auto const result =
+        arena.AllocateExactSizeUninitialised<char>(name.size + k_mirage_library_id_suffix.size);
+    IdStringForMdataLibrary(name, result);
+    return result;
+}
+
+LibraryId IdForMdataLibrary(String name) { return HashLibraryIdString(IdStringForMdataLibraryInline(name)); }
 
 ErrorCodeOr<u64> Hash(String path, Reader& reader, FileFormat format) {
     switch (format) {
@@ -78,9 +156,13 @@ u64 LegacyPersistentIrHash(ImpulseResponse const& ir) {
         ir.library.name});
 }
 
-u64 PersistentInstHash(Instrument const& inst) { return HashMultipleFnv1a(Array {inst.library.id, inst.id}); }
+u64 PersistentInstHash(Instrument const& inst) {
+    return HashMultipleFnv1a(Array {inst.library.id_string, inst.id});
+}
 
-u64 PersistentIrHash(ImpulseResponse const& ir) { return HashMultipleFnv1a(Array {ir.library.id, ir.id}); }
+u64 PersistentIrHash(ImpulseResponse const& ir) {
+    return HashMultipleFnv1a(Array {ir.library.id_string, ir.id});
+}
 
 bool FilenameIsFloeLuaFile(String filename) {
     return IsEqualToCaseInsensitiveAscii(filename, "floe.lua") ||
@@ -164,7 +246,12 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
         FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Instrument)], lib.insts_by_id);
     if (lib.irs_by_id.size) FinaliseFolderTree(&lib.root_folders[ToInt(ResourceType::Ir)], lib.irs_by_id);
 
-    if (!lib.id.size) lib.id = IdFromAuthorAndNameAlloc(lib.author, lib.name, arena);
+    if (!lib.id) {
+        lib.id_string = IdStringFromAuthorAndNameAlloc(lib.author, lib.name, arena);
+        lib.id = HashLibraryIdString(lib.id_string);
+    }
+
+    lib.author_hash = Hash(lib.author);
 
     lib.sorted_instruments =
         BuildSorted(arena, lib.insts_by_id, &lib.root_folders[ToInt(ResourceType::Instrument)]);
@@ -172,6 +259,70 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
 
     for (auto [key, value, _] : lib.insts_by_id) {
         auto& inst = *value;
+
+        for (auto& region : inst.regions) {
+            if (region.slices.size && inst.regions.size > 1)
+                return String(fmt::Format(
+                    scratch_arena,
+                    "Instrument '{}': regions with slices must be the only region on the instrument",
+                    inst.name));
+            if (region.slices.size) {
+                if (region.loop_beats == 0)
+                    return String(fmt::Format(scratch_arena,
+                                              "Instrument '{}': regions with slices must specify loop_beats",
+                                              inst.name));
+                if (region.native_bpm <= 0)
+                    return String(fmt::Format(scratch_arena,
+                                              "Instrument '{}': regions with slices must specify native_bpm",
+                                              inst.name));
+                // Simplify by the greatest common divisor of all length_proportions so that e.g. {4, 4, 2, 6}
+                // becomes {2, 2, 1, 3}. This gives more headroom against k_arp_max_steps.
+                auto const gcd_of_all = ({
+                    u32 g = region.slices[0].length_proportion;
+                    for (auto const& slice : region.slices.SubSpan(1)) {
+                        auto a = g;
+                        auto b = slice.length_proportion;
+                        while (b) {
+                            auto const t = b;
+                            b = a % b;
+                            a = t;
+                        }
+                        g = a;
+                        if (g == 1) break;
+                    }
+                    g;
+                });
+                if (gcd_of_all > 1)
+                    for (auto& slice : region.slices)
+                        slice.length_proportion /= gcd_of_all;
+
+                u32 total_proportion = 0;
+                for (auto const& slice : region.slices)
+                    total_proportion += slice.length_proportion;
+                ASSERT(total_proportion);
+
+                if (total_proportion > k_arp_max_steps)
+                    return String(fmt::Format(
+                        scratch_arena,
+                        "Instrument '{}': sum of slice length_proportion ({}) exceeds maximum steps ({})",
+                        inst.name,
+                        total_proportion,
+                        k_arp_max_steps));
+
+                LogDebug(ModuleName::SampleLibrary,
+                         "Instrument '{}': {} slices, total length_proportion={} (gcd={})",
+                         inst.name,
+                         region.slices.size,
+                         total_proportion,
+                         gcd_of_all);
+                for (auto const [i, slice] : Enumerate(region.slices))
+                    LogDebug(ModuleName::SampleLibrary,
+                             "  Slice {}: start_frame={}, length_proportion={}",
+                             i,
+                             slice.start_frame,
+                             slice.length_proportion);
+            }
+        }
 
         inst.loop_overview.all_regions_require_looping = true;
 
@@ -228,6 +379,17 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
             // If all regions never loop, then user-defined loops are not allowed.
             if (all_regions_never_loop) inst.loop_overview.user_defined_loops_allowed = false;
         }
+
+        if (inst.regions.size == 0)
+            inst.category = SamplerCategory::Empty;
+        else if (inst.regions.size == 1 && inst.regions[0].slices.size) {
+            inst.category = SamplerCategory::Sliced;
+            ASSERT(inst.regions[0].native_bpm > 0);
+            ASSERT(inst.regions[0].loop_beats);
+        } else if (inst.regions.size == 1)
+            inst.category = SamplerCategory::SingleSample;
+        else
+            inst.category = SamplerCategory::Multisample;
     }
 
     for (auto [key, inst_ptr, _] : lib.insts_by_id) {

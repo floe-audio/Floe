@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -14,12 +14,14 @@
 #include "common_infrastructure/state/macros.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
+#include "atomic_bitset.hpp"
 #include "effect_bitcrush.hpp"
 #include "effect_chorus.hpp"
-#include "effect_compressor_stillwell_majortom.hpp"
+#include "effect_compressor.hpp"
 #include "effect_convo.hpp"
 #include "effect_delay.hpp"
 #include "effect_distortion.hpp"
+#include "effect_eq.hpp"
 #include "effect_filter_iir.hpp"
 #include "effect_phaser.hpp"
 #include "effect_reverb.hpp"
@@ -77,7 +79,7 @@ struct ParamChange {
         payload.Store(p, StoreMemoryOrder::Release);
     }
 
-    enum class GuiGestureType { Begin, End };
+    enum class GuiGestureType : u8 { Begin, End };
 
     // Main thread.
     // Additive approach (see above).
@@ -142,7 +144,7 @@ struct MacroDestinationUpdate {
 
 using Flags = u32;
 
-enum : u32 {
+enum : u8 {
     // IMPORTANT: this is actually multiple bits - one for each layer index. Set using
     // LayerInstrumentChanged << layer_index.
     LayerInstrumentChanged = 1 << 0,
@@ -172,85 +174,8 @@ EffectsArray DecodeEffectsArray(u64 val, EffectsArray const& unordered_effects);
 
 bool EffectIsOn(Parameters const& params, Effect*);
 
-f32 AdjustedLinearValue(Parameters const& params,
-                        MacroDestinations const& macro_destinations,
-                        f32 linear_value,
-                        ParamIndex param_index);
-
-template <usize k_bits>
-requires(k_bits != 0)
-class AtomicBitset {
-  public:
-    static constexpr usize k_bits_per_element = sizeof(u64) * 8;
-    static constexpr ptrdiff_t k_num_elements =
-        (k_bits / k_bits_per_element) + ((k_bits % k_bits_per_element == 0) ? 0 : 1);
-    using Bool64 = u64;
-
-    AtomicBitset() {}
-
-    void SetToValue(usize bit, bool value) {
-        if (value)
-            Set(bit);
-        else
-            Clear(bit);
-    }
-
-    Bool64 Clear(usize bit) {
-        ASSERT(bit < k_bits);
-        auto const mask = u64(1) << (bit % k_bits_per_element);
-        return m_elements[bit / k_bits_per_element].FetchAnd(~mask, RmwMemoryOrder::Relaxed) & mask;
-    }
-
-    Bool64 Set(usize bit) {
-        ASSERT(bit < k_bits);
-        auto const mask = u64(1) << (bit % k_bits_per_element);
-        return m_elements[bit / k_bits_per_element].FetchOr(mask, RmwMemoryOrder::Relaxed) & mask;
-    }
-
-    Bool64 Flip(usize bit) {
-        ASSERT(bit < k_bits);
-        auto const mask = u64(1) << (bit % k_bits_per_element);
-        return m_elements[bit / k_bits_per_element].FetchXor(mask, RmwMemoryOrder::Relaxed) & mask;
-    }
-
-    Bool64 Get(usize bit) const {
-        ASSERT(bit < k_bits);
-        return m_elements[bit / k_bits_per_element].Load(LoadMemoryOrder::Relaxed) &
-               (u64(1) << bit % k_bits_per_element);
-    }
-
-    // NOTE: these Blockwise methods are not atomic in terms of the _whole_ bitset, but they will be atomic in
-    // regard to each 64-bit block - and that might be good enough for some needs
-
-    void AssignBlockwise(Bitset<k_bits> other) {
-        auto const other_raw = other.elements;
-        for (auto const element_index : Range(m_elements.size))
-            m_elements[element_index].Store(other_raw[element_index], StoreMemoryOrder::Relaxed);
-    }
-
-    Bitset<k_bits> GetBlockwise() const {
-        Bitset<k_bits> result;
-        for (auto const element_index : Range(m_elements.size))
-            result.elements[element_index] = m_elements[element_index].Load(LoadMemoryOrder::Relaxed);
-        return result;
-    }
-
-    void SetAllBlockwise() {
-        for (auto& block : m_elements)
-            block.store(~(u64)0);
-    }
-
-    void ClearAllBlockwise() {
-        for (auto& block : m_elements)
-            block.store(0);
-    }
-
-  private:
-    Array<Atomic<u64>, k_num_elements> m_elements {};
-};
-
 struct ProcessorListener {
-    enum : u32 {
+    enum : u8 {
         None = 0,
         StatusChanged = 1 << 1,
         InstrumentChanged = 1 << 2,
@@ -259,8 +184,14 @@ struct ProcessorListener {
         PeakMeterChanged = 1 << 5,
         ParametersChanged = 1 << 6,
     };
+    enum ParamChange : u8 {
+        ValueChanged,
+        GestureBegin,
+        GestureEnd,
+    };
     using ChangeFlags = u32;
     virtual void OnProcessorChange(ChangeFlags) = 0; // Called from EITHER audio or main thread.
+    virtual void OnParamChange(ParamChange, ParamIndex) = 0;
     virtual ~ProcessorListener() = default;
 };
 
@@ -285,7 +216,7 @@ struct AudioProcessor {
 
     Atomic<OptionalIndex<s32>> midi_learn_param_index {};
 
-    enum class FadeType { None, OutAndIn, OutAndRestartVoices };
+    enum class FadeType : u8 { None, OutAndIn, OutAndRestartVoices };
     FadeType whole_engine_volume_fade_type {};
     VolumeFade whole_engine_volume_fade {};
 
@@ -353,6 +284,7 @@ struct AudioProcessor {
     Reverb reverb;
     Delay delay;
     Phaser phaser;
+    Eq eq;
     ConvolutionReverb convo;
 
     // The effects indexable by EffectType
@@ -361,12 +293,17 @@ struct AudioProcessor {
     Atomic<u64> desired_effects_order {EncodeEffectsArray(effects_ordered_by_type)};
     EffectsArray actual_fx_order {effects_ordered_by_type};
 
+    Atomic<InstanceConfig> instance_config {}; // Written by main thread, read by audio thread.
+
+    u64 master_random_seed {}; // Audio thread only. Deterministic PRNG advanced per voice start.
+    bool prev_transport_playing {}; // Audio thread only. Tracks transport state transitions.
+
     bool activated = false;
 };
 
 extern PluginCallbacks<AudioProcessor> const g_processor_callbacks;
 
-enum class ProcessorSetting {
+enum class ProcessorSetting : u8 {
     DefaultCcParamMappings,
 };
 
@@ -377,9 +314,9 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
                                AudioData const* audio_data,
                                sample_lib::ImpulseResponse::AudioProperties const& audio_props);
 
-void ApplyNewState(AudioProcessor& processor, StateSnapshot const& state, StateSource source);
+void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSource source);
 
-StateSnapshot MakeStateSnapshot(AudioProcessor const& processor);
+StateSnapshot CaptureStateSnapshot(AudioProcessor const& processor);
 
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index);
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index);
@@ -392,9 +329,6 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
 
 bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index);
 
-void SetAllParametersToDefaultValues(AudioProcessor&);
-void RandomiseAllParameterValues(AudioProcessor&);
-void RandomiseAllEffectParameterValues(AudioProcessor&);
 void ResetAudioProcessing(AudioProcessor&);
 
 bool IsMidiCCLearnActive(AudioProcessor const& processor);
@@ -404,9 +338,11 @@ void UnlearnMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num_to_rem
 Bitset<128> GetLearnedCCsBitsetForParam(AudioProcessor const& processor, ParamIndex param);
 bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex param);
 
-void AddPersistentCcToParamMapping(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
-void RemovePersistentCcToParamMapping(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
-Bitset<128> PersistentCcsForParam(prefs::PreferencesTable const& preferences, u32 param_id);
+void PinCcToParam(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
+void UnpinCcFromParam(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
+Bitset<128> PinnedCcsForParam(prefs::PreferencesTable const& preferences, u32 param_id);
+
+void UnlearnAndUnpinMidiCC(AudioProcessor& processor, prefs::Preferences& prefs, ParamIndex param, u7 cc_num);
 
 struct AppendMacroDestinationConfig {
     ParamIndex param;
@@ -428,3 +364,8 @@ struct MacroDestinationValueChangedConfig {
 
 // Doesn't actually change the value, just sends the event to the audio thread.
 void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChangedConfig config);
+
+// Retargets any macro destinations currently pointing at `from` to instead point at `to`. Used by
+// the modernise action so macros that were modulating a legacy parameter continue to modulate the
+// modern equivalent after the legacy override is cleared.
+void RetargetMacroDestinations(AudioProcessor& processor, ParamIndex from, ParamIndex to);

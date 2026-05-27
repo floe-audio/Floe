@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "layer_processor.hpp"
@@ -15,7 +15,6 @@
 #include "processing_utils/key_range.hpp"
 #include "processing_utils/midi.hpp"
 #include "processing_utils/peak_meter.hpp"
-#include "processing_utils/stereo_audio_frame.hpp"
 #include "processing_utils/synced_timings.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
@@ -33,6 +32,22 @@ static void UpdateVolumeEnvelopeOn(LayerProcessor& layer, VoicePool& voice_pool)
             v.vol_env.Gate(false);
     else
         UpdateLoopPointsForVoices(layer, voice_pool);
+}
+
+static sample_lib::Region const* SlicesForInstrument(InstrumentUnwrapped const& inst) {
+    if (auto p = inst.TryGet<sample_lib::LoadedInstrument const*>()) {
+        auto const& i = **p;
+        if (i.instrument.category == sample_lib::SamplerCategory::Sliced) return &i.instrument.regions[0];
+    }
+    return nullptr;
+}
+
+static bool ArpIsOnForLayer(LayerProcessor const& layer) {
+    return ArpIsOn(layer.arp_state.audio.on, SlicesForInstrument(layer.audio_thread_inst));
+}
+
+bool LayerHasAudioActivity(LayerProcessor const& layer) {
+    return !layer.peak_meter.Silent() || (ArpIsOnForLayer(layer) && layer.arp_state.audio.any_notes_held);
 }
 
 struct VelocityRegion {
@@ -152,6 +167,16 @@ void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context)
     layer.peak_meter.PrepareToPlay(context.sample_rate);
 }
 
+void LayerApplyState(LayerProcessor& layer, StateSnapshot const& state, StateSource) {
+    ASSERT(g_is_logical_main_thread);
+
+    layer.velocity_curve_map.SetNewPoints(state.velocity_curve_points[layer.index]);
+
+    layer.harmony_intervals.AssignBlockwise(state.harmony_intervals[layer.index]);
+
+    ArpApplyState(layer.arp_state, state, layer.index);
+}
+
 //
 // ==========================================================================================================
 
@@ -160,43 +185,46 @@ void PrepareToPlay(LayerProcessor& layer, AudioProcessingContext const& context)
 //
 
 static param_values::MonophonicMode EffectiveMonophonicMode(LayerProcessor const& layer) {
-    // We maintain backwards compatibility with DAW projects that may have been automating the legacy
-    // monophonic switch by overwriting the mode if the legacy param is true.
-    return layer.monophonic_retrigger_legacy ? param_values::MonophonicMode::Retrigger
-                                             : layer.monophonic_mode;
+    // The arp manages its own voice lifecycle, so monophonic modes don't apply.
+    if (ArpIsOnForLayer(layer)) return param_values::MonophonicMode::Off;
+    return layer.monophonic_mode;
 }
+
+struct TriggerVoiceArgs {
+    sample_lib::TriggerEvent trigger_event;
+    MidiChannelNote note;
+    f32 velocity;
+    u32 offset;
+    Optional<SliceRange> slice {};
+};
 
 static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                                   AudioProcessingContext const& context,
                                   VoicePool& voice_pool,
-                                  sample_lib::TriggerEvent trigger_event,
-                                  MidiChannelNote note,
-                                  f32 note_vel_float,
-                                  u32 offset) {
-    ASSERT_HOT(offset < k_block_size_max);
+                                  TriggerVoiceArgs args) {
     ZoneScoped;
     if (layer.audio_thread_inst.tag == InstrumentType::None) return;
 
     auto const key_range_low = layer.voice_controller.key_range_low;
     auto const key_range_high = Max(layer.voice_controller.key_range_high, key_range_low);
 
-    if (note.note < key_range_low || note.note > key_range_high) return;
+    if (args.note.note < key_range_low || args.note.note > key_range_high) return;
 
-    ASSERT_HOT(note_vel_float >= 0 && note_vel_float <= 1);
-    auto const note_vel = (u16)RoundPositiveFloat(note_vel_float * 999);
+    ASSERT_HOT(args.velocity >= 0 && args.velocity <= 1);
+    auto const note_vel = (u16)RoundPositiveFloat(args.velocity * 999);
 
     auto const note_for_samples = ({
-        auto const n = note.note + layer.midi_transpose;
+        auto const n = args.note.note + layer.midi_transpose;
         if (n < 0 || n > 127) return;
         (u7) n;
     });
 
     auto const velocity_amp =
-        AmplitudeScalingFromVelocity(layer, note_vel_float, layer.shared_params.velocity_to_volume_01);
+        AmplitudeScalingFromVelocity(layer, args.velocity, layer.shared_params.velocity_to_volume_01);
 
     auto const key_range_fade_amp =
-        KeyRangeFadeInAmp(note.note, key_range_low, layer.voice_controller.key_range_low_fade) *
-        KeyRangeFadeOutAmp(note.note, key_range_high, layer.voice_controller.key_range_high_fade);
+        KeyRangeFadeInAmp(args.note.note, key_range_low, layer.voice_controller.key_range_low_fade) *
+        KeyRangeFadeOutAmp(args.note.note, key_range_high, layer.voice_controller.key_range_high_fade);
 
     auto const amp = velocity_amp * key_range_fade_amp;
 
@@ -209,16 +237,16 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
         };
         auto& sampler_params = p.params.Get<VoiceStartParams::SamplerParams>();
 
-        auto& rr_pos = layer.rr_pos[ToInt(trigger_event)];
+        auto& rr_pos = layer.rr_pos[ToInt(args.trigger_event)];
 
         for (auto [group_index, group] :
-             Enumerate(inst.instrument.round_robin_sequence_groups[ToInt(trigger_event)])) {
+             Enumerate(inst.instrument.round_robin_sequence_groups[ToInt(args.trigger_event)])) {
             if (rr_pos[group_index] > group.max_rr_pos) rr_pos[group_index] = 0;
         }
 
         DEFER {
             for (auto const group_index :
-                 Range(inst.instrument.round_robin_sequence_groups[ToInt(trigger_event)].size))
+                 Range(inst.instrument.round_robin_sequence_groups[ToInt(args.trigger_event)].size))
                 ++rr_pos[group_index];
         };
 
@@ -229,7 +257,7 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                 region.trigger.velocity_range.Contains(note_vel) &&
                 (!region.trigger.round_robin_index ||
                  *region.trigger.round_robin_index == rr_pos[region.trigger.round_robin_sequencing_group]) &&
-                region.trigger.trigger_event == trigger_event) {
+                region.trigger.trigger_event == args.trigger_event) {
                 dyn::Append(sampler_params.voice_sample_params,
                             VoiceStartParams::SamplerParams::Region {
                                 .region = region,
@@ -265,56 +293,53 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
                 auto const overlap_size = overlap_high - overlap_low;
                 auto const pos = (note_vel - overlap_low) / (f32)overlap_size;
                 ASSERT(pos >= 0 && pos <= 1);
-                auto const amp1 = trig_table_lookup::SinTurnsPositive((1 - pos) * 0.25f);
-                auto const amp2 = trig_table_lookup::SinTurnsPositive(pos * 0.25f);
+                auto const amp1 = QuarterSineFade(1 - pos);
+                auto const amp2 = QuarterSineFade(pos);
                 feather_region_1->amp *= amp1;
                 feather_region_2->amp *= amp2;
             }
         }
 
     } else if (auto w = layer.audio_thread_inst.TryGet<WaveformType>();
-               w && trigger_event == sample_lib::TriggerEvent::NoteOn) {
+               w && args.trigger_event == sample_lib::TriggerEvent::NoteOn) {
         p.params = VoiceStartParams::WaveformParams {};
         auto& waveform = p.params.Get<VoiceStartParams::WaveformParams>();
         waveform.amp = amp;
         waveform.type = *w;
     }
 
-    p.disable_vol_env = trigger_event == sample_lib::TriggerEvent::NoteOff;
+    p.disable_vol_env = args.trigger_event == sample_lib::TriggerEvent::NoteOff;
     p.initial_pitch = layer.voice_controller.tune_semitones;
-    p.midi_key_trigger = note;
+    p.midi_key_trigger = args.note;
     p.note_num = note_for_samples;
-    p.note_vel = note_vel_float;
-    p.lfo_start_phase = 0;
-    p.num_frames_before_starting = offset;
+    p.note_vel = args.velocity;
+    p.lfo_start_state = {};
+    p.num_frames_before_starting = args.offset;
     if (layer.lfo_restart_mode == param_values::LfoRestartMode::Free) {
         for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller)) {
-            p.lfo_start_phase = v.lfo.phase;
+            p.lfo_start_state.phase = v.lfo.phase;
+            p.lfo_start_state.random_state = v.lfo.random_state; // already non-zero
+            p.lfo_start_state.prev_random = v.lfo.prev_random;
+            p.lfo_start_state.next_random = v.lfo.next_random;
             break;
         }
     }
 
     bool start_voice = true;
 
-    if (trigger_event == sample_lib::TriggerEvent::NoteOn) {
-        auto const effective_mode = EffectiveMonophonicMode(layer);
-
-        switch (effective_mode) {
-            case param_values::MonophonicMode::Off:
-                // Polyphonic.
-                break;
+    if (args.trigger_event == sample_lib::TriggerEvent::NoteOn) {
+        switch (EffectiveMonophonicMode(layer)) {
+            case param_values::MonophonicMode::Off: break;
 
             case param_values::MonophonicMode::Retrigger:
-                // End existing voices.
                 for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
                     if (!layer.voice_controller.vol_env_on)
                         v.volume_fade.SetAsFadeOutIfNotAlready(context.sample_rate, 5);
                     else
-                        EndVoice(v); // Triggers ADSR release.
+                        EndVoice(v);
                 break;
 
             case param_values::MonophonicMode::Latch:
-                // Only start if not already latched.
                 if (!layer.monophonic_latch)
                     layer.monophonic_latch = true;
                 else
@@ -325,7 +350,15 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
         }
     }
 
-    if (start_voice) StartVoice(voice_pool, layer.voice_controller, p, context);
+    if (start_voice) {
+        if (args.slice) {
+            if (auto sp = p.params.TryGet<VoiceStartParams::SamplerParams>()) {
+                sp->slice_start_frame = args.slice->start_frame;
+                sp->slice_end_frame = args.slice->end_frame;
+            }
+        }
+        StartVoice(voice_pool, layer.voice_controller, p, context);
+    }
 }
 
 static bool NoNotesHeld(AudioProcessingContext const& context) {
@@ -373,28 +406,74 @@ static void LayerHandleNoteOff(LayerProcessor& layer,
         TriggerVoicesIfNeeded(layer,
                               context,
                               voice_pool,
-                              sample_lib::TriggerEvent::NoteOff,
-                              note,
-                              velocity,
-                              0);
+                              {
+                                  .trigger_event = sample_lib::TriggerEvent::NoteOff,
+                                  .note = note,
+                                  .velocity = velocity,
+                                  .offset = 0,
+                              });
 }
 
 static void LayerHandleNoteOn(LayerProcessor& layer,
                               AudioProcessingContext const& context,
                               VoicePool& voice_pool,
-                              MidiChannelNote note_num,
-                              f32 note_vel,
-                              u32 offset) {
-    TriggerVoicesIfNeeded(layer,
-                          context,
-                          voice_pool,
-                          sample_lib::TriggerEvent::NoteOn,
-                          note_num,
-                          note_vel,
-                          offset);
+                              TriggerVoiceArgs args) {
+    TriggerVoicesIfNeeded(layer, context, voice_pool, args);
 }
 
-bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_pool) {
+static void HandleArpCommands(LayerProcessor& layer,
+                              AudioProcessingContext const& context,
+                              VoicePool& voice_pool,
+                              ArpNoteCommands const& commands) {
+    for (auto const& cmd : commands) {
+        switch (cmd.type) {
+            case NoteEvent::Type::On: {
+                LayerHandleNoteOn(layer,
+                                  context,
+                                  voice_pool,
+                                  {
+                                      .trigger_event = sample_lib::TriggerEvent::NoteOn,
+                                      .note = cmd.note,
+                                      .velocity = cmd.velocity,
+                                      .offset = cmd.offset,
+                                      .slice = cmd.slice,
+                                  });
+                break;
+            }
+            case NoteEvent::Type::Off: {
+                NoteOff(voice_pool, layer.voice_controller, cmd.note);
+                break;
+            }
+        }
+    }
+}
+
+void ProcessLayerPreVoices(LayerProcessor& layer,
+                           AudioProcessingContext const& context,
+                           VoicePool& voice_pool,
+                           u32 num_frames) {
+    // Harmony intervals are not a parameter - always sync from the AtomicBitset to the voice controller.
+    layer.voice_controller.granular.harmony_intervals = layer.harmony_intervals.GetBlockwise();
+
+    // Arpeggiator.
+    {
+        ASSERT(voice_pool.master_random_seed);
+
+        ArpNoteCommands commands;
+        ArpProcessBlock(layer.arp_state,
+                        context,
+                        SlicesForInstrument(layer.audio_thread_inst),
+                        *voice_pool.master_random_seed,
+                        num_frames,
+                        commands);
+
+        HandleArpCommands(layer, context, voice_pool, commands);
+    }
+}
+
+bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer,
+                                      VoicePool& voice_pool,
+                                      AudioProcessingContext const& context) {
     ZoneScoped;
     auto desired_inst = layer.desired_inst.Consume();
 
@@ -403,16 +482,32 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer, VoicePool& voice_po
     if (!desired_inst) return false;
     if (*desired_inst == layer.audio_thread_inst) return false;
 
+    auto const old_inst = layer.audio_thread_inst;
+
     // End all layer voices
     for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
         EndVoiceInstantly(v);
 
     layer.peak_meter.Zero();
+    voice_pool.last_activated_audio_data_hash[layer.index].Store(0, StoreMemoryOrder::Relaxed);
 
     // Swap instrument
     layer.audio_thread_inst = *desired_inst;
     UpdateLoopPointsForVoices(layer, voice_pool);
     UpdateVolumeEnvelopeOn(layer, voice_pool);
+
+    // Update arp state
+    {
+        ArpNoteCommands commands;
+        ArpHandleInstrumentChange(layer.arp_state,
+                                  {
+                                      .old_sliced_region = SlicesForInstrument(old_inst),
+                                      .new_sliced_region = SlicesForInstrument(layer.audio_thread_inst),
+                                      .context = context,
+                                  },
+                                  commands);
+        HandleArpCommands(layer, context, voice_pool, commands);
+    }
 
     return true;
 }
@@ -428,12 +523,17 @@ void ProcessLayerChanges(LayerProcessor& layer,
     // =======================================================================================================
     if (auto p = changes.changed_params.IntValue<param_values::VelocityMappingMode>(
             layer.index,
-            LayerParamIndex::VelocityMapping))
+            LayerParamIndex::LegacyVelocityMapping))
         SetVelocityMapping(layer, *p);
 
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::Volume)) layer.gain = *p;
 
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::Pan)) vmst.pan_pos = *p;
+
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::StereoWidth)) {
+        // Map bidirectional [-1, +1] to width [0, 2] for the widen algorithm.
+        vmst.stereo_width = *p + 1.0f;
+    }
 
     {
         bool set_tune = false;
@@ -505,28 +605,23 @@ void ProcessLayerChanges(LayerProcessor& layer,
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::FilterRelease))
         layer.voice_controller.fil_env.SetReleaseSamples(Max(k_min_envelope_ms, *p) / 1000.0f * sample_rate,
                                                          0.1f);
-    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::FilterCutoff))
+    if (auto p = changes.changed_params.ProjectedValueLegacyAware(layer.index, LayerParamIndex::FilterCutoff))
         vmst.sv_filter_cutoff_linear = sv_filter::HzToLinear(*p);
-    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::FilterResonance))
+    if (auto p = changes.changed_params.LinearValueLegacyAware(layer.index, LayerParamIndex::FilterResonance))
         vmst.sv_filter_resonance = sv_filter::SkewResonance(*p);
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::FilterOn))
         vmst.filter_on = *p;
-    if (auto p =
-            changes.changed_params.IntValue<param_values::LayerFilterType>(layer.index,
-                                                                           LayerParamIndex::FilterType)) {
+    if (auto p = changes.changed_params.IntValueLegacyAware<param_values::LayerFilterType>(
+            layer.index,
+            LayerParamIndex::FilterType)) {
         sv_filter::Type sv_type {};
-        // Remapping enum values like this allows us to separate values that cannot change (the parameter
-        // value), with values that we have more control over (DSP code)
         switch (*p) {
             case param_values::LayerFilterType::Lowpass: sv_type = sv_filter::Type::Lowpass; break;
-            case param_values::LayerFilterType::Bandpass: sv_type = sv_filter::Type::Bandpass; break;
             case param_values::LayerFilterType::Highpass: sv_type = sv_filter::Type::Highpass; break;
-            case param_values::LayerFilterType::UnitGainBandpass:
-                sv_type = sv_filter::Type::UnitGainBandpass;
-                break;
+            case param_values::LayerFilterType::Bandpass: sv_type = sv_filter::Type::UnitGainBandpass; break;
+            case param_values::LayerFilterType::BandpassResonant: sv_type = sv_filter::Type::Bandpass; break;
             case param_values::LayerFilterType::BandShelving: sv_type = sv_filter::Type::BandShelving; break;
             case param_values::LayerFilterType::Notch: sv_type = sv_filter::Type::Notch; break;
-            case param_values::LayerFilterType::Allpass: sv_type = sv_filter::Type::Allpass; break;
             case param_values::LayerFilterType::Peak: sv_type = sv_filter::Type::Peak; break;
             case param_values::LayerFilterType::Count: PanicIfReached(); break;
         }
@@ -542,18 +637,19 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
     // LFO
     // =======================================================================================================
-    if (auto p =
-            changes.changed_params.IntValue<param_values::LfoShape>(layer.index, LayerParamIndex::LfoShape)) {
-        vmst.lfo.shape = *p;
+    if (auto shape =
+            changes.changed_params.IntValueLegacyAware<param_values::LfoShape>(layer.index,
+                                                                               LayerParamIndex::LfoShape)) {
+        vmst.lfo.shape = *shape;
         for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
             UpdateLFOWaveform(v);
     }
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::LfoAmount))
         vmst.lfo.amount = *p;
-    if (auto p =
-            changes.changed_params.IntValue<param_values::LfoDestination>(layer.index,
-                                                                          LayerParamIndex::LfoDestination))
-        layer.voice_controller.lfo.dest = *p;
+    if (auto dest = changes.changed_params.IntValueLegacyAware<param_values::LfoDestination>(
+            layer.index,
+            LayerParamIndex::LfoDestination))
+        vmst.lfo.dest = *dest;
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LfoOn))
         layer.voice_controller.lfo.on = *p;
 
@@ -577,39 +673,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
         }
         if (update_voice_controller_times) {
             if (layer.lfo_is_synced) {
-                SyncedTimes synced_time {};
-                // Remapping enum values like this allows us to separate values that cannot change (the
-                // parameter value), with values that we have more control over (DSP code)
-                switch (layer.lfo_synced_time) {
-                    case param_values::LfoSyncedRate::_1_64T: synced_time = SyncedTimes::_1_64T; break;
-                    case param_values::LfoSyncedRate::_1_64: synced_time = SyncedTimes::_1_64; break;
-                    case param_values::LfoSyncedRate::_1_64D: synced_time = SyncedTimes::_1_64D; break;
-                    case param_values::LfoSyncedRate::_1_32T: synced_time = SyncedTimes::_1_32T; break;
-                    case param_values::LfoSyncedRate::_1_32: synced_time = SyncedTimes::_1_32; break;
-                    case param_values::LfoSyncedRate::_1_32D: synced_time = SyncedTimes::_1_32D; break;
-                    case param_values::LfoSyncedRate::_1_16T: synced_time = SyncedTimes::_1_16T; break;
-                    case param_values::LfoSyncedRate::_1_16: synced_time = SyncedTimes::_1_16; break;
-                    case param_values::LfoSyncedRate::_1_16D: synced_time = SyncedTimes::_1_16D; break;
-                    case param_values::LfoSyncedRate::_1_8T: synced_time = SyncedTimes::_1_8T; break;
-                    case param_values::LfoSyncedRate::_1_8: synced_time = SyncedTimes::_1_8; break;
-                    case param_values::LfoSyncedRate::_1_8D: synced_time = SyncedTimes::_1_8D; break;
-                    case param_values::LfoSyncedRate::_1_4T: synced_time = SyncedTimes::_1_4T; break;
-                    case param_values::LfoSyncedRate::_1_4: synced_time = SyncedTimes::_1_4; break;
-                    case param_values::LfoSyncedRate::_1_4D: synced_time = SyncedTimes::_1_4D; break;
-                    case param_values::LfoSyncedRate::_1_2T: synced_time = SyncedTimes::_1_2T; break;
-                    case param_values::LfoSyncedRate::_1_2: synced_time = SyncedTimes::_1_2; break;
-                    case param_values::LfoSyncedRate::_1_2D: synced_time = SyncedTimes::_1_2D; break;
-                    case param_values::LfoSyncedRate::_1_1T: synced_time = SyncedTimes::_1_1T; break;
-                    case param_values::LfoSyncedRate::_1_1: synced_time = SyncedTimes::_1_1; break;
-                    case param_values::LfoSyncedRate::_1_1D: synced_time = SyncedTimes::_1_1D; break;
-                    case param_values::LfoSyncedRate::_2_1T: synced_time = SyncedTimes::_2_1T; break;
-                    case param_values::LfoSyncedRate::_2_1: synced_time = SyncedTimes::_2_1; break;
-                    case param_values::LfoSyncedRate::_2_1D: synced_time = SyncedTimes::_2_1D; break;
-                    case param_values::LfoSyncedRate::_4_1T: synced_time = SyncedTimes::_4_1T; break;
-                    case param_values::LfoSyncedRate::_4_1: synced_time = SyncedTimes::_4_1; break;
-                    case param_values::LfoSyncedRate::_4_1D: synced_time = SyncedTimes::_4_1D; break;
-                    case param_values::LfoSyncedRate::Count: PanicIfReached(); break;
-                }
+                auto const synced_time = SyncedTimesFromParam(layer.lfo_synced_time);
                 vmst.lfo.time_hz = (f32)(1.0 / (SyncedTimeToMs(context.tempo, synced_time) / 1000.0));
             } else {
                 vmst.lfo.time_hz = layer.lfo_unsynced_hz;
@@ -622,13 +686,9 @@ void ProcessLayerChanges(LayerProcessor& layer,
                                                                                LayerParamIndex::LfoRestart))
         layer.lfo_restart_mode = *p;
 
-    // Read legacy bool parameter for DAW automation compatibility
-    if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::Monophonic))
-        layer.monophonic_retrigger_legacy = *p;
-
-    if (auto p =
-            changes.changed_params.IntValue<param_values::MonophonicMode>(layer.index,
-                                                                          LayerParamIndex::MonophonicMode)) {
+    if (auto p = changes.changed_params.IntValueLegacyAware<param_values::MonophonicMode>(
+            layer.index,
+            LayerParamIndex::MonophonicMode)) {
         layer.monophonic_mode = *p;
 
         if (*p != param_values::MonophonicMode::Latch) layer.monophonic_latch = false;
@@ -674,7 +734,6 @@ void ProcessLayerChanges(LayerProcessor& layer,
         if (update_loop_info) UpdateLoopPointsForVoices(layer, voice_pool);
     }
 
-#if EXPERIMENTAL_GRANULAR
     // Playback / Granular
     // =======================================================================================================
     if (auto p =
@@ -684,43 +743,111 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.speed = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularPosition))
         vmst.granular.position = *p;
-    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularGrains))
-        vmst.granular.grains = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularDensity))
+        vmst.granular.density = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularLength))
-        vmst.granular.length = *p;
+        vmst.granular.length_ms = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread))
         vmst.granular.spread = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularSmoothing))
         vmst.granular.smoothing = *p;
-#endif
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomPan))
+        vmst.granular.random_pan = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDetune))
+        vmst.granular.random_detune = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularRandomDirection))
+        vmst.granular.random_direction = *p;
+    if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularHarmony))
+        vmst.granular.harmony = *p;
 
     // EQ
     // =======================================================================================================
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::EqOn))
         layer.eq_bands.SetOn(*p);
 
-    for (auto const eq_band_index : Range(k_num_layer_eq_bands))
-        layer.eq_bands.OnParamChange(eq_band_index, changes.changed_params, layer.index, sample_rate);
+    struct EqBandParams {
+        LayerParamIndex freq;
+        LayerParamIndex reso;
+        LayerParamIndex gain;
+        LayerParamIndex type;
+    };
+    constexpr Array<EqBandParams, k_num_eq_bands> k_eq_band_params {{
+        {LayerParamIndex::EqFreq1,
+         LayerParamIndex::EqResonance1,
+         LayerParamIndex::EqGain1,
+         LayerParamIndex::EqType1},
+        {LayerParamIndex::EqFreq2,
+         LayerParamIndex::EqResonance2,
+         LayerParamIndex::EqGain2,
+         LayerParamIndex::EqType2},
+        {LayerParamIndex::EqFreq3,
+         LayerParamIndex::EqResonance3,
+         LayerParamIndex::EqGain3,
+         LayerParamIndex::EqType3},
+    }};
+    for (auto const eq_band_index : Range(k_num_eq_bands)) {
+        auto const& params = k_eq_band_params[eq_band_index];
+        layer.eq_bands.OnParamChange(
+            eq_band_index,
+            {
+                .freq_hz = changes.changed_params.ProjectedValueLegacyAware(layer.index, params.freq),
+                .resonance_linear = changes.changed_params.LinearValueLegacyAware(layer.index, params.reso),
+                .gain_db = changes.changed_params.ProjectedValue(layer.index, params.gain),
+                .new_type = changes.changed_params.IntValueLegacyAware<param_values::EqType>(layer.index,
+                                                                                             params.type),
+            },
+            sample_rate);
+    }
+
+    // Arpeggiator
+    // =======================================================================================================
+    ArpNoteCommands arp_commands;
+    auto const arp_note_handling =
+        ArpOnBlockChanges(layer.arp_state,
+                          {
+                              .changed_params = changes.changed_params,
+                              .layer_index = layer.index,
+                              .sliced_region = SlicesForInstrument(layer.audio_thread_inst),
+                              .context = context,
+                              .tempo_changed = changes.tempo_changed,
+                              .note_events = changes.note_events,
+                          },
+                          arp_commands);
+    HandleArpCommands(layer, context, voice_pool, arp_commands);
 
     // Start/end notes.
     // =======================================================================================================
-    for (auto const& note : changes.note_events) {
-        if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != layer.index) continue;
-        switch (note.type) {
-            case NoteEvent::Type::On: {
-                LayerHandleNoteOn(layer, context, voice_pool, note.note, note.velocity, note.offset);
-                break;
+    switch (arp_note_handling) {
+        case ArpNoteHandling::LayerHandlesNotes: {
+            for (auto const& note : changes.note_events) {
+                if (note.exclusively_for_layer != -1 && note.exclusively_for_layer != layer.index) continue;
+                switch (note.type) {
+                    case NoteEvent::Type::On: {
+                        LayerHandleNoteOn(layer,
+                                          context,
+                                          voice_pool,
+                                          {
+                                              .trigger_event = sample_lib::TriggerEvent::NoteOn,
+                                              .note = note.note,
+                                              .velocity = note.velocity,
+                                              .offset = note.offset,
+                                          });
+                        break;
+                    }
+                    case NoteEvent::Type::Off: {
+                        LayerHandleNoteOff(layer,
+                                           context,
+                                           voice_pool,
+                                           note.note,
+                                           note.velocity,
+                                           note.created_by_cc64);
+                        break;
+                    }
+                }
             }
-            case NoteEvent::Type::Off: {
-                LayerHandleNoteOff(layer,
-                                   context,
-                                   voice_pool,
-                                   note.note,
-                                   note.velocity,
-                                   note.created_by_cc64);
-                break;
-            }
+            break;
         }
+        case ArpNoteHandling::ArpHandlesNotes: break;
     }
 }
 
@@ -757,7 +884,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
 
     if (!result.output || layer.audio_thread_inst.tag == InstrumentType::None) {
         if (layer.inst_change_fade.JumpMultipleSteps(num_frames) == VolumeFade::State::Silent)
-            result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
+            result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool, context);
 
         layer.peak_meter.Zero();
         return result;
@@ -774,7 +901,7 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                 auto const fade = layer.inst_change_fade.GetFadeAndStateChange();
                 frame *= fade.value;
                 if (fade.state_changed == VolumeFade::State::Silent)
-                    result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool);
+                    result.instrument_swapped = ChangeInstrumentIfNeededAndReset(layer, voice_pool, context);
             } else {
                 // If we have swapped we want to be silent for the remainder of this block - we will use the
                 // new instrument next block

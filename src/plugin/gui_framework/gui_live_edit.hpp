@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -16,7 +16,7 @@
 // The build system needs to -I the directory containing these files
 #define COLOUR_MAP_DEF_FILENAME "gui_colour_map.def"
 
-enum class UiColMap : u16 {
+enum class UiColMap : u8 {
 #define X(cat, n, col_id, alpha, dark_mode) n,
 #include COLOUR_MAP_DEF_FILENAME
 #undef X

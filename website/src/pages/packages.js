@@ -20,7 +20,7 @@ export default function Packages() {
                         <div className={styles.headerContent}>
                             <h1>Packages</h1>
                             <p>Our growing collection of <em>Floe packages</em> (sample libraries & presets).</p>
-                            <p>Use Floe's <a href="/docs/packages/install-packages"><em>Install package</em></a> button to install them.
+                            <p>Use Floe's <a href="/docs/installation/install-packages"><em>Install package</em></a> button to install them.
                             </p>
                         </div>
                     </section>

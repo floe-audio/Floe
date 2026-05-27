@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -93,7 +93,7 @@ concept TypeWithCustomValueToString =
     requires(T value, Writer writer, FormatOptions options) { CustomValueToString(writer, value, options); };
 
 struct IntToStringOptions {
-    enum class Base { Decimal, Hexadecimal, Base32 };
+    enum class Base : u8 { Decimal, Hexadecimal, Base32 };
     Base base = Base::Decimal;
     bool include_sign = false;
     bool capitalize = false;

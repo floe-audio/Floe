@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -111,7 +111,19 @@ PUBLIC constexpr bool AssignAssumingAlreadyEmpty(DynType& array, SpanFor<DynType
 
 template <DynArray DynType>
 PUBLIC constexpr bool Assign(DynType& array, SpanFor<DynType> new_items) {
-    if (array.size) CallDestructors(array.Items());
+    if (array.size) {
+        // Aliasing: new_items overlaps array's buffer. CallDestructors would trash the source
+        // (filling with 0xd0 in safety builds), corrupting the copy. The exact-match case is a
+        // benign no-op; any other overlap is a caller bug — copy to a separate buffer first.
+        auto const buf_begin = (void const*)array.data;
+        auto const buf_end = (void const*)(array.data + array.size);
+        auto const src_begin = (void const*)new_items.data;
+        if (src_begin >= buf_begin && src_begin < buf_end) {
+            ASSERT(src_begin == buf_begin && new_items.size == array.size);
+            return true;
+        }
+        CallDestructors(array.Items());
+    }
     return dyn::AssignAssumingAlreadyEmpty(array, new_items);
 }
 
@@ -546,13 +558,15 @@ struct DynamicArrayBounded {
     constexpr DynamicArrayBounded() = default;
 
     constexpr DynamicArrayBounded(Span<Type const> data) {
-        ASSERT(dyn::AssignAssumingAlreadyEmpty(*this, data));
+        auto const result = dyn::AssignAssumingAlreadyEmpty(*this, data);
+        ASSERT(result);
     }
 
     template <usize k_array_capacity>
     requires(k_array_capacity <= k_capacity)
     constexpr DynamicArrayBounded(Array<Type, k_array_capacity> const& array) {
-        ASSERT(dyn::AssignAssumingAlreadyEmpty(*this, array.Items()));
+        auto const result = dyn::AssignAssumingAlreadyEmpty(*this, array.Items());
+        ASSERT(result);
     }
 
     constexpr DynamicArrayBounded(DynamicArrayBounded const& other) {
@@ -565,12 +579,14 @@ struct DynamicArrayBounded {
     }
 
     constexpr DynamicArrayBounded& operator=(DynamicArrayBounded const& other) {
-        ASSERT(dyn::Assign(*this, other.Items()));
+        auto const result = dyn::Assign(*this, other.Items());
+        ASSERT(result);
         return *this;
     }
 
     constexpr DynamicArrayBounded& operator=(DynamicArrayBounded&& other) {
-        ASSERT(dyn::MoveAssign(*this, other.Items()));
+        auto const result = dyn::MoveAssign(*this, other.Items());
+        ASSERT(result);
         dyn::Clear(other);
         return *this;
     }

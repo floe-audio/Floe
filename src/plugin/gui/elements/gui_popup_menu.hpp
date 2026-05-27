@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -7,6 +7,7 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_framework/gui_live_edit.hpp"
 
 constexpr imgui::ViewportConfig k_default_popup_menu_viewport {
     .mode = imgui::ViewportMode::PopupMenu,
@@ -23,6 +24,7 @@ struct MenuOpenButtonOptions {
     String text;
     TooltipString tooltip = k_nullopt;
     f32 width = layout::k_hug_contents;
+    GuiStyleSystem style_system = GuiStyleSystem::Overlay;
 };
 
 Box MenuOpenButton(GuiBuilder& builder,
@@ -45,3 +47,23 @@ Box MenuItem(GuiBuilder& builder,
              Box parent,
              MenuItemOptions const& options,
              u64 id_extra = SourceLocationHash());
+
+// Horizontal divider sized for popup menus (with a small gap above and below).
+Box MenuDivider(GuiBuilder& builder, Box parent, u64 id_extra = SourceLocationHash());
+
+struct GuiState;
+
+struct RightClickMenuOptions {
+    imgui::Id button_id;
+    imgui::Id popup_id;
+    Rect interaction_r;
+    Optional<Rect> popup_anchor_r {};
+    TrivialFunctionRef<void(Box root)> do_menu_items;
+};
+void DoRightClickMenu(GuiState& g, RightClickMenuOptions const& options);
+
+void DoRightClickMenu(GuiState& g,
+                      Box const& box,
+                      imgui::Id popup_id,
+                      TrivialFunctionRef<void(Box root)> do_menu_items,
+                      Optional<Rect> popup_anchor_r = {});

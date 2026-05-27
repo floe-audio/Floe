@@ -1,10 +1,10 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
 
 struct SuccessType {
-    enum class Construct { Token };
+    enum class Construct : u8 { Token };
     explicit constexpr SuccessType(Construct) {}
 };
 inline constexpr SuccessType k_success {SuccessType::Construct::Token};

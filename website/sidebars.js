@@ -11,7 +11,9 @@ const sidebars = {
             label: 'Getting Started',
             items: [
                 'getting-started/quick-start-guide',
+                'getting-started/overview',
                 'getting-started/faq',
+                'getting-started/glossary',
             ],
         },
         {
@@ -25,22 +27,19 @@ const sidebars = {
         },
         {
             type: 'category',
-            label: 'Key Concepts',
-            items: [
-                'key-concepts/components',
-                'key-concepts/browsers',
-                'key-concepts/folders',
-                'key-concepts/general-usage',
-            ],
-        },
-        {
-            type: 'category',
             label: 'Usage',
             items: [
+                'usage/perform',
                 'usage/layers',
                 'usage/effects',
+                'usage/browsers',
+                'usage/granular',
+                'usage/arpeggiator',
+                'usage/presets',
+                'usage/folders',
                 'usage/key-ranges',
                 'usage/randomisation',
+                'usage/reproducibility',
                 'usage/midi',
                 'usage/looping',
                 'usage/macros',
@@ -50,6 +49,8 @@ const sidebars = {
             type: 'category',
             label: 'Reference',
             items: [
+                'reference/instruments',
+                'reference/sample-libraries',
                 'reference/parameters',
                 'reference/attribution',
                 'reference/autosave',

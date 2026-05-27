@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -7,22 +7,51 @@
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/state/macros.hpp"
+#include "common_infrastructure/tags.hpp"
 
 #include "instrument.hpp"
+#include "plugin/processing_utils/arpeggiator.hpp"
 #include "plugin/processing_utils/curve_map.hpp"
 
 struct StateMetadata {
     bool operator==(StateMetadata const& other) const = default;
     bool operator!=(StateMetadata const& other) const = default;
-    DynamicArrayBounded<DynamicArrayBounded<char, k_max_tag_size>, k_max_num_tags> tags {};
+    TagsBitset tags {};
     DynamicArrayBounded<char, k_max_preset_author_size> author {};
     DynamicArrayBounded<char, k_max_preset_description_size> description {};
 };
 
 struct StateMetadataRef {
-    Set<String> tags {};
+    TagsBitset tags {};
     String author {};
     String description {};
+};
+
+struct InstanceConfig {
+    bool operator==(InstanceConfig const&) const = default;
+    bool operator!=(InstanceConfig const&) const = default;
+
+    bool reset_on_transport {true};
+    Optional<u7> reset_keyswitch {}; // MIDI note that triggers a reset, or nullopt for disabled
+    u8 seed {0}; // 0-99, determines what the master PRNG resets to
+};
+
+// Fields that aren't part of the audible patch. Typically excluded from state equality checks.
+struct StateExtras {
+    bool operator==(StateExtras const& other) const = default;
+    bool operator!=(StateExtras const& other) const = default;
+
+    DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
+    Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
+
+    // For DAW state only. Preset files always get their name from the filename.
+    DynamicArrayBounded<char, k_max_preset_name_size> display_name {};
+    DynamicArrayBounded<char, k_max_preset_name_size> display_category {};
+
+    // The hash of the preset when it was loaded from file - if any. This allows us to identify the preset
+    // this state is based on and track if state has been modified since loading.
+    u64 origin_preset_hash {}; // 0 == unknown. Filled automatically when decoding a preset.
+    bool modified_from_origin_preset {};
 };
 
 struct StateSnapshot {
@@ -36,37 +65,19 @@ struct StateSnapshot {
     InitialisedArray<InstrumentId, k_num_layers> inst_ids {InstrumentType::None};
     Array<f32, k_num_parameters> param_values {};
     Array<EffectType, k_num_effect_types> fx_order {};
-    Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
+    Bitset<k_num_effect_types> fx_visible {};
     StateMetadata metadata {};
-    DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
     Array<CurveMap::Points, k_num_layers> velocity_curve_points {};
+    Array<HarmonyIntervalsBitset, k_num_layers> harmony_intervals {};
+    Array<Array<ArpStep, k_arp_max_steps>, k_num_layers> arp_steps {};
+    Array<SliceArpConfig, k_num_layers> slice_arp_configs {};
     MacroNames macro_names {};
     MacroDestinations macro_destinations {};
+    InstanceConfig instance_config {};
+    StateExtras extras {};
 };
 
-enum class StateSource { PresetFile, Daw };
-
-struct StateSnapshotName {
-    StateSnapshotName Clone(Allocator& a, CloneType clone_type = CloneType::Shallow) const {
-        auto _ = clone_type;
-        return {
-            .name_or_path = name_or_path.Clone(a, CloneType::Shallow),
-        };
-    }
-
-    Optional<String> Path() const {
-        if (path::IsAbsolute(name_or_path)) return name_or_path;
-        return k_nullopt;
-    }
-    String Name() const { return path::FilenameWithoutExtension(name_or_path); }
-
-    String name_or_path;
-};
-
-struct StateSnapshotWithName {
-    StateSnapshot state;
-    StateSnapshotName name;
-};
+enum class StateSource : u8 { PresetFile, Daw };
 
 [[maybe_unused]] static auto PrintInstrumentId(InstrumentId id) {
     DynamicArrayBounded<char, 100> result {};
@@ -75,83 +86,86 @@ struct StateSnapshotWithName {
         case InstrumentType::WaveformSynth:
             fmt::Append(result, "WaveformSynth: {}"_s, id.Get<WaveformType>());
             break;
-        case InstrumentType::Sampler:
-            fmt::Append(result,
-                        "Sampler: {}/{}"_s,
-                        id.Get<sample_lib::InstrumentId>().library,
-                        id.Get<sample_lib::InstrumentId>().inst_id);
+        case InstrumentType::Sampler: {
+            auto const& inst = id.Get<sample_lib::InstrumentId>();
+            auto const lib_name = sample_lib::LookupLibraryIdString(inst.library).ValueOr("?"_s);
+            fmt::Append(result, "Sampler: {}/{}"_s, lib_name, inst.inst_id);
             break;
+        }
     }
     return result;
 }
 
-PUBLIC void AssignDiffDescription(dyn::DynArray auto& diff_desc,
-                                  StateSnapshot const& old_state,
-                                  StateSnapshot const& new_state) {
-    dyn::Clear(diff_desc);
+template <typename DynArrayT>
+requires dyn::DynArray<DynArrayT>
+void AssignDiffDescription(DynArrayT& diff_desc,
+                           StateSnapshot const& old_state,
+                           StateSnapshot const& new_state);
 
-    if (old_state.ir_id != new_state.ir_id) {
-        fmt::Append(diff_desc,
-                    "IR changed, old: {}:{} vs new: {}:{}\n"_s,
-                    old_state.ir_id.HasValue() ? old_state.ir_id.Value().library.Items() : "null",
-                    old_state.ir_id.HasValue() ? old_state.ir_id.Value().ir_id.Items() : "null"_s,
-                    new_state.ir_id.HasValue() ? new_state.ir_id.Value().library.Items() : "null",
-                    new_state.ir_id.HasValue() ? new_state.ir_id.Value().ir_id.Items() : "null"_s);
-    }
+struct MacroSection {
+    bool operator==(MacroSection const&) const = default;
+    u8 macro_index;
+};
 
-    for (auto layer_index : Range(k_num_layers)) {
-        if (old_state.inst_ids[layer_index] != new_state.inst_ids[layer_index]) {
-            fmt::Append(diff_desc,
-                        "Layer {}: {} vs {}\n"_s,
-                        layer_index,
-                        PrintInstrumentId(old_state.inst_ids[layer_index]),
-                        PrintInstrumentId(new_state.inst_ids[layer_index]));
-        }
-    }
+struct InstrumentSection {
+    bool operator==(InstrumentSection const&) const = default;
+    u8 layer_index;
+};
 
-    for (auto param_index : Range(k_num_parameters)) {
-        if (old_state.param_values[param_index] != new_state.param_values[param_index]) {
-            fmt::Append(diff_desc,
-                        "Param {}: {} vs {}\n"_s,
-                        k_param_descriptors[param_index].name,
-                        old_state.param_values[param_index],
-                        new_state.param_values[param_index]);
-        }
-    }
+struct ParamSection {
+    bool operator==(ParamSection const&) const = default;
+    ParamIndex param;
+};
 
-    if (old_state.fx_order != new_state.fx_order) fmt::Append(diff_desc, "FX order changed\n"_s);
+struct VelocityCurveSection {
+    bool operator==(VelocityCurveSection const&) const = default;
+    u8 layer_index;
+};
 
-    for (auto cc : Range<usize>(1, 128)) {
-        for (auto param_index : Range(k_num_parameters)) {
-            if (old_state.param_learned_ccs[param_index].Get(cc) !=
-                new_state.param_learned_ccs[param_index].Get(cc)) {
-                fmt::Append(diff_desc,
-                            "CC {}: Param {}: {} vs {}\n"_s,
-                            cc,
-                            k_param_descriptors[param_index].name,
-                            old_state.param_learned_ccs[param_index].Get(cc),
-                            new_state.param_learned_ccs[param_index].Get(cc));
-            }
-        }
-    }
+struct EnvelopeSection {
+    enum class Kind : u8 { Volume, Filter };
+    bool operator==(EnvelopeSection const&) const = default;
+    u8 layer_index;
+    Kind kind;
+};
 
-    if (old_state.metadata.author != new_state.metadata.author)
-        fmt::Append(diff_desc,
-                    "Author changed: {} vs {}\n"_s,
-                    old_state.metadata.author,
-                    new_state.metadata.author);
+struct LayerSection {
+    bool operator==(LayerSection const&) const = default;
+    u8 layer_index;
+};
 
-    if (old_state.metadata.description != new_state.metadata.description)
-        fmt::Append(diff_desc,
-                    "Description changed: {} vs {}\n"_s,
-                    old_state.metadata.description,
-                    new_state.metadata.description);
+struct ModuleTabSection {
+    bool operator==(ModuleTabSection const&) const = default;
+    ParameterModule scope;
+    ParameterModule subtab;
+};
 
-    if (old_state.metadata.tags != new_state.metadata.tags) {
-        fmt::Append(diff_desc, "Tags changed:\n"_s);
-        for (auto const& tag : old_state.metadata.tags)
-            fmt::Append(diff_desc, "  - {}\n"_s, tag);
-        for (auto const& tag : new_state.metadata.tags)
-            fmt::Append(diff_desc, "  + {}\n"_s, tag);
-    }
-}
+struct EqBandSection {
+    bool operator==(EqBandSection const&) const = default;
+    ParameterModule scope;
+    u8 band;
+};
+
+enum class StateSnapshotSectionKind : u8 {
+    Param,
+    Macro,
+    Instrument,
+    VelocityCurve,
+    Envelope,
+    Layer,
+    ModuleTab,
+    EqBand,
+};
+
+using StateSnapshotSection =
+    TaggedUnion<StateSnapshotSectionKind,
+                TypeAndTag<ParamSection, StateSnapshotSectionKind::Param>,
+                TypeAndTag<MacroSection, StateSnapshotSectionKind::Macro>,
+                TypeAndTag<InstrumentSection, StateSnapshotSectionKind::Instrument>,
+                TypeAndTag<VelocityCurveSection, StateSnapshotSectionKind::VelocityCurve>,
+                TypeAndTag<EnvelopeSection, StateSnapshotSectionKind::Envelope>,
+                TypeAndTag<LayerSection, StateSnapshotSectionKind::Layer>,
+                TypeAndTag<ModuleTabSection, StateSnapshotSectionKind::ModuleTab>,
+                TypeAndTag<EqBandSection, StateSnapshotSectionKind::EqBand>>;
+
+StateSnapshot const& DefaultStateSnapshot();

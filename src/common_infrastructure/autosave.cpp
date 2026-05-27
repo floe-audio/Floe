@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "autosave.hpp"
@@ -7,6 +7,8 @@
 
 #include "common_infrastructure/error_reporting.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
+
+#include "plugin/engine/engine_prefs.hpp"
 
 constexpr auto k_autosave_filename_prefix = "autosave"_ca;
 
@@ -87,7 +89,7 @@ Autosave(AutosaveState& state, StateSnapshot const& snapshot, FloePaths const& p
                         {.create_intermediate_directories = false, .fail_if_exists = false}));
 
     auto const path = path::Join(arena, Array {paths.autosave_path, filename});
-    TRY(SavePresetFile(path, snapshot));
+    TRY(SavePresetFile(path, snapshot, state.write_experimental_params.Load(LoadMemoryOrder::Relaxed)));
 
     return k_success;
 }
@@ -263,8 +265,10 @@ prefs::Descriptor SettingDescriptor(AutosaveSetting setting) {
 
 void OnPreferenceChanged(AutosaveState& state, prefs::Key const& key, prefs::Value const* value) {
     ASSERT(g_is_logical_main_thread);
+
+    // Use a loop so we get a compile-time error if miss items from the AutosaveSetting enum.
     for (auto const setting : EnumIterator<AutosaveSetting>()) {
-        if (auto const v = prefs::Match(key, value, SettingDescriptor(setting))) {
+        if (prefs::Match(key, value, SettingDescriptor(setting))) {
             switch (setting) {
                 case AutosaveSetting::AutosaveIntervalSeconds: break;
                 case AutosaveSetting::MaxAutosavesPerInstance:
@@ -280,6 +284,9 @@ void OnPreferenceChanged(AutosaveState& state, prefs::Key const& key, prefs::Val
             return;
         }
     }
+
+    if (prefs::Match(key, value, ExperimentalParamsPreferenceDescriptor()))
+        state.write_experimental_params.Store(value->Get<bool>(), StoreMemoryOrder::Relaxed);
 }
 
 DynamicArrayBounded<char, k_max_instance_id_size> InstanceId(AutosaveState& state) {
@@ -349,8 +356,7 @@ TEST_CASE(TestAutosave) {
     prefs::Preferences preferences {};
 
     // We need to load some valid state to test autosave.
-    auto snapshot =
-        TRY(LoadPresetFile(TestPresetPath(tester, "sine.floe-preset"), tester.scratch_arena, false));
+    auto snapshot = TRY(LoadPresetFile(TestPresetPath(tester, "sine.floe-preset"), tester.scratch_arena));
 
     InitAutosaveState(state, preferences, tester.random_seed, snapshot);
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "plugin.hpp"
@@ -21,6 +21,7 @@
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/error_reporting.hpp"
+#include "common_infrastructure/global.hpp"
 #include "common_infrastructure/preferences.hpp"
 
 #include "engine/engine.hpp"
@@ -37,7 +38,7 @@
 
 // Logging is non-realtime only. We don't log in the audio thread.
 // Some main-thread CLAP functions are called very frequently, so we only log them at a certain level.
-enum class ClapFunctionType {
+enum class ClapFunctionType : u8 {
     NonRecurring,
     Any,
 };
@@ -62,7 +63,7 @@ inline void* PluginDataFromIndex(FloeInstanceIndex index) {
     return (void*)(k_clap_plugin_data_magic + index);
 }
 
-struct FloePluginInstance : PluginInstanceMessages {
+struct FloePluginInstance {
     FloePluginInstance(clap_host const& host,
                        FloeInstanceIndex index,
                        clap_plugin const& plugin_interface_template)
@@ -93,12 +94,6 @@ struct FloePluginInstance : PluginInstanceMessages {
         .colour = 0xa88e39,
         .object_id = index,
     };
-
-    void UpdateGui() override {
-        ASSERT(g_is_logical_main_thread);
-        if (app_window)
-            app_window->last_result.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
-    }
 
     ArenaAllocator arena {PageAllocator::Instance()};
 
@@ -882,7 +877,7 @@ static bool ClapParamsGetValue(clap_plugin_t const* plugin, clap_id param_id, f6
         auto const index = (usize)*opt_index;
 
         if (floe.engine->pending_state_change)
-            *out_value = (f64)floe.engine->last_snapshot.state.param_values[index];
+            *out_value = (f64)floe.engine->pinned_snapshot.state.param_values[index];
         else
             *out_value = (f64)floe.engine->processor.main_params.values[index];
 
@@ -1232,7 +1227,7 @@ static clap_plugin_posix_fd_support const floe_posix_fd {
     .on_fd = ClapFdSupportOnFd,
 };
 
-static FloeClapTestingExtension const floe_custom_ext {
+static FloeClapExtension const floe_custom_ext {
     .state_change_is_pending = [](clap_plugin_t const* plugin) -> bool {
         ZoneScoped;
         if (PanicOccurred()) return false;
@@ -1244,6 +1239,96 @@ static FloeClapTestingExtension const floe_custom_ext {
                 f;
             });
             return floe.engine->pending_state_change.HasValue();
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .save_gui_state = [](clap_plugin_t const* plugin, Writer writer) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "save_gui_state", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return true;
+            return !EncodeGuiState(*floe.app_window->gui, writer).HasError();
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .load_gui_state = [](clap_plugin_t const* plugin, String bytes) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "load_gui_state", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return true;
+            DecodeGuiState(*floe.app_window->gui, bytes);
+            return true;
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .request_screenshot = [](clap_plugin_t const* plugin, String id_name, String out_path) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "request_screenshot_region", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return false;
+            dyn::Assign(floe.app_window->frame_state.requested_screenshot_id_name, id_name);
+            dyn::Assign(floe.app_window->frame_state.requested_screenshot_output_path, out_path);
+            return true;
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .screenshot_request_pending = [](clap_plugin_t const* plugin) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "screenshot_request_pending", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.app_window || !floe.app_window->gui) return false;
+            return floe.app_window->frame_state.requested_screenshot_id_name.size != 0;
+        } catch (PanicException) {
+            return false;
+        }
+    },
+    .load_preset_file = [](clap_plugin_t const* plugin, String path) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "load_preset_file", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!floe.engine) return false;
+
+            PathArena path_arena {PageAllocator::Instance()};
+            path = TRY_OR(AbsolutePath(path_arena, path), {
+                ReportError(ErrorLevel::Error, SourceLocationHash(), "preset path could not be resolved");
+                return false;
+            });
+            LoadPresetFromFile(*floe.engine, path);
+            return true;
         } catch (PanicException) {
             return false;
         }
@@ -1280,6 +1365,16 @@ static bool ClapInit(const struct clap_plugin* plugin) {
                         floe.host.version,
                         CurrentThreadId());
 
+        auto const host_name = FromNullTerminated(floe.host.name);
+        if (StartsWithSpan(host_name, "clap-validator"_s))
+            g_plugin_host.Store(PluginHost::ClapValidator, StoreMemoryOrder::Relaxed);
+
+        auto const is_testing_host = StartsWithCaseInsensitiveAscii(host_name, "clap-validator"_s) ||
+                                     StartsWithCaseInsensitiveAscii(host_name, "vstvalidator"_s) ||
+                                     ContainsSpan(host_name, "CLAP-as-AUv2"_s) ||
+                                     ContainsSpan(host_name, "CLAP-as-VST3"_s);
+        if (is_testing_host) SetPanicResponse(PanicResponse::Abort);
+
         if (floe.initialised) return true;
 
         if (g_floe_instances_initialised++ == 0) {
@@ -1300,7 +1395,7 @@ static bool ClapInit(const struct clap_plugin* plugin) {
             if constexpr (!PRODUCTION_BUILD) ReportError(ErrorLevel::Info, k_nullopt, "Floe plugin loaded"_s);
         }
 
-        floe.engine.Emplace(floe.host, *g_shared_engine_systems, floe);
+        floe.engine.Emplace(floe.host, *g_shared_engine_systems, floe.index);
 
         // IMPORTANT: engine is initialised first
         g_shared_engine_systems->RegisterFloeInstance(floe.index);

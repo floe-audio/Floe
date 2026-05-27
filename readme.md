@@ -16,8 +16,6 @@ SPDX-License-Identifier: CC0-1.0
 ### Streamlined sample-based instrument platform
 Floe is a CLAP, VST3 and AU plugin for Windows, macOS, and Linux. It loads and plays sample libraries in the Floe format. Visit [floe.audio](https://floe.audio) for more information about the project. 
 
-See also our [roadmap](https://floe.audio/about-the-project/roadmap.html) section on our website, and our [FAQ](./faq.md) document.
-
 ## License
 This project is licensed under GPL version 3 or later. See the LICENCES folder for the full licence text. We follow the [REUSE](https://reuse.software/) recommendations for this repository.
 
@@ -50,13 +48,11 @@ Floe is written in C++ and we use Zig for the build system. Eventually, we're co
 
 We strive for handcrafted, detail-focused, performant code. The goal is to sustainably maintain a long-term codebase that is a joy to work on and results in a reliable, fast, professional product. With that in mind, we chose not to use any framework; just a handful of third-party libraries for specific tasks. We also don't use the C++ standard library, and only sparingly use the C standard library. Instead, we take a hands-on approach to as much as possible: memory management, data structure design and error handling. We have full control to tailor the code to our detail-focused design.
 
-Good developer tools is a priority. Our build system supports clangd by emitting a compile_commands.json file. Additionally, we have good support for stacktraces, valgrind, clang-tidy, clang-format, cppcheck, etc. And because we use only Zig for the build system, we can cross-compile to other platforms and we can wholeheartedly use Clang-specific language extensions and features from the latest C++ language standards.
+Good developer tools is a priority. Our build system supports clangd by emitting a compile_commands.json file. Additionally, we have good support for stacktraces, valgrind, clang-tidy, clang-format, etc. And because we use only Zig for the build system, we can cross-compile to other platforms and we can wholeheartedly use Clang-specific language extensions and features from the latest C++ language standards.
 
 Thorough continuous testing and deployment is also a priority. We want to provide frequent backwards-compatible updates, and so need a way to ensure we don't break anything.
 
-Some parts of the codebase need some love (I'm looking at you GUI and audio processing). We're working on it.
-
-Floe's website is in the `website` folder and it's built with Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:website-promote-beta-to-stable` to promote the beta website to stable.
+Floe's website is in the `website` folder and it's built with Docusaurus. We have 2 release channels: stable and beta. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:website-promote-beta-to-stable` to promote the beta website to stable.
 
 ## Discussion
 Feel free to use the discussions on GitHub for questions, feedback, and ideas. Report bugs to the Github issue tracker. Also, FrozenPlain has a Floe section on their [forum](https://forum.frozenplain.com).

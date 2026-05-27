@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "param_descriptors.hpp"
@@ -118,6 +118,9 @@ Optional<f32> ParamDescriptor::StringToLinearValue(String str) const {
             break;
         }
         case ParamDisplayFormat::Semitones: {
+            break;
+        }
+        case ParamDisplayFormat::Ratio: {
             break;
         }
     }
@@ -247,6 +250,10 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
             result = fmt::FormatInline<k_size>("{.0} semitones", value);
             break;
         }
+        case ParamDisplayFormat::Ratio: {
+            result = fmt::FormatInline<k_size>("{.2} : 1", value);
+            break;
+        }
     }
 
     if (!result.size) result = fmt::FormatInline<k_size>("{.1}", value);
@@ -254,6 +261,308 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
     if (NumberStartsWithNegativeZero(result)) dyn::Remove(result, 0);
 
     return result;
+}
+
+bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_parameters> linear_param_values) {
+    auto const linear = [&](ParamIndex i) { return linear_param_values[ToInt(i)]; };
+    auto const layer_linear = [&](u32 layer, LayerParamIndex p) {
+        return linear_param_values[ToInt(ParamIndexFromLayerParamIndex(layer, p))];
+    };
+    auto const is_on = [&](ParamIndex i) { return ParamToBool(linear(i)); };
+    auto const layer_is_on = [&](u32 layer, LayerParamIndex p) {
+        return ParamToBool(layer_linear(layer, p));
+    };
+
+    if (k_param_descriptors[ToInt(index)].flags.legacy) return false;
+
+    if (auto const layer_info = LayerParamIndexAndLayerFor(index)) {
+        auto const lp = layer_info->param;
+        auto const ln = layer_info->layer_num;
+
+        auto const play_mode =
+            ParamToInt<param_values::PlayMode>(layer_linear(ln, LayerParamIndex::PlayMode));
+        auto const is_granular = play_mode == param_values::PlayMode::GranularPlayback ||
+                                 play_mode == param_values::PlayMode::GranularFixed;
+
+        switch (lp) {
+            case LayerParamIndex::Volume:
+            case LayerParamIndex::Mute:
+            case LayerParamIndex::Solo:
+            case LayerParamIndex::Pan:
+            case LayerParamIndex::StereoWidth:
+            case LayerParamIndex::TuneCents:
+            case LayerParamIndex::TuneSemitone:
+            case LayerParamIndex::Reverse:
+            case LayerParamIndex::VolEnvOn:
+            case LayerParamIndex::FilterOn:
+            case LayerParamIndex::LfoOn:
+            case LayerParamIndex::EqOn:
+            case LayerParamIndex::Keytrack:
+            case LayerParamIndex::MonophonicMode:
+            case LayerParamIndex::MidiTranspose:
+            case LayerParamIndex::PitchBendRange:
+            case LayerParamIndex::KeyRangeLow:
+            case LayerParamIndex::KeyRangeHigh:
+            case LayerParamIndex::KeyRangeLowFade:
+            case LayerParamIndex::KeyRangeHighFade:
+            case LayerParamIndex::PlayMode:
+            case LayerParamIndex::ArpOn: return true;
+
+            case LayerParamIndex::LoopMode:
+            case LayerParamIndex::SampleOffset: return play_mode != param_values::PlayMode::GranularFixed;
+
+            case LayerParamIndex::LoopStart:
+            case LayerParamIndex::LoopEnd:
+            case LayerParamIndex::LoopCrossfade: {
+                if (play_mode == param_values::PlayMode::GranularFixed) return false;
+                auto const loop_mode =
+                    ParamToInt<param_values::LoopMode>(layer_linear(ln, LayerParamIndex::LoopMode));
+                return loop_mode != param_values::LoopMode::None;
+            }
+
+            case LayerParamIndex::VolumeAttack:
+            case LayerParamIndex::VolumeDecay:
+            case LayerParamIndex::VolumeSustain:
+            case LayerParamIndex::VolumeRelease: return layer_is_on(ln, LayerParamIndex::VolEnvOn);
+
+            case LayerParamIndex::FilterCutoff:
+            case LayerParamIndex::FilterResonance:
+            case LayerParamIndex::FilterType:
+            case LayerParamIndex::FilterEnvAmount: return layer_is_on(ln, LayerParamIndex::FilterOn);
+
+            case LayerParamIndex::FilterAttack:
+            case LayerParamIndex::FilterDecay:
+            case LayerParamIndex::FilterSustain:
+            case LayerParamIndex::FilterRelease:
+                return layer_is_on(ln, LayerParamIndex::FilterOn) &&
+                       layer_linear(ln, LayerParamIndex::FilterEnvAmount) != 0;
+
+            case LayerParamIndex::LfoRestart:
+            case LayerParamIndex::LfoAmount:
+            case LayerParamIndex::LfoSyncSwitch:
+            case LayerParamIndex::LfoShape:
+            case LayerParamIndex::LfoDestination: return layer_is_on(ln, LayerParamIndex::LfoOn);
+
+            case LayerParamIndex::LfoRateTempoSynced:
+                return layer_is_on(ln, LayerParamIndex::LfoOn) &&
+                       layer_is_on(ln, LayerParamIndex::LfoSyncSwitch);
+            case LayerParamIndex::LfoRateHz:
+                return layer_is_on(ln, LayerParamIndex::LfoOn) &&
+                       !layer_is_on(ln, LayerParamIndex::LfoSyncSwitch);
+
+            case LayerParamIndex::EqFreq1:
+            case LayerParamIndex::EqResonance1:
+            case LayerParamIndex::EqType1:
+            case LayerParamIndex::EqFreq2:
+            case LayerParamIndex::EqResonance2:
+            case LayerParamIndex::EqType2:
+            case LayerParamIndex::EqFreq3:
+            case LayerParamIndex::EqResonance3:
+            case LayerParamIndex::EqType3: return layer_is_on(ln, LayerParamIndex::EqOn);
+
+            case LayerParamIndex::EqGain1:
+                return layer_is_on(ln, LayerParamIndex::EqOn) &&
+                       param_values::EqTypeUsesGain(
+                           ParamToInt<param_values::EqType>(layer_linear(ln, LayerParamIndex::EqType1)));
+            case LayerParamIndex::EqGain2:
+                return layer_is_on(ln, LayerParamIndex::EqOn) &&
+                       param_values::EqTypeUsesGain(
+                           ParamToInt<param_values::EqType>(layer_linear(ln, LayerParamIndex::EqType2)));
+            case LayerParamIndex::EqGain3:
+                return layer_is_on(ln, LayerParamIndex::EqOn) &&
+                       param_values::EqTypeUsesGain(
+                           ParamToInt<param_values::EqType>(layer_linear(ln, LayerParamIndex::EqType3)));
+
+            case LayerParamIndex::GranularSpeed: return play_mode == param_values::PlayMode::GranularPlayback;
+            case LayerParamIndex::GranularPosition: return play_mode == param_values::PlayMode::GranularFixed;
+            case LayerParamIndex::GranularDensity:
+            case LayerParamIndex::GranularLength:
+            case LayerParamIndex::GranularSpread:
+            case LayerParamIndex::GranularSmoothing:
+            case LayerParamIndex::GranularRandomPan:
+            case LayerParamIndex::GranularRandomDetune:
+            case LayerParamIndex::GranularRandomDirection:
+            case LayerParamIndex::GranularHarmony: return is_granular;
+
+            case LayerParamIndex::ArpMode:
+            case LayerParamIndex::ArpNoteOrder:
+            case LayerParamIndex::ArpTriggerMode:
+            case LayerParamIndex::ArpRate:
+            case LayerParamIndex::ArpAutoRate:
+            case LayerParamIndex::ArpLength:
+            case LayerParamIndex::ArpHumanise:
+            case LayerParamIndex::ArpOctavePolyrate:
+            case LayerParamIndex::ArpOneShot: return layer_is_on(ln, LayerParamIndex::ArpOn);
+
+            case LayerParamIndex::LegacyFilterCutoff:
+            case LayerParamIndex::LegacyFilterResonance:
+            case LayerParamIndex::LegacyFilterType:
+            case LayerParamIndex::LegacyLfoShape:
+            case LayerParamIndex::LegacyLfoDestination:
+            case LayerParamIndex::LegacyLfoShapeV2:
+            case LayerParamIndex::LegacyEqFreq1:
+            case LayerParamIndex::LegacyEqResonance1:
+            case LayerParamIndex::LegacyEqType1:
+            case LayerParamIndex::LegacyEqFreq2:
+            case LayerParamIndex::LegacyEqResonance2:
+            case LayerParamIndex::LegacyEqType2:
+            case LayerParamIndex::LegacyEqFreq3:
+            case LayerParamIndex::LegacyVelocityMapping:
+            case LayerParamIndex::LegacyMonophonicBool: return false;
+
+            case LayerParamIndex::Count: PanicIfReached();
+        }
+        PanicIfReached();
+    }
+
+    switch (index) {
+        case ParamIndex::MasterVolume:
+        case ParamIndex::MasterTimbre:
+        case ParamIndex::Macro1:
+        case ParamIndex::Macro2:
+        case ParamIndex::Macro3:
+        case ParamIndex::Macro4:
+        case ParamIndex::DistortionOn:
+        case ParamIndex::BitCrushOn:
+        case ParamIndex::CompressorOn:
+        case ParamIndex::FilterOn:
+        case ParamIndex::StereoWidenOn:
+        case ParamIndex::ChorusOn:
+        case ParamIndex::DelayOn:
+        case ParamIndex::PhaserOn:
+        case ParamIndex::EqOn:
+        case ParamIndex::ConvolutionReverbOn:
+        case ParamIndex::ReverbOn: return true;
+
+        case ParamIndex::DistortionType:
+        case ParamIndex::DistortionDrive:
+        case ParamIndex::DistortionMix: return is_on(ParamIndex::DistortionOn);
+
+        case ParamIndex::BitCrushBits:
+        case ParamIndex::BitCrushBitRate:
+        case ParamIndex::BitCrushMix:
+        case ParamIndex::BitCrushOutput: return is_on(ParamIndex::BitCrushOn);
+
+        case ParamIndex::CompressorThreshold:
+        case ParamIndex::CompressorRatio:
+        case ParamIndex::CompressorGain:
+        case ParamIndex::CompressorType:
+        case ParamIndex::CompressorMix: return is_on(ParamIndex::CompressorOn);
+
+        case ParamIndex::CompressorAttack:
+        case ParamIndex::CompressorRelease:
+            return is_on(ParamIndex::CompressorOn) &&
+                   ParamToInt<param_values::CompressorType>(linear(ParamIndex::CompressorType)) ==
+                       param_values::CompressorType::Modern;
+        case ParamIndex::CompressorAutoGain:
+            return is_on(ParamIndex::CompressorOn) &&
+                   ParamToInt<param_values::CompressorType>(linear(ParamIndex::CompressorType)) ==
+                       param_values::CompressorType::Vintage;
+
+        case ParamIndex::FilterCutoff:
+        case ParamIndex::FilterResonance:
+        case ParamIndex::FilterType:
+        case ParamIndex::FilterMix: return is_on(ParamIndex::FilterOn);
+
+        case ParamIndex::FilterGain:
+            return is_on(ParamIndex::FilterOn) &&
+                   param_values::EffectFilterTypeUsesGain(
+                       ParamToInt<param_values::EffectFilterType>(linear(ParamIndex::FilterType)));
+
+        case ParamIndex::StereoWidenWidth:
+        case ParamIndex::StereoWidenMode:
+        case ParamIndex::StereoWidenMix: return is_on(ParamIndex::StereoWidenOn);
+        case ParamIndex::StereoWidenBassMono:
+            return is_on(ParamIndex::StereoWidenOn) &&
+                   ParamToInt<param_values::StereoWidenMode>(linear(ParamIndex::StereoWidenMode)) ==
+                       param_values::StereoWidenMode::BassMono;
+
+        case ParamIndex::ChorusRate:
+        case ParamIndex::ChorusHighpass:
+        case ParamIndex::ChorusDepth:
+        case ParamIndex::ChorusMix:
+        case ParamIndex::ChorusOutput: return is_on(ParamIndex::ChorusOn);
+
+        case ParamIndex::DelayMode:
+        case ParamIndex::DelayFilterCutoffSemitones:
+        case ParamIndex::DelayFilterSpread:
+        case ParamIndex::DelayMix:
+        case ParamIndex::DelayFeedback:
+        case ParamIndex::DelayTimeSyncSwitch: return is_on(ParamIndex::DelayOn);
+        case ParamIndex::DelayTimeLMs:
+        case ParamIndex::DelayTimeRMs:
+            return is_on(ParamIndex::DelayOn) && !is_on(ParamIndex::DelayTimeSyncSwitch);
+        case ParamIndex::DelayTimeSyncedL:
+        case ParamIndex::DelayTimeSyncedR:
+            return is_on(ParamIndex::DelayOn) && is_on(ParamIndex::DelayTimeSyncSwitch);
+
+        case ParamIndex::PhaserCenterSemitones:
+        case ParamIndex::PhaserModFreqHz:
+        case ParamIndex::PhaserModDepth:
+        case ParamIndex::PhaserFeedback:
+        case ParamIndex::PhaserShape:
+        case ParamIndex::PhaserStereoAmount:
+        case ParamIndex::PhaserMix: return is_on(ParamIndex::PhaserOn);
+
+        case ParamIndex::EqMix:
+        case ParamIndex::EqType1:
+        case ParamIndex::EqFreq1:
+        case ParamIndex::EqResonance1:
+        case ParamIndex::EqType2:
+        case ParamIndex::EqFreq2:
+        case ParamIndex::EqResonance2:
+        case ParamIndex::EqType3:
+        case ParamIndex::EqFreq3:
+        case ParamIndex::EqResonance3: return is_on(ParamIndex::EqOn);
+
+        case ParamIndex::EqGain1:
+            return is_on(ParamIndex::EqOn) && param_values::EqTypeUsesGain(ParamToInt<param_values::EqType>(
+                                                  linear(ParamIndex::EqType1)));
+        case ParamIndex::EqGain2:
+            return is_on(ParamIndex::EqOn) && param_values::EqTypeUsesGain(ParamToInt<param_values::EqType>(
+                                                  linear(ParamIndex::EqType2)));
+        case ParamIndex::EqGain3:
+            return is_on(ParamIndex::EqOn) && param_values::EqTypeUsesGain(ParamToInt<param_values::EqType>(
+                                                  linear(ParamIndex::EqType3)));
+
+        case ParamIndex::ConvolutionReverbHighpass:
+        case ParamIndex::ConvolutionReverbMix:
+        case ParamIndex::ConvolutionReverbOutput: return is_on(ParamIndex::ConvolutionReverbOn);
+
+        case ParamIndex::ReverbDecayTimeMs:
+        case ParamIndex::ReverbSize:
+        case ParamIndex::ReverbDelay:
+        case ParamIndex::ReverbMix:
+        case ParamIndex::ReverbPreLowPassCutoff:
+        case ParamIndex::ReverbPreHighPassCutoff:
+        case ParamIndex::ReverbLowShelfCutoff:
+        case ParamIndex::ReverbLowShelfGain:
+        case ParamIndex::ReverbHighShelfCutoff:
+        case ParamIndex::ReverbHighShelfGain:
+        case ParamIndex::ReverbChorusFrequency:
+        case ParamIndex::ReverbChorusAmount: return is_on(ParamIndex::ReverbOn);
+
+        case ParamIndex::MasterVelocity:
+        case ParamIndex::LegacyBitCrushWet:
+        case ParamIndex::LegacyBitCrushDry:
+        case ParamIndex::LegacyCompressorThreshold:
+        case ParamIndex::LegacyCompressorRatio:
+        case ParamIndex::LegacyFilterCutoff:
+        case ParamIndex::LegacyFilterResonance:
+        case ParamIndex::LegacyFilterGain:
+        case ParamIndex::LegacyFilterType:
+        case ParamIndex::LegacyChorusHighpass:
+        case ParamIndex::LegacyChorusWet:
+        case ParamIndex::LegacyChorusDry:
+        case ParamIndex::LegacyConvolutionReverbHighpass:
+        case ParamIndex::LegacyConvolutionReverbWet:
+        case ParamIndex::LegacyConvolutionReverbDry: return false;
+
+        case ParamIndex::CountHelper:
+        case ParamIndex::NonLayerParamsCount: PanicIfReached();
+    }
+    PanicIfReached();
+    return true;
 }
 
 String ParamMenuText(ParamIndex index, f32 value) {
@@ -293,34 +602,34 @@ constexpr auto k_layer_params = ArrayT<LayerParamId>({
     {"Sus", LayerParamIndex::VolumeSustain},
     {"Rel", LayerParamIndex::VolumeRelease},
     {"FlOn", LayerParamIndex::FilterOn},
-    {"FlCut", LayerParamIndex::FilterCutoff},
-    {"FfRes", LayerParamIndex::FilterResonance},
-    {"FlTy", LayerParamIndex::FilterType},
+    {"FlCut", LayerParamIndex::LegacyFilterCutoff},
+    {"FfRes", LayerParamIndex::LegacyFilterResonance},
+    {"FlTy", LayerParamIndex::LegacyFilterType},
     {"FlAm", LayerParamIndex::FilterEnvAmount},
     {"FlAtt", LayerParamIndex::FilterAttack},
     {"FLDec", LayerParamIndex::FilterDecay},
     {"FlSus", LayerParamIndex::FilterSustain},
     {"FlRel", LayerParamIndex::FilterRelease},
     {"LfoOn", LayerParamIndex::LfoOn},
-    {"LfoSh", LayerParamIndex::LfoShape},
+    {"LfoSh", LayerParamIndex::LegacyLfoShape},
     {"LfoMd", LayerParamIndex::LfoRestart},
     {"LfoAm", LayerParamIndex::LfoAmount},
-    {"LfoTg", LayerParamIndex::LfoDestination},
+    {"LfoTg", LayerParamIndex::LegacyLfoDestination},
     {"LfoSyt", LayerParamIndex::LfoRateTempoSynced},
     {"LfoHZ", LayerParamIndex::LfoRateHz},
     {"LfoSyO", LayerParamIndex::LfoSyncSwitch},
     {"EqOn", LayerParamIndex::EqOn},
-    {"EqFr0", LayerParamIndex::EqFreq1},
-    {"EqRs0", LayerParamIndex::EqResonance1},
+    {"EqFr0", LayerParamIndex::LegacyEqFreq1},
+    {"EqRs0", LayerParamIndex::LegacyEqResonance1},
     {"EqGn0", LayerParamIndex::EqGain1},
-    {"EqTy0", LayerParamIndex::EqType1},
-    {"EqFr1", LayerParamIndex::EqFreq2},
-    {"EqRs1", LayerParamIndex::EqResonance2},
+    {"EqTy0", LayerParamIndex::LegacyEqType1},
+    {"EqFr1", LayerParamIndex::LegacyEqFreq2},
+    {"EqRs1", LayerParamIndex::LegacyEqResonance2},
     {"EqGn1", LayerParamIndex::EqGain2},
-    {"EqTy1", LayerParamIndex::EqType2},
-    {"Vel", LayerParamIndex::VelocityMapping},
+    {"EqTy1", LayerParamIndex::LegacyEqType2},
+    {"Vel", LayerParamIndex::LegacyVelocityMapping},
     {"KTr", LayerParamIndex::Keytrack},
-    {"Mono", LayerParamIndex::Monophonic},
+    {"Mono", LayerParamIndex::LegacyMonophonicBool},
     {"Trn", LayerParamIndex::MidiTranspose},
 });
 
@@ -338,30 +647,30 @@ constexpr auto k_non_layer_params = ArrayT<NonLayerParamId>({
     {"DistOn", ParamIndex::DistortionOn},
     {"BitcBits", ParamIndex::BitCrushBits},
     {"BitcRate", ParamIndex::BitCrushBitRate},
-    {"BitcWet", ParamIndex::BitCrushWet},
-    {"BitcDry", ParamIndex::BitCrushDry},
+    {"BitcWet", ParamIndex::LegacyBitCrushWet},
+    {"BitcDry", ParamIndex::LegacyBitCrushDry},
     {"BitcOn", ParamIndex::BitCrushOn},
-    {"CompThr", ParamIndex::CompressorThreshold},
-    {"CompRt", ParamIndex::CompressorRatio},
+    {"CompThr", ParamIndex::LegacyCompressorThreshold},
+    {"CompRt", ParamIndex::LegacyCompressorRatio},
     {"CompGain", ParamIndex::CompressorGain},
     {"CompAuto", ParamIndex::CompressorAutoGain},
     {"CompOn", ParamIndex::CompressorOn},
     {"FlOn", ParamIndex::FilterOn},
-    {"FlCut", ParamIndex::FilterCutoff},
-    {"FlRes", ParamIndex::FilterResonance},
-    {"FlGain", ParamIndex::FilterGain},
-    {"FlType", ParamIndex::FilterType},
+    {"FlCut", ParamIndex::LegacyFilterCutoff},
+    {"FlRes", ParamIndex::LegacyFilterResonance},
+    {"FlGain", ParamIndex::LegacyFilterGain},
+    {"FlType", ParamIndex::LegacyFilterType},
     {"SterWd", ParamIndex::StereoWidenWidth},
     {"SterOn", ParamIndex::StereoWidenOn},
     {"ChorRate", ParamIndex::ChorusRate},
-    {"ChorHP", ParamIndex::ChorusHighpass},
+    {"ChorHP", ParamIndex::LegacyChorusHighpass},
     {"ChorDpth", ParamIndex::ChorusDepth},
-    {"ChorWet", ParamIndex::ChorusWet},
-    {"ChorDry", ParamIndex::ChorusDry},
+    {"ChorWet", ParamIndex::LegacyChorusWet},
+    {"ChorDry", ParamIndex::LegacyChorusDry},
     {"ChorOn", ParamIndex::ChorusOn},
-    {"ConvHP", ParamIndex::ConvolutionReverbHighpass},
-    {"ConvWet", ParamIndex::ConvolutionReverbWet},
-    {"ConvDry", ParamIndex::ConvolutionReverbDry},
+    {"ConvHP", ParamIndex::LegacyConvolutionReverbHighpass},
+    {"ConvWet", ParamIndex::LegacyConvolutionReverbWet},
+    {"ConvDry", ParamIndex::LegacyConvolutionReverbDry},
     {"ConvOn", ParamIndex::ConvolutionReverbOn},
 });
 

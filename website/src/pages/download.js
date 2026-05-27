@@ -191,8 +191,17 @@ export default function Download() {
                                         >
                                             <FontAwesomeIcon icon={faDownload} />Floe — Apple Silicon
                                         </DownloadButton>
+                                        {/*
+                                          * TEMPORARY: v1.1.2's Intel installer asset on the GitHub release is
+                                          * actually an ARM build (Zig cache collision during the parallel
+                                          * mac_arm/mac_x86 release build — fixed on develop in 04b6e47c).
+                                          * The GitHub release is immutable so the asset can't be replaced.
+                                          * We host a correctly-built Intel installer externally and link to
+                                          * it here instead of staticData['Floe-Installer-macOS-Intel'].url.
+                                          * REMOVE this override once the next stable release ships.
+                                          */}
                                         <DownloadButton
-                                            href={staticData['Floe-Installer-macOS-Intel'].url}
+                                            href="https://d1e9gx2m5baxk1.cloudfront.net/Floe-Installer-v1.1.2-macOS-Intel.zip"
                                             dataEvent="Download macOS Intel Installer"
                                             size={staticData['Floe-Installer-macOS-Intel'].size}
                                         >

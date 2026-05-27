@@ -27,7 +27,6 @@ pkgs.mkShell rec {
     pkgs.rcodesign
     pkgs.llvmPackages_19.bintools-unwrapped # llvm-lipo, llvm-addr2line, dsymutil
     pkgs.llvmPackages_19.clang-unwrapped # clangd, clang-tidy, clang-format
-    pkgs.cppcheck
     pkgs.codespell
     pkgs.gnused
     pkgs.coreutils
@@ -42,6 +41,7 @@ pkgs.mkShell rec {
     pkgs.zls_0_14
     pkgs.sentry-cli
     pkgs.nodejs_24 # For Docusaurus website development
+    pkgs.hyperfine
 
     # dsymutil internally calls "lipo", so we have to make sure it's available under that name
     (pkgs.writeShellScriptBin "lipo" "llvm-lipo $@")
@@ -65,6 +65,7 @@ pkgs.mkShell rec {
     pkgs.kcov
     pkgs.patchelf
     pkgs.valgrind
+    pkgs.pluginval
   ]
   ++ extraPackages;
 

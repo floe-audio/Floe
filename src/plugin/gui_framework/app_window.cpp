@@ -1,4 +1,4 @@
-// Copyright 2026 Sam Windell
+// Copyright 2024-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app_window.hpp"
@@ -8,8 +8,11 @@
 #include <clap/host.h>
 #include <pugl/pugl.h>
 #include <pugl/stub.h>
+#include <stb_image_write.h>
 
 #include "foundation/foundation.hpp"
+#include "os/filesystem.hpp"
+#include "utils/json/json_writer.hpp"
 
 #include "common_infrastructure/error_reporting.hpp"
 
@@ -201,20 +204,18 @@ static bool IsUpdateNeeded(AppWindow& window) {
     // not.
     if (!window.first_update_made) update_needed = true;
 
-    if (g_request_gui_update.Exchange(false, RmwMemoryOrder::Relaxed)) update_needed = true;
+    if (window.gui && ConsumeGuiUpdateRequest(window.gui->engine.instance_index)) update_needed = true;
 
     if (window.last_result.wants.update_interval > GuiFrameOutput::UpdateInterval::Sleep)
         update_needed = true;
 
-    for (usize i = 0; i < window.last_result.timed_wakeups.size;) {
-        auto& t = window.last_result.timed_wakeups[i];
+    window.last_result.timed_wakeups.RemoveIf([&](u64 const&, TimePoint const& t) {
         if (TimePoint::Now() >= t) {
             update_needed = true;
-            dyn::Remove(window.last_result.timed_wakeups, i);
-        } else {
-            ++i;
+            return true;
         }
-    }
+        return false;
+    });
 
     return update_needed;
 }
@@ -254,7 +255,8 @@ static bool EventMotion(AppWindow& window, PuglMotionEvent const& motion_event) 
         }
     }
 
-    if (window.last_result.mouse_tracked_rects.size == 0 || window.last_result.wants.mouse_capture) {
+    if (window.last_result.mouse_tracked_rects.size == 0 || window.last_result.wants.mouse_capture ||
+        window.last_result.wants.mouse_motion_redraw) {
         result = true;
     } else if (IsUpdateNeeded(window)) {
         return true;
@@ -457,7 +459,6 @@ static void BeginFrame(GuiFrameInput& frame_state) {
     } else {
         frame_state.cursor_delta = frame_state.cursor_pos - frame_state.cursor_pos_prev;
     }
-    frame_state.cursor_pos_prev = frame_state.cursor_pos;
 
     frame_state.current_time = TimePoint::Now();
 
@@ -465,6 +466,10 @@ static void BeginFrame(GuiFrameInput& frame_state) {
         frame_state.delta_time = (f32)(frame_state.current_time - frame_state.time_prev);
     else
         frame_state.delta_time = 0;
+}
+
+static void EndFrame(GuiFrameInput& frame_state) {
+    frame_state.cursor_pos_prev = frame_state.cursor_pos;
     frame_state.time_prev = frame_state.current_time;
 }
 
@@ -632,6 +637,8 @@ static void UpdateAndRender(AppWindow& window) {
             GuiUpdate(*window.gui);
         }
 
+        EndFrame(window.frame_state);
+
         // Clear the state ready for new events, and to ensure they're only processed once.
         ClearImpermanentState(window.frame_state);
 
@@ -646,6 +653,83 @@ static void UpdateAndRender(AppWindow& window) {
                                          window_size,
                                          window.frame_state.native_window);
         if (o.HasError()) LogError(ModuleName::Gui, "GUI render failed: {}", o.Error());
+
+        if (window.last_result.request_screenshot) {
+            ArenaAllocator scratch {PageAllocator::Instance()};
+            auto const& req = *window.last_result.request_screenshot;
+            if (auto const shot = window.renderer->Screenshot(req.rect, window_size, scratch)) {
+                DynamicArray<char> path {scratch};
+                if (req.output_path.size) {
+                    dyn::AppendSpan(path, (String)req.output_path);
+                } else {
+                    dyn::AppendSpan(path,
+                                    KnownDirectoryWithSubdirectories(scratch,
+                                                                     KnownDirectoryType::Documents,
+                                                                     Array {"Floe"_s, "Screenshots"},
+                                                                     k_nullopt,
+                                                                     {.create = true}));
+                    auto const initial_size = path.size;
+                    for (int n = 1;; ++n) {
+                        dyn::Resize(path, initial_size);
+                        fmt::Append(path, "/floe-{}.png", n);
+                        auto const t = GetFileType(path);
+                        if (!t.HasValue() || t.Value() != FileType::File) break;
+                    }
+                }
+                if (!stbi_write_png(dyn::NullTerminated(path),
+                                    shot->size.width,
+                                    shot->size.height,
+                                    3,
+                                    shot->rgb.data,
+                                    shot->size.width * 3)) {
+                    LogError(ModuleName::Gui, "stbi_write_png failed");
+                } else {
+                    LogInfo(ModuleName::Gui, "Saved screenshot");
+
+                    if (req.overlays.size) {
+                        auto const ext = path::Extension((String)path);
+                        DynamicArray<char> json_path {scratch};
+                        dyn::AppendSpan(json_path, ((String)path).SubSpan(0, path.size - ext.size));
+                        dyn::AppendSpan(json_path, ".json"_s);
+
+                        DynamicArray<char> json_buf {scratch};
+                        auto writer = dyn::WriterFor(json_buf);
+                        json::WriteContext ctx {.out = writer, .add_whitespace = true};
+                        auto const write_json = [&]() -> ErrorCodeOr<void> {
+                            TRY(json::WriteObjectBegin(ctx));
+                            TRY(json::WriteKeyArrayBegin(ctx, "overlays"));
+                            auto const inv_w = 1.0f / req.rect.w;
+                            auto const inv_h = 1.0f / req.rect.h;
+                            for (auto const& o : req.overlays) {
+                                TRY(json::WriteObjectBegin(ctx));
+                                TRY(json::WriteKeyValue(ctx, "name", (String)o.name));
+                                TRY(json::WriteKeyValue(ctx, "x", (o.rect.x - req.rect.x) * inv_w));
+                                TRY(json::WriteKeyValue(ctx, "y", (o.rect.y - req.rect.y) * inv_h));
+                                TRY(json::WriteKeyValue(ctx, "w", o.rect.w * inv_w));
+                                TRY(json::WriteKeyValue(ctx, "h", o.rect.h * inv_h));
+                                TRY(json::WriteObjectEnd(ctx));
+                            }
+                            TRY(json::WriteArrayEnd(ctx));
+                            TRY(json::WriteObjectEnd(ctx));
+                            return k_success;
+                        };
+                        if (auto const r = write_json(); r.HasError())
+                            LogError(ModuleName::Gui, "Failed to build overlay JSON: {}", r.Error());
+                        else if (auto const w = WriteFile(json_path, json_buf); w.HasError())
+                            LogError(ModuleName::Gui, "Failed to write overlay JSON: {}", w.Error());
+                        else
+                            LogInfo(ModuleName::Gui, "Saved overlay JSON");
+                    }
+                }
+            } else {
+                LogWarning(ModuleName::Gui, "Screenshot not supported by current renderer backend");
+            }
+            window.last_result.request_screenshot = k_nullopt;
+            if (window.gui) {
+                dyn::Clear(window.frame_state.requested_screenshot_id_name);
+                dyn::Clear(window.frame_state.requested_screenshot_output_path);
+            }
+        }
     }
 
     window.first_update_made = true;
@@ -907,6 +991,17 @@ void Deinit(AppWindow& window) {
 
     native::DeinitNativeState(window);
 
+    // puglUnrealize can synchronously dispatch events, so it must happen before clearing GUI state.
+    if (window.view) {
+        if (window.pugl_timer_running) {
+            puglStopTimer(window.view, window.k_pugl_timer_id);
+            window.pugl_timer_running = false;
+        }
+        puglUnrealize(window.view);
+    }
+
+    SetTimers(window, SetTimerType::Stop);
+
     if (window.gui) {
         window.gui.Clear();
 
@@ -914,12 +1009,7 @@ void Deinit(AppWindow& window) {
         window.last_result.draw_list_allocator.Clear();
     }
 
-    SetTimers(window, SetTimerType::Stop);
-
     if (window.view) {
-        // We don't need to check if the view is realized, because puglUnrealize will do nothing if it is not.
-        puglUnrealize(window.view);
-
         puglFreeView(window.view);
         window.view = nullptr;
     }

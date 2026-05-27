@@ -191,8 +191,8 @@ const FlagsBuilder = struct {
         // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
         try self.flags.append("-gdwarf-4");
 
-        if (options.ubsan) {
-            if (ctx.optimise != .ReleaseFast) {
+        if (ctx.optimise != .ReleaseFast) {
+            if (options.ubsan) {
                 // By default, zig enables UBSan (unless ReleaseFast mode) in trap mode. Meaning it will catch
                 // undefined behaviour and trigger a trap which can be caught by signal handlers. UBSan also has a
                 // mode where undefined behaviour will instead call various functions. This is called the UBSan
@@ -205,9 +205,9 @@ const FlagsBuilder = struct {
                 if (minimal_runtime_mode) {
                     try self.flags.append("-fsanitize-runtime"); // set it to 'minimal' mode
                 }
+            } else {
+                try self.flags.append("-fno-sanitize=all");
             }
-        } else {
-            try self.flags.append("-fno-sanitize=all");
         }
 
         if (options.cpp) {
@@ -255,11 +255,9 @@ const FlagsBuilder = struct {
             try self.flags.append("-DTRACY_MANUAL_LIFETIME");
             try self.flags.append("-DTRACY_DELAYED_INIT");
             try self.flags.append("-DTRACY_ONLY_LOCALHOST");
-            if (cfg.target.os.tag == .linux) {
-                // Couldn't get these working well so just disabling them
-                try self.flags.append("-DTRACY_NO_CALLSTACK");
-                try self.flags.append("-DTRACY_NO_SYSTEM_TRACING");
-            }
+            // On Linux, sampling and system tracing require:
+            //   echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+            // Or on NixOS, set: boot.kernel.sysctl."kernel.perf_event_paranoid" = -1;
         }
     }
 };
@@ -413,6 +411,8 @@ fn resolveTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.Ar
 
 const linux_use_pkg_config = std.Build.Module.SystemLib.UsePkgConfig.yes;
 
+const gen_doc_screenshots_step_name = "script:gen-doc-screenshots";
+
 pub fn build(b: *std.Build) void {
     b.reference_trace = 10; // Improve debugging of build.zig itself.
 
@@ -425,9 +425,6 @@ pub fn build(b: *std.Build) void {
             "build-mode",
             "The preset for building the project, affects optimisation, debug settings, etc.",
         ) orelse .development,
-
-        .granular = b.option(bool, "granular", "Experimental granular") orelse false,
-        .mid_panel_tabs = b.option(bool, "mid-panel-tabs", "Experimental mid-panel tabs") orelse false,
 
         // Installing plugins to global plugin folders requires admin rights but it's often easier to debug
         // things without requiring admin. For production builds it's always enabled.
@@ -442,10 +439,20 @@ pub fn build(b: *std.Build) void {
             "sanitize-thread",
             "Enable thread sanitiser",
         ) orelse false,
-        .fetch_floe_logos = b.option(
+        .fetch_floe_logos = (b.option(
             bool,
             "fetch-floe-logos",
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
+        ) orelse false) or std_extras.isStepRequested(b, gen_doc_screenshots_step_name),
+        .no_runtime_safety_checks = b.option(
+            bool,
+            "no-runtime-safety-checks",
+            "In optimised builds, don't include UBSAN or other runtime safety checks",
+        ) orelse false,
+        .include_git_hash = b.option(
+            bool,
+            "include-git-hash",
+            "Include the git commit hash in the version string as semver build metadata",
         ) orelse false,
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
@@ -454,7 +461,7 @@ pub fn build(b: *std.Build) void {
         var ver: []const u8 = b.build_root.handle.readFileAlloc(b.allocator, "version.txt", 256) catch @panic("version.txt error");
         ver = std.mem.trim(u8, ver, " \r\n\t");
 
-        if (options.build_mode != .production) {
+        if (options.build_mode != .production or options.include_git_hash) {
             ver = b.fmt("{s}+{s}", .{
                 ver,
                 std.mem.trim(u8, b.run(&.{ "git", "rev-parse", "--short", "HEAD" }), " \r\n\t"),
@@ -476,7 +483,7 @@ pub fn build(b: *std.Build) void {
         .build_mode = options.build_mode,
         .optimise = switch (options.build_mode) {
             .development => std.builtin.OptimizeMode.Debug,
-            .performance_profiling, .production => std.builtin.OptimizeMode.ReleaseSafe,
+            .performance_profiling, .production => if (options.no_runtime_safety_checks) std.builtin.OptimizeMode.ReleaseFast else std.builtin.OptimizeMode.ReleaseSafe,
         },
         .windows_installer_require_admin = options.windows_installer_require_admin,
 
@@ -524,9 +531,11 @@ pub fn build(b: *std.Build) void {
         .pluginval = b.step("test:pluginval", "Test using pluginval"),
         .valgrind = b.step("test:valgrind", "Test using Valgrind"),
         .test_windows_install = b.step("test:windows-install", "Test installation and uninstallation on Windows"),
+        .benchmark = b.step("benchmark", "Run benchmarks"),
         .ci = b.step("script:ci", "Run CI checks"),
         .ci_basic = b.step("script:ci-basic", "Run basic CI checks"),
 
+        .benchmark_ci = b.step("script:benchmark-ci", "Run benchmarks with hyperfine and track with Bencher"),
         .clang_tidy = b.step("check:clang-tidy", "Run clang-tidy on source files"),
         .format_step = b.step("script:format", "Format code with clang-format"),
         .create_gh_release = b.step("script:create-gh-release", "Create a GitHub release"),
@@ -537,6 +546,8 @@ pub fn build(b: *std.Build) void {
         .website_dev = b.step("script:website-dev", "Start website dev build locally"),
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
         .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused size/colour-map entries from def files"),
+        .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
+        .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe_standalone for each known GUI area"),
     };
 
     // The default is to compile everything.
@@ -599,6 +610,7 @@ pub fn build(b: *std.Build) void {
         });
         if (b.graph.host.result.os.tag == .windows) exe.linkLibC(); // GetTempPath2W
 
+        addRunScript(exe, top_level_steps.benchmark_ci, "benchmark-ci");
         addRunScript(exe, top_level_steps.format_step, "format");
         addRunScript(exe, top_level_steps.create_gh_release, "create-gh-release");
         addRunScript(exe, top_level_steps.upload_errors, "upload-errors");
@@ -606,6 +618,7 @@ pub fn build(b: *std.Build) void {
         addRunScript(exe, top_level_steps.ci_basic, "ci-basic");
         addRunScript(exe, top_level_steps.website_promote, "website-promote-beta-to-stable");
         addRunScript(exe, top_level_steps.remove_unused_gui_defs, "remove-unused-gui-defs");
+        addRunScript(exe, top_level_steps.update_copyright_years, "update-copyright-years");
     }
 
     // Shader compiler.
@@ -675,6 +688,7 @@ pub fn build(b: *std.Build) void {
                     .library = buildFloeLibrary(&ctx, &native_target_cfg, .{
                         .stb_sprintf = buildStbSprintf(&ctx, &native_target_cfg),
                         .debug_info_lib = buildDebugInfo(&ctx, &native_target_cfg),
+                        .zig_std = buildZigStd(&ctx, &native_target_cfg),
                         .tracy = buildTracy(&ctx, &native_target_cfg),
                     }),
                     .miniz = buildMiniz(&ctx, &native_target_cfg),
@@ -797,6 +811,7 @@ fn buildVitfx(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
             "src/synthesis/effects/reverb.cpp",
             "src/synthesis/effects/phaser.cpp",
             "src/synthesis/effects/delay.cpp",
+            "src/synthesis/effects/compressor.cpp",
             "src/synthesis/framework/processor.cpp",
             "src/synthesis/framework/processor_router.cpp",
             "src/synthesis/framework/value.cpp",
@@ -928,10 +943,22 @@ fn buildDebugInfo(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build
     return lib;
 }
 
+fn buildZigStd(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    var opts = cfg.module_options;
+    opts.root_source_file = ctx.b.path("src/foundation/zig_std/zig_std.zig");
+    const lib = ctx.b.addObject(.{
+        .name = "zig_std",
+        .root_module = ctx.b.createModule(opts),
+    });
+    lib.linkLibC();
+    return lib;
+}
+
 // IMPROVE: does this need to be a library? is foundation/os/plugin all linked together?
 fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     stb_sprintf: *std.Build.Step.Compile,
     debug_info_lib: *std.Build.Step.Compile,
+    zig_std: *std.Build.Step.Compile,
     tracy: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     const lib = ctx.b.addStaticLibrary(.{
@@ -945,6 +972,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
         "src/utils/leak_detecting_allocator.cpp",
         "src/utils/no_hash.cpp",
         "src/tests/framework.cpp",
+        "src/benchmarks/framework.cpp",
         "src/utils/logger/logger.cpp",
         "src/foundation/utils/string.cpp",
         "src/os/filesystem.cpp",
@@ -1036,6 +1064,7 @@ fn buildFloeLibrary(ctx: *const BuildContext, cfg: *const TargetConfig, deps: st
     lib.linkLibC();
     lib.linkLibrary(deps.tracy);
     lib.addObject(deps.debug_info_lib);
+    lib.addObject(deps.zig_std);
     lib.addObject(deps.stb_sprintf);
     applyUniversalSettings(ctx, lib);
 
@@ -1456,22 +1485,30 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
             "autosave.cpp",
             "checksum_crc32_file.cpp",
             "common_errors.cpp",
+            "encrypted_package.cpp",
             "descriptors/param_descriptors.cpp",
             "error_reporting.cpp",
             "folder_node.cpp",
             "global.cpp",
+            "license.cpp",
             "package_format.cpp",
             "paths.cpp",
             "persistent_store.cpp",
             "preferences.cpp",
             "preset_bank_info.cpp",
+            "preset_description.cpp",
             "sample_library/audio_file.cpp",
+            "sample_library/library_id_cache.cpp",
             "sample_library/sample_library.cpp",
             "sample_library/sample_library_lua.cpp",
             "sample_library/sample_library_mdata.cpp",
+            "sample_library/server/sample_library_server.cpp",
+            "sample_library/server/scan_folders.cpp",
             "sentry/sentry.cpp",
+            "state/legacy_param_logic.cpp",
             "state/macros.cpp",
             "state/state_coding.cpp",
+            "state/state_snapshot.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
             .all_warnings = true,
@@ -1561,37 +1598,54 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "engine/engine.cpp",
             "engine/favourite_items.cpp",
             "engine/package_installation.cpp",
+            "engine/random_variation.cpp",
             "engine/shared_engine_systems.cpp",
+            "engine/undo.cpp",
+            "gui/controls/gui_arp_step_sequencer.cpp",
             "gui/controls/gui_curve_map.cpp",
             "gui/controls/gui_envelope.cpp",
+            "gui/controls/gui_filter_graph_draw.cpp",
+            "gui/controls/gui_filter_graphs.cpp",
             "gui/controls/gui_keyboard.cpp",
+            "gui/controls/gui_lfo_display.cpp",
+            "gui/controls/gui_pinned_view_toggle.cpp",
             "gui/controls/gui_waveform.cpp",
+            "gui/core/gui_actions.cpp",
+            "gui/core/gui_file_picker.cpp",
             "gui/core/gui_library_images.cpp",
             "gui/core/gui_prefs.cpp",
+            "gui/core/gui_screenshot.cpp",
             "gui/core/gui_state.cpp",
             "gui/core/gui_waveform_images.cpp",
             "gui/debug/gui_developer_panel.cpp",
-            "gui/elements/gui_modal.cpp",
-            "gui/elements/gui_popup_menu.cpp",
-            "gui/elements/gui_param_elements.cpp",
-            "gui/elements/gui_element_drawing.cpp",
             "gui/elements/gui_common_elements.cpp",
+            "gui/elements/gui_element_drawing.cpp",
+            "gui/elements/gui_modal.cpp",
+            "gui/elements/gui_param_elements.cpp",
+            "gui/elements/gui_popup_menu.cpp",
+            "gui/overlays/gui_confirmation_dialog.cpp",
+            "gui/overlays/gui_notifications.cpp",
             "gui/panels/gui_bot_panel.cpp",
             "gui/panels/gui_common_browser.cpp",
+            "gui/panels/gui_effects.cpp",
+            "gui/panels/gui_feedback_panel.cpp",
+            "gui/panels/gui_info_panel.cpp",
             "gui/panels/gui_inst_browser.cpp",
+            "gui/panels/gui_instance_config_panel.cpp",
             "gui/panels/gui_ir_browser.cpp",
+            "gui/panels/gui_layer_common.cpp",
+            "gui/panels/gui_layer_subtabbed.cpp",
             "gui/panels/gui_legacy_params_panel.cpp",
             "gui/panels/gui_library_dev_panel.cpp",
             "gui/panels/gui_macros.cpp",
+            "gui/panels/gui_mid_panel.cpp",
+            "gui/panels/gui_mid_panel_layers.cpp",
+            "gui/panels/gui_midi_cc_panel.cpp",
+            "gui/panels/gui_perform.cpp",
+            "gui/panels/gui_prefs_panel.cpp",
             "gui/panels/gui_preset_browser.cpp",
             "gui/panels/gui_save_preset_panel.cpp",
             "gui/panels/gui_top_panel.cpp",
-            "gui/panels/gui_effects_strip.cpp",
-            "gui/panels/gui_layer_common.cpp",
-            "gui/panels/gui_layer_subtabbed.cpp",
-            "gui/panels/gui_mid_panel.cpp",
-            "gui/panels/gui_mid_panel_combined.cpp",
-            "gui/panels/gui_layer_maximised.cpp",
             "gui_framework/app_window.cpp",
             "gui_framework/draw_list.cpp",
             "gui_framework/fonts.cpp",
@@ -1606,14 +1660,15 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "plugin/hosting_tests.cpp",
             "plugin/plugin.cpp",
             "preset_server/preset_server.cpp",
+            "processing_utils/arpeggiator.cpp",
+            "processing_utils/lfo.cpp",
             "processing_utils/midi.cpp",
             "processing_utils/volume_fade.cpp",
             "processor/layer_processor.cpp",
+            "processor/param.cpp",
             "processor/processor.cpp",
             "processor/sample_processing.cpp",
             "processor/voices.cpp",
-            "sample_lib_server/sample_library_server.cpp",
-            "sample_lib_server/scan_folders.cpp",
         }),
         .flags = flags,
     });
@@ -1792,18 +1847,17 @@ fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
     return exe;
 }
 
-fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+fn buildLicenseTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     common_infrastructure: *std.Build.Step.Compile,
-    embedded_files: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     var exe = ctx.b.addExecutable(.{
-        .name = "preset-editor",
+        .name = "floe-license-tool",
         .root_module = ctx.b.createModule(cfg.module_options),
         .version = ctx.floe_version,
     });
     exe.addCSourceFiles(.{
         .files = &.{
-            "src/preset_editor_tool/preset_editor.cpp",
+            "src/license_tool/license_tool.cpp",
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
@@ -1813,7 +1867,38 @@ fn buildPresetEditor(ctx: *const BuildContext, cfg: *const TargetConfig, deps: s
             .gen_cdb_fragments = true,
         }).flags.items,
     });
-    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetEditor");
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "LicenseTool");
+    exe.linkLibrary(deps.common_infrastructure);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addConfigHeader(cfg.floe_config_h);
+
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildPresetTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+    embedded_files: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    var exe = ctx.b.addExecutable(.{
+        .name = "preset-tool",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/preset_tool/preset_tool.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "PresetTool");
     exe.linkLibrary(deps.common_infrastructure);
     exe.addIncludePath(ctx.b.path("src"));
     exe.addConfigHeader(cfg.floe_config_h);
@@ -2710,6 +2795,34 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     return exe;
 }
 
+fn buildBenchmarks(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    plugin: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    const exe = ctx.b.addExecutable(.{
+        .name = "benchmarks",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/common_infrastructure/final_binary_type.cpp",
+            "src/benchmarks/benchmarks_main.cpp",
+            "src/foundation/memory/allocators.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Benchmarks");
+    exe.addConfigHeader(cfg.floe_config_h);
+    exe.linkLibrary(deps.plugin);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
 fn doTarget(
     ctx: *BuildContext,
     cfg: *const TargetConfig,
@@ -2730,10 +2843,13 @@ fn doTarget(
 
     const embedded_files = buildEmbeddedFiles(ctx, cfg);
 
+    const zig_std = buildZigStd(ctx, cfg);
+
     const library = buildFloeLibrary(ctx, cfg, .{
         .stb_sprintf = stb_sprintf,
         .tracy = tracy,
         .debug_info_lib = debug_info_lib,
+        .zig_std = zig_std,
     });
 
     if (targetCanRunNatively(cfg.target)) {
@@ -2791,7 +2907,16 @@ fn doTarget(
     };
 
     {
-        const exe = buildPresetEditor(ctx, cfg, .{
+        const exe = buildLicenseTool(ctx, cfg, .{
+            .common_infrastructure = common_infrastructure,
+        });
+
+        const install = ctx.b.addInstallArtifact(exe, .{});
+        top_level_steps.install_all.dependOn(&install.step);
+    }
+
+    {
+        const exe = buildPresetTool(ctx, cfg, .{
             .common_infrastructure = common_infrastructure,
             .embedded_files = embedded_files,
         });
@@ -2799,7 +2924,7 @@ fn doTarget(
         const install = ctx.b.addInstallArtifact(exe, .{});
         top_level_steps.install_all.dependOn(&install.step);
 
-        // IMPROVE: export preset-editor as a production artifact?
+        // IMPROVE: export preset-tool as a production artifact?
     }
 
     const configured_clap: ?configure_binaries.ConfiguredPlugin = blk: {
@@ -2828,6 +2953,86 @@ fn doTarget(
 
         const install = ctx.b.addInstallArtifact(exe, .{});
         top_level_steps.install_all.dependOn(&install.step);
+
+        if (targetCanRunNatively(cfg.target)) {
+            const screenshot_filter = ctx.b.option(
+                []const u8,
+                "screenshot-id",
+                "Only generate the screenshot matching this id_name (default: all)",
+            );
+            const DocScreenshot = struct {
+                id_name: []const u8,
+                preset: ?[]const u8 = null, // relative to test_files/presets
+            };
+            const doc_screenshots = [_]DocScreenshot{
+                .{ .id_name = "overview", .preset = "Fading Silhouettes.floe-preset" },
+                .{ .id_name = "top-panel", .preset = "Fading Silhouettes.floe-preset" },
+                .{ .id_name = "save-preset", .preset = "Fading Silhouettes.floe-preset" },
+                .{ .id_name = "layer-top-controls", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-main", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-playback", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-playback-granular-speed", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-playback-granular-fixed", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-lfo", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-eq", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-arp", .preset = "arp-screenshot.floe-preset" },
+                .{ .id_name = "layer-config", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layers", .preset = "Harp Trio.floe-preset" },
+                .{ .id_name = "perform", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "perform-variation-strip", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "effects", .preset = "stress-test.mirage-phoenix" },
+                .{ .id_name = "key-range-controls", .preset = "Real Dulcitone.floe-preset" },
+                .{ .id_name = "velocity-curve", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "loop-mode-menu", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "key-range-bars", .preset = "Real Dulcitone.floe-preset" },
+                .{ .id_name = "key-range-enlarged", .preset = "Real Dulcitone.floe-preset" },
+                .{ .id_name = "check-for-updates" },
+                .{ .id_name = "update-indicator" },
+                .{ .id_name = "install-packages" },
+                .{ .id_name = "folders" },
+                .{ .id_name = "instance-config" },
+                .{ .id_name = "midi-cc-assignments", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "uninstall-preset-bank" },
+                .{ .id_name = "uninstall-library" },
+                .{ .id_name = "browser-full" },
+                .{ .id_name = "filter-card" },
+                .{ .id_name = "filter-card-all-selected" },
+                .{ .id_name = "filter-card-body-item-selected" },
+                .{ .id_name = "filter-card-body-tree" },
+                .{ .id_name = "filter-button" },
+                .{ .id_name = "browser-menu" },
+            };
+
+            var matched_any = false;
+            for (doc_screenshots) |shot| {
+                if (screenshot_filter) |filter| {
+                    if (!std.mem.eql(u8, filter, shot.id_name)) continue;
+                }
+                matched_any = true;
+                const out_path = ctx.b.fmt("website/static/images/screenshots/{s}.png", .{shot.id_name});
+                const run = ctx.b.addRunArtifact(exe);
+                run.has_side_effects = true;
+                run.addArg(ctx.b.fmt("--screenshot={s}", .{shot.id_name}));
+                run.addArg(ctx.b.fmt("--screenshot-out={s}", .{out_path}));
+                if (shot.preset) |preset| {
+                    const preset_path = ctx.b.pathJoin(&.{
+                        ctx.b.build_root.path orelse ".",
+                        "test_files",
+                        "presets",
+                        preset,
+                    });
+                    run.addArg(ctx.b.fmt("--preset={s}", .{preset_path}));
+                }
+                run.addArg("--fixed-window-size=18");
+                run.addArg("--log-level=warning");
+                top_level_steps.gen_doc_screenshots.dependOn(&run.step);
+            }
+            if (screenshot_filter) |filter| {
+                if (!matched_any) {
+                    std.debug.panic("No screenshot found with id_name '{s}'", .{filter});
+                }
+            }
+        }
     }
 
     const vst3_sdk = buildVst3Sdk(ctx, cfg);
@@ -3108,6 +3313,28 @@ fn doTarget(
             top_level_steps.valgrind.dependOn(
                 &ctx.b.addFail("valgrind not allowed for this build configuration").step,
             );
+        }
+    }
+
+    // Benchmarks (not needed in production builds).
+    if (ctx.build_mode != .production) {
+        const exe = buildBenchmarks(ctx, cfg, .{ .plugin = plugin });
+
+        const benchmark_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
+
+        const install = ctx.b.addInstallBinFile(benchmark_binary, exe.out_filename);
+        top_level_steps.install_all.dependOn(&install.step);
+
+        // Run benchmarks
+        {
+            const run_benchmarks = std.Build.Step.Run.create(ctx.b, "run benchmarks");
+            run_benchmarks.addFileArg(benchmark_binary);
+
+            // Forward user args passed after "--" to zig build.
+            if (ctx.b.args) |args|
+                run_benchmarks.addArgs(args);
+
+            top_level_steps.benchmark.dependOn(&run_benchmarks.step);
         }
     }
 

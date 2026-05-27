@@ -15,6 +15,7 @@ constexpr u32 k_max_u16_codepoint = 0xFFFF;
 
 struct DrawList;
 struct Font;
+enum class MultilineTextAlignment : u8 { Left, Centre, Right };
 
 struct GlyphRange {
     Char16 start;
@@ -91,14 +92,8 @@ struct FontAtlas {
     static GlyphRanges GetGlyphRangesDefault(); // Basic Latin, Extended Latin
     static GlyphRanges GetGlyphRangesDefaultAudioPlugin();
 
-    Font* operator[](u32 i) {
-        ASSERT(i < fonts.size);
-        return fonts[i];
-    }
-    Font const* operator[](u32 i) const {
-        ASSERT(i < fonts.size);
-        return fonts[i];
-    }
+    ALWAYS_INLINE Font* operator[](u32 i) { return fonts[i]; }
+    ALWAYS_INLINE Font const* operator[](u32 i) const { return fonts[i]; }
 
     unsigned char* tex_pixels_alpha8 = nullptr;
     unsigned int* tex_pixels_rgb_a32 = nullptr;
@@ -158,7 +153,9 @@ struct Font {
                     f32x4 const& clip_rect,
                     String text,
                     f32 wrap_width = 0.0f,
-                    bool cpu_fine_clip = false) const;
+                    bool cpu_fine_clip = false,
+                    MultilineTextAlignment multiline_alignment = MultilineTextAlignment::Left,
+                    f32 multiline_alignment_width = 0) const;
 
     f32 LargestStringWidth(f32 pad, void* items, int num, String (*GetStr)(void* items, int index)) const;
     f32 LargestStringWidth(f32 pad, Span<String const> strs) const;

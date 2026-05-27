@@ -1,4 +1,4 @@
-// Copyright 2025 Sam Windell
+// Copyright 2025-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -18,14 +18,15 @@ struct PresetFolder {
     struct Preset {
         String name {};
         StateMetadataRef metadata {};
-        OrderedSet<sample_lib::LibraryIdRef> used_libraries {};
+        u64 author_hash {}; // cached Hash(metadata.author)
+        OrderedSet<sample_lib::LibraryId, NoHash, sample_lib::LibraryIdLessThanSet> used_libraries {};
         u64 file_hash {};
+        u64 snapshot_hash {}; // StateExtras::origin_preset_hash
         u64 full_path_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
         PresetFormat file_format {};
     };
 
-    Optional<usize> MatchFullPresetPath(String path) const;
     String FullPathForPreset(Preset const& preset, Allocator& a) const;
 
     ArenaAllocator arena {Malloc::Instance(), 0, 512};
@@ -33,8 +34,8 @@ struct PresetFolder {
     String scan_folder {};
     String folder {}; // subpath of scan_folder, if any
     Span<Preset> presets {};
-    Set<sample_lib::LibraryIdRef> used_libraries {};
-    Set<String> used_tags {};
+    Set<sample_lib::LibraryId, NoHash> used_libraries {};
+    TagsBitset used_tags {};
 
     Optional<PresetBank> preset_bank_info {}; // From metadata file (primary importance)
 
@@ -78,8 +79,8 @@ struct PresetServer {
 
     // The next fields are versioned and mutex protected
     DynamicArray<PresetFolder*> folders {arena};
-    DynamicSet<String> used_tags {arena};
-    DynamicSet<sample_lib::LibraryIdRef> used_libraries {arena};
+    TagsBitset used_tags {};
+    DynamicSet<sample_lib::LibraryId, NoHash> used_libraries {arena};
     DynamicSet<String> authors {arena};
     ArenaAllocator folder_node_arena {(Allocator&)arena};
     Span<FolderNode> folder_nodes {};
@@ -98,6 +99,7 @@ struct PresetServer {
 
     Atomic<bool> enable_scanning {};
     Atomic<u32> is_scanning {};
+    Atomic<bool> rescan_all_requested {false};
 };
 
 void InitPresetServer(PresetServer& server, String always_scanned_folder);
@@ -121,7 +123,7 @@ struct PresetFolderListing {
 };
 
 // If all presets in this folder and all subfolders use the same single library, return that library.
-Optional<sample_lib::LibraryIdRef> AllPresetsSingleLibrary(FolderNode const& node);
+Optional<sample_lib::LibraryId> AllPresetsSingleLibrary(FolderNode const& node);
 
 // The bank associated with a specific node, if there is any.
 PresetBank const* PresetBankAtNode(FolderNode const& node);
@@ -137,7 +139,7 @@ bool HasNestedBank(FolderNode const& node);
 Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena);
 
 struct PresetsSnapshot {
-    // Folders that contain presets, sorted. These will have PresetFolderListing::folder != null.
+    // Folders that contain presets, sorted. These will have non-null PresetFolderListing::folder.
     Span<PresetFolderListing const*> folders;
 
     // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets
@@ -145,8 +147,8 @@ struct PresetsSnapshot {
     Span<PresetFolderListing const*> banks;
 
     // Additional convenience data
-    Set<String> used_tags;
-    Set<sample_lib::LibraryIdRef> used_libraries;
+    TagsBitset used_tags;
+    Set<sample_lib::LibraryId, NoHash> used_libraries;
     Set<String> authors;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
@@ -165,6 +167,9 @@ void StartScanningIfNeeded(PresetServer& server);
 BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
 void EndReadFolders(PresetServer& server, PresetServerReadHandle handle);
 
+Optional<String>
+FindPresetMatchingSnapshotHash(PresetServer& server, u64 snapshot_hash, Allocator& allocator);
+
 // Waits until all folders have finished scanning.
 // Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.
 // If timeout is 0, just returns 'is scanning' status immediately.
@@ -174,3 +179,5 @@ bool WaitIfFoldersAreScanning(PresetServer& server, Optional<u32> timeout);
 bool AreFoldersScanning(PresetServer& server);
 
 void RescanFolder(PresetServer& server, String folder);
+
+void RescanAllFolders(PresetServer& server);

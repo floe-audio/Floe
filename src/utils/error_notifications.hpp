@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -134,7 +134,7 @@ struct ThreadsafeErrorNotifications {
         return true;
     }
 
-    enum class ItemIterationResult {
+    enum class ItemIterationResult : u8 {
         Continue,
         Stop,
         Remove,

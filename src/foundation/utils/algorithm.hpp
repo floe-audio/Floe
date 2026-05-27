@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
@@ -6,6 +6,7 @@
 #include "foundation/container/optional.hpp"
 #include "foundation/container/span.hpp"
 #include "foundation/universal_defs.hpp"
+#include "foundation/zig_std/zig_std.hpp"
 
 PUBLIC constexpr u32 U32FromChars(char const (&data)[5]) {
     return ((u32)(data[0]) << 0) | ((u32)(data[1]) << 8) | ((u32)(data[2]) << 16) | ((u32)(data[3]) << 24);
@@ -52,6 +53,12 @@ template <usize N>
 PUBLIC consteval u64 HashFnv1a(char const (&array_literal)[N]) {
     if (array_literal[N - 1] != 0) throw "bug";
     return HashFnv1a(String {array_literal, N - 1});
+}
+
+template <typename Type>
+requires(Fundamental<RemoveReference<Type>> || Enum<RemoveReference<Type>> || Pointer<RemoveReference<Type>>)
+PUBLIC constexpr u64 HashFnv1a(Type const& data) {
+    return HashFnv1a(Span {(u8 const*)&data, sizeof(data)});
 }
 
 PUBLIC constexpr u64 HashMultipleFnv1a(ContiguousContainerOfContiguousContainers auto const& c_of_c) {
@@ -110,14 +117,12 @@ PUBLIC constexpr u32 HashMultipleDbj(ContiguousContainerOfContiguousContainers a
 PUBLIC constexpr u64 Hash(auto data) {
     if constexpr (Fundamental<RemoveReference<decltype(data)>> || Enum<RemoveReference<decltype(data)>> ||
                   Pointer<RemoveReference<decltype(data)>>)
-        return HashFnv1a(Span {(u8 const*)&data, sizeof(data)});
+        return RapidHash64(Span {(u8 const*)&data, sizeof(data)});
     else
-        return HashFnv1a(data);
+        return RapidHash64(data);
 }
-PUBLIC constexpr u32 Hash32(auto data) { return HashDbj(data); }
 
-PUBLIC constexpr u64 HashMultiple(auto const& data) { return HashMultipleFnv1a(data); }
-PUBLIC constexpr u32 HashMultiple32(auto const& data) { return HashMultipleDbj(data); }
+PUBLIC constexpr u64 HashMultiple(auto const& data) { return RapidHash64Multiple(data); }
 
 PUBLIC consteval u64 SourceLocationHash(char const* file = __builtin_FILE(), u32 line = __builtin_LINE()) {
     u64 hash = 0xcbf29ce484222325;
@@ -282,24 +287,19 @@ PUBLIC constexpr Optional<usize> FindBinarySearch(ContiguousContainer auto const
 }
 
 // Same as FindBinarySearch, except it returns the index that you should use to insert a new element in
-// order to maintain sorted order
+// order to maintain sorted order. We try to avoid branches for speed:
+// https://en.algorithmica.org/hpc/data-structures/binary-search/#removing-branches
 PUBLIC constexpr usize BinarySearchForSlotToInsert(ContiguousContainer auto const& data,
                                                    auto&& compare_to_target) {
-    ssize left = 0;
-    ssize right = (ssize)data.size - 1;
-    while (left <= right) {
-        auto const mid = left + ((right - left) / 2);
-        auto const comp = compare_to_target(data[CheckedCast<usize>(mid)]);
-
-        if (comp == 0)
-            return (usize)mid;
-        else if (comp < 0)
-            left = mid + 1;
-        else
-            right = mid - 1;
+    if (data.size == 0) return 0;
+    usize base = 0;
+    usize len = data.size;
+    while (len > 1) {
+        auto const half = len / 2;
+        base += (compare_to_target(data[base + half - 1]) < 0) * half;
+        len -= half;
     }
-
-    return (usize)left;
+    return base + (compare_to_target(data[base]) < 0);
 }
 
 // You must ensure the data is in a region that can grow by at least num_to_insert elements.

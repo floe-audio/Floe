@@ -81,7 +81,7 @@ struct Box {
 struct BoxViewportConfig {
     using RunFunction = TrivialFunctionRef<void(GuiBuilder&)>;
 
-    enum class BoundsType { Box, Rect };
+    enum class BoundsType : u8 { Box, Rect };
 
     using Bounds =
         TaggedUnion<BoundsType, TypeAndTag<Box, BoundsType::Box>, TypeAndTag<Rect, BoundsType::Rect>>;
@@ -92,8 +92,8 @@ struct BoxViewportConfig {
     RunFunction run;
 
     // The rectangle for this viewport. Just like IMGUI BeginViewport, the interpretation of this value is
-    // dependent on the config's positioning field. You can provide either a Box if you are already in a
-    // box-viewport, or a Rect in *pixels*.
+    // dependent on the config's positioning field. For WindowCentred, only size matters (pos is ignored).
+    // You can provide either a Box if you are already in a box-viewport, or a Rect in *pixels*.
     Bounds bounds;
 
     // Box-viewports must be provided with a unique ID.
@@ -106,12 +106,12 @@ struct BoxViewportConfig {
     String debug_name {}; // Recommended but optional.
 };
 
-enum class GuiBuilderPass {
+enum class GuiBuilderPass : u8 {
     LayoutBoxes,
     HandleInputAndRender,
 };
 
-enum class TooltipJustification { AboveOrBelow, LeftOrRight };
+enum class TooltipJustification : u8 { AboveOrBelow, LeftOrRight };
 
 struct DrawTooltipArgs {
     Rect r; // The rect that opened the tooltip.
@@ -145,6 +145,17 @@ struct GuiBuilder {
         bool mouse_down_on_modal_background = false;
         CurrentViewportState* next {};
         CurrentViewportState* first_child {};
+
+        // Cached values to speed up the hot path in DoBox.
+        struct ViewportCache {
+            bool is_auto_sized;
+            DrawList* draw_list;
+            f32 pixels_per_ww;
+
+            f32 WwToPixels(f32 ww) const { return ww * pixels_per_ww; }
+            f32x4 WwToPixels(f32x4 ww) const { return ww * pixels_per_ww; }
+        };
+        ViewportCache viewport_cache {};
     };
 
     struct Config {
@@ -162,6 +173,9 @@ struct GuiBuilder {
     Config config;
 
     CurrentViewportState* state; // Ephemeral
+
+    // Persistent: previous frame's box count per viewport, used to pre-reserve hash tables.
+    DynamicHashTable<imgui::Id, u32> prev_box_counts {Malloc::Instance()};
 };
 
 void BeginFrame(GuiBuilder& builder, GuiBuilder::Config const& config);
@@ -177,9 +191,9 @@ constexpr f32 k_no_wrap = 0;
 constexpr f32 k_wrap_to_parent = -1; // You should additionally set size_from_text = true.
 constexpr f32 k_default_font_size = 0;
 
-enum class BackgroundShape : u32 { Rectangle, Circle, Count };
+enum class BackgroundShape : u8 { Rectangle, Circle, Count };
 
-enum class TooltipStringType { None, Function, String };
+enum class TooltipStringType : u8 { None, Function, String };
 
 using TooltipString = TaggedUnion<TooltipStringType,
                                   TypeAndTag<NulloptType, TooltipStringType::None>,
@@ -220,6 +234,7 @@ struct BoxConfig {
     f32 font_size = k_default_font_size;
     Colours text_colours = Col {.c = Col::Text};
     TextJustification text_justification = TextJustification::TopLeft;
+    MultilineTextAlignment multiline_alignment = MultilineTextAlignment::Left;
     TextOverflowType text_overflow = TextOverflowType::AllowOverflow;
     bool capitalize_text = false;
 
@@ -255,9 +270,11 @@ struct BoxConfig {
 
     Optional<imgui::ButtonConfig> button_behaviour = k_nullopt;
     u8 extra_margin_for_mouse_events = 0;
+
+    String name {};
 };
 
-Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash = SourceLocationHash());
+NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash = SourceLocationHash());
 
 // Returns k_nullopt if we're in the layout pass. Otherwise, returns a viewport-relative rectangle that you
 // can use to add IMGUI behaviours, or do custom drawing in. Use this to add additional functionality that

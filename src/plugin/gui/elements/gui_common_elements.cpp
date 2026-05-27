@@ -5,14 +5,19 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "engine/engine_prefs.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-static ColSet MidIconButtonColours(bool greyed_out) {
+static ColSet MidIconButtonColours(bool greyed_out, bool is_on = false) {
+    if (greyed_out) {
+        auto const dimmed = LiveColStruct(UiColMap::MidIconDimmed);
+        return {.base = dimmed, .hot = dimmed, .active = dimmed};
+    }
     return {
-        .base = LiveColStruct(greyed_out ? UiColMap::MidIconDimmed : UiColMap::MidIcon),
+        .base = is_on ? LiveColStruct(UiColMap::MidTextOn) : LiveColStruct(UiColMap::MidIcon),
         .hot = LiveColStruct(UiColMap::MidTextHot),
         .active = LiveColStruct(UiColMap::MidTextOn),
     };
@@ -40,7 +45,8 @@ static Box DoMidIconButton(GuiBuilder& builder,
                            String icon,
                            String tooltip,
                            bool greyed_out,
-                           f32 font_size = 0) {
+                           f32 font_size = 0,
+                           bool is_on = false) {
     auto const btn = DoBox(builder,
                            {
                                .parent = parent,
@@ -58,7 +64,7 @@ static Box DoMidIconButton(GuiBuilder& builder,
               .size_from_text = true,
               .font = FontType::Icons,
               .font_size = font_size,
-              .text_colours = MidIconButtonColours(greyed_out),
+              .text_colours = MidIconButtonColours(greyed_out, is_on),
               .text_justification = TextJustification::Centred,
               .parent_dictates_hot_and_active = true,
               .layout {
@@ -82,13 +88,20 @@ DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsO
     return result;
 }
 
-Box DoMidPanelShuffleButton(GuiBuilder& builder, Box row, MidPanelShuffleButtonOptions const& options) {
-    return DoMidIconButton(builder,
-                           row,
-                           ICON_FA_SHUFFLE,
-                           options.tooltip,
-                           options.greyed_out,
-                           k_font_icons_size * 0.82f);
+Box DoMidPanelIconButton(GuiBuilder& builder, Box row, MidPanelIconButtonOptions const& options) {
+    auto const [icon, font_size] = ({
+        struct {
+            String icon;
+            f32 font_size;
+        } v;
+        switch (options.icon) {
+            case MidPanelIcon::Shuffle: v = {ICON_FA_SHUFFLE, k_font_icons_size * 0.82f}; break;
+            case MidPanelIcon::Unload: v = {ICON_FA_XMARK, k_font_icons_size * 0.9f}; break;
+            case MidPanelIcon::Power: v = {ICON_FA_POWER_OFF, k_font_icons_size * 0.85f}; break;
+        }
+        v;
+    });
+    return DoMidIconButton(builder, row, icon, options.tooltip, options.greyed_out, font_size, options.is_on);
 }
 
 bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options) {
@@ -109,6 +122,98 @@ bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOption
     }
 
     return false;
+}
+
+void DoExperimentalModeIndicatorIfNeeded(GuiBuilder& builder,
+                                         Box parent,
+                                         prefs::Preferences const& preferences) {
+    if constexpr (k_num_experimental_parameters == 0) return;
+    if (!prefs::GetBool(preferences, ExperimentalParamsPreferenceDescriptor())) return;
+
+    auto const flask = DoBox(
+        builder,
+        {
+            .parent = parent,
+            .layout {
+                .size = layout::k_hug_contents,
+                .contents_padding = {.lr = 5, .tb = 3},
+            },
+            .tooltip =
+                "Experimental mode is enabled. Features may change or be removed. Presets and DAW projects that use experimental features may not be compatible with future versions of Floe. Disable in preferences."_s,
+        });
+    DoBox(builder,
+          {
+              .parent = flask,
+              .text = ICON_FA_FLASK,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .font_size = k_font_icons_size * 0.9f,
+              .text_colours = Col {.c = Col::SkyBlue},
+          });
+}
+
+Box DoTabButton(GuiBuilder& builder, Box parent, String text, TabButtonOptions const& options, u64 id_extra) {
+    auto const btn =
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .id_extra = id_extra,
+                  .background_fill_colours =
+                      options.is_selected ? Colours {LiveColStruct(UiColMap::MidTabBackgroundActive)}
+                                          : Colours {ColSet {
+                                                .base = Col {.c = Col::None},
+                                                .hot = LiveColStruct(UiColMap::MidTabBackgroundHot),
+                                                .active = LiveColStruct(UiColMap::MidTabBackgroundActive),
+                                            }},
+                  .round_background_corners = 0b1111,
+                  .corner_rounding = 4.0f,
+                  .layout {
+                      .size = {options.width, layout::k_hug_contents},
+                      .contents_padding = options.width == layout::k_hug_contents ? Margins {.lr = 8, .tb = 4}
+                                                                                  : Margins {.tb = 4},
+                      .contents_gap = 4,
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Middle,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = options.tooltip,
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
+
+    DoBox(builder,
+          {
+              .parent = btn,
+              .text = text,
+              .size_from_text = true,
+              .font = FontType::Heading3,
+              .text_colours = options.is_selected ? Colours {LiveColStruct(UiColMap::MidTabTextActive)}
+                                                  : Colours {ColSet {
+                                                        .base = LiveColStruct(UiColMap::MidTabText),
+                                                        .hot = LiveColStruct(UiColMap::MidTabTextHot),
+                                                        .active = LiveColStruct(UiColMap::MidTabTextActive),
+                                                    }},
+              .text_justification = TextJustification::Centred,
+              .parent_dictates_hot_and_active = true,
+          });
+
+    if (options.show_dot_indicator) {
+        auto const dot_box = DoBox(builder,
+                                   {
+                                       .parent = btn,
+                                       .parent_dictates_hot_and_active = true,
+                                       .layout {
+                                           .size = {4, 4},
+                                       },
+                                   });
+        if (auto const r = BoxRect(builder, dot_box)) {
+            auto const window_r = builder.imgui.ViewportRectToWindowRect(*r);
+            auto const col =
+                options.is_selected ? LiveCol(UiColMap::MidTabTextActive) : LiveCol(UiColMap::MidTabText);
+            builder.imgui.draw_list->AddCircleFilled(window_r.Centre(), WwToPixels(2.0f), col);
+        }
+    }
+
+    return btn;
 }
 
 Box DoToggleIcon(GuiBuilder& builder, Box parent, ToggleIconOptions const& options) {

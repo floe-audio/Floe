@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // This file contains modified code from dear imgui:
@@ -299,6 +299,53 @@ struct OpenGLRenderer : public Renderer {
 
         success = true;
         return (TextureHandle)texture;
+    }
+
+    Optional<ScreenshotPixels>
+    Screenshot(Optional<Rect> region, UiSize window_size, Allocator& arena) override {
+        ZoneScoped;
+        TracyGpuZone("Screenshot");
+
+        // Resolve region to integer framebuffer pixels in top-left origin, clipped to the window.
+        int x = 0;
+        int y = 0;
+        int w = window_size.width;
+        int h = window_size.height;
+        if (region) {
+            x = Max(0, (int)region->x);
+            y = Max(0, (int)region->y);
+            w = Min((int)region->w, (int)window_size.width - x);
+            h = Min((int)region->h, (int)window_size.height - y);
+        }
+        if (w <= 0 || h <= 0) return k_nullopt;
+
+        auto data = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 3).data;
+
+        GLint last_pack_alignment;
+        glGetIntegerv(GL_PACK_ALIGNMENT, &last_pack_alignment);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        DEFER { glPixelStorei(GL_PACK_ALIGNMENT, last_pack_alignment); };
+
+        // OpenGL's origin is bottom-left; convert top-left y to bottom-left y.
+        auto const gl_y = window_size.height - (y + h);
+        glReadPixels(x, gl_y, w, h, GL_RGB, GL_UNSIGNED_BYTE, data);
+        if (CheckGLError("Screenshot glReadPixels").HasError()) return k_nullopt;
+
+        // Flip vertically in place.
+        auto const stride = (usize)w * 3;
+        auto const row = arena.AllocateExactSizeUninitialised<u8>(stride).data;
+        for (auto const i : Range(h / 2)) {
+            auto const top = data + ((usize)i * stride);
+            auto const bot = data + ((usize)(h - 1 - i) * stride);
+            __builtin_memcpy(row, top, stride);
+            __builtin_memcpy(top, bot, stride);
+            __builtin_memcpy(bot, row, stride);
+        }
+
+        return ScreenshotPixels {
+            .rgb = {data, (usize)w * (usize)h * 3},
+            .size = {(u16)w, (u16)h},
+        };
     }
 
     void DestroyTexture(TextureHandle& texture) override {

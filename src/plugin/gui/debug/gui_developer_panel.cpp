@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/debug/gui_developer_panel.hpp"
@@ -36,14 +36,12 @@ bool DoBasicTextButton(imgui::Context& imgui, imgui::ButtonConfig cfg, Rect r, i
     return clicked;
 }
 
-void DoBasicWhiteText(imgui::Context& imgui, Rect r, String str) {
+f32 DoBasicWhiteText(imgui::Context& imgui, Rect r, String str) {
     r = imgui.RegisterAndConvertRect(r);
-    auto const font_size = imgui.draw_list->fonts.Current()->font_size;
-    f32x2 pos;
-    pos.x = (f32)(int)r.x;
-    pos.y = r.y + ((r.h / 2) - (font_size / 2));
-    pos.y = (f32)(int)pos.y;
-    imgui.draw_list->AddText(pos, 0xffffffff, str);
+    auto const vp_w = imgui.CurrentVpWidth();
+    auto const size = imgui.draw_list->fonts.CalcTextSize(str, {.wrap_width = vp_w});
+    imgui.draw_list->AddTextInRect(r, 0xffffffff, str, {.wrap_width = vp_w});
+    return size.y;
 }
 
 using DevGuiTextInputBuffer = DynamicArrayBounded<char, 128>;
@@ -103,8 +101,8 @@ static void DevGuiIncrementPos(DeveloperPanel& g, f32 size = 0) { g.y_pos += (si
 
 template <typename... Args>
 static void DevGuiText(DeveloperPanel& g, String format, Args const&... args) {
-    DoBasicWhiteText(g.imgui, DevGuiGetFullR(g), fmt::Format(g.imgui.scratch_arena, format, args...));
-    DevGuiIncrementPos(g);
+    g.y_pos +=
+        DoBasicWhiteText(g.imgui, DevGuiGetFullR(g), fmt::Format(g.imgui.scratch_arena, format, args...));
 }
 
 static void DevGuiHeading(DeveloperPanel& g, String text) {
@@ -543,8 +541,8 @@ static void DoImGuiInspector(DeveloperPanel& g, Rect r) {
         DevGuiIncrementPos(g, k_item_h);
 
         DevGuiText(g, "Timers:");
-        for (auto& t : GuiIo().out.timed_wakeups)
-            DevGuiText(g, "Time: {}", t.Raw());
+        for (auto [id, time, hash] : GuiIo().out.timed_wakeups)
+            DevGuiText(g, "ID: {x}, Time: {}", id, time.Raw());
     }
 
     if (DevGuiButton(g, debug_ids ? "Hide IDs" : "Show IDs", "IDs")) debug_ids = !debug_ids;
@@ -600,6 +598,9 @@ static void DoImGuiInspector(DeveloperPanel& g, Rect r) {
                     dyn::AppendSpan(buf, "window_absolute ");
                     break;
                 case imgui::ViewportPositioning::AutoPosition: dyn::AppendSpan(buf, "auto_position "); break;
+                case imgui::ViewportPositioning::WindowCentred:
+                    dyn::AppendSpan(buf, "window_centred ");
+                    break;
             }
             if (f.auto_size[0]) dyn::AppendSpan(buf, "auto_width ");
             if (f.auto_size[1]) dyn::AppendSpan(buf, "auto_height ");
@@ -676,6 +677,12 @@ static void DoCommandPanel(DeveloperPanel& g, Rect r) {
         g_show_dev_gui_on_left = !g_show_dev_gui_on_left;
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
+    if (DevGuiButton(g, "Take Screenshot", "Save Screenshot: F3")) {
+        auto const& in = GuiIo().in;
+        GuiIo().out.request_screenshot = GuiFrameOutput::ScreenshotRequest {
+            .rect = Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}},
+        };
+    }
 }
 
 void DoDeveloperPanel(DeveloperPanel& g) {
@@ -683,10 +690,18 @@ void DoDeveloperPanel(DeveloperPanel& g) {
 
     GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::F1));
     GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::F2));
+    GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::F3));
 
     if (GuiIo().in.Key(KeyCode::F1).presses.size) {
         g_show_dev_gui = !g_show_dev_gui;
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    }
+
+    if (GuiIo().in.Key(KeyCode::F3).presses.size) {
+        auto const& in = GuiIo().in;
+        GuiIo().out.request_screenshot = GuiFrameOutput::ScreenshotRequest {
+            .rect = Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}},
+        };
     }
 
     if (g_show_dev_gui) {

@@ -120,4 +120,38 @@ void SetSampleRate(Delay& delay, int sample_rate);
 
 } // namespace delay
 
+namespace compressor {
+
+enum class Params {
+    UpperThresholdDb, // -100 to 12
+    LowerThresholdDb, // -100 to 12
+    UpperRatio, // 0 to 1. 0 = no compression above upper threshold, 1 = limiter
+    LowerRatio, // -1 to 1. positive = upward compression below lower threshold, negative = downward expansion
+    OutputGainDb, // -30 to 30
+    Attack, // 0 to 1. exponential mapping around a base attack time
+    Release, // 0 to 1. exponential mapping around a base release time
+    Mix, // 0 to 1
+
+    Count,
+};
+
+struct ProcessCompressorArgs {
+    int num_frames; // MUST be <= 128
+
+    float const* in_interleaved;
+    float* out_interleaved;
+
+    float params[(unsigned)Params::Count];
+};
+
+struct Compressor;
+
+Compressor* Create();
+void Destroy(Compressor* compressor);
+void Process(Compressor& compressor, ProcessCompressorArgs args);
+void HardReset(Compressor& compressor);
+void SetSampleRate(Compressor& compressor, int sample_rate);
+
+} // namespace compressor
+
 } // namespace vitfx

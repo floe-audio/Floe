@@ -1,4 +1,4 @@
-// Copyright 2018-2024 Sam Windell
+// Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // This file contains code from "Sane C++"
@@ -275,6 +275,6 @@ class TaggedUnion {
 
     // don't modify these directly, use the methods
     // ===========================================================
-    TagType tag {};
-    alignas(k_data_align) u8 storage[k_data_size] {};
+    TagType tag;
+    alignas(k_data_align) u8 storage[k_data_size];
 };
