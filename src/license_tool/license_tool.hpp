@@ -9,6 +9,7 @@ enum class LicenseToolCliArgId : u8 {
     SecretKeyHex,
     PackageKeyHex,
     Email,
+    KeyId,
     Count,
 };
 
@@ -24,7 +25,7 @@ auto constexpr k_license_tool_command_line_args_defs = MakeCommandLineArgDefs<Li
     {
         .id = (u32)LicenseToolCliArgId::SignLicense,
         .key = "sign-license",
-        .description = "Sign a license key. Requires --secret-key, --package-key, and --email.",
+        .description = "Sign a license key. Requires --secret-key, --package-key, --email, and --key-id.",
         .value_type = {},
         .required = false,
         .num_values = 0,
@@ -50,6 +51,14 @@ auto constexpr k_license_tool_command_line_args_defs = MakeCommandLineArgDefs<Li
         .key = "email",
         .description = "Customer email address to embed in the license key.",
         .value_type = "email",
+        .required = false,
+        .num_values = 1,
+    },
+    {
+        .id = (u32)LicenseToolCliArgId::KeyId,
+        .key = "key-id",
+        .description = "The id (1-255) of the Floe-trusted signing key this signature corresponds to.",
+        .value_type = "u8",
         .required = false,
         .num_values = 1,
     },

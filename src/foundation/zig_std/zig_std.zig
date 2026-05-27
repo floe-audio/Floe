@@ -58,13 +58,16 @@ export fn XChaCha20Poly1305Decrypt(
     plaintext_out: ?[*]u8,
     ciphertext: ?[*]const u8,
     ciphertext_len: usize,
+    aad_ptr: ?[*]const u8,
+    aad_len: usize,
     tag_ptr: *const [16]u8,
     nonce_ptr: *const [24]u8,
     key_ptr: *const [32]u8,
 ) callconv(.c) bool {
     const ct = if (ciphertext) |c| c[0..ciphertext_len] else &[_]u8{};
     const pt = if (plaintext_out) |p| p[0..ciphertext_len] else return false;
-    XChaCha20Poly1305.decrypt(pt, ct, tag_ptr.*, &[_]u8{}, nonce_ptr.*, key_ptr.*) catch return false;
+    const aad = if (aad_ptr) |a| a[0..aad_len] else &[_]u8{};
+    XChaCha20Poly1305.decrypt(pt, ct, tag_ptr.*, aad, nonce_ptr.*, key_ptr.*) catch return false;
     return true;
 }
 
@@ -73,12 +76,15 @@ export fn XChaCha20Poly1305Encrypt(
     tag_out: *[16]u8,
     plaintext: ?[*]const u8,
     plaintext_len: usize,
+    aad_ptr: ?[*]const u8,
+    aad_len: usize,
     nonce_ptr: *const [24]u8,
     key_ptr: *const [32]u8,
 ) callconv(.c) void {
     const pt = if (plaintext) |p| p[0..plaintext_len] else &[_]u8{};
     const ct = if (ciphertext_out) |c| c[0..plaintext_len] else unreachable;
-    XChaCha20Poly1305.encrypt(ct, tag_out, pt, &[_]u8{}, nonce_ptr.*, key_ptr.*);
+    const aad = if (aad_ptr) |a| a[0..aad_len] else &[_]u8{};
+    XChaCha20Poly1305.encrypt(ct, tag_out, pt, aad, nonce_ptr.*, key_ptr.*);
 }
 
 // =================================================================================================

@@ -7,7 +7,7 @@
 // XChaCha20-Poly1305 in fixed-size chunks - we do this to enable random-access decryption.
 //
 // Format:
-//   [Header: 40 bytes]
+//   [Header: 44 bytes] (also bound as AEAD additional-data on every chunk)
 //   [Chunk 0: ciphertext(chunk_size) + tag(16)]
 //   [Chunk 1: ciphertext(chunk_size) + tag(16)]
 //   ...

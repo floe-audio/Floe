@@ -49,6 +49,8 @@ constexpr usize k_xchacha20_poly1305_tag_size = 16;
 extern "C" bool XChaCha20Poly1305Decrypt(u8* plaintext_out,
                                          u8 const* ciphertext,
                                          usize ciphertext_len,
+                                         u8 const* aad,
+                                         usize aad_len,
                                          u8 const* tag,
                                          u8 const* nonce,
                                          u8 const* key);
@@ -57,6 +59,8 @@ extern "C" void XChaCha20Poly1305Encrypt(u8* ciphertext_out,
                                          u8* tag_out,
                                          u8 const* plaintext,
                                          usize plaintext_len,
+                                         u8 const* aad,
+                                         usize aad_len,
                                          u8 const* nonce,
                                          u8 const* key);
 

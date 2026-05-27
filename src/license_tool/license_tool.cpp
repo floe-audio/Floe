@@ -54,14 +54,16 @@ static ErrorCodeOr<int> DoSignLicense(Span<CommandLineArg const> cli_args, Arena
     auto const key_arg = cli_args[ToInt(LicenseToolCliArgId::SecretKeyHex)];
     auto const package_key_arg = cli_args[ToInt(LicenseToolCliArgId::PackageKeyHex)];
     auto const email_arg = cli_args[ToInt(LicenseToolCliArgId::Email)];
+    auto const key_id_arg = cli_args[ToInt(LicenseToolCliArgId::KeyId)];
 
-    if (!key_arg.was_provided || !package_key_arg.was_provided || !email_arg.was_provided) {
+    if (!key_arg.was_provided || !package_key_arg.was_provided || !email_arg.was_provided ||
+        !key_id_arg.was_provided) {
         StdPrintF(StdStream::Err,
-                  "Error: --sign-license requires --secret-key, --package-key, and --email\n");
+                  "Error: --sign-license requires --secret-key, --package-key, --email, "
+                  "and --key-id\n");
         return 1;
     }
 
-    // Parse secret key
     Array<u8, k_ed25519_secret_key_size> secret_key;
     if (!ParseHexString(key_arg.values[0], secret_key)) {
         StdPrintF(StdStream::Err,
@@ -70,7 +72,6 @@ static ErrorCodeOr<int> DoSignLicense(Span<CommandLineArg const> cli_args, Arena
         return 1;
     }
 
-    // Parse content key
     Array<u8, license::k_package_key_size> package_key;
     if (!ParseHexString(package_key_arg.values[0], package_key)) {
         StdPrintF(StdStream::Err,
@@ -79,9 +80,17 @@ static ErrorCodeOr<int> DoSignLicense(Span<CommandLineArg const> cli_args, Arena
         return 1;
     }
 
+    auto const parsed_key_id = ParseInt(key_id_arg.values[0], ParseIntBase::Decimal, nullptr);
+    if (!parsed_key_id || *parsed_key_id < 1 || *parsed_key_id > 255) {
+        StdPrintF(StdStream::Err, "Error: --key-id must be an integer between 1 and 255\n");
+        return 1;
+    }
+    auto const key_id = (u8)*parsed_key_id;
+
     auto const email = email_arg.values[0];
 
-    auto const license_text = TRY(license::CreateSignedLicense(package_key, email, secret_key.data, arena));
+    auto const license_text =
+        TRY(license::CreateSignedLicense(key_id, package_key, email, secret_key.data, arena));
 
     StdPrintF(StdStream::Out, "{}", String(license_text));
 

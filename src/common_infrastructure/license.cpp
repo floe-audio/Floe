@@ -8,9 +8,19 @@
 
 namespace license {
 
-constexpr Array<u8, k_ed25519_public_key_size> k_ed25519_public_key = {
-    0x7d, 0x86, 0xb5, 0x3b, 0x5f, 0x2b, 0x76, 0x20, 0xae, 0xc8, 0x00, 0x77, 0xd9, 0x4c, 0x45, 0x21,
-    0xcb, 0x59, 0xde, 0xf8, 0x06, 0xbb, 0x93, 0x22, 0x4d, 0x0f, 0x3d, 0xc6, 0x01, 0xd2, 0x32, 0xda,
+constexpr TrustedSigningKey k_trusted_signing_keys_storage[] = {
+    // Floe primary
+    {
+        .id = 1,
+        .public_key = {0x7d, 0x86, 0xb5, 0x3b, 0x5f, 0x2b, 0x76, 0x20, 0xae, 0xc8, 0x00,
+                       0x77, 0xd9, 0x4c, 0x45, 0x21, 0xcb, 0x59, 0xde, 0xf8, 0x06, 0xbb,
+                       0x93, 0x22, 0x4d, 0x0f, 0x3d, 0xc6, 0x01, 0xd2, 0x32, 0xda},
+    },
+};
+
+Span<TrustedSigningKey const> const k_trusted_signing_keys = {
+    k_trusted_signing_keys_storage,
+    ArraySize(k_trusted_signing_keys_storage),
 };
 
 ErrorCodeCategory const g_license_error_category = {
@@ -22,6 +32,7 @@ ErrorCodeCategory const g_license_error_category = {
             case LicenseError::InvalidBase64: str = "invalid license key encoding"; break;
             case LicenseError::InvalidPayload: str = "invalid license key payload"; break;
             case LicenseError::InvalidSignature: str = "invalid license key signature"; break;
+            case LicenseError::UnknownKeyId: str = "license key was signed by an untrusted key"; break;
         }
         return writer.WriteChars(str);
     },
@@ -33,11 +44,18 @@ ErrorCodeCategory const g_license_error_category = {
 struct PackedPayloadHeader {
     u32 magic;
     u8 version;
+    u8 key_id;
     Array<u8, k_package_key_size> package_key;
     u16 email_len;
     // Followed by email_len bytes of email
 };
 #pragma pack(pop)
+
+static TrustedSigningKey const* LookupTrustedKey(Span<TrustedSigningKey const> table, u8 id) {
+    for (auto const& k : table)
+        if (k.id == id) return &k;
+    return nullptr;
+}
 
 static String StripWhitespace(String input, Span<char> buffer) {
     usize out_pos = 0;
@@ -51,9 +69,10 @@ static String StripWhitespace(String input, Span<char> buffer) {
     return {buffer.data, out_pos};
 }
 
-ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text, u8 const* public_key) {
-    if (!public_key) public_key = k_ed25519_public_key.data;
-    // Find delimiters
+ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text,
+                                           Span<TrustedSigningKey const> trusted_keys_override) {
+    auto const trusted_keys = trusted_keys_override.size ? trusted_keys_override : k_trusted_signing_keys;
+
     auto const begin_pos = FindSpan(pasted_text, k_license_begin_delimiter);
     if (!begin_pos) return ErrorCode {LicenseError::InvalidFormat};
 
@@ -61,7 +80,6 @@ ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text, u8 const* public_
     auto const end_pos = FindSpan(pasted_text, k_license_end_delimiter, after_begin);
     if (!end_pos) return ErrorCode {LicenseError::InvalidFormat};
 
-    // Extract the base64 body between delimiters, strip whitespace
     auto const raw_body = pasted_text.SubSpan(after_begin, *end_pos - after_begin);
     constexpr usize k_max_blob = sizeof(PackedPayloadHeader) + k_max_email_size + k_ed25519_signature_size;
     constexpr usize k_max_base64 = (k_max_blob + 2) / 3 * 4;
@@ -69,7 +87,6 @@ ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text, u8 const* public_
     auto const stripped = StripWhitespace(raw_body, strip_buf);
     if (!stripped.size) return ErrorCode {LicenseError::InvalidBase64};
 
-    // Base64 decode (max decoded size is 3/4 of the base64 input)
     constexpr usize k_max_decoded_size = k_max_base64 * 3 / 4;
     Array<u8, k_max_decoded_size> decoded_buf;
     auto const decoded_len =
@@ -84,19 +101,24 @@ ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text, u8 const* public_
     auto const* payload_bytes = decoded_buf.data;
     auto const payload_len = signature_offset;
 
-    // Verify signature
-    if (!Ed25519Verify(signature, payload_bytes, payload_len, public_key))
-        return ErrorCode {LicenseError::InvalidSignature};
-
-    // Parse payload
+    // Read the key_id from the still-unverified payload to pick a verification key. The signature
+    // check immediately below makes any other field substitution observable.
     PackedPayloadHeader header;
     CopyMemory(&header, payload_bytes, sizeof(PackedPayloadHeader));
     if (header.magic != k_license_magic) return ErrorCode {LicenseError::InvalidPayload};
     if (header.version != k_license_version) return ErrorCode {LicenseError::InvalidPayload};
+
+    auto const* trusted = LookupTrustedKey(trusted_keys, header.key_id);
+    if (!trusted) return ErrorCode {LicenseError::UnknownKeyId};
+
+    if (!Ed25519Verify(signature, payload_bytes, payload_len, trusted->public_key.data))
+        return ErrorCode {LicenseError::InvalidSignature};
+
     if (sizeof(PackedPayloadHeader) + header.email_len != payload_len)
         return ErrorCode {LicenseError::InvalidPayload};
 
     LicensePayload result {};
+    result.key_id = header.key_id;
     result.package_key = header.package_key;
 
     auto const* email_bytes = payload_bytes + sizeof(PackedPayloadHeader);
@@ -107,18 +129,21 @@ ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text, u8 const* public_
     return result;
 }
 
-ErrorCodeOr<MutableString>
-CreateSignedLicense(Span<u8 const> package_key, String email, u8 const* secret_key, ArenaAllocator& arena) {
+ErrorCodeOr<MutableString> CreateSignedLicense(u8 key_id,
+                                               Span<u8 const> package_key,
+                                               String email,
+                                               u8 const* secret_key,
+                                               ArenaAllocator& arena) {
     ASSERT(package_key.size == k_package_key_size);
     if (email.size > k_max_email_size) return ErrorCode {LicenseError::InvalidPayload};
 
-    // Build payload
     auto const payload_size = sizeof(PackedPayloadHeader) + email.size;
     auto payload_buf = arena.AllocateExactSizeUninitialised<u8>(payload_size);
 
     PackedPayloadHeader header {};
     header.magic = k_license_magic;
     header.version = k_license_version;
+    header.key_id = key_id;
     CopyMemory(header.package_key.data, package_key.data, k_package_key_size);
     header.email_len = (u16)email.size;
     CopyMemory(payload_buf.data, &header, sizeof(PackedPayloadHeader));
@@ -174,23 +199,46 @@ TEST_CASE(TestLicenseRoundtrip) {
     Array<u8, k_package_key_size> package_key;
     CryptoRandomBytes(package_key.data, k_package_key_size);
 
-    ArenaAllocatorWithInlineStorage<4096> arena {PageAllocator::Instance()};
-    auto const license_text =
-        REQUIRE_UNWRAP(CreateSignedLicense(package_key, "test@example.com"_s, secret_key.data, arena));
+    constexpr u8 k_test_key_id = 42;
+    auto const trusted_keys = ArrayT<TrustedSigningKey>({
+        {.id = k_test_key_id, .public_key = public_key},
+    });
 
-    // Round-trip: create then parse+verify
-    auto const payload = REQUIRE_UNWRAP(ParseAndVerify(String(license_text), public_key.data));
+    ArenaAllocatorWithInlineStorage<4096> arena {PageAllocator::Instance()};
+    auto const license_text = REQUIRE_UNWRAP(
+        CreateSignedLicense(k_test_key_id, package_key, "test@example.com"_s, secret_key.data, arena));
+
+    auto const payload = REQUIRE_UNWRAP(ParseAndVerify(String(license_text), trusted_keys));
+    CHECK_EQ(payload.key_id, k_test_key_id);
     CHECK(MemoryIsEqual(payload.package_key.data, package_key.data, k_package_key_size));
     CHECK_EQ(payload.email, "test@example.com"_s);
 
-    // Wrong public key should fail
-    Array<u8, k_ed25519_public_key_size> wrong_key {};
-    CHECK(ParseAndVerify(String(license_text), wrong_key.data).HasError());
+    SUBCASE("unknown key_id is rejected") {
+        auto const empty_table = Span<TrustedSigningKey const> {};
+        auto const other_table = ArrayT<TrustedSigningKey>({
+            {.id = (u8)(k_test_key_id + 1), .public_key = public_key},
+        });
+        // Empty override falls back to the production table, which doesn't contain id 42.
+        CHECK_EQ(ParseAndVerify(String(license_text), empty_table).Error(),
+                 ErrorCode {LicenseError::UnknownKeyId});
+        CHECK_EQ(ParseAndVerify(String(license_text), other_table).Error(),
+                 ErrorCode {LicenseError::UnknownKeyId});
+    }
 
-    // Tampered text should fail
-    auto tampered = arena.Clone(String(license_text));
-    if (tampered.size > 20) tampered[20] = 'X';
-    CHECK(ParseAndVerify(tampered, public_key.data).HasError());
+    SUBCASE("wrong public key for the right key_id is rejected") {
+        Array<u8, k_ed25519_public_key_size> wrong_public {};
+        auto const wrong_table = ArrayT<TrustedSigningKey>({
+            {.id = k_test_key_id, .public_key = wrong_public},
+        });
+        CHECK_EQ(ParseAndVerify(String(license_text), wrong_table).Error(),
+                 ErrorCode {LicenseError::InvalidSignature});
+    }
+
+    SUBCASE("tampered text fails signature check") {
+        auto tampered = arena.Clone(String(license_text));
+        if (tampered.size > 30) tampered[30] = tampered[30] == 'X' ? 'Y' : 'X';
+        CHECK(ParseAndVerify(tampered, trusted_keys).HasError());
+    }
 
     return k_success;
 }

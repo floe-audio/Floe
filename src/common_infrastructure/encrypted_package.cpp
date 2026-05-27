@@ -21,9 +21,15 @@ ErrorCodeCategory const g_encrypted_package_error_category = {
 };
 
 void DeriveChunkNonce(u8* nonce_out, u8 const* nonce_seed, u64 chunk_index) {
-    CopyMemory(nonce_out, nonce_seed, 16);
+    // XOR the chunk index into the trailing 8 bytes of the seed so all 24 bytes of per-package
+    // entropy contribute to the nonce. Per-package uniqueness comes from nonce_seed; per-chunk
+    // uniqueness comes from chunk_index, which differs between chunks within a package.
+    CopyMemory(nonce_out, nonce_seed, k_nonce_size);
     static_assert(k_endianness == Endianness::Little);
-    CopyMemory(nonce_out + 16, &chunk_index, sizeof(u64));
+    u64 last8;
+    CopyMemory(&last8, nonce_out + 16, sizeof(u64));
+    last8 ^= chunk_index;
+    CopyMemory(nonce_out + 16, &last8, sizeof(u64));
 }
 
 ErrorCodeOr<Header> ReadHeader(Reader& reader) {
@@ -33,34 +39,47 @@ ErrorCodeOr<Header> ReadHeader(Reader& reader) {
     if (bytes_read < sizeof(Header)) return ErrorCode {EncryptedPackageError::InvalidHeader};
     if (header.magic != k_magic) return ErrorCode {EncryptedPackageError::InvalidHeader};
     if (header.version != k_version) return ErrorCode {EncryptedPackageError::InvalidHeader};
-    if (header.chunk_size == 0) return ErrorCode {EncryptedPackageError::InvalidHeader};
+    // Lock chunk_size to the only producer-side value. This bounds every internal buffer to
+    // k_default_chunk_size so a malformed or hostile header can't trigger oversized allocations
+    // or stack writes. If the format ever needs variable chunks, bump k_version.
+    if (header.chunk_size != k_default_chunk_size) return ErrorCode {EncryptedPackageError::InvalidHeader};
+    if (header.total_plaintext_size == 0) return ErrorCode {EncryptedPackageError::InvalidHeader};
     return header;
 }
+
+// The entire on-disk header is bound to every chunk via AEAD additional data, so any modification
+// (e.g. truncating total_plaintext_size) causes chunk authentication to fail.
+static Span<u8 const> HeaderAad(Header const& header) { return {(u8 const*)&header, sizeof(Header)}; }
 
 // Decrypt a single chunk from the source reader.
 // source_offset is the file offset where this chunk's ciphertext begins.
 // plaintext_size is the number of plaintext bytes in this chunk (may be less than chunk_size for last chunk).
 static ErrorCodeOr<void> DecryptChunk(Reader& source,
+                                      Header const& header,
                                       u64 source_offset,
                                       usize plaintext_size,
-                                      u8 const* nonce_seed,
                                       u64 chunk_index,
                                       u8 const* package_key,
                                       u8* plaintext_out,
                                       u8* ciphertext_buf) {
-    // Read ciphertext + tag
     auto const ct_plus_tag_size = plaintext_size + k_tag_size;
     source.pos = (usize)source_offset;
     auto const bytes_read = TRY(source.Read(ciphertext_buf, ct_plus_tag_size));
     if (bytes_read < ct_plus_tag_size) return ErrorCode {EncryptedPackageError::DecryptionFailed};
 
-    // Derive nonce
     u8 nonce[k_nonce_size];
-    DeriveChunkNonce(nonce, nonce_seed, chunk_index);
+    DeriveChunkNonce(nonce, header.nonce_seed, chunk_index);
 
-    // Decrypt
+    auto const aad = HeaderAad(header);
     auto const* tag = ciphertext_buf + plaintext_size;
-    if (!XChaCha20Poly1305Decrypt(plaintext_out, ciphertext_buf, plaintext_size, tag, nonce, package_key))
+    if (!XChaCha20Poly1305Decrypt(plaintext_out,
+                                  ciphertext_buf,
+                                  plaintext_size,
+                                  aad.data,
+                                  aad.size,
+                                  tag,
+                                  nonce,
+                                  package_key))
         return ErrorCode {EncryptedPackageError::DecryptionFailed};
 
     return k_success;
@@ -70,15 +89,14 @@ ErrorCodeOr<void> VerifyContentKey(Reader& source, Header const& header, Span<u8
     ASSERT(package_key.size == k_key_size);
     auto const first_chunk_plaintext_size = Min((u64)header.chunk_size, header.total_plaintext_size);
 
-    // Temporary buffers for chunk 0
+    // ReadHeader pinned chunk_size to k_default_chunk_size, so these stack buffers are safe.
     u8 ct_buf[k_default_chunk_size + k_tag_size];
     u8 pt_buf[k_default_chunk_size];
-    ASSERT(first_chunk_plaintext_size <= k_default_chunk_size);
 
     return DecryptChunk(source,
+                        header,
                         sizeof(Header),
                         (usize)first_chunk_plaintext_size,
-                        header.nonce_seed,
                         0,
                         package_key.data,
                         pt_buf,
@@ -119,19 +137,11 @@ static usize ChunkPlaintextSize(Header const& header, u64 chunk_index) {
 }
 
 static u64 ChunkFileOffset(Header const& header, u64 chunk_index) {
-    // Each chunk on disk is: plaintext_size + k_tag_size bytes
-    // But all chunks except possibly the last have plaintext_size == chunk_size
-    u64 offset = sizeof(Header);
+    // Each on-disk chunk is plaintext_size + tag bytes. All but possibly the last chunk are
+    // exactly chunk_size, so the offset of any chunk is just the count of full chunks before it.
     auto const num_full_chunks = header.total_plaintext_size / header.chunk_size;
-    if (chunk_index <= num_full_chunks) {
-        auto const full_chunks_before = Min(chunk_index, num_full_chunks);
-        offset += full_chunks_before * ((u64)header.chunk_size + k_tag_size);
-        if (chunk_index > num_full_chunks) {
-            auto const remainder = header.total_plaintext_size % header.chunk_size;
-            if (remainder > 0) offset += remainder + k_tag_size;
-        }
-    }
-    return offset;
+    auto const full_chunks_before = Min(chunk_index, num_full_chunks);
+    return sizeof(Header) + (full_chunks_before * ((u64)header.chunk_size + k_tag_size));
 }
 
 ErrorCodeOr<usize> ReadAt(DecryptingReader& dr, u64 plaintext_offset, void* buffer, usize buffer_size) {
@@ -146,18 +156,16 @@ ErrorCodeOr<usize> ReadAt(DecryptingReader& dr, u64 plaintext_offset, void* buff
         auto const chunk_pt_size = ChunkPlaintextSize(dr.header, chunk_index);
         if (chunk_pt_size == 0) break;
 
-        // Decrypt chunk if not cached
+        // Decrypt chunk if not cached. ReadHeader pinned chunk_size to k_default_chunk_size, so
+        // this stack buffer is bounded.
         if (!dr.has_cached_chunk || dr.cached_chunk_index != chunk_index) {
-            // Need a temporary buffer for ciphertext + tag
-            // Use stack allocation for reasonable chunk sizes
-            ASSERT(chunk_pt_size <= k_default_chunk_size);
             u8 ct_buf[k_default_chunk_size + k_tag_size];
 
             auto const file_offset = ChunkFileOffset(dr.header, chunk_index);
             TRY(DecryptChunk(*dr.source,
+                             dr.header,
                              file_offset,
                              chunk_pt_size,
-                             dr.header.nonce_seed,
                              chunk_index,
                              dr.package_key.data,
                              dr.chunk_buffer,
@@ -188,7 +196,6 @@ ErrorCodeOr<Span<u8>> Encrypt(Span<u8 const> plaintext, Span<u8 const> package_k
     auto const output_size = sizeof(Header) + plaintext.size + (num_chunks * k_tag_size);
     auto output = arena.AllocateExactSizeUninitialised<u8>(output_size);
 
-    // Write header
     Header header {};
     header.magic = k_magic;
     header.version = k_version;
@@ -197,7 +204,8 @@ ErrorCodeOr<Span<u8>> Encrypt(Span<u8 const> plaintext, Span<u8 const> package_k
     header.total_plaintext_size = plaintext.size;
     CopyMemory(output.data, &header, sizeof(Header));
 
-    // Encrypt each chunk
+    auto const aad = HeaderAad(header);
+
     usize out_pos = sizeof(Header);
     for (u64 i = 0; i < num_chunks; i++) {
         auto const chunk_offset = (usize)(i * chunk_size);
@@ -212,6 +220,8 @@ ErrorCodeOr<Span<u8>> Encrypt(Span<u8 const> plaintext, Span<u8 const> package_k
                                  tag_out,
                                  plaintext.data + chunk_offset,
                                  this_chunk_size,
+                                 aad.data,
+                                 aad.size,
                                  nonce,
                                  package_key.data);
         out_pos += this_chunk_size + k_tag_size;
@@ -287,6 +297,51 @@ TEST_CASE(TestEncryptedPackageRoundtrip) {
     }
 
     DestroyDecryptingReader(dr);
+
+    SUBCASE("tampered header is rejected at chunk-0 verification") {
+        auto tampered = arena.Clone(Span<u8 const>(encrypted));
+        auto* tampered_header = (Header*)tampered.data;
+        // Truncating the plaintext size is the canonical header-tampering attack: chunks decrypt fine
+        // individually but the user gets a partial install. AAD binding makes it fail.
+        tampered_header->total_plaintext_size = k_test_size / 2;
+        auto tampered_source = Reader::FromMemory(tampered);
+        auto const read = REQUIRE_UNWRAP(ReadHeader(tampered_source));
+        CHECK(VerifyContentKey(tampered_source, read, package_key).HasError());
+    }
+
+    SUBCASE("nonce-seed tampering is rejected") {
+        auto tampered = arena.Clone(Span<u8 const>(encrypted));
+        auto* tampered_header = (Header*)tampered.data;
+        tampered_header->nonce_seed[0] ^= 0x01;
+        auto tampered_source = Reader::FromMemory(tampered);
+        auto const read = REQUIRE_UNWRAP(ReadHeader(tampered_source));
+        CHECK(VerifyContentKey(tampered_source, read, package_key).HasError());
+    }
+
+    SUBCASE("non-default chunk_size is rejected by ReadHeader") {
+        auto tampered = arena.Clone(Span<u8 const>(encrypted));
+        auto* tampered_header = (Header*)tampered.data;
+        tampered_header->chunk_size = 0xFFFFFFFFu;
+        auto tampered_source = Reader::FromMemory(tampered);
+        CHECK(ReadHeader(tampered_source).HasError());
+    }
+
+    SUBCASE("zero total_plaintext_size is rejected by ReadHeader") {
+        auto tampered = arena.Clone(Span<u8 const>(encrypted));
+        auto* tampered_header = (Header*)tampered.data;
+        tampered_header->total_plaintext_size = 0;
+        auto tampered_source = Reader::FromMemory(tampered);
+        CHECK(ReadHeader(tampered_source).HasError());
+    }
+
+    SUBCASE("ciphertext tampering is rejected") {
+        auto tampered = arena.Clone(Span<u8 const>(encrypted));
+        // Flip a byte well inside chunk 0's ciphertext.
+        tampered[sizeof(Header) + 100] ^= 0x01;
+        auto tampered_source = Reader::FromMemory(tampered);
+        auto const read = REQUIRE_UNWRAP(ReadHeader(tampered_source));
+        CHECK(VerifyContentKey(tampered_source, read, package_key).HasError());
+    }
 
     return k_success;
 }
