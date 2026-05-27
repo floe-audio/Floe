@@ -12,6 +12,9 @@ on:
 jobs:
   build:
     uses: ./.github/workflows/production-build.yml
+    permissions:
+      id-token: write
+      contents: read
     secrets: inherit
 
   release:
