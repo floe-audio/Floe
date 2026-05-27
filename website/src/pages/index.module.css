@@ -460,6 +460,16 @@
   z-index: 1;
 }
 
+.osIcons {
+  display: flex;
+  gap: 0.85rem;
+  font-size: 1.6rem;
+  margin-top: 0.85rem;
+  color: #fff;
+  position: relative;
+  z-index: 1;
+}
+
 .highlightItem p {
   line-height: 1.6;
   color: var(--ifm-color-content);

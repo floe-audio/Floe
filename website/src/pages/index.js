@@ -8,6 +8,8 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import PackageCard from '../components/PackageCard';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faWindows, faApple, faLinux } from '@fortawesome/free-brands-svg-icons';
 import packageDatabase from '@site/static/package-database.json';
 import styles from './index.module.css';
 
@@ -270,6 +272,11 @@ export default function Home() {
                             <div className={styles.highlightItem}>
                                 <h3>Widely supported</h3>
                                 <p>A sample-based synthesiser/ROMpler available as a CLAP, VST3, or AU plugin for Windows, macOS, and Linux. Compatible with all major DAWs (Logic Pro, Cubase, Studio One, FL Studio, Ableton Live, Reaper, and more), and uses the open Floe sample library format.</p>
+                                <div className={styles.osIcons} aria-label="Supported operating systems">
+                                    <FontAwesomeIcon icon={faWindows} title="Windows" />
+                                    <FontAwesomeIcon icon={faApple} title="macOS" />
+                                    <FontAwesomeIcon icon={faLinux} title="Linux" />
+                                </div>
                             </div>
 
                             <div className={styles.highlightItem}>
