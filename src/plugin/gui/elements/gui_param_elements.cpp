@@ -177,6 +177,9 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
         for (auto const cc_num : Range(128uz)) {
             if (!ccs_bitset.Get(cc_num)) continue;
 
+            g.imgui.PushId(cc_num);
+            DEFER { g.imgui.PopId(); };
+
             if (MenuItem(g.builder,
                          root,
                          {
