@@ -23,7 +23,7 @@ Our biggest update to date. This follows on from 1.2.0-beta.1; we chose to skip 
 - Added arpeggiator
 - GUI: split the single main page into separate Layers, Effects and Perform pages
 - Added perform page with access to common controls and visual display, with 'Vary' random-variation control replaces the old randomise buttons; click-position strip lets you choose how much to vary
-- Orignial/Modified toggle on Peform page to audition the original vs modified preset
+- Original/Modified toggle on Perform page to audition the original vs modified preset
 - 7 new LFO shapes: Random Steps, Random Glide, Pluck, Pluck Sharp, Pulse Narrow, Pulse Wide, Trapezoid
 - Effects rack improvements:
   - Bypass button for each effect
