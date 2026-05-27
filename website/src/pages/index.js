@@ -210,13 +210,13 @@ export default function Home() {
                         <div className={styles.moreFeatures}>
                             <h3>More Features</h3>
                             <ul className={styles.featureList}>
-                                <li>Per-layer arpeggiators</li>
-                                <li>Comprehensive granular synthesis</li>
-                                <li>Visual 3-band EQs</li>
-                                <li>Undo/redo system</li>
-                                <li>A/B comparison for preset edits</li>
+                                <li>Per-layer arpeggiators (coming in v2)</li>
+                                <li>Comprehensive granular synthesis (coming in v2)</li>
+                                <li>Visual 3-band EQs (coming in v2)</li>
+                                <li>Undo/redo system (coming in v2)</li>
+                                <li>A/B comparison for preset edits (coming in v2)</li>
                                 <li>Autosave</li>
-                                <li>Random variation generator</li>
+                                <li>Random variation generator (coming in v2)</li>
                                 <li>Core per-layer controls: ADSR, filter, LFO, EQ, tuning, stereo width</li>
                                 <li>Sustain pedal support</li>
                                 <li>Customisable MIDI CC mapping</li>
@@ -227,10 +227,10 @@ export default function Home() {
                                 <li>Install libraries on separate drives</li>
                                 <li>Offline installation</li>
                                 <li>Load a random sound</li>
-                                <li>Options for fully reproducible recordings</li>
+                                <li>Options for fully reproducible recordings (coming in v2)</li>
                                 <li>4 renamable macro knobs</li>
                                 <li>Resizable vector UI</li>
-                                <li>Copy/paste/reset for all parameters and sections</li>
+                                <li>Copy/paste/reset for all parameters and sections (coming in v2)</li>
                             </ul>
                         </div>
                     </div>
