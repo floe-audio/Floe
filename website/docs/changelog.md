@@ -15,6 +15,8 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 2.0.0-beta.2
+Our biggest update to date. This follows on from 1.2.0-beta.1; we chose to skip 1.2.0 and jump straight to 2.0.0.
+
 ### Major new features
 - Added granular synthesis (including a random detune parameter)
 - Added EQ to effects rack
