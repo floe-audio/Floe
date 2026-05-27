@@ -386,7 +386,7 @@ fn runCreateGithubRelease(context: *Context) !u8 {
         const version_header = try std.fmt.allocPrint(context.allocator, "## {s}", .{version});
         const changelog_content = try std.fs.cwd().readFileAlloc(
             context.allocator,
-            "website/docs/changelog.md",
+            "website/docs/changelog.mdx",
             1024 * 1024 * 4,
         );
 
