@@ -213,6 +213,7 @@ struct FilePickerDialogOptions {
             .default_filename = default_filename.Clone(a, t),
             .filters = a.Clone(filters, t),
             .allow_multiple_selection = allow_multiple_selection,
+            .force_default_folder = force_default_folder,
         };
     }
 
@@ -222,6 +223,9 @@ struct FilePickerDialogOptions {
     Optional<String> default_filename {};
     Span<FileFilter const> filters {};
     bool allow_multiple_selection {};
+    // Windows only. If true, default_folder overrides Windows' per-app MRU; otherwise it's only a hint
+    // used when no MRU exists for the dialog.
+    bool force_default_folder {};
 };
 
 // Fill this struct every frame to instruct the framework about the application's needs.

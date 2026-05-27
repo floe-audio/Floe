@@ -121,6 +121,7 @@ void OpenFilePickerSavePreset(FilePickerState& state,
             .default_filename = "untitled" FLOE_PRESET_FILE_EXTENSION,
             .filters = k_filters,
             .allow_multiple_selection = false,
+            .force_default_folder = true,
         }
             .Clone(out.file_picker_options_arena);
 
@@ -148,6 +149,7 @@ void OpenFilePickerLoadPreset(FilePickerState& state,
                                   .ValueOr(PresetFileDefaultPath(paths, PresetFilePickerMode::Load)),
             .filters = k_filters,
             .allow_multiple_selection = false,
+            .force_default_folder = true,
         }
             .Clone(out.file_picker_options_arena);
 
