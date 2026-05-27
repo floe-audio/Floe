@@ -1,0 +1,87 @@
+---
+slug: floe-2-0-0
+title: "Floe v2.0.0"
+description: Major new features and improvements throughout.
+authors: [windell]
+draft: true
+unlisted: true
+---
+
+<!--
+SPDX-FileCopyrightText: 2026 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
+Floe v2 is here. Major new features and improvements throughout.
+
+<!-- truncate -->
+
+Grab it from the [download page](/download). Full [changelog here](/docs/changelog).
+
+### New UI layout
+Now split across 2 pages, the layers and effects are less cramped, giving us the room to add big new features such as granular synthesis.
+
+In addition, the PERFORM page was added, designed for distraction-free playing and exploration of presets. Access all the key parameters to tweak the preset, randomise its sound, and see the artwork in a larger display.
+
+### Creative randomisation
+New on the PERFORM page is the random variation strip. This unique feature tastefully randomises aspects of the loaded preset, allowing you to explore new sounds rapidly. What's more, you control how far you want to deviate from the preset: clicks on the left side of the variation strip produce new sounds similar to the original, while clicks further right progressively introduce more significant changes. This feature ties in excellently with the new undo/redo system, meaning you can always backtrack.
+
+This system replaces Floe v1's randomise-all options. Similarly, the old randomise-effect option has been replaced with a more usable implementation that focuses on randomising the 'on' state of effects rather than the unbounded randomisation of all parameters.
+
+### Granular synthesis
+A hugely powerful new mode has been added for any instrument: granular synthesis. Instead of playing the sample back as standard, you can now perform the sample as a cloud of grains - controllable with spread, density and length to create anything from lush textures to glitched FX. It can also be made beautifully diverse or chaotic with randomise knobs for pan, detune and forwards/backwards, and even a fully customisable grid for selective random grain pitch intervals. It comes in 2 flavours, allowing for either natural progression across the sample in Granular Playback mode, or granulating a fixed position of the sample (or LFO modulated) with Granular Fixed mode.
+
+### Arpeggiator
+Also stand-out in Floe v2 is the per-layer arpeggiator, offering a customisable grid for performing sequences, arpeggios and pulses. Design the perfect sound with per-step velocity, length, step-tying and mute, plus numerous additional controls such as 15 different note order modes (Up, Down, Chord, Random, etc.) when you hold multiple notes, humanisation, and an intriguing octave polyrate control.
+
+The arpeggiator enters a different mode when a sliced loop is loaded, enabling controllable, tempo-synced playback of a rhythmic loop.
+
+### Visual filters and LFO
+The filters, EQ and LFO throughout Floe now show a visual curve with click-and-drag nodes - shape the sound much faster and visually see the shape that is applied.
+
+### Better parameters
+Knobs and sliders in Floe feel more natural and responsive, resulting in easier use and better precision. Specifically, these parameters have been enhanced: filter and EQ frequency, compressor ratio and threshold, and filter effect gain.
+
+### Enhanced FX rack
+Each FX now has a bypass button, separating adding an effect to the rack from quickly enabling or disabling it. Additionally, all effects now have a Mix knob instead of the separate wet/dry controls from before, making it much easier to control intensity.
+
+### New stereo width controls
+All layers now have a Stereo control below the Pan - excellent for creating clearer mixes of sounds. Additionally, the Stereo Widen effect on the FX rack has been enhanced with 2 new modes: Balanced, offering a smoother range from fully mono to extra wide, and Bass Mono, allowing for the important ability to make the low-end of a sound mono.
+
+### New LFO shapes
+Modulate each layer's volume, pan, tune, filter and granular synth position using new shapes: Random Steps, Random Glide, Pluck, Pluck Sharp, Pulse Narrow, Pulse Wide and Trapezoid.
+
+### EQ enhanced and added to FX rack
+Floe's equaliser has been improved throughout - now offering a third band and new low-pass and high-pass band types at both 12dB and 24dB per octave slopes. Additionally, EQ has been added as a new effect, allowing for shaping the sound at the master level as well as per-layer.
+
+### Perfect reproducibility
+The new Instance Config panel features controls to enable perfect, predictable reproducibility of musical performances - even when 'random' elements are running, such as round-robin sequences and granular playback. Select 'Reset on transport' or assign a 'Reset keyswitch' to create a point from which the playback will be identical no matter how many times it's played. An additional 'Seed' control allows customising the flavour of this starting point - sometimes useful to get a different round robin sample to start a sequence.
+
+### MIDI CC assignments display
+Floe now features a new panel to display all your MIDI CC assignments, making it easier to see what controller is linked to what parameters in Floe.
+
+### Enhanced legacy parameters system
+Floe strives for perfect backwards-compatibility when loading any DAW project that contains Floe. To support this, we have a system to replace outdated parameters with new ones. We've made this easier to understand by adding visual indicators when a legacy parameter is active, and we offer an enhanced Legacy Parameters panel where you can 'modernise' your patch once you've double-checked that your DAW project isn't automating a 'legacy'ed parameter.
+
+### Floe-pkg format
+To make installing packages easier, Floe now supports a new file extension as well as ZIP. `.floe-pkg` will be the new default - no more accidentally extracting a ZIP that was simpler to leave zipped. `.floe-pkg` can be renamed to `.zip` for those who still want to do manual installation.
+
+An additional feature for our developers to protect their work is the new encrypted package, `.floe-pkg-enc`. These are installed just the same as normal packages but will prompt for a license key in order to complete the installation (no internet required).
+
+### Undo/redo
+Undo and redo any change to Floe's audio state, such as changing a knob, loading a new preset or selecting a different instrument. All changes are kept and are perfectly undoable through history. Excellent for checking 'before vs after' of a change, or reverting back after going too far off the rails when designing a sound!
+
+### Copy/paste/reset
+We've added right-click menus to loads of things in Floe. Right-click on pretty much any bit of UI to see options to copy, paste or reset that aspect. This allows for easy cloning of a layer, or clearing a set of changes before trying something new.
+
+### Improved browsers
+The browsers have been streamlined to be more intuitive to use. The left panel is less cluttered and features a dark background, with folder and sample library cards now being collapsible (and Floe remembering your collapse state even when you close it).
+
+### Performance enhancements
+Better CPU usage for both the GUI and the audio engine makes Floe able to handle more than ever.
+
+### New Modern compressor
+An additional compressor algorithm has been added with a modern sound and dedicated Attack and Release controls, allowing for a more precise result. The previous algorithm with its automatic envelope remains a tasteful option under the Vintage mode.
+
+### Crisper looking UI
+We've rebuilt huge portions of our UI system, laying the groundwork for these new features and enabling a crisper-looking display.
