@@ -5,10 +5,10 @@ hide_table_of_contents: true
 description: Information about Floe's three-layer architecture and how to use layers
 ---
 
-<!--
+{/*
 SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
--->
+*/}
 
 import NumberedOverlay from '@site/src/components/NumberedOverlay';
 
@@ -18,14 +18,14 @@ At the core of Floe are the 3 independent layers, each with their own instrument
 
 ```mermaid
 graph TD
-    X[Input<br/>#40;MIDI keyboard, piano roll, etc.#41;] --> A
-    X --> B
-    X --> C
-    A["Layer 1<br/>#40;instrument, ADSR, tuning, filter, LFO, etc.#41;"] --> D["Effects Rack<br/>#40;customisable ordering#41;"]
-    B["Layer 2<br/>#40;instrument, ADSR, tuning, filter, LFO, etc.#41;"] --> D
-    C["Layer 3<br/>#40;instrument, ADSR, tuning, filter, LFO, etc.#41;"] --> D
-    D --> E[Master Volume]
-    E --> F[Output]
+    X[Input<br/>#40;MIDI keyboard, piano roll, etc.#41;] */} A
+    X */} B
+    X */} C
+    A["Layer 1<br/>#40;instrument, ADSR, tuning, filter, LFO, etc.#41;"] */} D["Effects Rack<br/>#40;customisable ordering#41;"]
+    B["Layer 2<br/>#40;instrument, ADSR, tuning, filter, LFO, etc.#41;"] */} D
+    C["Layer 3<br/>#40;instrument, ADSR, tuning, filter, LFO, etc.#41;"] */} D
+    D */} E[Master Volume]
+    E */} F[Output]
 ```
 
 These are displayed in three columns starting from the left of the main panel. Each layer is identical. Floe’s layers are the first things in the processing chain; each layer is processed in parallel, and then the three streams of audio are mixed together and fed through the effects rack, from top to bottom.

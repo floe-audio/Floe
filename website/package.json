@@ -14,23 +14,24 @@
         "write-heading-ids": "docusaurus write-heading-ids"
     },
     "dependencies": {
-        "@docusaurus/core": "^3.9.2",
-        "@docusaurus/plugin-client-redirects": "^3.9.2",
-        "@docusaurus/preset-classic": "^3.9.2",
-        "@docusaurus/theme-mermaid": "^3.9.2",
-        "@fortawesome/fontawesome-svg-core": "^7.1.0",
-        "@fortawesome/free-brands-svg-icons": "^7.1.0",
-        "@fortawesome/free-solid-svg-icons": "^7.1.0",
-        "@fortawesome/react-fontawesome": "^3.1.0",
+        "@docusaurus/core": "^3.10.1",
+        "@docusaurus/faster": "^3.10.1",
+        "@docusaurus/plugin-client-redirects": "^3.10.1",
+        "@docusaurus/preset-classic": "^3.10.1",
+        "@docusaurus/theme-mermaid": "^3.10.1",
+        "@fortawesome/fontawesome-svg-core": "^7.2.0",
+        "@fortawesome/free-brands-svg-icons": "^7.2.0",
+        "@fortawesome/free-solid-svg-icons": "^7.2.0",
+        "@fortawesome/react-fontawesome": "^3.3.1",
         "@mdx-js/react": "^3.0.0",
         "clsx": "^2.0.0",
         "prism-react-renderer": "^2.3.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0"
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0"
     },
     "devDependencies": {
-        "@docusaurus/module-type-aliases": "^3.9.2",
-        "@docusaurus/types": "^3.9.2"
+        "@docusaurus/module-type-aliases": "^3.10.1",
+        "@docusaurus/types": "^3.10.1"
     },
     "browserslist": {
         "production": [
