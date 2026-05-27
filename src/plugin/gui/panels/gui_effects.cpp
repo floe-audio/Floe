@@ -1070,6 +1070,7 @@ static void DoEffectParams(GuiState& g,
 
                 ParameterComponentOptions const small_knob_opts {
                     .width = k_small_knob_w,
+                    .knob_highlight_col = highlight_col,
                     .style_system = GuiStyleSystem::MidPanel,
                     .greyed_out = greyed_out,
                 };
@@ -1083,6 +1084,7 @@ static void DoEffectParams(GuiState& g,
                                 params.DescribedValue(bp[3]),
                                 {
                                     .width = k_small_knob_w,
+                                    .knob_highlight_col = highlight_col,
                                     .style_system = GuiStyleSystem::MidPanel,
                                     .greyed_out = gain_greyed,
                                     .bidirectional = true,
