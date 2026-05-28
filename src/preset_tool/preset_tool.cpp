@@ -35,7 +35,8 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
             "Path to the script file to edit. If not provided, the preset file will be printed to stdout.\n"
             "In the script, you have access to a global 'preset'. Modify this global and the changes will\n"
             "be saved to the file. Run this tool without a script file to see the format of 'preset'.\n"
-            "param_values are keyed by param ID. Also available: inspect_library(path) returns a table\n"
+            "param_values are keyed by param ID. Also available: the global 'preset_path' (absolute path\n"
+            "of the preset currently being processed), and inspect_library(path) which returns a table\n"
             "describing the given floe.lua / .mdata file (same shape as library-inspector --format=lua).\n",
         .value_type = "path",
         .required = false,
@@ -966,6 +967,8 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
 
     luaL_openlibs(lua);
     lua_register(lua, "inspect_library", LuaInspectLibrary);
+    lua_pushlstring(lua, opts.preset_path.data, opts.preset_path.size);
+    lua_setglobal(lua, "preset_path");
 
     if (opts.print_path_header && !opts.have_script)
         StdPrintF(StdStream::Out, "-- file: {}\n", opts.preset_path);
