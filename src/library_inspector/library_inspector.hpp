@@ -4,20 +4,11 @@
 #include "utils/cli_arg_parse.hpp"
 
 enum class LibraryInspectorCliArgId : u8 {
-    LibraryPath,
     Format,
     Count,
 };
 
 auto constexpr k_library_inspector_command_line_args_defs = MakeCommandLineArgDefs<LibraryInspectorCliArgId>({
-    {
-        .id = (u32)LibraryInspectorCliArgId::LibraryPath,
-        .key = "library",
-        .description = "Path to the library file (floe.lua or .mdata) or to a directory containing one.",
-        .value_type = "path",
-        .required = true,
-        .num_values = 1,
-    },
     {
         .id = (u32)LibraryInspectorCliArgId::Format,
         .key = "format",
@@ -31,8 +22,9 @@ auto constexpr k_library_inspector_command_line_args_defs = MakeCommandLineArgDe
 
 constexpr String k_library_inspector_description =
     "Inspect a Floe sample library and dump structured information to stdout.\n"
-    "The library may be supplied as a path to its floe.lua/mdata file, or as a path\n"
-    "to a directory containing one. Output includes library metadata, captured Lua\n"
+    "Usage: floe-library-inspector <path> [--format=json|lua]\n"
+    "The library path is a positional argument: a path to its floe.lua/mdata file,\n"
+    "or to a directory containing one. Output includes library metadata, captured Lua\n"
     "print() output, parse errors, instruments, regions, IRs, and orphan/missing\n"
     "sample files. Defaults to JSON; use --format=lua for a loadable Lua chunk.\n"
     "\n"

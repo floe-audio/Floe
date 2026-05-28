@@ -53,6 +53,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 
     ArenaAllocator arena {PageAllocator::Instance()};
 
+    Span<String> positionals {};
     auto const cli_args = TRY(ParseCommandLineArgsStandard(arena,
                                                            args,
                                                            k_library_inspector_command_line_args_defs,
@@ -61,13 +62,20 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                                                                .print_usage_on_error = true,
                                                                .description = k_library_inspector_description,
                                                                .version = FLOE_VERSION_STRING,
+                                                               .positionals_out = &positionals,
                                                            }));
 
-    auto const library_file =
-        TRY_OR(ResolveLibraryFile(arena, cli_args[ToInt(CliArgId::LibraryPath)].values[0]), {
-            StdPrintF(StdStream::Err, "Error: failed to locate library file: {}\n", error);
-            return error;
-        });
+    if (positionals.size != 1) {
+        StdPrintF(StdStream::Err,
+                  "Error: expected exactly one positional argument (library path), got {}\n",
+                  positionals.size);
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    auto const library_file = TRY_OR(ResolveLibraryFile(arena, positionals[0]), {
+        StdPrintF(StdStream::Err, "Error: failed to locate library file: {}\n", error);
+        return error;
+    });
 
     auto out_format = ld::Format::Json;
     if (cli_args[ToInt(CliArgId::Format)].was_provided) {
