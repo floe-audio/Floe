@@ -19,28 +19,11 @@
 namespace ld = library_dump;
 using CliArgId = LibraryInspectorCliArgId;
 
-// Locates the library file. If `path` points to a file, returns it. If it points to a directory, scans the
-// (non-recursive) directory for a Floe Lua file or an MDATA file.
 static ErrorCodeOr<String> ResolveLibraryFile(ArenaAllocator& arena, String input_path) {
     auto const abs = TRY(AbsolutePath(arena, input_path));
     auto const info = TRY(GetFileType(abs));
-    if (info == FileType::File) return abs;
-    if (info != FileType::Directory) return ErrorCode {CommonError::NotFound};
-
-    auto it = TRY(dir_iterator::Create(arena,
-                                       abs,
-                                       {
-                                           .wildcard = "*",
-                                           .get_file_size = false,
-                                       }));
-    DEFER { dir_iterator::Destroy(it); };
-    while (auto const entry = TRY(dir_iterator::Next(it, arena))) {
-        if (entry->type == FileType::Directory) continue;
-        if (sample_lib::FilenameIsFloeLuaFile(entry->subpath) ||
-            sample_lib::FilenameIsMdataFile(entry->subpath))
-            return dir_iterator::FullPath(it, *entry, arena);
-    }
-    return ErrorCode {CommonError::NotFound};
+    if (info != FileType::File) return ErrorCode {CommonError::NotFound};
+    return abs;
 }
 
 static ErrorCodeOr<int> Main(ArgsCstr args) {

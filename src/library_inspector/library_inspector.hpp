@@ -20,8 +20,7 @@ auto constexpr k_library_inspector_command_line_args_defs = MakeCommandLineArgDe
     },
 });
 
-constexpr String k_library_inspector_positional_description =
-    "Path to a floe.lua/mdata file, or to a directory containing one.";
+constexpr String k_library_inspector_positional_description = "Path to a floe.lua or .mdata file.";
 
 constexpr String k_library_inspector_description =
     "Inspect a Floe sample library and dump structured information to stdout.\n"
