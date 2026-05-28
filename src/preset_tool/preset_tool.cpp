@@ -35,7 +35,8 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
             "Path to the script file to edit. If not provided, the preset file will be printed to stdout.\n"
             "In the script, you have access to a global 'preset'. Modify this global and the changes will\n"
             "be saved to the file. Run this tool without a script file to see the format of 'preset'.\n"
-            "param_values are keyed by param ID. Also available: the global 'preset_path' (absolute path\n"
+            "param_values are keyed by stable id_string (e.g. 'fx.distortion.drive', 'l1.volume').\n"
+            "Also available: the global 'preset_path' (absolute path\n"
             "of the preset currently being processed), and inspect_library(path) which returns a table\n"
             "describing the given floe.lua / .mdata file (same shape as library-inspector --format=lua).\n",
         .value_type = "path",
@@ -157,6 +158,12 @@ static Optional<ParamIndex> FindParamByPrettyKey(String key) {
     return k_nullopt;
 }
 
+static Optional<ParamIndex> FindParamByIdString(String key) {
+    for (auto const i : Range<u16>(k_num_parameters))
+        if (k_param_descriptors[i].id_string == key) return ParamIndex {i};
+    return k_nullopt;
+}
+
 // In Read functions, the value is on top of the stack on entry. The caller pops it.
 
 struct StringH {
@@ -203,7 +210,7 @@ struct ParamValuesH {
                 else
                     lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
             } else {
-                lua_pushinteger(lua, ParamIndexToId(ParamIndex {i}));
+                lua_pushlstring(lua, d.id_string.data, d.id_string.size);
                 lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
             }
             lua_settable(lua, -3);
@@ -215,16 +222,12 @@ struct ParamValuesH {
         while (lua_next(lua, -2) != 0) {
             Optional<ParamIndex> param_index;
             Optional<f32> new_linear;
-            if (lua_isinteger(lua, -2)) {
-                param_index = ParamIdToIndex((u32)lua_tointeger(lua, -2));
-                if (param_index && lua_isnumber(lua, -1)) {
-                    auto const& d = k_param_descriptors[ToInt(*param_index)];
-                    new_linear = d.LineariseValue((f32)lua_tonumber(lua, -1), true);
-                }
-            } else if (lua_isstring(lua, -2)) {
+            if (lua_isstring(lua, -2)) {
                 size_t key_len;
                 auto const key_str = lua_tolstring(lua, -2, &key_len);
-                param_index = FindParamByPrettyKey({key_str, key_len});
+                String const key {key_str, key_len};
+                param_index = FindParamByIdString(key);
+                if (!param_index) param_index = FindParamByPrettyKey(key);
                 if (param_index) {
                     auto const& d = k_param_descriptors[ToInt(*param_index)];
                     if (lua_isstring(lua, -1)) {
@@ -713,7 +716,8 @@ struct MacroDestinationsH {
                     auto const key = ParamPrettyKey(k_param_descriptors[ToInt(*dest.param_index)]);
                     lua_pushlstring(lua, key.data, key.size);
                 } else {
-                    lua_pushinteger(lua, ParamIndexToId(*dest.param_index));
+                    auto const& id_str = k_param_descriptors[ToInt(*dest.param_index)].id_string;
+                    lua_pushlstring(lua, id_str.data, id_str.size);
                 }
                 lua_setfield(lua, -2, "param_index");
                 lua_pushnumber(lua, (f64)dest.value);
@@ -737,15 +741,13 @@ struct MacroDestinationsH {
                         if (lua_istable(lua, -1) && dest_index < k_max_macro_destinations) {
                             MacroDestination dest {};
                             lua_getfield(lua, -1, "param_index");
-                            if (lua_isinteger(lua, -1)) {
-                                auto const param_id = (u32)lua_tointeger(lua, -1);
-                                if (auto const param_index = ParamIdToIndex(param_id))
-                                    dest.param_index = *param_index;
-                            } else if (lua_isstring(lua, -1)) {
+                            if (lua_isstring(lua, -1)) {
                                 size_t len;
                                 auto const str = lua_tolstring(lua, -1, &len);
-                                if (auto const param_index = FindParamByPrettyKey({str, len}))
-                                    dest.param_index = *param_index;
+                                String const key {str, len};
+                                auto param_index = FindParamByIdString(key);
+                                if (!param_index) param_index = FindParamByPrettyKey(key);
+                                if (param_index) dest.param_index = *param_index;
                             }
                             lua_pop(lua, 1);
                             lua_getfield(lua, -1, "value");
