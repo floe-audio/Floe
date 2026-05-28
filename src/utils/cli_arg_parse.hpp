@@ -135,50 +135,60 @@ PUBLIC Span<String> ArgsToStringsSpan(ArenaAllocator& arena, ArgsCstr args, bool
     return result;
 }
 
+namespace detail {
+
+enum class ArgType : u8 { Short, Long, None };
+
+PUBLIC ArgType ClassifyArg(String arg) {
+    if (arg.size < 2) return ArgType::None;
+    if (arg[0] == '-' && IsAlphanum(arg[1])) return ArgType::Short;
+    if (arg.size > 2) {
+        if (arg[0] == '-' && arg[1] == '-') return ArgType::Long;
+        if (arg[0] == '-' && IsAlphanum(arg[1]) && arg[2] == '=') return ArgType::Short;
+    }
+    return ArgType::None;
+}
+
+PUBLIC usize ArgPrefixSize(ArgType type) {
+    switch (type) {
+        case ArgType::Short: return 1;
+        case ArgType::Long: return 2;
+        case ArgType::None: return 0;
+    }
+    return 0;
+}
+
+struct KeyVal {
+    String key;
+    String value;
+};
+
+PUBLIC KeyVal SplitKeyAndInlineValue(String arg) {
+    if (auto const opt_index = Find(arg, '='))
+        return KeyVal {arg.SubSpan(0, *opt_index), arg.SubSpan(*opt_index + 1)};
+    return KeyVal {arg, ""_s};
+}
+
+} // namespace detail
+
 // Supports things like:
 // "-a", "-a=value", "--arg value", "--arg=value", "--arg value1 value2"
 // Positional args (non-flag args appearing before any flag) are collected into positionals_out if non-null,
 // and silently dropped otherwise. Positional args appearing after a flag are consumed as that flag's values,
 // since flags greedily collect values until the next flag; callers wanting positionals must therefore place
-// them before any flag on the command line.
+// them before any flag on the command line. (This function is arity-unaware; ParseCommandLineArgs supports
+// GNU-style mixing of positionals and flags.)
 PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena,
                                                            Span<String const> args,
                                                            DynamicArray<String>* positionals_out = nullptr) {
     DynamicHashTable<String, Span<String>> result {arena};
-    enum class ArgType : u8 { Short, Long, None };
-    auto const arg_type = [](String arg) {
-        if (arg[0] == '-' && IsAlphanum(arg[1])) return ArgType::Short;
-        if (arg.size > 2) {
-            if (arg[0] == '-' && arg[1] == '-') return ArgType::Long;
-            if (arg[0] == '-' && IsAlphanum(arg[1]) && arg[2] == '=') return ArgType::Short;
-        }
-        return ArgType::None;
-    };
-    auto const prefix_size = [](ArgType type) -> usize {
-        switch (type) {
-            case ArgType::Short: return 1;
-            case ArgType::Long: return 2;
-            case ArgType::None: return 0;
-        }
-        return 0;
-    };
-    struct KeyVal {
-        String key;
-        String value;
-    };
-    auto const try_get_combined_key_val = [](String arg) {
-        if (auto const opt_index = Find(arg, '='))
-            return KeyVal {arg.SubSpan(0, *opt_index), arg.SubSpan(*opt_index + 1)};
-        return KeyVal {arg, ""_s};
-    };
-
     String current_key {};
     DynamicArray<String> current_values {arena};
 
     for (auto const arg_index : Range(args.size)) {
-        if (auto const type = arg_type(args[arg_index]); type != ArgType::None) {
-            auto const arg = args[arg_index].SubSpan(prefix_size(type));
-            auto const [key, value] = try_get_combined_key_val(arg);
+        if (auto const type = detail::ClassifyArg(args[arg_index]); type != detail::ArgType::None) {
+            auto const arg = args[arg_index].SubSpan(detail::ArgPrefixSize(type));
+            auto const [key, value] = detail::SplitKeyAndInlineValue(arg);
 
             if (key != current_key) {
                 // it's a new key, flush the values of the previous
@@ -252,7 +262,28 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
     }
 
     DynamicArray<String> positionals {arena};
-    for (auto const [key, values, _] : ArgsToKeyValueTable(arena, args, &positionals)) {
+    bool end_of_flags = false; // true after seeing "--"
+    usize cursor = 0;
+    while (cursor < args.size) {
+        auto const cur = args[cursor];
+
+        if (!end_of_flags && cur == "--"_s) {
+            end_of_flags = true;
+            ++cursor;
+            continue;
+        }
+
+        auto const type = end_of_flags ? detail::ArgType::None : detail::ClassifyArg(cur);
+        if (type == detail::ArgType::None) {
+            dyn::Append(positionals, cur);
+            ++cursor;
+            continue;
+        }
+
+        auto const stripped = cur.SubSpan(detail::ArgPrefixSize(type));
+        auto const [key, inline_value] = detail::SplitKeyAndInlineValue(stripped);
+        ++cursor;
+
         if (options.handle_help_option && key == "help") {
             TRY(PrintUsage(writer, program_name, options.description, arg_defs, implicit_args));
             return ErrorCode {CliError::HelpRequested};
@@ -263,7 +294,46 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
             return ErrorCode {CliError::VersionRequested};
         }
 
-        if (options.handle_log_level_option && key == k_log_level_arg_def.key) {
+        bool const is_log_level = options.handle_log_level_option && key == k_log_level_arg_def.key;
+
+        Optional<usize> def_index;
+        int expected_num_values = 0;
+        if (is_log_level) {
+            expected_num_values = k_log_level_arg_def.num_values;
+        } else {
+            def_index = FindIf(arg_defs, [&](auto const& arg) { return arg.key == key; });
+            if (!def_index) {
+                TRY(fmt::FormatToWriter(writer, "Unknown option: {}\n", key));
+                return error(CliError::InvalidArguments);
+            }
+            expected_num_values = arg_defs[*def_index].num_values;
+        }
+
+        // Collect values
+        DynamicArray<String> values {arena};
+        if (inline_value.size) dyn::Append(values, inline_value);
+
+        if (expected_num_values == -1) {
+            // greedy: consume non-flag args until next flag or "--"
+            while (cursor < args.size) {
+                if (args[cursor] == "--"_s) break;
+                if (detail::ClassifyArg(args[cursor]) != detail::ArgType::None) break;
+                dyn::Append(values, args[cursor]);
+                ++cursor;
+            }
+        } else if (expected_num_values > 0) {
+            // consume up to N non-flag args (subtracting any inline value already collected)
+            auto needed = (usize)expected_num_values - Min((usize)expected_num_values, values.size);
+            while (needed > 0 && cursor < args.size) {
+                if (args[cursor] == "--"_s) break;
+                if (detail::ClassifyArg(args[cursor]) != detail::ArgType::None) break;
+                dyn::Append(values, args[cursor]);
+                ++cursor;
+                --needed;
+            }
+        }
+
+        if (is_log_level) {
             if (!values.size) {
                 TRY(fmt::FormatToWriter(writer, "Option --{} requires a value\n", key));
                 return error(CliError::InvalidArguments);
@@ -277,14 +347,7 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
             continue;
         }
 
-        auto const arg_index = FindIf(arg_defs, [&](auto const& arg) { return arg.key == key; });
-        if (!arg_index) {
-            TRY(fmt::FormatToWriter(writer, "Unknown option: {}\n", key));
-            return error(CliError::InvalidArguments);
-        }
-
-        auto const& arg = arg_defs[*arg_index];
-
+        auto const& arg = arg_defs[*def_index];
         if (arg.num_values != 0 && !values.size) {
             TRY(fmt::FormatToWriter(writer,
                                     "Option --{} requires {} value\n",
@@ -295,9 +358,17 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
                                                                : String(fmt::IntToString(arg.num_values)))));
             return error(CliError::InvalidArguments);
         }
+        if (arg.num_values > 0 && (int)values.size != arg.num_values) {
+            TRY(fmt::FormatToWriter(writer,
+                                    "Option --{} requires {} value(s), got {}\n",
+                                    key,
+                                    arg.num_values,
+                                    values.size));
+            return error(CliError::InvalidArguments);
+        }
 
-        result[*arg_index].values = values;
-        result[*arg_index].was_provided = true;
+        result[*def_index].values = values.ToOwnedSpan();
+        result[*def_index].was_provided = true;
     }
 
     for (auto const arg_index : Range(arg_defs.size))

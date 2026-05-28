@@ -282,6 +282,134 @@ TEST_CASE(TestParseCommandLineArgs) {
             CHECK(o.Error() == CliError::InvalidArguments);
         }
 
+        SUBCASE("GNU: positionals after flags") {
+            Span<String> positionals {};
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"--a-arg"_s, "v", "--c-arg", "file1", "file2"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                    .positionals_out = &positionals,
+                                                });
+            auto const args = REQUIRE_UNWRAP(o);
+            CHECK(args[ToInt(ArgId::A)].values == Array {"v"_s});
+            CHECK(args[ToInt(ArgId::C)].was_provided);
+            REQUIRE(positionals.size == 2);
+            CHECK_EQ(positionals[0], "file1"_s);
+            CHECK_EQ(positionals[1], "file2"_s);
+        }
+
+        SUBCASE("GNU: positionals interleaved with flags") {
+            Span<String> positionals {};
+            auto const o =
+                ParseCommandLineArgs(writer,
+                                     a,
+                                     "my-program",
+                                     Array {"file1"_s, "--a-arg", "v", "file2", "--c-arg", "file3"},
+                                     k_arg_defs,
+                                     {
+                                         .handle_help_option = false,
+                                         .print_usage_on_error = false,
+                                         .positionals_out = &positionals,
+                                     });
+            auto const args = REQUIRE_UNWRAP(o);
+            CHECK(args[ToInt(ArgId::A)].values == Array {"v"_s});
+            CHECK(args[ToInt(ArgId::C)].was_provided);
+            REQUIRE(positionals.size == 3);
+            CHECK_EQ(positionals[0], "file1"_s);
+            CHECK_EQ(positionals[1], "file2"_s);
+            CHECK_EQ(positionals[2], "file3"_s);
+        }
+
+        SUBCASE("GNU: -- terminates flag parsing") {
+            Span<String> positionals {};
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"--a-arg"_s, "v", "--", "--c-arg", "-x", "file"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                    .positionals_out = &positionals,
+                                                });
+            auto const args = REQUIRE_UNWRAP(o);
+            CHECK(args[ToInt(ArgId::A)].values == Array {"v"_s});
+            CHECK(!args[ToInt(ArgId::C)].was_provided);
+            REQUIRE(positionals.size == 3);
+            CHECK_EQ(positionals[0], "--c-arg"_s);
+            CHECK_EQ(positionals[1], "-x"_s);
+            CHECK_EQ(positionals[2], "file"_s);
+        }
+
+        SUBCASE("GNU: fixed-arity flag consumes exactly N values, rest are positionals") {
+            Span<String> positionals {};
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"--a-arg"_s, "v", "--d-arg", "1", "2", "extra"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                    .positionals_out = &positionals,
+                                                });
+            auto const args = REQUIRE_UNWRAP(o);
+            CHECK(args[ToInt(ArgId::D)].values == Array {"1"_s, "2"_s});
+            REQUIRE(positionals.size == 1);
+            CHECK_EQ(positionals[0], "extra"_s);
+        }
+
+        SUBCASE("GNU: fixed-arity flag stops at next flag") {
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"--a-arg"_s, "v", "--d-arg", "1", "--c-arg"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                });
+            REQUIRE(o.HasError());
+            CHECK(o.Error() == CliError::InvalidArguments);
+        }
+
+        SUBCASE("GNU: unlimited-arity flag still stops at next flag") {
+            Span<String> positionals {};
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"pre"_s, "--e-arg", "1", "2", "--c-arg", "post"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                    .positionals_out = &positionals,
+                                                });
+            // E is required to have a-arg too; this test only has e and c. Provide a-arg.
+            (void)o;
+            auto const o2 =
+                ParseCommandLineArgs(writer,
+                                     a,
+                                     "my-program",
+                                     Array {"--a-arg"_s, "v", "pre", "--e-arg", "1", "2", "--c-arg", "post"},
+                                     k_arg_defs,
+                                     {
+                                         .handle_help_option = false,
+                                         .print_usage_on_error = false,
+                                         .positionals_out = &positionals,
+                                     });
+            auto const args = REQUIRE_UNWRAP(o2);
+            CHECK(args[ToInt(ArgId::E)].values == Array {"1"_s, "2"_s});
+            CHECK(args[ToInt(ArgId::C)].was_provided);
+            REQUIRE(positionals.size == 2);
+            CHECK_EQ(positionals[0], "pre"_s);
+            CHECK_EQ(positionals[1], "post"_s);
+        }
+
         SUBCASE("arg that can receive any number of arguments") {
             auto const o = ParseCommandLineArgs(writer,
                                                 a,
