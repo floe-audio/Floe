@@ -20,7 +20,6 @@
 // IMPROVE: export a Lua LSP def file for the preset table.
 
 enum class CliArgId : u8 {
-    PresetFile,
     ScriptFile,
     Raw,
     Pretty,
@@ -29,14 +28,6 @@ enum class CliArgId : u8 {
 };
 
 auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
-    {
-        .id = (u32)CliArgId::PresetFile,
-        .key = "preset-file",
-        .description = "Path to the preset file to edit",
-        .value_type = "path",
-        .required = true,
-        .num_values = 1,
-    },
     {
         .id = (u32)CliArgId::ScriptFile,
         .key = "script-file",
@@ -852,94 +843,8 @@ static int LuaInspectLibrary(lua_State* lua) {
     return 1;
 }
 
-static ErrorCodeOr<int> Main(ArgsCstr args) {
-    GlobalInit({
-        .init_error_reporting = false,
-        .set_main_thread = true,
-        .panic_response = PanicResponse::Abort,
-    });
-    DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
-
-    ArenaAllocator arena {PageAllocator::Instance()};
-
-    auto const cli_args = TRY(ParseCommandLineArgsStandard(
-        arena,
-        args,
-        k_command_line_args_defs,
-        {
-            .handle_help_option = true,
-            .print_usage_on_error = true,
-            .description = "Edit a preset using a Lua script.\n"
-                           "\n"
-                           "Library names are not stored in preset files (only "
-                           "their hashed IDs are). On startup, this tool loads "
-                           "the library name cache (library_id_cache.bin) "
-                           "written by Floe's library scanner so libraries you "
-                           "have open in Floe resolve to names instead of raw "
-                           "integers. Cache location:\n"
-                           "  Linux:   ~/.local/state/Floe/library_id_cache.bin\n"
-                           "  macOS:   ~/Library/Application Support/Floe/"
-                           "library_id_cache.bin\n"
-                           "  Windows: %APPDATA%\\Floe\\library_id_cache.bin\n"
-                           "Open Floe once after installing a new library to "
-                           "refresh the cache; delete the cache file to force a "
-                           "full rescan on next launch.",
-            .version = FLOE_VERSION_STRING,
-        }));
-
-    auto const preset_path = TRY_OR(AbsolutePath(arena, cli_args[ToInt(CliArgId::PresetFile)].values[0]), {
-        StdPrintF(StdStream::Err, "Error: failed to resolve preset path\n");
-        return error;
-    });
-
-    auto const raw = cli_args[ToInt(CliArgId::Raw)].was_provided;
-    if (raw && cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
-        StdPrintF(StdStream::Err, "Error: --raw cannot be combined with --script-file\n");
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
-
-    LoadLibraryIdCache(arena);
-
-    auto const preset_state = TRY_OR(LoadPresetFile(preset_path, arena, raw), {
-        StdPrintF(StdStream::Err, "Error: failed to open preset file: {}\n", error);
-        return error;
-    });
-
-    auto const pretty = cli_args[ToInt(CliArgId::Pretty)].was_provided;
-
-    auto lua = luaL_newstate();
-    DEFER { lua_close(lua); };
-
-    SetPrettyMode(lua, pretty);
-    BuildPresetLuaTable(lua, preset_state);
-
-    luaL_openlibs(lua);
-    lua_register(lua, "inspect_library", LuaInspectLibrary);
-
-    if (cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
-        auto const script_path =
-            TRY_OR(AbsolutePath(arena, cli_args[ToInt(CliArgId::ScriptFile)].values[0]), {
-                StdPrintF(StdStream::Err, "Error: failed to resolve script path\n");
-                return error;
-            });
-
-        auto const script_file_data = TRY_OR(ReadEntireFile(script_path, arena), {
-            StdPrintF(StdStream::Err, "Error: failed to read script file: {}\n", error);
-            return error;
-        });
-
-        if (auto const r = luaL_loadbuffer(lua,
-                                           script_file_data.data,
-                                           script_file_data.size,
-                                           NullTerminated(script_path, arena));
-            r != LUA_OK) {
-            StdPrintF(StdStream::Err, "Error: failed to load script file: {}\n", lua_tostring(lua, -1));
-            return ErrorCode {CommonError::InvalidFileFormat};
-        }
-    } else {
-        // Print-only mode.
-        // We use Lua to do this because we already have the preset data in Lua format.
-        constexpr auto k_lua_serializer = R"lua(
+// Print-only mode serializer. Defined at file scope so it can be reused per preset.
+constexpr auto k_lua_print_serializer = R"lua(
 local function serializeValue(value, indent)
     indent = indent or 0
     local indentStr = string.rep("  ", indent)
@@ -999,62 +904,219 @@ print("local preset = " .. serializeValue(preset))
 print("return preset")
 )lua";
 
-        if (auto const r = luaL_loadstring(lua, k_lua_serializer); r != LUA_OK) {
-            StdPrintF(StdStream::Err, "Error: failed to load serializer script: {}\n", lua_tostring(lua, -1));
-            return ErrorCode {CommonError::InvalidFileFormat};
-        }
-    }
+struct ProcessPresetOptions {
+    String preset_path;
+    String script_source;
+    String script_name;
+    bool have_script;
+    bool raw;
+    bool pretty;
+    bool read_only;
+    bool print_path_header;
+};
 
-    // Execute the script
-    if (auto const r = lua_pcall(lua, 0, LUA_MULTRET, 0); r != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: failed to execute script file: {}\n", lua_tostring(lua, -1));
+static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptions const& opts) {
+    auto const preset_state = TRY(LoadPresetFile(opts.preset_path, arena, opts.raw));
+
+    auto lua = luaL_newstate();
+    DEFER { lua_close(lua); };
+
+    SetPrettyMode(lua, opts.pretty);
+    BuildPresetLuaTable(lua, preset_state);
+
+    luaL_openlibs(lua);
+    lua_register(lua, "inspect_library", LuaInspectLibrary);
+
+    if (opts.print_path_header && !opts.have_script)
+        StdPrintF(StdStream::Out, "-- file: {}\n", opts.preset_path);
+
+    if (auto const r = luaL_loadbuffer(lua,
+                                       opts.script_source.data,
+                                       opts.script_source.size,
+                                       NullTerminated(opts.script_name, arena));
+        r != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: failed to load script: {}\n", lua_tostring(lua, -1));
         return ErrorCode {CommonError::InvalidFileFormat};
     }
 
-    if (cli_args[ToInt(CliArgId::ScriptFile)].was_provided &&
-        !cli_args[ToInt(CliArgId::ReadOnly)].was_provided) {
-        lua_getglobal(lua, "preset");
-        if (!lua_istable(lua, -1)) {
-            StdPrintF(StdStream::Err, "Error: preset global is not a table\n");
-            return ErrorCode {CommonError::InvalidFileFormat};
+    if (auto const r = lua_pcall(lua, 0, LUA_MULTRET, 0); r != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: script execution failed: {}\n", lua_tostring(lua, -1));
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    if (!opts.have_script || opts.read_only) return k_success;
+
+    lua_getglobal(lua, "preset");
+    if (!lua_istable(lua, -1)) {
+        StdPrintF(StdStream::Err, "Error: preset global is not a table\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    auto modified_state = preset_state;
+    TRY(ExtractPresetFromLuaTable(lua, -1, modified_state));
+
+    if (modified_state == preset_state) return k_success;
+
+    auto const temp_dir = TRY(TemporaryDirectoryOnSameFilesystemAs(opts.preset_path, arena));
+    DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
+
+    auto seed = RandomSeed();
+    auto const out_path =
+        path::Join(arena,
+                   Array {(String)temp_dir, UniqueFilename("preset- ", FLOE_PRESET_FILE_EXTENSION, seed)});
+    TRY(SavePresetFile(out_path, modified_state, false));
+
+    auto new_preset_path = opts.preset_path;
+    if (auto const ext = path::Extension(opts.preset_path); ext != FLOE_PRESET_FILE_EXTENSION) {
+        new_preset_path.RemoveSuffix(ext.size);
+        new_preset_path = fmt::Join(arena, Array {(String)new_preset_path, FLOE_PRESET_FILE_EXTENSION});
+    }
+
+    TRY(Rename(out_path, new_preset_path));
+    return k_success;
+}
+
+// Expand a positional path: if a file, append it as-is (no extension check; the user named it explicitly).
+// If a directory, recursively append every file whose extension matches a known preset format (Floe or
+// any .mirage-* variant). We can't express that with the single-string wildcard so scan all files and
+// filter via PresetFormatFromPath.
+static ErrorCodeOr<void>
+CollectPresetFiles(ArenaAllocator& arena, String input_path, DynamicArray<String>& out_files) {
+    auto const abs = TRY(AbsolutePath(arena, input_path));
+    auto const ft = TRY(GetFileType(abs));
+    switch (ft) {
+        case FileType::File: dyn::Append(out_files, (String)abs); break;
+        case FileType::Directory: {
+            auto entries = TRY(FindEntriesInFolder(arena,
+                                                   abs,
+                                                   {
+                                                       .options = {.wildcard = "*"},
+                                                       .recursive = true,
+                                                       .only_file_type = FileType::File,
+                                                   }));
+            for (auto const& e : entries) {
+                if (!PresetFormatFromPath(e.subpath)) continue;
+                dyn::Append(out_files, (String)path::Join(arena, Array {(String)abs, (String)e.subpath}));
+            }
+            break;
         }
+    }
+    return k_success;
+}
 
-        auto modified_state = preset_state;
-        TRY(ExtractPresetFromLuaTable(lua, -1, modified_state));
+static ErrorCodeOr<int> Main(ArgsCstr args) {
+    GlobalInit({
+        .init_error_reporting = false,
+        .set_main_thread = true,
+        .panic_response = PanicResponse::Abort,
+    });
+    DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
 
-        if (modified_state == preset_state) {
-            // Script didn't change anything; skip the write.
-        } else {
-            auto const temp_dir = TRY_OR(TemporaryDirectoryOnSameFilesystemAs(preset_path, arena), {
-                StdPrintF(StdStream::Err, "Error: failed to create temporary directory: {}\n", error);
-                return error;
-            });
-            DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
+    ArenaAllocator arena {PageAllocator::Instance()};
 
-            auto seed = RandomSeed();
-            auto const out_path = path::Join(
-                arena,
-                Array {(String)temp_dir, UniqueFilename("preset- ", FLOE_PRESET_FILE_EXTENSION, seed)});
-            if (auto const r = SavePresetFile(out_path, modified_state, false); r.HasError()) {
-                StdPrintF(StdStream::Err, "Error: failed to save modified preset file: {}\n", r.Error());
-                return r.Error();
-            }
+    Span<String> positional_paths {};
+    auto const cli_args = TRY(ParseCommandLineArgsStandard(
+        arena,
+        args,
+        k_command_line_args_defs,
+        {
+            .handle_help_option = true,
+            .print_usage_on_error = true,
+            .description = "Edit one or more presets using a Lua script.\n"
+                           "\n"
+                           "Pass preset files and/or directories as positional arguments. Directories are\n"
+                           "scanned recursively for Floe (*" FLOE_PRESET_FILE_EXTENSION
+                           ") and legacy Mirage (*.mirage-*) preset files.\n"
+                           "\n"
+                           "Library names are not stored in preset files (only "
+                           "their hashed IDs are). On startup, this tool loads "
+                           "the library name cache (library_id_cache.bin) "
+                           "written by Floe's library scanner so libraries you "
+                           "have open in Floe resolve to names instead of raw "
+                           "integers. Cache location:\n"
+                           "  Linux:   ~/.local/state/Floe/library_id_cache.bin\n"
+                           "  macOS:   ~/Library/Application Support/Floe/"
+                           "library_id_cache.bin\n"
+                           "  Windows: %APPDATA%\\Floe\\library_id_cache.bin\n"
+                           "Open Floe once after installing a new library to "
+                           "refresh the cache; delete the cache file to force a "
+                           "full rescan on next launch.",
+            .version = FLOE_VERSION_STRING,
+            .positionals_out = &positional_paths,
+        }));
 
-            auto new_preset_path = preset_path;
-            if (auto const ext = path::Extension(preset_path); ext != FLOE_PRESET_FILE_EXTENSION) {
-                new_preset_path.RemoveSuffix(ext.size);
-                new_preset_path =
-                    fmt::Join(arena, Array {(String)new_preset_path, FLOE_PRESET_FILE_EXTENSION});
-            }
+    if (positional_paths.size == 0) {
+        StdPrintF(StdStream::Err, "Error: at least one preset file or directory must be provided\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
 
-            if (auto const r = Rename(out_path, new_preset_path); !r.Succeeded()) {
-                StdPrintF(StdStream::Err, "Error: failed to rename modified preset file: {}\n", r.Error());
-                return r.Error();
-            }
+    auto const raw = cli_args[ToInt(CliArgId::Raw)].was_provided;
+    if (raw && cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
+        StdPrintF(StdStream::Err, "Error: --raw cannot be combined with --script-file\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    LoadLibraryIdCache(arena);
+
+    DynamicArray<String> preset_files {arena};
+    for (auto const& p : positional_paths) {
+        if (auto const r = CollectPresetFiles(arena, p, preset_files); r.HasError()) {
+            StdPrintF(StdStream::Err, "Error: cannot read '{}': {}\n", p, r.Error());
+            return r.Error();
         }
     }
 
-    return 0;
+    if (preset_files.size == 0) {
+        StdPrintF(StdStream::Err, "Error: no preset files found in the given paths\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    String script_source {};
+    String script_name {};
+    auto const have_script = cli_args[ToInt(CliArgId::ScriptFile)].was_provided;
+    if (have_script) {
+        auto const script_path =
+            TRY_OR(AbsolutePath(arena, cli_args[ToInt(CliArgId::ScriptFile)].values[0]), {
+                StdPrintF(StdStream::Err, "Error: failed to resolve script path\n");
+                return error;
+            });
+
+        auto const script_file_data = TRY_OR(ReadEntireFile(script_path, arena), {
+            StdPrintF(StdStream::Err, "Error: failed to read script file: {}\n", error);
+            return error;
+        });
+        script_source = script_file_data;
+        script_name = script_path;
+    } else {
+        script_source = FromNullTerminated(k_lua_print_serializer);
+        script_name = "print-serializer"_s;
+    }
+
+    auto const pretty = cli_args[ToInt(CliArgId::Pretty)].was_provided;
+    auto const read_only = cli_args[ToInt(CliArgId::ReadOnly)].was_provided;
+    auto const print_path_header = preset_files.size > 1;
+
+    int exit_code = 0;
+    for (auto const& preset_path : preset_files) {
+        ArenaAllocatorWithInlineStorage<4000> scratch {PageAllocator::Instance()};
+        auto const r = ProcessPreset(scratch,
+                                     {
+                                         .preset_path = preset_path,
+                                         .script_source = script_source,
+                                         .script_name = script_name,
+                                         .have_script = have_script,
+                                         .raw = raw,
+                                         .pretty = pretty,
+                                         .read_only = read_only,
+                                         .print_path_header = print_path_header,
+                                     });
+        if (r.HasError()) {
+            StdPrintF(StdStream::Err, "Error processing '{}': {}\n", preset_path, r.Error());
+            exit_code = 1;
+        }
+    }
+
+    return exit_code;
 }
 
 int main(int argc, char** argv) {
