@@ -48,6 +48,23 @@ ReportError(ErrorLevel level, Optional<u64> error_id, String format, Args const&
         .is_main = g_is_logical_main_thread != 0,
         .name = thread_name ? Optional<String> {error.arena.Clone((String)*thread_name)} : k_nullopt,
     };
+    // Sentry groups events by (exception.type, exception.value, stacktrace). Without an exception,
+    // the stack frames are invisible to grouping and every event collapses by message alone.
+    String const exception_type = error_id ? (String)fmt::Format(error.arena, "error_{x}", *error_id) : ({
+        String s;
+        switch (level) {
+            case ErrorLevel::Debug: s = "Debug"_s; break;
+            case ErrorLevel::Info: s = "Info"_s; break;
+            case ErrorLevel::Warning: s = "Warning"_s; break;
+            case ErrorLevel::Error: s = "Error"_s; break;
+            case ErrorLevel::Fatal: s = "Fatal"_s; break;
+        }
+        s;
+    });
+    error.exception = sentry::Error::Exception {
+        .type = exception_type,
+        .value = error.message,
+    };
     detail::ReportError(Move(error), error_id);
 }
 
