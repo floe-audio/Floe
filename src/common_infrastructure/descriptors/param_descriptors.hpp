@@ -1111,6 +1111,11 @@ struct ParamDescriptor {
         };
 
         u32 id;
+        // A persistent, human-readable identifier in lowercase reverse-domain style (e.g.
+        // "fx.compressor.ratio", "layer1.filter.cutoff"). Must be set alongside `id` and must never change
+        // once added. The numeric `id` is the primary key used in serialised state and DAW automation; this
+        // string is a more easily identifiable alternative for use in logs, scripts, and tooling.
+        String id_string;
         // Release generation in which this parameter was first introduced. Generation 0 is the v1.1.2
         // baseline; bump by one for every release that adds new parameters. Used to compute the AUv2
         // parameter ordering so existing automation lanes in Logic/GarageBand stay stable when new
@@ -1128,6 +1133,7 @@ struct ParamDescriptor {
     constexpr ParamDescriptor(ConstructorArgs args)
         : index((ParamIndex)-1)
         , id(args.id)
+        , id_string(args.id_string)
         , flags(args.flags)
         , display_format(args.value_config.display_format)
         , value_type(args.value_config.value_type)
@@ -1187,6 +1193,10 @@ struct ParamDescriptor {
 
     ParamIndex index;
     u32 id; // never change
+    // The numeric `id` above is the primary identifier (used in serialised state and DAW automation).
+    // `id_string` is a more easily identifiable alternative for some cases (logs, scripts, tooling). Both
+    // are unique and stable - once added, neither can change.
+    String id_string;
     ParamFlags flags;
     ParamDisplayFormat display_format;
     ParamValueType value_type;
@@ -1571,6 +1581,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(MasterVolume) = Args {
         .id = id(IdRegion::Master, 0), // never change
+        .id_string = "master.volume"_s,
         .value_config = val_config_helpers::Volume({.default_db = 0}),
         .modules = {ParameterModule::Master},
         .name = "Volume"_s,
@@ -1580,6 +1591,7 @@ consteval auto CreateParams() {
 
     mp(MasterVelocity) = Args {
         .id = id(IdRegion::Master, 1), // never change
+        .id_string = "master.legacy_velocity"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Master},
         .name = "Velocity To Volume Strength"_s,
@@ -1590,6 +1602,7 @@ consteval auto CreateParams() {
     };
     mp(MasterTimbre) = Args {
         .id = id(IdRegion::Master, 2), // never change
+        .id_string = "master.timbre"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 80}),
         .modules = {ParameterModule::Master},
         .name = "Timbre"_s,
@@ -1603,6 +1616,7 @@ consteval auto CreateParams() {
 
     mp(Macro1) = Args {
         .id = id(IdRegion::Master, 101), // never change
+        .id_string = "macro.1"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
         .name = "Macro 1"_s,
@@ -1611,6 +1625,7 @@ consteval auto CreateParams() {
     };
     mp(Macro2) = Args {
         .id = id(IdRegion::Master, 102), // never change
+        .id_string = "macro.2"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
         .name = "Macro 2"_s,
@@ -1619,6 +1634,7 @@ consteval auto CreateParams() {
     };
     mp(Macro3) = Args {
         .id = id(IdRegion::Master, 103), // never change
+        .id_string = "macro.3"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
         .name = "Macro 3"_s,
@@ -1627,6 +1643,7 @@ consteval auto CreateParams() {
     };
     mp(Macro4) = Args {
         .id = id(IdRegion::Master, 104), // never change
+        .id_string = "macro.4"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
         .name = "Macro 4"_s,
@@ -1637,6 +1654,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(DistortionType) = Args {
         .id = id(IdRegion::Master, 3), // never change
+        .id_string = "fx.distortion.type"_s,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::DistortionType,
             .default_val = (u32)DistortionType::TubeLog,
@@ -1648,6 +1666,7 @@ consteval auto CreateParams() {
     };
     mp(DistortionDrive) = Args {
         .id = id(IdRegion::Master, 4), // never change
+        .id_string = "fx.distortion.drive"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Distortion},
         .name = "Drive"_s,
@@ -1656,6 +1675,7 @@ consteval auto CreateParams() {
     };
     mp(DistortionMix) = Args {
         .id = id(IdRegion::Master, 115), // never change
+        .id_string = "fx.distortion.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 100}),
         .modules = {ParameterModule::Effect, ParameterModule::Distortion},
@@ -1665,6 +1685,7 @@ consteval auto CreateParams() {
     };
     mp(DistortionOn) = Args {
         .id = id(IdRegion::Master, 5), // never change
+        .id_string = "fx.distortion.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Distortion},
         .name = "On"_s,
@@ -1675,6 +1696,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(BitCrushBits) = Args {
         .id = id(IdRegion::Master, 6), // never change
+        .id_string = "fx.bitcrush.bits"_s,
         .value_config = val_config_helpers::Int({.range = {2, 32}, .default_val = 32}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
         .name = "Bits"_s,
@@ -1683,6 +1705,7 @@ consteval auto CreateParams() {
     };
     mp(BitCrushBitRate) = Args {
         .id = id(IdRegion::Master, 7), // never change
+        .id_string = "fx.bitcrush.bit_rate"_s,
         .value_config = val_config_helpers::CustomProjected({
             .display_format = ParamDisplayFormat::Hz,
             .default_val = 44100,
@@ -1695,6 +1718,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyBitCrushWet) = Args {
         .id = id(IdRegion::Master, 8), // never change
+        .id_string = "fx.bitcrush.legacy_wet"_s,
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
         .name = "Legacy Wet"_s,
@@ -1704,6 +1728,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyBitCrushDry) = Args {
         .id = id(IdRegion::Master, 9), // never change
+        .id_string = "fx.bitcrush.legacy_dry"_s,
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
         .name = "Legacy Dry"_s,
@@ -1713,6 +1738,7 @@ consteval auto CreateParams() {
     };
     mp(BitCrushMix) = Args {
         .id = id(IdRegion::Master, 109), // never change
+        .id_string = "fx.bitcrush.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
@@ -1722,6 +1748,7 @@ consteval auto CreateParams() {
     };
     mp(BitCrushOutput) = Args {
         .id = id(IdRegion::Master, 110), // never change
+        .id_string = "fx.bitcrush.output"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
@@ -1731,6 +1758,7 @@ consteval auto CreateParams() {
     };
     mp(BitCrushOn) = Args {
         .id = id(IdRegion::Master, 10), // never change
+        .id_string = "fx.bitcrush.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
         .name = "On"_s,
@@ -1741,6 +1769,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(LegacyCompressorThreshold) = Args {
         .id = id(IdRegion::Master, 11), // never change
+        .id_string = "fx.compressor.legacy_threshold"_s,
         .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Legacy Threshold"_s,
@@ -1750,6 +1779,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorThreshold) = Args {
         .id = id(IdRegion::Master, 118), // never change
+        .id_string = "fx.compressor.threshold"_s,
         .added_in_generation = 1,
         .value_config =
             ParamDescriptor::ConstructorArgs::ValueConfig {
@@ -1766,6 +1796,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyCompressorRatio) = Args {
         .id = id(IdRegion::Master, 12), // never change
+        .id_string = "fx.compressor.legacy_ratio"_s,
         .value_config = val_config_helpers::CustomLinear({
             .range = {1, 20},
             .default_val = 2,
@@ -1778,6 +1809,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorRatio) = Args {
         .id = id(IdRegion::Master, 119), // never change
+        .id_string = "fx.compressor.ratio"_s,
         .added_in_generation = 1,
         .value_config = ({
             ParamDescriptor::Projection const projection {{1.0f, 20.0f}, 2.66f};
@@ -1796,6 +1828,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorGain) = Args {
         .id = id(IdRegion::Master, 13), // never change
+        .id_string = "fx.compressor.gain"_s,
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Gain"_s,
@@ -1804,6 +1837,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorAutoGain) = Args {
         .id = id(IdRegion::Master, 14), // never change
+        .id_string = "fx.compressor.auto_gain"_s,
         .value_config = val_config_helpers::Bool({.default_state = true}),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Auto Gain"_s,
@@ -1813,6 +1847,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorOn) = Args {
         .id = id(IdRegion::Master, 15), // never change
+        .id_string = "fx.compressor.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "On"_s,
@@ -1821,6 +1856,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorType) = Args {
         .id = id(IdRegion::Master, 33), // never change
+        .id_string = "fx.compressor.type"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::CompressorType,
@@ -1833,6 +1869,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorAttack) = Args {
         .id = id(IdRegion::Master, 34), // never change
+        .id_string = "fx.compressor.attack"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
@@ -1842,6 +1879,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorRelease) = Args {
         .id = id(IdRegion::Master, 35), // never change
+        .id_string = "fx.compressor.release"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
@@ -1851,6 +1889,7 @@ consteval auto CreateParams() {
     };
     mp(CompressorMix) = Args {
         .id = id(IdRegion::Master, 36), // never change
+        .id_string = "fx.compressor.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 100}),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
@@ -1862,6 +1901,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(FilterOn) = Args {
         .id = id(IdRegion::Master, 16), // never change
+        .id_string = "fx.filter.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "On"_s,
@@ -1870,6 +1910,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyFilterCutoff) = Args {
         .id = id(IdRegion::Master, 17), // never change
+        .id_string = "fx.filter.legacy_cutoff"_s,
         .value_config = val_config_helpers::LegacyFilter({.default_hz = 5000}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Legacy Cutoff Frequency"_s,
@@ -1879,6 +1920,7 @@ consteval auto CreateParams() {
     };
     mp(FilterCutoff) = Args {
         .id = id(IdRegion::Master, 106), // never change
+        .id_string = "fx.filter.cutoff"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Filter({.default_hz = 5000}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
@@ -1888,6 +1930,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyFilterResonance) = Args {
         .id = id(IdRegion::Master, 18), // never change
+        .id_string = "fx.filter.legacy_resonance"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 30}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Legacy Resonance"_s,
@@ -1897,6 +1940,7 @@ consteval auto CreateParams() {
     };
     mp(FilterResonance) = Args {
         .id = id(IdRegion::Master, 29), // never change
+        .id_string = "fx.filter.resonance"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
@@ -1906,6 +1950,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyFilterGain) = Args {
         .id = id(IdRegion::Master, 19), // never change
+        .id_string = "fx.filter.legacy_gain"_s,
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "Legacy Gain"_s,
@@ -1915,6 +1960,7 @@ consteval auto CreateParams() {
     };
     mp(FilterGain) = Args {
         .id = id(IdRegion::Master, 30), // never change
+        .id_string = "fx.filter.gain"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
@@ -1924,6 +1970,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyFilterType) = Args {
         .id = id(IdRegion::Master, 20), // never change
+        .id_string = "fx.filter.legacy_type"_s,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::LegacyEffectFilterType,
             .default_val = (u32)LegacyEffectFilterType::LowPass,
@@ -1936,6 +1983,7 @@ consteval auto CreateParams() {
     };
     mp(FilterType) = Args {
         .id = id(IdRegion::Master, 105), // never change
+        .id_string = "fx.filter.type"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::EffectFilterType,
@@ -1948,6 +1996,7 @@ consteval auto CreateParams() {
     };
     mp(FilterMix) = Args {
         .id = id(IdRegion::Master, 117), // never change
+        .id_string = "fx.filter.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 100}),
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
@@ -1959,6 +2008,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(StereoWidenWidth) = Args {
         .id = id(IdRegion::Master, 21), // never change
+        .id_string = "fx.stereo_widen.width"_s,
         .value_config = val_config_helpers::BidirectionalPercent({
             .default_percent = 15,
             .display_format = ParamDisplayFormat::Percent,
@@ -1970,6 +2020,7 @@ consteval auto CreateParams() {
     };
     mp(StereoWidenOn) = Args {
         .id = id(IdRegion::Master, 22), // never change
+        .id_string = "fx.stereo_widen.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
         .name = "On"_s,
@@ -1978,6 +2029,7 @@ consteval auto CreateParams() {
     };
     mp(StereoWidenMode) = Args {
         .id = id(IdRegion::Master, 31), // never change
+        .id_string = "fx.stereo_widen.mode"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::StereoWidenMode,
@@ -1991,6 +2043,7 @@ consteval auto CreateParams() {
     };
     mp(StereoWidenBassMono) = Args {
         .id = id(IdRegion::Master, 32), // never change
+        .id_string = "fx.stereo_widen.bass_mono"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Hz({
             .projection = {.range = {20, 1000},
@@ -2005,6 +2058,7 @@ consteval auto CreateParams() {
     };
     mp(StereoWidenMix) = Args {
         .id = id(IdRegion::Master, 116), // never change
+        .id_string = "fx.stereo_widen.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 100}),
         .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
@@ -2016,6 +2070,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(ChorusRate) = Args {
         .id = id(IdRegion::Master, 23), // never change
+        .id_string = "fx.chorus.rate"_s,
         .value_config = val_config_helpers::HzSlow({.default_hz = 5}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "Rate"_s,
@@ -2024,6 +2079,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyChorusHighpass) = Args {
         .id = id(IdRegion::Master, 24), // never change
+        .id_string = "fx.chorus.legacy_highpass"_s,
         .value_config = val_config_helpers::LegacyFilter({.default_hz = 1000}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "Legacy High-pass"_s,
@@ -2033,6 +2089,7 @@ consteval auto CreateParams() {
     };
     mp(ChorusHighpass) = Args {
         .id = id(IdRegion::Master, 107), // never change
+        .id_string = "fx.chorus.highpass"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Filter({.default_hz = 1000}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
@@ -2042,6 +2099,7 @@ consteval auto CreateParams() {
     };
     mp(ChorusDepth) = Args {
         .id = id(IdRegion::Master, 25), // never change
+        .id_string = "fx.chorus.depth"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 10}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "Depth"_s,
@@ -2050,6 +2108,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyChorusWet) = Args {
         .id = id(IdRegion::Master, 26), // never change
+        .id_string = "fx.chorus.legacy_wet"_s,
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "Legacy Wet"_s,
@@ -2059,6 +2118,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyChorusDry) = Args {
         .id = id(IdRegion::Master, 27), // never change
+        .id_string = "fx.chorus.legacy_dry"_s,
         .value_config = val_config_helpers::Volume({.default_db = -6}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "Legacy Dry"_s,
@@ -2068,6 +2128,7 @@ consteval auto CreateParams() {
     };
     mp(ChorusMix) = Args {
         .id = id(IdRegion::Master, 111), // never change
+        .id_string = "fx.chorus.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
@@ -2077,6 +2138,7 @@ consteval auto CreateParams() {
     };
     mp(ChorusOutput) = Args {
         .id = id(IdRegion::Master, 112), // never change
+        .id_string = "fx.chorus.output"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
@@ -2086,6 +2148,7 @@ consteval auto CreateParams() {
     };
     mp(ChorusOn) = Args {
         .id = id(IdRegion::Master, 28), // never change
+        .id_string = "fx.chorus.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "On"_s,
@@ -2096,6 +2159,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(DelayMode) = Args {
         .id = id(IdRegion::Master, 90), // never change
+        .id_string = "fx.delay.mode"_s,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::DelayMode,
             .default_val = (u32)DelayMode::Stereo,
@@ -2108,6 +2172,7 @@ consteval auto CreateParams() {
 
     mp(DelayFilterCutoffSemitones) = Args {
         .id = id(IdRegion::Master, 91), // never change
+        .id_string = "fx.delay.filter_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 60}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "Filter Cutoff"_s,
@@ -2117,6 +2182,7 @@ consteval auto CreateParams() {
 
     mp(DelayFilterSpread) = Args {
         .id = id(IdRegion::Master, 92), // never change
+        .id_string = "fx.delay.filter_spread"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "Filter Spread"_s,
@@ -2125,6 +2191,7 @@ consteval auto CreateParams() {
     };
     mp(DelayTimeLMs) = Args {
         .id = id(IdRegion::Master, 93), // never change
+        .id_string = "fx.delay.time_l_ms"_s,
         .value_config = val_config_helpers::Ms({.projection = {{15, 4000}, 2.0f}, .default_ms = 470}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "Time Left (ms)"_s,
@@ -2133,6 +2200,7 @@ consteval auto CreateParams() {
     };
     mp(DelayTimeRMs) = Args {
         .id = id(IdRegion::Master, 94), // never change
+        .id_string = "fx.delay.time_r_ms"_s,
         .value_config = val_config_helpers::Ms({.projection = {{15, 4000}, 2.0f}, .default_ms = 470}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "Legacy Time Right (ms)"_s,
@@ -2141,6 +2209,7 @@ consteval auto CreateParams() {
     };
     mp(DelayTimeSyncedL) = Args {
         .id = id(IdRegion::Master, 95), // never change
+        .id_string = "fx.delay.time_synced_l"_s,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::DelaySyncedTime,
             .default_val = (u32)DelaySyncedTime::_1_4,
@@ -2152,6 +2221,7 @@ consteval auto CreateParams() {
     };
     mp(DelayTimeSyncedR) = Args {
         .id = id(IdRegion::Master, 96), // never change
+        .id_string = "fx.delay.time_synced_r"_s,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::DelaySyncedTime,
             .default_val = (u32)DelaySyncedTime::_1_8,
@@ -2163,6 +2233,7 @@ consteval auto CreateParams() {
     };
     mp(DelayTimeSyncSwitch) = Args {
         .id = id(IdRegion::Master, 97), // never change
+        .id_string = "fx.delay.time_sync"_s,
         .value_config = val_config_helpers::Bool({.default_state = true}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "On"_s,
@@ -2171,6 +2242,7 @@ consteval auto CreateParams() {
     };
     mp(DelayMix) = Args {
         .id = id(IdRegion::Master, 98), // never change
+        .id_string = "fx.delay.mix"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "Mix"_s,
@@ -2179,6 +2251,7 @@ consteval auto CreateParams() {
     };
     mp(DelayOn) = Args {
         .id = id(IdRegion::Master, 99), // never change
+        .id_string = "fx.delay.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "On"_s,
@@ -2187,6 +2260,7 @@ consteval auto CreateParams() {
     };
     mp(DelayFeedback) = Args {
         .id = id(IdRegion::Master, 100), // never change
+        .id_string = "fx.delay.feedback"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "Feedback"_s,
@@ -2197,6 +2271,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(PhaserFeedback) = Args {
         .id = id(IdRegion::Master, 82), // never change
+        .id_string = "fx.phaser.feedback"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 40}),
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "Feedback"_s,
@@ -2206,6 +2281,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserModFreqHz) = Args {
         .id = id(IdRegion::Master, 83), // never change
+        .id_string = "fx.phaser.mod_freq"_s,
         .value_config = val_config_helpers::HzSlow({
             .default_hz = 0.2f,
             .exponent = 2.5f,
@@ -2219,6 +2295,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserCenterSemitones) = Args {
         .id = id(IdRegion::Master, 84), // never change
+        .id_string = "fx.phaser.center"_s,
         .value_config = val_config_helpers::Semitones({
             .default_val = 60,
             .range = {8, 136},
@@ -2231,6 +2308,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserShape) = Args {
         .id = id(IdRegion::Master, 85), // never change
+        .id_string = "fx.phaser.shape"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "Shape"_s,
@@ -2240,6 +2318,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserModDepth) = Args {
         .id = id(IdRegion::Master, 86), // never change
+        .id_string = "fx.phaser.mod_depth"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 20, .range = {0, 48}}),
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "Mod Depth"_s,
@@ -2249,6 +2328,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserStereoAmount) = Args {
         .id = id(IdRegion::Master, 87), // never change
+        .id_string = "fx.phaser.stereo_amount"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 5}),
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "Stereo Amount"_s,
@@ -2258,6 +2338,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserMix) = Args {
         .id = id(IdRegion::Master, 88), // never change
+        .id_string = "fx.phaser.mix"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "Mix"_s,
@@ -2267,6 +2348,7 @@ consteval auto CreateParams() {
     };
     mp(PhaserOn) = Args {
         .id = id(IdRegion::Master, 89), // never change
+        .id_string = "fx.phaser.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "On"_s,
@@ -2277,6 +2359,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(EqOn) = Args {
         .id = id(IdRegion::Master, 120), // never change
+        .id_string = "fx.eq.on"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq},
@@ -2286,6 +2369,7 @@ consteval auto CreateParams() {
     };
     mp(EqMix) = Args {
         .id = id(IdRegion::Master, 121), // never change
+        .id_string = "fx.eq.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 100}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq},
@@ -2295,6 +2379,7 @@ consteval auto CreateParams() {
     };
     mp(EqType1) = Args {
         .id = id(IdRegion::Master, 122), // never change
+        .id_string = "fx.eq.band1.type"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Menu(
             {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::LowShelf}),
@@ -2305,6 +2390,7 @@ consteval auto CreateParams() {
     };
     mp(EqFreq1) = Args {
         .id = id(IdRegion::Master, 123), // never change
+        .id_string = "fx.eq.band1.freq"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Filter({.default_hz = 100}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
@@ -2314,6 +2400,7 @@ consteval auto CreateParams() {
     };
     mp(EqResonance1) = Args {
         .id = id(IdRegion::Master, 124), // never change
+        .id_string = "fx.eq.band1.resonance"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 20}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
@@ -2323,6 +2410,7 @@ consteval auto CreateParams() {
     };
     mp(EqGain1) = Args {
         .id = id(IdRegion::Master, 125), // never change
+        .id_string = "fx.eq.band1.gain"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band1},
@@ -2332,6 +2420,7 @@ consteval auto CreateParams() {
     };
     mp(EqType2) = Args {
         .id = id(IdRegion::Master, 126), // never change
+        .id_string = "fx.eq.band2.type"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Menu(
             {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::Peak}),
@@ -2342,6 +2431,7 @@ consteval auto CreateParams() {
     };
     mp(EqFreq2) = Args {
         .id = id(IdRegion::Master, 127), // never change
+        .id_string = "fx.eq.band2.freq"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Filter({.default_hz = 1000}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
@@ -2351,6 +2441,7 @@ consteval auto CreateParams() {
     };
     mp(EqResonance2) = Args {
         .id = id(IdRegion::Master, 128), // never change
+        .id_string = "fx.eq.band2.resonance"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 20}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
@@ -2360,6 +2451,7 @@ consteval auto CreateParams() {
     };
     mp(EqGain2) = Args {
         .id = id(IdRegion::Master, 129), // never change
+        .id_string = "fx.eq.band2.gain"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band2},
@@ -2369,6 +2461,7 @@ consteval auto CreateParams() {
     };
     mp(EqType3) = Args {
         .id = id(IdRegion::Master, 130), // never change
+        .id_string = "fx.eq.band3.type"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Menu(
             {.type = ParamDescriptor::MenuType::EqType, .default_val = (u32)EqType::HighShelf}),
@@ -2379,6 +2472,7 @@ consteval auto CreateParams() {
     };
     mp(EqFreq3) = Args {
         .id = id(IdRegion::Master, 131), // never change
+        .id_string = "fx.eq.band3.freq"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Filter({.default_hz = 8000}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
@@ -2388,6 +2482,7 @@ consteval auto CreateParams() {
     };
     mp(EqResonance3) = Args {
         .id = id(IdRegion::Master, 132), // never change
+        .id_string = "fx.eq.band3.resonance"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 20}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
@@ -2397,6 +2492,7 @@ consteval auto CreateParams() {
     };
     mp(EqGain3) = Args {
         .id = id(IdRegion::Master, 133), // never change
+        .id_string = "fx.eq.band3.gain"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Gain({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Eq, ParameterModule::Band3},
@@ -2408,6 +2504,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(LegacyConvolutionReverbHighpass) = Args {
         .id = id(IdRegion::Master, 65), // never change
+        .id_string = "fx.convolution_reverb.legacy_highpass"_s,
         .value_config = val_config_helpers::LegacyFilter({.default_hz = 30}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
         .name = "Legacy High-pass"_s,
@@ -2417,6 +2514,7 @@ consteval auto CreateParams() {
     };
     mp(ConvolutionReverbHighpass) = Args {
         .id = id(IdRegion::Master, 108), // never change
+        .id_string = "fx.convolution_reverb.highpass"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Filter({.default_hz = 30}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
@@ -2426,6 +2524,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyConvolutionReverbWet) = Args {
         .id = id(IdRegion::Master, 66), // never change
+        .id_string = "fx.convolution_reverb.legacy_wet"_s,
         .value_config = val_config_helpers::Volume({.default_db = -30}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
         .name = "Legacy Wet"_s,
@@ -2435,6 +2534,7 @@ consteval auto CreateParams() {
     };
     mp(LegacyConvolutionReverbDry) = Args {
         .id = id(IdRegion::Master, 67), // never change
+        .id_string = "fx.convolution_reverb.legacy_dry"_s,
         .value_config = val_config_helpers::Volume({.default_db = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
         .name = "Legacy Dry"_s,
@@ -2444,6 +2544,7 @@ consteval auto CreateParams() {
     };
     mp(ConvolutionReverbMix) = Args {
         .id = id(IdRegion::Master, 113), // never change
+        .id_string = "fx.convolution_reverb.mix"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Percent({.default_percent = 25}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
@@ -2453,6 +2554,7 @@ consteval auto CreateParams() {
     };
     mp(ConvolutionReverbOutput) = Args {
         .id = id(IdRegion::Master, 114), // never change
+        .id_string = "fx.convolution_reverb.output"_s,
         .added_in_generation = 1,
         .value_config = val_config_helpers::Volume({.default_db = 0, .max_db = 18}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
@@ -2462,6 +2564,7 @@ consteval auto CreateParams() {
     };
     mp(ConvolutionReverbOn) = Args {
         .id = id(IdRegion::Master, 68), // never change
+        .id_string = "fx.convolution_reverb.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
         .name = "On"_s,
@@ -2472,6 +2575,7 @@ consteval auto CreateParams() {
     // =====================================================================================================
     mp(ReverbDecayTimeMs) = Args {
         .id = id(IdRegion::Master, 69), // never change
+        .id_string = "fx.reverb.decay_time"_s,
         .value_config = val_config_helpers::Ms({
             .projection = {{10, 60000}, 5},
             .default_ms = 1000,
@@ -2485,6 +2589,7 @@ consteval auto CreateParams() {
 
     mp(ReverbPreLowPassCutoff) = Args {
         .id = id(IdRegion::Master, 70), // never change
+        .id_string = "fx.reverb.pre_lowpass_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 128}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Pre Low Cutoff"_s,
@@ -2495,6 +2600,7 @@ consteval auto CreateParams() {
 
     mp(ReverbPreHighPassCutoff) = Args {
         .id = id(IdRegion::Master, 71), // never change
+        .id_string = "fx.reverb.pre_highpass_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Pre High Cutoff"_s,
@@ -2505,6 +2611,7 @@ consteval auto CreateParams() {
 
     mp(ReverbLowShelfCutoff) = Args {
         .id = id(IdRegion::Master, 72), // never change
+        .id_string = "fx.reverb.low_shelf_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 40}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Low Cutoff"_s,
@@ -2522,6 +2629,7 @@ consteval auto CreateParams() {
 
     mp(ReverbLowShelfGain) = Args {
         .id = id(IdRegion::Master, 73), // never change
+        .id_string = "fx.reverb.low_shelf_gain"_s,
         .value_config = shelf_gain_value_config,
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Low Gain"_s,
@@ -2532,6 +2640,7 @@ consteval auto CreateParams() {
 
     mp(ReverbHighShelfCutoff) = Args {
         .id = id(IdRegion::Master, 74), // never change
+        .id_string = "fx.reverb.high_shelf_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 128}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "High Cutoff"_s,
@@ -2542,6 +2651,7 @@ consteval auto CreateParams() {
 
     mp(ReverbHighShelfGain) = Args {
         .id = id(IdRegion::Master, 75), // never change
+        .id_string = "fx.reverb.high_shelf_gain"_s,
         .value_config = shelf_gain_value_config,
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "High Gain"_s,
@@ -2552,6 +2662,7 @@ consteval auto CreateParams() {
 
     mp(ReverbChorusAmount) = Args {
         .id = id(IdRegion::Master, 76), // never change
+        .id_string = "fx.reverb.chorus_amount"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Chorus Amount"_s,
@@ -2562,6 +2673,7 @@ consteval auto CreateParams() {
 
     mp(ReverbChorusFrequency) = Args {
         .id = id(IdRegion::Master, 77), // never change
+        .id_string = "fx.reverb.chorus_freq"_s,
         .value_config = val_config_helpers::Hz({
             .projection = {.range = {0.003f, 2}, .exponent = 4.5f},
             .default_hz = 0.01f,
@@ -2575,6 +2687,7 @@ consteval auto CreateParams() {
 
     mp(ReverbSize) = Args {
         .id = id(IdRegion::Master, 78), // never change
+        .id_string = "fx.reverb.size"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Size"_s,
@@ -2585,6 +2698,7 @@ consteval auto CreateParams() {
 
     mp(ReverbDelay) = Args {
         .id = id(IdRegion::Master, 79), // never change
+        .id_string = "fx.reverb.delay"_s,
         .value_config = val_config_helpers::Ms({
             .projection = {{0, 1000}, 1.5f},
             .default_ms = 0,
@@ -2598,6 +2712,7 @@ consteval auto CreateParams() {
 
     mp(ReverbMix) = Args {
         .id = id(IdRegion::Master, 80), // never change
+        .id_string = "fx.reverb.mix"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 50}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "Mix"_s,
@@ -2608,6 +2723,7 @@ consteval auto CreateParams() {
 
     mp(ReverbOn) = Args {
         .id = id(IdRegion::Master, 81), // never change
+        .id_string = "fx.reverb.on"_s,
         .value_config = val_config_helpers::Bool({.default_state = false}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "On"_s,
@@ -2642,9 +2758,23 @@ consteval auto CreateParams() {
             default: throw "create a new region & module for this layer";
         }
 
+        // Picks one of three id_string literals based on the current layer. Use the LAYER_ID(suffix) macro
+        // below to expand a single suffix into three "layerN.<suffix>" literals via preprocessor string
+        // concatenation - this keeps id_strings as views into static string-literal storage.
+        auto layer_id = [layer_index](String l1, String l2, String l3) -> String {
+            switch (layer_index) {
+                case 0: return l1;
+                case 1: return l2;
+                case 2: return l3;
+            }
+            return {};
+        };
+#define LAYER_ID(suffix) layer_id("layer1." suffix ""_s, "layer2." suffix ""_s, "layer3." suffix ""_s)
+
         // =================================================================================================
         lp(Volume) = Args {
             .id = id(region, 0), // never change
+            .id_string = LAYER_ID("volume"),
             .value_config = val_config_helpers::Volume({.default_db = -6}),
             .modules = {layer_module},
             .name = "Volume"_s,
@@ -2653,6 +2783,7 @@ consteval auto CreateParams() {
         };
         lp(Mute) = Args {
             .id = id(region, 1), // never change
+            .id_string = LAYER_ID("mute"),
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module},
             .name = "Mute"_s,
@@ -2661,6 +2792,7 @@ consteval auto CreateParams() {
         };
         lp(Solo) = Args {
             .id = id(region, 2), // never change
+            .id_string = LAYER_ID("solo"),
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module},
             .name = "Solo"_s,
@@ -2669,6 +2801,7 @@ consteval auto CreateParams() {
         };
         lp(Pan) = Args {
             .id = id(region, 3), // never change
+            .id_string = LAYER_ID("pan"),
             .value_config = val_config_helpers::BidirectionalPercent({
                 .default_percent = 0,
                 .display_format = ParamDisplayFormat::Pan,
@@ -2680,6 +2813,7 @@ consteval auto CreateParams() {
         };
         lp(StereoWidth) = Args {
             .id = id(region, 95), // never change
+            .id_string = LAYER_ID("stereo_width"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::BidirectionalPercent({
                 .default_percent = 0,
@@ -2692,6 +2826,7 @@ consteval auto CreateParams() {
         };
         lp(TuneCents) = Args {
             .id = id(region, 4), // never change
+            .id_string = LAYER_ID("tune_cents"),
             .value_config =
                 {
                     .linear_range {-1, 1},
@@ -2706,6 +2841,7 @@ consteval auto CreateParams() {
         };
         lp(TuneSemitone) = Args {
             .id = id(region, 5), // never change
+            .id_string = LAYER_ID("tune_semitones"),
             .value_config = val_config_helpers::Int({.range = {-36, 36}, .default_val = 0}),
             .modules = {layer_module},
             .name = "Pitch Semitones"_s,
@@ -2716,6 +2852,7 @@ consteval auto CreateParams() {
         // =================================================================================================
         lp(LoopMode) = Args {
             .id = id(region, 49), // never change
+            .id_string = LAYER_ID("loop.mode"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LoopMode,
                 .default_val = (u32)LoopMode::InstrumentDefault,
@@ -2727,6 +2864,7 @@ consteval auto CreateParams() {
         };
         lp(LoopStart) = Args {
             .id = id(region, 7), // never change
+            .id_string = LAYER_ID("loop.start"),
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Start"_s,
@@ -2735,6 +2873,7 @@ consteval auto CreateParams() {
         };
         lp(LoopEnd) = Args {
             .id = id(region, 8), // never change
+            .id_string = LAYER_ID("loop.end"),
             .value_config = val_config_helpers::Percent({.default_percent = 100}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "End"_s,
@@ -2743,6 +2882,7 @@ consteval auto CreateParams() {
         };
         lp(LoopCrossfade) = Args {
             .id = id(region, 9), // never change
+            .id_string = LAYER_ID("loop.crossfade"),
             .value_config = val_config_helpers::Percent({.default_percent = 1}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Crossfade Size"_s,
@@ -2751,6 +2891,7 @@ consteval auto CreateParams() {
         };
         lp(SampleOffset) = Args {
             .id = id(region, 11), // never change
+            .id_string = LAYER_ID("sample_offset"),
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Sample Start Offset"_s,
@@ -2759,6 +2900,7 @@ consteval auto CreateParams() {
         };
         lp(Reverse) = Args {
             .id = id(region, 12), // never change
+            .id_string = LAYER_ID("reverse"),
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Reverse On"_s,
@@ -2769,6 +2911,7 @@ consteval auto CreateParams() {
         // =================================================================================================
         lp(VolEnvOn) = Args {
             .id = id(region, 13), // never change
+            .id_string = LAYER_ID("vol_env.on"),
             .value_config = val_config_helpers::Bool({.default_state = true}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "On"_s,
@@ -2778,6 +2921,7 @@ consteval auto CreateParams() {
         };
         lp(VolumeAttack) = Args {
             .id = id(region, 14), // never change
+            .id_string = LAYER_ID("vol_env.attack"),
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 0}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Attack"_s,
@@ -2786,6 +2930,7 @@ consteval auto CreateParams() {
         };
         lp(VolumeDecay) = Args {
             .id = id(region, 15), // never change
+            .id_string = LAYER_ID("vol_env.decay"),
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 1000}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Decay"_s,
@@ -2794,6 +2939,7 @@ consteval auto CreateParams() {
         };
         lp(VolumeSustain) = Args {
             .id = id(region, 16), // never change
+            .id_string = LAYER_ID("vol_env.sustain"),
             .value_config = val_config_helpers::Sustain({.default_db = 0}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Sustain"_s,
@@ -2802,6 +2948,7 @@ consteval auto CreateParams() {
         };
         lp(VolumeRelease) = Args {
             .id = id(region, 17), // never change
+            .id_string = LAYER_ID("vol_env.release"),
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 800}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::VolEnv},
             .name = "Release"_s,
@@ -2812,6 +2959,7 @@ consteval auto CreateParams() {
         // =================================================================================================
         lp(FilterOn) = Args {
             .id = id(region, 18), // never change
+            .id_string = LAYER_ID("filter.on"),
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "On"_s,
@@ -2820,6 +2968,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyFilterCutoff) = Args {
             .id = id(region, 19), // never change
+            .id_string = LAYER_ID("filter.legacy_cutoff"),
             .value_config = val_config_helpers::LegacyFilter({.default_hz = 6000}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Legacy Cutoff Frequency"_s,
@@ -2829,6 +2978,7 @@ consteval auto CreateParams() {
         };
         lp(FilterCutoff) = Args {
             .id = id(region, 90), // never change
+            .id_string = LAYER_ID("filter.cutoff"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Filter({.default_hz = 6000}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
@@ -2838,6 +2988,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyFilterResonance) = Args {
             .id = id(region, 20), // never change
+            .id_string = LAYER_ID("filter.legacy_resonance"),
             .value_config = val_config_helpers::Percent({.default_percent = 25}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Legacy Resonance"_s,
@@ -2847,6 +2998,7 @@ consteval auto CreateParams() {
         };
         lp(FilterResonance) = Args {
             .id = id(region, 69), // never change
+            .id_string = LAYER_ID("filter.resonance"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
@@ -2856,6 +3008,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyFilterType) = Args {
             .id = id(region, 21), // never change
+            .id_string = LAYER_ID("filter.legacy_type"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LegacyLayerFilterType,
                 .default_val = (u32)LegacyLayerFilterType::Lowpass,
@@ -2868,6 +3021,7 @@ consteval auto CreateParams() {
         };
         lp(FilterType) = Args {
             .id = id(region, 94), // never change
+            .id_string = LAYER_ID("filter.type"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LayerFilterType,
@@ -2880,6 +3034,7 @@ consteval auto CreateParams() {
         };
         lp(FilterEnvAmount) = Args {
             .id = id(region, 22), // never change
+            .id_string = LAYER_ID("filter.env_amount"),
             .value_config = val_config_helpers::BidirectionalPercent({
                 .default_percent = 0,
                 .display_format = ParamDisplayFormat::Percent,
@@ -2891,6 +3046,7 @@ consteval auto CreateParams() {
         };
         lp(FilterAttack) = Args {
             .id = id(region, 23), // never change
+            .id_string = LAYER_ID("filter.attack"),
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 0}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Attack"_s,
@@ -2899,6 +3055,7 @@ consteval auto CreateParams() {
         };
         lp(FilterDecay) = Args {
             .id = id(region, 24), // never change
+            .id_string = LAYER_ID("filter.decay"),
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 1000}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Decay"_s,
@@ -2907,6 +3064,7 @@ consteval auto CreateParams() {
         };
         lp(FilterSustain) = Args {
             .id = id(region, 25), // never change
+            .id_string = LAYER_ID("filter.sustain"),
             .value_config = val_config_helpers::Percent({.default_percent = 100}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Sustain"_s,
@@ -2915,6 +3073,7 @@ consteval auto CreateParams() {
         };
         lp(FilterRelease) = Args {
             .id = id(region, 26), // never change
+            .id_string = LAYER_ID("filter.release"),
             .value_config = val_config_helpers::EnvelopeMs({.default_ms = 800}),
             .modules = {layer_module, ParameterModule::Main, ParameterModule::Filter},
             .name = "Release"_s,
@@ -2925,6 +3084,7 @@ consteval auto CreateParams() {
         // =================================================================================================
         lp(LfoOn) = Args {
             .id = id(region, 27), // never change
+            .id_string = LAYER_ID("lfo.on"),
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Lfo},
             .name = "On"_s,
@@ -2933,6 +3093,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyLfoShape) = Args {
             .id = id(region, 28), // never change
+            .id_string = LAYER_ID("lfo.legacy_shape"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LegacyLfoShape,
                 .default_val = (u32)LegacyLfoShapeV1::Sine,
@@ -2945,6 +3106,7 @@ consteval auto CreateParams() {
         };
         lp(LfoRestart) = Args {
             .id = id(region, 29), // never change
+            .id_string = LAYER_ID("lfo.restart"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LfoRestartMode,
                 .default_val = (u32)LfoRestartMode::Retrigger,
@@ -2957,6 +3119,7 @@ consteval auto CreateParams() {
         };
         lp(LfoAmount) = Args {
             .id = id(region, 30), // never change
+            .id_string = LAYER_ID("lfo.amount"),
             .value_config = val_config_helpers::BidirectionalPercent({
                 .default_percent = 50,
                 .display_format = ParamDisplayFormat::Percent,
@@ -2968,6 +3131,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyLfoDestination) = Args {
             .id = id(region, 31), // never change
+            .id_string = LAYER_ID("lfo.legacy_destination"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LegacyLfoDestination,
                 .default_val = (u32)LegacyLfoDestination::Volume,
@@ -2980,6 +3144,7 @@ consteval auto CreateParams() {
         };
         lp(LfoRateTempoSynced) = Args {
             .id = id(region, 32), // never change
+            .id_string = LAYER_ID("lfo.rate_synced"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LfoSyncedRate,
                 .default_val = (u32)LfoSyncedRate::_1_4,
@@ -2991,6 +3156,7 @@ consteval auto CreateParams() {
         };
         lp(LfoRateHz) = Args {
             .id = id(region, 33), // never change
+            .id_string = LAYER_ID("lfo.rate_hz"),
             .value_config = val_config_helpers::HzSlow({.default_hz = 5}),
             .modules = {layer_module, ParameterModule::Lfo},
             .name = "Time (Hz)"_s,
@@ -2999,6 +3165,7 @@ consteval auto CreateParams() {
         };
         lp(LfoSyncSwitch) = Args {
             .id = id(region, 34), // never change
+            .id_string = LAYER_ID("lfo.sync"),
             .value_config = val_config_helpers::Bool({.default_state = true}),
             .modules = {layer_module, ParameterModule::Lfo},
             .name = "Sync On"_s,
@@ -3007,6 +3174,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyLfoShapeV2) = Args {
             .id = id(region, 67), // never change
+            .id_string = LAYER_ID("lfo.legacy_shape_v2"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LegacyLfoShapeV2,
@@ -3021,6 +3189,7 @@ consteval auto CreateParams() {
         };
         lp(LfoShape) = Args {
             .id = id(region, 82), // never change
+            .id_string = LAYER_ID("lfo.shape"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LfoShape,
@@ -3033,6 +3202,7 @@ consteval auto CreateParams() {
         };
         lp(LfoDestination) = Args {
             .id = id(region, 68), // never change
+            .id_string = LAYER_ID("lfo.destination"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LfoDestination,
@@ -3047,6 +3217,7 @@ consteval auto CreateParams() {
         // =================================================================================================
         lp(EqOn) = Args {
             .id = id(region, 35), // never change
+            .id_string = LAYER_ID("eq.on"),
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Eq},
             .name = "On"_s,
@@ -3055,6 +3226,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyEqFreq1) = Args {
             .id = id(region, 36), // never change
+            .id_string = LAYER_ID("eq.band1.legacy_freq"),
             .value_config = val_config_helpers::LegacyFilter({.default_hz = 8000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Legacy Frequency"_s,
@@ -3065,6 +3237,7 @@ consteval auto CreateParams() {
         };
         lp(EqFreq1) = Args {
             .id = id(region, 91), // never change
+            .id_string = LAYER_ID("eq.band1.freq"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Filter({.default_hz = 100}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
@@ -3074,6 +3247,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyEqResonance1) = Args {
             .id = id(region, 37), // never change
+            .id_string = LAYER_ID("eq.band1.legacy_resonance"),
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Legacy Resonance"_s,
@@ -3083,6 +3257,7 @@ consteval auto CreateParams() {
         };
         lp(EqResonance1) = Args {
             .id = id(region, 79), // never change
+            .id_string = LAYER_ID("eq.band1.resonance"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
@@ -3092,6 +3267,7 @@ consteval auto CreateParams() {
         };
         lp(EqGain1) = Args {
             .id = id(region, 38), // never change
+            .id_string = LAYER_ID("eq.band1.gain"),
             .value_config = val_config_helpers::Gain({.default_db = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band1},
             .name = "Gain"_s,
@@ -3100,6 +3276,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyEqType1) = Args {
             .id = id(region, 39), // never change
+            .id_string = LAYER_ID("eq.band1.legacy_type"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LegacyEqType,
                 .default_val = (u32)LegacyEqType::Peak,
@@ -3112,6 +3289,7 @@ consteval auto CreateParams() {
         };
         lp(EqType1) = Args {
             .id = id(region, 84), // never change
+            .id_string = LAYER_ID("eq.band1.type"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
@@ -3124,6 +3302,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyEqFreq2) = Args {
             .id = id(region, 40), // never change
+            .id_string = LAYER_ID("eq.band2.legacy_freq"),
             .value_config = val_config_helpers::LegacyFilter({.default_hz = 500}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Legacy Frequency"_s,
@@ -3134,6 +3313,7 @@ consteval auto CreateParams() {
         };
         lp(EqFreq2) = Args {
             .id = id(region, 92), // never change
+            .id_string = LAYER_ID("eq.band2.freq"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Filter({.default_hz = 1000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
@@ -3143,6 +3323,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyEqResonance2) = Args {
             .id = id(region, 41), // never change
+            .id_string = LAYER_ID("eq.band2.legacy_resonance"),
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Legacy Resonance"_s,
@@ -3152,6 +3333,7 @@ consteval auto CreateParams() {
         };
         lp(EqResonance2) = Args {
             .id = id(region, 80), // never change
+            .id_string = LAYER_ID("eq.band2.resonance"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
@@ -3161,6 +3343,7 @@ consteval auto CreateParams() {
         };
         lp(EqGain2) = Args {
             .id = id(region, 42), // never change
+            .id_string = LAYER_ID("eq.band2.gain"),
             .value_config = val_config_helpers::Gain({.default_db = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band2},
             .name = "Gain"_s,
@@ -3169,6 +3352,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyEqType2) = Args {
             .id = id(region, 43), // never change
+            .id_string = LAYER_ID("eq.band2.legacy_type"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LegacyEqType,
                 .default_val = (u32)LegacyEqType::Peak,
@@ -3181,6 +3365,7 @@ consteval auto CreateParams() {
         };
         lp(EqType2) = Args {
             .id = id(region, 85), // never change
+            .id_string = LAYER_ID("eq.band2.type"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
@@ -3193,6 +3378,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyEqFreq3) = Args {
             .id = id(region, 86), // never change
+            .id_string = LAYER_ID("eq.band3.legacy_freq"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::LegacyFilter({.default_hz = 2000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
@@ -3204,6 +3390,7 @@ consteval auto CreateParams() {
         };
         lp(EqFreq3) = Args {
             .id = id(region, 93), // never change
+            .id_string = LAYER_ID("eq.band3.freq"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Filter({.default_hz = 10000}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
@@ -3213,6 +3400,7 @@ consteval auto CreateParams() {
         };
         lp(EqResonance3) = Args {
             .id = id(region, 87), // never change
+            .id_string = LAYER_ID("eq.band3.resonance"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
@@ -3222,6 +3410,7 @@ consteval auto CreateParams() {
         };
         lp(EqGain3) = Args {
             .id = id(region, 88), // never change
+            .id_string = LAYER_ID("eq.band3.gain"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Gain({.default_db = 0}),
             .modules = {layer_module, ParameterModule::Eq, ParameterModule::Band3},
@@ -3231,6 +3420,7 @@ consteval auto CreateParams() {
         };
         lp(EqType3) = Args {
             .id = id(region, 89), // never change
+            .id_string = LAYER_ID("eq.band3.type"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::EqType,
@@ -3245,6 +3435,7 @@ consteval auto CreateParams() {
         // =================================================================================================
         lp(LegacyVelocityMapping) = Args {
             .id = id(region, 44), // never change
+            .id_string = LAYER_ID("config.legacy_velocity_mapping"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::VelocityMappingMode,
                 .default_val = (u32)VelocityMappingMode::None,
@@ -3258,6 +3449,7 @@ consteval auto CreateParams() {
         };
         lp(Keytrack) = Args {
             .id = id(region, 45), // never change
+            .id_string = LAYER_ID("config.keytrack"),
             .value_config = val_config_helpers::Bool({.default_state = true}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "Keytrack On"_s,
@@ -3267,6 +3459,7 @@ consteval auto CreateParams() {
         };
         lp(LegacyMonophonicBool) = Args {
             .id = id(region, 46), // never change
+            .id_string = LAYER_ID("config.legacy_monophonic"),
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "Legacy Monophonic On"_s,
@@ -3276,6 +3469,7 @@ consteval auto CreateParams() {
         };
         lp(MonophonicMode) = Args {
             .id = id(region, 55), // never change
+            .id_string = LAYER_ID("config.monophonic"),
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::MonophonicMode,
                 .default_val = (u32)MonophonicMode::Off,
@@ -3288,6 +3482,7 @@ consteval auto CreateParams() {
         };
         lp(MidiTranspose) = Args {
             .id = id(region, 48), // never change
+            .id_string = LAYER_ID("config.midi_transpose"),
             .value_config = val_config_helpers::Int({.range = {-36, 36}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "MIDI Transpose On"_s,
@@ -3297,6 +3492,7 @@ consteval auto CreateParams() {
         };
         lp(KeyRangeLow) = Args {
             .id = id(region, 50), // never change
+            .id_string = LAYER_ID("config.key_range_low"),
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range Low"_s,
@@ -3306,6 +3502,7 @@ consteval auto CreateParams() {
         };
         lp(KeyRangeHigh) = Args {
             .id = id(region, 51), // never change
+            .id_string = LAYER_ID("config.key_range_high"),
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 127}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range High"_s,
@@ -3315,6 +3512,7 @@ consteval auto CreateParams() {
         };
         lp(KeyRangeLowFade) = Args {
             .id = id(region, 52), // never change
+            .id_string = LAYER_ID("config.key_range_low_fade"),
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range Low Fade"_s,
@@ -3323,6 +3521,7 @@ consteval auto CreateParams() {
         };
         lp(KeyRangeHighFade) = Args {
             .id = id(region, 53), // never change
+            .id_string = LAYER_ID("config.key_range_high_fade"),
             .value_config = val_config_helpers::Int({.range = {0, 127}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "Key Range High Fade"_s,
@@ -3331,6 +3530,7 @@ consteval auto CreateParams() {
         };
         lp(PitchBendRange) = Args {
             .id = id(region, 54), // never change
+            .id_string = LAYER_ID("config.pitch_bend_range"),
             .value_config = val_config_helpers::Int({.range = {0, 60}, .default_val = 2}),
             .modules = {layer_module, ParameterModule::Config},
             .name = "Pitch Bend Range"_s,
@@ -3339,6 +3539,7 @@ consteval auto CreateParams() {
         };
         lp(PlayMode) = Args {
             .id = id(region, 56), // never change
+            .id_string = LAYER_ID("playback.mode"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::PlayMode,
@@ -3351,6 +3552,7 @@ consteval auto CreateParams() {
         };
         lp(GranularSpeed) = Args {
             .id = id(region, 58), // never change
+            .id_string = LAYER_ID("granular.speed"),
             .added_in_generation = 1,
             .value_config = ({
                 ParamDescriptor::Range const linear_range = {0, 1};
@@ -3375,6 +3577,7 @@ consteval auto CreateParams() {
         };
         lp(GranularPosition) = Args {
             .id = id(region, 59), // never change
+            .id_string = LAYER_ID("granular.position"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3384,6 +3587,7 @@ consteval auto CreateParams() {
         };
         lp(GranularDensity) = Args {
             .id = id(region, 60), // never change
+            .id_string = LAYER_ID("granular.density"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3394,6 +3598,7 @@ consteval auto CreateParams() {
         };
         lp(GranularLength) = Args {
             .id = id(region, 57), // never change
+            .id_string = LAYER_ID("granular.length"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Ms({.projection = {{5, 1000}, 1.5f}, .default_ms = 200}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3403,6 +3608,7 @@ consteval auto CreateParams() {
         };
         lp(GranularSpread) = Args {
             .id = id(region, 61), // never change
+            .id_string = LAYER_ID("granular.spread"),
             .added_in_generation = 1,
             .value_config = ({
                 ParamDescriptor::Range const linear_range {0.005f, 1};
@@ -3422,6 +3628,7 @@ consteval auto CreateParams() {
         };
         lp(GranularSmoothing) = Args {
             .id = id(region, 62), // never change
+            .id_string = LAYER_ID("granular.smoothing"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3432,6 +3639,7 @@ consteval auto CreateParams() {
         };
         lp(GranularRandomPan) = Args {
             .id = id(region, 63), // never change
+            .id_string = LAYER_ID("granular.random_pan"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3442,6 +3650,7 @@ consteval auto CreateParams() {
         };
         lp(GranularRandomDetune) = Args {
             .id = id(region, 64), // never change
+            .id_string = LAYER_ID("granular.random_detune"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3452,6 +3661,7 @@ consteval auto CreateParams() {
         };
         lp(GranularRandomDirection) = Args {
             .id = id(region, 65), // never change
+            .id_string = LAYER_ID("granular.random_direction"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3462,6 +3672,7 @@ consteval auto CreateParams() {
         };
         lp(GranularHarmony) = Args {
             .id = id(region, 66), // never change
+            .id_string = LAYER_ID("granular.harmony"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
@@ -3475,6 +3686,7 @@ consteval auto CreateParams() {
         // =================================================================================================
         lp(ArpOn) = Args {
             .id = id(region, 81), // never change
+            .id_string = LAYER_ID("arp.on"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Arp},
@@ -3484,6 +3696,7 @@ consteval auto CreateParams() {
         };
         lp(ArpMode) = Args {
             .id = id(region, 74), // never change
+            .id_string = LAYER_ID("arp.mode"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::ArpMode,
@@ -3496,6 +3709,7 @@ consteval auto CreateParams() {
         };
         lp(ArpNoteOrder) = Args {
             .id = id(region, 70), // never change
+            .id_string = LAYER_ID("arp.note_order"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::ArpNoteOrder,
@@ -3508,6 +3722,7 @@ consteval auto CreateParams() {
         };
         lp(ArpTriggerMode) = Args {
             .id = id(region, 71), // never change
+            .id_string = LAYER_ID("arp.trigger_mode"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::ArpTriggerMode,
@@ -3521,6 +3736,7 @@ consteval auto CreateParams() {
         };
         lp(ArpRate) = Args {
             .id = id(region, 72), // never change
+            .id_string = LAYER_ID("arp.rate"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::ArpSyncedRate,
@@ -3533,6 +3749,7 @@ consteval auto CreateParams() {
         };
         lp(ArpAutoRate) = Args {
             .id = id(region, 76), // never change
+            .id_string = LAYER_ID("arp.auto_rate"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Bool({.default_state = true}),
             .modules = {layer_module, ParameterModule::Arp},
@@ -3543,6 +3760,7 @@ consteval auto CreateParams() {
         };
         lp(ArpLength) = Args {
             .id = id(region, 73), // never change
+            .id_string = LAYER_ID("arp.length"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Int({.range = {1, k_arp_max_steps}, .default_val = 8}),
             .modules = {layer_module, ParameterModule::Arp},
@@ -3552,6 +3770,7 @@ consteval auto CreateParams() {
         };
         lp(ArpHumanise) = Args {
             .id = id(region, 75), // never change
+            .id_string = LAYER_ID("arp.humanise"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 5}),
             .modules = {layer_module, ParameterModule::Arp},
@@ -3562,6 +3781,7 @@ consteval auto CreateParams() {
         };
         lp(ArpOctavePolyrate) = Args {
             .id = id(region, 77), // never change
+            .id_string = LAYER_ID("arp.octave_polyrate"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::ArpOctavePolyrate,
@@ -3575,6 +3795,7 @@ consteval auto CreateParams() {
         };
         lp(ArpOneShot) = Args {
             .id = id(region, 78), // never change
+            .id_string = LAYER_ID("arp.one_shot"),
             .added_in_generation = 1,
             .value_config = val_config_helpers::Bool({.default_state = false}),
             .modules = {layer_module, ParameterModule::Arp},
@@ -3584,6 +3805,7 @@ consteval auto CreateParams() {
                 "When enabled, the arpeggiator plays through the sequence once and then stops instead of looping"_s,
         };
     }
+#undef LAYER_ID
 
     // =====================================================================================================
     static_assert(k_num_parameters <= LargestRepresentableValue<IdMapIntType>(),
@@ -3604,7 +3826,14 @@ consteval auto CreateParams() {
     for (auto& p : result.params) {
         if (!p.linear_range.Contains(p.default_linear_value)) throw "";
         if (!p.name.size) throw "";
+        if (!p.id_string.size) throw "missing id_string";
+        for (auto c : p.id_string) {
+            bool const valid = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_';
+            if (!valid) throw "id_string must be lowercase reverse-domain style";
+        }
     }
+    // id_string uniqueness is verified by a runtime test (the consteval O(n^2) string compare across
+    // ~380 parameters exceeds the compiler's constant-evaluation step limit).
 
     return result;
 }

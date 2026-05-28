@@ -818,8 +818,21 @@ TEST_CASE(TestLegacyConversion) {
     return k_success;
 }
 
+TEST_CASE(TestParamIdStringsUnique) {
+    for (auto const i : Range(k_num_parameters)) {
+        auto const& a = k_param_descriptors[i];
+        CHECK(a.id_string.size != 0);
+        for (auto const j : Range(i + 1, k_num_parameters)) {
+            auto const& b = k_param_descriptors[j];
+            CHECK_OP(a.id_string, !=, b.id_string);
+        }
+    }
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterParamDescriptorTests) {
     REGISTER_TEST(TestNumberStartsWithNegativeZero);
     REGISTER_TEST(TestLegacyConversion);
     REGISTER_TEST(TestParamStringConversion);
+    REGISTER_TEST(TestParamIdStringsUnique);
 }
