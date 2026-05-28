@@ -308,19 +308,6 @@ VoidOrError<String> PostReadBookkeeping(Library& lib, Allocator& arena, ArenaAll
                         inst.name,
                         total_proportion,
                         k_arp_max_steps));
-
-                LogDebug(ModuleName::SampleLibrary,
-                         "Instrument '{}': {} slices, total length_proportion={} (gcd={})",
-                         inst.name,
-                         region.slices.size,
-                         total_proportion,
-                         gcd_of_all);
-                for (auto const [i, slice] : Enumerate(region.slices))
-                    LogDebug(ModuleName::SampleLibrary,
-                             "  Slice {}: start_frame={}, length_proportion={}",
-                             i,
-                             slice.start_frame,
-                             slice.length_proportion);
             }
         }
 
