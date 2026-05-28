@@ -22,6 +22,7 @@ enum class CliArgId : u8 {
     ScriptFile,
     Raw,
     Pretty,
+    ReadOnly,
     Count,
 };
 
@@ -66,6 +67,15 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
             "the string keys and formatted values are NOT stable across Floe versions: a rename or\n"
             "format change will break old scripts. Use the default numeric mode for scripts you want\n"
             "to keep working after upgrades.\n",
+        .value_type = "",
+        .required = false,
+        .num_values = 0,
+    },
+    {
+        .id = (u32)CliArgId::ReadOnly,
+        .key = "read-only",
+        .description = "Never write the preset file, even if --script-file modifies the 'preset' global.\n"
+                       "Useful for inspection scripts that print or assert.\n",
         .value_type = "",
         .required = false,
         .num_values = 0,
@@ -955,7 +965,8 @@ print("return preset")
         return ErrorCode {CommonError::InvalidFileFormat};
     }
 
-    if (cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
+    if (cli_args[ToInt(CliArgId::ScriptFile)].was_provided &&
+        !cli_args[ToInt(CliArgId::ReadOnly)].was_provided) {
         lua_getglobal(lua, "preset");
         if (!lua_istable(lua, -1)) {
             StdPrintF(StdStream::Err, "Error: preset global is not a table\n");
