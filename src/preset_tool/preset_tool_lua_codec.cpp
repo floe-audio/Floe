@@ -893,8 +893,52 @@ TEST_CASE(TestPresetLuaCodecRoundTripPopulated) {
     return k_success;
 }
 
+// Pretty mode is lossy on arbitrary floats (truncated to display precision), so a single round-trip
+// of an arbitrary populated state won't equal the original. But the truncation must be idempotent:
+// once a value has been snapped to the display grid, encoding+decoding it again must be a no-op.
+// This guards against display formats that don't parse back to a value re-formatting identically.
+static ErrorCodeOr<void> PrettyRoundTripIsIdempotent(tests::Tester& tester, StateSnapshot const& original) {
+    auto encode_decode = [&](StateSnapshot const& in) {
+        auto lua = luaL_newstate();
+        DEFER { lua_close(lua); };
+        BuildPresetLuaTable(lua, in, true);
+        auto out = in;
+        lua_getglobal(lua, "preset");
+        ExtractPresetFromLuaTable(lua, -1, out);
+        lua_pop(lua, 1);
+        return out;
+    };
+
+    auto const first = encode_decode(original);
+    auto const second = encode_decode(first);
+
+    if (first != second) {
+        DynamicArray<char> diff {tester.scratch_arena};
+        AssignDiffDescription(diff, first, second);
+        tester.log.Error("pretty round-trip not idempotent:\n{}", diff.Items());
+        for (auto const i : Range<u16>(k_num_parameters)) {
+            if (first.param_values[i] != second.param_values[i]) {
+                auto const& d = k_param_descriptors[i];
+                tester.log.Error("  {} first={} second={}",
+                                 d.id_string,
+                                 first.param_values[i],
+                                 second.param_values[i]);
+            }
+        }
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    return k_success;
+}
+
+TEST_CASE(TestPresetLuaCodecPrettyIdempotentPopulated) {
+    auto const original = PopulatedSnapshot(tester.random_seed);
+    TRY(PrettyRoundTripIsIdempotent(tester, original));
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterPresetLuaCodecTests) {
     REGISTER_TEST(TestPresetLuaCodecRoundTripDefault);
     REGISTER_TEST(TestPresetLuaCodecRoundTripDefaultPretty);
     REGISTER_TEST(TestPresetLuaCodecRoundTripPopulated);
+    REGISTER_TEST(TestPresetLuaCodecPrettyIdempotentPopulated);
 }
