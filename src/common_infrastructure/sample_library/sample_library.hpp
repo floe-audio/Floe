@@ -365,6 +365,7 @@ Optional<FileFormat> DetermineFileFormat(String path);
 struct Options {
     usize max_memory_allowed = Mb(128);
     f64 max_seconds_allowed = 20;
+    Optional<Writer> print_capture {}; // If set, print() output is written here instead of stdout.
 };
 
 namespace detail {

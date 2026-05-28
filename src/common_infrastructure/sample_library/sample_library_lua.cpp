@@ -2065,12 +2065,10 @@ static int FloeLoadFile(lua_State* lua) {
 }
 
 static int LuaPrint(lua_State* lua) {
-    if (GetLogLevel() <= LogLevel::Info) {
-        auto const nargs = lua_gettop(lua);
-        auto& mutex = StdStreamMutex(StdStream::Out);
-        mutex.Lock();
-        DEFER { mutex.Unlock(); };
-        auto writer = StdWriter(StdStream::Out);
+    auto& ctx = **(LuaState**)lua_getextraspace(lua);
+    auto const nargs = lua_gettop(lua);
+
+    auto const write_to = [&](Writer writer) {
         for (auto const i : ::Range(1, nargs + 1)) {
             usize len = 0;
             auto const s = luaL_tolstring(lua, i, &len);
@@ -2079,6 +2077,15 @@ static int LuaPrint(lua_State* lua) {
             lua_pop(lua, 1);
         }
         auto _ = writer.WriteChar('\n');
+    };
+
+    if (ctx.options.print_capture) {
+        write_to(*ctx.options.print_capture);
+    } else if (GetLogLevel() <= LogLevel::Info) {
+        auto& mutex = StdStreamMutex(StdStream::Out);
+        mutex.Lock();
+        DEFER { mutex.Unlock(); };
+        write_to(StdWriter(StdStream::Out));
     }
     lua_settop(lua, 0);
     return 0;

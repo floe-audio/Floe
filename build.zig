@@ -1498,6 +1498,7 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
             "preset_bank_info.cpp",
             "preset_description.cpp",
             "sample_library/audio_file.cpp",
+            "sample_library/library_dump.cpp",
             "sample_library/library_id_cache.cpp",
             "sample_library/sample_library.cpp",
             "sample_library/sample_library_lua.cpp",
@@ -1903,6 +1904,34 @@ fn buildPresetTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     exe.addIncludePath(ctx.b.path("src"));
     exe.addConfigHeader(cfg.floe_config_h);
     exe.addObject(deps.embedded_files);
+    applyUniversalSettings(ctx, exe);
+    return exe;
+}
+
+fn buildLibraryInspector(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    var exe = ctx.b.addExecutable(.{
+        .name = "floe-library-inspector",
+        .root_module = ctx.b.createModule(cfg.module_options),
+        .version = ctx.floe_version,
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/library_inspector/library_inspector.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = true,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "LibraryInspector");
+    exe.linkLibrary(deps.common_infrastructure);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addConfigHeader(cfg.floe_config_h);
     applyUniversalSettings(ctx, exe);
     return exe;
 }
@@ -2927,6 +2956,25 @@ fn doTarget(
         // IMPROVE: export preset-tool as a production artifact?
     }
 
+    const configured_library_inspector = blk: {
+        const exe = buildLibraryInspector(ctx, cfg, .{
+            .common_infrastructure = common_infrastructure,
+        });
+
+        const codesigned_exe = configure_binaries.maybeAddWindowsCodesign(
+            exe,
+            .{ .description = "Floe Library Inspector" },
+        );
+
+        const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
+        top_level_steps.install_all.dependOn(&install.step);
+
+        break :blk release_artifacts.Artifact{
+            .out_filename = exe.out_filename,
+            .path = codesigned_exe,
+        };
+    };
+
     const configured_clap: ?configure_binaries.ConfiguredPlugin = blk: {
         if (!options.sanitize_thread) {
             const dso = buildClap(ctx, cfg, .{ .plugin = plugin });
@@ -3429,6 +3477,7 @@ fn doTarget(
         .vst3 = configured_vst3,
         .clap = configured_clap,
         .packager = configured_packager,
+        .library_inspector = configured_library_inspector,
     };
 }
 

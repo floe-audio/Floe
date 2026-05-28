@@ -22,6 +22,7 @@ pub const Artifacts = struct {
     vst3: ?configure_binaries.ConfiguredPlugin,
     clap: ?configure_binaries.ConfiguredPlugin,
     packager: ?Artifact,
+    library_inspector: ?Artifact,
 };
 
 pub fn makeRelease(
@@ -104,6 +105,20 @@ pub fn makeRelease(
                 });
                 step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
             }
+
+            // Library inspector
+            {
+                const inspector = args.library_inspector orelse return invalidConfiguration(step);
+                const out_filename = b.fmt("{s}{c}Floe-Library-Inspector-v{s}-Windows.zip", .{
+                    release_dir,
+                    std.fs.path.sep,
+                    version,
+                });
+                const generated_zip = createArchiveCommand(b, archiver, .zip, out_filename, &[_]FileToArchive{
+                    .{ .path = inspector.path, .path_in_archive = inspector.out_filename, .is_dir = false },
+                });
+                step.dependOn(&b.addInstallFile(generated_zip, out_filename).step);
+            }
         },
         .macos => {
             const arch_name_for_file = switch (target.cpu.arch) {
@@ -136,6 +151,39 @@ pub fn makeRelease(
 
                 // Only notarize if we codesigned.
                 const final = if (codesigned_packager != null) maybeMacosNotarise(b, zip_file, .{
+                    .out_filename = out_filename,
+                    .is_bundle = false,
+                    .staple = false,
+                    .parent_step = step,
+                    .archiver = archiver,
+                }) orelse zip_file else zip_file;
+
+                step.dependOn(&b.addInstallFile(final, out_filename).step);
+            }
+
+            // Library inspector
+            {
+                const inspector = args.library_inspector orelse return invalidConfiguration(step);
+
+                const codesigned = maybeAddMacosCodesign(b, inspector.path, .{
+                    .out_filename = inspector.out_filename,
+                    .kind = .exe,
+                    .entitlements = false,
+                    .parent_step = step,
+                });
+
+                const out_filename = b.fmt("{s}{c}Floe-Library-Inspector-v{s}-macOS-{s}.zip", .{
+                    release_dir,
+                    std.fs.path.sep,
+                    version,
+                    arch_name_for_file,
+                });
+
+                const zip_file = createArchiveCommand(b, archiver, .zip, out_filename, &[_]FileToArchive{
+                    .{ .path = codesigned orelse inspector.path, .path_in_archive = inspector.out_filename, .is_dir = false },
+                });
+
+                const final = if (codesigned != null) maybeMacosNotarise(b, zip_file, .{
                     .out_filename = out_filename,
                     .is_bundle = false,
                     .staple = false,
@@ -398,6 +446,23 @@ pub fn makeRelease(
 
                 const tar = createArchiveCommand(b, archiver, .tar_gz, out_filename, &[_]FileToArchive{
                     .{ .path = packager.path, .path_in_archive = packager.out_filename, .is_dir = false },
+                });
+
+                step.dependOn(&b.addInstallFile(tar, out_filename).step);
+            }
+
+            // Library inspector
+            {
+                const inspector = args.library_inspector orelse return invalidConfiguration(step);
+
+                const out_filename = b.fmt("{s}{c}Floe-Library-Inspector-v{s}-Linux.tar.gz", .{
+                    release_dir,
+                    std.fs.path.sep,
+                    version,
+                });
+
+                const tar = createArchiveCommand(b, archiver, .tar_gz, out_filename, &[_]FileToArchive{
+                    .{ .path = inspector.path, .path_in_archive = inspector.out_filename, .is_dir = false },
                 });
 
                 step.dependOn(&b.addInstallFile(tar, out_filename).step);

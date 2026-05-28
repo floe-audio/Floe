@@ -11,6 +11,7 @@ enum class FinalBinaryType : u8 {
     Packager,
     LicenseTool,
     PresetTool,
+    LibraryInspector,
     WindowsInstaller,
     WindowsUninstaller,
     AuV2,
@@ -27,6 +28,7 @@ constexpr String ToString(FinalBinaryType type) {
         case FinalBinaryType::Packager: return "packager"_s;
         case FinalBinaryType::LicenseTool: return "license_tool"_s;
         case FinalBinaryType::PresetTool: return "preset_tool"_s;
+        case FinalBinaryType::LibraryInspector: return "library_inspector"_s;
         case FinalBinaryType::WindowsInstaller: return "windows_installer"_s;
         case FinalBinaryType::WindowsUninstaller: return "windows_uninstaller"_s;
         case FinalBinaryType::AuV2: return "au_v2"_s;

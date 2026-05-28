@@ -20,6 +20,7 @@
 #include "common_infrastructure/tags.hpp"
 
 #include "config.h"
+#include "library_inspector/library_inspector.hpp"
 #include "packager_tool/packager.hpp"
 
 static ErrorCodeOr<void> WriteLuaSectionValues(json::WriteContext& ctx,
@@ -325,6 +326,17 @@ static ErrorCodeOr<void> WritePackagerData(json::WriteContext& ctx) {
     return k_success;
 }
 
+static ErrorCodeOr<void> WriteLibraryInspectorData(json::WriteContext& ctx) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
+    DynamicArray<char> help {scratch};
+    TRY(PrintUsage(dyn::WriterFor(help),
+                   "floe-library-inspector",
+                   k_library_inspector_description,
+                   k_library_inspector_command_line_args_defs));
+    TRY(json::WriteKeyValue(ctx, "library-inspector-help", WhitespaceStrippedEnd(String(help))));
+    return k_success;
+}
+
 static ErrorCodeOr<void> WriteParameterData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
 
@@ -444,6 +456,7 @@ static ErrorCodeOr<void> GenerateAllData(json::WriteContext& ctx) {
     TRY(WriteVersionData(ctx));
     TRY(WriteGithubReleaseData(ctx));
     TRY(WritePackagerData(ctx));
+    TRY(WriteLibraryInspectorData(ctx));
     TRY(WriteParameterData(ctx));
     TRY(WriteEffectsData(ctx));
     TRY(WriteCCMappingData(ctx));

@@ -60,6 +60,7 @@ Floe's format is designed to be developer-friendly. It plays well into the tooli
 - Hot reloading: Floe automatically reloads the library whenever you change a file: Lua, audio, or images. It creates a very fast feedback loop. If a change isn't picked up, use the top panel's 3-dots menu → Rescan Libraries & Presets to force a rescan.
 - Uses a full programming language: Lua is simple, powerful, and widely used. You can use variables, functions, loops, and conditionals to configure your library.
 - Floe's Lua API is simple and concise.
+- [`floe-library-inspector`](#library-inspector) CLI tool dumps the parsed library as JSON or Lua so you can verify exactly what Floe loaded — useful for debugging without launching the plugin.
 
 
 ## The structure
@@ -110,7 +111,7 @@ Here's a made-up example of a `floe.lua` file:
 1. Use the `floe.new_library()` function to create your library, filling in all the fields marked `[required]` in the [Floe's Lua reference](./library-lua-scripts).
 1. Use `floe.new_instrument()` to create an instrument, and then add regions to it using `floe.add_region()`, again, filling in the fields that are documented.
 1. At the end of the file, return the library object you just created: `return library`.
-1. Floe automatically detects whenever any library file changes and will tell you if there's any errors. If a library is correctly configured, it will instantly appear in Floe.
+1. Floe automatically detects whenever any library file changes and will tell you if there's any errors. If a library is correctly configured, it will instantly appear in Floe. For a fuller view of what was parsed — regions, loop points, missing samples — run [`floe-library-inspector`](#library-inspector).
 
 ### Approach to sample mapping
 You can start by manually writing individual `add_region` calls for each sample, filling out the required information as you go. When things start getting repetitive or you need to apply consistent logic across many samples, you'll want to leverage Lua's programming features:
@@ -169,6 +170,25 @@ With the features of a full programming language and Floe's hot-reloading of scr
 For example, normalising all samples to a target level can be done using a simple calculation based on the sample's `peak_db` value. We often find it's useful to partially move levels towards a target level rather than fully normalising them in order to retain some of the character of the instrument. This can be computed in the Lua and tweaked as needed, with the results being immediately audible in Floe.
 
 Floe doesn't generate this kind of audio data for you because it can be slow to scan large folders of samples. It's better for the sample library developer to generate it once with Signet and bake it into a Lua file, instead of the sample library users having to wait every time they load the library.
+
+
+## Library inspector
+`floe-library-inspector` is a small CLI tool for debugging libraries. It parses your library and dumps everything Floe loaded as JSON (or Lua with `--format=lua`) — surfacing parse errors, captured `print()` output, and any orphan or missing audio files.
+
+{data["latest-beta-release-version"]?.["Floe-Library-Inspector-Windows"] ? (
+<ul>
+  <li><FAIcon icon="fa-brands fa-windows" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].size})</li>
+  <li><FAIcon icon="fa-brands fa-apple" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].size})</li>
+  <li><FAIcon icon="fa-brands fa-apple" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].size})</li>
+  <li><FAIcon icon="fa-brands fa-linux" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].size})</li>
+</ul>
+) : (
+<p><em>Downloads will appear here with the next beta release.</em></p>
+)}
+
+<CodeBlock>
+{data["library-inspector-help"]}
+</CodeBlock>
 
 
 ## Creating high-quality samples
