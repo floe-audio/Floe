@@ -252,6 +252,8 @@ static ErrorCodeOr<void> PrintExample(ArenaAllocator& arena) {
         "--   Default mode (lossless):  projected numeric values (e.g. 0.5, -12.0, 440).\n"
         "--   --pretty:                 formatted display strings (\"50 %\", \"-12.0 dB\", \"Sine\").\n"
         "--   Reads accept either form for every parameter, keyed by stable id_string.\n"
+        "--   Pretty reads are permissive: extra precision and either unit are accepted\n"
+        "--   (\"1.567 s\" or \"1567 ms\" both work even though writes emit \"1.6 s\").\n"
         "--\n"
         "-- Below: a default-initialised preset, followed by reference appendices.\n"
         "\n";
