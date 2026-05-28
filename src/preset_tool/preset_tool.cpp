@@ -965,7 +965,9 @@ print("return preset")
         auto modified_state = preset_state;
         TRY(ExtractPresetFromLuaTable(lua, -1, modified_state));
 
-        {
+        if (modified_state == preset_state) {
+            // Script didn't change anything; skip the write.
+        } else {
             auto const temp_dir = TRY_OR(TemporaryDirectoryOnSameFilesystemAs(preset_path, arena), {
                 StdPrintF(StdStream::Err, "Error: failed to create temporary directory: {}\n", error);
                 return error;
