@@ -41,7 +41,7 @@ void AssignDiffDescription(DynArrayT& diff_desc,
         if (old_state.param_values[param_index] != new_state.param_values[param_index]) {
             fmt::Append(diff_desc,
                         "Param {}: {} vs {}\n"_s,
-                        k_param_descriptors[param_index].name,
+                        k_param_descriptors[param_index].id_string,
                         old_state.param_values[param_index],
                         new_state.param_values[param_index]);
         }
@@ -57,7 +57,7 @@ void AssignDiffDescription(DynArrayT& diff_desc,
                 fmt::Append(diff_desc,
                             "CC {}: Param {}: {} vs {}\n"_s,
                             cc,
-                            k_param_descriptors[param_index].name,
+                            k_param_descriptors[param_index].id_string,
                             old_state.extras.param_learned_ccs[param_index].Get(cc),
                             new_state.extras.param_learned_ccs[param_index].Get(cc));
             }
