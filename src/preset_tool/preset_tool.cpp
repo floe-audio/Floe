@@ -462,10 +462,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             .print_usage_on_error = true,
             .description = "Edit one or more presets using a Lua script.\n"
                            "\n"
-                           "Pass preset files and/or directories as positional arguments. Directories are\n"
-                           "scanned recursively for Floe (*" FLOE_PRESET_FILE_EXTENSION
-                           ") and legacy Mirage (*.mirage-*) preset files.\n"
-                           "\n"
                            "Library names are not stored in preset files (only "
                            "their hashed IDs are). On startup, this tool loads "
                            "the library name cache (library_id_cache.bin) "
@@ -480,7 +476,14 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                            "refresh the cache; delete the cache file to force a "
                            "full rescan on next launch.",
             .version = FLOE_VERSION_STRING,
-            .positionals_out = &positional_paths,
+            .positionals =
+                {
+                    .name = "preset-path",
+                    .description =
+                        "Preset file or directory. Directories are scanned recursively for *" FLOE_PRESET_FILE_EXTENSION
+                        " files.",
+                    .out = &positional_paths,
+                },
         }));
 
     if (cli_args[ToInt(CliArgId::PrintExample)].was_provided) {

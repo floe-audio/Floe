@@ -54,23 +54,24 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     ArenaAllocator arena {PageAllocator::Instance()};
 
     Span<String> positionals {};
-    auto const cli_args = TRY(ParseCommandLineArgsStandard(arena,
-                                                           args,
-                                                           k_library_inspector_command_line_args_defs,
-                                                           {
-                                                               .handle_help_option = true,
-                                                               .print_usage_on_error = true,
-                                                               .description = k_library_inspector_description,
-                                                               .version = FLOE_VERSION_STRING,
-                                                               .positionals_out = &positionals,
-                                                           }));
-
-    if (positionals.size != 1) {
-        StdPrintF(StdStream::Err,
-                  "Error: expected exactly one positional argument (library path), got {}\n",
-                  positionals.size);
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
+    auto const cli_args = TRY(
+        ParseCommandLineArgsStandard(arena,
+                                     args,
+                                     k_library_inspector_command_line_args_defs,
+                                     {
+                                         .handle_help_option = true,
+                                         .print_usage_on_error = true,
+                                         .description = k_library_inspector_description,
+                                         .version = FLOE_VERSION_STRING,
+                                         .positionals =
+                                             {
+                                                 .name = "library-path",
+                                                 .description = k_library_inspector_positional_description,
+                                                 .min_count = 1,
+                                                 .max_count = 1,
+                                                 .out = &positionals,
+                                             },
+                                     }));
 
     auto const library_file = TRY_OR(ResolveLibraryFile(arena, positionals[0]), {
         StdPrintF(StdStream::Err, "Error: failed to locate library file: {}\n", error);

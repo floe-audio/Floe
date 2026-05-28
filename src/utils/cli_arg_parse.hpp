@@ -42,14 +42,34 @@ struct ArgsCstr {
     char const* const* args; // remember the first arg is the program name
 };
 
+struct PositionalArgsInfo {
+    String name {}; // e.g. "preset-path"; presence enables positional parsing
+    String description {}; // shown in the "Positional arguments:" help section
+    int min_count {0};
+    int max_count {-1}; // -1 for unlimited
+    Span<String>* out {nullptr}; // where to write collected positionals
+};
+
 PUBLIC ErrorCodeOr<void> PrintUsage(Writer writer,
                                     String exe_name,
                                     String description,
                                     Span<CommandLineArgDefinition const> args,
-                                    Span<CommandLineArgDefinition const> implicit_args = {}) {
+                                    Span<CommandLineArgDefinition const> implicit_args = {},
+                                    PositionalArgsInfo const& positionals = {}) {
     if (description.size) TRY(fmt::FormatToWriter(writer, "{}\n\n", description));
 
-    TRY(fmt::FormatToWriter(writer, "Usage: {} [ARGS]\n\n", exe_name));
+    TRY(fmt::FormatToWriter(writer, "Usage: {} [OPTIONS]", exe_name));
+    if (positionals.name.size) {
+        bool const optional = positionals.min_count == 0;
+        bool const multi = positionals.max_count != 1;
+        TRY(fmt::FormatToWriter(writer,
+                                " {}<{}>{}{}",
+                                optional ? "["_s : ""_s,
+                                positionals.name,
+                                multi ? "..."_s : ""_s,
+                                optional ? "]"_s : ""_s));
+    }
+    TRY(fmt::FormatToWriter(writer, "\n\n"));
 
     static auto print_arg_key_val = [](Writer writer,
                                        CommandLineArgDefinition const& arg) -> ErrorCodeOr<void> {
@@ -104,6 +124,11 @@ PUBLIC ErrorCodeOr<void> PrintUsage(Writer writer,
         TRY(writer.WriteChar('\n'));
         return k_success;
     };
+
+    if (positionals.name.size && positionals.description.size) {
+        TRY(fmt::FormatToWriter(writer, "Positional arguments:\n"));
+        TRY(fmt::FormatToWriter(writer, "  <{}>  {}\n", positionals.name, positionals.description));
+    }
 
     if (FindIf(args, [](auto const& arg) { return arg.required; })) {
         TRY(fmt::FormatToWriter(writer, "Required arguments:\n"));
@@ -229,9 +254,10 @@ struct ParseCommandLineArgsOptions {
     bool handle_log_level_option = true; // intercepts --log-level and calls SetLogLevel
     String description {};
     String version {}; // if present will be printed on --version
-    // If non-null, positional arguments (non-flag args before any flag) are collected here. If null,
-    // positional arguments are an error.
-    Span<String>* positionals_out = nullptr;
+    // If .out is non-null, positional arguments are collected and validated against min/max_count.
+    // The other fields drive --help output (Usage line and "Positional arguments:" section).
+    // If .out is null, any positional argument is an error.
+    PositionalArgsInfo positionals {};
 };
 
 // always returns a span the same size as the arg_defs, if an arg wasn't set it will have was_provided = false
@@ -247,7 +273,12 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
 
     auto error = [&](CliError e) -> ErrorCode {
         if (options.print_usage_on_error)
-            TRY(PrintUsage(writer, program_name, options.description, arg_defs, implicit_args));
+            TRY(PrintUsage(writer,
+                           program_name,
+                           options.description,
+                           arg_defs,
+                           implicit_args,
+                           options.positionals));
         return ErrorCode {e};
     };
 
@@ -285,7 +316,12 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
         ++cursor;
 
         if (options.handle_help_option && key == "help") {
-            TRY(PrintUsage(writer, program_name, options.description, arg_defs, implicit_args));
+            TRY(PrintUsage(writer,
+                           program_name,
+                           options.description,
+                           arg_defs,
+                           implicit_args,
+                           options.positionals));
             return ErrorCode {CliError::HelpRequested};
         }
 
@@ -377,8 +413,22 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
             return error(CliError::InvalidArguments);
         }
 
-    if (options.positionals_out) {
-        *options.positionals_out = positionals.ToOwnedSpan();
+    if (options.positionals.out) {
+        if ((int)positionals.size < options.positionals.min_count) {
+            TRY(fmt::FormatToWriter(writer,
+                                    "Expected at least {} positional argument(s), got {}\n",
+                                    options.positionals.min_count,
+                                    positionals.size));
+            return error(CliError::InvalidArguments);
+        }
+        if (options.positionals.max_count >= 0 && (int)positionals.size > options.positionals.max_count) {
+            TRY(fmt::FormatToWriter(writer,
+                                    "Expected at most {} positional argument(s), got {}\n",
+                                    options.positionals.max_count,
+                                    positionals.size));
+            return error(CliError::InvalidArguments);
+        }
+        *options.positionals.out = positionals.ToOwnedSpan();
     } else if (positionals.size) {
         TRY(fmt::FormatToWriter(writer, "Unexpected positional argument: {}\n", positionals[0]));
         return error(CliError::InvalidArguments);

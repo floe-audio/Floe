@@ -258,7 +258,7 @@ TEST_CASE(TestParseCommandLineArgs) {
                                                 {
                                                     .handle_help_option = false,
                                                     .print_usage_on_error = false,
-                                                    .positionals_out = &positionals,
+                                                    .positionals = {.out = &positionals},
                                                 });
             auto const args = REQUIRE_UNWRAP(o);
             CHECK(args[ToInt(ArgId::A)].was_provided);
@@ -292,7 +292,7 @@ TEST_CASE(TestParseCommandLineArgs) {
                                                 {
                                                     .handle_help_option = false,
                                                     .print_usage_on_error = false,
-                                                    .positionals_out = &positionals,
+                                                    .positionals = {.out = &positionals},
                                                 });
             auto const args = REQUIRE_UNWRAP(o);
             CHECK(args[ToInt(ArgId::A)].values == Array {"v"_s});
@@ -313,7 +313,7 @@ TEST_CASE(TestParseCommandLineArgs) {
                                      {
                                          .handle_help_option = false,
                                          .print_usage_on_error = false,
-                                         .positionals_out = &positionals,
+                                         .positionals = {.out = &positionals},
                                      });
             auto const args = REQUIRE_UNWRAP(o);
             CHECK(args[ToInt(ArgId::A)].values == Array {"v"_s});
@@ -334,7 +334,7 @@ TEST_CASE(TestParseCommandLineArgs) {
                                                 {
                                                     .handle_help_option = false,
                                                     .print_usage_on_error = false,
-                                                    .positionals_out = &positionals,
+                                                    .positionals = {.out = &positionals},
                                                 });
             auto const args = REQUIRE_UNWRAP(o);
             CHECK(args[ToInt(ArgId::A)].values == Array {"v"_s});
@@ -355,7 +355,7 @@ TEST_CASE(TestParseCommandLineArgs) {
                                                 {
                                                     .handle_help_option = false,
                                                     .print_usage_on_error = false,
-                                                    .positionals_out = &positionals,
+                                                    .positionals = {.out = &positionals},
                                                 });
             auto const args = REQUIRE_UNWRAP(o);
             CHECK(args[ToInt(ArgId::D)].values == Array {"1"_s, "2"_s});
@@ -387,7 +387,7 @@ TEST_CASE(TestParseCommandLineArgs) {
                                                 {
                                                     .handle_help_option = false,
                                                     .print_usage_on_error = false,
-                                                    .positionals_out = &positionals,
+                                                    .positionals = {.out = &positionals},
                                                 });
             // E is required to have a-arg too; this test only has e and c. Provide a-arg.
             (void)o;
@@ -400,7 +400,7 @@ TEST_CASE(TestParseCommandLineArgs) {
                                      {
                                          .handle_help_option = false,
                                          .print_usage_on_error = false,
-                                         .positionals_out = &positionals,
+                                         .positionals = {.out = &positionals},
                                      });
             auto const args = REQUIRE_UNWRAP(o2);
             CHECK(args[ToInt(ArgId::E)].values == Array {"1"_s, "2"_s});
