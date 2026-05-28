@@ -120,6 +120,28 @@ static bool IsPrettyMode(lua_State* lua) {
     return v;
 }
 
+// Cache of serialised library dumps shared across per-preset lua_States. A script that calls
+// inspect_library() on the same library for every preset would otherwise repeat the full
+// read/parse/serialise pipeline N times.
+struct LibraryDumpCache {
+    ArenaAllocator arena {PageAllocator::Instance()};
+    DynamicHashTable<String, String> entries {arena};
+};
+
+constexpr char const* k_library_dump_cache_registry_key = "floe_preset_tool_library_dump_cache";
+
+static void SetLibraryDumpCache(lua_State* lua, LibraryDumpCache* cache) {
+    lua_pushlightuserdata(lua, cache);
+    lua_setfield(lua, LUA_REGISTRYINDEX, k_library_dump_cache_registry_key);
+}
+
+static LibraryDumpCache* GetLibraryDumpCache(lua_State* lua) {
+    lua_getfield(lua, LUA_REGISTRYINDEX, k_library_dump_cache_registry_key);
+    auto* const p = lua_touserdata(lua, -1);
+    lua_pop(lua, 1);
+    return (LibraryDumpCache*)p;
+}
+
 static DynamicArrayBounded<char, 256> ParamPrettyKey(ParamDescriptor const& d) {
     DynamicArrayBounded<char, 256> key {};
     dyn::AppendSpan(key, d.ModuleString("/"));
@@ -808,6 +830,15 @@ static int LuaInspectLibrary(lua_State* lua) {
     auto const path_c = luaL_checkstring(lua, 1);
     auto const path = FromNullTerminated(path_c);
 
+    auto* const cache = GetLibraryDumpCache(lua);
+    if (cache) {
+        if (auto const hit = cache->entries.Find(path)) {
+            if (luaL_loadbuffer(lua, hit->data, hit->size, "library") != LUA_OK) return lua_error(lua);
+            if (lua_pcall(lua, 0, 1, 0) != LUA_OK) return lua_error(lua);
+            return 1;
+        }
+    }
+
     ArenaAllocator scratch {PageAllocator::Instance()};
     ArenaAllocator lib_arena {PageAllocator::Instance()};
 
@@ -837,6 +868,13 @@ static int LuaInspectLibrary(lua_State* lua) {
         return luaL_error(lua, "library_dump emit failed");
     if (auto const r = library_dump::WriteObjectEnd(ctx); r.HasError())
         return luaL_error(lua, "library_dump close failed");
+
+    if (cache) {
+        // Clone key and value into the cache's long-lived arena.
+        auto const cached_key = cache->arena.Clone(path);
+        auto const cached_value = cache->arena.Clone((String) {buf.data, buf.size});
+        cache->entries.Insert(cached_key, cached_value);
+    }
 
     if (luaL_loadbuffer(lua, buf.data, buf.size, "library") != LUA_OK) return lua_error(lua);
     if (lua_pcall(lua, 0, 1, 0) != LUA_OK) return lua_error(lua);
@@ -908,6 +946,7 @@ struct ProcessPresetOptions {
     String preset_path;
     String script_source;
     String script_name;
+    LibraryDumpCache* library_dump_cache;
     bool have_script;
     bool raw;
     bool pretty;
@@ -922,6 +961,7 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
     DEFER { lua_close(lua); };
 
     SetPrettyMode(lua, opts.pretty);
+    SetLibraryDumpCache(lua, opts.library_dump_cache);
     BuildPresetLuaTable(lua, preset_state);
 
     luaL_openlibs(lua);
@@ -1096,6 +1136,8 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     auto const read_only = cli_args[ToInt(CliArgId::ReadOnly)].was_provided;
     auto const print_path_header = preset_files.size > 1;
 
+    LibraryDumpCache library_dump_cache {};
+
     int exit_code = 0;
     for (auto const& preset_path : preset_files) {
         ArenaAllocatorWithInlineStorage<4000> scratch {PageAllocator::Instance()};
@@ -1104,6 +1146,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                                          .preset_path = preset_path,
                                          .script_source = script_source,
                                          .script_name = script_name,
+                                         .library_dump_cache = &library_dump_cache,
                                          .have_script = have_script,
                                          .raw = raw,
                                          .pretty = pretty,
