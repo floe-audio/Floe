@@ -1883,7 +1883,7 @@ fn buildPresetTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     embedded_files: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     var exe = ctx.b.addExecutable(.{
-        .name = "preset-tool",
+        .name = "floe-preset-tool",
         .root_module = ctx.b.createModule(cfg.module_options),
         .version = ctx.floe_version,
     });
