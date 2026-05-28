@@ -9,9 +9,11 @@
 #include "foundation/foundation.hpp"
 #include "os/filesystem.hpp"
 #include "utils/cli_arg_parse.hpp"
+#include "utils/reader.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/global.hpp"
+#include "common_infrastructure/sample_library/library_dump.hpp"
 #include "common_infrastructure/sample_library/library_id_cache.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 
@@ -42,7 +44,8 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
             "Path to the script file to edit. If not provided, the preset file will be printed to stdout.\n"
             "In the script, you have access to a global 'preset'. Modify this global and the changes will\n"
             "be saved to the file. Run this tool without a script file to see the format of 'preset'.\n"
-            "param_values are keyed by param ID.\n",
+            "param_values are keyed by param ID. Also available: inspect_library(path) returns a table\n"
+            "describing the given floe.lua / .mdata file (same shape as library-inspector --format=lua).\n",
         .value_type = "path",
         .required = false,
         .num_values = 1,
@@ -807,6 +810,48 @@ ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset
     return k_success;
 }
 
+// Lua-callable: inspect_library(path) -> table. Reads the given floe.lua/.mdata file, runs the shared
+// library_dump pipeline to produce a Lua table literal, then loads it back into the caller's lua_State so
+// the script sees a normal table (no JSON round-trip). On failure, raises a Lua error.
+static int LuaInspectLibrary(lua_State* lua) {
+    auto const path_c = luaL_checkstring(lua, 1);
+    auto const path = FromNullTerminated(path_c);
+
+    ArenaAllocator scratch {PageAllocator::Instance()};
+    ArenaAllocator lib_arena {PageAllocator::Instance()};
+
+    auto const format = sample_lib::DetermineFileFormat(path);
+    if (!format) return luaL_error(lua, "not a recognised Floe library file: %s", path_c);
+
+    auto file_data = ReadEntireFile(path, scratch);
+    if (file_data.HasError()) {
+        auto const msg = fmt::Format(scratch, "{}", file_data.Error());
+        return luaL_error(lua, "failed to read library: %s", NullTerminated(msg, scratch));
+    }
+
+    auto reader = Reader::FromMemory(file_data.Value());
+    auto outcome = sample_lib::Read(reader, *format, path, lib_arena, scratch);
+    if (outcome.HasError()) {
+        auto const msg = fmt::Format(scratch, "{}: {}", outcome.Error().message, outcome.Error().code);
+        return luaL_error(lua, "failed to parse library: %s", NullTerminated(msg, scratch));
+    }
+    auto* lib = outcome.Get<sample_lib::Library*>();
+
+    DynamicArray<char> buf {scratch};
+    dyn::AppendSpan(buf, "return "_s);
+    library_dump::Context ctx {.out = dyn::WriterFor(buf), .format = library_dump::Format::Lua};
+    if (auto const r = library_dump::WriteObjectBegin(ctx); r.HasError())
+        return luaL_error(lua, "library_dump write failed");
+    if (auto const r = library_dump::Dump(ctx, *lib, scratch); r.HasError())
+        return luaL_error(lua, "library_dump emit failed");
+    if (auto const r = library_dump::WriteObjectEnd(ctx); r.HasError())
+        return luaL_error(lua, "library_dump close failed");
+
+    if (luaL_loadbuffer(lua, buf.data, buf.size, "library") != LUA_OK) return lua_error(lua);
+    if (lua_pcall(lua, 0, 1, 0) != LUA_OK) return lua_error(lua);
+    return 1;
+}
+
 static ErrorCodeOr<int> Main(ArgsCstr args) {
     GlobalInit({
         .init_error_reporting = false,
@@ -869,6 +914,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     BuildPresetLuaTable(lua, preset_state);
 
     luaL_openlibs(lua);
+    lua_register(lua, "inspect_library", LuaInspectLibrary);
 
     if (cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
         auto const script_path =
