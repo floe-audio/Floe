@@ -520,6 +520,7 @@ pub fn build(b: *std.Build) void {
         .build_release = b.step("release", "Create release artifacts (zipped, codesigned, etc.)"),
         .install_plugins = b.getInstallStep(),
         .install_clap = b.step("install:clap", "Install only the CLAP plugin"),
+        .install_bin = b.step("install:bin", "Install only the binary executables"),
         .install_all = b.step("install:all", "Install all; development files as well as plugins"),
 
         .test_step = b.step("test", "Run unit tests"),
@@ -549,6 +550,8 @@ pub fn build(b: *std.Build) void {
         .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
         .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe_standalone for each known GUI area"),
     };
+
+    top_level_steps.install_all.dependOn(top_level_steps.install_bin);
 
     // The default is to compile everything.
     b.default_step = ctx.compile_all;
@@ -2929,7 +2932,7 @@ fn doTarget(
         );
 
         const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-        top_level_steps.install_all.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(&install.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
@@ -2943,7 +2946,7 @@ fn doTarget(
         });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_all.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(&install.step);
     }
 
     {
@@ -2953,7 +2956,7 @@ fn doTarget(
         });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_all.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(&install.step);
 
         // IMPROVE: export preset-tool as a production artifact?
     }
@@ -2969,7 +2972,7 @@ fn doTarget(
         );
 
         const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-        top_level_steps.install_all.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(&install.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
@@ -3002,7 +3005,7 @@ fn doTarget(
         const exe = buildStandalone(ctx, cfg, .{ .plugin = plugin });
 
         const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_all.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(&install.step);
 
         if (targetCanRunNatively(cfg.target)) {
             const screenshot_filter = ctx.b.option(
@@ -3225,7 +3228,7 @@ fn doTarget(
                 );
 
                 const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-                top_level_steps.install_all.dependOn(&install.step);
+                top_level_steps.install_bin.dependOn(&install.step);
 
                 break :blk2 .{
                     .step = exe,
@@ -3272,7 +3275,7 @@ fn doTarget(
             // Install
             {
                 const install = ctx.b.addInstallBinFile(codesigned_path, installer.out_filename);
-                top_level_steps.install_all.dependOn(&install.step);
+                top_level_steps.install_bin.dependOn(&install.step);
             }
 
             break :blk release_artifacts.Artifact{
@@ -3294,7 +3297,7 @@ fn doTarget(
         const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
 
         const install = ctx.b.addInstallBinFile(test_binary, exe.out_filename);
-        top_level_steps.install_all.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(&install.step);
 
         const add_tests_args = struct {
             pub fn do(run: *std.Build.Step.Run, clap_plugin: ?configure_binaries.ConfiguredPlugin) void {
@@ -3373,7 +3376,7 @@ fn doTarget(
         const benchmark_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
 
         const install = ctx.b.addInstallBinFile(benchmark_binary, exe.out_filename);
-        top_level_steps.install_all.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(&install.step);
 
         // Run benchmarks
         {

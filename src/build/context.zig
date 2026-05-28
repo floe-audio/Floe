@@ -67,6 +67,7 @@ pub const TopLevelSteps = struct {
     build_release: *std.Build.Step,
     install_plugins: *std.Build.Step, // only plugins
     install_clap: *std.Build.Step, // only CLAP plugin
+    install_bin: *std.Build.Step, // only binaries
     install_all: *std.Build.Step, // everything, dev tools as well
 
     // Tests.
