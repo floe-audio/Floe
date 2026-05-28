@@ -242,9 +242,7 @@ static ErrorCodeOr<void> WriteRegion(Context& ctx, sample_lib::Region const& reg
     TRY(WriteKeyValue(ctx, "velo_high", (s64)region.trigger.velocity_range.end));
     if (region.trigger.round_robin_index)
         TRY(WriteKeyValue(ctx, "round_robin_index", (s64)*region.trigger.round_robin_index));
-    TRY(WriteKeyValue(ctx,
-                      "round_robin_sequencing_group",
-                      (s64)region.trigger.round_robin_sequencing_group));
+    TRY(WriteKeyValue(ctx, "round_robin_sequencing_group", (s64)region.trigger.round_robin_sequencing_group));
     TRY(WriteKeyValue(ctx,
                       "feather_overlapping_velocity_layers",
                       region.trigger.feather_overlapping_velocity_layers));
