@@ -62,6 +62,7 @@
     X(RegisterPathTests)                                                                                     \
     X(RegisterPersistentStoreTests)                                                                          \
     X(RegisterPreferencesTests)                                                                              \
+    X(RegisterPresetLuaCodecTests)                                                                           \
     X(RegisterPresetServerTests)                                                                             \
     X(RegisterRandomTests)                                                                                   \
     X(RegisterSampleLibraryServerTests)                                                                      \

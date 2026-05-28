@@ -1890,6 +1890,7 @@ fn buildPresetTool(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     exe.addCSourceFiles(.{
         .files = &.{
             "src/preset_tool/preset_tool.cpp",
+            "src/preset_tool/preset_tool_lua_codec.cpp",
             "src/common_infrastructure/final_binary_type.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
@@ -2800,6 +2801,7 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/foundation/utils/random.cpp",
             "src/foundation/utils/version.cpp",
             "src/foundation/utils/writer.cpp",
+            "src/preset_tool/preset_tool_lua_codec.cpp",
             "src/tests/tests_main.cpp",
             "src/utils/error_notifications.cpp",
             "src/utils/json/json_reader.cpp",
