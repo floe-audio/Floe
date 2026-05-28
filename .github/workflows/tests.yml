@@ -77,7 +77,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          directory: .floe-cache/coverage-out/tests
+          directory: .floe-cache/coverage-out/floe-tests
           verbose: true
           fail_ci_if_error: true
           report_type: coverage

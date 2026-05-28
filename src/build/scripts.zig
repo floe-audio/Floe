@@ -1262,7 +1262,7 @@ fn runBenchmarkCi(context: *Context) !u8 {
         try stderr_writer.writeAll("[benchmark-ci] Build succeeded.\n");
     }
 
-    const benchmarks_exe = "zig-out/bin/benchmarks";
+    const benchmarks_exe = "zig-out/bin/floe-benchmarks";
 
     // Step 2: List available benchmarks.
     var benchmark_names = std.ArrayList([]const u8).init(allocator);

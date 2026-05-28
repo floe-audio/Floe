@@ -548,7 +548,7 @@ pub fn build(b: *std.Build) void {
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
         .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused size/colour-map entries from def files"),
         .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
-        .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe_standalone for each known GUI area"),
+        .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe-standalone for each known GUI area"),
     };
 
     top_level_steps.install_all.dependOn(top_level_steps.install_bin);
@@ -2085,7 +2085,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     };
 
     const exe = ctx.b.addExecutable(.{
-        .name = "floe_standalone",
+        .name = "floe-standalone",
         .root_module = ctx.b.createModule(cfg.module_options),
     });
 
@@ -2775,7 +2775,7 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     plugin: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     const exe = ctx.b.addExecutable(.{
-        .name = "tests",
+        .name = "floe-tests",
         .root_module = ctx.b.createModule(cfg.module_options),
     });
     exe.addCSourceFiles(.{
@@ -2833,7 +2833,7 @@ fn buildBenchmarks(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     plugin: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     const exe = ctx.b.addExecutable(.{
-        .name = "benchmarks",
+        .name = "floe-benchmarks",
         .root_module = ctx.b.createModule(cfg.module_options),
     });
     exe.addCSourceFiles(.{
