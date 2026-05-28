@@ -135,9 +135,15 @@ PUBLIC Span<String> ArgsToStringsSpan(ArenaAllocator& arena, ArgsCstr args, bool
     return result;
 }
 
-// Doesn't support positional args, but does support things like:
+// Supports things like:
 // "-a", "-a=value", "--arg value", "--arg=value", "--arg value1 value2"
-PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena, Span<String const> args) {
+// Positional args (non-flag args appearing before any flag) are collected into positionals_out if non-null,
+// and silently dropped otherwise. Positional args appearing after a flag are consumed as that flag's values,
+// since flags greedily collect values until the next flag; callers wanting positionals must therefore place
+// them before any flag on the command line.
+PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena,
+                                                           Span<String const> args,
+                                                           DynamicArray<String>* positionals_out = nullptr) {
     DynamicHashTable<String, Span<String>> result {arena};
     enum class ArgType : u8 { Short, Long, None };
     auto const arg_type = [](String arg) {
@@ -184,9 +190,8 @@ PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena
         } else {
             if (current_key.size)
                 dyn::Append(current_values, args[arg_index]);
-            else {
-                // positional arguments are not supported at the moment
-            }
+            else if (positionals_out)
+                dyn::Append(*positionals_out, args[arg_index]);
         }
     }
 
@@ -195,8 +200,9 @@ PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena
     return result.ToOwnedTable();
 }
 
-PUBLIC HashTable<String, Span<String>> ArgsToKeyValueTable(ArenaAllocator& arena, ArgsCstr args) {
-    return ArgsToKeyValueTable(arena, ArgsToStringsSpan(arena, args, false));
+PUBLIC HashTable<String, Span<String>>
+ArgsToKeyValueTable(ArenaAllocator& arena, ArgsCstr args, DynamicArray<String>* positionals_out = nullptr) {
+    return ArgsToKeyValueTable(arena, ArgsToStringsSpan(arena, args, false), positionals_out);
 }
 
 enum class CliError : u8 {
@@ -213,6 +219,9 @@ struct ParseCommandLineArgsOptions {
     bool handle_log_level_option = true; // intercepts --log-level and calls SetLogLevel
     String description {};
     String version {}; // if present will be printed on --version
+    // If non-null, positional arguments (non-flag args before any flag) are collected here. If null,
+    // positional arguments are an error.
+    Span<String>* positionals_out = nullptr;
 };
 
 // always returns a span the same size as the arg_defs, if an arg wasn't set it will have was_provided = false
@@ -242,7 +251,8 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
         };
     }
 
-    for (auto const [key, values, _] : ArgsToKeyValueTable(arena, args)) {
+    DynamicArray<String> positionals {arena};
+    for (auto const [key, values, _] : ArgsToKeyValueTable(arena, args, &positionals)) {
         if (options.handle_help_option && key == "help") {
             TRY(PrintUsage(writer, program_name, options.description, arg_defs, implicit_args));
             return ErrorCode {CliError::HelpRequested};
@@ -295,6 +305,13 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
             TRY(fmt::FormatToWriter(writer, "Required arg --{} not provided\n", arg_defs[arg_index].key));
             return error(CliError::InvalidArguments);
         }
+
+    if (options.positionals_out) {
+        *options.positionals_out = positionals.ToOwnedSpan();
+    } else if (positionals.size) {
+        TRY(fmt::FormatToWriter(writer, "Unexpected positional argument: {}\n", positionals[0]));
+        return error(CliError::InvalidArguments);
+    }
 
     return result;
 }

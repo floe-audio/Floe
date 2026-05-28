@@ -71,9 +71,27 @@ TEST_CASE(TestParseCommandLineArgs) {
         CHECK(args.Find("filter"_s));
     }
 
-    SUBCASE("positional args are ignored") {
+    SUBCASE("positional args are ignored when no out param") {
         auto args = ArgsToKeyValueTable(a, Array {"filter"_s});
         CHECK_EQ(args.size, 0uz);
+    }
+
+    SUBCASE("positional args are collected when out param given") {
+        DynamicArray<String> positionals {a};
+        auto args =
+            ArgsToKeyValueTable(a, Array {"file1"_s, "dir/", "--flag", "value", "more"}, &positionals);
+        CHECK_EQ(args.size, 1uz);
+        check_arg(args, "flag"_s, Array {"value"_s, "more"_s});
+        CHECK_EQ(positionals.size, 2uz);
+        CHECK_EQ((String)positionals[0], "file1"_s);
+        CHECK_EQ((String)positionals[1], "dir/"_s);
+    }
+
+    SUBCASE("only-positional args") {
+        DynamicArray<String> positionals {a};
+        auto args = ArgsToKeyValueTable(a, Array {"a"_s, "b", "c"}, &positionals);
+        CHECK_EQ(args.size, 0uz);
+        CHECK_EQ(positionals.size, 3uz);
     }
 
     SUBCASE("short arg with value") {
@@ -228,6 +246,40 @@ TEST_CASE(TestParseCommandLineArgs) {
             auto d_arg = args[ToInt(ArgId::D)];
             CHECK(d_arg.was_provided);
             CHECK(d_arg.values == Array {"1"_s, "2"_s});
+        }
+
+        SUBCASE("positionals via parse opts") {
+            Span<String> positionals {};
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"file1"_s, "dir/", "--a-arg", "v"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                    .positionals_out = &positionals,
+                                                });
+            auto const args = REQUIRE_UNWRAP(o);
+            CHECK(args[ToInt(ArgId::A)].was_provided);
+            CHECK(args[ToInt(ArgId::A)].values == Array {"v"_s});
+            REQUIRE(positionals.size == 2);
+            CHECK_EQ(positionals[0], "file1"_s);
+            CHECK_EQ(positionals[1], "dir/"_s);
+        }
+
+        SUBCASE("unexpected positional is an error when opt-out") {
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"stray"_s, "--a-arg", "v"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                });
+            REQUIRE(o.HasError());
+            CHECK(o.Error() == CliError::InvalidArguments);
         }
 
         SUBCASE("arg that can receive any number of arguments") {
