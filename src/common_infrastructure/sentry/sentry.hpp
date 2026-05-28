@@ -526,44 +526,13 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
         TRY(json::WriteObjectEnd(json_writer));
     }
 
-    // exception
-    if (event.exception) {
-        TRY(json::WriteKeyObjectBegin(json_writer, "exception"));
-        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
-        TRY(json::WriteObjectBegin(json_writer));
-        TRY(json::WriteKeyValue(json_writer, "type", event.exception->type));
-        TRY(json::WriteKeyValue(json_writer, "value", event.exception->value));
-        if (event.thread) TRY(json::WriteKeyValue(json_writer, "thread_id", event.thread->id));
-        TRY(json::WriteObjectEnd(json_writer));
-        TRY(json::WriteArrayEnd(json_writer));
-        TRY(json::WriteObjectEnd(json_writer));
-    }
-
     auto fingerprint = HashInit();
 
-    if (event.thread) {
-        auto const& thread = *event.thread;
-        TRY(json::WriteKeyObjectBegin(json_writer, "threads"));
-        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
-
-        // NOTE: Sentry doesn't show the thread ID on their web UI if there's only one thread in this object.
-        // So we add a fake thread.
-        TRY(json::WriteObjectBegin(json_writer));
-        TRY(json::WriteKeyValue(json_writer, "id", 999999));
-        TRY(json::WriteKeyValue(json_writer, "name", "fake"));
-        TRY(json::WriteKeyObjectBegin(json_writer, "stacktrace"));
-        TRY(json::WriteObjectEnd(json_writer));
-        TRY(json::WriteObjectEnd(json_writer));
-
-        TRY(json::WriteObjectBegin(json_writer));
-        TRY(json::WriteKeyValue(json_writer, "id", thread.id));
-        TRY(json::WriteKeyValue(json_writer, "current", true));
-        if (thread.name) TRY(json::WriteKeyValue(json_writer, "name", *thread.name));
-        if (thread.is_main) TRY(json::WriteKeyValue(json_writer, "main", *thread.is_main));
-        if (event.exception) TRY(json::WriteKeyValue(json_writer, "crashed", true));
-    }
-    // Stacktrace. this lives inside the thread object where possible, but it can also be top-level.
-    if (event.stacktrace && event.stacktrace->size) {
+    // Sentry's grouping algorithm reads frames from exception.stacktrace, not threads.values[*].stacktrace.
+    // When both an exception and the crashed thread's stack are present, the spec is to put the frames on
+    // the exception and leave the matching thread entry stacktrace-less, linking them via thread_id.
+    // See https://develop.sentry.dev/sdk/data-model/event-payloads/threads/
+    auto const write_stacktrace_object = [&]() -> ErrorCodeOr<void> {
         TRY(json::WriteKeyObjectBegin(json_writer, "stacktrace"));
         TRY(json::WriteKeyArrayBegin(json_writer, "frames"));
         ErrorCodeOr<void> stacktrace_error = k_success;
@@ -613,11 +582,53 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
         TRY(stacktrace_error);
         TRY(json::WriteArrayEnd(json_writer));
         TRY(json::WriteObjectEnd(json_writer));
-    }
-    if (event.thread) {
+        return k_success;
+    };
+
+    auto const has_stacktrace = event.stacktrace && event.stacktrace->size;
+
+    // exception
+    if (event.exception) {
+        TRY(json::WriteKeyObjectBegin(json_writer, "exception"));
+        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "type", event.exception->type));
+        TRY(json::WriteKeyValue(json_writer, "value", event.exception->value));
+        if (event.thread) TRY(json::WriteKeyValue(json_writer, "thread_id", event.thread->id));
+        if (has_stacktrace) TRY(write_stacktrace_object());
         TRY(json::WriteObjectEnd(json_writer));
         TRY(json::WriteArrayEnd(json_writer));
         TRY(json::WriteObjectEnd(json_writer));
+    }
+
+    if (event.thread) {
+        auto const& thread = *event.thread;
+        TRY(json::WriteKeyObjectBegin(json_writer, "threads"));
+        TRY(json::WriteKeyArrayBegin(json_writer, "values"));
+
+        // NOTE: Sentry doesn't show the thread ID on their web UI if there's only one thread in this object.
+        // So we add a fake thread.
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "id", 999999));
+        TRY(json::WriteKeyValue(json_writer, "name", "fake"));
+        TRY(json::WriteKeyObjectBegin(json_writer, "stacktrace"));
+        TRY(json::WriteObjectEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+
+        TRY(json::WriteObjectBegin(json_writer));
+        TRY(json::WriteKeyValue(json_writer, "id", thread.id));
+        TRY(json::WriteKeyValue(json_writer, "current", true));
+        if (thread.name) TRY(json::WriteKeyValue(json_writer, "name", *thread.name));
+        if (thread.is_main) TRY(json::WriteKeyValue(json_writer, "main", *thread.is_main));
+        if (event.exception) TRY(json::WriteKeyValue(json_writer, "crashed", true));
+        // For non-crash events, attach the stacktrace to the thread. For crash events, the frames are
+        // already on the exception above and duplicating them here would defeat Sentry's auto-linking.
+        if (has_stacktrace && !event.exception) TRY(write_stacktrace_object());
+        TRY(json::WriteObjectEnd(json_writer));
+        TRY(json::WriteArrayEnd(json_writer));
+        TRY(json::WriteObjectEnd(json_writer));
+    } else if (has_stacktrace && !event.exception) {
+        TRY(write_stacktrace_object());
     }
 
     if constexpr (detail::k_use_custom_fingerprint) {
