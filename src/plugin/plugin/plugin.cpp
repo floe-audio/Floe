@@ -14,6 +14,7 @@
 #include <clap/id.h>
 #include <clap/plugin.h>
 #include <clap/process.h>
+#include <clapwrapper/auv2.h>
 
 #include "foundation/foundation.hpp"
 #include "utils/debug/debug.hpp"
@@ -1014,6 +1015,30 @@ static clap_plugin_params const floe_params {
     .flush = ClapParamsFlush,
 };
 
+static bool ClapAuv2GetParamOrder(clap_plugin_t const*, usize* order, usize param_count) {
+    if (param_count != k_num_parameters) return false;
+    static constexpr auto k_ordering = []() {
+        Array<u16, k_num_parameters> result {};
+        for (auto const i : Range(k_num_parameters))
+            result[i] = (u16)i;
+        Sort(result, [](u16 a, u16 b) {
+            auto const& a_desc = k_param_descriptors[a];
+            auto const& b_desc = k_param_descriptors[b];
+            if (a_desc.added_in_generation != b_desc.added_in_generation)
+                return a_desc.added_in_generation < b_desc.added_in_generation;
+            return a_desc.id < b_desc.id;
+        });
+        return result;
+    }();
+    for (auto const i : Range(k_num_parameters))
+        order[i] = (usize)k_ordering[i];
+    return true;
+}
+
+static clap_plugin_auv2_param_ordering_t const floe_auv2_param_ordering {
+    .get_param_order = ClapAuv2GetParamOrder,
+};
+
 static constexpr clap_id k_input_port_id = 1;
 static constexpr clap_id k_output_port_id = 2;
 
@@ -1679,6 +1704,7 @@ static void const* ClapGetExtension(const struct clap_plugin* plugin, char const
         if (NullTermStringsEqual(id, CLAP_EXT_THREAD_POOL)) return &floe_thread_pool;
         if (NullTermStringsEqual(id, CLAP_EXT_TIMER_SUPPORT)) return &floe_timer;
         if (NullTermStringsEqual(id, CLAP_EXT_POSIX_FD_SUPPORT)) return &floe_posix_fd;
+        if (NullTermStringsEqual(id, CLAP_PLUGIN_AUV2_PARAM_ORDERING)) return &floe_auv2_param_ordering;
         if (NullTermStringsEqual(id, k_floe_clap_extension_id)) return &floe_custom_ext;
     } catch (PanicException) {
     }
