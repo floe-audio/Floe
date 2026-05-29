@@ -7,9 +7,6 @@
 struct lua_State;
 
 struct BuildPresetLuaTableOptions {
-    // In example mode, each handler emits only the first entry of any long array/dict — the goal is to
-    // show shape, not enumerate every value. Not round-trippable; for documentation output only.
-    bool example_mode = false;
     char const* global_name = "preset";
 };
 
@@ -17,3 +14,12 @@ void BuildPresetLuaTable(lua_State* lua,
                          StateSnapshot const& preset_state,
                          BuildPresetLuaTableOptions options);
 void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset_state);
+
+// Append a human-readable description of every field in the 'preset' Lua table. Each handler owns
+// its own help text, so read, write, and shape documentation live together. Text only (no JSON).
+void AppendPresetLuaTableShape(DynamicArray<char>& out);
+
+// Emit a JSON catalog of every parameter (id_string, default, range — both projected numeric and
+// formatted display forms, legacy flag) plus the enum integer tables (InstrumentType, WaveformType,
+// EffectType). Intended for piping into jq.
+ErrorCodeOr<void> WriteParamsJson(Writer out);

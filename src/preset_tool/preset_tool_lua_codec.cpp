@@ -10,8 +10,10 @@
 
 #include "foundation/foundation.hpp"
 #include "tests/framework.hpp"
+#include "utils/json/json_writer.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
+#include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 
 // Two-way Lua <-> StateSnapshot codec.
@@ -42,22 +44,6 @@ struct LuaReader {
     }
 };
 
-// Example mode: handlers writing a long array/dict early-out after the first entry. The output is a
-// shape-only sample for --print-example; not round-trippable.
-constexpr char const* k_example_mode_registry_key = "floe_preset_tool_example_mode";
-
-static void SetExampleMode(lua_State* lua, bool example) {
-    lua_pushboolean(lua, example);
-    lua_setfield(lua, LUA_REGISTRYINDEX, k_example_mode_registry_key);
-}
-
-static bool IsExampleMode(lua_State* lua) {
-    lua_getfield(lua, LUA_REGISTRYINDEX, k_example_mode_registry_key);
-    auto const v = lua_toboolean(lua, -1) != 0;
-    lua_pop(lua, 1);
-    return v;
-}
-
 static Optional<ParamIndex> FindParamByIdString(String key) {
     for (auto const i : Range<u16>(k_num_parameters))
         if (k_param_descriptors[i].id_string == key) return ParamIndex {i};
@@ -79,6 +65,9 @@ struct StringH {
         auto copy_len = Min(len, s.Capacity());
         dyn::Assign(s, {str, copy_len});
     }
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = \"...\"   string (truncated to fixed capacity on read)\n", name);
+    }
 };
 
 struct BoolH {
@@ -97,11 +86,17 @@ struct IntH {
 };
 
 struct ParamValuesH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ }}\n", name);
+        fmt::Append(out,
+                    "    Keyed by stable id_string (e.g. \"fx.distortion.drive\", \"l1.volume\").\n"
+                    "    Writes emit formatted display strings (\"50 %\", \"-12.0 dB\", \"Sine\"); reads\n"
+                    "    accept either a string or the underlying projected number. Run\n"
+                    "    `preset-tool --print-params-json` for the full id_string + range catalog.\n");
+    }
     static void Write(lua_State* lua, Array<f32, k_num_parameters> const& vals) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (auto const i : Range<u16>(vals.size)) {
-            if (example && i > 0) break;
             auto const& d = k_param_descriptors[i];
             lua_pushlstring(lua, d.id_string.data, d.id_string.size);
             if (auto const formatted = d.LinearValueToString(vals[i]))
@@ -145,11 +140,25 @@ struct ParamValuesH {
 };
 
 struct InstIdsH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = {{...}}, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed, one entry per layer ({} layers). Each entry is a table:\n"
+                    "      .type = InstrumentType integer ({} = None, {} = WaveformSynth, {} = Sampler).\n"
+                    "    Then, depending on type:\n"
+                    "      None:          (no extra fields)\n"
+                    "      WaveformSynth: .waveform_type = WaveformType integer.\n"
+                    "      Sampler:       .library_id    = \"Author/Library\" string or hashed integer.\n"
+                    "                     .instrument_id = \"id\" string.\n"
+                    "    See --print-params-json for the InstrumentType / WaveformType integer values.\n",
+                    k_num_layers,
+                    (int)InstrumentType::None,
+                    (int)InstrumentType::WaveformSynth,
+                    (int)InstrumentType::Sampler);
+    }
     static void Write(lua_State* lua, InitialisedArray<InstrumentId, k_num_layers> const& ids) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             auto const& inst_id = ids[i];
@@ -234,11 +243,17 @@ struct InstIdsH {
 };
 
 struct FxOrderH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = EffectType, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed list of {} EffectType integers, one per effect slot. The order of\n"
+                    "    integers in this list is the audio processing order. See --print-params-json\n"
+                    "    for the EffectType integer values.\n",
+                    k_num_effect_types);
+    }
     static void Write(lua_State* lua, Array<EffectType, k_num_effect_types> const& order) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_effect_types; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_pushinteger(lua, (lua_Integer)order[i]);
             lua_settable(lua, -3);
@@ -259,11 +274,16 @@ struct FxOrderH {
 };
 
 struct FxVisibleH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = bool, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed list of {} booleans, indexed by the EffectType integer (not by\n"
+                    "    slot position). True = effect's UI panel is visible.\n",
+                    k_num_effect_types);
+    }
     static void Write(lua_State* lua, Bitset<k_num_effect_types> const& bits) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_effect_types; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_pushboolean(lua, bits.Get(i));
             lua_settable(lua, -3);
@@ -284,6 +304,12 @@ struct FxVisibleH {
 };
 
 struct TagsH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ \"tag-name\", ... }}\n", name);
+        fmt::Append(out,
+                    "    List of tag-name strings drawn from Floe's tag catalog. Unknown names are\n"
+                    "    silently ignored on read.\n");
+    }
     static void Write(lua_State* lua, TagsBitset const& tags) {
         lua_newtable(lua);
         int tag_index = 1;
@@ -310,6 +336,12 @@ struct TagsH {
 };
 
 struct MetadataH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ author = ..., description = ..., tags = ... }}\n", name);
+        fmt::Append(out, "    .author      string\n");
+        fmt::Append(out, "    .description string\n");
+        fmt::Append(out, "    .tags        list of tag-name strings (see Floe's tag catalog)\n");
+    }
     static void Write(lua_State* lua, StateMetadata const& m) {
         lua_newtable(lua);
         LuaWriter w {lua};
@@ -327,6 +359,13 @@ struct MetadataH {
 };
 
 struct IrIdH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = nil  or  {{ library_id = ..., ir_id = \"...\" }}\n", name);
+        fmt::Append(out,
+                    "    nil means no impulse response. Otherwise:\n"
+                    "      .library_id = \"Author/Library\" string or hashed integer.\n"
+                    "      .ir_id      = \"id\" string.\n");
+    }
     static void Write(lua_State* lua, Optional<sample_lib::IrId> const& opt) {
         if (!opt.HasValue()) {
             lua_pushnil(lua);
@@ -370,11 +409,17 @@ struct IrIdH {
 };
 
 struct VelocityCurvePointsH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = {{ {{x=, y=, curve=}}, ... }}, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed per layer ({} layers). Each layer holds an ordered list of\n"
+                    "    {{x, y, curve}} points defining the velocity-to-volume response curve.\n"
+                    "    Read clears and replaces the layer's points.\n",
+                    k_num_layers);
+    }
     static void Write(lua_State* lua, Array<CurveMap::Points, k_num_layers> const& curves) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             for (u16 j = 0u; j < curves[i].size; ++j) {
@@ -426,11 +471,18 @@ struct VelocityCurvePointsH {
 };
 
 struct HarmonyIntervalsH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = {{ semitone, ... }}, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed per layer ({} layers). Each layer is a list of semitone integers\n"
+                    "    in the range [{}, {}]; out-of-range values are silently ignored on read.\n",
+                    k_num_layers,
+                    k_harmony_interval_min_semitone,
+                    k_harmony_interval_max_semitone);
+    }
     static void Write(lua_State* lua, Array<HarmonyIntervalsBitset, k_num_layers> const& bits) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             u16 entry_index = 1;
@@ -469,15 +521,26 @@ struct HarmonyIntervalsH {
 };
 
 struct ArpStepsH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = {{ [1] = {{velocity=, gate=, on=, tie=, interval=, note=}}, ... }}, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed per layer ({} layers). Each layer is a 1-indexed list of exactly\n"
+                    "    {} step tables:\n"
+                    "      .velocity = number in [0,1]\n"
+                    "      .gate     = number in [0,1]\n"
+                    "      .on       = bool\n"
+                    "      .tie      = bool\n"
+                    "      .interval = signed integer (semitones)\n"
+                    "      .note     = integer in [0,127] (MIDI note)\n",
+                    k_num_layers,
+                    k_arp_max_steps);
+    }
     static void Write(lua_State* lua, Array<Array<ArpStep, k_arp_max_steps>, k_num_layers> const& steps) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             for (u16 j = 0u; j < k_arp_max_steps; ++j) {
-                if (example && j > 0) break;
                 lua_pushinteger(lua, j + 1);
                 lua_newtable(lua);
                 auto const& step = steps[i][j];
@@ -546,11 +609,17 @@ struct ArpStepsH {
 };
 
 struct SliceArpConfigsH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = {{start_offset=, loop_length=}}, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed per layer ({} layers). Slice arpeggiator config:\n"
+                    "      .start_offset = u8\n"
+                    "      .loop_length  = u8\n",
+                    k_num_layers);
+    }
     static void Write(lua_State* lua, Array<SliceArpConfig, k_num_layers> const& cfgs) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             auto const& cfg = cfgs[i];
@@ -583,11 +652,13 @@ struct SliceArpConfigsH {
 };
 
 struct MacroNamesH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = \"...\", ... }}\n", name);
+        fmt::Append(out, "    1-indexed list of {} macro display-name strings.\n", k_num_macros);
+    }
     static void Write(lua_State* lua, MacroNames const& names) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_macros; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_pushlstring(lua, names[i].data, names[i].size);
             lua_settable(lua, -3);
@@ -612,16 +683,23 @@ struct MacroNamesH {
 };
 
 struct MacroDestinationsH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ [1] = {{ {{param_index=\"...\", value=}}, ... }}, ... }}\n", name);
+        fmt::Append(out,
+                    "    1-indexed per macro ({} macros). Each macro is a packed list of up to {}\n"
+                    "    destination tables:\n"
+                    "      .param_index = stable id_string (same key as in param_values)\n"
+                    "      .value       = number (linear amount the macro contributes to the param)\n",
+                    k_num_macros,
+                    k_max_macro_destinations);
+    }
     static void Write(lua_State* lua, MacroDestinations const& dests) {
-        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_macros; ++i) {
-            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             // Array is null-terminated and packed.
             for (u16 j = 0u; j < dests[i].Size(); ++j) {
-                if (example && j > 0) break;
                 auto const& dest = dests[i].items[j];
                 lua_pushinteger(lua, j + 1);
                 lua_newtable(lua);
@@ -671,6 +749,13 @@ struct MacroDestinationsH {
 };
 
 struct InstanceConfigH {
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = {{ reset_on_transport=, reset_keyswitch=, seed= }}\n", name);
+        fmt::Append(out,
+                    "    .reset_on_transport = bool\n"
+                    "    .reset_keyswitch    = MIDI note integer in [0,127] (absent / nil = unset)\n"
+                    "    .seed               = integer in [0,255]\n");
+    }
     static void Write(lua_State* lua, InstanceConfig const& cfg) {
         lua_newtable(lua);
         LuaWriter w {lua};
@@ -719,7 +804,6 @@ static void VisitPreset(V& v, S& s) {
 void BuildPresetLuaTable(lua_State* lua,
                          StateSnapshot const& preset_state,
                          BuildPresetLuaTableOptions options) {
-    SetExampleMode(lua, options.example_mode);
     lua_newtable(lua);
     LuaWriter w {lua};
     VisitPreset(w, preset_state);
@@ -731,6 +815,98 @@ void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& p
     LuaReader r {lua};
     VisitPreset(r, preset_state);
     lua_pop(lua, 1);
+}
+
+// Help visitor: each Field call dispatches to the handler's AppendHelp, which writes a section
+// describing that field's shape. The value argument is required by the Visit template but ignored.
+struct LuaHelpWriter {
+    DynamicArray<char>& out;
+    template <typename T, typename H>
+    void Field(char const* name, T const&, H) {
+        H::AppendHelp(out, FromNullTerminated(name));
+        dyn::Append(out, '\n');
+    }
+};
+
+void AppendPresetLuaTableShape(DynamicArray<char>& out) {
+    fmt::Append(out,
+                "The 'preset' Lua table has the following top-level fields. Read access returns the\n"
+                "current value; write access updates the preset when --script-file runs without\n"
+                "--read-only. Tables are 1-indexed (Lua convention). Unknown keys are ignored.\n\n");
+    auto dummy = DefaultStateSnapshot();
+    LuaHelpWriter w {out};
+    VisitPreset(w, dummy);
+}
+
+ErrorCodeOr<void> WriteParamsJson(Writer out) {
+    ArenaAllocatorWithInlineStorage<512> arena {PageAllocator::Instance()};
+    json::WriteContext ctx {.out = out, .add_whitespace = true};
+    TRY(json::WriteObjectBegin(ctx));
+
+    TRY(json::WriteKeyArrayBegin(ctx, "params"));
+    for (auto const i : Range<u16>(k_num_parameters)) {
+        auto const& d = k_param_descriptors[i];
+        TRY(json::WriteObjectBegin(ctx));
+        TRY(json::WriteKeyValue(ctx, "id_string", d.id_string));
+        TRY(json::WriteKeyValue(ctx, "name", d.name));
+        if (d.tooltip.size) TRY(json::WriteKeyValue(ctx, "description", d.tooltip));
+        if (d.flags.legacy) TRY(json::WriteKeyValue(ctx, "legacy", true));
+
+        auto write_display = [&](String key, f32 linear) -> ErrorCodeOr<void> {
+            if (auto const formatted = d.LinearValueToString(linear))
+                TRY(json::WriteKeyValue(ctx, key, (String)*formatted));
+            else
+                TRY(json::WriteKeyValue(ctx,
+                                       key,
+                                       fmt::Format(arena, "{g}", d.ProjectValue(linear))));
+            return k_success;
+        };
+        TRY(write_display("default", d.default_linear_value));
+        TRY(write_display("min", d.linear_range.min));
+        TRY(write_display("max", d.linear_range.max));
+
+        TRY(json::WriteObjectEnd(ctx));
+    }
+    TRY(json::WriteArrayEnd(ctx));
+
+    TRY(json::WriteKeyObjectBegin(ctx, "enums"));
+
+    TRY(json::WriteKeyArrayBegin(ctx, "InstrumentType"));
+    for (auto const v : Array {InstrumentType::None, InstrumentType::WaveformSynth, InstrumentType::Sampler}) {
+        TRY(json::WriteObjectBegin(ctx));
+        TRY(json::WriteKeyValue(ctx, "value", (int)v));
+        String name = "";
+        switch (v) {
+            case InstrumentType::None: name = "None"_s; break;
+            case InstrumentType::WaveformSynth: name = "WaveformSynth"_s; break;
+            case InstrumentType::Sampler: name = "Sampler"_s; break;
+        }
+        TRY(json::WriteKeyValue(ctx, "name", name));
+        TRY(json::WriteObjectEnd(ctx));
+    }
+    TRY(json::WriteArrayEnd(ctx));
+
+    TRY(json::WriteKeyArrayBegin(ctx, "WaveformType"));
+    for (auto const wt : Range<u16>((u16)WaveformType::Count)) {
+        TRY(json::WriteObjectBegin(ctx));
+        TRY(json::WriteKeyValue(ctx, "value", (int)wt));
+        TRY(json::WriteKeyValue(ctx, "name", k_waveform_type_names[wt]));
+        TRY(json::WriteObjectEnd(ctx));
+    }
+    TRY(json::WriteArrayEnd(ctx));
+
+    TRY(json::WriteKeyArrayBegin(ctx, "EffectType"));
+    for (auto const fx : Range<u16>(k_num_effect_types)) {
+        TRY(json::WriteObjectBegin(ctx));
+        TRY(json::WriteKeyValue(ctx, "value", (int)fx));
+        TRY(json::WriteKeyValue(ctx, "name", k_effect_info[fx].name));
+        TRY(json::WriteObjectEnd(ctx));
+    }
+    TRY(json::WriteArrayEnd(ctx));
+
+    TRY(json::WriteObjectEnd(ctx));
+    TRY(json::WriteObjectEnd(ctx));
+    return k_success;
 }
 
 // Tests
