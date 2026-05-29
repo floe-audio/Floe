@@ -2728,7 +2728,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "On"_s,
         .gui_label = "Reverb"_s,
-        .tooltip = "Enable/disable the new reverb effect"_s,
+        .tooltip = "Enable/disable the reverb effect"_s,
     };
 
     // =====================================================================================================
