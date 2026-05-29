@@ -7,7 +7,9 @@
 struct lua_State;
 
 struct BuildPresetLuaTableOptions {
-    bool pretty;
+    // In example mode, each handler emits only the first entry of any long array/dict — the goal is to
+    // show shape, not enumerate every value. Not round-trippable; for documentation output only.
+    bool example_mode = false;
     char const* global_name = "preset";
 };
 

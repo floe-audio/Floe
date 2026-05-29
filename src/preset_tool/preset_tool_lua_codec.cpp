@@ -42,21 +42,17 @@ struct LuaReader {
     }
 };
 
-// Pretty mode keeps the same stable id_string keys as default mode but emits formatted values
-// (e.g. "-12.0 dB", "50 %", "Sine") via the descriptor's display format. Reads accept either a number
-// (default-mode encoding) or a formatted string (pretty-mode encoding) for every param.
-//
-// Pretty mode is threaded through the Lua registry rather than every handler signature: only two
-// handlers branch on it, so a global flag avoids churning the uniform Field template.
-constexpr char const* k_pretty_mode_registry_key = "floe_preset_tool_pretty_mode";
+// Example mode: handlers writing a long array/dict early-out after the first entry. The output is a
+// shape-only sample for --print-example; not round-trippable.
+constexpr char const* k_example_mode_registry_key = "floe_preset_tool_example_mode";
 
-static void SetPrettyMode(lua_State* lua, bool pretty) {
-    lua_pushboolean(lua, pretty);
-    lua_setfield(lua, LUA_REGISTRYINDEX, k_pretty_mode_registry_key);
+static void SetExampleMode(lua_State* lua, bool example) {
+    lua_pushboolean(lua, example);
+    lua_setfield(lua, LUA_REGISTRYINDEX, k_example_mode_registry_key);
 }
 
-static bool IsPrettyMode(lua_State* lua) {
-    lua_getfield(lua, LUA_REGISTRYINDEX, k_pretty_mode_registry_key);
+static bool IsExampleMode(lua_State* lua) {
+    lua_getfield(lua, LUA_REGISTRYINDEX, k_example_mode_registry_key);
     auto const v = lua_toboolean(lua, -1) != 0;
     lua_pop(lua, 1);
     return v;
@@ -102,16 +98,14 @@ struct IntH {
 
 struct ParamValuesH {
     static void Write(lua_State* lua, Array<f32, k_num_parameters> const& vals) {
-        auto const pretty = IsPrettyMode(lua);
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (auto const i : Range<u16>(vals.size)) {
+            if (example && i > 0) break;
             auto const& d = k_param_descriptors[i];
             lua_pushlstring(lua, d.id_string.data, d.id_string.size);
-            if (pretty)
-                if (auto const formatted = d.LinearValueToString(vals[i]))
-                    lua_pushlstring(lua, formatted->data, formatted->size);
-                else
-                    lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
+            if (auto const formatted = d.LinearValueToString(vals[i]))
+                lua_pushlstring(lua, formatted->data, formatted->size);
             else
                 lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
             lua_settable(lua, -3);
@@ -152,8 +146,10 @@ struct ParamValuesH {
 
 struct InstIdsH {
     static void Write(lua_State* lua, InitialisedArray<InstrumentId, k_num_layers> const& ids) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             auto const& inst_id = ids[i];
@@ -239,8 +235,10 @@ struct InstIdsH {
 
 struct FxOrderH {
     static void Write(lua_State* lua, Array<EffectType, k_num_effect_types> const& order) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_effect_types; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_pushinteger(lua, (lua_Integer)order[i]);
             lua_settable(lua, -3);
@@ -262,8 +260,10 @@ struct FxOrderH {
 
 struct FxVisibleH {
     static void Write(lua_State* lua, Bitset<k_num_effect_types> const& bits) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_effect_types; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_pushboolean(lua, bits.Get(i));
             lua_settable(lua, -3);
@@ -371,8 +371,10 @@ struct IrIdH {
 
 struct VelocityCurvePointsH {
     static void Write(lua_State* lua, Array<CurveMap::Points, k_num_layers> const& curves) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             for (u16 j = 0u; j < curves[i].size; ++j) {
@@ -425,8 +427,10 @@ struct VelocityCurvePointsH {
 
 struct HarmonyIntervalsH {
     static void Write(lua_State* lua, Array<HarmonyIntervalsBitset, k_num_layers> const& bits) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             u16 entry_index = 1;
@@ -466,11 +470,14 @@ struct HarmonyIntervalsH {
 
 struct ArpStepsH {
     static void Write(lua_State* lua, Array<Array<ArpStep, k_arp_max_steps>, k_num_layers> const& steps) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             for (u16 j = 0u; j < k_arp_max_steps; ++j) {
+                if (example && j > 0) break;
                 lua_pushinteger(lua, j + 1);
                 lua_newtable(lua);
                 auto const& step = steps[i][j];
@@ -540,8 +547,10 @@ struct ArpStepsH {
 
 struct SliceArpConfigsH {
     static void Write(lua_State* lua, Array<SliceArpConfig, k_num_layers> const& cfgs) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_layers; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             auto const& cfg = cfgs[i];
@@ -575,8 +584,10 @@ struct SliceArpConfigsH {
 
 struct MacroNamesH {
     static void Write(lua_State* lua, MacroNames const& names) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_macros; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_pushlstring(lua, names[i].data, names[i].size);
             lua_settable(lua, -3);
@@ -602,12 +613,15 @@ struct MacroNamesH {
 
 struct MacroDestinationsH {
     static void Write(lua_State* lua, MacroDestinations const& dests) {
+        auto const example = IsExampleMode(lua);
         lua_newtable(lua);
         for (u16 i = 0u; i < k_num_macros; ++i) {
+            if (example && i > 0) break;
             lua_pushinteger(lua, i + 1);
             lua_newtable(lua);
             // Array is null-terminated and packed.
             for (u16 j = 0u; j < dests[i].Size(); ++j) {
+                if (example && j > 0) break;
                 auto const& dest = dests[i].items[j];
                 lua_pushinteger(lua, j + 1);
                 lua_newtable(lua);
@@ -705,7 +719,7 @@ static void VisitPreset(V& v, S& s) {
 void BuildPresetLuaTable(lua_State* lua,
                          StateSnapshot const& preset_state,
                          BuildPresetLuaTableOptions options) {
-    SetPrettyMode(lua, options.pretty);
+    SetExampleMode(lua, options.example_mode);
     lua_newtable(lua);
     LuaWriter w {lua};
     VisitPreset(w, preset_state);
@@ -722,19 +736,19 @@ void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& p
 // Tests
 // ============================================================
 
-// Default (non-pretty) mode is the lossless round-trip format: stable id_string keys + projected-numeric
-// values. Pretty mode uses the same id_string keys but emits formatted display strings ("-12.0 dB", "50 %",
-// "Sine"); the format truncates precision so pretty round-trips are only lossless when the source values
-// land on the format's grid (typical for hand-set or default values, not for arbitrary floats).
+// The codec uses stable id_string keys with formatted display-string values ("-12.0 dB", "50 %", "Sine").
+// The format truncates precision so round-trips are only lossless when the source values land on the
+// format's grid (typical for hand-set or default values, not for arbitrary floats); for arbitrary floats
+// the stored numeric value will shift, but the audible result does not change.
 //
 // These tests bypass file I/O, so legacy→modern adaptation (AdaptNewerParams) does not apply; they verify
 // the codec layer in isolation.
 
-static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& original, bool pretty) {
+static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& original) {
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
 
-    BuildPresetLuaTable(lua, original, {.pretty = pretty});
+    BuildPresetLuaTable(lua, original, {});
 
     auto roundtripped = original;
     lua_getglobal(lua, "preset");
@@ -744,7 +758,7 @@ static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& o
     if (roundtripped != original) {
         DynamicArray<char> diff {tester.scratch_arena};
         AssignDiffDescription(diff, original, roundtripped);
-        tester.log.Error("round-trip diff (pretty={}):\n{}", pretty, diff.Items());
+        tester.log.Error("round-trip diff:\n{}", diff.Items());
         for (auto const i : Range<u16>(k_num_parameters)) {
             if (roundtripped.param_values[i] != original.param_values[i]) {
                 auto const& d = k_param_descriptors[i];
@@ -760,16 +774,10 @@ static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& o
 }
 
 TEST_CASE(TestPresetLuaCodecRoundTripDefault) {
-    auto const original = DefaultStateSnapshot();
-    TRY(RoundTrip(tester, original, false));
-    return k_success;
-}
-
-TEST_CASE(TestPresetLuaCodecRoundTripDefaultPretty) {
     // Default snapshot values sit on the display-format grid (whole percents, exact dB defaults,
-    // "On"/"Off" for bools, etc.) so pretty mode must round-trip them losslessly.
+    // "On"/"Off" for bools, etc.) so they must round-trip losslessly.
     auto const original = DefaultStateSnapshot();
-    TRY(RoundTrip(tester, original, true));
+    TRY(RoundTrip(tester, original));
     return k_success;
 }
 
@@ -889,21 +897,15 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
     return s;
 }
 
-TEST_CASE(TestPresetLuaCodecRoundTripPopulated) {
-    auto const original = PopulatedSnapshot(tester.random_seed);
-    TRY(RoundTrip(tester, original, false));
-    return k_success;
-}
-
-// Pretty mode is lossy on arbitrary floats (truncated to display precision), so a single round-trip
+// The encoder is lossy on arbitrary floats (truncated to display precision), so a single round-trip
 // of an arbitrary populated state won't equal the original. But the truncation must be idempotent:
 // once a value has been snapped to the display grid, encoding+decoding it again must be a no-op.
 // This guards against display formats that don't parse back to a value re-formatting identically.
-static ErrorCodeOr<void> PrettyRoundTripIsIdempotent(tests::Tester& tester, StateSnapshot const& original) {
+static ErrorCodeOr<void> RoundTripIsIdempotent(tests::Tester& tester, StateSnapshot const& original) {
     auto encode_decode = [&](StateSnapshot const& in) {
         auto lua = luaL_newstate();
         DEFER { lua_close(lua); };
-        BuildPresetLuaTable(lua, in, {.pretty = true});
+        BuildPresetLuaTable(lua, in, {});
         auto out = in;
         lua_getglobal(lua, "preset");
         ExtractPresetFromLuaTable(lua, -1, out);
@@ -917,7 +919,7 @@ static ErrorCodeOr<void> PrettyRoundTripIsIdempotent(tests::Tester& tester, Stat
     if (first != second) {
         DynamicArray<char> diff {tester.scratch_arena};
         AssignDiffDescription(diff, first, second);
-        tester.log.Error("pretty round-trip not idempotent:\n{}", diff.Items());
+        tester.log.Error("round-trip not idempotent:\n{}", diff.Items());
         for (auto const i : Range<u16>(k_num_parameters)) {
             if (first.param_values[i] != second.param_values[i]) {
                 auto const& d = k_param_descriptors[i];
@@ -932,15 +934,13 @@ static ErrorCodeOr<void> PrettyRoundTripIsIdempotent(tests::Tester& tester, Stat
     return k_success;
 }
 
-TEST_CASE(TestPresetLuaCodecPrettyIdempotentPopulated) {
+TEST_CASE(TestPresetLuaCodecIdempotentPopulated) {
     auto const original = PopulatedSnapshot(tester.random_seed);
-    TRY(PrettyRoundTripIsIdempotent(tester, original));
+    TRY(RoundTripIsIdempotent(tester, original));
     return k_success;
 }
 
 TEST_REGISTRATION(RegisterPresetLuaCodecTests) {
     REGISTER_TEST(TestPresetLuaCodecRoundTripDefault);
-    REGISTER_TEST(TestPresetLuaCodecRoundTripDefaultPretty);
-    REGISTER_TEST(TestPresetLuaCodecRoundTripPopulated);
-    REGISTER_TEST(TestPresetLuaCodecPrettyIdempotentPopulated);
+    REGISTER_TEST(TestPresetLuaCodecIdempotentPopulated);
 }

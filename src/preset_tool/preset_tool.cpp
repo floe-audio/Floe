@@ -26,7 +26,6 @@
 enum class CliArgId : u8 {
     ScriptFile,
     Raw,
-    Pretty,
     ReadOnly,
     PrintExample,
     Count,
@@ -56,18 +55,6 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
         .description = "Load the preset without applying legacy→modern parameter adaptation. The printed\n"
                        "values reflect what is actually stored in the file. Cannot be combined with\n"
                        "--script-file (saving a raw-loaded preset would corrupt it).\n",
-        .value_type = "",
-        .required = false,
-        .num_values = 0,
-    },
-    {
-        .id = (u32)CliArgId::Pretty,
-        .key = "pretty",
-        .description =
-            "Emit human-readable formatted values (e.g. '-12.0 dB', '50 %', 'Sine') instead of raw\n"
-            "projected numbers. Keys remain the same stable id_string in both modes. Round-trips with\n"
-            "--script-file, but formatted values truncate precision so arbitrary float values may not\n"
-            "survive the round-trip unchanged - the default numeric mode is lossless.\n",
         .value_type = "",
         .required = false,
         .num_values = 0,
@@ -253,11 +240,15 @@ static ErrorCodeOr<void> PrintExample(ArenaAllocator& arena) {
         "--                             (same shape as library-inspector --format=lua).\n"
         "--\n"
         "-- Value forms in param_values:\n"
-        "--   Default mode (lossless):  projected numeric values (e.g. 0.5, -12.0, 440).\n"
-        "--   --pretty:                 formatted display strings (\"50 %\", \"-12.0 dB\", \"Sine\").\n"
-        "--   Reads accept either form for every parameter, keyed by stable id_string.\n"
-        "--   Pretty reads are permissive: extra precision and either unit are accepted\n"
+        "--   Values are emitted as formatted display strings (\"50 %\", \"-12.0 dB\", \"Sine\"), keyed by\n"
+        "--   stable id_string. Reads accept either a formatted string or the underlying projected number\n"
+        "--   (e.g. 0.5, -12.0, 440), so scripts can assign whichever is more convenient.\n"
+        "--   String reads are permissive: extra precision and either unit are accepted\n"
         "--   (\"1.567 s\" or \"1567 ms\" both work even though writes emit \"1.6 s\").\n"
+        "--\n"
+        "-- Round-trip note: display formats truncate precision, so saving a preset back will alter the\n"
+        "-- stored numeric value of many params (snapped to the display grid). This is intentional and\n"
+        "-- does not change perceived audio - the truncation sits well below audible thresholds.\n"
         "--\n"
         "-- Below: a default-initialised preset, followed by reference appendices.\n"
         "\n";
@@ -267,7 +258,7 @@ static ErrorCodeOr<void> PrintExample(ArenaAllocator& arena) {
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
     luaL_openlibs(lua);
-    BuildPresetLuaTable(lua, DefaultStateSnapshot(), {.pretty = false});
+    BuildPresetLuaTable(lua, DefaultStateSnapshot(), {.example_mode = true});
 
     if (auto const r = luaL_loadbuffer(lua,
                                        k_lua_print_serializer,
@@ -289,8 +280,8 @@ static ErrorCodeOr<void> PrintExample(ArenaAllocator& arena) {
     TRY(fmt::AppendLine(w, "-- ====================================================================="));
     TRY(fmt::AppendLine(w, "-- Parameter reference (id_string : default : range)"));
     TRY(fmt::AppendLine(w, "-- ====================================================================="));
-    TRY(fmt::AppendLine(w, "-- Defaults and ranges are shown in projected (lossless) form, with the"));
-    TRY(fmt::AppendLine(w, "-- --pretty formatted equivalent in parens where one exists. Params marked"));
+    TRY(fmt::AppendLine(w, "-- Defaults and ranges are shown as the underlying projected number, with the"));
+    TRY(fmt::AppendLine(w, "-- formatted display equivalent in parens where one exists. Params marked"));
     TRY(fmt::AppendLine(w, "-- [legacy] are kept for old-file compatibility; avoid setting them."));
     TRY(fmt::AppendLine(w, "--"));
 
@@ -350,7 +341,6 @@ struct ProcessPresetOptions {
     LibraryDumpCache* library_dump_cache;
     bool have_script;
     bool raw;
-    bool pretty;
     bool read_only;
     bool print_path_header;
 };
@@ -362,10 +352,8 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
     DEFER { lua_close(lua); };
 
     SetLibraryDumpCache(lua, opts.library_dump_cache);
-    BuildPresetLuaTable(lua, preset_state, {.pretty = opts.pretty});
-    BuildPresetLuaTable(lua,
-                        DefaultStateSnapshot(),
-                        {.pretty = opts.pretty, .global_name = "default_preset"});
+    BuildPresetLuaTable(lua, preset_state, {});
+    BuildPresetLuaTable(lua, DefaultStateSnapshot(), {.global_name = "default_preset"});
 
     luaL_openlibs(lua);
     lua_register(lua, "inspect_library", LuaInspectLibrary);
@@ -545,7 +533,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         script_name = "print-serializer"_s;
     }
 
-    auto const pretty = cli_args[ToInt(CliArgId::Pretty)].was_provided;
     auto const read_only = cli_args[ToInt(CliArgId::ReadOnly)].was_provided;
     auto const print_path_header = preset_files.size > 1;
 
@@ -562,7 +549,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                                          .library_dump_cache = &library_dump_cache,
                                          .have_script = have_script,
                                          .raw = raw,
-                                         .pretty = pretty,
                                          .read_only = read_only,
                                          .print_path_header = print_path_header,
                                      });
