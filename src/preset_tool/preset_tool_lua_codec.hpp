@@ -6,5 +6,12 @@
 
 struct lua_State;
 
-void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_state, bool pretty);
+struct BuildPresetLuaTableOptions {
+    bool pretty;
+    char const* global_name = "preset";
+};
+
+void BuildPresetLuaTable(lua_State* lua,
+                         StateSnapshot const& preset_state,
+                         BuildPresetLuaTableOptions options);
 void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset_state);

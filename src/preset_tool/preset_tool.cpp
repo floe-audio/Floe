@@ -42,8 +42,10 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
             "be saved to the file. Run this tool without a script file to see the format of 'preset'.\n"
             "param_values are keyed by stable id_string (e.g. 'fx.distortion.drive', 'l1.volume').\n"
             "Also available: the global 'preset_path' (absolute path\n"
-            "of the preset currently being processed), and inspect_library(path) which returns a table\n"
-            "describing the given floe.lua / .mdata file (same shape as library-inspector --format=lua).\n",
+            "of the preset currently being processed), 'default_preset' (a default-initialised preset\n"
+            "table, useful as a reference for default values), and inspect_library(path) which returns\n"
+            "a table describing the given floe.lua file (same shape as library-inspector\n"
+            "--format=lua).\n",
         .value_type = "path",
         .required = false,
         .num_values = 1,
@@ -244,8 +246,10 @@ static ErrorCodeOr<void> PrintExample(ArenaAllocator& arena) {
         "-- preset-tool runs your Lua script with these globals:\n"
         "--   preset                    table; the current preset (see shape below).\n"
         "--                             Modify it in --script-file mode (without --read-only) to save.\n"
+        "--   default_preset            table; a default-initialised preset in the same shape as 'preset'.\n"
+        "--                             Useful as a reference or source of default values.\n"
         "--   preset_path               string; absolute path of the preset currently being processed.\n"
-        "--   inspect_library(path)     function; returns a table describing a floe.lua / .mdata file\n"
+        "--   inspect_library(path)     function; returns a table describing a floe.lua file\n"
         "--                             (same shape as library-inspector --format=lua).\n"
         "--\n"
         "-- Value forms in param_values:\n"
@@ -263,9 +267,7 @@ static ErrorCodeOr<void> PrintExample(ArenaAllocator& arena) {
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
     luaL_openlibs(lua);
-    BuildPresetLuaTable(lua, DefaultStateSnapshot(), false);
-    lua_getglobal(lua, "preset");
-    lua_setglobal(lua, "preset"); // ensure visible to the serializer (no-op safety)
+    BuildPresetLuaTable(lua, DefaultStateSnapshot(), {.pretty = false});
 
     if (auto const r = luaL_loadbuffer(lua,
                                        k_lua_print_serializer,
@@ -360,7 +362,10 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
     DEFER { lua_close(lua); };
 
     SetLibraryDumpCache(lua, opts.library_dump_cache);
-    BuildPresetLuaTable(lua, preset_state, opts.pretty);
+    BuildPresetLuaTable(lua, preset_state, {.pretty = opts.pretty});
+    BuildPresetLuaTable(lua,
+                        DefaultStateSnapshot(),
+                        {.pretty = opts.pretty, .global_name = "default_preset"});
 
     luaL_openlibs(lua);
     lua_register(lua, "inspect_library", LuaInspectLibrary);

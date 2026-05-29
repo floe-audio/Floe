@@ -702,12 +702,14 @@ static void VisitPreset(V& v, S& s) {
     v.Field("instance_config", s.instance_config, InstanceConfigH {});
 }
 
-void BuildPresetLuaTable(lua_State* lua, StateSnapshot const& preset_state, bool pretty) {
-    SetPrettyMode(lua, pretty);
+void BuildPresetLuaTable(lua_State* lua,
+                         StateSnapshot const& preset_state,
+                         BuildPresetLuaTableOptions options) {
+    SetPrettyMode(lua, options.pretty);
     lua_newtable(lua);
     LuaWriter w {lua};
     VisitPreset(w, preset_state);
-    lua_setglobal(lua, "preset");
+    lua_setglobal(lua, options.global_name);
 }
 
 void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset_state) {
@@ -732,7 +734,7 @@ static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& o
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
 
-    BuildPresetLuaTable(lua, original, pretty);
+    BuildPresetLuaTable(lua, original, {.pretty = pretty});
 
     auto roundtripped = original;
     lua_getglobal(lua, "preset");
@@ -901,7 +903,7 @@ static ErrorCodeOr<void> PrettyRoundTripIsIdempotent(tests::Tester& tester, Stat
     auto encode_decode = [&](StateSnapshot const& in) {
         auto lua = luaL_newstate();
         DEFER { lua_close(lua); };
-        BuildPresetLuaTable(lua, in, true);
+        BuildPresetLuaTable(lua, in, {.pretty = true});
         auto out = in;
         lua_getglobal(lua, "preset");
         ExtractPresetFromLuaTable(lua, -1, out);
