@@ -1,0 +1,94 @@
+/* SPDX-FileCopyrightText: 2026 Sam Windell */
+/* SPDX-License-Identifier: MIT */
+
+.wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    margin: 0 0 1rem 0;
+}
+
+.mainButton,
+.caretButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--ifm-background-surface-color);
+    color: var(--ifm-color-emphasis-800);
+    border: 1px solid var(--ifm-color-emphasis-300);
+    padding: 0.35rem 0.7rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mainButton {
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+    border-right: none;
+}
+
+.caretButton {
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    padding: 0.35rem 0.5rem;
+}
+
+.mainButton:hover,
+.caretButton:hover {
+    background: var(--ifm-color-emphasis-100);
+    color: var(--ifm-color-emphasis-1000);
+}
+
+.label {
+    line-height: 1;
+}
+
+.menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 50;
+    min-width: 260px;
+    background: var(--ifm-background-surface-color);
+    border: 1px solid var(--ifm-color-emphasis-300);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 0.25rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.menuItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    background: transparent;
+    color: var(--ifm-color-emphasis-900);
+    border: none;
+    padding: 0.5rem 0.65rem;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.85rem;
+}
+
+.menuItem:hover {
+    background: var(--ifm-color-emphasis-100);
+}
+
+.menuIcon {
+    margin-top: 2px;
+    color: var(--ifm-color-emphasis-700);
+}
+
+.menuTitle {
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.menuDesc {
+    font-size: 0.75rem;
+    color: var(--ifm-color-emphasis-600);
+    margin-top: 2px;
+}
