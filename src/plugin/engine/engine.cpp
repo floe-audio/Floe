@@ -913,6 +913,7 @@ Engine::Engine(clap_host const& host,
     {
         UndoableStep seed {};
         seed.snapshot = pinned_snapshot.state;
+        seed.is_pinned_snapshot_anchor = true;
         dyn::AssignFitInCapacity(seed.snapshot_name, pinned_snapshot.state.extras.display_name);
         undo_history.Record(seed);
     }
