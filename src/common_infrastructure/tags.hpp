@@ -126,6 +126,7 @@ enum class TagType : u8 {
 
     Hit,
     Keys,
+    Kit,
     Oneshot,
     Pluck,
     Stab,
@@ -368,6 +369,8 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         // Sound types (short duration)
         case TagType::Hit: return {"hit"_s, "Single impactful sound with pitch and percussive elements"_s};
         case TagType::Keys: return {"keys"_s, "Piano or keyboard-like"_s};
+        case TagType::Kit:
+            return {"kit"_s, "Different sounds mapped across keys, such as a drum kit"_s};
         case TagType::Oneshot:
             return {"oneshot"_s, "Non-looping single sound, typically not for playing chromatically"_s};
         case TagType::Pluck: return {"pluck"_s, "Short melodic notes"_s};
@@ -391,7 +394,7 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Evolving: return {"evolving"_s, "Slow changing over time"_s};
         case TagType::Fluctuating: return {"fluctuating"_s, "Irregular movement"_s};
         case TagType::Glitched: return {"glitched"_s, "Digital error artefacts"_s};
-        case TagType::Grainy: return {"grainy"_s, "Fine textural irregularities"_s};
+        case TagType::Grainy: return {"grainy"_s, "Audibly composed of tiny grains"_s};
 
         // Timbre (real instrument tone)
         case TagType::Brassy: return {"brassy"_s, "Like brass instruments"_s};
@@ -422,7 +425,9 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Glassy: return {"glassy"_s, "Clear, fragile, transparent"_s};
         case TagType::Gritty: return {"gritty"_s, "Rough, textured, unpolished"_s};
         case TagType::Harsh: return {"harsh"_s, "Abrasive, aggressive high frequencies"_s};
-        case TagType::LoFi: return {"lo-fi"_s, "Intentionally degraded quality"_s};
+        case TagType::LoFi:
+            return {"lo-fi"_s,
+                    "Tape, vinyl, or bitcrush-style degradation — hiss, crackle, wow/flutter, reduced fidelity"_s};
         case TagType::Lush: return {"lush"_s, "Full, rich, densely layered"_s};
         case TagType::Metallic: return {"metallic"_s, "Resonant, hard, bright, like metal"_s};
         case TagType::Muddy: return {"muddy"_s, "Unclear low-mid frequencies"_s};
@@ -746,8 +751,9 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
             return {
                 .name = "Sound type (long duration)",
-                .question = "What type of sound is it?",
-                .recommendation = "",
+                .question = "If it's a long-duration sound, what type is it?",
+                .recommendation =
+                    "Pick from here if the sound sustains. Mutually exclusive with short-duration and sequence sound types.",
                 .tags = k_tags,
                 .emoji = "➡️",
                 .font_awesome_icon = ICON_FA_RIGHT_LONG,
@@ -759,14 +765,16 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             static constexpr auto k_tags = Array {
                 Hit,
                 Keys,
+                Kit,
                 Oneshot,
                 Pluck,
                 Stab,
             };
             return {
                 .name = "Sound type (short duration)",
-                .question = "What type of sound is it?",
-                .recommendation = "",
+                .question = "If it's a short-duration sound, what type is it?",
+                .recommendation =
+                    "Pick from here if the sound is brief or transient. Mutually exclusive with long-duration and sequence sound types.",
                 .tags = k_tags,
                 .emoji = "↔️",
                 .font_awesome_icon = ICON_FA_ARROW_RIGHT,
@@ -782,8 +790,9 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
             };
             return {
                 .name = "Sound type (sequence or pattern)",
-                .question = "What type of sound is it?",
-                .recommendation = "",
+                .question = "If it's a sequence or pattern, what type is it?",
+                .recommendation =
+                    "Pick from here if the sound is a repeating or arpeggiated pattern. Mutually exclusive with long- and short-duration sound types.",
                 .tags = k_tags,
                 .emoji = "🔁",
                 .font_awesome_icon = ICON_FA_REPEAT,
