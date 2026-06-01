@@ -717,10 +717,13 @@ void ArpHandleInstrumentChange(ArpeggiatorState& arp,
 
     if (arp.audio.auto_rate) ArpUpdateRate(arp, args.new_sliced_region, args.context);
 
-    if (was_on) EmitReleaseNotes(arp.audio.playhead.last_triggered_notes, out_commands);
-    ResetArpAudioPlayback(arp);
-
-    if (now_on) arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+    if (!now_on && was_on) {
+        EmitReleaseNotes(arp.audio.playhead.last_triggered_notes, out_commands);
+        ResetArpAudioPlayback(arp);
+    } else if (now_on) {
+        ResetArpAudioPlayback(arp);
+        arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+    }
 }
 
 ArpNoteHandling

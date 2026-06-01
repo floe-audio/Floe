@@ -923,7 +923,6 @@ void ResetLayerAudioProcessing(LayerProcessor& layer) {
     layer.inst_change_fade.ForceSetFullVolume();
     layer.eq_bands.Reset();
     layer.gain_smoother.Reset();
-    ResetArpAudioPlayback(layer.arp_state);
 }
 
 TEST_CASE(TestKeyRangeFade) {
