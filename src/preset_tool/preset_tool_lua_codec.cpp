@@ -522,7 +522,10 @@ struct HarmonyIntervalsH {
 
 struct ArpStepsH {
     static void AppendHelp(DynamicArray<char>& out, String name) {
-        fmt::Append(out, "  {} = {{ [1] = {{ [1] = {{velocity=, gate=, on=, tie=, interval=, note=}}, ... }}, ... }}\n", name);
+        fmt::Append(
+            out,
+            "  {} = {{ [1] = {{ [1] = {{velocity=, gate=, on=, tie=, interval=, note=}}, ... }}, ... }}\n",
+            name);
         fmt::Append(out,
                     "    1-indexed per layer ({} layers). Each layer is a 1-indexed list of exactly\n"
                     "    {} step tables:\n"
@@ -856,9 +859,7 @@ ErrorCodeOr<void> WriteParamsJson(Writer out) {
             if (auto const formatted = d.LinearValueToString(linear))
                 TRY(json::WriteKeyValue(ctx, key, (String)*formatted));
             else
-                TRY(json::WriteKeyValue(ctx,
-                                       key,
-                                       fmt::Format(arena, "{g}", d.ProjectValue(linear))));
+                TRY(json::WriteKeyValue(ctx, key, fmt::Format(arena, "{g}", d.ProjectValue(linear))));
             return k_success;
         };
         TRY(write_display("default", d.default_linear_value));
@@ -872,7 +873,8 @@ ErrorCodeOr<void> WriteParamsJson(Writer out) {
     TRY(json::WriteKeyObjectBegin(ctx, "enums"));
 
     TRY(json::WriteKeyArrayBegin(ctx, "InstrumentType"));
-    for (auto const v : Array {InstrumentType::None, InstrumentType::WaveformSynth, InstrumentType::Sampler}) {
+    for (auto const v :
+         Array {InstrumentType::None, InstrumentType::WaveformSynth, InstrumentType::Sampler}) {
         TRY(json::WriteObjectBegin(ctx));
         TRY(json::WriteKeyValue(ctx, "value", (int)v));
         String name = "";

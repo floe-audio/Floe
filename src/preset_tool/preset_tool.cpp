@@ -83,11 +83,10 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
     {
         .id = (u32)CliArgId::PrintParamsJson,
         .key = "print-params-json",
-        .description =
-            "Print a JSON catalog of every parameter (id_string, default, range - both projected\n"
-            "numeric and formatted display forms, legacy flag) plus the enum integer tables\n"
-            "(InstrumentType, WaveformType, EffectType). Pipe into jq to query. No preset file\n"
-            "required.\n",
+        .description = "Print a JSON catalog of every parameter (id_string, default, range - both projected\n"
+                       "numeric and formatted display forms, legacy flag) plus the enum integer tables\n"
+                       "(InstrumentType, WaveformType, EffectType). Pipe into jq to query. No preset file\n"
+                       "required.\n",
         .value_type = "",
         .required = false,
         .num_values = 0,

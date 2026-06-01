@@ -369,8 +369,7 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         // Sound types (short duration)
         case TagType::Hit: return {"hit"_s, "Single impactful sound with pitch and percussive elements"_s};
         case TagType::Keys: return {"keys"_s, "Piano or keyboard-like"_s};
-        case TagType::Kit:
-            return {"kit"_s, "Different sounds mapped across keys, such as a drum kit"_s};
+        case TagType::Kit: return {"kit"_s, "Different sounds mapped across keys, such as a drum kit"_s};
         case TagType::Oneshot:
             return {"oneshot"_s, "Non-looping single sound, typically not for playing chromatically"_s};
         case TagType::Pluck: return {"pluck"_s, "Short melodic notes"_s};
@@ -426,8 +425,9 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Gritty: return {"gritty"_s, "Rough, textured, unpolished"_s};
         case TagType::Harsh: return {"harsh"_s, "Abrasive, aggressive high frequencies"_s};
         case TagType::LoFi:
-            return {"lo-fi"_s,
-                    "Tape, vinyl, or bitcrush-style degradation — hiss, crackle, wow/flutter, reduced fidelity"_s};
+            return {
+                "lo-fi"_s,
+                "Tape, vinyl, or bitcrush-style degradation — hiss, crackle, wow/flutter, reduced fidelity"_s};
         case TagType::Lush: return {"lush"_s, "Full, rich, densely layered"_s};
         case TagType::Metallic: return {"metallic"_s, "Resonant, hard, bright, like metal"_s};
         case TagType::Muddy: return {"muddy"_s, "Unclear low-mid frequencies"_s};
