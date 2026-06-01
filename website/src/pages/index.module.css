@@ -14,9 +14,8 @@
   position: relative;
   text-align: center;
   color: #ffffff;
-  background:
-    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-    url('/images/default-background.jpg') center center / cover no-repeat;
+  overflow: hidden;
+  background: #000;
 }
 
 .hero::before {
@@ -26,10 +25,11 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.33 0.33 0.33 0 0'/><feComponentTransfer><feFuncA type='linear' slope='2.2' intercept='-0.6'/></feComponentTransfer></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  background-size: 220px 220px;
-  mix-blend-mode: soft-light;
-  opacity: 0.6;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
+    url('/images/default-background.jpg') center center / cover no-repeat;
+  filter: blur(40px);
+  transform: scale(1.15);
   pointer-events: none;
 }
 
