@@ -12,15 +12,15 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
-Floe has elements that vary between performances: round robin sample selection cycles through different samples for repeated notes, the granular engine uses randomness for grain parameters such as pan, detune, and spread, and the LFO offers random waveforms (Random Steps, Random Glide) which draw a new value each cycle. By default, these are not reset between plays, meaning each performance is slightly different.
+Floe has elements that vary between performances, including round robin sample selection, the granular engine's randomised grain properties, the LFO's random waveforms (Random Steps and Random Glide), and other smaller sources of variation. By default these are not reset between plays, so each performance is slightly different.
 
-The **Instance Config** panel provides controls to make playback exactly reproducible. Open it from the top-panel menu (the three-dots button).
+This is usually what you want when playing live, but it works against you when bouncing stems, comparing tweaks, or sharing a session that should sound identical on someone else's machine. The Instance Config panel provides controls to make playback exactly reproducible. Open it from the top-panel menu (the three-dots button).
 
 <GeneratedScreenshot name="instance-config" alt="Instance Config Panel GUI" />
 
 ## Reset on transport
 
-When enabled, Floe resets its round robin positions and random sequences each time the DAW transport starts playing. This means pressing play from the same position will always produce identical output.
+When enabled, Floe returns all of these invisible sources of variation to the same starting point each time the DAW transport starts playing. Pressing play from the same position will always produce identical output. The starting point itself is controlled by the seed (see below).
 
 ## Reset keyswitch
 
@@ -30,4 +30,4 @@ The reset keyswitch is shown as a blue marker on the on-screen keyboard.
 
 ## Seed
 
-The seed value determines the starting state after a reset. Different seeds produce different round robin starting positions and random sequences. This allows you to explore variations: reset, change the seed, and play the same notes to hear a different but equally reproducible result.
+The seed is a number that picks which "version" of variation Floe uses. Each seed selects one particular sequence of random choices and round robin positions, and the same seed always produces the same sequence. To explore alternatives, change the seed and replay the same notes — you'll hear a different result that is itself fully reproducible.
