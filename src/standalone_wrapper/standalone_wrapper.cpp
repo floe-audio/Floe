@@ -501,6 +501,7 @@ inline ErrorCodeCategory const& ErrorCategoryForEnum(PuglStatus) { return pugl_e
 enum class StandaloneError : u8 {
     DeviceError,
     PluginInterfaceError,
+    WindowError,
 };
 ErrorCodeCategory const standalone_error_category {
     .category_id = "STND",
@@ -509,6 +510,7 @@ ErrorCodeCategory const standalone_error_category {
         switch ((StandaloneError)code.code) {
             case StandaloneError::DeviceError: str = "device error"; break;
             case StandaloneError::PluginInterfaceError: str = "plugin interface error"; break;
+            case StandaloneError::WindowError: str = "window error"; break;
         }
         return writer.WriteChars(str);
     },
@@ -871,6 +873,10 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     DEFER { CloseAudio(standalone); };
 
     standalone.gui_world = puglNewWorld(PUGL_PROGRAM, 0);
+    if (!standalone.gui_world) {
+        LogError(ModuleName::Standalone, "Could not setup window state");
+        return ErrorCode {StandaloneError::WindowError};
+    }
     DEFER { puglFreeWorld(standalone.gui_world); };
     TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, "Floe Standalone"));
 
