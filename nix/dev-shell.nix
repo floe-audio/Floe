@@ -80,9 +80,9 @@ pkgs.mkShell rec {
       pkgs.libxcb
       pkgs.vulkan-headers
       pkgs.vulkan-loader
-      pkgs.xorg.libX11
-      pkgs.xorg.libXcursor
-      pkgs.xorg.libXext
+      pkgs.libX11
+      pkgs.libXcursor
+      pkgs.libXext
     ];
 
   shellHook = ''
