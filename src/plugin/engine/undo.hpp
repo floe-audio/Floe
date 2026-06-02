@@ -12,11 +12,8 @@ constexpr u32 k_undo_max_entries = 200;
 constexpr u32 k_redo_max_entries = 50;
 constexpr usize k_undoable_step_name_max_size = 64;
 
-constexpr usize k_undoable_step_snapshot_name_max_size = 200;
-
 struct UndoableStep {
     DynamicArrayBounded<char, k_undoable_step_name_max_size> name;
-    DynamicArrayBounded<char, k_undoable_step_snapshot_name_max_size> snapshot_name;
     StateSnapshot snapshot;
 
     // Marks a baseline-establishing event (preset load, DAW state load, default reset, save). When undo/redo

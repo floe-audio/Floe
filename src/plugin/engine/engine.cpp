@@ -135,6 +135,12 @@ static void UpdateAttributionText(Engine& engine, ArenaAllocator& scratch_arena)
     UpdateAttributionText(engine.attribution_requirements, scratch_arena, insts, ir);
 }
 
+static void FillStateExtrasFromPath(StateSnapshot& state, String preset_path) {
+    dyn::AssignFitInCapacity(state.extras.display_name, path::FilenameWithoutExtension(preset_path));
+    dyn::AssignFitInCapacity(state.extras.display_category,
+                             path::Filename(path::Directory(preset_path).ValueOr({})));
+}
+
 static void
 SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path, u64 known_preset_id) {
     if (preset_path.size) {
@@ -142,17 +148,11 @@ SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path
         ASSERT(path::IsAbsolute(preset_path));
     }
     engine.pinned_snapshot.state = state;
-    if (preset_path.size) {
-        // Preset files always get their name from the filename.
-        auto& extras = engine.pinned_snapshot.state.extras;
-        dyn::AssignFitInCapacity(extras.display_name, path::FilenameWithoutExtension(preset_path));
-        dyn::AssignFitInCapacity(extras.display_category,
-                                 path::Filename(path::Directory(preset_path).ValueOr({})));
-    }
     dyn::Assign(engine.pinned_snapshot.preset_path, preset_path);
     engine.pinned_snapshot.known_preset_id = known_preset_id;
     engine.pinned_snapshot.preset_path_needs_lookup = preset_path.size == 0;
     RefreshPresetDescriptionCache(engine);
+    ASSERT(engine.pinned_snapshot.state.extras.display_name.size);
 }
 
 static void AfterStateChanged(Engine& engine) {
@@ -413,7 +413,10 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
 }
 
 static StateSnapshot const& PinnedSnapshotForModificationCheck(Engine& engine) {
-    return engine.pending_state_change ? engine.pending_state_change->snapshot : engine.pinned_snapshot.state;
+    auto const& result =
+        engine.pending_state_change ? engine.pending_state_change->snapshot : engine.pinned_snapshot.state;
+    ASSERT(result.extras.display_name.size);
+    return result;
 }
 
 StateSnapshot CurrentStateSnapshot(Engine& engine) {
@@ -443,6 +446,7 @@ StateSnapshot CurrentStateSnapshot(Engine& engine) {
     }
 
     snapshot.extras.instance_id = InstanceId(engine.autosave_state);
+    ASSERT(snapshot.extras.display_name.size);
 
     return snapshot;
 }
@@ -795,6 +799,7 @@ void LoadPresetFromFile(Engine& engine, String path, u64 known_preset_id) {
 
     if (state_outcome.HasValue()) {
         auto& state = state_outcome.Value();
+        FillStateExtrasFromPath(state, path);
         LoadState(engine,
                   state,
                   {
@@ -832,6 +837,7 @@ void SaveCurrentStateToFile(Engine& engine, String path) {
         auto const preserved_known_preset_id = path::Equal(engine.pinned_snapshot.preset_path, path)
                                                    ? engine.pinned_snapshot.known_preset_id
                                                    : 0;
+        FillStateExtrasFromPath(state, path);
         SetPinnedSnapshot(engine, state, path, preserved_known_preset_id);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
         engine.error_notifications.RemoveError(error_id);
@@ -914,7 +920,7 @@ Engine::Engine(clap_host const& host,
         UndoableStep seed {};
         seed.snapshot = pinned_snapshot.state;
         seed.is_pinned_snapshot_anchor = true;
-        dyn::AssignFitInCapacity(seed.snapshot_name, pinned_snapshot.state.extras.display_name);
+        dyn::AssignFitInCapacity(seed.name, "Init");
         undo_history.Record(seed);
     }
 
@@ -1096,13 +1102,12 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
 void RecordUndoableStep(Engine& engine, String name, bool is_pinned_snapshot_anchor) {
     ASSERT(g_is_logical_main_thread);
     engine.stashed_modifications.Clear();
-    auto const current = CurrentStateSnapshot(engine);
+    auto current = CurrentStateSnapshot(engine);
     UndoableStep step {
         .snapshot = current,
         .is_pinned_snapshot_anchor = is_pinned_snapshot_anchor,
     };
     dyn::AssignFitInCapacity(step.name, name);
-    dyn::AssignFitInCapacity(step.snapshot_name, current.extras.display_name);
     engine.undo_history.Record(step);
 }
 
@@ -1131,7 +1136,7 @@ void EndUndoableStep(Engine& engine) {
 }
 
 // Walks the undo stack backwards from the current top to find the most recent pinned-snapshot-anchor
-// entry, and reseats the engine's pinned snapshot to that anchor's snapshot. The path is left empty so the
+// entry, and sets the engine's pinned snapshot to that anchor's snapshot. The path is left empty so the
 // existing preset_path_needs_lookup mechanism resolves it from origin_preset_hash. If no anchor is
 // reachable (e.g. the oldest scrolled off the ring), the pinned snapshot is left untouched.
 static void RestorePinnedSnapshotFromAnchor(Engine& engine) {
