@@ -53,7 +53,7 @@ export default function CopyMarkdownButton() {
                 aria-label="Copy page as Markdown"
             >
                 <FontAwesomeIcon icon={copied ? ['fas', 'check'] : ['fas', 'copy']} />
-                <span className={styles.label}>{copied ? 'Copied' : 'Copy as Markdown'}</span>
+                {copied && <span className={styles.label}>Copied</span>}
             </button>
             <button
                 type="button"
@@ -69,17 +69,11 @@ export default function CopyMarkdownButton() {
                 <div className={styles.menu} role="menu">
                     <button type="button" role="menuitem" className={styles.menuItem} onClick={copyMarkdown}>
                         <FontAwesomeIcon icon={['fas', 'copy']} className={styles.menuIcon} />
-                        <div>
-                            <div className={styles.menuTitle}>Copy as Markdown</div>
-                            <div className={styles.menuDesc}>Copy this page as Markdown for LLMs</div>
-                        </div>
+                        <span className={styles.menuTitle}>Copy as Markdown</span>
                     </button>
                     <button type="button" role="menuitem" className={styles.menuItem} onClick={viewMarkdown}>
                         <FontAwesomeIcon icon={['fas', 'file-lines']} className={styles.menuIcon} />
-                        <div>
-                            <div className={styles.menuTitle}>View as Markdown</div>
-                            <div className={styles.menuDesc}>View this page as plain Markdown</div>
-                        </div>
+                        <span className={styles.menuTitle}>View as Markdown</span>
                     </button>
                 </div>
             )}
