@@ -68,7 +68,9 @@ struct ArpeggiatorState {
             u32 frames_until_next_step {};
             u32 frames_into_current_step {};
             u32 frames_per_step {1};
-            u32 gate_off_frame {};
+            // Frames remaining until a pending note-off fires (0 = no pending release). Counts down each
+            // frame; persists across tied steps so the root step's gate spans the whole tie chain.
+            u32 gate_off_countdown {};
             Array<Bitset<128>, 16> last_triggered_notes {};
             u8 current_step {};
             u8 last_random_note_index {LargestRepresentableValue<u8>()};

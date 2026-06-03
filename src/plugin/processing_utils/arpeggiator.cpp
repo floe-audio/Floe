@@ -214,7 +214,7 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
         advance_step();
         if (head.one_shot_finished) {
             EmitReleaseNotes(head.last_triggered_notes, out_commands);
-            head.gate_off_frame = 0;
+            head.gate_off_countdown = 0;
             if (args.publish_gui_step)
                 arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
         }
@@ -432,17 +432,25 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
         case param_values::ArpMode::Count: PanicIfReached();
     }
 
-    // Schedule gate-off if gate < 1 and next step is not tied.
-    auto const is_last_one_shot_step = arp.audio.one_shot && (head.current_step + 1) >= length;
-    auto const next_step_index = (head.current_step + 1) % length;
-    auto const next_is_tied = !is_last_one_shot_step && step_at(next_step_index).tie;
+    // Schedule gate-off. Count tied followers so the gate applies to the whole tie chain rather than
+    // just this one step (the GUI draws the gate bar spanning the chain).
+    auto const chain_steps = ({
+        u32 n = 1;
+        for (u32 j = 1; j < length; ++j) {
+            auto const idx_raw = (u32)head.current_step + j;
+            if (arp.audio.one_shot && idx_raw >= length) break;
+            if (!step_at(idx_raw % length).tie) break;
+            ++n;
+        }
+        n;
+    });
+    auto const chain_frames = head.frames_per_step * chain_steps;
+    auto const is_last_one_shot_step = arp.audio.one_shot && ((u32)head.current_step + chain_steps) >= length;
     auto const gate_01 = step.Gate01();
-    if (is_last_one_shot_step)
-        head.gate_off_frame = Max(1u, (u32)((f32)head.frames_per_step * gate_01));
-    else if (gate_01 < 1.0f && !next_is_tied)
-        head.gate_off_frame = Max(1u, (u32)((f32)head.frames_per_step * gate_01));
+    if (is_last_one_shot_step || gate_01 < 1.0f)
+        head.gate_off_countdown = Max(1u, (u32)((f32)chain_frames * gate_01));
     else
-        head.gate_off_frame = 0;
+        head.gate_off_countdown = 0;
 
     advance_step();
 }
@@ -585,20 +593,19 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
                 head.frames_into_current_step = 0;
             }
 
-            if (head.gate_off_frame > 0 && head.frames_into_current_step == head.gate_off_frame) {
+            if (head.gate_off_countdown > 0 && --head.gate_off_countdown == 0) {
                 EmitReleaseNotes(head.last_triggered_notes, out_commands);
-                head.gate_off_frame = 0;
                 if (head.one_shot_finished)
                     arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
             }
 
             if (slowest_active_oct && oct == *slowest_active_oct && head.one_shot_finished &&
-                head.gate_off_frame == 0) {
+                head.gate_off_countdown == 0) {
                 for (auto const o : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
                     if (o == oct || !active_octaves.Get(o)) continue;
                     EmitReleaseNotes(arp.audio.playheads[o].last_triggered_notes, out_commands);
                     arp.audio.playheads[o].one_shot_finished = true;
-                    arp.audio.playheads[o].gate_off_frame = 0;
+                    arp.audio.playheads[o].gate_off_countdown = 0;
                 }
                 return;
             }
@@ -634,10 +641,9 @@ static void ArpProcessBlockRegular(ArpeggiatorState& arp,
             playhead.frames_into_current_step = 0;
         }
 
-        // Gate-off: release notes mid-step.
-        if (playhead.gate_off_frame > 0 && playhead.frames_into_current_step == playhead.gate_off_frame) {
+        // Gate-off: release notes when the countdown elapses. Counts across tied steps.
+        if (playhead.gate_off_countdown > 0 && --playhead.gate_off_countdown == 0) {
             EmitReleaseNotes(playhead.last_triggered_notes, out_commands);
-            playhead.gate_off_frame = 0;
             if (playhead.one_shot_finished)
                 arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
         }
