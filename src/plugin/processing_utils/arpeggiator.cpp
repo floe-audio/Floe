@@ -713,9 +713,6 @@ static void ArpUpdateRate(ArpeggiatorState& arp,
 void ArpHandleInstrumentChange(ArpeggiatorState& arp,
                                ArpInstrumentChangeArgs const& args,
                                ArpNoteCommands& out_commands) {
-    arp.slice_start_offset.Store(0, StoreMemoryOrder::Relaxed);
-    arp.slice_loop_length.Store(0, StoreMemoryOrder::Relaxed);
-
     auto const was_on = ArpIsOn(arp.audio.on, args.old_sliced_region);
     auto const now_on = ArpIsOn(arp.audio.on, args.new_sliced_region);
 

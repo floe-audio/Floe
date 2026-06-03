@@ -371,6 +371,8 @@ void ModerniseLegacyParam(StateSnapshot& state, ParamIndex legacy, StateSource s
                 state.LinearParam(seed->successor_param) = seed->successor_linear;
             break;
         case StateSource::PresetFile: MigrateLegacyParamToSuccessor(state, legacy); break;
+        case StateSource::GeneratedVariation:
+        case StateSource::InMemorySource: PanicIfReached();
     }
 }
 
@@ -547,6 +549,8 @@ void ModerniseWetDryEffect(StateSnapshot& state, WetDryMapping const& mapping, S
             // The conversion is amp-lossless: Output_amp = W_amp + D_amp, Mix = W_amp / (W_amp + D_amp).
             MigrateWetDryStateToMixOutput(state, mapping);
             break;
+        case StateSource::InMemorySource:
+        case StateSource::GeneratedVariation: PanicIfReached();
     }
 }
 

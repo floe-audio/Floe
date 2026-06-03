@@ -77,7 +77,12 @@ struct StateSnapshot {
     StateExtras extras {};
 };
 
-enum class StateSource : u8 { PresetFile, Daw };
+enum class StateSource : u8 {
+    PresetFile,
+    Daw,
+    InMemorySource, // Such as from an undo system.
+    GeneratedVariation, // A new snapshot generated programmatically.
+};
 
 [[maybe_unused]] static auto PrintInstrumentId(InstrumentId id) {
     DynamicArrayBounded<char, 100> result {};

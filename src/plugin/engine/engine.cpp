@@ -186,14 +186,18 @@ void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions cons
     if (!async) {
         for (auto [layer_index, i] : Enumerate<u32>(state.inst_ids)) {
             engine.processor.layer_processors[layer_index].instrument_id = i;
+            auto const set_inst_opts = SetInstrumentOptions {
+                .wipe_arp_slice_config = opts.source == StateSource::GeneratedVariation,
+            };
             switch (i.tag) {
                 case InstrumentType::None:
-                    SetInstrument(engine.processor, layer_index, InstrumentType::None);
+                    SetInstrument(engine.processor, layer_index, InstrumentType::None, set_inst_opts);
                     break;
                 case InstrumentType::WaveformSynth:
                     SetInstrument(engine.processor,
                                   layer_index,
-                                  i.GetFromTag<InstrumentType::WaveformSynth>());
+                                  i.GetFromTag<InstrumentType::WaveformSynth>(),
+                                  set_inst_opts);
                     break;
                 case InstrumentType::Sampler: PanicIfReached(); break;
             }
@@ -291,9 +295,11 @@ static void CompletePendingStateLoad(Engine& engine) {
     auto const& pending_state_change = *engine.pending_state_change;
 
     for (auto const layer_index : Range(k_num_layers))
-        SetInstrument(engine.processor,
-                      layer_index,
-                      InstrumentFromPendingState(pending_state_change, layer_index));
+        SetInstrument(
+            engine.processor,
+            layer_index,
+            InstrumentFromPendingState(pending_state_change, layer_index),
+            {.wipe_arp_slice_config = pending_state_change.source == StateSource::GeneratedVariation});
     {
         auto const ir = IrFromPendingState(pending_state_change);
         SetConvolutionIrAudioData(engine.processor,
@@ -371,7 +377,11 @@ static void SampleLibraryResourceLoaded(Engine& engine, sample_lib_server::LoadR
 
                     for (auto [layer_index, l] : Enumerate<u32>(engine.processor.layer_processors)) {
                         if (auto const i = l.instrument_id.TryGet<sample_lib::InstrumentId>()) {
-                            if (*i == *loaded_inst) SetInstrument(engine.processor, layer_index, loaded_inst);
+                            if (*i == *loaded_inst)
+                                SetInstrument(engine.processor,
+                                              layer_index,
+                                              loaded_inst,
+                                              {.wipe_arp_slice_config = true});
                         }
                     }
                     break;
@@ -729,12 +739,18 @@ void LoadInstrument(Engine& engine, u32 layer_index, InstrumentId inst_id) {
             break;
         case InstrumentType::None: {
             MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
-            SetInstrument(engine.processor, layer_index, InstrumentType::None);
+            SetInstrument(engine.processor,
+                          layer_index,
+                          InstrumentType::None,
+                          {.wipe_arp_slice_config = true});
             break;
         }
         case InstrumentType::WaveformSynth:
             MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
-            SetInstrument(engine.processor, layer_index, inst_id.Get<WaveformType>());
+            SetInstrument(engine.processor,
+                          layer_index,
+                          inst_id.Get<WaveformType>(),
+                          {.wipe_arp_slice_config = true});
             break;
     }
 
@@ -757,8 +773,9 @@ void LoadInstruments(Engine& engine,
     auto snapshot = CurrentStateSnapshot(engine);
     for (auto const layer_index : Range(k_num_layers))
         if (auto const& id = new_ids[layer_index]) snapshot.inst_ids[layer_index] = *id;
+    snapshot.slice_arp_configs = {};
 
-    LoadState(engine, snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+    LoadState(engine, snapshot, {.source = StateSource::GeneratedVariation, .update_pinned_snapshot = false});
     RecordUndoableStep(engine, undo_name);
 }
 
@@ -770,7 +787,7 @@ void TogglePinnedView(Engine& engine) {
     if (engine.stashed_modifications) {
         auto const stashed = *engine.stashed_modifications;
         engine.stashed_modifications.Clear();
-        LoadState(engine, stashed, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+        LoadState(engine, stashed, {.source = StateSource::InMemorySource, .update_pinned_snapshot = false});
         RecordUndoableStep(engine, "View modifications"_s);
         return;
     }
@@ -781,7 +798,7 @@ void TogglePinnedView(Engine& engine) {
     LoadState(engine,
               engine.pinned_snapshot.state,
               {
-                  .source = StateSource::PresetFile,
+                  .source = StateSource::InMemorySource,
                   .preset_path = engine.pinned_snapshot.preset_path,
                   .known_preset_id = engine.pinned_snapshot.known_preset_id,
                   .update_pinned_snapshot = false,
@@ -1017,7 +1034,7 @@ usize MegabytesUsedBySamples(Engine const& engine) {
 
 void SetToDefaultState(Engine& engine) {
     auto default_state = DefaultStateSnapshot();
-    LoadState(engine, default_state, {.source = StateSource::PresetFile});
+    LoadState(engine, default_state, {.source = StateSource::GeneratedVariation});
     RecordUndoableStep(engine, "Reset"_s, true);
 }
 
@@ -1155,7 +1172,9 @@ void Undo(Engine& engine) {
     ASSERT(engine.undo_history.CanUndo());
     engine.stashed_modifications.Clear();
     auto const entry = engine.undo_history.Undo();
-    LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+    LoadState(engine,
+              entry.snapshot,
+              {.source = StateSource::InMemorySource, .update_pinned_snapshot = false});
     RestorePinnedSnapshotFromAnchor(engine);
 }
 
@@ -1164,7 +1183,9 @@ void Redo(Engine& engine) {
     ASSERT(engine.undo_history.CanRedo());
     engine.stashed_modifications.Clear();
     auto const entry = engine.undo_history.Redo();
-    LoadState(engine, entry.snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+    LoadState(engine,
+              entry.snapshot,
+              {.source = StateSource::InMemorySource, .update_pinned_snapshot = false});
     RestorePinnedSnapshotFromAnchor(engine);
 }
 

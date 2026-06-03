@@ -309,7 +309,13 @@ enum class ProcessorSetting : u8 {
 
 prefs::Descriptor SettingDescriptor(ProcessorSetting);
 
-void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const& instrument);
+struct SetInstrumentOptions {
+    bool wipe_arp_slice_config {};
+};
+void SetInstrument(AudioProcessor& processor,
+                   u32 layer_index,
+                   Instrument const& instrument,
+                   SetInstrumentOptions const& opts);
 void SetConvolutionIrAudioData(AudioProcessor& processor,
                                AudioData const* audio_data,
                                sample_lib::ImpulseResponse::AudioProperties const& audio_props);

@@ -397,6 +397,6 @@ void LoadRandomVariation(Engine& engine, f32 amount) {
             Clamp(pinned.param_values[ToInt(param)] + shift, desc.linear_range.min, desc.linear_range.max);
     }
 
-    LoadState(engine, snapshot, {.source = StateSource::PresetFile, .update_pinned_snapshot = false});
+    LoadState(engine, snapshot, {.source = StateSource::GeneratedVariation, .update_pinned_snapshot = false});
     RecordUndoableStep(engine, "Random variation"_s);
 }

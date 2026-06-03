@@ -514,15 +514,24 @@ static void Deactivate(AudioProcessor& processor) {
     }
 }
 
-void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const& instrument) {
+void SetInstrument(AudioProcessor& processor,
+                   u32 layer_index,
+                   Instrument const& instrument,
+                   SetInstrumentOptions const& opts) {
     ASSERT(g_is_logical_main_thread);
     ASSERT(layer_index < k_num_layers);
+
+    auto& layer = processor.layer_processors[layer_index];
+
+    if (opts.wipe_arp_slice_config) {
+        layer.arp_state.slice_loop_length.Store(0, StoreMemoryOrder::Relaxed);
+        layer.arp_state.slice_start_offset.Store(0, StoreMemoryOrder::Relaxed);
+    }
 
     // If we currently have a sampler instrument, we keep it alive by storing it and releasing at a later
     // time.
     if (auto const current =
-            processor.layer_processors[layer_index]
-                .instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
+            layer.instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
         dyn::Append(processor.lifetime_extended_insts, *current);
 
     // Retain the new instrument
@@ -530,22 +539,22 @@ void SetInstrument(AudioProcessor& processor, u32 layer_index, Instrument const&
             instrument.TryGet<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>())
         sampled_inst->Retain();
 
-    processor.layer_processors[layer_index].instrument = instrument;
+    layer.instrument = instrument;
 
     switch (instrument.tag) {
         case InstrumentType::Sampler: {
             auto& sampler_inst =
                 instrument.Get<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>();
-            processor.layer_processors[layer_index].desired_inst.Set(&*sampler_inst);
+            layer.desired_inst.Set(&*sampler_inst);
             break;
         }
         case InstrumentType::WaveformSynth: {
             auto& w = instrument.Get<WaveformType>();
-            processor.layer_processors[layer_index].desired_inst.Set(w);
+            layer.desired_inst.Set(w);
             break;
         }
         case InstrumentType::None: {
-            processor.layer_processors[layer_index].desired_inst.SetNone();
+            layer.desired_inst.SetNone();
             auto const layer_solo_index = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::Solo);
             if (processor.main_params.BoolValue(layer_solo_index))
                 SetParameterValue(processor, layer_solo_index, 0, {.host_should_not_record = true});
