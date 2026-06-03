@@ -2466,7 +2466,27 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
 
         if (edit.auto_rate_visible) do_toggle_cell(row, LayerParamIndex::ArpAutoRate, secondary_greyed);
 
-        do_menu_cell(row, LayerParamIndex::ArpRate, secondary_greyed || auto_rate_on, true);
+        if (auto_rate_on) {
+            auto const cell = do_cell(row);
+            auto const synced = arp_state.resolved_rate_for_gui.Load(LoadMemoryOrder::Relaxed);
+            auto const rate_text = param_values::k_arp_synced_rate_strings[ToInt(synced)];
+            DoBox(g.builder,
+                  {
+                      .parent = cell,
+                      .text = rate_text,
+                      .text_colours =
+                          LiveColStruct(secondary_greyed ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                      .text_justification = TextJustification::Centred,
+                      .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
+                      .round_background_corners = 0b1111,
+                      .corner_rounding = k_corner_rounding,
+                      .layout {.size = {k_control_width, k_mid_button_height}},
+                      .tooltip = "Rate set automatically by Auto Rate"_s,
+                  });
+            do_label(cell, "Rate"_s, secondary_greyed);
+        } else {
+            do_menu_cell(row, LayerParamIndex::ArpRate, secondary_greyed, true);
+        }
 
         if (!is_sliced && show_if_non_editable(edit.length)) {
             auto const cell = do_cell(row);
