@@ -1450,6 +1450,11 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     TRY(coder.CodeNumber(floe_version_in_state_packed, StateVersion::AddedFloeVersion));
     Version floe_version_in_state(floe_version_in_state_packed);
 
+    if (args.out_versions) {
+        args.out_versions->floe_version = floe_version_in_state;
+        args.out_versions->state_version = (u16)coder.version;
+    }
+
     // =======================================================================================================
     {
         static_assert(k_num_layers == 3,
@@ -1976,7 +1981,7 @@ Optional<PresetFormat> PresetFormatFromPath(String path) {
 ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
                                           Reader& reader,
                                           ArenaAllocator& scratch_arena,
-                                          bool skip_param_adaptation) {
+                                          DecodeStateOptions options) {
     StateSnapshot state;
     switch (format) {
         case PresetFormat::Floe: {
@@ -1988,7 +1993,8 @@ ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
                                   return k_success;
                               },
                               .source = StateSource::PresetFile,
-                              .skip_param_adaptation = skip_param_adaptation,
+                              .skip_param_adaptation = options.skip_param_adaptation,
+                              .out_versions = options.out_versions,
                           }));
             break;
         }
@@ -1997,7 +2003,7 @@ ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
             TRY(DecodeMirageJsonState(state,
                                       scratch_arena,
                                       {(char const*)file_data.data, file_data.size},
-                                      !skip_param_adaptation));
+                                      !options.skip_param_adaptation));
             break;
         }
         case PresetFormat::Count: PanicIfReached(); break;
@@ -2006,13 +2012,13 @@ ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
 }
 
 ErrorCodeOr<StateSnapshot>
-LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, bool skip_param_adaptation) {
+LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, DecodeStateOptions options) {
     StateSnapshot state;
     auto reader = TRY(Reader::FromFile(filepath));
     return LoadPresetFile(PresetFormatFromPath(filepath).ValueOr(PresetFormat::Mirage),
                           reader,
                           scratch_arena,
-                          skip_param_adaptation);
+                          options);
 }
 
 ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
@@ -2042,7 +2048,7 @@ ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool wr
 }
 
 ErrorCodeOr<StateSnapshot>
-DecodeFromMemory(Span<u8 const> data, StateSource source, bool skip_param_adaptation) {
+DecodeFromMemory(Span<u8 const> data, StateSource source, DecodeStateOptions options) {
     StateSnapshot state;
     usize read_pos = 0;
     TRY(CodeState(state,
@@ -2056,7 +2062,8 @@ DecodeFromMemory(Span<u8 const> data, StateSource source, bool skip_param_adapta
                           return k_success;
                       },
                       .source = source,
-                      .skip_param_adaptation = skip_param_adaptation,
+                      .skip_param_adaptation = options.skip_param_adaptation,
+                      .out_versions = options.out_versions,
                   }));
     return state;
 }

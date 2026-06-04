@@ -282,13 +282,17 @@ struct ProcessPresetOptions {
 };
 
 static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptions const& opts) {
-    auto const preset_state = TRY(LoadPresetFile(opts.preset_path, arena, opts.raw));
+    StateVersions file_versions {};
+    auto const preset_state =
+        TRY(LoadPresetFile(opts.preset_path,
+                           arena,
+                           {.skip_param_adaptation = opts.raw, .out_versions = &file_versions}));
 
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
 
     SetLibraryDumpCache(lua, opts.library_dump_cache);
-    BuildPresetLuaTable(lua, preset_state, {});
+    BuildPresetLuaTable(lua, preset_state, {.file_versions = file_versions});
     BuildPresetLuaTable(lua, DefaultStateSnapshot(), {.global_name = "default_preset"});
 
     luaL_openlibs(lua);

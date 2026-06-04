@@ -810,6 +810,14 @@ void BuildPresetLuaTable(lua_State* lua,
     lua_newtable(lua);
     LuaWriter w {lua};
     VisitPreset(w, preset_state);
+    if (options.file_versions.HasValue()) {
+        ArenaAllocatorWithInlineStorage<64> arena {Malloc::Instance()};
+        auto const floe_str = fmt::Format(arena, "{}", options.file_versions->floe_version);
+        lua_pushlstring(lua, floe_str.data, floe_str.size);
+        lua_setfield(lua, -2, "floe_version");
+        lua_pushinteger(lua, options.file_versions->state_version);
+        lua_setfield(lua, -2, "state_version");
+    }
     lua_setglobal(lua, options.global_name);
 }
 
@@ -839,6 +847,12 @@ void AppendPresetLuaTableShape(DynamicArray<char>& out) {
     auto dummy = DefaultStateSnapshot();
     LuaHelpWriter w {out};
     VisitPreset(w, dummy);
+    fmt::Append(out,
+                "floe_version (string, read-only): the Floe version that wrote the file (e.g.\n"
+                "  \"1.4.2\"). \"0.0.0\" for very old files written before this was recorded, and\n"
+                "  for files written by Mirage.\n"
+                "state_version (integer, read-only): the underlying state schema version. Writes\n"
+                "  to either field are ignored.\n\n");
 }
 
 ErrorCodeOr<void> WriteParamsJson(Writer out) {

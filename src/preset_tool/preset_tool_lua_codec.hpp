@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "common_infrastructure/state/state_coding.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 struct lua_State;
 
 struct BuildPresetLuaTableOptions {
     char const* global_name = "preset";
+    Optional<StateVersions> file_versions {};
 };
 
 void BuildPresetLuaTable(lua_State* lua,

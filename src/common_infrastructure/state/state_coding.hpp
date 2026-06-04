@@ -8,6 +8,11 @@
 
 #define FLOE_PRESET_FILE_EXTENSION ".floe-preset"
 
+struct StateVersions {
+    Version floe_version {};
+    u16 state_version {};
+};
+
 struct CodeStateArguments {
     enum class Mode : u8 { Decode, Encode };
 
@@ -19,6 +24,7 @@ struct CodeStateArguments {
     bool skip_param_adaptation;
     // Optional: receives the hash of the encoded/decoded byte stream.
     u64* out_hash;
+    StateVersions* out_versions;
 };
 
 // "Code" as in decode/encode
@@ -33,16 +39,21 @@ ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
                                         String json_data,
                                         bool adapt_for_latest_version = true);
 
-ErrorCodeOr<StateSnapshot>
-DecodeFromMemory(Span<u8 const> data, StateSource source, bool skip_param_adaptation = false);
+struct DecodeStateOptions {
+    bool skip_param_adaptation = false;
+    StateVersions* out_versions = nullptr;
+};
 
 ErrorCodeOr<StateSnapshot>
-LoadPresetFile(String filepath, ArenaAllocator& scratch_arena, bool skip_param_adaptation = false);
+DecodeFromMemory(Span<u8 const> data, StateSource source, DecodeStateOptions options = {});
+
+ErrorCodeOr<StateSnapshot>
+LoadPresetFile(String filepath, ArenaAllocator& scratch_arena, DecodeStateOptions options = {});
 
 ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
                                           Reader& reader,
                                           ArenaAllocator& scratch_arena,
-                                          bool skip_param_adaptation = false);
+                                          DecodeStateOptions options = {});
 
 // Returns the hash of the encoded preset, suitable for use as origin_preset_hash.
 ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool write_experimental_params);
