@@ -36,13 +36,18 @@ struct VoiceSoundSource {
     f64 pitch_ratio_mod = 0;
     f32 amp = 1;
 
+    struct SliceFrames {
+        u32 start;
+        u32 end;
+    };
+
     struct SampleSource {
         sample_lib::Region const* region = nullptr;
         AudioData const* data = nullptr;
         f32 xfade_vol = 1;
         OnePoleLowPassFilter<f32> xfade_vol_smoother = {};
         PlayHead playhead {};
-        Optional<u32> slice_end_frame {};
+        Optional<SliceFrames> slice {};
     };
 
     struct WaveformSource {

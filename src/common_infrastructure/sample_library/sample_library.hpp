@@ -103,6 +103,7 @@ struct Region {
         f32 gain_db {0};
         f32 tune_cents {0};
         u32 start_offset_frames {};
+        // Applied at start_offset_frames, or at each slice's start_frame when the region has slices.
         u32 fade_in_frames {};
 
         // IMPROVE: add pan

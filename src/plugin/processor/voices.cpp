@@ -427,7 +427,7 @@ void StartVoice(VoicePool& pool,
                         slice_end = inv_end;
                     }
 
-                    s_sampler.slice_end_frame = slice_end;
+                    s_sampler.slice = VoiceSoundSource::SliceFrames {.start = slice_start, .end = slice_end};
                     ResetPlayhead(s_sampler.playhead,
                                   (f64)slice_start,
                                   k_nullopt,
@@ -706,7 +706,9 @@ struct VoiceProcessor {
             (sampler.playhead.loop && !sampler.playhead.loop->only_use_frames_within_loop)) {
             auto const real_pos = sampler.playhead.RealFramePos(sampler.data->num_frames);
             if (real_pos) {
-                if (auto const pos = *real_pos - sampler.region->audio_props.start_offset_frames;
+                auto const fade_origin =
+                    sampler.slice ? sampler.slice->start : sampler.region->audio_props.start_offset_frames;
+                if (auto const pos = *real_pos - fade_origin;
                     pos >= 0 && pos < sampler.region->audio_props.fade_in_frames) {
                     auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
                     auto const amount = QuarterSineFade((f32)percent);
@@ -722,7 +724,7 @@ struct VoiceProcessor {
     }
 
     static u32 EffectiveEndFrame(VoiceSoundSource::SampleSource const& sampler) {
-        return sampler.slice_end_frame.ValueOr(sampler.data->num_frames);
+        return sampler.slice ? sampler.slice->end : sampler.data->num_frames;
     }
 
     static bool AddSampleDataOntoBuffer(Voice const& voice,
