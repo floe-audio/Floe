@@ -95,7 +95,7 @@ struct ArpeggiatorState {
         param_values::ArpTriggerMode trigger_mode {};
         SyncedTimes user_rate {SyncedTimes::_1_8};
         SyncedTimes rate {SyncedTimes::_1_8}; // user_rate or resolved auto-rate
-        bool auto_rate {};
+        param_values::ArpAutoRate auto_rate {};
         bool one_shot {};
         u32 length {8};
         f32 humanise {};
@@ -155,6 +155,9 @@ struct ArpNoteCommand : NoteEvent {
 using ArpNoteCommands = DynamicArrayBounded<ArpNoteCommand, k_max_note_events>;
 
 bool ArpIsOn(bool on, sample_lib::Region const* sliced_region);
+
+// True if auto_rate is any non-Off value.
+constexpr bool ArpAutoRateEnabled(param_values::ArpAutoRate v) { return v != param_values::ArpAutoRate::Off; }
 
 u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context);
 

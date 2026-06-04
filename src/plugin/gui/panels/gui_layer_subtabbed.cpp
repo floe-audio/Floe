@@ -2456,7 +2456,9 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
     };
 
     bool const auto_rate_on =
-        edit.auto_rate_visible && params.BoolValue(layer_index, LayerParamIndex::ArpAutoRate);
+        edit.auto_rate_visible &&
+        params.IntValue<param_values::ArpAutoRate>(layer_index, LayerParamIndex::ArpAutoRate) !=
+            param_values::ArpAutoRate::Off;
 
     // SEQUENCE section
     {
@@ -2464,7 +2466,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         do_heading(section, "SEQUENCE"_s);
         auto const row = do_control_row(section);
 
-        if (edit.auto_rate_visible) do_toggle_cell(row, LayerParamIndex::ArpAutoRate, secondary_greyed);
+        if (edit.auto_rate_visible) do_menu_cell(row, LayerParamIndex::ArpAutoRate, secondary_greyed);
 
         if (auto_rate_on) {
             auto const cell = do_cell(row);

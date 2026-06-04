@@ -883,6 +883,47 @@ constexpr auto k_arp_trigger_mode_strings = ArrayT<String>({
 });
 static_assert(k_arp_trigger_mode_strings.size == ToInt(ArpTriggerMode::Count));
 
+enum class ArpAutoRate : u8 { // never reorder
+    // NOLINTBEGIN(readability-identifier-naming)
+    Off,
+    _1x,
+    _2x,
+    _0_5x,
+    _4x,
+    _0_25x,
+    _1xD,
+    _2xD,
+    _0_5xD,
+    _4xD,
+    _0_25xD,
+    _1xT,
+    _2xT,
+    _0_5xT,
+    _4xT,
+    _0_25xT,
+    Count,
+    // NOLINTEND(readability-identifier-naming)
+};
+constexpr auto k_arp_auto_rate_strings = ArrayT<String>({
+    "Off",
+    "1x",
+    "2x",
+    "0.5x",
+    "4x",
+    "0.25x",
+    "1x Dotted",
+    "2x Dotted",
+    "0.5x Dotted",
+    "4x Dotted",
+    "0.25x Dotted",
+    "1x Triplet",
+    "2x Triplet",
+    "0.5x Triplet",
+    "4x Triplet",
+    "0.25x Triplet",
+});
+static_assert(k_arp_auto_rate_strings.size == ToInt(ArpAutoRate::Count));
+
 enum class ArpSyncedRate : u8 { // never reorder
     // NOLINTBEGIN(readability-identifier-naming)
     _1_64T,
@@ -954,6 +995,7 @@ struct ParamDescriptor {
         ArpTriggerMode,
         ArpSyncedRate,
         ArpOctavePolyrate,
+        ArpAutoRate,
         Count,
     };
 
@@ -1289,6 +1331,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpTriggerMode: return k_arp_trigger_mode_strings;
         case ParamDescriptor::MenuType::ArpSyncedRate: return k_arp_synced_rate_strings;
         case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
+        case ParamDescriptor::MenuType::ArpAutoRate: return k_arp_auto_rate_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -3751,7 +3794,10 @@ consteval auto CreateParams() {
             .id = id(region, 76), // never change
             .id_string = LAYER_ID("arp.auto_rate"),
             .added_in_generation = 1,
-            .value_config = val_config_helpers::Bool({.default_state = true}),
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::ArpAutoRate,
+                .default_val = (u32)param_values::ArpAutoRate::_1x,
+            }),
             .modules = {layer_module, ParameterModule::Arp},
             .name = "Auto Rate"_s,
             .gui_label = "Auto Rate"_s,

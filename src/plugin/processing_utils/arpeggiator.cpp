@@ -683,8 +683,39 @@ void ArpProcessBlock(ArpeggiatorState& arp,
         ArpProcessBlockPolyrate(arp, context, random_seed, block, num_frames, out_commands);
 }
 
+struct AutoRateResolution {
+    f64 step_ms_multiplier;
+    enum SyncedTimesType feel;
+};
+
+static AutoRateResolution ResolveAutoRate(param_values::ArpAutoRate mode) {
+    using A = param_values::ArpAutoRate;
+    // Speed multiplier is applied to native step ms: faster speed -> shorter step.
+    switch (mode) {
+        case A::_1x: return {1.0, SyncedTimesType::Straight};
+        case A::_2x: return {0.5, SyncedTimesType::Straight};
+        case A::_0_5x: return {2.0, SyncedTimesType::Straight};
+        case A::_4x: return {0.25, SyncedTimesType::Straight};
+        case A::_0_25x: return {4.0, SyncedTimesType::Straight};
+        case A::_1xD: return {1.0, SyncedTimesType::Dotted};
+        case A::_2xD: return {0.5, SyncedTimesType::Dotted};
+        case A::_0_5xD: return {2.0, SyncedTimesType::Dotted};
+        case A::_4xD: return {0.25, SyncedTimesType::Dotted};
+        case A::_0_25xD: return {4.0, SyncedTimesType::Dotted};
+        case A::_1xT: return {1.0, SyncedTimesType::Triplet};
+        case A::_2xT: return {0.5, SyncedTimesType::Triplet};
+        case A::_0_5xT: return {2.0, SyncedTimesType::Triplet};
+        case A::_4xT: return {0.25, SyncedTimesType::Triplet};
+        case A::_0_25xT: return {4.0, SyncedTimesType::Triplet};
+        case A::Off:
+        case A::Count: PanicIfReached();
+    }
+    return {1.0, SyncedTimesType::Straight};
+}
+
 static SyncedTimes AutoSyncedTimeForSlicedRegion(sample_lib::Region const& sliced_region,
-                                                 AudioProcessingContext const& context) {
+                                                 AudioProcessingContext const& context,
+                                                 AutoRateResolution resolution) {
     u32 total_prop = 0;
     for (auto const& s : sliced_region.slices)
         total_prop += s.length_proportion;
@@ -696,7 +727,9 @@ static SyncedTimes AutoSyncedTimeForSlicedRegion(sample_lib::Region const& slice
     auto const native_step_ms =
         ((f64)sliced_region.loop_beats * 60000.0 / (f64)sliced_region.native_bpm) / (f64)total_prop;
 
-    return LargestSyncedTimeWithinTarget(native_step_ms, context.tempo, SyncedTimesType::Straight);
+    return LargestSyncedTimeWithinTarget(native_step_ms * resolution.step_ms_multiplier,
+                                         context.tempo,
+                                         resolution.feel);
 }
 
 static void ArpUpdateRate(ArpeggiatorState& arp,
@@ -704,8 +737,9 @@ static void ArpUpdateRate(ArpeggiatorState& arp,
                           AudioProcessingContext const& context) {
     arp.audio.rate = arp.audio.user_rate;
 
-    if (sliced_region && arp.audio.auto_rate)
-        arp.audio.rate = AutoSyncedTimeForSlicedRegion(*sliced_region, context);
+    if (sliced_region && ArpAutoRateEnabled(arp.audio.auto_rate))
+        arp.audio.rate =
+            AutoSyncedTimeForSlicedRegion(*sliced_region, context, ResolveAutoRate(arp.audio.auto_rate));
 
     arp.resolved_rate_for_gui.Store(arp.audio.rate, StoreMemoryOrder::Relaxed);
 }
@@ -718,7 +752,7 @@ void ArpHandleInstrumentChange(ArpeggiatorState& arp,
 
     arp.on_for_gui.Store(now_on, StoreMemoryOrder::Relaxed);
 
-    if (arp.audio.auto_rate) ArpUpdateRate(arp, args.new_sliced_region, args.context);
+    if (ArpAutoRateEnabled(arp.audio.auto_rate)) ArpUpdateRate(arp, args.new_sliced_region, args.context);
 
     if (!now_on && was_on) {
         EmitReleaseNotes(arp.audio.playhead.last_triggered_notes, out_commands);
@@ -788,7 +822,9 @@ ArpOnBlockChanges(ArpeggiatorState& arp, ArpBlockChangesArgs const& args, ArpNot
         rate_changed = true;
     }
 
-    if (auto const p = args.changed_params.BoolValue(args.layer_index, LayerParamIndex::ArpAutoRate)) {
+    if (auto const p =
+            args.changed_params.IntValue<param_values::ArpAutoRate>(args.layer_index,
+                                                                    LayerParamIndex::ArpAutoRate)) {
         if (*p != arp.audio.auto_rate) {
             arp.audio.auto_rate = *p;
             rate_changed = true;
