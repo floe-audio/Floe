@@ -452,6 +452,7 @@ struct TableFields<Region::AudioProperties> {
         StartOffsetFrames,
         TuneCents,
         FadeInFrames,
+        FadeOutFrames,
         Count,
     };
     static constexpr FieldInfo FieldInfo(Field f) {
@@ -511,6 +512,23 @@ struct TableFields<Region::AudioProperties> {
                             if (val < 0)
                                 luaL_error(ctx.lua, "'%s' should be a positive integer", info.name.data);
                             FIELD_OBJ.fade_in_frames = (u32)val;
+                        },
+                };
+            case Field::FadeOutFrames:
+                return {
+                    .name = "fade_out_frames",
+                    .description_sentence =
+                        "The number of frames to fade out the audio data, applied at the end of the sample. If the region has slices, the fade is applied at the end of each slice instead.",
+                    .example = "0",
+                    .default_value = "0",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) {
+                            auto const val = luaL_checkinteger(ctx.lua, -1);
+                            if (val < 0)
+                                luaL_error(ctx.lua, "'%s' should be a positive integer", info.name.data);
+                            FIELD_OBJ.fade_out_frames = (u32)val;
                         },
                 };
             case Field::Count: break;

@@ -103,17 +103,14 @@ struct Region {
         f32 gain_db {0};
         f32 tune_cents {0};
         u32 start_offset_frames {};
-        // Applied at start_offset_frames, or at each slice's start_frame when the region has slices.
         u32 fade_in_frames {};
+        u32 fade_out_frames {};
 
-        // IMPROVE: add pan
         // IMPROVE: add tune
         // struct Fade {
         //    Duration duration {}; // either samples, ms or %
         //    Curve curve {}; // enum: linear, exponential, quarter-sine, etc.
         // };
-        // IMPROVE: add optional fade-in
-        // IMPROVE: add optional fade-out
     } audio_props;
 
     struct Playback {

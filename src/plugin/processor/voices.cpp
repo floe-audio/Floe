@@ -701,16 +701,26 @@ struct VoiceProcessor {
 
         auto out = GetSampleFrame(*sampler.data, sampler.playhead);
 
-        // Do the sample fade-in if it's the first time the sample is played.
-        if (!sampler.playhead.loop ||
-            (sampler.playhead.loop && !sampler.playhead.loop->only_use_frames_within_loop)) {
+        // Do the sample fade-in/out if it's the first time the sample is played.
+        if (auto const fade_in_frames = sampler.region->audio_props.fade_in_frames,
+            fade_out_frames = sampler.region->audio_props.fade_out_frames;
+            (fade_in_frames || fade_out_frames) &&
+            (!sampler.playhead.loop ||
+             (sampler.playhead.loop && !sampler.playhead.loop->only_use_frames_within_loop))) {
             auto const real_pos = sampler.playhead.RealFramePos(sampler.data->num_frames);
             if (real_pos) {
-                auto const fade_origin =
+                auto const fade_in_origin =
                     sampler.slice ? sampler.slice->start : sampler.region->audio_props.start_offset_frames;
-                if (auto const pos = *real_pos - fade_origin;
-                    pos >= 0 && pos < sampler.region->audio_props.fade_in_frames) {
-                    auto const percent = pos / (f64)sampler.region->audio_props.fade_in_frames;
+                if (auto const pos = *real_pos - fade_in_origin; pos >= 0 && pos < fade_in_frames) {
+                    auto const percent = pos / (f64)fade_in_frames;
+                    auto const amount = QuarterSineFade((f32)percent);
+                    out *= amount;
+                }
+
+                auto const fade_out_end = EffectiveEndFrame(sampler);
+                if (auto const dist_to_end = (s64)fade_out_end - (s64)*real_pos;
+                    dist_to_end > 0 && dist_to_end <= fade_out_frames) {
+                    auto const percent = (f64)dist_to_end / (f64)fade_out_frames;
                     auto const amount = QuarterSineFade((f32)percent);
                     out *= amount;
                 }
