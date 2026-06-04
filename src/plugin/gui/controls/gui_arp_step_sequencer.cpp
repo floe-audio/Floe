@@ -313,13 +313,23 @@ void DoArpStepSequencer(GuiState& g,
 
         if (show_all) {
             // Overview mode: same step number row as edit mode but without interaction,
-            // only at non-tied steps spaced at least 4 apart.
-            if (!is_tied && (i == 0 || (i - last_overview_label) >= 4)) {
+            // only at non-tied steps spaced at least 4 apart, plus always the last step.
+            auto const is_last = i == active_steps - 1;
+            // Last label is right-anchored to its step and given extra width on the left
+            // so multi-digit numbers don't clip when step_width is tiny (e.g. 64 steps).
+            auto const min_label_w = WwToPixels(12.0f);
+            auto const last_label_w = Max(step_width, min_label_w);
+            // When step count is high the steps are narrow enough that any label within a few
+            // steps of the last would overlap the right-anchored last label - skip them.
+            auto const skip_preceding = active_steps >= 56 && !is_last && (active_steps - 1 - i) < 4;
+            if (!skip_preceding && ((!is_tied && (i == 0 || (i - last_overview_label) >= 4)) || is_last)) {
                 last_overview_label = i;
+                auto const label_w = is_last ? last_label_w : step_width;
+                auto const label_x = is_last ? (x_vp + step_width - label_w) : x_vp;
                 auto const label_rect = imgui.ViewportRectToWindowRect({
-                    .x = x_vp,
+                    .x = label_x,
                     .y = bar_area_height + label_pad,
-                    .w = step_width,
+                    .w = label_w,
                     .h = row_height - (label_pad * 2),
                 });
                 auto const text_col = dim(step_off ? WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 60)
@@ -328,7 +338,8 @@ void DoArpStepSequencer(GuiState& g,
                                         text_col,
                                         fmt::Format(g.scratch_arena, "{}", i + 1),
                                         {
-                                            .justification = TextJustification::Centred,
+                                            .justification = is_last ? TextJustification::CentredRight
+                                                                     : TextJustification::Centred,
                                             .font_scaling = 0.85f,
                                         });
             }
@@ -433,6 +444,24 @@ void DoArpStepSequencer(GuiState& g,
                                         .justification = TextJustification::Centred,
                                         .font_scaling = 0.85f,
                                     });
+
+            if (num_tied_following > 0) {
+                auto const last_step_index = i + num_tied_following;
+                auto const last_text_rect = imgui.ViewportRectToWindowRect({
+                    .x = (f32)last_step_index * step_stride,
+                    .y = row_y_vp,
+                    .w = step_width,
+                    .h = btn_height,
+                });
+                auto const last_text_col = dim(WithAlphaU8(LiveCol(UiColMap::MidTextDimmed), 80));
+                draw_list.AddTextInRect(last_text_rect,
+                                        last_text_col,
+                                        fmt::Format(g.scratch_arena, "{}", last_step_index + 1),
+                                        {
+                                            .justification = TextJustification::Centred,
+                                            .font_scaling = 0.85f,
+                                        });
+            }
         }
         row_y_vp += row_height + k_row_gap;
 
