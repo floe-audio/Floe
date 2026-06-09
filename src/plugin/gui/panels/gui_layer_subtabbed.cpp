@@ -327,7 +327,6 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
         g.builder,
         {
             .parent = selector_box,
-            .parent_dictates_hot_and_active = true,
             .layout {
                 .size = {layout::k_fill_parent, layout::k_hug_contents},
                 .contents_direction = layout::Direction::Row,

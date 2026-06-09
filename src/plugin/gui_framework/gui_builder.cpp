@@ -229,6 +229,9 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
     ASSERT_HOT(config.parent || builder.state->pass != GuiBuilderPass::LayoutBoxes ||
                    builder.state->layout.num_items == 0,
                "DoBox requires a parent unless it's the first item (root)");
+    ASSERT_HOT(!(config.button_behaviour && config.parent_dictates_hot_and_active),
+               "button_behaviour conflicts with parent_dictates_hot_and_active: "
+               "tooltip/child hot tracking would diverge from the button's own id");
     auto const& cache = builder.state->viewport_cache;
     auto const font = builder.fonts.atlas[ToInt(config.font)];
     auto const font_size = config.font_size != 0 ? config.font_size * cache.pixels_per_ww : font->font_size;
