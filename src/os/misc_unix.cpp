@@ -244,6 +244,8 @@ ErrorCodeOr<String> ReadAllStdin(Allocator& allocator) {
     return result.ToOwnedSpan();
 }
 
+bool StdinIsTty() { return isatty(STDIN_FILENO) != 0; }
+
 ErrorCodeOr<LibraryHandle> LoadLibrary(String path) {
     PathArena path_arena {Malloc::Instance()};
     auto handle = dlopen(NullTerminated(path, path_arena), RTLD_NOW | RTLD_LOCAL);

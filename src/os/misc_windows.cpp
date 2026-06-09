@@ -169,6 +169,12 @@ ErrorCodeOr<String> ReadAllStdin(Allocator& allocator) {
     return result.ToOwnedSpan();
 }
 
+bool StdinIsTty() {
+    HANDLE stdin_handle = GetStdHandle(STD_INPUT_HANDLE);
+    if (stdin_handle == INVALID_HANDLE_VALUE || stdin_handle == nullptr) return false;
+    return GetFileType(stdin_handle) == FILE_TYPE_CHAR;
+}
+
 struct LockableSharedMemoryNative {
     HANDLE mutex;
     HANDLE mapping;

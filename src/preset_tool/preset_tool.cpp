@@ -416,7 +416,8 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                     .name = "preset-path",
                     .description =
                         "Preset file or directory. Directories are scanned recursively for *" FLOE_PRESET_FILE_EXTENSION
-                        " files.",
+                        " files. If no paths are given, one path per line is read from stdin "
+                        "(e.g. `fd -e " FLOE_PRESET_FILE_EXTENSION " | floe-preset-tool`).",
                     .out = &positional_paths,
                 },
         }));
@@ -431,9 +432,29 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         return 0;
     }
 
+    DynamicArray<String> stdin_paths {arena};
     if (positional_paths.size == 0) {
-        StdPrintF(StdStream::Err, "Error: at least one preset file or directory must be provided\n");
-        return ErrorCode {CommonError::InvalidFileFormat};
+        if (StdinIsTty()) {
+            StdPrintF(StdStream::Err,
+                      "Error: at least one preset file or directory must be provided "
+                      "(as arguments or piped to stdin, one path per line)\n");
+            return ErrorCode {CommonError::InvalidFileFormat};
+        }
+        auto const stdin_data = TRY_OR(ReadAllStdin(arena), {
+            StdPrintF(StdStream::Err, "Error: failed to read stdin: {}\n", error);
+            return error;
+        });
+        for (auto line : SplitIterator {.whole = stdin_data, .token = '\n'}) {
+            if (line.size && Last(line) == '\r') line.RemoveSuffix(1);
+            line = WhitespaceStripped(line);
+            if (line.size == 0) continue;
+            dyn::Append(stdin_paths, line);
+        }
+        if (stdin_paths.size == 0) {
+            StdPrintF(StdStream::Err, "Error: no preset paths provided on stdin\n");
+            return ErrorCode {CommonError::InvalidFileFormat};
+        }
+        positional_paths = stdin_paths.Items();
     }
 
     auto const raw = cli_args[ToInt(CliArgId::Raw)].was_provided;

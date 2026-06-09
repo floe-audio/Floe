@@ -254,6 +254,8 @@ void StdPrintFLocked(StdStream stream, String format, Args const&... args) {
 
 ErrorCodeOr<String> ReadAllStdin(Allocator& allocator);
 
+bool StdinIsTty();
+
 s128 NanosecondsSinceEpoch(); // signal-safe
 s64 MicrosecondsSinceEpoch(); // signal-safe
 s128 NanosecondsSinceEpoch(DateAndTime const&);
