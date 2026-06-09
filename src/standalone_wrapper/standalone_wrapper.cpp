@@ -820,6 +820,7 @@ struct RunOptions {
     Optional<String> screenshot_out_path;
     Optional<String> preset_path;
     Optional<UiSize> fixed_window_size;
+    Optional<String> app_id;
 };
 
 static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
@@ -878,7 +879,11 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
         return ErrorCode {StandaloneError::WindowError};
     }
     DEFER { puglFreeWorld(standalone.gui_world); };
-    TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, "Floe Standalone"));
+    {
+        char const* app_id = k_floe_standalone_default_app_id;
+        if (options.app_id) app_id = NullTerminated(*options.app_id, arena);
+        TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, app_id));
+    }
 
     standalone.gui_view = puglNewView(standalone.gui_world);
     DEFER {
@@ -1043,6 +1048,7 @@ static int Main(ArgsCstr args) {
         ScreenshotOut,
         Preset,
         FixedWindowSize,
+        AppId,
         Count,
     };
 
@@ -1098,6 +1104,15 @@ static int Main(ArgsCstr args) {
             .required = false,
             .num_values = 1,
         },
+        {
+            .id = (u32)CommandLineArgId::AppId,
+            .key = "app-id",
+            .description =
+                "Override the windowing system class/app ID (Wayland xdg-shell app_id, X11 WM_CLASS, Windows window class). Defaults to 'org.floe-audio.floe'.",
+            .value_type = "id",
+            .required = false,
+            .num_values = 1,
+        },
     });
 
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -1137,6 +1152,7 @@ static int Main(ArgsCstr args) {
             .screenshot_out_path = screenshot_out_path,
             .preset_path = cli_args[ToInt(CommandLineArgId::Preset)].Value(),
             .fixed_window_size = fixed_window_size,
+            .app_id = cli_args[ToInt(CommandLineArgId::AppId)].Value(),
         },
         arena);
     if (o.HasError()) {

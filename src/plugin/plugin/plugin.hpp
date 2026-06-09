@@ -133,6 +133,7 @@ PUBLIC Optional<UiSize> ClapPixelsToPhysicalPixels(PuglView* view, u32 width, u3
 // We use the clap extension interface for our plugin and "host" (wrapper) to communicate to each other.
 static constexpr char k_floe_clap_extension_id[] = "floe.floe";
 static constexpr char k_floe_standalone_host_name[] = "Floe Standalone";
+static constexpr char k_floe_standalone_default_app_id[] = "org.floe-audio.floe";
 
 struct FloeClapExtensionHost {
     bool standalone_audio_device_error;
