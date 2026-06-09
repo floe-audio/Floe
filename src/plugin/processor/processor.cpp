@@ -1330,6 +1330,11 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
             if (processor.whole_engine_volume_fade_type == AudioProcessor::FadeType::OutAndRestartVoices) {
                 processor.voice_pool.EndAllVoicesInstantly();
+                for (auto& l : processor.layer_processors) {
+                    ResetArpAudioPlayback(l.arp_state);
+                    l.arp_state.audio.playhead.frames_per_step =
+                        ArpFramesPerStep(l.arp_state.audio.rate, processor.audio_processing_context);
+                }
                 processor.restart_voices_for_layer_bitset.SetAll(); // restart all voices
             } else {
                 processor.whole_engine_volume_fade.SetAsFadeIn(processor.audio_processing_context.sample_rate,

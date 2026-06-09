@@ -757,8 +757,14 @@ void ArpHandleInstrumentChange(ArpeggiatorState& arp,
     if (!now_on && was_on) {
         EmitReleaseNotes(arp.audio.playhead.last_triggered_notes, out_commands);
         ResetArpAudioPlayback(arp);
-    } else if (now_on) {
+    } else if (now_on && !was_on) {
         ResetArpAudioPlayback(arp);
+        arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
+    } else if (now_on) {
+        // Arp was on and stays on across the instrument change. For user-driven (non-sliced) mode we
+        // keep the playhead running so the sense of timing is preserved. For sliced mode the slice
+        // grid defines the rhythm and differs per instrument, so we reset to align with the new slices.
+        if (args.new_sliced_region || args.old_sliced_region) ResetArpAudioPlayback(arp);
         arp.audio.playhead.frames_per_step = ArpFramesPerStep(arp.audio.rate, args.context);
     }
 }
