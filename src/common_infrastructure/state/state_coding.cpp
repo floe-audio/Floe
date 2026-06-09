@@ -1917,11 +1917,11 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         u8 reset_keyswitch_note {};
         u8 seed {};
 
-        if (coder.IsWriting()) {
-            reset_on_transport = state.instance_config.reset_on_transport ? 1 : 0;
-            has_reset_keyswitch = state.instance_config.reset_keyswitch.HasValue() ? 1 : 0;
-            reset_keyswitch_note = state.instance_config.reset_keyswitch.ValueOr(0);
-            seed = state.instance_config.seed;
+        if (coder.IsWriting() && args.source == StateSource::Daw) {
+            reset_on_transport = state.extras.instance_config.reset_on_transport ? 1 : 0;
+            has_reset_keyswitch = state.extras.instance_config.reset_keyswitch.HasValue() ? 1 : 0;
+            reset_keyswitch_note = state.extras.instance_config.reset_keyswitch.ValueOr(0);
+            seed = state.extras.instance_config.seed;
         }
 
         TRY(coder.CodeNumber(reset_on_transport, k_added));
@@ -1929,13 +1929,13 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         TRY(coder.CodeNumber(reset_keyswitch_note, k_added));
         TRY(coder.CodeNumber(seed, k_added));
 
-        if (coder.IsReading()) {
-            state.instance_config.reset_on_transport = reset_on_transport != 0;
+        if (coder.IsReading() && args.source == StateSource::Daw) {
+            state.extras.instance_config.reset_on_transport = reset_on_transport != 0;
             if (has_reset_keyswitch && reset_keyswitch_note <= 127)
-                state.instance_config.reset_keyswitch = (u7)reset_keyswitch_note;
+                state.extras.instance_config.reset_keyswitch = (u7)reset_keyswitch_note;
             else
-                state.instance_config.reset_keyswitch = k_nullopt;
-            state.instance_config.seed = Min(seed, (u8)99);
+                state.extras.instance_config.reset_keyswitch = k_nullopt;
+            state.extras.instance_config.seed = Min(seed, (u8)99);
         }
     }
 
@@ -2331,7 +2331,7 @@ TEST_CASE(TestSerialisation) {
                 for (auto const i : Range(k_num_harmony_interval_bits))
                     if (RandomIntInRange<int>(random_seed, 0, 1)) intervals.Set(i);
 
-            state.instance_config = {
+            state.extras.instance_config = {
                 .reset_on_transport = true,
                 .reset_keyswitch = (u7)60,
                 .seed = 42,

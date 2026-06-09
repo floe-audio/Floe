@@ -624,7 +624,8 @@ void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSour
         }
     }
 
-    processor.instance_config.Store(state.instance_config, StoreMemoryOrder::Release);
+    if (source == StateSource::Daw)
+        processor.instance_config.Store(state.extras.instance_config, StoreMemoryOrder::Release);
 
     processor.inbox_flags.FetchOr(audio_thread_inbox::ReloadAllAudioState, RmwMemoryOrder::Release);
 
@@ -663,7 +664,7 @@ StateSnapshot CaptureStateSnapshot(AudioProcessor const& processor) {
     for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
         result.extras.param_learned_ccs[i] = cc.GetBlockwise();
 
-    result.instance_config = processor.instance_config.Load(LoadMemoryOrder::Relaxed);
+    result.extras.instance_config = processor.instance_config.Load(LoadMemoryOrder::Relaxed);
 
     return result;
 }

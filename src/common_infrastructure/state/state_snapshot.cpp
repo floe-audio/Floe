@@ -142,7 +142,7 @@ void AssignDiffDescription(DynArrayT& diff_desc,
         if (old_state.macro_destinations[macro_index] != new_state.macro_destinations[macro_index])
             fmt::Append(diff_desc, "Macro {} destinations changed\n"_s, macro_index);
 
-    if (old_state.instance_config != new_state.instance_config)
+    if (old_state.extras.instance_config != new_state.extras.instance_config)
         dyn::AppendSpan(diff_desc, "Instance config changed\n"_s);
 }
 

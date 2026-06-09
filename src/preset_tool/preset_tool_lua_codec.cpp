@@ -751,40 +751,6 @@ struct MacroDestinationsH {
     }
 };
 
-struct InstanceConfigH {
-    static void AppendHelp(DynamicArray<char>& out, String name) {
-        fmt::Append(out, "  {} = {{ reset_on_transport=, reset_keyswitch=, seed= }}\n", name);
-        fmt::Append(out,
-                    "    .reset_on_transport = bool\n"
-                    "    .reset_keyswitch    = MIDI note integer in [0,127] (absent / nil = unset)\n"
-                    "    .seed               = integer in [0,255]\n");
-    }
-    static void Write(lua_State* lua, InstanceConfig const& cfg) {
-        lua_newtable(lua);
-        LuaWriter w {lua};
-        w.Field("reset_on_transport", cfg.reset_on_transport, BoolH {});
-        if (cfg.reset_keyswitch.HasValue()) {
-            lua_pushinteger(lua, (lua_Integer)cfg.reset_keyswitch.Value());
-            lua_setfield(lua, -2, "reset_keyswitch");
-        }
-        w.Field("seed", cfg.seed, IntH<u8> {});
-    }
-    static void Read(lua_State* lua, InstanceConfig& cfg) {
-        if (!lua_istable(lua, -1)) return;
-        LuaReader r {lua};
-        r.Field("reset_on_transport", cfg.reset_on_transport, BoolH {});
-        lua_getfield(lua, -1, "reset_keyswitch");
-        if (lua_isinteger(lua, -1)) {
-            auto const n = lua_tointeger(lua, -1);
-            if (n >= 0 && n <= 127) cfg.reset_keyswitch = (u7)n;
-        } else {
-            cfg.reset_keyswitch = k_nullopt;
-        }
-        lua_pop(lua, 1);
-        r.Field("seed", cfg.seed, IntH<u8> {});
-    }
-};
-
 // One declaration drives both directions. Adding a new field means: write one handler, add one line here.
 template <typename V, typename S>
 static void VisitPreset(V& v, S& s) {
@@ -801,7 +767,6 @@ static void VisitPreset(V& v, S& s) {
     v.Field("slice_arp_configs", s.slice_arp_configs, SliceArpConfigsH {});
     v.Field("macro_names", s.macro_names, MacroNamesH {});
     v.Field("macro_destinations", s.macro_destinations, MacroDestinationsH {});
-    v.Field("instance_config", s.instance_config, InstanceConfigH {});
 }
 
 void BuildPresetLuaTable(lua_State* lua,
@@ -1081,10 +1046,6 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
             ++placed;
         }
     }
-
-    s.instance_config.reset_on_transport = false;
-    s.instance_config.reset_keyswitch = (u7)42;
-    s.instance_config.seed = 17;
 
     return s;
 }

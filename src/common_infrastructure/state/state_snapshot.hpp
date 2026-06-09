@@ -43,6 +43,7 @@ struct StateExtras {
 
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
     Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
+    InstanceConfig instance_config {};
 
     // For DAW state only. Preset files always get their name from the filename.
     DynamicArrayBounded<char, k_max_preset_name_size> display_name {};
@@ -73,7 +74,6 @@ struct StateSnapshot {
     Array<SliceArpConfig, k_num_layers> slice_arp_configs {};
     MacroNames macro_names {};
     MacroDestinations macro_destinations {};
-    InstanceConfig instance_config {};
     StateExtras extras {};
 };
 
