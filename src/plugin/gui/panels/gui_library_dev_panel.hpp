@@ -15,6 +15,7 @@ struct LibraryDevPanelContext {
 struct LibraryDevPanelState {
     enum class Tab : u8 {
         TagBuilder,
+        TuningBuilder,
         Utilities,
         Count,
     };

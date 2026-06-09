@@ -7,6 +7,8 @@
 #include <lua.h>
 
 #include "common_infrastructure/common_errors.hpp"
+#include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/state/instrument.hpp"
 
 #include "engine/engine.hpp"
 #include "gui/elements/gui_constants.hpp"
@@ -15,7 +17,8 @@
 #include "gui/panels/gui_save_preset_panel.hpp"
 #include "gui_framework/gui_builder.hpp"
 
-#define GENERATED_TAGS_FILENAME "Lua/instrument_tags.lua"
+#define GENERATED_TAGS_FILENAME   "Lua/instrument_tags.lua"
+#define GENERATED_TUNING_FILENAME "Lua/instrument_tuning_corrections.lua"
 
 static void DoUtilitiesPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState&) {
     auto const root = DoBox(builder,
@@ -166,7 +169,7 @@ LoadExistingTagsFile(sample_lib::Instrument const& inst, ArenaAllocator& arena, 
     IterateTableAtTop(lua, [&]() {
         if (error_code.HasError()) return;
 
-        // key is at -2 and vlaue is at -1
+        // key is at -2 and value is at -1
 
         // We expect the key to be a string (the instrument ID).
         // We expect the value to be a table (the tags).
@@ -343,6 +346,271 @@ static void DoTagBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& conte
     }
 }
 
+struct InstrumentTuning {
+    int semitones;
+    f32 cents;
+};
+using TuningByInstrument = OrderedHashTable<String, InstrumentTuning>;
+
+static ErrorCodeOr<TuningByInstrument>
+LoadExistingTuningFile(sample_lib::Library const& library, ArenaAllocator& arena, String& error_message) {
+    auto const path = path::Join(arena, Array {*path::Directory(library.path), GENERATED_TUNING_FILENAME});
+
+    auto const data = ({
+        auto const o = ReadEntireFile(path, arena);
+        if (o.HasError()) {
+            if (o.Error() == FilesystemError::PathDoesNotExist) return TuningByInstrument {};
+            return o.Error();
+        }
+        o.Value();
+    });
+
+    auto lua = luaL_newstate();
+    DEFER { lua_close(lua); };
+
+    if (auto const r = luaL_loadbuffer(lua, data.data, data.size, "tuning builder"); r != LUA_OK) {
+        if (lua_isstring(lua, -1))
+            error_message = fmt::Format(arena, "{}", LuaString(lua, -1));
+        else
+            error_message = "unknown error"_s;
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    if (auto const r = lua_pcall(lua, 0, LUA_MULTRET, 0); r != LUA_OK) {
+        if (lua_isstring(lua, -1))
+            error_message = fmt::Format(arena, "{}", LuaString(lua, -1));
+        else
+            error_message = "unknown error"_s;
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    auto const table_index = lua_gettop(lua);
+    if (!table_index || !lua_istable(lua, table_index)) {
+        error_message = "Expected a table as the result"_s;
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+
+    auto tuning = TuningByInstrument::Create(arena, 16);
+    ErrorCodeOr<void> error_code = k_success;
+
+    IterateTableAtTop(lua, [&]() {
+        if (error_code.HasError()) return;
+
+        if (!lua_isstring(lua, -2) || !lua_istable(lua, -1)) {
+            error_message = "Expected a string key and a table value"_s;
+            error_code = ErrorCode {CommonError::InvalidFileFormat};
+            return;
+        }
+
+        auto const instrument_id = LuaString(lua, -2);
+        if (!IsValidUtf8(instrument_id) || instrument_id.size > k_max_instrument_name_size) {
+            error_message = "invalid instrument name"_s;
+            error_code = ErrorCode {CommonError::InvalidFileFormat};
+            return;
+        }
+
+        InstrumentTuning entry {};
+        lua_getfield(lua, -1, "semitones");
+        if (lua_isnumber(lua, -1)) entry.semitones = (int)lua_tointeger(lua, -1);
+        lua_pop(lua, 1);
+        lua_getfield(lua, -1, "cents");
+        if (lua_isnumber(lua, -1)) entry.cents = (f32)lua_tonumber(lua, -1);
+        lua_pop(lua, 1);
+
+        tuning.FindOrInsertGrowIfNeeded(arena, arena.Clone(instrument_id), entry).element.data = entry;
+    });
+
+    lua_pop(lua, 1);
+
+    if (error_code.HasError()) return error_code.Error();
+    return tuning;
+}
+
+static ErrorCodeOr<void>
+WriteTuningFile(TuningByInstrument const& tuning, sample_lib::Library const& library, ArenaAllocator& arena) {
+    auto const temp_suffix = ".tmp"_ca;
+    auto const temp_path = path::Join(
+        arena,
+        Array {*path::Directory(library.path), ConcatArrays(GENERATED_TUNING_FILENAME ""_ca, temp_suffix)});
+    auto const path = temp_path.SubSpan(0, temp_path.size - temp_suffix.size);
+
+    TRY(CreateDirectory(*path::Directory(path), {.fail_if_exists = false}));
+
+    {
+        auto file = TRY(OpenFile(temp_path, FileMode::Write()));
+
+        BufferedWriter<Kb(4)> buffered_writer {.unbuffered_writer = file.Writer()};
+        DEFER { buffered_writer.Reset(); };
+        auto writer = buffered_writer.Writer();
+
+        TRY(fmt::FormatToWriter(
+            writer,
+            "-- This file is generated by Floe's tuning builder.\n"
+            "-- Keys are instrument IDs.\n"
+            "-- semitones and cents are the CORRECTION to apply to bring the instrument in tune\n"
+            "-- (already negated from the detected offset). Apply directly, e.g.:\n"
+            "--   tune_cents = t.semitones * 100 + t.cents\n"
+            "-- or, for a single-sample region:\n"
+            "--   root_key = base_root - t.semitones, tune_cents = t.cents\n"
+            "return {{\n"));
+
+        for (auto const& [instrument_id, entry, _] : tuning) {
+            ASSERT(IsValidUtf8(instrument_id));
+            TRY(fmt::FormatToWriter(writer,
+                                    "  [\"{}\"] = {{ semitones = {}, cents = {} }},\n",
+                                    instrument_id,
+                                    entry.semitones,
+                                    entry.cents));
+        }
+
+        TRY(fmt::FormatToWriter(writer, "}}\n"));
+
+        TRY(buffered_writer.Flush());
+        TRY(file.Flush());
+    }
+
+    TRY(Rename(temp_path, path));
+    return k_success;
+}
+
+static void
+DoTuningBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState&) {
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text =
+                  "Build a pitch-correction table for instruments that play slightly out of tune. Setup: "
+                  "load the instrument to correct into layer 1 (its Pitch and Detune must be 0), and load "
+                  "the Built-in sine into layer 2. Adjust layer 2's Pitch and Detune until the sine matches "
+                  "the instrument's pitch, then click Write tuning. The correction (i.e. the inverse of the "
+                  "sine's offset) is appended to \"" GENERATED_TUNING_FILENAME
+                  "\" in the library's folder, keyed by instrument ID, ready to be applied in floe.lua."_s,
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+          });
+
+    auto const& target_inst = context.engine.Layer(0).instrument;
+    auto const& ref_inst = context.engine.Layer(1).instrument;
+    auto& params = context.engine.processor.main_params;
+
+    auto const target_is_sampler = target_inst.tag == InstrumentType::Sampler;
+    sample_lib::Instrument const* target_inst_def = nullptr;
+    if (target_is_sampler) target_inst_def = &(*target_inst.GetFromTag<InstrumentType::Sampler>()).instrument;
+
+    auto const target_is_lua =
+        target_inst_def && target_inst_def->library.file_format_specifics.tag == sample_lib::FileFormat::Lua;
+    auto const target_cents = params.ProjectedValue(0, LayerParamIndex::TuneCents);
+    auto const target_semis = params.ProjectedValue(0, LayerParamIndex::TuneSemitone);
+    auto const target_tuning_zero = target_cents == 0 && target_semis == 0;
+
+    auto const ref_is_sine =
+        ref_inst.tag == InstrumentType::WaveformSynth && ref_inst.Get<WaveformType>() == WaveformType::Sine;
+
+    auto const all_ok = target_is_lua && target_tuning_zero && ref_is_sine;
+
+    auto const status_line = [&](String text, bool ok, u64 id_extra) {
+        DoBox(builder,
+              {
+                  .parent = root,
+                  .id_extra = id_extra,
+                  .text = fmt::Format(builder.arena, "{} {}", ok ? "[OK]"_s : "[--]"_s, text),
+                  .size_from_text = true,
+              });
+    };
+
+    status_line("Layer 1: sampler instrument from a Lua sample library"_s, target_is_lua, 1);
+    status_line("Layer 1: Pitch and Detune are both 0"_s, target_tuning_zero, 2);
+    status_line("Layer 2: Built-in sine waveform"_s, ref_is_sine, 3);
+
+    if (!all_ok) return;
+
+    auto const ref_cents = params.ProjectedValue(1, LayerParamIndex::TuneCents);
+    auto const ref_semis = (int)Round(params.ProjectedValue(1, LayerParamIndex::TuneSemitone));
+    auto const total_cents = -(((f32)ref_semis * 100.0f) + ref_cents);
+    auto const out_semitones = (int)Round(total_cents / 100.0f);
+    auto const out_cents = total_cents - ((f32)out_semitones * 100.0f);
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = fmt::Format(builder.arena,
+                                  "Will write: semitones = {}, cents = {}",
+                                  out_semitones,
+                                  out_cents),
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+          });
+
+    if (!TextButton(builder,
+                    root,
+                    {
+                        .text = "Write tuning"_s,
+                        .tooltip = "Write the negated reference offset to "_s GENERATED_TUNING_FILENAME,
+                    }))
+        return;
+
+    auto const& library = target_inst_def->library;
+    String error_message;
+    auto tuning_result = LoadExistingTuningFile(library, builder.arena, error_message);
+    if (tuning_result.HasError()) {
+        context.notifications.AddOrUpdate(
+            SourceLocationHash(),
+            [error = tuning_result.Error(),
+             msg = DynamicArrayBounded<char, 200>(error_message)](ArenaAllocator& arena) {
+                return NotificationDisplayInfo {
+                    .title = "Error loading tuning file",
+                    .message = fmt::Format(arena, "{}: {}", msg, error),
+                    .dismissable = true,
+                    .icon = NotificationDisplayInfo::IconType::Error,
+                };
+            });
+        return;
+    }
+
+    auto& tuning = tuning_result.Value();
+    auto const& inst_id = target_inst_def->id;
+
+    if (out_semitones == 0 && out_cents == 0) {
+        tuning.Delete(inst_id);
+    } else {
+        auto& entry =
+            tuning.FindOrInsertGrowIfNeeded(builder.arena, inst_id, InstrumentTuning {}).element.data;
+        entry = {.semitones = out_semitones, .cents = out_cents};
+    }
+
+    if (auto const o = WriteTuningFile(tuning, library, builder.arena); o.HasError()) {
+        context.notifications.AddOrUpdate(SourceLocationHash(), [error = o.Error()](ArenaAllocator& arena) {
+            return NotificationDisplayInfo {
+                .title = "Error writing tuning file",
+                .message = fmt::Format(arena, "{}", error),
+                .dismissable = true,
+                .icon = NotificationDisplayInfo::IconType::Error,
+            };
+        });
+    } else {
+        context.notifications.AddOrUpdate(SourceLocationHash(), [](ArenaAllocator&) {
+            return NotificationDisplayInfo {
+                .title = "Wrote tuning",
+                .message = GENERATED_TUNING_FILENAME ""_s,
+                .dismissable = true,
+                .icon = NotificationDisplayInfo::IconType::Success,
+            };
+        });
+    }
+}
+
 static void DoPanel(GuiBuilder& builder, LibraryDevPanelContext& context, LibraryDevPanelState& state) {
     constexpr auto k_tab_config = []() {
         Array<ModalTabConfig, ToInt(LibraryDevPanelState::Tab::Count)> tabs {};
@@ -350,7 +618,10 @@ static void DoPanel(GuiBuilder& builder, LibraryDevPanelContext& context, Librar
             auto const index = ToInt(tab);
             switch (tab) {
                 case LibraryDevPanelState::Tab::TagBuilder:
-                    tabs[index] = {.icon = ICON_FA_TAG, .text = "Tag Builder"};
+                    tabs[index] = {.icon = ICON_FA_TAG, .text = "Tags"};
+                    break;
+                case LibraryDevPanelState::Tab::TuningBuilder:
+                    tabs[index] = {.icon = ICON_FA_MUSIC, .text = "Tuning"};
                     break;
                 case LibraryDevPanelState::Tab::Utilities:
                     tabs[index] = {.icon = ICON_FA_TOOLBOX, .text = "Utilities"};
@@ -377,6 +648,7 @@ static void DoPanel(GuiBuilder& builder, LibraryDevPanelContext& context, Librar
                           TabPanelFunction f {};
                           switch (state.tab) {
                               case LibraryDevPanelState::Tab::TagBuilder: f = DoTagBuilderPanel; break;
+                              case LibraryDevPanelState::Tab::TuningBuilder: f = DoTuningBuilderPanel; break;
                               case LibraryDevPanelState::Tab::Utilities: f = DoUtilitiesPanel; break;
                               case LibraryDevPanelState::Tab::Count: PanicIfReached();
                           }
