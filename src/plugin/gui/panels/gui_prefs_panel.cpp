@@ -11,11 +11,13 @@
 #include "engine/check_for_update.hpp"
 #include "engine/engine_prefs.hpp"
 #include "gui/core/gui_prefs.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui_framework/app_window.hpp"
+#include "gui_framework/app_window_sizes.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "plugin/plugin.hpp"
 #include "processor/processor.hpp"
 
 static void
@@ -617,33 +619,138 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
     }
 }
 
+static void DeviceSelectionMenu(GuiBuilder& builder, PreferencesPanelContext& context, HostDeviceType type) {
+    auto const host = context.standalone_host;
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_hug_contents,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    HostDeviceInfo current {};
+    if (host->current_device) host->current_device(host, type, &current);
+
+    if (MenuItem(builder, root, {.text = "System default"_s, .is_selected = current.id.size == 0})
+            .button_fired) {
+        if (host->set_device) host->set_device(host, type, {});
+    }
+
+    auto const count = host->num_devices ? host->num_devices(host, type) : 0;
+    for (auto const index : Range(count)) {
+        HostDeviceInfo info {};
+        if (!host->device_info || !host->device_info(host, type, index, &info)) continue;
+        if (MenuItem(builder,
+                     root,
+                     {
+                         .text = info.name,
+                         .subtext = info.is_default ? "System default"_s : String {},
+                         .is_selected = current.id.size != 0 && info.id == current.id,
+                     },
+                     Hash(info.id))
+                .button_fired) {
+            if (host->set_device) host->set_device(host, type, info.id);
+        }
+    }
+}
+
+static void DevicesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context) {
+    auto const host = context.standalone_host;
+    if (!host) return;
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_medium_gap,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    struct DeviceRow {
+        HostDeviceType type;
+        String label;
+    };
+    for (auto const& device_row : Array {
+             DeviceRow {HostDeviceType::AudioOutput, "Audio output"},
+             DeviceRow {HostDeviceType::MidiInput, "MIDI input"},
+         }) {
+        builder.imgui.PushId((u64)device_row.type);
+        DEFER { builder.imgui.PopId(); };
+
+        auto const row = PreferencesRow(builder, root);
+        PreferencesLhsTextWidget(builder, row, device_row.label);
+        auto const rhs = PreferencesRhsColumn(builder, row, k_small_gap);
+
+        HostDeviceInfo current {};
+        if (host->current_device) host->current_device(host, device_row.type, &current);
+        String const menu_text = current.id.size ? current.name : "System default"_s;
+
+        auto const popup_id = builder.imgui.MakeId(99);
+        auto const btn = MenuOpenButton(builder,
+                                        rhs,
+                                        {
+                                            .text = menu_text,
+                                            .tooltip = "Select device"_s,
+                                            .width = layout::k_fill_parent,
+                                        });
+        if (btn.button_fired) builder.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
+
+        if (builder.imgui.IsPopupMenuOpen(popup_id))
+            DoBoxViewport(
+                builder,
+                {
+                    .run = [type = device_row.type,
+                            &context](GuiBuilder& builder) { DeviceSelectionMenu(builder, context, type); },
+                    .bounds = btn,
+                    .imgui_id = popup_id,
+                    .viewport_config = k_default_popup_menu_viewport,
+                });
+
+        if (host->device_has_error && host->device_has_error(host, device_row.type))
+            PreferencesRhsText(builder, rhs, "Device unavailable"_s);
+    }
+
+    if (TextButton(builder, root, {.text = "Refresh", .tooltip = "Rescan for connected devices"_s}))
+        if (host->refresh_devices) host->refresh_devices(host);
+}
+
 static void
 PreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, PreferencesPanelState& state) {
-    constexpr auto k_tab_config = []() {
-        Array<ModalTabConfig, ToInt(PreferencesPanelState::Tab::Count)> tabs {};
-        for (auto const tab : EnumIterator<PreferencesPanelState::Tab>()) {
-            auto const index = ToInt(tab);
-            switch (tab) {
-                case PreferencesPanelState::Tab::General:
-                    tabs[index] = {.icon = ICON_FA_SLIDERS, .text = "General"};
-                    break;
-                case PreferencesPanelState::Tab::Folders:
-                    tabs[index] = {.icon = ICON_FA_FOLDER_OPEN, .text = "Folders"};
-                    break;
-                case PreferencesPanelState::Tab::Packages:
-                    tabs[index] = {.icon = ICON_FA_BOX_OPEN, .text = "Packages"};
-                    break;
-                case PreferencesPanelState::Tab::Count: PanicIfReached();
-            }
-            tabs[index].index = index;
+    bool const show_devices = context.standalone_host && context.standalone_host->num_devices;
+    if (state.tab == PreferencesPanelState::Tab::Devices && !show_devices)
+        state.tab = PreferencesPanelState::Tab::General;
+
+    DynamicArrayBounded<ModalTabConfig, ToInt(PreferencesPanelState::Tab::Count)> tabs {};
+    for (auto const tab : EnumIterator<PreferencesPanelState::Tab>()) {
+        ModalTabConfig cfg {};
+        switch (tab) {
+            case PreferencesPanelState::Tab::General:
+                cfg = {.icon = ICON_FA_SLIDERS, .text = "General"};
+                break;
+            case PreferencesPanelState::Tab::Folders:
+                cfg = {.icon = ICON_FA_FOLDER_OPEN, .text = "Folders"};
+                break;
+            case PreferencesPanelState::Tab::Packages:
+                cfg = {.icon = ICON_FA_BOX_OPEN, .text = "Packages"};
+                break;
+            case PreferencesPanelState::Tab::Devices:
+                if (!show_devices) continue;
+                cfg = {.icon = ICON_FA_HEADPHONES, .text = "Devices"};
+                break;
+            case PreferencesPanelState::Tab::Count: continue;
         }
-        return tabs;
-    }();
+        cfg.index = ToInt(tab);
+        dyn::Append(tabs, cfg);
+    }
 
     auto const root = DoModal(builder,
                               {
                                   .title = "Preferences"_s,
-                                  .tabs = k_tab_config,
+                                  .tabs = tabs,
                                   .current_tab_index = ToIntRef(state.tab),
                               });
 
@@ -656,6 +763,7 @@ PreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, Preferen
                               case PreferencesPanelState::Tab::General: f = GeneralPreferencesPanel; break;
                               case PreferencesPanelState::Tab::Folders: f = FolderPreferencesPanel; break;
                               case PreferencesPanelState::Tab::Packages: f = PackagesPreferencesPanel; break;
+                              case PreferencesPanelState::Tab::Devices: f = DevicesPreferencesPanel; break;
                               case PreferencesPanelState::Tab::Count: PanicIfReached();
                           }
                           [f, &context](GuiBuilder& builder) { f(builder, context); };

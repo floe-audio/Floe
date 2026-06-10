@@ -29,6 +29,7 @@
 
 #include "plugin/gui_framework/app_window_sizes.hpp"
 #include "plugin/plugin/plugin.hpp"
+#include "standalone_device_manager.hpp"
 
 // A very simple 'standalone' host for development purposes.
 // The wrapper (window, event loop, audio/MIDI devices) persists while the plugin (DSO, CLAP entry,
@@ -142,11 +143,6 @@ struct PluginInstance {
     ClapEntrySource entry_source; // owns the library handle for this load cycle
 };
 
-// Some backends (notably JACK) can change their buffer size at runtime or deliver sizes different
-// from what was reported at init time, despite miniaudio's noFixedSizedCallback=false. We use a
-// generous max buffer size to handle this.
-constexpr usize k_max_audio_buffer_frames = 8192;
-
 // Controls audio thread access to the plugin instance. The main thread transitions through these
 // states to safely hand off and reclaim the plugin instance without races.
 enum class PluginInstanceState : u8 {
@@ -165,20 +161,17 @@ enum class PluginInstanceState : u8 {
 // Persistent wrapper state that survives plugin reloads.
 struct Standalone {
     u64 main_thread_id {CurrentThreadId()};
-    Atomic<u64> audio_thread_id {};
 
-    // Audio/MIDI devices persist across reloads
-    Array<Span<f32>, 2> audio_buffers {};
-    enum class AudioStreamState : u8 { Closed, Open, CloseRequested };
-    Atomic<AudioStreamState> audio_stream_state {AudioStreamState::Closed};
-    PortMidiStream* midi_stream {};
-    Optional<ma_device> audio_device {};
+    DeviceManager devices {};
+
+    // Scratch L/R channel buffers used to de-interleave miniaudio's output for clap_process() and
+    // then re-interleave the result. Allocated once at startup.
+    Array<Span<f32>, 2> render_scratch {};
 
     PuglWorld* gui_world {};
     PuglView* gui_view {};
     bool view_realized {};
 
-    bool force_midi_channel_zero = false;
     Optional<UiSize> fixed_window_size {};
     bool quit = false;
 
@@ -189,56 +182,34 @@ struct Standalone {
     PluginInstance* plugin_instance {};
 };
 
-static void
-AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint32 num_buffer_frames) {
-    (void)input;
-    auto standalone = (Standalone*)device->pUserData;
-    if (!standalone) return;
+// Audio thread. Called from the device manager's audio callback with pre-decoded MIDI events.
+// Returns false (silence) when the plugin is not active or is being deactivated.
+static bool RenderAudio(void* ctx,
+                        f32* output_interleaved,
+                        u32 num_frames,
+                        clap_event_midi const* midi_events,
+                        u32 num_midi_events) {
+    auto& standalone = *(Standalone*)ctx;
 
-    static bool called_before {false};
-    if (!called_before) {
-        called_before = true;
-        standalone->audio_thread_id.Store(CurrentThreadId(), StoreMemoryOrder::Relaxed);
-        SetThreadName("audio", false);
-        standalone->audio_stream_state.Store(Standalone::AudioStreamState::Open, StoreMemoryOrder::Release);
+    auto const plugin_state = standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire);
+    if (plugin_state == PluginInstanceState::DeactivateRequest) {
+        standalone.plugin_instance_state.Store(PluginInstanceState::DeactivateAcknowledged,
+                                               StoreMemoryOrder::Release);
+        return false;
     }
+    if (plugin_state != PluginInstanceState::Active) return false;
 
-    if (standalone->audio_stream_state.Load(LoadMemoryOrder::Acquire) ==
-        Standalone::AudioStreamState::CloseRequested) {
-        standalone->audio_stream_state.Store(Standalone::AudioStreamState::Closed, StoreMemoryOrder::Release);
-        return;
-    }
+    auto* inst = standalone.plugin_instance;
 
-    if (standalone->audio_stream_state.Load(LoadMemoryOrder::Acquire) != Standalone::AudioStreamState::Open)
-        return;
-
-    {
-        auto const plugin_state = standalone->plugin_instance_state.Load(LoadMemoryOrder::Acquire);
-        if (plugin_state == PluginInstanceState::DeactivateRequest) {
-            standalone->plugin_instance_state.Store(PluginInstanceState::DeactivateAcknowledged,
-                                                    StoreMemoryOrder::Release);
-            ZeroMemory({(u8*)output_buffer, (usize)(num_buffer_frames * 2 * sizeof(f32))});
-            return;
-        }
-        if (plugin_state != PluginInstanceState::Active) {
-            ZeroMemory({(u8*)output_buffer, (usize)(num_buffer_frames * 2 * sizeof(f32))});
-            return;
-        }
-    }
-
-    auto* inst = standalone->plugin_instance;
-
-    f32* channels[2];
-    channels[0] = standalone->audio_buffers[0].data;
-    channels[1] = standalone->audio_buffers[1].data;
+    f32* channels[2] = {standalone.render_scratch[0].data, standalone.render_scratch[1].data};
 
     // Fill memory with garbage.
     for (auto& chan : channels)
-        for (auto const i : Range(num_buffer_frames))
+        for (auto const i : Range(num_frames))
             chan[i] = -1000.0f;
 
     clap_process_t process {};
-    process.frames_count = num_buffer_frames;
+    process.frames_count = num_frames;
     process.steady_time = -1;
     process.transport = nullptr;
 
@@ -249,53 +220,19 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     process.audio_outputs = &buffer;
     process.audio_outputs_count = 1;
 
-    static constexpr usize k_max_events = 128;
-    struct Events {
-        PmEvent events[k_max_events];
-        clap_event_midi clap_events[k_max_events];
-        int num_events;
+    struct EventCtx {
+        clap_event_midi const* events;
+        u32 count;
     };
-    Events events {};
-    if (standalone->midi_stream) {
-        events.num_events = Pm_Read(standalone->midi_stream, events.events, (int)k_max_events);
-        if (events.num_events >= 0) {
-            for (auto const i : Range(events.num_events)) {
-                events.clap_events[i] = {
-                    .header =
-                        {
-                            .size = sizeof(clap_event_midi),
-                            .time = 20,
-                            .type = CLAP_EVENT_MIDI,
-                            .flags = CLAP_EVENT_IS_LIVE,
-                        },
-                    .port_index = 0,
-                    .data =
-                        {
-                            (u8)(standalone->force_midi_channel_zero
-                                     ? (Pm_MessageStatus(events.events[i].message) & 0b11110000)
-                                     : Pm_MessageStatus(events.events[i].message)),
-                            (u8)Pm_MessageData1(events.events[i].message),
-                            (u8)Pm_MessageData2(events.events[i].message),
-                        },
-                };
-            }
-        } else {
-            auto const error_str = Pm_GetErrorText((PmError)events.num_events);
-            (void)error_str;
-            events.num_events = 0;
-            PanicIfReached();
-        }
-    }
+    EventCtx const event_ctx {.events = midi_events, .count = num_midi_events};
 
     clap_input_events const in_events {
-        .ctx = (void*)&events,
+        .ctx = (void*)&event_ctx,
         .size = [](const struct clap_input_events* list) -> u32 {
-            auto& events = *(Events*)list->ctx;
-            return CheckedCast<u32>(events.num_events);
+            return ((EventCtx const*)list->ctx)->count;
         },
         .get = [](const struct clap_input_events* list, uint32_t index) -> clap_event_header_t const* {
-            auto& events = *(Events*)list->ctx;
-            return &events.clap_events[index].header;
+            return &((EventCtx const*)list->ctx)->events[index].header;
         },
     };
 
@@ -310,7 +247,7 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     inst->plugin->process(inst->plugin, &process);
 
     for (auto const chan : Range(2))
-        for (auto const i : Range(num_buffer_frames)) {
+        for (auto const i : Range(num_frames)) {
             constexpr f32 k_hard_limit = 3.0f;
             if (channels[chan][i] > k_hard_limit)
                 channels[chan][i] = k_hard_limit;
@@ -318,92 +255,30 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
                 channels[chan][i] = -k_hard_limit;
         }
 
-    CopySeparateChannelsToInterleaved((f32*)output_buffer, channels[0], channels[1], num_buffer_frames);
-}
-
-static bool OpenMidi(Standalone& standalone) {
-    ASSERT(standalone.midi_stream == nullptr);
-
-    if (auto result = Pm_Initialize(); result != pmNoError) {
-        LogError(ModuleName::Standalone, "Pm_Initialize: {}", FromNullTerminated(Pm_GetErrorText(result)));
-        return false;
-    }
-
-    auto const num_devices = Pm_CountDevices();
-    if (num_devices == 0) return true;
-
-    Optional<PmDeviceID> id_to_use = {};
-    for (auto const i : Range(num_devices)) {
-        auto const info = Pm_GetDeviceInfo(i);
-        if (info->input) {
-            if (!id_to_use) id_to_use = i;
-            if (ContainsSpan(FromNullTerminated(info->name), "USB Keystation 61es"_s) ||
-                ContainsSpan(FromNullTerminated(info->name), "Keystation Mini"_s) ||
-                ContainsSpan(FromNullTerminated(info->name), "Seaboard"_s)) {
-                id_to_use = i;
-                break;
-            }
-        }
-    }
-
-    // No MIDI input devices found (only output devices present)
-    if (!id_to_use) return true;
-
-    // floe_host_ext is on PluginInstance, but MIDI errors need to be reported even when no plugin is loaded.
-    // We'll set the error on the plugin instance if one exists at the time.
-    if (auto result = Pm_OpenInput(&standalone.midi_stream, *id_to_use, nullptr, 200, nullptr, nullptr);
-        result != pmNoError) {
-        LogError(ModuleName::Standalone, "Pm_OpenInput: {}", FromNullTerminated(Pm_GetErrorText(result)));
-        return false;
-    }
-
+    CopySeparateChannelsToInterleaved(output_interleaved, channels[0], channels[1], num_frames);
     return true;
 }
 
-static void CloseMidi(Standalone& standalone) {
-    if (standalone.midi_stream) Pm_Close(standalone.midi_stream);
-    Pm_Terminate();
+// Main thread. Tear the plugin down around an audio-device swap. No-op when nothing is active.
+static void DeactivateForDeviceSwap(void* ctx) {
+    auto& standalone = *(Standalone*)ctx;
+    if (standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) != PluginInstanceState::Active)
+        return;
+    standalone.plugin_instance_state.Store(PluginInstanceState::Inactive, StoreMemoryOrder::Release);
+    if (auto* inst = standalone.plugin_instance) {
+        inst->plugin->stop_processing(inst->plugin);
+        inst->plugin->deactivate(inst->plugin);
+    }
 }
 
-static bool OpenAudio(Standalone& standalone) {
-    ASSERT(!standalone.audio_device);
-    standalone.audio_device.Emplace();
-
-    ma_device_config config = ma_device_config_init(ma_device_type_playback);
-    config.playback.format = ma_format_f32;
-    config.playback.channels = 2;
-    config.sampleRate = 0; // use default
-    config.dataCallback = AudioCallback;
-    config.pUserData = &standalone;
-    config.periodSizeInFrames = 1024; // only a hint
-    config.performanceProfile = ma_performance_profile_low_latency;
-    config.noFixedSizedCallback =
-        false; // ensure the callback always receives exactly internalPeriodSizeInFrames
-    config.noClip = true;
-    config.noPreSilencedOutputBuffer = true;
-
-    if (ma_device_init(nullptr, &config, &*standalone.audio_device) != MA_SUCCESS) return false;
-
-    auto const frames =
-        Max((usize)standalone.audio_device->playback.internalPeriodSizeInFrames, k_max_audio_buffer_frames);
-    auto alloc = PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(frames * 2);
-    standalone.audio_buffers[0] = alloc.SubSpan(0, frames);
-    standalone.audio_buffers[1] = alloc.SubSpan(frames, frames);
-
-    ma_device_start(&*standalone.audio_device);
-
-    return true;
-}
-
-static void CloseAudio(Standalone& standalone) {
-    ASSERT(standalone.audio_device);
-    if (standalone.audio_stream_state.Exchange(Standalone::AudioStreamState::CloseRequested,
-                                               RmwMemoryOrder::Acquire) == Standalone::AudioStreamState::Open)
-        while (standalone.audio_stream_state.Load(LoadMemoryOrder::Relaxed) !=
-               Standalone::AudioStreamState::Closed)
-            SleepThisThread(2);
-
-    ma_device_uninit(&*standalone.audio_device);
+// Main thread. Bring the plugin back up against the freshly-opened audio device.
+static void ActivateAfterDeviceSwap(void* ctx, f64 sample_rate, u32 period_frames, u32 max_block_frames) {
+    auto& standalone = *(Standalone*)ctx;
+    auto* inst = standalone.plugin_instance;
+    if (!inst) return;
+    inst->plugin->activate(inst->plugin, sample_rate, period_frames, max_block_frames);
+    inst->plugin->start_processing(inst->plugin);
+    standalone.plugin_instance_state.Store(PluginInstanceState::Active, StoreMemoryOrder::Release);
 }
 
 static PuglStatus OnEvent(PuglView* view, PuglEvent const* event) {
@@ -593,11 +468,14 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
             [](clap_host_t const* h) {
                 auto& pi = *(PluginInstance*)h->host_data;
                 ASSERT(pi.plugin_created);
-                return CurrentThreadId() == pi.standalone.audio_thread_id.Load(LoadMemoryOrder::Relaxed);
+                return CurrentThreadId() ==
+                       pi.standalone.devices.audio.stream.thread_id.Load(LoadMemoryOrder::Relaxed);
             },
     };
 
     inst->floe_host_ext.pugl_world = standalone.gui_world;
+    inst->floe_host_ext.error_notifications = &standalone.devices.error_notifications;
+    SetupHostDeviceCallbacks(inst->floe_host_ext, standalone.devices);
 
     inst->plugin = factory->create_plugin(factory, &inst->host, g_plugin_info.id);
     if (!inst->plugin) return ErrorCode {StandaloneError::PluginInterfaceError};
@@ -605,10 +483,16 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
 
     inst->plugin->init(inst->plugin);
 
-    ASSERT(standalone.audio_device);
-    auto const period_size = standalone.audio_device->playback.internalPeriodSizeInFrames;
-    auto const max_block_size = Max(period_size, (ma_uint32)k_max_audio_buffer_frames);
-    inst->plugin->activate(inst->plugin, standalone.audio_device->sampleRate, period_size, max_block_size);
+    // If the audio device failed to open we still activate the plugin with conservative defaults so
+    // the GUI (and its errors panel) come up; the audio thread is silent until a device is selected.
+    auto const sample_rate =
+        standalone.devices.audio.stream.device ? standalone.devices.audio.stream.device->sampleRate : 48000.0;
+    auto const period_size = standalone.devices.audio.stream.device
+                                 ? standalone.devices.audio.stream.device->playback.internalPeriodSizeInFrames
+                                 : 1024u;
+    // InitAudioDevice rejects devices whose period exceeds k_max_audio_buffer_frames, so this is
+    // always the max block size.
+    inst->plugin->activate(inst->plugin, sample_rate, period_size, (u32)k_max_audio_buffer_frames);
 
     inst->plugin->start_processing(inst->plugin);
 
@@ -696,14 +580,19 @@ static void UnloadPluginInstance(Standalone& standalone) {
     if (standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) != PluginInstanceState::Active)
         return;
 
-    // Request the audio thread to stop using the plugin instance
-    standalone.plugin_instance_state.Store(PluginInstanceState::DeactivateRequest, StoreMemoryOrder::Release);
+    auto& audio_stream = standalone.devices.audio.stream;
+    auto const audio_running =
+        audio_stream.device.HasValue() && !audio_stream.lost.Load(LoadMemoryOrder::Acquire);
 
-    // Spin-wait for audio thread acknowledgement. The audio callback runs on a regular cadence
-    // (every ~1-23ms depending on buffer size), so acknowledgement happens quickly.
-    while (standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) !=
-           PluginInstanceState::DeactivateAcknowledged)
-        SleepThisThread(1);
+    if (audio_running) {
+        standalone.plugin_instance_state.Store(PluginInstanceState::DeactivateRequest,
+                                               StoreMemoryOrder::Release);
+        while (standalone.plugin_instance_state.Load(LoadMemoryOrder::Acquire) !=
+               PluginInstanceState::DeactivateAcknowledged) {
+            if (audio_stream.lost.Load(LoadMemoryOrder::Acquire)) break;
+            SleepThisThread(1);
+        }
+    }
 
     // Now safe: audio thread has committed to not using the instance
     standalone.plugin_instance_state.Store(PluginInstanceState::Inactive, StoreMemoryOrder::Release);
@@ -826,7 +715,19 @@ struct RunOptions {
 static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     auto const& dso_path = options.dso_path;
     Standalone standalone {};
-    standalone.force_midi_channel_zero = options.force_midi_channel_zero;
+    standalone.devices.midi.force_channel_zero = options.force_midi_channel_zero;
+    standalone.devices.host_callbacks = {
+        .ctx = &standalone,
+        .render = RenderAudio,
+        .deactivate_for_device_swap = DeactivateForDeviceSwap,
+        .activate_after_device_swap = ActivateAfterDeviceSwap,
+    };
+    {
+        auto alloc =
+            PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(k_max_audio_buffer_frames * 2);
+        standalone.render_scratch[0] = alloc.SubSpan(0, k_max_audio_buffer_frames);
+        standalone.render_scratch[1] = alloc.SubSpan(k_max_audio_buffer_frames, k_max_audio_buffer_frames);
+    }
     standalone.fixed_window_size = options.fixed_window_size;
 
     // Modify detection if given a plugin path.
@@ -861,17 +762,8 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
         if (dir_watcher) DestoryDirectoryWatcher(*dir_watcher);
     };
 
-    if (!OpenMidi(standalone)) {
-        LogError(ModuleName::Standalone, "Could not open Midi");
-        return ErrorCode {StandaloneError::DeviceError};
-    }
-    DEFER { CloseMidi(standalone); };
-
-    if (!OpenAudio(standalone)) {
-        LogError(ModuleName::Standalone, "Could not open Audio");
-        return ErrorCode {StandaloneError::DeviceError};
-    }
-    DEFER { CloseAudio(standalone); };
+    InitDevices(standalone.devices, arena);
+    DEFER { DeinitDevices(standalone.devices); };
 
     standalone.gui_world = puglNewWorld(PUGL_PROGRAM, 0);
     if (!standalone.gui_world) {
@@ -1023,6 +915,8 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
                 }
             }
         }
+
+        PollDeviceChanges(standalone.devices);
 
         auto const st = puglUpdate(standalone.gui_world, 1.0 / 60.0);
         if (st != PUGL_SUCCESS && st != PUGL_FAILURE) return ErrorCode {st};

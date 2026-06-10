@@ -139,50 +139,6 @@ void GuiState::OnEngineChange() {
 
 bool Tooltip(GuiState& g, imgui::Id id, Rect r, char const* fmt, ...);
 
-static void DoStandaloneErrorGUI(GuiState& g) {
-    ASSERT(!PRODUCTION_BUILD);
-
-    auto& engine = g.engine;
-
-    auto const host = engine.host;
-    auto const floe_ext = (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id);
-    if (!floe_ext) return;
-
-    g.fonts.Push(ToInt(FontType::Body));
-    DEFER { g.fonts.Pop(); };
-    auto& imgui = g.imgui;
-    static bool error_viewport_open = true;
-
-    bool const there_is_an_error =
-        floe_ext->standalone_midi_device_error || floe_ext->standalone_audio_device_error;
-    if (error_viewport_open && there_is_an_error) {
-        imgui.BeginViewport(
-            {
-                .padding = {.lrtb = 4},
-                .auto_size = true,
-            },
-            {.xywh {0, 0, 200, 0}},
-            "StandaloneErrors");
-        DEFER { imgui.EndViewport(); };
-
-        f32 y_pos = 0;
-        if (floe_ext->standalone_midi_device_error) {
-            DoBasicWhiteText(g.imgui, {.xywh {0, y_pos, 100, 20}}, "No MIDI input");
-            y_pos += 20;
-        }
-        if (floe_ext->standalone_audio_device_error) {
-            DoBasicWhiteText(g.imgui, {.xywh {0, y_pos, 100, 20}}, "No audio devices");
-            y_pos += 20;
-        }
-        if (DoBasicTextButton(imgui,
-                              imgui::ButtonConfig {},
-                              {.xywh {0, y_pos, 100, 20}},
-                              imgui.MakeId("closeErr"),
-                              "Close"))
-            error_viewport_open = false;
-    }
-}
-
 static void DoResizeCorner(GuiState& g) {
     auto& imgui = g.imgui;
     auto const& frame_input = GuiIo().in;
@@ -344,9 +300,6 @@ void GuiUpdate(GuiState& g) {
 
     DoResizeCorner(g);
 
-    if (!PRODUCTION_BUILD && NullTermStringsEqual(g.engine.host.name, k_floe_standalone_host_name))
-        DoStandaloneErrorGUI(g);
-
     DoLegacyParamsPanel(g.builder, g);
 
     {
@@ -373,6 +326,7 @@ void GuiUpdate(GuiState& g) {
     }
 
     {
+        auto const& host = g.engine.host;
         PreferencesPanelContext context {
             .prefs = g.prefs,
             .paths = g.shared_engine_systems.paths,
@@ -381,6 +335,8 @@ void GuiUpdate(GuiState& g) {
             .thread_pool = g.shared_engine_systems.thread_pool,
             .file_picker_state = g.file_picker_state,
             .presets_server = g.shared_engine_systems.preset_server,
+            .standalone_host =
+                (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id),
         };
 
         DoPreferencesPanel(g.builder, context, g.preferences_panel_state);
@@ -486,8 +442,13 @@ void GuiUpdate(GuiState& g) {
     DoLoadingOverlay(g.builder, g.engine.pending_state_change.HasValue());
 
     {
-        auto const notifs =
-            Array {&g.engine.error_notifications, &g.shared_engine_systems.error_notifications};
+        auto const& host = g.engine.host;
+        auto const floe_ext =
+            (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id);
+        DynamicArrayBounded<ThreadsafeErrorNotifications*, 3> notifs {};
+        dyn::Append(notifs, &g.engine.error_notifications);
+        dyn::Append(notifs, &g.shared_engine_systems.error_notifications);
+        if (floe_ext && floe_ext->error_notifications) dyn::Append(notifs, floe_ext->error_notifications);
         DoErrorsPanel(g.builder, notifs);
     }
 

@@ -3,6 +3,7 @@
 
 #pragma once
 #include "os/threading.hpp"
+#include "utils/error_notifications.hpp"
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/final_binary_type.hpp"
@@ -135,10 +136,31 @@ static constexpr char k_floe_clap_extension_id[] = "floe.floe";
 static constexpr char k_floe_standalone_host_name[] = "Floe Standalone";
 static constexpr char k_floe_standalone_default_app_id[] = "org.floe-audio.floe";
 
+enum class HostDeviceType : u8 { AudioOutput, MidiInput };
+
+struct HostDeviceInfo {
+    String id; // Empty for the default entry.
+    String name; // Display name.
+    bool is_default; // If the system default device.
+};
+
 struct FloeClapExtensionHost {
-    bool standalone_audio_device_error;
-    bool standalone_midi_device_error;
     void* pugl_world;
+    void* context;
+
+    ThreadsafeErrorNotifications* error_notifications;
+
+    // All main-thread only.
+    u32 (*num_devices)(FloeClapExtensionHost const* host, HostDeviceType type);
+    bool (*device_info)(FloeClapExtensionHost const* host,
+                        HostDeviceType type,
+                        u32 index,
+                        HostDeviceInfo* out);
+    void (*current_device)(FloeClapExtensionHost const* host, HostDeviceType type, HostDeviceInfo* out);
+    bool (*device_has_error)(FloeClapExtensionHost const* host, HostDeviceType type);
+    // id == "" means default device
+    void (*set_device)(FloeClapExtensionHost const* host, HostDeviceType type, String id);
+    void (*refresh_devices)(FloeClapExtensionHost const* host);
 };
 
 struct FloeClapExtension {

@@ -12,11 +12,14 @@
 #include "gui/core/gui_fwd.hpp"
 #include "gui/core/gui_subsystem.hpp"
 
+struct FloeClapExtensionHost;
+
 struct PreferencesPanelState {
     enum class Tab : u8 {
         General,
         Folders,
         Packages,
+        Devices,
         Count,
     };
     static constexpr u64 k_panel_id = HashFnv1a("prefs-panel");
@@ -31,6 +34,7 @@ struct PreferencesPanelContext {
     ThreadPool& thread_pool;
     FilePickerState& file_picker_state;
     PresetServer& presets_server;
+    FloeClapExtensionHost const* standalone_host {}; // null outside the standalone host
     Optional<BeginReadFoldersResult> presets {};
 };
 
