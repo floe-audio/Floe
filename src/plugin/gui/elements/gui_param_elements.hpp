@@ -93,7 +93,8 @@ Box DoPercentDraggerParameter(GuiState& g,
 
 struct MuteSoloButtonsOptions {
     bool vertical = false; // If true, buttons stack vertically (M on top, S on bottom).
-    Optional<f32> button_extent {}; // Per-button height (horizontal) / width (vertical). Defaults to k_mid_button_height.
+    Optional<f32> button_extent {}; // Per-button height (horizontal) / width (vertical). Defaults to
+                                    // k_mid_button_height.
     String name {};
 };
 
