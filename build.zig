@@ -377,7 +377,7 @@ fn resolveTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.Ar
             var cpu_features: []const u8 = undefined;
             switch (t) {
                 .native => {
-                    arch_os_abi = "native";
+                    arch_os_abi = if (builtin.os.tag == .linux) "native-linux-gnu.2.31" else "native";
                     // valgrind doesn't like some AVX instructions so we'll target the baseline x86_64 for now
                     cpu_features = if (builtin.cpu.arch == .x86_64) x86_cpu else "native";
                 },
