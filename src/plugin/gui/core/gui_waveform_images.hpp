@@ -4,6 +4,7 @@
 #pragma once
 
 #include "os/misc.hpp"
+#include "os/threading.hpp"
 
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
@@ -22,6 +23,7 @@ struct WaveformImagesTable {
     ArenaAllocator arena {PageAllocator::Instance()};
     ArenaList<WaveformImage::FuturePixels> loading_pixels;
     HashTable<u64, WaveformImage> table;
+    AtomicCountdown in_flight_instrument_jobs {0};
 };
 
 // When audio_data_hash_override is non-zero and the instrument is a sampler, the waveform image is
