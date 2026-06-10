@@ -2107,6 +2107,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     exe.addCSourceFiles(.{
         .files = &.{
             "src/standalone_wrapper/standalone_wrapper.cpp",
+            "src/standalone_wrapper/standalone_device_manager.cpp",
             "src/plugin/plugin/plugin_entry.cpp",
             "src/common_infrastructure/final_binary_type.cpp",
         },
