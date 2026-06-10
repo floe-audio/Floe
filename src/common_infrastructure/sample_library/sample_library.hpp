@@ -312,7 +312,7 @@ struct InstrumentId {
 
 struct IrId {
     bool operator==(IrId const& other) const = default;
-    bool operator==(LoadedIr const& ir) const { return library == ir.ir.library.id && ir_id == ir.ir.name; }
+    bool operator==(LoadedIr const& ir) const { return library == ir.ir.library.id && ir_id == ir.ir.id; }
     u64 Hash() const { return RapidHash64(library, ir_id.data, ir_id.size); }
     LibraryId library;
     DynamicArrayBounded<char, k_max_ir_id_size> ir_id;
