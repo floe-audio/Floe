@@ -938,9 +938,10 @@ void DoMuteSoloButtons(GuiState& g,
                        DescribedParamValue const& solo_param,
                        MuteSoloButtonsOptions const& options) {
     auto const vertical = options.vertical;
+    auto const extent = options.button_extent.ValueOr(k_mid_button_height);
 
-    f32 const w = vertical ? k_mid_button_height : k_mid_button_height * 2;
-    f32 const h = vertical ? k_mid_button_height * 2 : k_mid_button_height;
+    f32 const w = vertical ? extent : extent * 2;
+    f32 const h = vertical ? extent * 2 : extent;
     auto const direction = vertical ? layout::Direction::Column : layout::Direction::Row;
 
     auto const container = DoBox(g.builder,

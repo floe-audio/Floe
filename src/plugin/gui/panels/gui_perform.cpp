@@ -165,8 +165,8 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                       .parent = column,
                                       .layout {
                                           .size = layout::k_fill_parent,
-                                          .contents_padding = {.lr = 10, .tb = 10},
-                                          .contents_gap = 8,
+                                          .contents_padding = {.lr = 0},
+                                          .contents_gap = 0,
                                           .contents_direction = layout::Direction::Row,
                                           .contents_align = layout::Alignment::Start,
                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -186,7 +186,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                       .border_edges = (Edges)((layer_index < k_num_layers - 1) ? 0b0010 : 0b0000),
                       .layout {
                           .size = {layout::k_fill_parent, layout::k_fill_parent},
-                          .contents_padding = {.r = 4},
+                          .contents_padding = {.lr = 6, .b = 10},
                           .contents_gap = 2,
                           .contents_direction = layout::Direction::Column,
                           .contents_align = layout::Alignment::Start,
@@ -194,18 +194,60 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                       },
                   });
 
-        DoBox(builder,
-              {
-                  .parent = cell,
-                  .text = fmt::Format(g.scratch_arena, "LAYER {}", layer_index + 1),
-                  .size_from_text = true,
-                  .font = FontType::Heading3,
-                  .text_colours = Col {.c = Col::White, .alpha = (u8)(active ? 100 : 60)},
-                  .text_justification = TextJustification::CentredLeft,
-                  .layout {
-                      .margins = {.l = 2},
-                  },
-              });
+        {
+            auto const heading_row = DoBox(builder,
+                                           {
+                                               .parent = cell,
+                                               .layout {
+                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                   .contents_gap = 6,
+                                                   .contents_direction = layout::Direction::Row,
+                                                   .contents_align = layout::Alignment::Start,
+                                                   .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                               },
+                                           });
+
+            DoBox(builder,
+                  {
+                      .parent = heading_row,
+                      .text = fmt::Format(g.scratch_arena, "LAYER {}", layer_index + 1),
+                      .size_from_text = true,
+                      .font = FontType::Heading3,
+                      .text_colours = Col {.c = Col::White, .alpha = (u8)(active ? 100 : 60)},
+                      .text_justification = TextJustification::CentredLeft,
+                      .layout {
+                          .margins = {.l = 2, .t = 10},
+                      },
+                  });
+
+            DoBox(builder,
+                  {
+                      .parent = heading_row,
+                      .layout {
+                          .size = {layout::k_fill_parent, 0},
+                      },
+                  });
+
+            if (active) {
+                auto const mute_solo_wrapper =
+                    DoBox(builder,
+                          {
+                              .parent = heading_row,
+                              .layout {
+                                  .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                  .margins = {.t = 6},
+                              },
+                          });
+                DoMuteSoloButtons(
+                    g,
+                    mute_solo_wrapper,
+                    g.engine.processor.main_params.DescribedValue(layer_index, LayerParamIndex::Mute),
+                    g.engine.processor.main_params.DescribedValue(layer_index, LayerParamIndex::Solo),
+                    {.vertical = false,
+                     .button_extent = k_mid_button_height * 0.89f,
+                     .name = layer_index == 0 ? "perform.mute-solo"_s : String {}});
+            }
+        }
 
         {
             auto const inst_btn = DoBox(
