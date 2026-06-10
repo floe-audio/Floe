@@ -130,8 +130,7 @@ FloePaths CreateFloePaths(ArenaAllocator& arena, bool create_folders) {
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
                         HashFnv1a("persistent store path"),
-                        "Failed to get persistent store path {}\n{}",
-                        result.persistent_store_path,
+                        "Failed to get persistent store path\n{}",
                         error_log);
         }
     }
