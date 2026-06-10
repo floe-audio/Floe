@@ -27,15 +27,12 @@ pkgs.mkShell rec {
     pkgs.rcodesign
     pkgs.llvmPackages_19.bintools-unwrapped # llvm-lipo, llvm-addr2line, dsymutil
     pkgs.llvmPackages_19.clang-unwrapped # clangd, clang-tidy, clang-format
-    pkgs.codespell
     pkgs.gnused
     pkgs.coreutils
     pkgs.jq
     pkgs.just
     pkgs.reuse
     pkgs.wget
-    pkgs.hunspell
-    pkgs.hunspellDicts.en_GB-ise
     pkgs.lychee # link checker
     zigpkgs."0.14.0"
     pkgs.zls_0_14

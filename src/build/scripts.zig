@@ -1058,7 +1058,6 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
 
             spawnZigBuild(&pool, &wg, &ci_report, &.{"check:reuse"});
             spawnZigBuild(&pool, &wg, &ci_report, &.{"check:format"});
-            spawnZigBuild(&pool, &wg, &ci_report, &.{"check:spelling"});
         },
         .windows => {
             spawnZigBuild(&pool, &wg, &ci_report, &.{"test:windows-install"});
