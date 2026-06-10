@@ -1316,7 +1316,11 @@ static sample_lib::Library* BuiltinLibrary() {
                                                    },
                                            }),
                 .tags = tags,
-                .description = ToString(embedded_ir.description),
+                .description = ({
+                    Optional<String> desc {};
+                    if (auto const d = ToString(embedded_ir.description); d.size) desc = d;
+                    desc;
+                }),
             };
             builtin_library.irs_by_id.InsertWithoutGrowing(id, ir);
         }
