@@ -397,8 +397,7 @@ static void SetupDeviceStore(DeviceManager& dm, ArenaAllocator& arena) {
     auto const path = StorePath(arena);
     if (!path) return;
 
-    PLACEMENT_NEW(&dm.store.storage)
-    persistent_store::Store {.filepath = *path};
+    PLACEMENT_NEW(&dm.store.storage) persistent_store::Store {.filepath = *path};
     dm.store.has_value = true;
 
     if (auto const r = persistent_store::Get(*dm.store, k_audio_device_store_key);

@@ -89,7 +89,7 @@ void RemoveValue(StoreTable& store, Id id, Optional<Span<u8 const>> value);
 
 struct Store : StoreTable {
     ArenaAllocator arena {PageAllocator::Instance()};
-    String const& filepath;
+    String const filepath;
     Atomic<u64> actual_file_last_modified_microsec {};
     TimePoint time_last_checked {}; // background thread
     u64 file_last_modified_microsec {};
