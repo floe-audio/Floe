@@ -71,7 +71,6 @@ pkgs.mkShell rec {
     ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
       pkgs.alsa-lib
       pkgs.curl
-      pkgs.glibc
       pkgs.libGL
       pkgs.libGLU
       pkgs.libxcb
