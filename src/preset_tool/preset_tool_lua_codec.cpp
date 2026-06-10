@@ -949,7 +949,7 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
         auto const range = d.linear_range;
         auto const span = range.max - range.min;
         auto const target_linear =
-            Clamp(d.default_linear_value + (mix - 0.5f) * 0.4f * span, range.min, range.max);
+            Clamp(d.default_linear_value + ((mix - 0.5f) * 0.4f * span), range.min, range.max);
         s.param_values[i] = target_linear;
     }
 
@@ -1010,8 +1010,8 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
     for (auto const layer : Range<u16>(k_num_layers)) {
         for (auto const step : Range<u16>(k_arp_max_steps)) {
             auto& a = s.arp_steps[layer][step];
-            a.velocity = ArpStep::From01(0.5f + (step % 5) * 0.07f);
-            a.gate = ArpStep::From01(0.3f + (step % 3) * 0.2f);
+            a.velocity = ArpStep::From01(0.5f + ((step % 5) * 0.07f));
+            a.gate = ArpStep::From01(0.3f + ((step % 3) * 0.2f));
             a.on = (step % 2) == 0;
             a.tie = (step % 4) == 3;
             a.interval = (s8)((step % 7) - 3);
@@ -1041,7 +1041,7 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
             if (ContainsSpan(d.id_string, "legacy"_s)) continue;
             s.macro_destinations[0].items[placed] = MacroDestination {
                 .param_index = ParamIndex {i},
-                .value = 0.5f + (f32)placed * 0.1f,
+                .value = 0.5f + ((f32)placed * 0.1f),
             };
             ++placed;
         }

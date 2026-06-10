@@ -104,7 +104,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     // Build a set of referenced library-relative file paths so we can scan for orphans.
     Set<String> referenced_paths {};
     if (lib) {
-        usize const expected = lib->num_instrument_samples + (usize)lib->irs_by_id.size + 4;
+        usize const expected = lib->num_instrument_samples + lib->irs_by_id.size + 4;
         referenced_paths = Set<String>::Create(arena, expected);
         auto const add = [&](String p) { referenced_paths.InsertGrowIfNeeded(arena, p); };
         if (lib->background_image_path) add((String)*lib->background_image_path);
