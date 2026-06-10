@@ -90,5 +90,8 @@ pkgs.mkShell rec {
     # These are used in the Zig builds to ensure binaries work correctly on non-NixOS systems.
     export FLOE_RPATH="${pkgs.lib.makeLibraryPath buildInputs}"
     export FLOE_DYNAMIC_LINKER="${pkgs.glibc}/lib/ld-linux-x86-64.so.2"
+    if [ -e /etc/NIXOS ]; then
+      export LD_LIBRARY_PATH="$FLOE_RPATH''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
   '';
 }
