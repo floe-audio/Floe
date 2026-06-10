@@ -12,6 +12,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/preferences.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
+#include "common_infrastructure/sample_library/sample_library.hpp"
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
@@ -689,20 +690,30 @@ bool StateModifiedFromPinned(Engine& engine) {
     return changed;
 }
 
-String IrName(Engine const& engine) {
+sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine) {
     ASSERT(g_is_logical_main_thread);
-    if (!engine.processor.convo.ir_id) return "None"_s;
+    if (!engine.processor.convo.ir_id) return nullptr;
 
     auto const& id = *engine.processor.convo.ir_id;
     auto lib = sample_lib_server::FindLibraryRetained(engine.shared_engine_systems.sample_library_server,
                                                       id.library);
     DEFER { lib.Release(); };
-    if (!lib) return id.ir_id;
+    if (!lib) return nullptr;
 
     auto const ir = lib->irs_by_id.Find(id.ir_id);
-    if (!ir) return id.ir_id;
+    if (!ir) return nullptr;
 
-    return (*ir)->name;
+    return *ir;
+}
+
+String IrName(Engine const& engine) {
+    ASSERT(g_is_logical_main_thread);
+    if (!engine.processor.convo.ir_id) return "None"_s;
+    auto const& id = *engine.processor.convo.ir_id;
+
+    auto const current = CurrentIr(engine);
+    if (!current) return id.ir_id;
+    return current->name;
 }
 
 // one-off load

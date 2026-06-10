@@ -207,7 +207,12 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
                                   .tooltip = FunctionRef<String()>([&]() -> String {
                                       DynamicArray<char> buffer {builder.arena};
 
-                                      fmt::Append(buffer, "{}. Tags: ", ir.name);
+                                      fmt::Append(buffer, "{}. ", ir.name);
+
+                                      if (ir.description && ir.description->size)
+                                          fmt::Append(buffer, "\n{}\n", *ir.description);
+
+                                      dyn::AppendSpan(buffer, "Tags: ");
                                       if (ir.tags.AnyValuesSet()) {
                                           bool first = true;
                                           ir.tags.ForEachSetBit([&](usize bit) {

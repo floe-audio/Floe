@@ -148,6 +148,7 @@ struct LoadStateOptions {
 // references samples or IRs that need to be loaded.
 void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts);
 
+sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine);
 String IrName(Engine const& engine);
 
 usize MegabytesUsedBySamples(Engine const& engine);

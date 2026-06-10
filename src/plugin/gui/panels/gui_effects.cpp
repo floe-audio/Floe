@@ -5,6 +5,7 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "foundation/container/dynamic_array.hpp"
 #include "os/threading.hpp"
 
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
@@ -210,11 +211,14 @@ static void DoImpulseResponseSelector(GuiState& g,
                       .size = {layout::k_fill_parent, k_mid_button_height},
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
-                      return fmt::Format(g.scratch_arena,
-                                         "Impulse: {}\n{}{}",
-                                         ir_name,
-                                         greyed_out ? "Not active. " : "",
-                                         "The impulse response to use");
+                      DynamicArray<char> buffer {g.scratch_arena};
+                      fmt::Append(buffer, "Impulse: {}", ir_name);
+                      if (auto const ir = CurrentIr(g.engine); ir && ir->description)
+                          fmt::Append(buffer, "\n{}", *ir->description);
+                      dyn::Append(buffer, '\n');
+                      if (greyed_out) dyn::AppendSpan(buffer, "Not active. ");
+                      dyn::AppendSpan(buffer, "The impulse response to use");
+                      return buffer.ToOwnedSpan();
                   }},
                   .button_behaviour = imgui::ButtonConfig {},
               });
