@@ -1978,19 +1978,26 @@ fn buildClap(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
 fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     plugin: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
+    const miniaudio_defines = &.{
+        // NOTE(Sam): disabling alsa because it was causing a deadlock on my machine.
+        "-DMA_NO_ALSA",
+        "-DMA_NO_DECODING",
+        "-DMA_NO_ENCODING",
+    };
+
     const miniaudio = blk: {
         const lib = ctx.b.addStaticLibrary(.{
             .name = "miniaudio",
             .root_module = ctx.b.createModule(cfg.module_options),
         });
+        var flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        });
+        flags.addFlags(miniaudio_defines);
         lib.addCSourceFile(.{
             .file = ctx.dep_miniaudio.path("miniaudio.c"),
-            .flags = FlagsBuilder.init(ctx, cfg, .{
-                .gen_cdb_fragments = true,
-            }).flags.items,
+            .flags = flags.flags.items,
         });
-        // NOTE(Sam): disabling alsa because it was causing a deadlock on my machine.
-        lib.root_module.addCMacro("MA_NO_ALSA", "1");
         lib.linkLibC();
         lib.addIncludePath(ctx.dep_miniaudio.path(""));
         switch (cfg.target.os.tag) {
@@ -2089,18 +2096,21 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
         .root_module = ctx.b.createModule(cfg.module_options),
     });
 
+    var flags = FlagsBuilder.init(ctx, cfg, .{
+        .all_warnings = true,
+        .ubsan = true,
+        .cpp = true,
+        .gen_cdb_fragments = true,
+    });
+    flags.addFlags(miniaudio_defines);
+
     exe.addCSourceFiles(.{
         .files = &.{
             "src/standalone_wrapper/standalone_wrapper.cpp",
             "src/plugin/plugin/plugin_entry.cpp",
             "src/common_infrastructure/final_binary_type.cpp",
         },
-        .flags = FlagsBuilder.init(ctx, cfg, .{
-            .all_warnings = true,
-            .ubsan = true,
-            .cpp = true,
-            .gen_cdb_fragments = true,
-        }).flags.items,
+        .flags = flags.flags.items,
     });
 
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Standalone");
