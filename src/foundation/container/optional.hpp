@@ -159,19 +159,19 @@ class [[nodiscard]] Optional<Type> {
     template <typename U = Type>
     requires(!Same<RemoveCVReference<U>, Optional<Type>> && ConstructibleWithArgs<Type, U &&>)
     constexpr Optional(U&& value) {
-        PLACEMENT_NEW(&m_storage) Type(Forward<U>(value));
-        m_has_value = true;
+        PLACEMENT_NEW(&storage) Type(Forward<U>(value));
+        has_value = true;
     }
 
-    constexpr Optional(Optional const& other) : m_has_value(other.m_has_value) {
-        if (other.HasValue()) PLACEMENT_NEW(&m_storage) Type(other.Value());
+    constexpr Optional(Optional const& other) : has_value(other.has_value) {
+        if (other.HasValue()) PLACEMENT_NEW(&storage) Type(other.Value());
     }
 
     constexpr Optional& operator=(Optional const& other) {
         if (this != &other) {
             Clear();
-            m_has_value = other.m_has_value;
-            if (other.HasValue()) PLACEMENT_NEW(&m_storage) Type(other.Value());
+            has_value = other.has_value;
+            if (other.HasValue()) PLACEMENT_NEW(&storage) Type(other.Value());
         }
         return *this;
     }
@@ -179,20 +179,20 @@ class [[nodiscard]] Optional<Type> {
     constexpr Optional& operator=(Optional&& other) {
         if (this != &other) {
             Clear();
-            m_has_value = other.m_has_value;
-            if (other.HasValue()) PLACEMENT_NEW(&m_storage) Type(other.ReleaseValue());
+            has_value = other.has_value;
+            if (other.HasValue()) PLACEMENT_NEW(&storage) Type(other.ReleaseValue());
         }
         return *this;
     }
 
-    constexpr Optional(Optional&& other) : m_has_value(other.m_has_value) {
-        if (other.m_has_value) PLACEMENT_NEW(&m_storage) Type(other.ReleaseValue());
-        other.m_has_value = false;
+    constexpr Optional(Optional&& other) : has_value(other.has_value) {
+        if (other.has_value) PLACEMENT_NEW(&storage) Type(other.ReleaseValue());
+        other.has_value = false;
     }
 
     constexpr ~Optional() { Clear(); }
 
-    constexpr bool HasValue() const { return m_has_value; }
+    constexpr bool HasValue() const { return has_value; }
 
     constexpr Type* operator->() { return &Value(); }
     constexpr Type& operator*() { return Value(); }
@@ -205,19 +205,19 @@ class [[nodiscard]] Optional<Type> {
     requires(ConstructibleWithArgs<Type, Args...>)
     constexpr void Emplace(Args&&... args) {
         Clear();
-        PLACEMENT_NEW(&m_storage) Type(Forward<Args>(args)...);
-        m_has_value = true;
+        PLACEMENT_NEW(&storage) Type(Forward<Args>(args)...);
+        has_value = true;
     }
 
     constexpr Optional Clone(Allocator& a, CloneType clone_type = CloneType::Shallow) const;
 
     constexpr Type& Value() {
         ASSERT(HasValue());
-        return *(Type*)m_storage;
+        return *(Type*)storage;
     }
     constexpr Type const& Value() const {
         ASSERT(HasValue());
-        return *(Type const*)m_storage;
+        return *(Type const*)storage;
     }
     constexpr Type ValueOr(Type fallback) {
         if (HasValue()) return Value();
@@ -258,7 +258,7 @@ class [[nodiscard]] Optional<Type> {
         ASSERT(HasValue());
         Type released_value = Move(Value());
         Value().~Type();
-        m_has_value = false;
+        has_value = false;
         return released_value;
     }
 
@@ -269,22 +269,21 @@ class [[nodiscard]] Optional<Type> {
 
     constexpr void Clear() {
         if (HasValue()) Value().~Type();
-        m_has_value = false;
+        has_value = false;
     }
 
     constexpr bool operator==(Optional const& other) const {
-        if (m_has_value && other.m_has_value) return Value() == other.Value();
-        return !m_has_value && !other.m_has_value;
+        if (has_value && other.has_value) return Value() == other.Value();
+        return !has_value && !other.has_value;
     }
 
     constexpr bool operator==(Type const& other) const {
-        if (m_has_value) return Value() == other;
+        if (has_value) return Value() == other;
         return false;
     }
 
-  private:
-    alignas(Type) u8 m_storage[sizeof(Type)];
-    bool m_has_value = false;
+    alignas(Type) u8 storage[sizeof(Type)];
+    bool has_value = false;
 };
 
 template <SignedInt Type>
