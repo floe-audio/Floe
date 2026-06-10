@@ -2206,6 +2206,7 @@ static void CheckStateIsValid(tests::Tester& tester, StateSnapshot const& state)
 TEST_CASE(TestParsersHandleInvalidData) {
     auto& scratch_arena = tester.scratch_arena;
     auto seed = RandomSeed();
+    CAPTURE(seed);
 
     auto const make_random_data = [&]() {
         auto const data_size = RandomIntInRange<usize>(seed, 1, 1000);
