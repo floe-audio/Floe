@@ -30,8 +30,8 @@
             .hash = "N-V-__8AABXaAwCPe89grjjAXjcvmKwtSHo-0bx570E4IGYf",
         },
         .miniaudio = .{
-            .url = "https://github.com/mackron/miniaudio/archive/refs/tags/0.11.21.tar.gz",
-            .hash = "N-V-__8AAGQdhQDaoT5eFgzD6NKGhDdJ8pLb4xrncA3zWEp7",
+            .url = "https://github.com/mackron/miniaudio/archive/refs/tags/0.11.25.tar.gz",
+            .hash = "N-V-__8AAHNWwAASlNuYbrP1-3UqXdwbYvZ_6nIJhpAcRMfi",
         },
         .clap = .{
             .url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.3.tar.gz",

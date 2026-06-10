@@ -1984,7 +1984,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
             .root_module = ctx.b.createModule(cfg.module_options),
         });
         lib.addCSourceFile(.{
-            .file = ctx.b.path("third_party_libs/miniaudio.c"),
+            .file = ctx.dep_miniaudio.path("miniaudio.c"),
             .flags = FlagsBuilder.init(ctx, cfg, .{
                 .gen_cdb_fragments = true,
             }).flags.items,
