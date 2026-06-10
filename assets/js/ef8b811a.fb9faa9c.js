@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkfloe_website=self.webpackChunkfloe_website||[]).push([["8416"],{56600(e){e.exports=JSON.parse('{"authors":[{"name":"Sam Windell","title":"Floe\'s creator","imageURL":"https://samwindell.name/assets/images/sam.jpg","key":"windell","page":null,"count":8}]}')}}]);

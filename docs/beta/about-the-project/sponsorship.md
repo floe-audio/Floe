@@ -1,0 +1,17 @@
+# Sponsorship
+
+> Support Floe's development through sponsorship
+
+Sponsoring Floe helps support its ongoing development and maintenance. As a sponsor, you can receive priority support and influence the direction of the project. Additionally, you can submit professional high-quality packages to the [Package Directory](/packages).
+
+As another service, we can also help with converting or creating Floe sample libraries.
+
+Please contact [Sam](mailto:sam@frozenplain.com) to discuss more details.
+
+* * *
+
+[![FrozenPlain Logo](https://www.frozenplain.com/icons/logo-adj.svg)](https://www.frozenplain.com)
+
+Floe and [FrozenPlain](https://www.frozenplain.com) are companion projects created by the same developer. However, Floe is intentionally encapsulated as its own platform: an outlet for Sam's open-source software passion, freely available for others to explore and build sample libraries for. It's totally free and is here for the wider music-making community.
+
+Looking to sell your own libraries? FrozenPlain offers a revenue-sharing partnership for high-quality sample libraries, handling payment processing, marketing, and distribution. [Get in touch](https://www.frozenplain.com/contact) to learn more.

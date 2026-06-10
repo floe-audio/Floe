@@ -1,0 +1,40 @@
+# Presets
+
+> How to use Floe presets
+
+A preset is a full production-ready setup of all of Floe's parameters and options, along with a name, description, and tags. It's a snapshot of Floe's state ready to be loaded using the preset [browser](/docs/beta/usage/browsers).
+
+Presets typically only use instruments and impulse responses from a single sample library. However, using any installed instruments and impulse responses is supported. You can have presets that blend sounds from completely different libraries.
+
+## The preset selector
+
+The preset selector sits in Floe's top panel and is your main way to load, navigate and save presets.
+
+![Floe's top panel showing the preset selector](/images/screenshots/top-panel.png)
+
+-   **Preset name and description** — the dark box shows the current preset's display name and short description. The name is suffixed with _(modified)_ if any parameters have changed since loading. Click anywhere in the box to open the preset [browser](/docs/beta/usage/browsers). Right-click for a small menu to _Load Blank Preset_ (clears all instruments and IRs, resets all parameters to their defaults) or to _Open Containing Folder_ for the current preset on disk.
+-   **/ Previous / Next** — load the previous or next preset. The order respects whatever filters are currently active in the preset browser, so you can quickly audition presets from a chosen library, tag or folder.
+-   **Random** — load a random preset, also respecting the currently selected filters.
+-   **Save** — save the current state as a new preset. Opens the save preset panel where you can choose name, folder, description and tags.
+-   **Load from file** — open a system file picker to load a `.floe-preset` file directly from anywhere on your computer, without needing it to be in one of Floe's preset folders. Useful for trying a preset someone has sent you, or for loading a one-off preset from outside your usual library structure.
+
+## Saving presets
+
+Click the save button in the [preset selector](#the-preset-selector) to open the Save Preset panel.
+
+![Floe's Save Preset panel](/images/screenshots/save-preset.png)
+
+-   **Author** — a free-text field for whoever made the preset. The button next to it remembers the current author as your default, and the button fills the field with that remembered value — useful for tagging all your own presets with the same name.
+-   **Description** — a multi-line description shown in the preset selector and browser. Keep it short; the selector only shows the first line or so.
+-   **Tags** — checkbox-style tags grouped by category (Sound source, Real instrument category, Sound type, and so on). Tags drive the preset browser's filters, so adding accurate tags makes a preset easier to find later. Some categories will grey out remaining tags once a related tag is selected to keep combinations sensible.
+-   **Cancel** — close the panel without saving.
+-   **Overwrite** — only appears when the current state was loaded from an existing preset file; saves over that file in place.
+-   **Save / Save As New** — opens a file picker to choose where on disk to save the `.floe-preset` file. The file name you pick becomes the preset's display name in the browser. The first time you save, the picker opens in a `User` folder inside your default preset folder (created automatically); after that, it remembers wherever you last saved.
+
+At a technical level, presets are just portable files (`.floe-preset`) arranged into folders on your computer. You can rename and organise them as you wish using your usual file browser (Finder, File Explorer, etc.) - Floe automatically detects changes in its [preset folders](/docs/beta/usage/folders) and immediately displays the new hierarchy on the preset browser. The name of the preset file is the name you see in Floe's preset browser. The description and tags are stored inside the preset file itself and can only be edited by using Floe to save over the preset.
+
+Presets are tiny files - typically just a few kilobytes in size. Even whole banks of presets take up very little disk space.
+
+## Preset banks
+
+A _preset bank_ is a small extension to Floe's preset system. Some folders are marked as 'banks' and contain some more [metadata](/docs/beta/develop/develop-preset-packs) such as a description and version. 'Music Box Suite Factory Presets' is a preset bank, for example. (Floe also automatically identifies some well-known factory preset banks that existed before the banks system was added, even without a metadata file present.)

@@ -1,0 +1,52 @@
+# Beta Testing
+
+> Information about beta testing for Floe
+
+Beta releases give you early access to new features and improvements before they're included in stable releases. However, they may also come with some incomplete functionality and increased risk of bugs.
+
+important
+
+On the docs website, change the version selector (top right) from 'Stable' to 'Beta' to see documentation for beta features.
+
+## At a glance
+
+-   Download and install beta releases from the [download page](/download) when available.
+-   All your libraries, presets and settings are preserved.
+-   Change the documentation to 'Beta' (top-right of the website) to see beta-specific docs.
+-   Switch back to the stable version anytime by installing the latest stable release (overwriting the beta).
+
+## Current status
+
+There is a Floe beta version live: 2.0.0-beta.4. This is newer than the latest stable release, 1.1.2.
+
+## How Beta Downloads Work
+
+Beta downloads are available on the [download page](/download) when there's a beta release newer than the latest stable version. If no beta link appears, it means the current stable release is already the newest version available.
+
+The download page lists all available files - read the filenames carefully and download the appropriate one for your system. Just like stable releases, most users will want the standard installer file rather than manual-installation files. The installation process is the same as for stable releases, see the [installation docs](/docs/installation/download-and-install-floe) if you need help. On Linux, substitute the beta download link into the regular install command or follow the manual-install instructions on the help page.
+
+Your libraries, presets and settings are always preserved even when switching from stable to beta versions or vice versa.
+
+## Feedback
+
+Floe is an independent project, and your feedback helps us improve the software. If you encounter issues or have suggestions, we'd love to hear from you.
+
+For beta testing feedback in particular, we often post about the specifics that we're looking for on the [blog](/blog) page.
+
+There's many ways to provide feedback, please choose one that suits you best:
+
+-   Open a [GitHub Discussion](https://github.com/floe-audio/Floe/discussions). You will need a GitHub account to do this.
+-   Report bugs or issues on the [GitHub Issues page](https://github.com/floe-audio/Floe/issues).
+-   Use the built-in 'Send Feedback' form in Floe itself (we're aware the text input is a bit clunky right now - it's on the roadmap).
+-   Reach out to Sam via email.
+-   Post on [FrozenPlain's forum](https://forum.frozenplain.com/t/floe) in the Floe section.
+
+## Installation and Versioning
+
+Beta releases install just like stable releases and will overwrite any existing Floe installation (whether beta or stable). If you want to return to the stable version after trying a beta, simply download and install the latest stable release.
+
+Version numbers indicate release order: for example, v1.0.0-beta.2 is newer than v1.0.0-beta.1, but both are preview versions that come before the final v1.0.0 release.
+
+## Always Stay Updated
+
+Always have the latest version of Floe - including beta features - by enabling _Include beta version when checking for updates_ in the preferences panel. This way, Floe will let you know when there's a new version available, whether it's stable or beta.

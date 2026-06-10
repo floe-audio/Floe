@@ -1,0 +1,81 @@
+# Floe
+
+> Floe is a free, open-source sample library engine. Available as an audio plugin for Windows, macOS and Linux.
+
+## Documentation
+
+- [Beta Testing](https://floe.audio/docs/about-the-project/beta-testing.md) — Information about beta testing for Floe
+- [Mirage Compatibility](https://floe.audio/docs/about-the-project/mirage.md) — Floe is the successor to FrozenPlain's Mirage, with full backwards compatibility
+- [Roadmap](https://floe.audio/docs/about-the-project/roadmap.md) — Floe's development roadmap and future plans
+- [Sponsorship](https://floe.audio/docs/about-the-project/sponsorship.md) — Support Floe's development through sponsorship
+- [Beta Testing](https://floe.audio/docs/beta/about-the-project/beta-testing.md) — Information about beta testing for Floe
+- [Mirage Compatibility](https://floe.audio/docs/beta/about-the-project/mirage.md) — Floe is the successor to FrozenPlain's Mirage, with full backwards compatibility
+- [Roadmap](https://floe.audio/docs/beta/about-the-project/roadmap.md) — Floe's development roadmap and future plans
+- [Sponsorship](https://floe.audio/docs/beta/about-the-project/sponsorship.md) — Support Floe's development through sponsorship
+- [Changelog](https://floe.audio/docs/beta/changelog.md) — A detailed changelog of all versions of Floe
+- [Developing Libraries for Floe](https://floe.audio/docs/beta/develop/develop-libraries.md) — Guide on how to create sample libraries for Floe using Lua scripting
+- [Develop Preset Banks](https://floe.audio/docs/beta/develop/develop-preset-packs.md) — Best practices for developing preset banks for Floe
+- [Library Lua Scripts](https://floe.audio/docs/beta/develop/library-lua-scripts.md) — Documentation for the Lua API used to create Floe sample libraries
+- [Packages Page Submissions](https://floe.audio/docs/beta/develop/package-database.md) — Documentation for developers to submit packages to Floe's Package Directory
+- [Package libraries & presets for distribution](https://floe.audio/docs/beta/develop/packaging.md) — How to create Floe Packages to distribute your sample libraries and presets
+- [Tags and folders](https://floe.audio/docs/beta/develop/tags-and-folders.md) — Best practices for using tags and folders in Floe sample libraries
+- [Frequently asked questions](https://floe.audio/docs/beta/getting-started/faq.md) — {/*
+- [Glossary](https://floe.audio/docs/beta/getting-started/glossary.md) — {/*
+- [Overview](https://floe.audio/docs/beta/getting-started/overview.md) — A tour of Floe's window and how sound flows through it
+- [Quick Start Guide](https://floe.audio/docs/beta/getting-started/quick-start-guide.md) — {/*
+- [Installing Floe](https://floe.audio/docs/beta/installation/download-and-install-floe.md) — Instructions for downloading and installing Floe on Windows, macOS, and Linux
+- [Install Packages](https://floe.audio/docs/beta/installation/install-packages.md) — How to install Floe packages containing sample libraries and presets
+- [Uninstalling](https://floe.audio/docs/beta/installation/uninstalling.md) — Instructions for uninstalling Floe and removing libraries and presets
+- [Attribution](https://floe.audio/docs/beta/reference/attribution.md) — Information about attribution requirements for sample libraries in Floe
+- [Autosave](https://floe.audio/docs/beta/reference/autosave.md) — How Floe's autosave feature works and how to use it
+- [Error Reporting](https://floe.audio/docs/beta/reference/error-reporting.md) — How Floe handles error reporting and feedback
+- [File Locations](https://floe.audio/docs/beta/reference/file-locations.md) — Quick reference guide for where Floe stores its files on Windows, macOS, and Linux
+- [Instruments](https://floe.audio/docs/beta/reference/instruments.md) — Instruments are Floe's core building block
+- [Legacy Parameters](https://floe.audio/docs/beta/reference/legacy-parameters.md) — How Floe ensures backwards compatibility
+- [Parameters](https://floe.audio/docs/beta/reference/parameters.md) — A list of all parameters in Floe
+- [Sample Libraries](https://floe.audio/docs/beta/reference/sample-libraries.md) — What is a Floe sample library
+- [Arpeggiator](https://floe.audio/docs/beta/usage/arpeggiator.md) — Information about Floe's per-layer arpeggiator
+- [Browsers](https://floe.audio/docs/beta/usage/browsers.md) — Comprehensive guide to using Floe's browsers for presets, instruments, and impulse responses.
+- [Effects](https://floe.audio/docs/beta/usage/effects.md) — Information about the audio effects available in Floe
+- [Folders](https://floe.audio/docs/beta/usage/folders.md) — Managing sample library and preset folders in Floe
+- [Granular Synthesis](https://floe.audio/docs/beta/usage/granular.md) — Information about Floe's per-layer granular synthesis
+- [Key Ranges](https://floe.audio/docs/beta/usage/key-ranges.md) — How to use key ranges to split the keyboard into zones for different layers
+- [Layers](https://floe.audio/docs/beta/usage/layers.md) — Information about Floe's three-layer architecture and how to use layers
+- [Looping](https://floe.audio/docs/beta/usage/looping.md) — Information about the looping features in Floe
+- [Macros](https://floe.audio/docs/beta/usage/macros.md) — Learn how to use macros in Floe to control multiple parameters with a single knob
+- [MIDI](https://floe.audio/docs/beta/usage/midi.md) — Information about MIDI control in Floe
+- [Perform](https://floe.audio/docs/beta/usage/perform.md) — The distraction-free page for exploring presets and variations
+- [Presets](https://floe.audio/docs/beta/usage/presets.md) — How to use Floe presets
+- [Randomisation](https://floe.audio/docs/beta/usage/randomisation.md) — How to use Floe's randomisation features to explore new sounds
+- [Reproducibility](https://floe.audio/docs/beta/usage/reproducibility.md) — How to make Floe's playback exactly reproducible in a DAW
+- [Website changelog](https://floe.audio/docs/beta/website-changelog.md) — Changelog for the website
+- [Changelog](https://floe.audio/docs/changelog.md) — A detailed changelog of all versions of Floe
+- [Developing Libraries for Floe](https://floe.audio/docs/develop/develop-libraries.md) — Guide on how to create sample libraries for Floe using Lua scripting
+- [Develop Preset Banks](https://floe.audio/docs/develop/develop-preset-packs.md) — Best practices for developing preset banks for Floe
+- [Library Lua Scripts](https://floe.audio/docs/develop/library-lua-scripts.md) — Documentation for the Lua API used to create Floe sample libraries
+- [Packages Page Submissions](https://floe.audio/docs/develop/package-database.md) — Documentation for developers to submit packages to Floe's Package Directory
+- [Package libraries & presets for distribution](https://floe.audio/docs/develop/packaging.md) — How to create Floe Packages to distribute your sample libraries and presets
+- [Tags and folders](https://floe.audio/docs/develop/tags-and-folders.md) — Best practices for using tags and folders in Floe sample libraries
+- [Frequently asked questions](https://floe.audio/docs/getting-started/faq.md) — {/*
+- [Quick Start Guide](https://floe.audio/docs/getting-started/quick-start-guide.md) — {/*
+- [Installing Floe](https://floe.audio/docs/installation/download-and-install-floe.md) — Instructions for downloading and installing Floe on Windows, macOS, and Linux
+- [Install Packages](https://floe.audio/docs/installation/install-packages.md) — How to install Floe packages containing sample libraries and presets
+- [Uninstalling](https://floe.audio/docs/installation/uninstalling.md) — Instructions for uninstalling Floe and removing libraries and presets
+- [Browsers](https://floe.audio/docs/key-concepts/browsers.md) — Comprehensive guide to using Floe's browsers for presets, instruments, and impulse responses.
+- [Packages, libraries, presets and other components](https://floe.audio/docs/key-concepts/components.md) — {/*
+- [Folders](https://floe.audio/docs/key-concepts/folders.md) — Managing sample library and preset folders in Floe
+- [General Usage](https://floe.audio/docs/key-concepts/general-usage.md) — General usage and tips and tricks for working with Floe
+- [Attribution](https://floe.audio/docs/reference/attribution.md) — Information about attribution requirements for sample libraries in Floe
+- [Autosave](https://floe.audio/docs/reference/autosave.md) — How Floe's autosave feature works and how to use it
+- [Error Reporting](https://floe.audio/docs/reference/error-reporting.md) — How Floe handles error reporting and feedback
+- [File Locations](https://floe.audio/docs/reference/file-locations.md) — Quick reference guide for where Floe stores its files on Windows, macOS, and Linux
+- [Legacy Parameters](https://floe.audio/docs/reference/legacy-parameters.md) — How Floe ensure backwards compatibility
+- [Parameters](https://floe.audio/docs/reference/parameters.md) — A list of all parameters in Floe
+- [Effects](https://floe.audio/docs/usage/effects.md) — Information about the audio effects available in Floe
+- [Key Ranges](https://floe.audio/docs/usage/key-ranges.md) — How to use key ranges to split the keyboard into zones for different layers
+- [Layers](https://floe.audio/docs/usage/layers.md) — Information about Floe's three-layer architecture and how to use layers
+- [Looping](https://floe.audio/docs/usage/looping.md) — Information about the looping features in Floe
+- [Macros](https://floe.audio/docs/usage/macros.md) — Learn how to use macros in Floe to control multiple parameters with a single knob
+- [MIDI](https://floe.audio/docs/usage/midi.md) — Information about MIDI control in Floe
+- [Randomisation](https://floe.audio/docs/usage/randomisation.md) — How to use Floe's randomisation features to explore new sounds
+- [Website changelog](https://floe.audio/docs/website-changelog.md) — Changelog for the website
