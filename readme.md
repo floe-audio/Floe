@@ -58,6 +58,7 @@ Floe's website is in the `website` folder and it's built with Docusaurus. We hav
 Feel free to use the discussions on GitHub for questions, feedback, and ideas. Report bugs to the Github issue tracker. Also, FrozenPlain has a Floe section on their [forum](https://forum.frozenplain.com).
 
 ### CI
+[Bencher](https://bencher.dev/perf/floe-benchmarks)
 ![CI](https://github.com/floe-audio/Floe/actions/workflows/tests.yml/badge.svg)
 [![codecov](https://codecov.io/github/floe-audio/Floe/graph/badge.svg?token=7HEJ7SF75K)](https://codecov.io/github/floe-audio/Floe)
 [![CodeFactor](https://www.codefactor.io/repository/github/floe-audio/floe/badge/main)](https://www.codefactor.io/repository/github/floe-audio/floe/overview/main)
