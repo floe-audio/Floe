@@ -10,6 +10,7 @@
 
 constexpr persistent_store::Id k_audio_device_store_key = HashFnv1a("standalone-audio-output-device");
 constexpr persistent_store::Id k_midi_device_store_key = HashFnv1a("standalone-midi-input-device");
+constexpr persistent_store::Id k_audio_backend_store_key = HashFnv1a("standalone-audio-backend");
 
 constexpr u64 k_audio_error_id = HashFnv1a("standalone-audio-error");
 constexpr u64 k_midi_error_id = HashFnv1a("standalone-midi-error");
@@ -125,6 +126,46 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     }
 }
 
+static Optional<ma_backend> FindAudioBackend(String name) {
+    ASSERT(g_is_logical_main_thread);
+    if (name.size == 0) return k_nullopt;
+    ma_backend enabled[MA_BACKEND_COUNT];
+    size_t count = 0;
+    if (ma_get_enabled_backends(enabled, MA_BACKEND_COUNT, &count) != MA_SUCCESS) return k_nullopt;
+    for (auto const i : Range(count))
+        if (FromNullTerminated(ma_get_backend_name(enabled[i])) == name) return enabled[i];
+    return k_nullopt;
+}
+
+static void EnumerateAudioBackends(DeviceManager& dm) {
+    ASSERT(g_is_logical_main_thread);
+    ma_backend enabled[MA_BACKEND_COUNT];
+    size_t count = 0;
+    if (ma_get_enabled_backends(enabled, MA_BACKEND_COUNT, &count) != MA_SUCCESS) {
+        dm.audio.backends = {};
+        dm.audio.backend_ids = {};
+        return;
+    }
+
+    // Exclude ma_backend_null (test-only) and ma_backend_custom (no callbacks supplied).
+    u32 num_visible = 0;
+    for (auto const i : Range(count))
+        if (enabled[i] != ma_backend_null && enabled[i] != ma_backend_custom) ++num_visible;
+
+    auto infos = dm.enum_arena.AllocateExactSizeUninitialised<HostDeviceInfo>(num_visible);
+    auto ids = dm.enum_arena.AllocateExactSizeUninitialised<ma_backend>(num_visible);
+    u32 n = 0;
+    for (auto const i : Range(count)) {
+        if (enabled[i] == ma_backend_null || enabled[i] == ma_backend_custom) continue;
+        auto const name = dm.enum_arena.Clone(FromNullTerminated(ma_get_backend_name(enabled[i])));
+        infos[n] = {.id = name, .name = name, .is_default = false};
+        ids[n] = enabled[i];
+        ++n;
+    }
+    dm.audio.backends = infos;
+    dm.audio.backend_ids = ids;
+}
+
 static Optional<ma_device_id> FindAudioDeviceId(DeviceManager& dm, String name) {
     ASSERT(g_is_logical_main_thread);
     if (name.size == 0) return k_nullopt;
@@ -144,8 +185,20 @@ static Optional<PmDeviceID> FindMidiDeviceId(DeviceManager& dm, String name) {
 static void EnumerateAudioDevices(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
     if (!dm.audio.context_initialised) {
-        if (ma_context_init(nullptr, 0, nullptr, &dm.audio.context) != MA_SUCCESS) {
-            ReportAudioError(dm, {}, "Failed to initialise the audio backend."_s);
+        auto const chosen_backend = FindAudioBackend(dm.audio.selected_backend_name);
+        bool ok = false;
+        if (chosen_backend) {
+            ma_backend backends[1] = {*chosen_backend};
+            ok = ma_context_init(backends, 1, nullptr, &dm.audio.context) == MA_SUCCESS;
+        }
+        if (!ok) ok = ma_context_init(nullptr, 0, nullptr, &dm.audio.context) == MA_SUCCESS;
+        if (!ok) {
+            if (chosen_backend)
+                ReportAudioError(dm,
+                                 {},
+                                 "Failed to initialise the selected audio backend; falling back failed too."_s);
+            else
+                ReportAudioError(dm, {}, "Failed to initialise the audio backend."_s);
             dm.audio.devices = {};
             dm.audio.device_ids = {};
             return;
@@ -206,6 +259,7 @@ static void EnumerateMidiDevices(DeviceManager& dm) {
 static void EnumerateAllDevices(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
     dm.enum_arena.ResetCursorAndConsolidateRegions();
+    EnumerateAudioBackends(dm);
     EnumerateAudioDevices(dm);
     EnumerateMidiDevices(dm);
 }
@@ -410,6 +464,11 @@ static void SetupDeviceStore(DeviceManager& dm, ArenaAllocator& arena) {
         auto const data = r.Get<persistent_store::Value const*>()->data;
         dyn::Assign(dm.midi.selected_name, String {(char const*)data.data, data.size});
     }
+    if (auto const r = persistent_store::Get(*dm.store, k_audio_backend_store_key);
+        r.tag == persistent_store::GetResult::Found) {
+        auto const data = r.Get<persistent_store::Value const*>()->data;
+        dyn::Assign(dm.audio.selected_backend_name, String {(char const*)data.data, data.size});
+    }
 }
 
 void InitDevices(DeviceManager& dm, ArenaAllocator& arena) {
@@ -455,6 +514,26 @@ static void ApplyMidiSelection(DeviceManager& dm, String name) {
     SaveDeviceSelection(dm, k_midi_device_store_key, name);
     CloseMidiStream(dm);
     OpenMidiStream(dm, name);
+}
+
+static void ApplyBackendSelection(DeviceManager& dm, String name) {
+    ASSERT(g_is_logical_main_thread);
+    dyn::Assign(dm.audio.selected_backend_name, name);
+    SaveDeviceSelection(dm, k_audio_backend_store_key, name);
+
+    CloseAudio(dm);
+    if (dm.host_callbacks.deactivate_for_device_swap)
+        dm.host_callbacks.deactivate_for_device_swap(dm.host_callbacks.ctx);
+
+    if (dm.audio.context_initialised) {
+        ma_context_uninit(&dm.audio.context);
+        dm.audio.context_initialised = false;
+    }
+
+    EnumerateAllDevices(dm);
+
+    if (dm.audio.context_initialised && OpenAudioDeviceWithFallback(dm, dm.audio.selected_name))
+        ActivatePluginAndStartAudio(dm);
 }
 
 static void ApplyRefresh(DeviceManager& dm) {
@@ -517,6 +596,10 @@ void PollDeviceChanges(DeviceManager& dm) {
             ApplyMidiSelection(dm, dm.pending_name);
             dyn::Clear(dm.pending_name);
             break;
+        case DeviceManager::PendingCommand::SelectBackend:
+            ApplyBackendSelection(dm, dm.pending_name);
+            dyn::Clear(dm.pending_name);
+            break;
     }
 }
 
@@ -530,6 +613,7 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
         switch (type) {
             case HostDeviceType::AudioOutput: return (u32)dm.audio.devices.size;
             case HostDeviceType::MidiInput: return (u32)dm.midi.devices.size;
+            case HostDeviceType::AudioBackend: return (u32)dm.audio.backends.size;
         }
         return 0;
     };
@@ -538,7 +622,12 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
         ASSERT(g_is_logical_main_thread);
         ASSERT(host->context);
         auto& dm = *(DeviceManager*)host->context;
-        auto const list = type == HostDeviceType::AudioOutput ? dm.audio.devices : dm.midi.devices;
+        Span<HostDeviceInfo> list {};
+        switch (type) {
+            case HostDeviceType::AudioOutput: list = dm.audio.devices; break;
+            case HostDeviceType::MidiInput: list = dm.midi.devices; break;
+            case HostDeviceType::AudioBackend: list = dm.audio.backends; break;
+        }
         if (index >= list.size) return false;
         *out = list[index];
         return true;
@@ -547,9 +636,13 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
         ASSERT(g_is_logical_main_thread);
         ASSERT(host->context);
         auto& dm = *(DeviceManager*)host->context;
-        auto const& name =
-            type == HostDeviceType::AudioOutput ? dm.audio.selected_name : dm.midi.selected_name;
-        *out = {.id = name, .name = name, .is_default = name.size == 0};
+        DynamicArray<char> const* name = nullptr;
+        switch (type) {
+            case HostDeviceType::AudioOutput: name = &dm.audio.selected_name; break;
+            case HostDeviceType::MidiInput: name = &dm.midi.selected_name; break;
+            case HostDeviceType::AudioBackend: name = &dm.audio.selected_backend_name; break;
+        }
+        *out = {.id = *name, .name = *name, .is_default = name->size == 0};
     };
     ext.device_has_error = [](FloeClapExtensionHost const* host, HostDeviceType type) -> bool {
         ASSERT(g_is_logical_main_thread);
@@ -558,6 +651,7 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
         switch (type) {
             case HostDeviceType::AudioOutput: return dm.audio.failed;
             case HostDeviceType::MidiInput: return dm.midi.failed;
+            case HostDeviceType::AudioBackend: return false;
         }
         return false;
     };
@@ -572,6 +666,9 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
                 break;
             case HostDeviceType::MidiInput:
                 dm.pending_command = DeviceManager::PendingCommand::SelectMidi;
+                break;
+            case HostDeviceType::AudioBackend:
+                dm.pending_command = DeviceManager::PendingCommand::SelectBackend;
                 break;
         }
     };

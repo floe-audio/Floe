@@ -633,8 +633,8 @@ static void DeviceSelectionMenu(GuiBuilder& builder, PreferencesPanelContext& co
     HostDeviceInfo current {};
     if (host->current_device) host->current_device(host, type, &current);
 
-    if (MenuItem(builder, root, {.text = "System default"_s, .is_selected = current.id.size == 0})
-            .button_fired) {
+    String const default_label = type == HostDeviceType::AudioBackend ? "Auto"_s : "System default"_s;
+    if (MenuItem(builder, root, {.text = default_label, .is_selected = current.id.size == 0}).button_fired) {
         if (host->set_device) host->set_device(host, type, {});
     }
 
@@ -675,6 +675,7 @@ static void DevicesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         String label;
     };
     for (auto const& device_row : Array {
+             DeviceRow {HostDeviceType::AudioBackend, "Audio backend"},
              DeviceRow {HostDeviceType::AudioOutput, "Audio output"},
              DeviceRow {HostDeviceType::MidiInput, "MIDI input"},
          }) {
@@ -687,7 +688,9 @@ static void DevicesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
 
         HostDeviceInfo current {};
         if (host->current_device) host->current_device(host, device_row.type, &current);
-        String const menu_text = current.id.size ? current.name : "System default"_s;
+        String const menu_text =
+            current.id.size ? current.name
+                            : (device_row.type == HostDeviceType::AudioBackend ? "Auto"_s : "System default"_s);
 
         auto const popup_id = builder.imgui.MakeId(99);
         auto const btn = MenuOpenButton(builder,

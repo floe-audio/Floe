@@ -1979,8 +1979,6 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     plugin: *std.Build.Step.Compile,
 }) *std.Build.Step.Compile {
     const miniaudio_defines = &.{
-        // NOTE(Sam): disabling alsa because it was causing a deadlock on my machine.
-        "-DMA_NO_ALSA",
         "-DMA_NO_DECODING",
         "-DMA_NO_ENCODING",
     };

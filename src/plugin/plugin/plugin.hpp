@@ -136,7 +136,7 @@ static constexpr char k_floe_clap_extension_id[] = "floe.floe";
 static constexpr char k_floe_standalone_host_name[] = "Floe Standalone";
 static constexpr char k_floe_standalone_default_app_id[] = "org.floe-audio.floe";
 
-enum class HostDeviceType : u8 { AudioOutput, MidiInput };
+enum class HostDeviceType : u8 { AudioOutput, MidiInput, AudioBackend };
 
 struct HostDeviceInfo {
     String id; // Empty for the default entry.

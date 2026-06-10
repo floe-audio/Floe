@@ -45,7 +45,11 @@ struct DeviceManager {
         Span<HostDeviceInfo> devices {};
         Span<ma_device_id> device_ids {};
 
+        Span<HostDeviceInfo> backends {};
+        Span<ma_backend> backend_ids {};
+
         DynamicArray<char> selected_name {Malloc::Instance()};
+        DynamicArray<char> selected_backend_name {Malloc::Instance()};
 
         bool failed = false;
 
@@ -86,7 +90,7 @@ struct DeviceManager {
 
     ArenaAllocator enum_arena {PageAllocator::Instance()};
 
-    enum class PendingCommand : u8 { None, SelectAudio, SelectMidi, Refresh };
+    enum class PendingCommand : u8 { None, SelectAudio, SelectMidi, SelectBackend, Refresh };
     PendingCommand pending_command = PendingCommand::None;
     DynamicArray<char> pending_name {Malloc::Instance()};
 
