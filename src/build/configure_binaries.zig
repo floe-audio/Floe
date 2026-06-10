@@ -117,11 +117,14 @@ const NixHelper = struct {
         if (!self.patchElfNeeded(b)) return compile_step.getEmittedBin();
 
         const dyn_linker = b.graph.env_map.get("FLOE_DYNAMIC_LINKER") orelse return compile_step.getEmittedBin();
+        const rpath = b.graph.env_map.get("FLOE_RPATH") orelse return compile_step.getEmittedBin();
 
         const patch_step = b.addSystemCommand(&.{
             "patchelf",
             "--set-interpreter",
             dyn_linker,
+            "--set-rpath",
+            rpath,
             "--output",
         });
         const result = patch_step.addOutputFileArg(compile_step.name);
