@@ -643,6 +643,7 @@ struct DirectoryWatcher {
         // private
         void Add(Change change, ArenaAllocator& a) {
             if constexpr (!IS_LINUX) ASSERT(IsValidUtf8(change.subpath));
+            if (ContainsSpan(change.subpath, k_temporary_directory_prefix)) return;
             // try finding the subpath+file_type and add the change to it
             for (auto& subpath_changeset : subpath_changesets)
                 // We check both subpath and file_type because a file can be deleted and then created as a
