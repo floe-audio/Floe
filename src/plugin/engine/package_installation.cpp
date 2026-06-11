@@ -479,11 +479,11 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
     return k_success;
 }
 
-struct TryHelpersToState {
-    static auto IsError(auto const& o) { return o.HasError(); }
-    static auto ExtractError(auto const&) { return InstallJob::State::DoneError; }
-    static auto ExtractValue(auto& o) { return o.ReleaseValue(); }
-};
+#define TRY_J(expression)                                                                                    \
+    TRY_OR(expression, {                                                                                     \
+        fmt::Append(job.error_buffer, "{}\n", error);                                                        \
+        return InstallJob::State::DoneError;                                                                 \
+    })
 
 static bool MirageIsInstalled() {
     if constexpr (IS_LINUX) return false; // Mirage wasn't available for Linux.
@@ -533,11 +533,9 @@ static InstallJob::State OpenPackageFile(InstallJob& job) {
 }
 
 static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
-    using H = package::TryHelpersToState;
-
     job.reader = PackageReader {.zip_file_reader = *job.file_reader};
 
-    TRY_H(ReaderInit(*job.reader));
+    TRY_J(ReaderInit(*job.reader));
 
     PackageComponentIndex it {};
     bool user_input_needed = false;
@@ -549,7 +547,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
             return InstallJob::State::DoneError;
         }
 
-        auto const component = TRY_H(IteratePackageComponents(*job.reader, it, job.arena));
+        auto const component = TRY_J(IteratePackageComponents(*job.reader, it, job.arena));
         if (!component) break; // No more folders.
 
         ComponentInstallConfig install_config {};
@@ -578,7 +576,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                          existing_lib ? "true" : "false");
 
                 existing_check =
-                    TRY_H(LibraryCheckExistingInstallation(*component,
+                    TRY_J(LibraryCheckExistingInstallation(*component,
                                                            existing_lib ? &*existing_lib : nullptr,
                                                            job.arena));
                 LogDebug(ModuleName::Package,
@@ -671,7 +669,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                                             stored_checksums.HasValue()) {
 
                                             auto actual_checksums =
-                                                TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena));
+                                                TRY_J(ChecksumsForFolder(path, scratch_arena, scratch_arena));
                                             actual_checksums.RemoveIf([](auto const& key, auto const&) {
                                                 return key == k_checksums_file;
                                             });
@@ -750,7 +748,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                         auto const path = *FolderPath(&listing->node, scratch_arena);
 
                         if (CompareChecksums(component->checksum_values,
-                                             TRY_H(ChecksumsForFolder(path, scratch_arena, scratch_arena)),
+                                             TRY_J(ChecksumsForFolder(path, scratch_arena, scratch_arena)),
                                              {
                                                  .ignore_path_nesting = true,
                                                  .test_table_allowed_extra_files = true,
@@ -809,8 +807,6 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
 }
 
 static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
-    using H = package::TryHelpersToState;
-
     for (auto& component : job.components) {
         if (job.abort.Load(LoadMemoryOrder::Acquire)) {
             dyn::AppendSpan(job.error_buffer, "aborted\n");
@@ -833,7 +829,7 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
             }
         }
 
-        TRY_H(ReaderInstallComponent(*job.reader, component.component, component.install_config, job.arena));
+        TRY_J(ReaderInstallComponent(*job.reader, component.component, component.install_config, job.arena));
 
         switch (component.component.type) {
             case ComponentType::Library: {
@@ -854,6 +850,8 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
 
     return InstallJob::State::DoneSuccess;
 }
+
+#undef TRY_J
 
 // ==========================================================================================================
 //
