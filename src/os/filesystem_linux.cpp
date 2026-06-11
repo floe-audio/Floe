@@ -394,14 +394,19 @@ static ErrorCodeOr<String> FindMountPoint(char const* path, ArenaAllocator& aren
     return ErrorCode {FilesystemError::PathDoesNotExist};
 }
 
-static bool PathsHaveSameDevice(char const* path1, char const* path2) {
-    struct stat path1_stat;
-    if (stat(path1, &path1_stat) != 0) return false;
+static bool CanRenameInto(String source_dir, String target_dir, ArenaAllocator& arena) {
+    auto seed = RandomSeed();
+    auto const probe_name = UniqueFilename(k_temporary_directory_prefix, "", seed);
+    auto const src = NullTerminated(path::Join(arena, Array {source_dir, probe_name}), arena);
+    auto const dst = NullTerminated(path::Join(arena, Array {target_dir, probe_name}), arena);
 
-    struct stat path2_stat;
-    if (stat(path2, &path2_stat) != 0) return false;
+    int const fd = open(src, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) return false;
+    close(fd);
 
-    return path1_stat.st_dev == path2_stat.st_dev;
+    bool const same_fs = (rename(src, dst) == 0);
+    unlink(same_fs ? dst : src);
+    return same_fs;
 }
 
 ErrorCodeOr<MutableString> TemporaryDirectoryOnSameFilesystemAs(String path, Allocator& a) {
@@ -419,18 +424,33 @@ ErrorCodeOr<MutableString> TemporaryDirectoryOnSameFilesystemAs(String path, All
     PathArena temp_path_allocator {Malloc::Instance()};
     auto const path_nt = NullTerminated(path, temp_path_allocator);
 
-    String base_path {};
-    if (PathsHaveSameDevice(path_nt, standard_temp))
-        base_path = FromNullTerminated(standard_temp);
-    else
-        base_path = TRY(FindMountPoint(path_nt, temp_path_allocator));
+    // The probe needs an existing directory to rename into. If `path` is itself a directory use it
+    // directly; otherwise use its parent.
+    String probe_target = path;
+    if (auto const t = GetFileType(path); t.HasValue() && t.Value() == FileType::File) {
+        if (auto const parent = path::Directory(path)) probe_target = *parent;
+    }
 
+    auto const create_temp_in = [&](String base) -> ErrorCodeOr<MutableString> {
+        auto seed = RandomSeed();
+        auto const result =
+            path::Join(a, Array {base, UniqueFilename(k_temporary_directory_prefix, "", seed)});
+        TRY(CreateDirectory(result, {.create_intermediate_directories = true, .fail_if_exists = false}));
+        return result;
+    };
+
+    // Option 1: standard temp folder.
+    if (CanRenameInto(FromNullTerminated(standard_temp), probe_target, temp_path_allocator))
+        return create_temp_in(FromNullTerminated(standard_temp));
+
+    // Option 2: attempt to find mount point.
+    if (auto const mount = FindMountPoint(path_nt, temp_path_allocator); mount.HasValue())
+        if (CanRenameInto(mount.Value(), probe_target, temp_path_allocator))
+            return create_temp_in(mount.Value());
+
+    // Fallback to a temp folder in the same folder.
     auto seed = RandomSeed();
-    auto const result =
-        path::Join(a, Array {base_path, UniqueFilename(k_temporary_directory_prefix, "", seed)});
-    TRY(CreateDirectory(result, {.create_intermediate_directories = true, .fail_if_exists = false}));
-
-    return result;
+    return TemporaryDirectoryWithinFolder(probe_target, a, seed);
 }
 
 MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirectoryOptions options) {
