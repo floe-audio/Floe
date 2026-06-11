@@ -334,6 +334,7 @@ void GuiUpdate(GuiState& g) {
             .package_install_jobs = g.engine.package_install_jobs,
             .thread_pool = g.shared_engine_systems.thread_pool,
             .file_picker_state = g.file_picker_state,
+            .persistent_store = g.shared_engine_systems.persistent_store,
             .presets_server = g.shared_engine_systems.preset_server,
             .standalone_host =
                 (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id),

@@ -5,6 +5,7 @@
 #include "foundation/foundation.hpp"
 
 #include "common_infrastructure/paths.hpp"
+#include "common_infrastructure/persistent_store.hpp"
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
 #include "engine/package_installation.hpp"
@@ -33,6 +34,7 @@ struct PreferencesPanelContext {
     package::InstallJobs& package_install_jobs;
     ThreadPool& thread_pool;
     FilePickerState& file_picker_state;
+    persistent_store::Store& persistent_store;
     PresetServer& presets_server;
     FloeClapExtensionHost const* standalone_host {}; // null outside the standalone host
     Optional<BeginReadFoldersResult> presets {};

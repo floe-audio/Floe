@@ -48,9 +48,10 @@ struct FilePickerContext {
 void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
                                        prefs::Preferences const& prefs,
                                        FloePaths const& paths,
+                                       persistent_store::Store& store,
                                        AddScanFolderFilePickerState data);
 
-void OpenFilePickerInstallPackage(FilePickerState& state);
+void OpenFilePickerInstallPackage(FilePickerState& state, persistent_store::Store& store);
 
 void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths, persistent_store::Store& store);
 

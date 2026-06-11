@@ -93,11 +93,6 @@ FloePaths CreateFloePaths(ArenaAllocator& arena, bool create_folders) {
     FloePaths result {
         .preferences_path = possible_prefs_paths[0],
         .possible_preferences_paths = possible_prefs_paths,
-        .file_picker_last_path =
-            {
-                Malloc::Instance(),
-                Malloc::Instance(),
-            },
     };
 
     for (auto const type : Range(ToInt(ScanFolderType::Count)))

@@ -309,6 +309,7 @@ static void FolderPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext&
                 context.file_picker_state,
                 context.prefs,
                 context.paths,
+                context.persistent_store,
                 {.type = (ScanFolderType)scan_folder_type, .set_as_install_folder = false});
         }
     }
@@ -414,6 +415,7 @@ InstallLocationMenu(GuiBuilder& builder, PreferencesPanelContext& context, ScanF
         OpenFilePickerAddExtraScanFolders(context.file_picker_state,
                                           context.prefs,
                                           context.paths,
+                                          context.persistent_store,
                                           {.type = scan_folder_type, .set_as_install_folder = true});
         builder.imgui.CloseTopPopupOnly();
     }
@@ -494,7 +496,7 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
                        rhs,
                        {.text = "Install package",
                         .tooltip = "Install libraries and presets from a package file"_s})) {
-            OpenFilePickerInstallPackage(context.file_picker_state);
+            OpenFilePickerInstallPackage(context.file_picker_state, context.persistent_store);
         }
     }
 
@@ -689,8 +691,9 @@ static void DevicesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         HostDeviceInfo current {};
         if (host->current_device) host->current_device(host, device_row.type, &current);
         String const menu_text =
-            current.id.size ? current.name
-                            : (device_row.type == HostDeviceType::AudioBackend ? "Auto"_s : "System default"_s);
+            current.id.size
+                ? current.name
+                : (device_row.type == HostDeviceType::AudioBackend ? "Auto"_s : "System default"_s);
 
         auto const popup_id = builder.imgui.MakeId(99);
         auto const btn = MenuOpenButton(builder,
