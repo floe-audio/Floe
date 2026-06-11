@@ -194,9 +194,10 @@ static void EnumerateAudioDevices(DeviceManager& dm) {
         if (!ok) ok = ma_context_init(nullptr, 0, nullptr, &dm.audio.context) == MA_SUCCESS;
         if (!ok) {
             if (chosen_backend)
-                ReportAudioError(dm,
-                                 {},
-                                 "Failed to initialise the selected audio backend; falling back failed too."_s);
+                ReportAudioError(
+                    dm,
+                    {},
+                    "Failed to initialise the selected audio backend; falling back failed too."_s);
             else
                 ReportAudioError(dm, {}, "Failed to initialise the audio backend."_s);
             dm.audio.devices = {};
