@@ -18,68 +18,77 @@ enum class PackagerCliArgId : u8 {
 auto constexpr k_packager_command_line_args_defs = MakeCommandLineArgDefs<PackagerCliArgId>({
     {
         .id = (u32)PackagerCliArgId::LibraryFolder,
-        .key = "library-folders",
-        .description = "One or more library folders",
+        .key = "library-folder",
+        .description = "Library folder to include (repeatable)",
         .value_type = "path",
         .required = false,
         .num_values = -1,
+        .short_key = 'l',
     },
     {
         .id = (u32)PackagerCliArgId::PresetFolder,
-        .key = "presets-folders",
-        .description = "One or more presets folders",
+        .key = "preset-folder",
+        .description = "Preset folder to include (repeatable)",
         .value_type = "path",
         .required = false,
         .num_values = -1,
+        .short_key = 'p',
     },
     {
         .id = (u32)PackagerCliArgId::InputPackages,
-        .key = "input-packages",
-        .description = "One or more input package files to include in the output package",
+        .key = "input-package",
+        .description = "Existing package file to merge into the output. Files from --library-folder and "
+                       "--preset-folder take precedence on conflict. (repeatable)",
         .value_type = "path",
         .required = false,
         .num_values = -1,
+        .short_key = 'i',
     },
     {
         .id = (u32)PackagerCliArgId::OutputPackageFolder,
-        .key = "output-folder",
-        .description = "Folder to write the created package to",
+        .key = "output-dir",
+        .description = "Directory to write the package into. The filename is auto-generated.",
         .value_type = "path",
         .required = false,
         .num_values = 1,
+        .short_key = 'o',
     },
     {
         .id = (u32)PackagerCliArgId::PackageName,
         .key = "package-name",
-        .description = "Package name - inferred from library name if not provided",
+        .description = "Override the auto-generated package filename. Any file extension is stripped.",
         .value_type = "name",
         .required = false,
         .num_values = 1,
+        .short_key = 'n',
     },
     {
         .id = (u32)PackagerCliArgId::OutputPackageInfoJsonFile,
-        .key = "output-info-json",
-        .description =
-            "If set, writes a JSON file with comprehensive package information: instruments, presets, tags, etc.",
+        .key = "info-json",
+        .description = "Write a JSON file describing the package's instruments, presets, tags, etc. "
+                       "Use '-' to write to stdout.",
         .value_type = "path",
         .required = false,
         .num_values = 1,
+        .short_key = 'j',
     },
     {
         .id = (u32)PackagerCliArgId::Encrypt,
         .key = "encrypt",
-        .description = "Encrypt the output package. A random content key is generated and printed to stdout. "
-                       "Output will be .floe-pkg-enc instead of .floe-pkg.",
+        .description = "Encrypt the output package with a random content key. The key is printed to stdout; "
+                       "the output filename uses the .floe-pkg-enc extension.",
         .value_type = {},
         .required = false,
         .num_values = 0,
+        .short_key = 'e',
     },
     {
         .id = (u32)PackagerCliArgId::OmitUnreferenced,
-        .key = "omit-unreferenced",
-        .description = "Skip files that aren't actually used: for libraries, files not referenced from Lua "
-                       "(samples, images, IRs) or .lua/license files; for preset folders, files that "
-                       "aren't presets or preset-bank info files.",
+        .key = "prune",
+        .description = "Silently drop files that aren't used: for libraries, files not referenced from Lua "
+                       "(samples, images, IRs) or the .lua/license files; for preset folders, files that "
+                       "aren't presets or preset-bank info files. Without this, such files are warned about "
+                       "but still included.",
         .value_type = {},
         .required = false,
         .num_values = 0,
@@ -87,12 +96,12 @@ auto constexpr k_packager_command_line_args_defs = MakeCommandLineArgDefs<Packag
 });
 
 constexpr String k_packager_description =
-    "Takes libraries and presets and turns them into a Floe package file (.floe-pkg).\n"
-    "Also accepts existing packages to merge into the output package.\n"
-    "You can specify multiple libraries and preset-folders. Additionally:\n"
+    "Packages libraries and presets into a Floe package file (.floe-pkg).\n"
+    "Existing packages can be merged into the output. Multiple libraries and preset folders\n"
+    "are supported. Additionally:\n"
     "- Validates any Lua files.\n"
     "- Ensures libraries have a License file.\n"
     "- Adds an 'About' document for each library.\n"
-    "- Adds a 'Installation' document for the package.\n"
+    "- Adds an 'Installation' document for the package.\n"
     "- Embeds a checksum file into the package for better change detection if the package\n"
     "  is installed manually.";

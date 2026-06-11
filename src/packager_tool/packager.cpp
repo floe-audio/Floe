@@ -215,29 +215,16 @@ static ErrorCodeOr<void> CheckNeededPackageCliArgs(Span<CommandLineArg const> ar
 
     auto const library_folders_arg = args[ToInt(PackagerCliArgId::LibraryFolder)];
     auto const presets_folders_arg = args[ToInt(PackagerCliArgId::PresetFolder)];
+    auto const input_packages_arg = args[ToInt(PackagerCliArgId::InputPackages)];
 
-    if (!library_folders_arg.values.size && !presets_folders_arg.values.size) {
+    if (!library_folders_arg.values.size && !presets_folders_arg.values.size &&
+        !input_packages_arg.values.size) {
         StdPrintF(StdStream::Err,
-                  "Error: either --{} or --{} must be provided\n",
+                  "Error: at least one of --{}, --{}, or --{} must be provided\n",
                   library_folders_arg.info.key,
-                  presets_folders_arg.info.key);
+                  presets_folders_arg.info.key,
+                  input_packages_arg.info.key);
         return ErrorCode {CliError::InvalidArguments};
-    }
-
-    auto const package_name_arg = args[ToInt(PackagerCliArgId::PackageName)];
-    if (library_folders_arg.values.size != 1 && !package_name_arg.was_provided) {
-        StdPrintF(StdStream::Err,
-                  "Error: if --{} is not set to 1 folder, --{} must be\n",
-                  library_folders_arg.info.key,
-                  package_name_arg.info.key);
-        return ErrorCode {CliError::InvalidArguments};
-    }
-
-    if (package_name_arg.was_provided) {
-        if (package::HasPackageExtension(package_name_arg.values[0])) {
-            StdPrintF(StdStream::Err, "Error: don't include the file extension in the package name\n");
-            return ErrorCode {CliError::InvalidArguments};
-        }
     }
 
     return k_success;
@@ -245,12 +232,14 @@ static ErrorCodeOr<void> CheckNeededPackageCliArgs(Span<CommandLineArg const> ar
 
 static String
 PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, Span<CommandLineArg const> args) {
-    if (args[ToInt(PackagerCliArgId::PackageName)].was_provided)
-        return fmt::Format(
-            arena,
-            "{} Package{}",
-            path::MakeSafeForFilename(args[ToInt(PackagerCliArgId::PackageName)].values[0], arena),
-            package::k_file_extension);
+    if (args[ToInt(PackagerCliArgId::PackageName)].was_provided) {
+        auto raw = args[ToInt(PackagerCliArgId::PackageName)].values[0];
+        if (package::HasPackageExtension(raw)) raw = path::FilenameWithoutExtension(raw);
+        return fmt::Format(arena,
+                           "{} Package{}",
+                           path::MakeSafeForFilename(raw, arena),
+                           package::k_file_extension);
+    }
     if (lib)
         return path::MakeSafeForFilename(
             fmt::Format(arena, "{} - {} Package{}", lib->author, lib->name, package::k_file_extension),
@@ -772,11 +761,12 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                     return error;
                 });
                 StdPrintF(StdStream::Err, "Wrote encrypted package: {}\n", enc_path);
-                StdPrintF(StdStream::Err, "Package key: ");
+                StdPrintF(StdStream::Err,
+                          "Package key written to stdout - store it securely, it is needed to sign "
+                          "license keys.\n");
                 for (auto const byte : package_key)
-                    StdPrintF(StdStream::Err, "{02x}", byte);
-                StdPrintF(StdStream::Err, "\n");
-                StdPrintF(StdStream::Err, "Store this key securely - it is needed to sign license keys.\n");
+                    StdPrintF(StdStream::Out, "{02x}", byte);
+                StdPrintF(StdStream::Out, "\n");
             } else {
                 auto const package_path = path::Join(arena, Array {folder, package_name});
                 TRY_OR(WriteFile(package_path, zip_data), {
@@ -799,16 +789,19 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             return error;
         });
 
-        auto const output_json_path =
-            path::Join(arena, Array {cli_args[ToInt(PackagerCliArgId::OutputPackageInfoJsonFile)].values[0]});
-        TRY_OR(WriteFile(output_json_path, json), {
-            StdPrintF(StdStream::Err,
-                      "Error: failed to write package info JSON file to '{}': {}\n",
-                      output_json_path,
-                      error);
-            return error;
-        });
-        StdPrintF(StdStream::Err, "Wrote package info JSON: {}\n", output_json_path);
+        auto const output_json_path = cli_args[ToInt(PackagerCliArgId::OutputPackageInfoJsonFile)].values[0];
+        if (output_json_path == "-"_s) {
+            StdPrintF(StdStream::Out, "{}\n", json);
+        } else {
+            TRY_OR(WriteFile(output_json_path, json), {
+                StdPrintF(StdStream::Err,
+                          "Error: failed to write package info JSON file to '{}': {}\n",
+                          output_json_path,
+                          error);
+                return error;
+            });
+            StdPrintF(StdStream::Err, "Wrote package info JSON: {}\n", output_json_path);
+        }
     }
 
     PrintSummary(package_info, arena);

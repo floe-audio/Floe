@@ -8,11 +8,12 @@
 
 struct CommandLineArgDefinition {
     u32 id; // normally an enum, used for lookup
-    String key;
+    String key; // long form, used as --key
     String description;
     String value_type; // for --help, e.g. path, time, num, depth
     bool required;
     int num_values; // 0 for no value, -1 for unlimited, else exact number
+    char short_key {}; // optional single-character alias, used as -x. 0 means unset.
 };
 
 // Synthetic definition for the universally-supported --log-level flag (handled by ParseCommandLineArgs,
@@ -73,7 +74,10 @@ PUBLIC ErrorCodeOr<void> PrintUsage(Writer writer,
 
     static auto print_arg_key_val = [](Writer writer,
                                        CommandLineArgDefinition const& arg) -> ErrorCodeOr<void> {
-        TRY(fmt::FormatToWriter(writer, "  --{}", arg.key));
+        if (arg.short_key)
+            TRY(fmt::FormatToWriter(writer, "  -{}, --{}", arg.short_key, arg.key));
+        else
+            TRY(fmt::FormatToWriter(writer, "      --{}", arg.key));
 
         switch (arg.num_values) {
             case 0: break;
@@ -337,7 +341,11 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
         if (is_log_level) {
             expected_num_values = k_log_level_arg_def.num_values;
         } else {
-            def_index = FindIf(arg_defs, [&](auto const& arg) { return arg.key == key; });
+            def_index = FindIf(arg_defs, [&](auto const& arg) {
+                if (arg.key == key) return true;
+                if (arg.short_key && key.size == 1 && key[0] == arg.short_key) return true;
+                return false;
+            });
             if (!def_index) {
                 TRY(fmt::FormatToWriter(writer, "Unknown option: {}\n", key));
                 return error(CliError::InvalidArguments);
@@ -488,6 +496,8 @@ consteval Array<CommandLineArgDefinition, N> MakeCommandLineArgDefs(CommandLineA
         for (auto const& other_arg : args) {
             if (&arg == &other_arg) continue;
             if (arg.key == other_arg.key) throw "MakeCommandLineArgDefs: duplicate key";
+            if (arg.short_key && arg.short_key == other_arg.short_key)
+                throw "MakeCommandLineArgDefs: duplicate short_key";
         }
     }
 

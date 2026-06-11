@@ -48,14 +48,14 @@ These examples use bash syntax.
 ```bash
 # Creates a .floe-pkg from the Slow library and the Slow Factory Presets.
 # Slow and "Slow Factory Presets" are folders in the current directory.
-./floe-packager --library-folders "Slow" \
-                --preset-folders "Slow Factory Presets" \
-                --output-folder .
+./floe-packager --library-folder "Slow" \
+                --preset-folder "Slow Factory Presets" \
+                --output-dir .
 
 # Creates a .floe-pkg containing multiple libraries and no presets
-./floe-packager --library-folders "C:/Users/Sam/Floe-Dev/Strings" \
-                                  "C:/Users/Sam/Floe-Dev/Common-IRs" \
-                --output-folder "C:/Users/Sam/Floe-Dev/Releases" \
+./floe-packager --library-folder "C:/Users/Sam/Floe-Dev/Strings" \
+                                 "C:/Users/Sam/Floe-Dev/Common-IRs" \
+                --output-dir "C:/Users/Sam/Floe-Dev/Releases" \
                 --package-name "FrozenPlain - Strings"
 ```
 

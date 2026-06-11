@@ -232,6 +232,43 @@ TEST_CASE(TestParseCommandLineArgs) {
             CHECK(buffer.size > 0);
         }
 
+        SUBCASE("short alias resolves to same def as long key") {
+            enum class ShortArgId : u8 { Output, Verbose, Count };
+            constexpr auto k_defs = MakeCommandLineArgDefs<ShortArgId>({
+                {
+                    .id = (u32)ShortArgId::Output,
+                    .key = "output",
+                    .description = "desc",
+                    .value_type = "path",
+                    .required = false,
+                    .num_values = 1,
+                    .short_key = 'o',
+                },
+                {
+                    .id = (u32)ShortArgId::Verbose,
+                    .key = "verbose",
+                    .description = "desc",
+                    .value_type = "",
+                    .required = false,
+                    .num_values = 0,
+                    .short_key = 'v',
+                },
+            });
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"-o"_s, "out.txt", "-v"},
+                                                k_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                });
+            auto const args = REQUIRE_UNWRAP(o);
+            CHECK(args[ToInt(ShortArgId::Output)].was_provided);
+            CHECK(args[ToInt(ShortArgId::Output)].values == Array {"out.txt"_s});
+            CHECK(args[ToInt(ShortArgId::Verbose)].was_provided);
+        }
+
         SUBCASE("arg that requires exactly 2 values") {
             auto const o = ParseCommandLineArgs(writer,
                                                 a,
