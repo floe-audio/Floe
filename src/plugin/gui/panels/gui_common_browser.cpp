@@ -1612,6 +1612,19 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
 
             if (!MatchesFilterSearch(lib->name, context.state.filter_search)) continue;
 
+            RightClickMenuState::Function const lib_right_click_menu =
+                (lib_hash != sample_lib::k_builtin_library_id)
+                    ? [](GuiBuilder& builder,
+                         BrowserPopupContext& context,
+                         BrowserPopupOptions const& options) {
+                          if (options.library_filters)
+                              DoLibraryRightClickMenu(builder,
+                                                      context,
+                                                      context.state.right_click_menu_state,
+                                                      *options.library_filters);
+                      }
+                    : RightClickMenuState::Function {nullptr};
+
             Box button;
             if (library_filters.card_view) {
                 auto const folder = &lib->root_folders[ToInt(library_filters.resource_type)];
@@ -1664,6 +1677,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                                                   ? " Instruments"_s
                                                                   : " IRs"_s,
                                           .default_collapsed = true,
+                                          .right_click_menu = lib_right_click_menu,
                                           .store = &context.store,
                                           .name = library_filters.card_name_prefix.size
                                                       ? (String)fmt::Format(builder.arena,
@@ -1723,20 +1737,8 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                     });
             }
 
-            if (lib_hash != sample_lib::k_builtin_library_id)
-                DoRightClickMenuForBox(builder,
-                                       context.state,
-                                       button,
-                                       lib_hash,
-                                       [](GuiBuilder& builder,
-                                          BrowserPopupContext& context,
-                                          BrowserPopupOptions const& options) {
-                                           if (options.library_filters)
-                                               DoLibraryRightClickMenu(builder,
-                                                                       context,
-                                                                       context.state.right_click_menu_state,
-                                                                       *options.library_filters);
-                                       });
+            if (!library_filters.card_view && lib_right_click_menu)
+                DoRightClickMenuForBox(builder, context.state, button, lib_hash, lib_right_click_menu);
         }
 
         if (library_filters.additional_pseudo_card) {
