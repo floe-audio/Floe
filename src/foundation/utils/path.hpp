@@ -435,6 +435,72 @@ PUBLIC ErrorCodeOr<Win32Path> MakePathForWin32(String path, ArenaAllocator& aren
     return path::MakePathForWin32(ArrayT<WString>({Widen(arena, path).Value()}), arena, long_path_prefix);
 }
 
+// Returns true if `path` is a valid file path on Windows, macOS, and Linux. Validates each component
+// (split on '/') for forbidden characters, reserved Windows device names, and trailing dot/space.
+// On failure, writes one or more human-readable reasons to `error_writer`.
+PUBLIC bool IsPortableAcrossOs(String path, Writer error_writer) {
+    constexpr String k_reserved[] = {"CON",  "PRN",  "AUX",  "NUL",  "COM0", "COM1", "COM2", "COM3",
+                                     "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT0", "LPT1",
+                                     "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"};
+    constexpr String k_forbidden = "<>:\"|?*\\"_s;
+
+    bool valid = true;
+    usize start = 0;
+    for (usize i = 0; i <= path.size; ++i) {
+        bool const at_end = (i == path.size);
+        if (!at_end && path[i] != '/') continue;
+
+        auto const component = path.SubSpan(start, i - start);
+        start = i + 1;
+        if (component.size == 0) continue;
+
+        for (auto c : component) {
+            if (Contains(k_forbidden, c) || (u8)c < 0x20) {
+                auto _ = fmt::FormatToWriter(error_writer,
+                                             "path '{}' contains character invalid on Windows: 0x{02x}\n",
+                                             path,
+                                             (u8)c);
+                valid = false;
+                break;
+            }
+        }
+
+        auto const last_c = component[component.size - 1];
+        if (last_c == '.' || last_c == ' ') {
+            auto _ = fmt::FormatToWriter(error_writer,
+                                         "path '{}' has component '{}' ending in '{}', invalid on Windows\n",
+                                         path,
+                                         component,
+                                         last_c);
+            valid = false;
+        }
+
+        auto stem = component;
+        if (auto const dot = Find(component, '.')) stem = component.SubSpan(0, *dot);
+        for (auto const& reserved : k_reserved) {
+            if (stem.size != reserved.size) continue;
+            bool match = true;
+            for (usize j = 0; j < stem.size; ++j) {
+                auto const u = (char)((stem[j] >= 'a' && stem[j] <= 'z') ? stem[j] - ('a' - 'A') : stem[j]);
+                if (u != reserved[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                auto _ = fmt::FormatToWriter(error_writer,
+                                             "path '{}' uses reserved Windows device name '{}'\n",
+                                             path,
+                                             component);
+                valid = false;
+                break;
+            }
+        }
+    }
+
+    return valid;
+}
+
 PUBLIC String MakeSafeForFilename(String name, Allocator& allocator) {
     if (name.size == 0) return {};
 

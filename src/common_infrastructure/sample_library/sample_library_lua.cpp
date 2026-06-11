@@ -3052,31 +3052,28 @@ ErrorCodeOr<void> WriteLuaLspDefintionsFile(Writer writer) {
     return k_success;
 }
 
+void ForEachReferencedFile(Library const& lib, FunctionRef<void(LibraryPath)> callback) {
+    if (lib.background_image_path) callback(*lib.background_image_path);
+    if (lib.icon_image_path) callback(*lib.icon_image_path);
+
+    for (auto [key, inst_ptr, _] : lib.insts_by_id)
+        for (auto& region : (*inst_ptr).regions)
+            callback(region.path);
+
+    for (auto [key, ir_ptr, _] : lib.irs_by_id)
+        callback((*ir_ptr).path);
+}
+
 bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer) {
     bool success = true;
-    auto check_file = [&](LibraryPath path) {
+    ForEachReferencedFile(lib, [&](LibraryPath path) {
         auto outcome = lib.create_file_reader(lib, path);
         if (outcome.HasError()) {
             auto _ =
                 fmt::FormatToWriter(error_writer, "Error: file in Lua \"{}\": {}.\n", path, outcome.Error());
             success = false;
         }
-    };
-
-    if (lib.background_image_path) check_file(*lib.background_image_path);
-    if (lib.icon_image_path) check_file(*lib.icon_image_path);
-
-    for (auto [key, inst_ptr, _] : lib.insts_by_id) {
-        auto inst = *inst_ptr;
-        for (auto& region : inst.regions)
-            check_file(region.path);
-    }
-
-    for (auto [key, ir_ptr, _] : lib.irs_by_id) {
-        auto ir = *ir_ptr;
-        check_file(ir.path);
-    }
-
+    });
     return success;
 }
 

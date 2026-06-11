@@ -101,13 +101,15 @@ void WriterFinalise(mz_zip_archive& zip);
 ErrorCodeOr<Optional<String>> WriterAddLibrary(mz_zip_archive& zip,
                                                sample_lib::Library const& lib,
                                                ArenaAllocator& scratch_arena,
-                                               String program_name);
+                                               String program_name,
+                                               FunctionRef<bool(String subpath)> include_file = {});
 
 ErrorCodeOr<void> WriterAddPresetsFolder(mz_zip_archive& zip,
                                          String folder,
                                          ArenaAllocator& scratch_arena,
                                          String program_name,
-                                         FunctionRef<void(String, Span<u8 const>)> file_read_hook = {});
+                                         FunctionRef<void(String, Span<u8 const>)> file_read_hook = {},
+                                         FunctionRef<bool(String subpath)> include_file = {});
 
 // If a file already exists in the zip, we don't replace it, we just skip it.
 ErrorCodeOr<void>

@@ -11,6 +11,7 @@ enum class PackagerCliArgId : u8 {
     PackageName,
     OutputPackageInfoJsonFile,
     Encrypt,
+    OmitUnreferenced,
     Count,
 };
 
@@ -69,6 +70,16 @@ auto constexpr k_packager_command_line_args_defs = MakeCommandLineArgDefs<Packag
         .key = "encrypt",
         .description = "Encrypt the output package. A random content key is generated and printed to stdout. "
                        "Output will be .floe-pkg-enc instead of .floe-pkg.",
+        .value_type = {},
+        .required = false,
+        .num_values = 0,
+    },
+    {
+        .id = (u32)PackagerCliArgId::OmitUnreferenced,
+        .key = "omit-unreferenced",
+        .description = "Skip files that aren't actually used: for libraries, files not referenced from Lua "
+                       "(samples, images, IRs) or .lua/license files; for preset folders, files that "
+                       "aren't presets or preset-bank info files.",
         .value_type = {},
         .required = false,
         .num_values = 0,

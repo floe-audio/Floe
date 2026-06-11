@@ -150,7 +150,8 @@ static ErrorCodeOr<void> WriterAddAllFiles(mz_zip_archive& zip,
                                            String folder,
                                            ArenaAllocator& scratch_arena,
                                            Span<String const> subdirs_in_zip,
-                                           FunctionRef<void(String, Span<u8 const>)> file_read_hook) {
+                                           FunctionRef<void(String, Span<u8 const>)> file_read_hook,
+                                           FunctionRef<bool(String subpath)> include_file = {}) {
     auto it = TRY(dir_iterator::RecursiveCreate(scratch_arena,
                                                 folder,
                                                 {
@@ -166,6 +167,7 @@ static ErrorCodeOr<void> WriterAddAllFiles(mz_zip_archive& zip,
         // we will manually add the checksums file later
         if (entry->subpath == k_checksums_file) continue;
         if (path::IgnorableSystemFile(entry->subpath)) continue;
+        if (include_file && !include_file(entry->subpath)) continue;
 
         DynamicArray<char> archive_path {inner_arena};
         path::JoinAppend(archive_path, subdirs_in_zip);
@@ -232,7 +234,8 @@ static void WriterAddChecksumForFolder(mz_zip_archive& zip,
 ErrorCodeOr<Optional<String>> WriterAddLibrary(mz_zip_archive& zip,
                                                sample_lib::Library const& lib,
                                                ArenaAllocator& scratch_arena,
-                                               String program_name) {
+                                               String program_name,
+                                               FunctionRef<bool(String subpath)> include_file) {
     if (lib.file_format_specifics.tag == sample_lib::FileFormat::Mdata) {
         LogDebug(ModuleName::Package, "Adding mdata file for library '{}'", lib.path);
         auto const mdata = TRY(ReadEntireFile(lib.path, scratch_arena)).ToByteSpan();
@@ -255,7 +258,7 @@ ErrorCodeOr<Optional<String>> WriterAddLibrary(mz_zip_archive& zip,
                                          scratch_arena)};
     auto const subdirs_str = path::Join(scratch_arena, subdirs, path::Format::Posix);
 
-    TRY(WriterAddAllFiles(zip, *path::Directory(lib.path), scratch_arena, subdirs, {}));
+    TRY(WriterAddAllFiles(zip, *path::Directory(lib.path), scratch_arena, subdirs, {}, include_file));
     WriterAddChecksumForFolder(zip, subdirs_str, scratch_arena, program_name);
     return subdirs_str;
 }
@@ -264,9 +267,10 @@ ErrorCodeOr<void> WriterAddPresetsFolder(mz_zip_archive& zip,
                                          String folder,
                                          ArenaAllocator& scratch_arena,
                                          String program_name,
-                                         FunctionRef<void(String, Span<u8 const>)> file_read_hook) {
+                                         FunctionRef<void(String, Span<u8 const>)> file_read_hook,
+                                         FunctionRef<bool(String subpath)> include_file) {
     auto const subdirs = Array {k_presets_subdir, path::Filename(folder)};
-    TRY(WriterAddAllFiles(zip, folder, scratch_arena, subdirs, file_read_hook));
+    TRY(WriterAddAllFiles(zip, folder, scratch_arena, subdirs, file_read_hook, include_file));
     WriterAddChecksumForFolder(zip,
                                path::Join(scratch_arena, subdirs, path::Format::Posix),
                                scratch_arena,

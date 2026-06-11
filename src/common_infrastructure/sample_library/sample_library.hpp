@@ -409,6 +409,7 @@ ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments
 ErrorCodeOr<void> WriteLuaLspDefintionsFile(Writer writer);
 String LuaDefinitionsFilepath(ArenaAllocator& arena);
 ErrorCodeOr<void> WriteLuaLspDefintionsFile(ArenaAllocator& scratch); // writes to standard location
+void ForEachReferencedFile(Library const& lib, FunctionRef<void(LibraryPath)> callback);
 bool CheckAllReferencedFilesExist(Library const& lib, Writer error_writer);
 
 } // namespace sample_lib
