@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <execinfo.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <semaphore.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -242,6 +243,23 @@ ErrorCodeOr<String> ReadAllStdin(Allocator& allocator) {
         dyn::AppendSpan(result, Span {buffer, (usize)read});
     }
     return result.ToOwnedSpan();
+}
+
+StdinReadResult ReadStdinByte(u8& out, u32 timeout_ms) {
+    while (true) {
+        pollfd pfd {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0};
+        auto const pr = poll(&pfd, 1, (int)timeout_ms);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            return StdinReadResult::Error;
+        }
+        if (pr == 0) return StdinReadResult::Timeout;
+        auto const r = ::read(STDIN_FILENO, &out, 1);
+        if (r == 1) return StdinReadResult::GotByte;
+        if (r == 0) return StdinReadResult::Eof;
+        if (errno == EINTR) continue;
+        return StdinReadResult::Error;
+    }
 }
 
 bool StdinIsTty() { return isatty(STDIN_FILENO) != 0; }

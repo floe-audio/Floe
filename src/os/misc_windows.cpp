@@ -169,6 +169,24 @@ ErrorCodeOr<String> ReadAllStdin(Allocator& allocator) {
     return result.ToOwnedSpan();
 }
 
+StdinReadResult ReadStdinByte(u8& out, u32 timeout_ms) {
+    HANDLE stdin_handle = GetStdHandle(STD_INPUT_HANDLE);
+    if (stdin_handle == INVALID_HANDLE_VALUE || stdin_handle == nullptr) return StdinReadResult::Error;
+
+    auto const wait = WaitForSingleObject(stdin_handle, timeout_ms);
+    if (wait == WAIT_TIMEOUT) return StdinReadResult::Timeout;
+    if (wait != WAIT_OBJECT_0) return StdinReadResult::Error;
+
+    DWORD num_read = 0;
+    if (!ReadFile(stdin_handle, &out, 1, &num_read, nullptr)) {
+        auto const err = GetLastError();
+        if (err == ERROR_BROKEN_PIPE || err == ERROR_HANDLE_EOF) return StdinReadResult::Eof;
+        return StdinReadResult::Error;
+    }
+    if (num_read == 0) return StdinReadResult::Eof;
+    return StdinReadResult::GotByte;
+}
+
 bool StdinIsTty() {
     HANDLE stdin_handle = GetStdHandle(STD_INPUT_HANDLE);
     if (stdin_handle == INVALID_HANDLE_VALUE || stdin_handle == nullptr) return false;

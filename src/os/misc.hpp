@@ -254,6 +254,9 @@ void StdPrintFLocked(StdStream stream, String format, Args const&... args) {
 
 ErrorCodeOr<String> ReadAllStdin(Allocator& allocator);
 
+enum class StdinReadResult : u8 { GotByte, Timeout, Eof, Error };
+StdinReadResult ReadStdinByte(u8& out, u32 timeout_ms);
+
 bool StdinIsTty();
 
 s128 NanosecondsSinceEpoch(); // signal-safe
