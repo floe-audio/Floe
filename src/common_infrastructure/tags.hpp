@@ -349,7 +349,8 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Western: return {"western"_s, ""_s};
 
         // Pitch
-        case TagType::MultiPitched: return {"multi-pitched"_s, "Contains multiple distinct notes"_s};
+        case TagType::MultiPitched:
+            return {"multi-pitched"_s, "Contains multiple distinct notes (excluding octave unison)"_s};
         case TagType::NonPitched: return {"non-pitched"_s, "Lacks identifiable musical pitch"_s};
         case TagType::Dissonant: return {"dissonant"_s, "Contains harmonically clashing pitches"_s};
 
@@ -389,9 +390,11 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::Transition: return {"transition"_s, "Section change element"_s};
 
         // Timbre modulation
-        case TagType::Pulsing: return {"pulsing"_s, "Rhythmic modulation"_s};
-        case TagType::Evolving: return {"evolving"_s, "Slow changing over time"_s};
-        case TagType::Fluctuating: return {"fluctuating"_s, "Irregular movement"_s};
+        case TagType::Pulsing: return {"pulsing"_s, "Obvious rhythmic pulse"_s};
+        case TagType::Evolving:
+            return {"evolving"_s, "Significantly notable slow morphing changes over time"_s};
+        case TagType::Fluctuating:
+            return {"fluctuating"_s, "Significant fast or semi-fast irregular movement"_s};
         case TagType::Glitched: return {"glitched"_s, "Digital error artefacts"_s};
         case TagType::Grainy: return {"grainy"_s, "Audibly composed of tiny grains"_s};
 
@@ -412,7 +415,7 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
         case TagType::PhysicalModelling: return {"physical modelling"_s, "Simulating real-world physics"_s};
 
         // Timbre (frequency)
-        case TagType::Airy: return {"airy"_s, "Open, spacious, light"_s};
+        case TagType::Airy: return {"airy"_s, "Soft, open, high-frequency hiss"_s};
         case TagType::CircuitBent:
             return {"circuit bent"_s, "Characteristic of modified electronic devices"_s};
         case TagType::Cold: return {"cold"_s, "Thin, clinical, lacking warmth"_s};
@@ -439,11 +442,11 @@ PUBLIC constexpr TagInfo GetTagInfo(TagType t) {
                 "Contains noise components, imperfect. If the sound is 100% noise use `noise` instead."_s};
         case TagType::Pure: return {"pure"_s, "Free from noise, clean sine-like quality"_s};
         case TagType::Resonant: return {"resonant"_s, "Strong resonant peaks in frequency"_s};
-        case TagType::Rumbly: return {"rumbly"_s, "Low frequency non-pitch sustained noise"_s};
+        case TagType::Rumbly: return {"rumbly"_s, "Very low frequency non-pitch sustained noise"_s};
         case TagType::Saturated: return {"saturated"_s, "Subtly distorted, harmonically enhanced"_s};
         case TagType::Smooth: return {"smooth"_s, "Even, consistent, without sharp edges"_s};
         case TagType::Thin: return {"thin"_s, "Lacking in fullness, narrow frequency range"_s};
-        case TagType::Warm: return {"warm"_s, "Rich in harmonics, pleasant mid-range"_s};
+        case TagType::Warm: return {"warm"_s, "Pleasant mid-range and low-mid-range, rounded harmonics"_s};
         case TagType::Ringing: return {"ringing"_s, "Clear high unrelenting resonant sound"_s};
         case TagType::Whining: return {"whining"_s, "High-pitched fluctuating sound"_s};
 
