@@ -2935,17 +2935,15 @@ fn doTarget(
             .embedded_files = embedded_files,
         });
 
-        const codesigned_exe = configure_binaries.maybeAddWindowsCodesign(
+        const installed = configure_binaries.installProcessedExecutable(
             exe,
             .{ .description = "Floe Packager" },
         );
-
-        const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-        top_level_steps.install_bin.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(installed.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
-            .path = codesigned_exe,
+            .path = installed.path,
         };
     };
 
@@ -2954,8 +2952,8 @@ fn doTarget(
             .common_infrastructure = common_infrastructure,
         });
 
-        const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_bin.dependOn(&install.step);
+        const installed = configure_binaries.installProcessedExecutable(exe, null);
+        top_level_steps.install_bin.dependOn(installed.step);
     }
 
     {
@@ -2964,8 +2962,8 @@ fn doTarget(
             .embedded_files = embedded_files,
         });
 
-        const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_bin.dependOn(&install.step);
+        const installed = configure_binaries.installProcessedExecutable(exe, null);
+        top_level_steps.install_bin.dependOn(installed.step);
 
         // IMPROVE: export preset-tool as a production artifact?
     }
@@ -2975,17 +2973,15 @@ fn doTarget(
             .common_infrastructure = common_infrastructure,
         });
 
-        const codesigned_exe = configure_binaries.maybeAddWindowsCodesign(
+        const installed = configure_binaries.installProcessedExecutable(
             exe,
             .{ .description = "Floe Library Inspector" },
         );
-
-        const install = ctx.b.addInstallBinFile(codesigned_exe, exe.out_filename);
-        top_level_steps.install_bin.dependOn(&install.step);
+        top_level_steps.install_bin.dependOn(installed.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
-            .path = codesigned_exe,
+            .path = installed.path,
         };
     };
 
@@ -3013,8 +3009,8 @@ fn doTarget(
     if (ctx.build_mode != .production) {
         const exe = buildStandalone(ctx, cfg, .{ .plugin = plugin });
 
-        const install = ctx.b.addInstallArtifact(exe, .{});
-        top_level_steps.install_bin.dependOn(&install.step);
+        const installed = configure_binaries.installProcessedExecutable(exe, null);
+        top_level_steps.install_bin.dependOn(installed.step);
 
         if (targetCanRunNatively(cfg.target)) {
             const screenshot_filter = ctx.b.option(

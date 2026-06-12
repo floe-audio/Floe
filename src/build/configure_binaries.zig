@@ -103,8 +103,7 @@ pub fn maybeAddWindowsCodesign(
     return cmd.output_file;
 }
 
-// These helpers are for dealing with Nix-related issues when we are building inside a Nix devshell, but the host is
-// not NixOS (such as how we use Github Actions Ubuntu runners).
+// These helpers are for dealing with Nix-related issues when building inside a Nix devshell.
 const NixHelper = struct {
     binary_patch_needed: ?bool = null,
 
@@ -114,6 +113,7 @@ const NixHelper = struct {
     pub fn maybePatchElfExecutable(self: *NixHelper, compile_step: *std.Build.Step.Compile) std.Build.LazyPath {
         const b = compile_step.step.owner;
 
+        if (compile_step.rootModuleTarget().os.tag != .linux) return compile_step.getEmittedBin();
         if (!self.patchElfNeeded(b)) return compile_step.getEmittedBin();
 
         const dyn_linker = b.graph.env_map.get("FLOE_DYNAMIC_LINKER") orelse return compile_step.getEmittedBin();
@@ -145,6 +145,7 @@ const NixHelper = struct {
     ) std.Build.LazyPath {
         const b = compile_step.step.owner;
 
+        if (compile_step.rootModuleTarget().os.tag != .linux) return compile_step.getEmittedBin();
         if (!self.patchElfNeeded(b)) return compile_step.getEmittedBin();
 
         const rpath = b.graph.env_map.get("FLOE_RPATH") orelse return compile_step.getEmittedBin();
@@ -163,7 +164,7 @@ const NixHelper = struct {
 
     fn patchElfNeeded(self: *NixHelper, b: *std.Build) bool {
         if (self.binary_patch_needed == null)
-            self.binary_patch_needed = builtin.os.tag == .linux and inNixShell(b) and !hostIsNixOS();
+            self.binary_patch_needed = builtin.os.tag == .linux and inNixShell(b);
 
         return self.binary_patch_needed.?;
     }
@@ -171,14 +172,43 @@ const NixHelper = struct {
     fn inNixShell(b: *std.Build) bool {
         return b.graph.env_map.get("IN_NIX_SHELL") != null;
     }
-
-    fn hostIsNixOS() bool {
-        std.fs.accessAbsolute("/etc/NIXOS", .{}) catch return false;
-        return true;
-    }
 };
 
 pub var nix_helper: NixHelper = .{};
+
+pub fn maybeProcessExecutable(
+    compile_step: *std.Build.Step.Compile,
+    codesign: ?CodesignInfo,
+) std.Build.LazyPath {
+    return switch (compile_step.rootModuleTarget().os.tag) {
+        .windows => if (codesign) |c|
+            maybeAddWindowsCodesign(compile_step, c)
+        else
+            compile_step.getEmittedBin(),
+        .linux => nix_helper.maybePatchElfExecutable(compile_step),
+        else => compile_step.getEmittedBin(),
+    };
+}
+
+pub fn installProcessedExecutable(
+    compile_step: *std.Build.Step.Compile,
+    codesign: ?CodesignInfo,
+) struct {
+    step: *std.Build.Step,
+    path: std.Build.LazyPath,
+} {
+    const b = compile_step.step.owner;
+    const processed = maybeProcessExecutable(compile_step, codesign);
+    const install = b.addInstallBinFile(processed, compile_step.out_filename);
+    if (compile_step.producesPdbFile()) {
+        const pdb_install = b.addInstallBinFile(
+            compile_step.getEmittedPdb(),
+            b.fmt("{s}.pdb", .{compile_step.name}),
+        );
+        install.step.dependOn(&pdb_install.step);
+    }
+    return .{ .step = &install.step, .path = processed };
+}
 
 pub const ConfiguredPlugin = struct {
     plugin_path: std.Build.LazyPath, // Path to the plugin (DSO or bundle folder).
