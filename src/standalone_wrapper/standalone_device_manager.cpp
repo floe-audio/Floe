@@ -3,10 +3,14 @@
 
 #include "standalone_device_manager.hpp"
 
+#include <FLAC/stream_encoder.h>
+
 #include "foundation/memory/allocators.hpp"
 #include "utils/logger/logger.hpp"
 
 #include "common_infrastructure/error_reporting.hpp"
+
+static bool RenderEnabled(DeviceManager const& dm) { return dm.audio.render_flac_path.HasValue(); }
 
 constexpr persistent_store::Id k_audio_device_store_key = HashFnv1a("standalone-audio-output-device");
 constexpr persistent_store::Id k_midi_device_store_key = HashFnv1a("standalone-midi-input-device");
@@ -73,6 +77,23 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
     clap_event_midi clap_events[k_max_events];
     int num_events = 0;
 
+    auto const push_clap_event = [&](u8 status, u8 d1, u8 d2) {
+        if (num_events >= (int)k_max_events) return;
+        auto const force_zero = dm->midi.force_channel_zero && status < 0xf0;
+        clap_events[num_events] = {
+            .header =
+                {
+                    .size = sizeof(clap_event_midi),
+                    .time = 0,
+                    .type = CLAP_EVENT_MIDI,
+                    .flags = CLAP_EVENT_IS_LIVE,
+                },
+            .port_index = 0,
+            .data = {force_zero ? (u8)(status & 0b11110000) : status, d1, d2},
+        };
+        ++num_events;
+    };
+
     // Claim the stream for the duration of the read; CloseMidiStream waits for the claim to clear
     // before Pm_Close. CAS failure means the stream is closed (or being closed) — skip.
     auto midi_state = MidiState::Open;
@@ -81,33 +102,19 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
                                                     RmwMemoryOrder::AcquireRelease,
                                                     LoadMemoryOrder::Relaxed)) {
         ASSERT_HOT(dm->midi.stream.handle);
-        num_events = Pm_Read(dm->midi.stream.handle, pm_events, (int)k_max_events);
+        auto const n = Pm_Read(dm->midi.stream.handle, pm_events, (int)k_max_events);
         dm->midi.stream.state.Store(MidiState::Open, StoreMemoryOrder::Release);
         // Errors are recoverable: pmBufferOverflow is expected when nothing drained the stream for
         // a while (e.g. MIDI played during an audio device swap). Drop the data and carry on.
-        if (num_events < 0) num_events = 0;
-        for (auto const i : Range(num_events)) {
-            auto const status = (u8)Pm_MessageStatus(pm_events[i].message);
-            // System messages (>= 0xf0) have no channel nibble to zero.
-            auto const force_zero = dm->midi.force_channel_zero && status < 0xf0;
-            clap_events[i] = {
-                .header =
-                    {
-                        .size = sizeof(clap_event_midi),
-                        .time = 0,
-                        .type = CLAP_EVENT_MIDI,
-                        .flags = CLAP_EVENT_IS_LIVE,
-                    },
-                .port_index = 0,
-                .data =
-                    {
-                        force_zero ? (u8)(status & 0b11110000) : status,
-                        (u8)Pm_MessageData1(pm_events[i].message),
-                        (u8)Pm_MessageData2(pm_events[i].message),
-                    },
-            };
-        }
+        for (auto const i : Range(n < 0 ? 0 : n))
+            push_clap_event((u8)Pm_MessageStatus(pm_events[i].message),
+                            (u8)Pm_MessageData1(pm_events[i].message),
+                            (u8)Pm_MessageData2(pm_events[i].message));
     }
+
+    DeviceManager::Midi::RawMessage injected;
+    while (num_events < (int)k_max_events && dm->midi.injected.Pop(injected))
+        push_clap_event(injected.status, injected.data1, injected.data2);
 
     if (!dm->host_callbacks.render) return;
 
@@ -124,6 +131,19 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
                                   frames_done == 0 ? (u32)num_events : 0);
         frames_done += chunk_frames;
     }
+
+    if (auto* enc = dm->audio.render_encoder) {
+        constexpr u32 k_chunk_frames = 512;
+        FLAC__int32 buf[k_chunk_frames * 2];
+        u32 written = 0;
+        while (written < num_buffer_frames) {
+            auto const n = Min(num_buffer_frames - written, k_chunk_frames);
+            for (u32 i = 0; i < n * 2; ++i)
+                buf[i] = (FLAC__int32)(Clamp(output[(written * 2) + i], -1.0f, 1.0f) * 32767.0f);
+            FLAC__stream_encoder_process_interleaved(enc, buf, n);
+            written += n;
+        }
+    }
 }
 
 static Optional<ma_backend> FindAudioBackend(String name) {
@@ -139,6 +159,11 @@ static Optional<ma_backend> FindAudioBackend(String name) {
 
 static void EnumerateAudioBackends(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
+    if (RenderEnabled(dm)) {
+        dm.audio.backends = {};
+        dm.audio.backend_ids = {};
+        return;
+    }
     ma_backend enabled[MA_BACKEND_COUNT];
     size_t count = 0;
     if (ma_get_enabled_backends(enabled, MA_BACKEND_COUNT, &count) != MA_SUCCESS) {
@@ -185,13 +210,20 @@ static Optional<PmDeviceID> FindMidiDeviceId(DeviceManager& dm, String name) {
 static void EnumerateAudioDevices(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
     if (!dm.audio.context_initialised) {
-        auto const chosen_backend = FindAudioBackend(dm.audio.selected_backend_name);
         bool ok = false;
-        if (chosen_backend) {
-            ma_backend backends[1] = {*chosen_backend};
+        Optional<ma_backend> chosen_backend {};
+        if (RenderEnabled(dm)) {
+            ma_backend backends[1] = {ma_backend_null};
             ok = ma_context_init(backends, 1, nullptr, &dm.audio.context) == MA_SUCCESS;
+            ASSERT(ok, "ma_backend_null must be available in render mode");
+        } else {
+            chosen_backend = FindAudioBackend(dm.audio.selected_backend_name);
+            if (chosen_backend) {
+                ma_backend backends[1] = {*chosen_backend};
+                ok = ma_context_init(backends, 1, nullptr, &dm.audio.context) == MA_SUCCESS;
+            }
+            if (!ok) ok = ma_context_init(nullptr, 0, nullptr, &dm.audio.context) == MA_SUCCESS;
         }
-        if (!ok) ok = ma_context_init(nullptr, 0, nullptr, &dm.audio.context) == MA_SUCCESS;
         if (!ok) {
             if (chosen_backend)
                 ReportAudioError(
@@ -274,6 +306,13 @@ static void AudioNotificationCallback(ma_device_notification const* notification
     dm->audio.stream.lost.Store(true, StoreMemoryOrder::Release);
 }
 
+static void FinaliseFlacEncoder(DeviceManager& dm) {
+    if (!dm.audio.render_encoder) return;
+    FLAC__stream_encoder_finish(dm.audio.render_encoder);
+    FLAC__stream_encoder_delete(dm.audio.render_encoder);
+    dm.audio.render_encoder = nullptr;
+}
+
 static void CloseAudio(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
     if (!dm.audio.stream.device) return;
@@ -283,8 +322,32 @@ static void CloseAudio(DeviceManager& dm) {
     ma_device_uninit(&*dm.audio.stream.device);
     dm.audio.stream.device = k_nullopt;
 
+    // ma_device_uninit blocks until the audio thread has stopped, so the encoder is no longer in
+    // use here.
+    FinaliseFlacEncoder(dm);
+
     dm.audio.stream.thread_setup_done.Store(false, StoreMemoryOrder::Relaxed);
     dm.audio.stream.lost.Store(false, StoreMemoryOrder::Release);
+}
+
+static bool InitFlacEncoder(DeviceManager& dm) {
+    ASSERT(!dm.audio.render_encoder);
+    auto* enc = FLAC__stream_encoder_new();
+    if (!enc) return false;
+    FLAC__stream_encoder_set_channels(enc, 2);
+    FLAC__stream_encoder_set_bits_per_sample(enc, 16);
+    FLAC__stream_encoder_set_sample_rate(enc, dm.audio.stream.device->sampleRate);
+    FLAC__stream_encoder_set_compression_level(enc, 5);
+
+    auto const path = NullTerminated(*dm.audio.render_flac_path, dm.enum_arena);
+    auto const status = FLAC__stream_encoder_init_file(enc, path, nullptr, nullptr);
+    if (status != FLAC__STREAM_ENCODER_INIT_STATUS_OK) {
+        LogError(ModuleName::Standalone, "FLAC encoder init failed ({})", (int)status);
+        FLAC__stream_encoder_delete(enc);
+        return false;
+    }
+    dm.audio.render_encoder = enc;
+    return true;
 }
 
 static bool InitAudioDevice(DeviceManager& dm, String name) {
@@ -300,7 +363,7 @@ static bool InitAudioDevice(DeviceManager& dm, String name) {
     config.playback.format = ma_format_f32;
     config.playback.channels = 2;
     config.playback.pDeviceID = chosen_id ? &*chosen_id : nullptr;
-    config.sampleRate = 0; // use default
+    config.sampleRate = RenderEnabled(dm) ? 44100u : 0u; // 0 = use device default
     config.dataCallback = AudioCallback;
     config.notificationCallback = AudioNotificationCallback;
     config.pUserData = &dm;
@@ -326,6 +389,12 @@ static bool InitAudioDevice(DeviceManager& dm, String name) {
         CloseAudio(dm);
         return false;
     }
+
+    if (RenderEnabled(dm) && !InitFlacEncoder(dm)) {
+        CloseAudio(dm);
+        return false;
+    }
+
     return true;
 }
 
@@ -368,6 +437,7 @@ static void ActivatePluginAndStartAudio(DeviceManager& dm) {
 
 static void OpenMidiStream(DeviceManager& dm, String name) {
     ASSERT(g_is_logical_main_thread);
+    if (dm.midi.skip_device_input) return;
     if (!dm.midi.portmidi_initialised) return;
     ASSERT(dm.midi.stream.handle == nullptr);
     ASSERT(dm.midi.stream.state.Load(LoadMemoryOrder::Relaxed) == DeviceManager::Midi::Stream::State::Closed);
@@ -472,16 +542,19 @@ static void SetupDeviceStore(DeviceManager& dm, ArenaAllocator& arena) {
     }
 }
 
-void InitDevices(DeviceManager& dm, ArenaAllocator& arena) {
-    ASSERT(g_is_logical_main_thread);
-
-    SetupDeviceStore(dm, arena);
-
+static void InitPortMidi(DeviceManager& dm) {
+    if (dm.midi.skip_device_input) return;
     if (auto result = Pm_Initialize(); result != pmNoError)
         ReportMidiError(dm, {}, FromNullTerminated(Pm_GetErrorText(result)));
     else
         dm.midi.portmidi_initialised = true;
+}
 
+void InitDevices(DeviceManager& dm, ArenaAllocator& arena) {
+    ASSERT(g_is_logical_main_thread);
+
+    SetupDeviceStore(dm, arena);
+    InitPortMidi(dm);
     EnumerateAllDevices(dm);
 
     if (OpenAudioDeviceWithFallback(dm, dm.audio.selected_name)) ActivatePluginAndStartAudio(dm);
@@ -511,6 +584,7 @@ static void ApplyAudioSelection(DeviceManager& dm, String name) {
 
 static void ApplyMidiSelection(DeviceManager& dm, String name) {
     ASSERT(g_is_logical_main_thread);
+    if (dm.midi.skip_device_input) return;
     dyn::Assign(dm.midi.selected_name, name);
     SaveDeviceSelection(dm, k_midi_device_store_key, name);
     CloseMidiStream(dm);
@@ -548,16 +622,15 @@ static void ApplyRefresh(DeviceManager& dm) {
         dm.audio.context_initialised = false;
     }
 
-    CloseMidiStream(dm);
-    ClearMidiError(dm);
-    if (dm.midi.portmidi_initialised) {
-        Pm_Terminate();
-        dm.midi.portmidi_initialised = false;
+    if (!dm.midi.skip_device_input) {
+        CloseMidiStream(dm);
+        ClearMidiError(dm);
+        if (dm.midi.portmidi_initialised) {
+            Pm_Terminate();
+            dm.midi.portmidi_initialised = false;
+        }
+        InitPortMidi(dm);
     }
-    if (auto const r = Pm_Initialize(); r != pmNoError)
-        ReportMidiError(dm, {}, FromNullTerminated(Pm_GetErrorText(r)));
-    else
-        dm.midi.portmidi_initialised = true;
 
     EnumerateAllDevices(dm);
 

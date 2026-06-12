@@ -19,6 +19,7 @@
 
 #include "os/filesystem.hpp"
 #include "os/misc.hpp"
+#include "os/threading.hpp"
 #include "utils/cli_arg_parse.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 #include "utils/logger/logger.hpp"
@@ -173,7 +174,15 @@ struct Standalone {
     bool view_realized {};
 
     Optional<UiSize> fixed_window_size {};
+    bool headless = false;
     bool quit = false;
+
+    // Handshake with the stdin MIDI reader thread. Reader sets `eof` on stdin close; main sets
+    // `stop` to ask the reader to exit so it can be joined before teardown.
+    struct {
+        Atomic<bool> stop {false};
+        Atomic<bool> eof {false};
+    } stdin_midi;
 
     // Plugin instance access is controlled by plugin_instance_state. The pointer is only valid
     // to read when the state protocol allows it (Active for audio thread, Active for main thread
@@ -496,6 +505,15 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
 
     inst->plugin->start_processing(inst->plugin);
 
+    if (standalone.headless) {
+        // Make visible to audio thread last. The Release ensures the plugin_instance pointer write
+        // is visible before the state becomes Active.
+        standalone.plugin_instance = inst;
+        standalone.plugin_instance_state.Store(PluginInstanceState::Active, StoreMemoryOrder::Release);
+        success = true;
+        return k_success;
+    }
+
     // Set up GUI
     inst->gui = (clap_plugin_gui const*)inst->plugin->get_extension(inst->plugin, CLAP_EXT_GUI);
     TRY_CLAP(inst->gui);
@@ -602,7 +620,7 @@ static void UnloadPluginInstance(Standalone& standalone) {
 
     inst->plugin->stop_processing(inst->plugin);
 
-    inst->gui->destroy(inst->plugin);
+    if (inst->gui) inst->gui->destroy(inst->plugin);
 
     inst->plugin->deactivate(inst->plugin);
     inst->plugin->destroy(inst->plugin);
@@ -710,12 +728,70 @@ struct RunOptions {
     Optional<String> preset_path;
     Optional<UiSize> fixed_window_size;
     Optional<String> app_id;
+    Optional<String> render_flac_path;
+    bool headless;
+    bool midi_stdin;
 };
+
+static void StdinMidiReaderLoop(Standalone& standalone) {
+    using RawMessage = DeviceManager::Midi::RawMessage;
+    auto const read_byte = [&standalone](u8& out) -> bool {
+        while (!standalone.stdin_midi.stop.Load(LoadMemoryOrder::Acquire)) {
+            switch (ReadStdinByte(out, 100)) {
+                case StdinReadResult::GotByte: return true;
+                case StdinReadResult::Timeout: continue;
+                case StdinReadResult::Eof: return false;
+                case StdinReadResult::Error: return false;
+            }
+        }
+        return false;
+    };
+
+    u8 running_status = 0;
+    while (true) {
+        u8 byte;
+        if (!read_byte(byte)) break;
+
+        u8 status;
+        u8 data1;
+        if (byte & 0x80) {
+            // Real-time messages (0xF8-0xFF) don't reset running status and have no data.
+            if (byte >= 0xF8) {
+                standalone.devices.midi.injected.Push(RawMessage {.status = byte});
+                continue;
+            }
+            // System common messages reset running status; we don't decode them — skip and resync.
+            if (byte >= 0xF0) {
+                running_status = 0;
+                continue;
+            }
+            status = byte;
+            running_status = status;
+            if (!read_byte(data1)) break;
+        } else {
+            // No status byte — must use running status. Drop the byte if there isn't one.
+            if (!running_status) continue;
+            status = running_status;
+            data1 = byte;
+        }
+
+        auto const type = status & 0xF0;
+        u8 data2 = 0;
+        if (type != 0xC0 && type != 0xD0)
+            if (!read_byte(data2)) break;
+        standalone.devices.midi.injected.Push(RawMessage {.status = status, .data1 = data1, .data2 = data2});
+    }
+
+    standalone.stdin_midi.eof.Store(true, StoreMemoryOrder::Release);
+}
 
 static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     auto const& dso_path = options.dso_path;
     Standalone standalone {};
+    standalone.headless = options.headless;
     standalone.devices.midi.force_channel_zero = options.force_midi_channel_zero;
+    standalone.devices.midi.skip_device_input = options.midi_stdin;
+    standalone.devices.audio.render_flac_path = options.render_flac_path;
     standalone.devices.host_callbacks = {
         .ctx = &standalone,
         .render = RenderAudio,
@@ -734,7 +810,7 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     bool const is_external_plugin = dso_path.HasValue();
     Optional<DirectoryWatcher> dir_watcher {};
     DirectoryToWatch dso_dir_to_watch {};
-    if (is_external_plugin) {
+    if (is_external_plugin && !options.headless) {
         auto outcome = CreateDirectoryWatcher(PageAllocator::Instance());
         if (outcome.HasError()) {
             LogWarning(ModuleName::Standalone,
@@ -765,32 +841,46 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     InitDevices(standalone.devices, arena);
     DEFER { DeinitDevices(standalone.devices); };
 
-    standalone.gui_world = puglNewWorld(PUGL_PROGRAM, 0);
-    if (!standalone.gui_world) {
-        LogError(ModuleName::Standalone, "Could not setup window state");
-        return ErrorCode {StandaloneError::WindowError};
-    }
-    DEFER { puglFreeWorld(standalone.gui_world); };
-    {
-        char const* app_id = k_floe_standalone_default_app_id;
-        if (options.app_id) app_id = NullTerminated(*options.app_id, arena);
-        TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, app_id));
-    }
+    if (!options.headless) {
+        standalone.gui_world = puglNewWorld(PUGL_PROGRAM, 0);
+        if (!standalone.gui_world) {
+            LogError(ModuleName::Standalone, "Could not setup window state");
+            return ErrorCode {StandaloneError::WindowError};
+        }
+        {
+            char const* app_id = k_floe_standalone_default_app_id;
+            if (options.app_id) app_id = NullTerminated(*options.app_id, arena);
+            TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, app_id));
+        }
 
-    standalone.gui_view = puglNewView(standalone.gui_world);
+        standalone.gui_view = puglNewView(standalone.gui_world);
+        TRY_PUGL(puglSetViewHint(standalone.gui_view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON));
+        TRY_PUGL(puglSetBackend(standalone.gui_view, puglStubBackend()));
+        puglSetHandle(standalone.gui_view, &standalone);
+        TRY_PUGL(puglSetEventFunc(standalone.gui_view, OnEvent));
+        TRY_PUGL(puglSetViewString(standalone.gui_view, PUGL_WINDOW_TITLE, "Floe"));
+    }
     DEFER {
-        if (standalone.view_realized) puglUnrealize(standalone.gui_view);
-        puglFreeView(standalone.gui_view);
+        if (standalone.gui_view && standalone.view_realized) puglUnrealize(standalone.gui_view);
+        if (standalone.gui_view) puglFreeView(standalone.gui_view);
+        if (standalone.gui_world) puglFreeWorld(standalone.gui_world);
     };
-    TRY_PUGL(puglSetViewHint(standalone.gui_view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON));
-    TRY_PUGL(puglSetBackend(standalone.gui_view, puglStubBackend()));
-    puglSetHandle(standalone.gui_view, &standalone);
-    TRY_PUGL(puglSetEventFunc(standalone.gui_view, OnEvent));
-    TRY_PUGL(puglSetViewString(standalone.gui_view, PUGL_WINDOW_TITLE, "Floe"));
 
     // Load plugin (first time)
     TRY(LoadPluginInstance(standalone, dso_path, arena));
     DEFER { UnloadPluginInstance(standalone); };
+
+    Thread stdin_midi_thread {};
+    if (options.midi_stdin) {
+        LogInfo(ModuleName::Standalone, "Reading raw MIDI bytes from stdin (EOF to exit)");
+        stdin_midi_thread.Start([&standalone] { StdinMidiReaderLoop(standalone); }, "stdin-midi"_s);
+    }
+    DEFER {
+        if (stdin_midi_thread.Joinable()) {
+            standalone.stdin_midi.stop.Store(true, StoreMemoryOrder::Release);
+            stdin_midi_thread.Join();
+        }
+    };
 
     if (options.preset_path) {
         auto* inst = standalone.plugin_instance;
@@ -918,8 +1008,15 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
 
         PollDeviceChanges(standalone.devices);
 
-        auto const st = puglUpdate(standalone.gui_world, 1.0 / 60.0);
-        if (st != PUGL_SUCCESS && st != PUGL_FAILURE) return ErrorCode {st};
+        if (options.midi_stdin && standalone.stdin_midi.eof.Load(LoadMemoryOrder::Acquire)) {
+            SleepThisThread(250); // Tail to help avoid abrupt ends in audio.
+            standalone.quit = true;
+        } else if (options.headless) {
+            SleepThisThread(16);
+        } else {
+            auto const st = puglUpdate(standalone.gui_world, 1.0 / 60.0);
+            if (st != PUGL_SUCCESS && st != PUGL_FAILURE) return ErrorCode {st};
+        }
 
         scratch_arena.ResetCursorAndConsolidateRegions();
     }
@@ -935,6 +1032,9 @@ static int Main(ArgsCstr args) {
     });
     DEFER { GlobalDeinit({.shutdown_error_reporting = true}); };
 
+    // TODO: we should have a OS abstraction for setting the interupt handler (CTRL+C) so we can gracefully
+    // exit the program.
+
     enum class CommandLineArgId : u8 {
         ClapPluginPath,
         ForceMidiChannelZero,
@@ -943,6 +1043,9 @@ static int Main(ArgsCstr args) {
         Preset,
         FixedWindowSize,
         AppId,
+        Headless,
+        MidiStdin,
+        Render,
         Count,
     };
 
@@ -1007,6 +1110,32 @@ static int Main(ArgsCstr args) {
             .required = false,
             .num_values = 1,
         },
+        {
+            .id = (u32)CommandLineArgId::Headless,
+            .key = "headless",
+            .description = "Run without a GUI.",
+            .value_type = {},
+            .required = false,
+            .num_values = 0,
+        },
+        {
+            .id = (u32)CommandLineArgId::MidiStdin,
+            .key = "midi-stdin",
+            .description =
+                "Read raw MIDI bytes (status + data) from stdin and feed them to the plugin instead of opening a PortMidi input device. Exits on stdin EOF.",
+            .value_type = {},
+            .required = false,
+            .num_values = 0,
+        },
+        {
+            .id = (u32)CommandLineArgId::Render,
+            .key = "render",
+            .description =
+                "Render audio output to a 16-bit 44.1kHz stereo FLAC file at the given path instead of an audio device. Runs realtime-paced; finalises the file on normal exit (window close or stdin EOF).",
+            .value_type = "path",
+            .required = false,
+            .num_values = 1,
+        },
     });
 
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -1047,6 +1176,9 @@ static int Main(ArgsCstr args) {
             .preset_path = cli_args[ToInt(CommandLineArgId::Preset)].Value(),
             .fixed_window_size = fixed_window_size,
             .app_id = cli_args[ToInt(CommandLineArgId::AppId)].Value(),
+            .render_flac_path = cli_args[ToInt(CommandLineArgId::Render)].Value(),
+            .headless = cli_args[ToInt(CommandLineArgId::Headless)].was_provided,
+            .midi_stdin = cli_args[ToInt(CommandLineArgId::MidiStdin)].was_provided,
         },
         arena);
     if (o.HasError()) {

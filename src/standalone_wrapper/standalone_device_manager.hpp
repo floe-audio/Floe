@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <FLAC/stream_encoder.h>
 #include <clap/events.h>
 #include <miniaudio.h>
 #include <portmidi.h>
@@ -10,6 +11,7 @@
 #include "foundation/foundation.hpp"
 #include "foundation/memory/allocators.hpp"
 #include "utils/error_notifications.hpp"
+#include "utils/thread_extra/atomic_queue.hpp"
 
 #include "common_infrastructure/persistent_store.hpp"
 
@@ -53,6 +55,9 @@ struct DeviceManager {
 
         bool failed = false;
 
+        Optional<String> render_flac_path {}; // Non owning.
+        FLAC__StreamEncoder* render_encoder {}; // Render to FLAC rather than audio device.
+
         // Cross-thread data.
         struct Stream {
             Optional<ma_device> device {};
@@ -66,6 +71,10 @@ struct DeviceManager {
     } audio;
 
     struct Midi {
+        struct RawMessage {
+            u8 status, data1, data2;
+        };
+
         bool portmidi_initialised = false;
 
         Span<HostDeviceInfo> devices {};
@@ -77,6 +86,10 @@ struct DeviceManager {
 
         // Read by the audio thread; only written before the audio device starts.
         bool force_channel_zero = false;
+
+        bool skip_device_input = false;
+
+        AtomicQueue<RawMessage, 1024> injected {};
 
         struct Stream {
             // `handle` is mutated on the main thread but read on the audio thread, protected by `state`.
