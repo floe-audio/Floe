@@ -693,9 +693,9 @@ inline void ResetProcessor(AudioProcessor& processor, ProcessBlockChanges& chang
         fx->Reset();
     processor.fx_need_another_frame_of_processing = false;
 
-    // Reset layers
-    for (auto& l : processor.layer_processors)
-        ChangeInstrumentIfNeededAndReset(l, processor.voice_pool, processor.audio_processing_context);
+    for (auto [layer_index, l] : Enumerate(processor.layer_processors))
+        if (ChangeInstrumentIfNeededAndReset(l, processor.voice_pool, processor.audio_processing_context))
+            processor.restart_voices_for_layer_bitset.Set(layer_index);
 
     Reset(processor.voice_pool);
 }
