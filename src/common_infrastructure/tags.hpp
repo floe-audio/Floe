@@ -227,9 +227,12 @@ enum class TagType : u8 {
 
 using TagsBitset = Bitset<ToInt(TagType::Count)>;
 
-enum class TagCategoryImportance : u8 {
-    Primary,
-    Secondary,
+enum class TagCategoryGroup : u8 {
+    Source,
+    Type,
+    Mood,
+    Timbre,
+    Count,
 };
 
 struct TagCategoryInfo {
@@ -241,7 +244,7 @@ struct TagCategoryInfo {
     String font_awesome_icon;
     Span<TagCategory const> exclude_categories;
     Span<TagType const> exclude_tags;
-    TagCategoryImportance importance;
+    TagCategoryGroup group;
 };
 
 struct TagInfo {
@@ -512,7 +515,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🔊",
                 .font_awesome_icon = ICON_FA_VOLUME_HIGH,
-                .importance = TagCategoryImportance::Primary,
+                .group = TagCategoryGroup::Source,
             };
         }
         case TagCategory::RealInstrument: {
@@ -555,7 +558,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .font_awesome_icon = ICON_FA_GUITAR,
                 .exclude_categories = k_exclude_categories,
                 .exclude_tags = k_exclude_tags,
-                .importance = TagCategoryImportance::Primary,
+                .group = TagCategoryGroup::Source,
             };
         }
         case TagCategory::NumberOfPlayers: {
@@ -582,7 +585,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .font_awesome_icon = ICON_FA_USERS,
                 .exclude_categories = k_exclude_categories,
                 .exclude_tags = k_exclude_tags,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Source,
             };
         }
         case TagCategory::Material: {
@@ -608,7 +611,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🪵",
                 .font_awesome_icon = ICON_FA_TREE,
                 .exclude_tags = k_exclude_tags,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Timbre,
             };
         }
         case TagCategory::ReverbType: {
@@ -635,7 +638,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🏛️",
                 .font_awesome_icon = ICON_FA_LANDMARK,
                 .exclude_categories = k_exclude_categories,
-                .importance = TagCategoryImportance::Primary,
+                .group = TagCategoryGroup::Source,
             };
         }
         case TagCategory::MoodPositive: {
@@ -656,7 +659,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🙂",
                 .font_awesome_icon = ICON_FA_FACE_SMILE,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Mood,
             };
         }
         case TagCategory::MoodNegative: {
@@ -678,7 +681,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "😟",
                 .font_awesome_icon = ICON_FA_FACE_FROWN,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Mood,
             };
         }
         case TagCategory::MoodMixed: {
@@ -697,7 +700,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "😐",
                 .font_awesome_icon = ICON_FA_FACE_MEH,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Mood,
             };
         }
         case TagCategory::MoodThematic: {
@@ -723,7 +726,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🎭",
                 .font_awesome_icon = ICON_FA_MASKS_THEATER,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Mood,
             };
         }
         case TagCategory::Pitch: {
@@ -740,7 +743,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🎶",
                 .font_awesome_icon = ICON_FA_MUSIC,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Timbre,
             };
         }
         case TagCategory::SoundTypeLong: {
@@ -761,7 +764,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "➡️",
                 .font_awesome_icon = ICON_FA_RIGHT_LONG,
                 .exclude_categories = k_sound_type_exclude_categories,
-                .importance = TagCategoryImportance::Primary,
+                .group = TagCategoryGroup::Type,
             };
         }
         case TagCategory::SoundTypeShort: {
@@ -782,7 +785,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "↔️",
                 .font_awesome_icon = ICON_FA_ARROW_RIGHT,
                 .exclude_categories = k_sound_type_exclude_categories,
-                .importance = TagCategoryImportance::Primary,
+                .group = TagCategoryGroup::Type,
             };
         }
         case TagCategory::SoundTypeSequence: {
@@ -800,7 +803,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🔁",
                 .font_awesome_icon = ICON_FA_REPEAT,
                 .exclude_categories = k_sound_type_exclude_categories,
-                .importance = TagCategoryImportance::Primary,
+                .group = TagCategoryGroup::Type,
             };
         }
         case TagCategory::SoundTypeRole: {
@@ -820,7 +823,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🎛️",
                 .font_awesome_icon = ICON_FA_LAYER_GROUP,
                 .exclude_categories = k_sound_type_exclude_categories,
-                .importance = TagCategoryImportance::Primary,
+                .group = TagCategoryGroup::Type,
             };
         }
         case TagCategory::TimbreModulation: {
@@ -838,7 +841,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🚂",
                 .font_awesome_icon = ICON_FA_WAVE_SQUARE,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Timbre,
             };
         }
         case TagCategory::TimbreRealTone: {
@@ -862,7 +865,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🎷",
                 .font_awesome_icon = ICON_FA_DRUM_STEELPAN,
                 .exclude_tags = k_exclude_tags,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Timbre,
             };
         }
         case TagCategory::TimbreSynthTechnique: {
@@ -883,7 +886,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "🎚️",
                 .font_awesome_icon = ICON_FA_SLIDERS,
                 .exclude_tags = k_exclude_tags,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Timbre,
             };
         }
         case TagCategory::TimbreFrequency: {
@@ -903,7 +906,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .emoji = "💎",
                 .font_awesome_icon = ICON_FA_GEM,
                 .exclude_tags = k_exclude_tags,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Timbre,
             };
         }
         case TagCategory::Genre: {
@@ -921,7 +924,7 @@ PUBLIC constexpr TagCategoryInfo Tags(TagCategory category) {
                 .tags = k_tags,
                 .emoji = "🎵",
                 .font_awesome_icon = ICON_FA_MUSIC,
-                .importance = TagCategoryImportance::Secondary,
+                .group = TagCategoryGroup::Mood,
             };
         }
         case TagCategory::Count: break;
