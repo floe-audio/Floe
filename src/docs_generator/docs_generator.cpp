@@ -428,6 +428,17 @@ static ErrorCodeOr<void> WriteTagsData(json::WriteContext& ctx) {
         TRY(json::WriteKeyValue(ctx, "number", category_number++));
         TRY(json::WriteKeyValue(ctx, "emoji", tags.emoji));
         TRY(json::WriteKeyValue(ctx, "name", tags.name));
+        TRY(json::WriteKeyValue(ctx, "group", ({
+                                    String s {};
+                                    switch (tags.group) {
+                                        case TagCategoryGroup::Source: s = "source"_s; break;
+                                        case TagCategoryGroup::Type: s = "type"_s; break;
+                                        case TagCategoryGroup::Mood: s = "mood"_s; break;
+                                        case TagCategoryGroup::Timbre: s = "timbre"_s; break;
+                                        case TagCategoryGroup::Count: PanicIfReached();
+                                    }
+                                    s;
+                                })));
         TRY(json::WriteKeyValue(ctx, "question", tags.question));
         TRY(json::WriteKeyValue(ctx, "use_table", use_table));
         TRY(json::WriteKeyValue(ctx, "recommendation", tags.recommendation));
