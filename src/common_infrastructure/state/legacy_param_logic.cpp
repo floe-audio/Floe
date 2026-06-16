@@ -325,23 +325,67 @@ static void MigrateLegacyParamToSuccessor(StateSnapshot& state, ParamIndex legac
 
     // Target successor value: legacy audio at the loaded macro state. AdjustedLinearValue
     // applies every macro destination on the legacy at its stored value, then we remap that
-    // effective legacy through the legacy→successor curve. Same approach as the wet/dry path:
-    // load audio matches exactly; later macro movement may drift if the remap is non-linear.
-    auto const target = ({
+    // effective legacy through the legacy→successor curve.
+    auto const target_at_load = ({
         auto const legacy_at_load =
             AdjustedLinearValue(state.param_values, state.macro_destinations, legacy_val, legacy);
         SuccessorOfLegacyValue(legacy, legacy_at_load);
     });
-    if (!target) {
+    if (!target_at_load) {
         legacy_val = legacy_desc.default_linear_value;
         return;
+    }
+
+    auto const successor_pi = target_at_load->successor_param;
+    auto const& successor_desc = k_param_descriptors[ToInt(successor_pi)];
+
+    // If exactly one macro modulates this legacy, adjust its destination value so the successor
+    // matches the legacy audio at both the load position and a far macro endpoint.
+    Optional<usize> single_macro_index;
+    Optional<usize> single_dest_index;
+    {
+        usize total = 0;
+        for (auto const macro_index : Range(k_num_macros)) {
+            auto const& dests = state.macro_destinations[macro_index];
+            for (auto const dest_index : Range(k_max_macro_destinations)) {
+                auto const& d = dests.items[dest_index];
+                if (!d.param_index) break;
+                if (*d.param_index == legacy) {
+                    ++total;
+                    single_macro_index = macro_index;
+                    single_dest_index = dest_index;
+                }
+            }
+        }
+        if (total != 1) {
+            single_macro_index = k_nullopt;
+            single_dest_index = k_nullopt;
+        }
+    }
+
+    if (single_macro_index) {
+        auto& macro_lin = state.LinearParam(k_macro_params[*single_macro_index]);
+        auto const m_load = macro_lin;
+        auto const m_far = (m_load < 0.5f) ? 1.0f : 0.0f;
+        auto const dm = m_far - m_load;
+        if (dm != 0) {
+            macro_lin = m_far;
+            auto const legacy_at_far =
+                AdjustedLinearValue(state.param_values, state.macro_destinations, legacy_val, legacy);
+            macro_lin = m_load;
+            if (auto const target_at_far = SuccessorOfLegacyValue(legacy, legacy_at_far)) {
+                auto const proj_new = (target_at_far->successor_linear - target_at_load->successor_linear) /
+                                      (successor_desc.linear_range.Delta() * dm);
+                auto const c = Clamp(proj_new, -1.0f, 1.0f);
+                state.macro_destinations[*single_macro_index].items[*single_dest_index].value =
+                    Copysign(Sqrt(Abs(c)), c);
+            }
+        }
     }
 
     ModerniseMacroDestinations(state, legacy);
 
     // Back-solve successor base so base + macro contribution at load == target_at_load.
-    auto const successor_pi = target->successor_param;
-    auto const& successor_desc = k_param_descriptors[ToInt(successor_pi)];
     f32 macro_contrib = 0;
     for (auto const macro_index : Range(k_num_macros)) {
         auto const macro_value = state.LinearParam(k_macro_params[macro_index]);
@@ -351,7 +395,7 @@ static void MigrateLegacyParamToSuccessor(StateSnapshot& state, ParamIndex legac
                 macro_contrib += successor_desc.linear_range.Delta() * (macro_value * d.ProjectedValue());
         }
     }
-    state.LinearParam(successor_pi) = Clamp(target->successor_linear - macro_contrib,
+    state.LinearParam(successor_pi) = Clamp(target_at_load->successor_linear - macro_contrib,
                                             successor_desc.linear_range.min,
                                             successor_desc.linear_range.max);
 
@@ -440,9 +484,12 @@ static void MigrateWetDryStateToMixOutput(StateSnapshot& state, WetDryMapping co
         WetDryLinearToMixOutputLinear(mapping, wet_lin, dry_lin);
     });
 
-    // A common preset pattern is one macro modulating both wet and dry to emulate a mix sweep.
-    // The extra destination gives us enough freedom to also match audio at the macro's far
-    // endpoint, so the sweep stays close to legacy instead of drifting after load.
+    // Adjust the wet/dry destinations on the first macro that modulates either side so the modern
+    // mix/output curve matches the legacy audio at both the loaded macro position and a far endpoint.
+    auto invert_proj = [](f32 p) {
+        auto const c = Clamp(p, -1.0f, 1.0f);
+        return Copysign(Sqrt(Abs(c)), c);
+    };
     for (auto const macro_index : Range(k_num_macros)) {
         auto& dests = state.macro_destinations[macro_index];
         Optional<usize> wet_slot;
@@ -455,7 +502,7 @@ static void MigrateWetDryStateToMixOutput(StateSnapshot& state, WetDryMapping co
             else if (*d.param_index == mapping.legacy_dry)
                 dry_slot = dest_index;
         }
-        if (!wet_slot || !dry_slot) continue;
+        if (!wet_slot && !dry_slot) continue;
 
         auto& macro_lin = state.LinearParam(k_macro_params[macro_index]);
         auto const m_load = macro_lin;
@@ -477,16 +524,16 @@ static void MigrateWetDryStateToMixOutput(StateSnapshot& state, WetDryMapping co
             WetDryLinearToMixOutputLinear(mapping, wet_lin, dry_lin);
         });
 
-        auto const proj_w_new =
-            (target_at_far.mix_01 - target_at_load.mix_01) / (mix_desc.linear_range.Delta() * dm);
-        auto const proj_d_new =
-            (target_at_far.output_amp - target_at_load.output_amp) / (output_desc.linear_range.Delta() * dm);
-        auto invert_proj = [](f32 p) {
-            auto const c = Clamp(p, -1.0f, 1.0f);
-            return Copysign(Sqrt(Abs(c)), c);
-        };
-        dests.items[*wet_slot].value = invert_proj(proj_w_new);
-        dests.items[*dry_slot].value = invert_proj(proj_d_new);
+        if (wet_slot) {
+            auto const proj_w_new =
+                (target_at_far.mix_01 - target_at_load.mix_01) / (mix_desc.linear_range.Delta() * dm);
+            dests.items[*wet_slot].value = invert_proj(proj_w_new);
+        }
+        if (dry_slot) {
+            auto const proj_d_new = (target_at_far.output_amp - target_at_load.output_amp) /
+                                    (output_desc.linear_range.Delta() * dm);
+            dests.items[*dry_slot].value = invert_proj(proj_d_new);
+        }
         break;
     }
 
@@ -659,4 +706,130 @@ TEST_CASE(TestModerniseWetDryEffectLossless) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterLegacyParamLogicTests) { REGISTER_TEST(TestModerniseWetDryEffectLossless); }
+// Helper: project current state to (wet_amp, dry_amp) at the loaded macro position so we can
+// compare audio against the legacy reference. Modern mix/output are sampled with macros applied.
+struct EffectAudioAtLoad {
+    f32 wet_amp;
+    f32 dry_amp;
+};
+static EffectAudioAtLoad ModernAudioAtLoad(StateSnapshot const& state, WetDryMapping const& mapping) {
+    auto const& mix_desc = k_param_descriptors[ToInt(mapping.modern_mix)];
+    auto const& out_desc = k_param_descriptors[ToInt(mapping.modern_output)];
+    auto const mix_lin = AdjustedLinearValue(state.param_values,
+                                             state.macro_destinations,
+                                             state.LinearParam(mapping.modern_mix),
+                                             mapping.modern_mix);
+    auto const out_lin = AdjustedLinearValue(state.param_values,
+                                             state.macro_destinations,
+                                             state.LinearParam(mapping.modern_output),
+                                             mapping.modern_output);
+    auto const mix_01 = mix_desc.ProjectValue(mix_lin);
+    auto const out_amp = out_desc.ProjectValue(out_lin);
+    return {.wet_amp = out_amp * mix_01, .dry_amp = out_amp * (1.0f - mix_01)};
+}
+static EffectAudioAtLoad LegacyAudio(StateSnapshot const& state, WetDryMapping const& mapping) {
+    auto const& wet_desc = k_param_descriptors[ToInt(mapping.legacy_wet)];
+    auto const& dry_desc = k_param_descriptors[ToInt(mapping.legacy_dry)];
+    auto const w_lin = AdjustedLinearValue(state.param_values,
+                                           state.macro_destinations,
+                                           state.LinearParam(mapping.legacy_wet),
+                                           mapping.legacy_wet);
+    auto const d_lin = AdjustedLinearValue(state.param_values,
+                                           state.macro_destinations,
+                                           state.LinearParam(mapping.legacy_dry),
+                                           mapping.legacy_dry);
+    return {.wet_amp = wet_desc.ProjectValue(w_lin), .dry_amp = dry_desc.ProjectValue(d_lin)};
+}
+
+TEST_CASE(TestModerniseWetDryWetOnlyMacroPreservesAudio) {
+    // The bug we're testing: a macro modulating only legacy_wet (not dry) used to be migrated by
+    // preserving the destination's stored value verbatim, while the back-solve clamped the new mix
+    // base to 0 — producing dramatically louder reverb at load. With the fix, audio at the macro's
+    // load position must match the legacy audio.
+    auto const& mapping = k_convolution_reverb_wet_dry_mapping;
+
+    StateSnapshot state {};
+    // Reproduce conv-old's stored values: legacy_wet at default (-30 dB), legacy_dry at -2.6 dB,
+    // macro 2 at 0.80 with destination on legacy_wet of value 0.5608.
+    auto const& wet_desc = k_param_descriptors[ToInt(mapping.legacy_wet)];
+    auto const& dry_desc = k_param_descriptors[ToInt(mapping.legacy_dry)];
+    state.LinearParam(mapping.legacy_wet) = wet_desc.default_linear_value;
+    state.LinearParam(mapping.legacy_dry) = dry_desc.LineariseValue(-2.6f, true).Value();
+    state.LinearParam(k_macro_params[1]) = 0.80f;
+    state.macro_destinations[1].items[0] = {.param_index = mapping.legacy_wet, .value = 0.5608f};
+
+    auto const legacy_audio = LegacyAudio(state, mapping);
+
+    ModerniseWetDryEffect(state, mapping, StateSource::PresetFile);
+
+    auto const modern_audio = ModernAudioAtLoad(state, mapping);
+    CHECK_APPROX_EQ(modern_audio.wet_amp, legacy_audio.wet_amp, 0.01f);
+    CHECK_APPROX_EQ(modern_audio.dry_amp, legacy_audio.dry_amp, 0.01f);
+
+    // The destination must have been retargeted onto modern_mix.
+    CHECK(state.macro_destinations[1].items[0].param_index);
+    CHECK_EQ(*state.macro_destinations[1].items[0].param_index, mapping.modern_mix);
+    return k_success;
+}
+
+TEST_CASE(TestModerniseWetDryDryOnlyMacroPreservesAudio) {
+    auto const& mapping = k_chorus_wet_dry_mapping;
+
+    StateSnapshot state {};
+    auto const& wet_desc = k_param_descriptors[ToInt(mapping.legacy_wet)];
+    auto const& dry_desc = k_param_descriptors[ToInt(mapping.legacy_dry)];
+    state.LinearParam(mapping.legacy_wet) = wet_desc.LineariseValue(-6.0f, true).Value();
+    state.LinearParam(mapping.legacy_dry) = dry_desc.default_linear_value;
+    state.LinearParam(k_macro_params[0]) = 0.65f;
+    state.macro_destinations[0].items[0] = {.param_index = mapping.legacy_dry, .value = 0.4f};
+
+    auto const legacy_audio = LegacyAudio(state, mapping);
+
+    ModerniseWetDryEffect(state, mapping, StateSource::PresetFile);
+
+    auto const modern_audio = ModernAudioAtLoad(state, mapping);
+    CHECK_APPROX_EQ(modern_audio.wet_amp, legacy_audio.wet_amp, 0.01f);
+    CHECK_APPROX_EQ(modern_audio.dry_amp, legacy_audio.dry_amp, 0.01f);
+
+    CHECK(state.macro_destinations[0].items[0].param_index);
+    CHECK_EQ(*state.macro_destinations[0].items[0].param_index, mapping.modern_output);
+    return k_success;
+}
+
+TEST_CASE(TestModerniseLegacyFilterCutoffSingleMacroAudioMatch) {
+    // Single-param legacy → successor migration with one macro modulating the legacy. Verifies the
+    // two-point solve sets the destination value correctly so the back-solve doesn't have to clamp.
+    auto const legacy = ParamIndex::LegacyFilterCutoff;
+    auto const successor = ParamIndex::FilterCutoff;
+    auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
+    auto const& successor_desc = k_param_descriptors[ToInt(successor)];
+
+    StateSnapshot state {};
+    state.LinearParam(legacy) = legacy_desc.LineariseValue(800.0f, true).Value();
+    state.LinearParam(k_macro_params[2]) = 0.70f;
+    state.macro_destinations[2].items[0] = {.param_index = legacy, .value = 0.5f};
+
+    auto const legacy_at_load =
+        AdjustedLinearValue(state.param_values, state.macro_destinations, state.LinearParam(legacy), legacy);
+    auto const target_hz = legacy_desc.ProjectValue(legacy_at_load);
+
+    ModerniseLegacyParam(state, legacy, StateSource::PresetFile);
+
+    auto const successor_at_load = AdjustedLinearValue(state.param_values,
+                                                       state.macro_destinations,
+                                                       state.LinearParam(successor),
+                                                       successor);
+    auto const modern_hz = successor_desc.ProjectValue(successor_at_load);
+    CHECK_APPROX_EQ(modern_hz, target_hz, target_hz * 0.02f);
+
+    CHECK(state.macro_destinations[2].items[0].param_index);
+    CHECK_EQ(*state.macro_destinations[2].items[0].param_index, successor);
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterLegacyParamLogicTests) {
+    REGISTER_TEST(TestModerniseWetDryEffectLossless);
+    REGISTER_TEST(TestModerniseWetDryWetOnlyMacroPreservesAudio);
+    REGISTER_TEST(TestModerniseWetDryDryOnlyMacroPreservesAudio);
+    REGISTER_TEST(TestModerniseLegacyFilterCutoffSingleMacroAudioMatch);
+}
