@@ -921,7 +921,8 @@ bool Context::SliderBehaviourFraction(SliderBehaviourFractionArgs const& args) {
                 val_at_click = args.fraction;
                 start_location = frame_input.cursor_pos;
             }
-            if (frame_input.modifiers.Get(ModifierKey::Shift)) sensitivity *= 4;
+            if (frame_input.modifiers.Get(ModifierKey::Shift))
+                sensitivity *= args.cfg.shift_sensitivity_multiplier;
         }
         if (All(frame_input.cursor_pos != -1)) {
             auto d = frame_input.cursor_pos - start_location;

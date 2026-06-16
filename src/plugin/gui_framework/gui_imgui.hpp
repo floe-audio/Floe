@@ -128,6 +128,9 @@ struct SliderConfig {
     // Increase the sensitivity while the shift key is held.
     bool32 slower_with_shift : 1 = true;
 
+    // Multiplier applied to sensitivity when shift is held (only if slower_with_shift).
+    f32 shift_sensitivity_multiplier = 4;
+
     // Set the slider's value to its default when its clicked while holding the modifier key.
     bool32 default_on_modifer : 1 = true;
 };

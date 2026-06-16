@@ -306,6 +306,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
                 {
                     .sensitivity = k_slider_sensitivity,
                     .slower_with_shift = true,
+                    .shift_sensitivity_multiplier = 16,
                     .default_on_modifer = true,
                 },
         });
