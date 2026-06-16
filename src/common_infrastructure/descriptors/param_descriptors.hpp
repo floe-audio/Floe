@@ -239,6 +239,7 @@ constexpr auto k_num_parameters =
 enum class ParamDisplayFormat : u8 {
     None,
     Percent,
+    Percent2dp,
     Pan,
     SinevibesFilter,
     Ms,
@@ -1350,12 +1351,13 @@ constexpr f32 LogWithBase(f32 base, f32 x) {
 
 struct PercentOptions {
     f32 default_percent;
+    ParamDisplayFormat display_format = ParamDisplayFormat::Percent;
 };
 constexpr ValConfig Percent(PercentOptions opts) {
     return ValConfig {
         .linear_range = {0, 1},
         .default_linear_value = opts.default_percent / 100,
-        .display_format = ParamDisplayFormat::Percent,
+        .display_format = opts.display_format,
     };
 }
 
@@ -2908,7 +2910,8 @@ consteval auto CreateParams() {
         lp(LoopStart) = Args {
             .id = id(region, 7), // never change
             .id_string = LAYER_ID("loop.start"),
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .value_config = val_config_helpers::Percent(
+                {.default_percent = 0, .display_format = ParamDisplayFormat::Percent2dp}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Start"_s,
             .gui_label = "Start"_s,
@@ -2917,7 +2920,8 @@ consteval auto CreateParams() {
         lp(LoopEnd) = Args {
             .id = id(region, 8), // never change
             .id_string = LAYER_ID("loop.end"),
-            .value_config = val_config_helpers::Percent({.default_percent = 100}),
+            .value_config = val_config_helpers::Percent(
+                {.default_percent = 100, .display_format = ParamDisplayFormat::Percent2dp}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "End"_s,
             .gui_label = "End"_s,
@@ -2926,7 +2930,8 @@ consteval auto CreateParams() {
         lp(LoopCrossfade) = Args {
             .id = id(region, 9), // never change
             .id_string = LAYER_ID("loop.crossfade"),
-            .value_config = val_config_helpers::Percent({.default_percent = 1}),
+            .value_config = val_config_helpers::Percent(
+                {.default_percent = 1, .display_format = ParamDisplayFormat::Percent2dp}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Crossfade Size"_s,
             .gui_label = "XFade"_s,
@@ -2935,7 +2940,8 @@ consteval auto CreateParams() {
         lp(SampleOffset) = Args {
             .id = id(region, 11), // never change
             .id_string = LAYER_ID("sample_offset"),
-            .value_config = val_config_helpers::Percent({.default_percent = 0}),
+            .value_config = val_config_helpers::Percent(
+                {.default_percent = 0, .display_format = ParamDisplayFormat::Percent2dp}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Loop},
             .name = "Sample Start Offset"_s,
             .gui_label = "Start"_s,

@@ -40,7 +40,8 @@ Optional<f32> ParamDescriptor::StringToLinearValue(String str) const {
             }
             break;
         }
-        case ParamDisplayFormat::Percent: {
+        case ParamDisplayFormat::Percent:
+        case ParamDisplayFormat::Percent2dp: {
             if (auto const opt_value = ParseFloat(str)) return LineariseValue((f32)*opt_value / 100.0f, true);
             break;
         }
@@ -186,6 +187,10 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
         }
         case ParamDisplayFormat::Percent: {
             result = fmt::FormatInline<k_size>("{.0}%", value * 100.0f);
+            break;
+        }
+        case ParamDisplayFormat::Percent2dp: {
+            result = fmt::FormatInline<k_size>("{.2}%", value * 100.0f);
             break;
         }
         case ParamDisplayFormat::Pan: {
