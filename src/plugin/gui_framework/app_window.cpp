@@ -728,6 +728,7 @@ static void UpdateAndRender(AppWindow& window) {
             if (window.gui) {
                 dyn::Clear(window.frame_state.requested_screenshot_id_name);
                 dyn::Clear(window.frame_state.requested_screenshot_output_path);
+                window.frame_state.requested_screenshot_full_window = false;
             }
         }
     }

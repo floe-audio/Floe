@@ -157,6 +157,7 @@ struct GuiFrameInput {
 
     DynamicArrayBounded<char, 64> requested_screenshot_id_name {};
     DynamicArrayBounded<char, 256> requested_screenshot_output_path {};
+    bool requested_screenshot_full_window {};
 
     // WW = Window Width.
     // Similar to CSS vw units, we have a concept of 'window width' relative units. They allow us to make our

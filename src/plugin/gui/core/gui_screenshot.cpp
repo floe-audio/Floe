@@ -254,8 +254,13 @@ void MaybeFireScreenshot(GuiState& g) {
         return;
     }
 
+    auto rect = spec->rect;
+    if (GuiIo().in.requested_screenshot_full_window) {
+        auto const ws = GuiIo().in.window_size;
+        rect = {.xywh {0.0f, 0.0f, (f32)ws.width, (f32)ws.height}};
+    }
     GuiFrameOutput::ScreenshotRequest req {
-        .rect = spec->rect,
+        .rect = rect,
         .output_path = GuiIo().in.requested_screenshot_output_path,
     };
     for (auto const& o : spec->overlays)

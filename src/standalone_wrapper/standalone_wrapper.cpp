@@ -1071,7 +1071,7 @@ static int Main(ArgsCstr args) {
             .id = (u32)CommandLineArgId::Screenshot,
             .key = "screenshot",
             .description =
-                "Request a screenshot of a named region (e.g. 'perform'). Region names are defined by the GUI subsystems. Requires --screenshot-out. The program exits after the screenshot is captured.",
+                "Request a screenshot of a named region (e.g. 'perform'). Region names are defined by the GUI subsystems. Append ':full' (e.g. 'perform:full') to prepare GUI state for the region but capture the whole window. Requires --screenshot-out. The program exits after the screenshot is captured.",
             .value_type = "region",
             .required = false,
             .num_values = 1,

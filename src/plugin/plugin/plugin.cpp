@@ -1312,8 +1312,16 @@ static FloeClapExtension const floe_custom_ext {
                 f;
             });
             if (!floe.app_window || !floe.app_window->gui) return false;
-            dyn::Assign(floe.app_window->frame_state.requested_screenshot_id_name, id_name);
+            auto base = id_name;
+            bool full_window = false;
+            constexpr String k_full_suffix = ":full"_s;
+            if (base.size > k_full_suffix.size && EndsWithCaseInsensitiveAscii(base, k_full_suffix)) {
+                base = base.SubSpan(0, base.size - k_full_suffix.size);
+                full_window = true;
+            }
+            dyn::Assign(floe.app_window->frame_state.requested_screenshot_id_name, base);
             dyn::Assign(floe.app_window->frame_state.requested_screenshot_output_path, out_path);
+            floe.app_window->frame_state.requested_screenshot_full_window = full_window;
             return true;
         } catch (PanicException) {
             return false;
