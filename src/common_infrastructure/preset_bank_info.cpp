@@ -3,6 +3,8 @@
 
 #include "preset_bank_info.hpp"
 
+#include "sample_library/sample_library.hpp"
+
 PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
     PresetBank bank {};
 
@@ -30,6 +32,8 @@ PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
             }
         } else if (key == "id"_s) {
             bank.id = HashFnv1a(value_str);
+        } else if (key == "library_for_visuals"_s) {
+            bank.library_for_visuals_id = sample_lib::HashLibraryIdStringWithoutRegistration(value_str);
         }
     }
 

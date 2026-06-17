@@ -14,6 +14,7 @@ struct PresetBank {
     u64 id {};
     String subtitle {};
     u16 minor_version {};
+    Optional<u64> library_for_visuals_id {};
 };
 
 PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena);

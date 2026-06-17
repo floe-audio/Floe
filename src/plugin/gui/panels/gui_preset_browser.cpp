@@ -875,7 +875,17 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                         .clicked_key = folder_hash,
                                         .filter_mode = state.common_state.filter_mode,
                                     },
-                                .library_id = AllPresetsSingleLibrary(*folder),
+                                .library_id = ({
+                                    Optional<sample_lib::LibraryId> id {};
+                                    if (auto const m = PresetBankAtNode(*folder);
+                                        m && m->library_for_visuals_id) {
+                                        auto const maybe_lib =
+                                            context.frame_context.lib_table.Find(*m->library_for_visuals_id);
+                                        if (maybe_lib && *maybe_lib) id = *m->library_for_visuals_id;
+                                    }
+                                    if (!id) id = AllPresetsSingleLibrary(*folder);
+                                    id;
+                                }),
                                 .library_images = context.library_images,
                                 .sample_library_server = context.sample_library_server,
                                 .instance_index = context.engine.instance_index,

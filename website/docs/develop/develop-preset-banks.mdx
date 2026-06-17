@@ -37,6 +37,12 @@ id = com.myname.mypresetbank
 ; changes, it's probably better to create a new preset bank, 
 ; "My Bank 2", with a new ID.
 minor_version = 1
+
+; The id_string of an installed sample library whose icon should
+; represent this bank in the preset browser. If omitted, or if the
+; library isn't installed, Floe falls back to deriving the icon from
+; the libraries used by the bank's presets.
+library_for_visuals = FrozenPlain - Slow
 ```
 
 You can create this INI file with any text editor such as Notepad or TextEdit. You just need to type in the various `field = value` with new lines between them.
