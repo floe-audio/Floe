@@ -186,7 +186,7 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
             break;
         }
         case ParamDisplayFormat::Percent: {
-            result = fmt::FormatInline<k_size>("{.0}%", value * 100.0f);
+            result = fmt::FormatInline<k_size>("{.1}%", value * 100.0f);
             break;
         }
         case ParamDisplayFormat::Percent2dp: {
