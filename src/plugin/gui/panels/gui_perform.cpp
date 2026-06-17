@@ -24,6 +24,7 @@
 #include "gui/panels/gui_preset_browser.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "gui_framework/layout.hpp"
 #include "preset_server/preset_server.hpp"
 #include "processor/layer_processor.hpp"
 #include "processor/processor.hpp"
@@ -186,8 +187,8 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                       .border_edges = (Edges)((layer_index < k_num_layers - 1) ? 0b0010 : 0b0000),
                       .layout {
                           .size = {layout::k_fill_parent, layout::k_fill_parent},
-                          .contents_padding = {.lr = 6, .b = 10},
-                          .contents_gap = 2,
+                          .contents_padding = {.lr = 6, .b = 9},
+                          .contents_gap = 0,
                           .contents_direction = layout::Direction::Column,
                           .contents_align = layout::Alignment::Start,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
@@ -249,11 +250,36 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
             }
         }
 
+        auto const body_row = DoBox(builder,
+                                    {
+                                        .parent = cell,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                            .margins = {.t = 0},
+                                            .contents_gap = 4,
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                    });
+
+        auto const left_col = DoBox(builder,
+                                    {
+                                        .parent = body_row,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                            .contents_gap = 2,
+                                            .contents_direction = layout::Direction::Column,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                        },
+                                    });
+
         {
             auto const inst_btn = DoBox(
                 builder,
                 {
-                    .parent = cell,
+                    .parent = left_col,
                     .id_extra = layer_index,
                     .background_fill_colours =
                         ColSet {
@@ -314,7 +340,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                   {
                                       .parent = inst_btn,
                                       .text = folder_name,
-                                      .font = FontType::Body,
+                                      .font = FontType::BodyItalic,
                                       .text_colours = Col {.c = Col::White, .alpha = 120},
                                       .text_overflow = TextOverflowType::ShowDotsOnRight,
                                       .parent_dictates_hot_and_active = true,
@@ -349,50 +375,43 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
             DoInstSelectorRightClickMenu(g, inst_btn, layer_index);
         }
 
-        auto const controls_row = DoBox(builder,
-                                        {
-                                            .parent = cell,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                                .margins = {.t = 6},
-                                                .contents_gap = 4,
-                                                .contents_direction = layout::Direction::Row,
-                                                .contents_align = layout::Alignment::Start,
-                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                            },
-                                        });
-
-        constexpr f32 k_inactive_alpha = 0.15f;
-
         {
             auto const waveform_box = DoBox(builder,
                                             {
-                                                .parent = controls_row,
+                                                .parent = left_col,
                                                 .layout {
                                                     .size = {layout::k_fill_parent, layout::k_fill_parent},
+                                                    .margins = {.t = 2, .r = 3},
                                                 },
                                             });
-            if (auto const r = BoxRect(builder, waveform_box)) {
-                if (active) {
+            if (active) {
+                if (auto const r = BoxRect(builder, waveform_box))
                     DoWaveformElement(g, layer, *r, {.play_mode = k_nullopt});
-                } else {
-                    g.imgui.draw_list->AddRectFilled(
-                        g.imgui.ViewportRectToWindowRect(*r),
-                        ChangeAlpha(LiveCol(UiColMap::WaveformLoopBack), k_inactive_alpha));
-                }
             }
         }
+
+        auto const meter_and_level_box =
+            DoBox(g.builder,
+                  {
+                      .parent = body_row,
+                      .layout {
+                          .size = {layout::k_hug_contents, layout::k_fill_parent},
+                          .margins = {.t = 5},
+                          .contents_gap = 4,
+                          .contents_direction = layout::Direction::Row,
+                      },
+                  });
 
         {
             auto const meter_box = DoBox(builder,
                                          {
-                                             .parent = controls_row,
+                                             .parent = meter_and_level_box,
                                              .layout {
                                                  .size = {6, layout::k_fill_parent},
                                              },
                                          });
-            if (auto const r = BoxRect(builder, meter_box)) {
-                if (active) {
+            if (active) {
+                if (auto const r = BoxRect(builder, meter_box))
                     DrawPeakMeter(g.imgui,
                                   g.imgui.ViewportRectToWindowRect(*r),
                                   layer.peak_meter,
@@ -401,17 +420,12 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                       .show_db_markers = false,
                                       .gap_px = 1,
                                   });
-                } else {
-                    g.imgui.draw_list->AddRectFilled(
-                        g.imgui.ViewportRectToWindowRect(*r),
-                        ChangeAlpha(LiveCol(UiColMap::PeakMeterBack), k_inactive_alpha));
-                }
             }
         }
 
         if (active) {
             DoVerticalSliderParameter(g,
-                                      controls_row,
+                                      meter_and_level_box,
                                       params.DescribedValue(layer_index, LayerParamIndex::Volume),
                                       {
                                           .width = 12,
@@ -419,25 +433,13 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                           .style_system = GuiStyleSystem::MidPanel,
                                       });
         } else {
-            auto const slider_box = DoBox(builder,
-                                          {
-                                              .parent = controls_row,
-                                              .layout {
-                                                  .size = {12, layout::k_fill_parent},
-                                              },
-                                          });
-            if (auto const r = BoxRect(builder, slider_box)) {
-                auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-                auto const channel_w = WwToPixels(4.0f);
-                Rect const channel_r {.x = window_r.x + ((window_r.w - channel_w) / 2),
-                                      .y = window_r.y,
-                                      .w = channel_w,
-                                      .h = window_r.h};
-                g.imgui.draw_list->AddRectFilled(
-                    channel_r,
-                    ChangeAlpha(LiveCol(UiColMap::SliderMidChannel), k_inactive_alpha),
-                    WwToPixels(k_corner_rounding));
-            }
+            DoBox(builder,
+                  {
+                      .parent = meter_and_level_box,
+                      .layout {
+                          .size = {12, layout::k_fill_parent},
+                      },
+                  });
         }
     }
 
