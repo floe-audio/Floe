@@ -495,8 +495,10 @@ ReadMdata(Reader& reader, String filepath, ArenaAllocator& result_arena, ArenaAl
                     HashFnv1a("Music Box Suite"),
                     HashFnv1a("Music Box Suite Free"),
                     HashFnv1a("Paranormal"),
-                }))
-        library->background_image_vignette_intensity = 100;
+                })) {
+        library->background_overlay.vignette.colour = 0x66000000;
+        library->background_overlay.panel_tint.colour = 0x0D000000;
+    }
 
     // In the MDATA format when velocity-feathering was enabled for an instrument, adjacent velocity layers
     // were automatically made to overlap. We recreate that old behaviour here, taking into account that now

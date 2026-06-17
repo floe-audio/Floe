@@ -184,6 +184,9 @@ enum class InterpretedTypes : u8 {
     TriggerCriteria,
     FileAttribution,
     NamedKeyRange,
+    BackgroundOverlay,
+    BackgroundOverlayVignette,
+    BackgroundOverlayPanelTint,
     Count,
 };
 
@@ -331,6 +334,19 @@ static LibraryPath PathFromTop(LuaState& ctx) {
     if (path::IsAbsolute(path) || StartsWithSpan(path, ".."_s))
         luaL_error(ctx.lua, "Path '%s' must be a relative path to within the folder of floe.lua", path_c_str);
     return {ctx.result_arena.Clone(path)};
+}
+
+// Lua exposes colours as 0xRRGGBBAA integers; internally Floe stores ABGR u32.
+static u32 ColourFromTop(LuaState& ctx, FieldInfo field_info) {
+    auto const val = luaL_checkinteger(ctx.lua, -1);
+    if (val < 0 || val > 0xFFFFFFFFLL)
+        luaL_error(ctx.lua, "'%s' must be in the range 0x00000000 to 0xFFFFFFFF", field_info.name.data);
+    auto const rgba = (u32)val;
+    auto const r = (u8)((rgba >> 24) & 0xFF);
+    auto const g = (u8)((rgba >> 16) & 0xFF);
+    auto const b = (u8)((rgba >> 8) & 0xFF);
+    auto const a = (u8)(rgba & 0xFF);
+    return ((u32)a << 24) | ((u32)b << 16) | ((u32)g << 8) | (u32)r;
 }
 
 template <typename Type>
@@ -530,6 +546,113 @@ struct TableFields<Region::AudioProperties> {
                                 luaL_error(ctx.lua, "'%s' should be a positive integer", info.name.data);
                             FIELD_OBJ.fade_out_frames = (u32)val;
                         },
+                };
+            case Field::Count: break;
+        }
+        return {};
+    }
+};
+
+template <>
+struct TableFields<Library::BackgroundOverlay::Vignette> {
+    using Type = Library::BackgroundOverlay::Vignette;
+
+    enum class Field : u8 {
+        Colour,
+        InnerRadius,
+        Count,
+    };
+    static constexpr FieldInfo FieldInfo(Field f) {
+        switch (f) {
+            case Field::Colour:
+                return {
+                    .name = "colour",
+                    .description_sentence =
+                        "Edge colour of the vignette as a 0xRRGGBBAA integer. The alpha component controls the strength of the effect; set it to 0 to disable.",
+                    .example = "0x00000066",
+                    .default_value = "0x00000000",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.colour = ColourFromTop(ctx, info); },
+                };
+            case Field::InnerRadius:
+                return {
+                    .name = "inner_radius",
+                    .description_sentence =
+                        "Radius of the unaffected centre area, as a proportion of the panel's smaller dimension. 0 means the vignette starts at the centre; values near 1 confine it to the very edges.",
+                    .example = "0.2",
+                    .default_value = "0.2",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .range = {.min = 0, .max = 1},
+                    .set =
+                        [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.inner_radius = NumberFromTop<f32>(ctx, info); },
+                };
+            case Field::Count: break;
+        }
+        return {};
+    }
+};
+
+template <>
+struct TableFields<Library::BackgroundOverlay::PanelTint> {
+    using Type = Library::BackgroundOverlay::PanelTint;
+
+    enum class Field : u8 {
+        Colour,
+        Count,
+    };
+    static constexpr FieldInfo FieldInfo(Field f) {
+        switch (f) {
+            case Field::Colour:
+                return {
+                    .name = "colour",
+                    .description_sentence =
+                        "A flat tint drawn over the blurred mid-panel surfaces, as a 0xRRGGBBAA integer. Set alpha to 0 to disable.",
+                    .example = "0x0000000D",
+                    .default_value = "0x00000000",
+                    .lua_type = LUA_TNUMBER,
+                    .required = false,
+                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.colour = ColourFromTop(ctx, info); },
+                };
+            case Field::Count: break;
+        }
+        return {};
+    }
+};
+
+template <>
+struct TableFields<Library::BackgroundOverlay> {
+    using Type = Library::BackgroundOverlay;
+
+    enum class Field : u8 {
+        Vignette,
+        PanelTint,
+        Count,
+    };
+    static constexpr FieldInfo FieldInfo(Field f) {
+        switch (f) {
+            case Field::Vignette:
+                return {
+                    .name = "vignette",
+                    .description_sentence =
+                        "Configures the radial vignette drawn over the background image when this library is the active background.",
+                    .default_value = "defaults",
+                    .lua_type = LUA_TTABLE,
+                    .subtype = InterpretedTypes::BackgroundOverlayVignette,
+                    .required = false,
+                    .set = [](SET_FIELD_VALUE_ARGS) { InterpretTable(ctx, -1, FIELD_OBJ.vignette); },
+                };
+            case Field::PanelTint:
+                return {
+                    .name = "panel_tint",
+                    .description_sentence =
+                        "Configures a flat colour tint drawn over the blurred mid-panel surface. Independent of the vignette.",
+                    .default_value = "no tint",
+                    .lua_type = LUA_TTABLE,
+                    .subtype = InterpretedTypes::BackgroundOverlayPanelTint,
+                    .required = false,
+                    .set = [](SET_FIELD_VALUE_ARGS) { InterpretTable(ctx, -1, FIELD_OBJ.panel_tint); },
                 };
             case Field::Count: break;
         }
@@ -1583,7 +1706,7 @@ struct TableFields<Library> {
         MinorVersion,
         BackgroundImagePath,
         IconImagePath,
-        VignetteIntensity,
+        BackgroundOverlay,
         Count,
     };
 
@@ -1715,20 +1838,17 @@ struct TableFields<Library> {
                     .required = false,
                     .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.icon_image_path = PathFromTop(ctx); },
                 };
-            case Field::VignetteIntensity:
+            case Field::BackgroundOverlay:
                 return {
-                    .name = "vignette_intensity",
+                    .name = "background_overlay",
                     .description_sentence =
-                        "How strongly to darken the mid panel with a vignette when this library is the active background. 0 disables the effect; 100 is the maximum strength. Use this if the background image benefits from extra contrast against the UI.",
-                    .example = "50",
-                    .default_value = "0",
-                    .lua_type = LUA_TNUMBER,
+                        "Controls the vignette and panel-tint drawn over the background image when this library is the active background.",
+                    .default_value = "defaults",
+                    .lua_type = LUA_TTABLE,
+                    .subtype = InterpretedTypes::BackgroundOverlay,
                     .required = false,
-                    .range = {.min = 0, .max = 100},
                     .set =
-                        [](SET_FIELD_VALUE_ARGS) {
-                            FIELD_OBJ.background_image_vignette_intensity = NumberFromTop<u8>(ctx, info);
-                        },
+                        [](SET_FIELD_VALUE_ARGS) { InterpretTable(ctx, -1, FIELD_OBJ.background_overlay); },
                 };
             case Field::Count: break;
         }
@@ -2713,6 +2833,15 @@ struct LuaCodePrinter {
                     break;
                 case InterpretedTypes::NamedKeyRange:
                     struct_fields[i] = FieldInfosSpan<NamedKeyRange>();
+                    break;
+                case InterpretedTypes::BackgroundOverlay:
+                    struct_fields[i] = FieldInfosSpan<Library::BackgroundOverlay>();
+                    break;
+                case InterpretedTypes::BackgroundOverlayVignette:
+                    struct_fields[i] = FieldInfosSpan<Library::BackgroundOverlay::Vignette>();
+                    break;
+                case InterpretedTypes::BackgroundOverlayPanelTint:
+                    struct_fields[i] = FieldInfosSpan<Library::BackgroundOverlay::PanelTint>();
                     break;
                 case InterpretedTypes::Count: break;
             }

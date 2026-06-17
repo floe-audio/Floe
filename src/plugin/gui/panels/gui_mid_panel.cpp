@@ -16,14 +16,14 @@
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/image.hpp"
 
-static f32 VignetteIntensityForLibrary(GuiFrameContext const& frame_context,
-                                       Optional<sample_lib::LibraryId> lib_id) {
-    if (!lib_id) return 0;
+static Optional<sample_lib::Library::BackgroundOverlay>
+BackgroundOverlayForLibrary(GuiFrameContext const& frame_context, Optional<sample_lib::LibraryId> lib_id) {
+    if (!lib_id) return {};
     auto const lib_ptr = frame_context.lib_table.Find(*lib_id);
-    if (!lib_ptr) return 0;
+    if (!lib_ptr) return {};
     auto const lib = *lib_ptr;
-    if (!lib) return 0;
-    return (f32)lib->background_image_vignette_intensity / 100.0f;
+    if (!lib) return {};
+    return lib->background_overlay;
 }
 
 void DrawMidBlurredBackground(GuiState& g,
@@ -84,10 +84,7 @@ void DrawMidBlurredBackground(GuiState& g,
                                      options.rounding_corners);
 }
 
-constexpr u32 k_vignette_colour = Rgba(0, 0, 0, 0.4f);
-constexpr f32 k_vignette_inner_radius = 0.20f;
 constexpr u32 k_vignette_num_bands = 16;
-constexpr f32 k_vignette_panel_opacity = 0.05f;
 
 void DrawMidBlurredPanelSurface(GuiState& g,
                                 GuiFrameContext const& frame_context,
@@ -100,10 +97,9 @@ void DrawMidBlurredPanelSurface(GuiState& g,
     else
         g.imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::MidViewportSurface), panel_rounding);
 
-    if (auto const intensity = VignetteIntensityForLibrary(frame_context, lib_id); intensity > 0) {
-        g.imgui.draw_list->AddRectFilled(window_r,
-                                         ChangeAlpha(k_vignette_colour, k_vignette_panel_opacity * intensity),
-                                         panel_rounding);
+    if (auto const overlay = BackgroundOverlayForLibrary(frame_context, lib_id);
+        overlay && (overlay->panel_tint.colour & k_alpha_mask)) {
+        g.imgui.draw_list->AddRectFilled(window_r, overlay->panel_tint.colour, panel_rounding);
     }
 
     g.imgui.draw_list->AddRect(window_r, LiveCol(UiColMap::MidViewportSurfaceBorder), panel_rounding);
@@ -161,10 +157,11 @@ DrawMidPanelBackground(GuiState& g, GuiFrameContext const& frame_context, imgui:
     else
         imgui.draw_list->AddRectFilled(r, LiveCol(UiColMap::MidViewportBackground));
 
-    if (auto const intensity = VignetteIntensityForLibrary(frame_context, lib_id); intensity > 0) {
+    if (auto const overlay = BackgroundOverlayForLibrary(frame_context, lib_id);
+        overlay && (overlay->vignette.colour & k_alpha_mask)) {
         imgui.draw_list->AddVignetteRect(r,
-                                         ChangeAlpha(k_vignette_colour, intensity),
-                                         k_vignette_inner_radius,
+                                         overlay->vignette.colour,
+                                         overlay->vignette.inner_radius,
                                          k_vignette_num_bands);
     }
 }

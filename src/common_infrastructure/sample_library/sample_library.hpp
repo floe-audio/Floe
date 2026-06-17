@@ -266,7 +266,15 @@ struct Library {
     u32 minor_version {1};
     Optional<LibraryPath> background_image_path {};
     Optional<LibraryPath> icon_image_path {};
-    u8 background_image_vignette_intensity {};
+    struct BackgroundOverlay {
+        struct Vignette {
+            u32 colour {}; // ABGR, alpha encodes strength; 0 disables
+            f32 inner_radius {0.20f};
+        } vignette;
+        struct PanelTint {
+            u32 colour {}; // ABGR, applied flat over the blurred mid-panel surface
+        } panel_tint;
+    } background_overlay;
     HashTable<String, Instrument*> insts_by_id {};
     Span<Instrument*> sorted_instruments {};
     Array<FolderNode, ToInt(ResourceType::Count)> root_folders {};
