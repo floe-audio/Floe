@@ -516,7 +516,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.AbstractEnergy.1"),
                     .subtitle = "Factory presets for Abstract Energy (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -524,7 +524,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.Wraith.1"),
                     .subtitle = "Factory presets for Wraith (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -532,7 +532,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.ArcticStrings.1"),
                     .subtitle = "Factory presets for Arctic Strings (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -540,7 +540,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.CinematicAtmosphereToolkit.1"),
                     .subtitle = "Factory presets for Cinematic Atmosphere Toolkit (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -548,7 +548,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.DeepConjuring.1"),
                     .subtitle = "Factory presets for Deep Conjuring (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -556,7 +556,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.FeedbackLoops.1"),
                     .subtitle = "Factory presets for Feedback Loops (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -564,7 +564,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.IsolatedSignals.1"),
                     .subtitle = "Factory presets for Isolated Signals (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -572,7 +572,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.LostReveries.1"),
                     .subtitle = "Factory presets for Lost Reveries (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -580,7 +580,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.MusicBoxSuiteFree.1"),
                     .subtitle = "Factory presets for Music Box Suite Free (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -588,7 +588,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.MusicBoxSuite.1"),
                     .subtitle = "Factory presets for Music Box Suite (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -596,7 +596,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.Phoenix.1"),
                     .subtitle = "Factory presets for Phoenix (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -604,7 +604,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.ScenicVibrations.1"),
                     .subtitle = "Factory presets for Scenic Vibrations (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -612,7 +612,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.Slow.1"),
                     .subtitle = "Factory presets for Slow (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -620,7 +620,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.SqueakyGate.1"),
                     .subtitle = "Factory presets for Squeaky Gate (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -628,7 +628,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.Dreamstates.1"),
                     .subtitle = "Factory presets for Dreamstates (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -636,7 +636,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.Paranormal.1"),
                     .subtitle = "Factory presets for Paranormal (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -644,7 +644,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.ScareTactics.1"),
                     .subtitle = "Factory presets for Scare Tactics (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -652,7 +652,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.SignalInterference.1"),
                     .subtitle = "Factory presets for Signal Interference (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -660,7 +660,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.Terracotta.1"),
                     .subtitle = "Factory presets for Terracotta (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -668,7 +668,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.WraithDemo.1"),
                     .subtitle = "Factory presets for Wraith Demo (Mirage presets)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -676,7 +676,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.Dulcitone"),
                     .subtitle = "Factory presets for Dulcitone"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -684,7 +684,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.MusicBoxSuite"),
                     .subtitle = "Factory presets for Music Box Suite (Floe edition)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -692,7 +692,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.MusicBoxSuiteFree"),
                     .subtitle = "Factory presets for Music Box Suite Free (Floe edition)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }
@@ -700,7 +700,7 @@ struct FoldersAggregateInfo {
                 static constexpr PresetBank k_metadata {
                     .id = HashFnv1a("com.FrozenPlain.MusicBoxSuiteFree.Beta"),
                     .subtitle = "Factory presets for Music Box Suite Free (Floe beta edition)"_s,
-                    .minor_version = 1,
+                    .revision = 1,
                 };
                 return &k_metadata;
             }

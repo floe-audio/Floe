@@ -239,6 +239,7 @@ struct FieldInfo {
     }
 
     String name;
+    String alias_name {};
     String description_sentence;
     String example;
     String default_value;
@@ -1703,7 +1704,7 @@ struct TableFields<Library> {
         Author,
         Id,
         AuthorUrl,
-        MinorVersion,
+        Revision,
         BackgroundImagePath,
         IconImagePath,
         BackgroundOverlay,
@@ -1781,7 +1782,7 @@ struct TableFields<Library> {
                 return {
                     .name = "id",
                     .description_sentence =
-                        "A unique identifier for this library. Specifying this field overrides the default ID of \"library-name - author\". It can be any text, its only meaning is to uniquely identify this library from others. However, in rare cases it may be shown on the UI so it should be human-readable and representative of the library. This field is useful if you want to change the name of the library: set this to the previous ID (otherwise the ID will change to \"new-library-name - author\") and bump the minor_version field.",
+                        "A unique identifier for this library. Specifying this field overrides the default ID of \"library-name - author\". It can be any text, its only meaning is to uniquely identify this library from others. However, in rare cases it may be shown on the UI so it should be human-readable and representative of the library. This field is useful if you want to change the name of the library: set this to the previous ID (otherwise the ID will change to \"new-library-name - author\") and bump the revision field.",
                     .example = "Iron Vibrations - Found-sound Labs",
                     .default_value = "\"library-name\" - \"author\"",
                     .lua_type = LUA_TSTRING,
@@ -1806,17 +1807,17 @@ struct TableFields<Library> {
                     .required = false,
                     .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.author_url = StringFromTop(ctx); },
                 };
-            case Field::MinorVersion:
+            case Field::Revision:
                 return {
-                    .name = "minor_version",
+                    .name = "revision",
+                    .alias_name = "minor_version",
                     .description_sentence =
-                        "The minor version of this library - backwards-compatible changes are allowed on a library; this field represents that. Non-backwards-compatibile changes are not allowed: you'd need to create a new library such as: \"Strings 2\".",
+                        "The revision number of this library. Bump this whenever you publish a backwards-compatible update (additional content, fixes, tweaks); breaking changes are not allowed - you'd need to create a new library such as: \"Strings v2\". The legacy name `minor_version` is also accepted.",
                     .example = "1",
                     .default_value = "1",
                     .lua_type = LUA_TNUMBER,
                     .required = false,
-                    .set =
-                        [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.minor_version = NumberFromTop<u32>(ctx, info); },
+                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.revision = NumberFromTop<u32>(ctx, info); },
                 };
             case Field::BackgroundImagePath:
                 return {
@@ -1879,7 +1880,11 @@ template <InterpretableType Type>
 void InterpretTable(LuaState& ctx, int stack_index, Type& result) {
     if (stack_index == -1) stack_index = lua_gettop(ctx.lua);
     for (auto [index, f] : Enumerate(FieldInfos<Type>())) {
-        auto const type = lua_getfield(ctx.lua, stack_index, f.name.data);
+        auto type = lua_getfield(ctx.lua, stack_index, f.name.data);
+        if (type == LUA_TNIL && f.alias_name.size) {
+            lua_pop(ctx.lua, 1);
+            type = lua_getfield(ctx.lua, stack_index, f.alias_name.data);
+        }
         if (!f.required && type == LUA_TNIL) {
             lua_pop(ctx.lua, 1);
             continue;
@@ -3445,7 +3450,7 @@ TEST_CASE(TestBasicFile) {
     CHECK_EQ(lib.name, "Lib"_s);
     CHECK_EQ(lib.tagline, "tagline"_s);
     CHECK_EQ(lib.author, "Sam"_s);
-    CHECK_EQ(lib.minor_version, 1u);
+    CHECK_EQ(lib.revision, 1u);
 
     REQUIRE(lib.insts_by_id.size);
 

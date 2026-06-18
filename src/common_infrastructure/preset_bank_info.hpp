@@ -13,7 +13,7 @@ struct PresetBank {
     bool operator==(PresetBank const& other) const = default;
     u64 id {};
     String subtitle {};
-    u16 minor_version {};
+    u16 revision {};
     Optional<u64> library_for_visuals_id {};
 };
 

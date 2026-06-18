@@ -23,12 +23,12 @@ PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
 
         if (key == "subtitle"_s) {
             bank.subtitle = arena.Clone(value_str);
-        } else if (key == "minor_version"_s) {
+        } else if (key == "revision"_s || key == "minor_version"_s) {
             usize num_chars_read = {};
             if (auto const v = ParseInt(value_str, ParseIntBase::Decimal, &num_chars_read, false);
                 v && num_chars_read == value_str.size &&
-                *v <= LargestRepresentableValue<decltype(bank.minor_version)>()) {
-                bank.minor_version = (decltype(bank.minor_version))*v;
+                *v <= LargestRepresentableValue<decltype(bank.revision)>()) {
+                bank.revision = (decltype(bank.revision))*v;
             }
         } else if (key == "id"_s) {
             bank.id = HashFnv1a(value_str);

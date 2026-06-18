@@ -96,7 +96,7 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
                   });
         };
 
-        do_text_line(fmt::Assign(buffer, "Version: {}", lib->minor_version));
+        do_text_line(fmt::Assign(buffer, "Revision: {}", lib->revision));
         if (auto const dir = path::Directory(lib->path)) {
             auto const display_dir = IsAnyScreenshotInProgress() ? "/path/to/your/library/folder"_s : *dir;
             do_text_line(fmt::Assign(buffer, "Folder: {}", display_dir));

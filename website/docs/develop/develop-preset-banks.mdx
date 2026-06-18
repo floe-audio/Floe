@@ -16,7 +16,7 @@ Presets are saved as individual files using the <FAIcon icon="fa-solid fa-floppy
 
 ## Preset Banks
 
-A _preset bank_ is small, optional, extension to this concept. By creating a `floe-preset-bank.ini` inside a folder of presets, it becomes a preset bank, where the entire tree of presets in the folder and all its subfolders become more easily identifiable and can feature metadata such as a subtitle and ID. 
+A _preset bank_ is small, optional, extension to this concept. By creating a `floe-preset-bank.ini` inside a folder of presets, it becomes a preset bank, where the entire tree of presets in the folder and all its subfolders become more easily identifiable and can feature metadata such as a subtitle and ID.
 
 Creating a bank is normally a good idea for custom presets: the preset browser can isolate the bank, present it with the best name, and surface it at the top level. In the preset browser, the icon for the bank is taken from the sample library used by the bank's presets. If the bank contains presets that depend on multiple different libraries, a 'mixed' icon is shown instead to denote that the bank spans more than one library.
 
@@ -26,17 +26,20 @@ The preset bank file is a simple INI text file with the following fields - all a
 ; A short and descriptive name for the preset bank.
 subtitle = My Preset Bank Name
 
-; Any kind of unique identifier. Typically you might use a reverse 
+; Any kind of unique identifier. Typically you might use a reverse
 ; domain style string. Used so Floe can identify the bank uniquely.
 id = com.myname.mypresetbank
 
-; A version number - just a single integer. When installing a 
-; package, Floe can use this alongside the ID to determine if a bank 
-; can be updated rather than installed to a new location. Versioning
-; is only designed for simple additions/fixes. If you make major
-; changes, it's probably better to create a new preset bank, 
-; "My Bank 2", with a new ID.
-minor_version = 1
+; A revision number - just a single integer. When installing a
+; package, Floe can use this alongside the ID to determine if a bank
+; can be updated rather than installed to a new location. Revisions
+; are only designed for simple additions/fixes. If you make major
+; changes, it's probably better to create a new preset bank,
+; "My Bank 2", with a new ID. On the preset browser, this number will
+; be displayed with a 'v1.' prefix to make it clear to users that the
+; change is incremental and backwards-compatible.
+; The key `minor_version` is also accepted for this.
+revision = 1
 
 ; The id_string of an installed sample library whose icon should
 ; represent this bank in the preset browser. If omitted, or if the

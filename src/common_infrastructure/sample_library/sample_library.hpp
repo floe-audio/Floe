@@ -263,7 +263,7 @@ struct Library {
     String author {};
     u64 author_hash {}; // cached Hash(author)
     Optional<String> author_url {};
-    u32 minor_version {1};
+    u32 revision {1};
     Optional<LibraryPath> background_image_path {};
     Optional<LibraryPath> icon_image_path {};
     struct BackgroundOverlay {

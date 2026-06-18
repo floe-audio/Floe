@@ -897,6 +897,12 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                         s = "Preset folder";
                                     s;
                                 }),
+                                .version = ({
+                                    Optional<u32> v {};
+                                    if (auto const m = PresetBankAtNode(*folder); m && m->revision)
+                                        v = (u32)m->revision;
+                                    v;
+                                }),
                                 .folder_infos = folders,
                                 .folder = folder,
                                 .all_items_suffix = " Presets"_s,

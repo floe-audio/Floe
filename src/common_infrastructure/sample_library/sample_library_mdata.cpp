@@ -54,7 +54,7 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
         TRY(reader.Read(&header, sizeof(mdata::MasterHeader)));
         if (header.id_magic != mdata::HeaderIdMasterMagic) return ErrorCode(CommonError::InvalidFileFormat);
         library.name = arena.Clone(header.Name());
-        library.minor_version = header.version;
+        library.revision = header.version;
         library.author = "FrozenPlain";
         library.id_string = IdStringForMdataLibraryAlloc(library.name, arena);
         library.id = HashLibraryIdString(library.id_string);

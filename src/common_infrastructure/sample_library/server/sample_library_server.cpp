@@ -91,7 +91,7 @@ UpdateLibraryJobs(Server& server, ArenaAllocator& scratch_arena, Optional<Direct
                         it = server.libraries.Remove(it);
                         NotifyAllChannelsOfLibraryChange(server, lib->id);
                     } else if (it->value.lib->id == lib->id) {
-                        if (it->value.lib->minor_version > lib->minor_version) {
+                        if (it->value.lib->revision > lib->revision) {
                             not_wanted = true; // The existing library is newer.
                             ++it;
                         } else {
@@ -1247,7 +1247,7 @@ static sample_lib::Library* BuiltinLibrary() {
         .tagline = "Built-in IRs",
         .library_url = FLOE_HOMEPAGE_URL,
         .author = FLOE_VENDOR,
-        .minor_version = 1,
+        .revision = 1,
         .background_image_path = k_background_path,
         .icon_image_path = k_icon_path,
         .insts_by_id = {},

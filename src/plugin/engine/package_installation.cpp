@@ -96,9 +96,9 @@ LibraryCheckExistingInstallation(Component const& component,
         .installed = true,
         .version_difference = ({
             VersionDifference v {};
-            if (existing_matching_library->minor_version < component.library->minor_version)
+            if (existing_matching_library->revision < component.library->revision)
                 v = VersionDifference::InstalledIsOlder;
-            else if (existing_matching_library->minor_version > component.library->minor_version)
+            else if (existing_matching_library->revision > component.library->revision)
                 v = VersionDifference::InstalledIsNewer;
             else
                 v = VersionDifference::Equal;
@@ -648,10 +648,10 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                                 .installed = true,
                                 .version_difference = ({
                                     VersionDifference d {};
-                                    if (existing_bank->minor_version == component->preset_bank->minor_version)
+                                    if (existing_bank->revision == component->preset_bank->revision)
                                         d = VersionDifference::Equal;
-                                    else if (existing_bank->minor_version <
-                                             component->preset_bank->minor_version)
+                                    else if (existing_bank->revision <
+                                             component->preset_bank->revision)
                                         d = VersionDifference::InstalledIsOlder;
                                     else
                                         d = VersionDifference::InstalledIsNewer;
@@ -1348,7 +1348,7 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
             ExistingDestinationHandling::Fail));
         TRY(WriteFile(path::Join(tester.scratch_arena, Array {folder, k_preset_bank_filename}),
                       fmt::Format(tester.scratch_arena,
-                                  "minor_version = {}\n"_s
+                                  "revision = {}\n"_s
                                   "id = org.floe-audio.test\n",
                                   version)));
         TRY(WriterAddPresetsFolder(package, folder, tester.scratch_arena, "tester"));

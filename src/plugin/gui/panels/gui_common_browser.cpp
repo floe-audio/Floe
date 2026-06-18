@@ -1240,10 +1240,17 @@ Box DoFilterCard(GuiBuilder& builder,
           });
 
     if (!card_collapsed) {
+        String subtext = options.subtext;
+        if (options.version) {
+            if (subtext.size)
+                subtext = fmt::Format(builder.arena, "{} · v1.{}"_s, subtext, *options.version);
+            else
+                subtext = fmt::Format(builder.arena, "v1.{}"_s, *options.version);
+        }
         DoBox(builder,
               {
                   .parent = card_top,
-                  .text = options.subtext,
+                  .text = subtext,
                   .wrap_width = k_wrap_to_parent,
                   .size_from_text = true,
                   .font = FontType::Heading3,
@@ -1670,6 +1677,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                               if (lib) s = builder.arena.Clone(lib->tagline);
                                               s;
                                           }),
+                                          .version = lib->revision,
                                           .folder_infos = library_filters.folders,
                                           .folder = folder,
                                           .all_items_suffix = library_filters.resource_type ==

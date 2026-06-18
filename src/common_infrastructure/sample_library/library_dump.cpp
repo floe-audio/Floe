@@ -375,7 +375,7 @@ ErrorCodeOr<void> Dump(Context& ctx, sample_lib::Library const& lib, ArenaAlloca
     TRY(WriteKeyValue(ctx, "id", lib.id_string));
     TRY(WriteKeyValue(ctx, "name", lib.name));
     TRY(WriteKeyValue(ctx, "author", lib.author));
-    TRY(WriteKeyValue(ctx, "minor_version", (s64)lib.minor_version));
+    TRY(WriteKeyValue(ctx, "revision", (s64)lib.revision));
     TRY(WriteKeyValue(ctx, "tagline", lib.tagline));
     if (lib.description)
         TRY(WriteKeyValue(ctx, "description", *lib.description));

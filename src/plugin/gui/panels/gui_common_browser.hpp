@@ -374,6 +374,7 @@ struct FilterCardOptions {
     sample_lib_server::Server& sample_library_server;
     FloeInstanceIndex instance_index;
     String subtext;
+    Optional<u32> version {};
     FolderFilterItemInfoLookupTable folder_infos;
     FolderNode const* folder;
     String all_items_suffix {}; // Appended after "All <name>" in the tree, e.g. " Instruments".
