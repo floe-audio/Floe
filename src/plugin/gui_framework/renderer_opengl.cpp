@@ -119,6 +119,7 @@ struct OpenGLRenderer : public Renderer {
         GLuint tex {};
         CHECKED_GL(glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture));
         CHECKED_GL(glGenTextures(1, &tex));
+        if (tex == 0) return ErrorCode(k_gl_error_category, GL_INVALID_OPERATION);
         DEFER {
             if (!success) glDeleteTextures(1, &tex);
         };
@@ -267,6 +268,7 @@ struct OpenGLRenderer : public Renderer {
 
         GLuint texture = 0;
         CHECKED_GL(glGenTextures(1, &texture));
+        if (texture == 0) return ErrorCode(k_gl_error_category, GL_INVALID_OPERATION);
         DEFER {
             if (!success) glDeleteTextures(1, &texture);
         };
