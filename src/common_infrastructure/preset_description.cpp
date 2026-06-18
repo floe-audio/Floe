@@ -7,10 +7,9 @@
 
 enum class PhraseKind : u8 {
     SlowAttack,
-    SharpAttack,
+    Percussive,
     GranularSpeed,
     GranularPosition,
-    OneShot,
     Looping,
     MicroLoop,
     Arpeggiated,
@@ -68,14 +67,6 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
             };
             return pick(k_variants);
         }
-        case PhraseKind::SharpAttack: {
-            static constexpr PhraseText k_variants[] = {
-                {"sharp attack"_s, "a sharp attack"_s},
-                {"punchy"_s, "a punchy attack"_s},
-                {"snappy"_s, "a snappy attack"_s},
-            };
-            return pick(k_variants);
-        }
         case PhraseKind::GranularSpeed: {
             static constexpr PhraseText k_variants[] = {
                 {"granular time-stretch"_s, "granular time-stretching"_s},
@@ -92,8 +83,15 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
             };
             return pick(k_variants);
         }
-        case PhraseKind::OneShot: return {"one-shot"_s, "one-shot playback"_s};
         case PhraseKind::Looping: return {"looping"_s, "looping"_s};
+        case PhraseKind::Percussive: {
+            static constexpr PhraseText k_variants[] = {
+                {"percussive"_s, "a percussive envelope"_s},
+                {"staccato"_s, "staccato playback"_s},
+                {"short and sharp"_s, "a short, sharp envelope"_s},
+            };
+            return pick(k_variants);
+        }
         case PhraseKind::Arpeggiated: {
             static constexpr PhraseText k_variants[] = {
                 {"arpeggiated"_s, "an arpeggio"_s},
@@ -168,7 +166,7 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
         case PhraseKind::LfoVibrato: {
             static constexpr PhraseText k_variants[] = {
                 {"vibrato"_s, "vibrato"_s},
-                {"vibrato-like"_s, "a kind of vibrato"_s},
+                {"vibrato-like"_s, "vibrato-like"_s},
             };
             return pick(k_variants);
         }
@@ -223,7 +221,7 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
                 {"drenched in convolution"_s, "a drenched convolution tail"_s},
                 {"immersed in space"_s, "an immersive convolution space"_s},
                 {"soaked in convolution"_s, "soaked convolution"_s},
-                {"enveloped in reverb"_s, "an enveloping convolution space"_s},
+                {"wrapped in reverb"_s, "a wrapping convolution space"_s},
             };
             return pick(k_variants);
         }
@@ -283,8 +281,7 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
 
     // Analyse per-layer characteristics
     u32 slow_attack_count = 0;
-    u32 fast_attack_count = 0;
-    u32 sharp_attack_count = 0;
+    u32 percussive_count = 0;
     u32 envelope_layer_count = 0;
     bool any_filter_active = false;
     bool any_filter_sweep = false;
@@ -294,7 +291,6 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
     Optional<param_values::LfoShape> lfo_shape {};
     bool any_looping = false;
     bool any_micro_loop = false;
-    bool any_one_shot = false;
     u32 granular_speed_count = 0;
     u32 granular_position_count = 0;
     u32 mono_layer_count = 0;
@@ -309,13 +305,12 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
         if (lp(i, LayerParamIndex::VolEnvOn) >= 0.5f) {
             envelope_layer_count++;
             auto const attack = lp(i, LayerParamIndex::VolumeAttack);
+            auto const decay = lp(i, LayerParamIndex::VolumeDecay);
             auto const sustain = lp(i, LayerParamIndex::VolumeSustain);
             if (attack > 0.4f)
                 slow_attack_count++;
-            else if (attack < 0.05f && sustain < 0.4f)
-                fast_attack_count++;
-            else if (attack < 0.05f)
-                sharp_attack_count++;
+            else if (attack < 0.05f && sustain < 0.3f && decay < 0.35f)
+                percussive_count++;
         }
 
         // Filter
@@ -357,7 +352,7 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
             granular_position_count++;
         } else {
             switch (layer_info[i].actual_loop_behaviour.value.id) {
-                case LoopBehaviourId::NoLoop: any_one_shot = true; break;
+                case LoopBehaviourId::NoLoop: break;
                 case LoopBehaviourId::CustomLoopStandard:
                 case LoopBehaviourId::CustomLoopPingPong: {
                     any_looping = true;
@@ -399,8 +394,8 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
             return m;
         }();
         dyn::Append(phrases, Phrase {PhraseKind::SlowAttack, 0.3f + (max_attack * 0.4f)});
-    } else if (envelope_layer_count > 0 && (fast_attack_count + sharp_attack_count) == envelope_layer_count) {
-        dyn::Append(phrases, Phrase {PhraseKind::SharpAttack, 0.4f});
+    } else if (envelope_layer_count > 0 && percussive_count == envelope_layer_count) {
+        dyn::Append(phrases, Phrase {PhraseKind::Percussive, 0.7f});
     }
 
     // Layering - only mention the same-instrument stacked case. Plain layer counts ("2 layers", "3 layers")
@@ -417,9 +412,7 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
             dyn::Append(phrases, Phrase {PhraseKind::GranularSpeed, 0.75f});
     else if (any_micro_loop)
         dyn::Append(phrases, Phrase {PhraseKind::MicroLoop, 0.85f});
-    else if (any_one_shot && !any_looping)
-        dyn::Append(phrases, Phrase {PhraseKind::OneShot, 0.2f});
-    else if (any_looping && !any_one_shot)
+    else if (any_looping)
         dyn::Append(phrases, Phrase {PhraseKind::Looping, 0.15f});
 
     // Arpeggiator: if every active layer is arpeggiated it's the defining feature; if only some are
