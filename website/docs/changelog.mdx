@@ -15,9 +15,8 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 2.0.0-beta.5
-- Preset bank `floe-preset-bank.ini` supports an optional `icon_library` field to pick which library's icon represents the bank
-- Hold shift while dragging waveform handles (loop, crossfade, offset) for finer adjustment
-- Show 2 decimal places for layer loop start/end, crossfade and sample offset values
+- Higher precision for holding shift while dragging waveform handles (loop, crossfade, offset)
+- Show 2 decimal places for layer loop points and sample offset
 - Show 1 decimal places for all percentage parameter printouts to aid precision
 - Fix recent regression where right-click menu for libraries didn't work
 - File pickers remember the last folder you used across sessions
@@ -26,6 +25,7 @@ For instance: 0.0.1. Don't change the headings.
 - Tweak PERFORM page layer layout
 - Fix FX Mix knob not being correct when loading an old preset that has a macro assigned to either Wet or Dry of Convolution, Chorus or Bitcrush FX.
 - Lua: replace `vignette_intensity` with a `background_overlay` sub-table for tuning the mid-panel vignette (colour, inner radius) and an independent panel tint when this library is the active background
+- Preset bank `floe-preset-bank.ini` supports an optional `library_for_visuals` field to pick which library's icon/background represents the bank
 
 ## 2.0.0-beta.4
 - Fix package install failing on Linux in sandboxed environments such as steam-run
