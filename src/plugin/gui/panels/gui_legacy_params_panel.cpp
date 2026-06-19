@@ -150,17 +150,41 @@ static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor con
         builder,
         {
             .parent = right_group,
-            .text = ICON_FA_WAND_MAGIC_SPARKLES,
-            .size_from_text = true,
-            .font = FontType::Icons,
-            .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
             .background_fill_auto_hot_active_overlay = true,
             .round_background_corners = 0b1111,
+            .layout {
+                .size = layout::k_hug_contents,
+                .contents_padding = {.lr = 6, .tb = 3},
+                .contents_gap = 4,
+                .contents_direction = layout::Direction::Row,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+            },
             .tooltip =
-                "Modernise: hand control over to the modern parameter, copying across the audibly-equivalent value so the sound doesn't change."_s,
+                "Update just this parameter: hand control over to the current parameter, copying across the audibly-equivalent value so the sound doesn't change."_s,
             .button_behaviour = imgui::ButtonConfig {},
             .extra_margin_for_mouse_events = 4,
         });
+
+    DoBox(builder,
+          {
+              .parent = reset_btn,
+              .text = ICON_FA_WAND_MAGIC_SPARKLES,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .parent_dictates_hot_and_active = true,
+          });
+
+    DoBox(builder,
+          {
+              .parent = reset_btn,
+              .text = "Update"_s,
+              .size_from_text = true,
+              .font = FontType::Body,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .parent_dictates_hot_and_active = true,
+          });
 
     if (reset_btn.button_fired) {
         BeginUndoableStep(g.engine, "Modernise legacy parameter"_s);
@@ -184,17 +208,16 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
                                  },
                              });
 
-    bool const any_overriding = ({
-        bool found = false;
+    u32 const overriding_count = ({
+        u32 count = 0;
         for (auto const& desc : k_param_descriptors) {
             if (!desc.flags.legacy) continue;
-            if (IsLegacyParamOverridingModern(desc, g.engine.processor.main_params.LinearValue(desc.index))) {
-                found = true;
-                break;
-            }
+            if (IsLegacyParamOverridingModern(desc, g.engine.processor.main_params.LinearValue(desc.index)))
+                ++count;
         }
-        found;
+        count;
     });
+    bool const any_overriding = overriding_count > 0;
 
     // TL;DR / at-a-glance summary.
     {
@@ -216,8 +239,8 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
                 .parent = tldr_box,
                 .text =
                     any_overriding
-                        ? "This state comes from an older version of Floe that used slightly different parameters. Floe has perfectly retained the original sound. You can update to the latest parameters — perfectly retaining the original sound (except that further tweaks to macros might have a slightly different shape).\n\nIt's perfectly safe to update unless you have DAW automation on any of the legacy parameters. You don't have to update: Floe is stable and safe in the legacy state, except that it's harder to make further tweaks to the sound unless you modernise first."_s
-                        : "No legacy parameters are currently overriding modern controls. Nothing for you to do here."_s,
+                        ? "Your sound is intact. This project was saved with an older version of Floe that used slightly different parameter shapes. Floe is preserving the original sound by keeping those older shapes active — which is why a few controls on the main UI are temporarily locked.\n\nYou can safely update to the current parameters (the sound won't change), but please check for DAW automation first — see the note below the button. You don't have to update: Floe is stable either way, it's just easier to tweak the sound further once you've updated."_s
+                        : "Nothing needs your attention right now.\n\nThis panel appears when a project is loaded from an older version of Floe that used slightly different parameter shapes. To preserve the original sound, Floe keeps the older shapes active and temporarily locks the matching modern controls. None are active in this project."_s,
                 .wrap_width = k_wrap_to_parent,
                 .size_from_text = true,
                 .font = FontType::Body,
@@ -227,10 +250,22 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
 
     // Modernise all button (only when there's something to modernise).
     if (any_overriding) {
+        auto const action_group = DoBox(builder,
+                                        {
+                                            .parent = panel,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = 6,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+
         auto const modernise_btn = DoBox(
             builder,
             {
-                .parent = panel,
+                .parent = action_group,
                 .background_fill_colours = Col {.c = Col::Surface1, .dark_mode = true},
                 .background_fill_auto_hot_active_overlay = true,
                 .round_background_corners = 0b1111,
@@ -245,7 +280,7 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                     },
                 .tooltip =
-                    "Modernise every overriding parameter: hand control over to the modern controls, copying across the audibly-equivalent values so the sound doesn't change. Only do this if you've checked your DAW for automation on these parameters."_s,
+                    "Update every locked control to the current parameter, copying across an audibly-equivalent value so the sound doesn't change."_s,
                 .button_behaviour = imgui::ButtonConfig {},
             });
 
@@ -262,12 +297,46 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
         DoBox(builder,
               {
                   .parent = modernise_btn,
-                  .text = "Modernise State"_s,
+                  .text = "Update all to current parameters"_s,
                   .size_from_text = true,
                   .font = FontType::Body,
                   .text_colours = Col {.c = Col::Text, .dark_mode = true},
                   .parent_dictates_hot_and_active = true,
               });
+
+        // DAW-automation check: only the user can answer this — phrase it as a question.
+        auto const warning_row = DoBox(builder,
+                                       {
+                                           .parent = action_group,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_gap = 6,
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Start,
+                                               .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                           },
+                                       });
+
+        DoBox(builder,
+              {
+                  .parent = warning_row,
+                  .text = ICON_FA_TRIANGLE_EXCLAMATION,
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours = Col {.c = Col::Yellow, .dark_mode = true},
+              });
+
+        DoBox(
+            builder,
+            {
+                .parent = warning_row,
+                .text =
+                    "Before updating: does your DAW have automation on any of these parameters? If yes, remove or re-create it on the new parameter first — otherwise the lock will return as soon as the automation moves the value off its default. Expand the list below to see which parameters to look for."_s,
+                .wrap_width = k_wrap_to_parent,
+                .size_from_text = true,
+                .font = FontType::Body,
+                .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+            });
 
         if (modernise_btn.button_fired) {
             BeginUndoableStep(g.engine, "Modernise all legacy parameters"_s);
@@ -329,13 +398,13 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
     {
         static bool more_info_open = false;
 
-        if (collapsible_btn("More info", more_info_open)) {
+        if (collapsible_btn("Why is this happening?", more_info_open)) {
             DoBox(
                 builder,
                 {
                     .parent = panel,
                     .text =
-                        "Floe never deletes parameters: when one needs to change, the old version is kept as a 'legacy' parameter so existing DAW automation keeps working exactly as before. Presets are modernised automatically when loaded — but DAW projects can't be, since Floe can't tell which parameters your DAW is automating.\n\nWhile a legacy override is active, the corresponding modern control is greyed out and disabled, marked with a yellow warning badge that opens this panel. Its knob position and any visualisers (filter response, EQ curve, envelope shape, etc.) reflect the modern parameter's underlying value, not the legacy value actually driving the audio — the sound is correct, but the on-screen display is not.\n\nModernising hands control over to the modern parameter and copies across an audibly-equivalent value so the sound doesn't change. Floe decides whether a legacy parameter is overriding purely by checking whether its value is at the default, so if you modernise while DAW automation is still writing to the legacy parameter, the override will re-engage the moment automation moves the value off default. Remove or re-create the automation in your DAW first.",
+                        "Floe never deletes parameters. When one needs to change in a way that would affect the sound, the older version stays around as a 'legacy' parameter so existing DAW automation keeps working exactly as before, and a new parameter is added to the main UI.\n\nWhen you load a preset, Floe updates automatically. When you load a DAW project, Floe can't — it has no way to tell which parameters your DAW is automating, and silently changing the target would break that automation. So the older parameter stays active, the matching modern control is locked, and a yellow warning badge appears that opens this panel.\n\nWhile locked, the modern control's knob position and any visualisers (filter response, EQ curve, envelope shape, etc.) reflect the modern parameter's underlying value — not the older value driving the audio. The sound is correct, but the on-screen display doesn't match.\n\nUpdating hands control back to the modern parameter and copies across an audibly-equivalent value so the sound doesn't change. Floe decides whether an older parameter is active purely by checking whether its value is at the default — so if you update while DAW automation is still writing, the lock will re-engage the moment automation moves the value off default. That's why removing or re-creating the automation in your DAW comes first.",
                     .wrap_width = k_wrap_to_parent,
                     .size_from_text = true,
                     .font = FontType::Body,
@@ -347,7 +416,21 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
     // Param list.
     if (any_overriding) {
         static bool show_params = false;
-        if (collapsible_btn("Show active legacy parameters", show_params)) {
+        auto const list_label =
+            fmt::Format(builder.arena, "Which parameters are affected? ({})", overriding_count);
+        if (collapsible_btn(list_label, show_params)) {
+            DoBox(
+                builder,
+                {
+                    .parent = panel,
+                    .text =
+                        "Look for these in your DAW's automation lanes before updating. You can also update a single parameter from its row."_s,
+                    .wrap_width = k_wrap_to_parent,
+                    .size_from_text = true,
+                    .font = FontType::Body,
+                    .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+                });
+
             auto const list = DoBox(builder,
                                     {
                                         .parent = panel,
