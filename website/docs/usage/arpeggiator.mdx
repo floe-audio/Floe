@@ -22,7 +22,7 @@ import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
 The arpeggiator turns a held chord — or a recorded note sequence — into a rhythmic pattern of individual notes, synced to your host's tempo. Each step of the pattern triggers the layer's instrument as if you'd played it from a keyboard, so the volume envelope, filter, LFOs and effects all respond exactly the same way they would for a manually played note.
 
-Because the arpeggiator is per-layer, you can have one layer arpeggiating a percussive pluck while another layer holds a long pad on the same incoming notes. Each layer can run at a different rate, in a different mode, and with a different sequence.
+Because the arpeggiator is per-layer, create interesting combination of sequences.
 
 <GeneratedScreenshot name="layer-arp" alt="Layer Arp Tab" />
 
@@ -31,7 +31,7 @@ Because the arpeggiator is per-layer, you can have one layer arpeggiating a perc
 Open a layer's **Arp tab** and click the _Arpeggiator_ button to enable it. Next to that button is the **Mode menu**:
 
 - **Played Notes**: the held chord is arpeggiated. Each step plays one of the notes you're holding, transposed by an optional per-step semitone interval. The order in which the notes are picked is set by _Note Order_ (Up, Down, Up/Down, Random, Thumb, Up+, and so on).
-- **Fixed Notes**: each step plays a specific MIDI note that you set yourself, regardless of what you play in. Pressing any key triggers the pattern at that key's transposition. Use the **Record** button to capture a sequence by playing notes on your keyboard.
+- **Fixed Notes**: each step plays a specific MIDI note that you set yourself, regardless of what you play in. Use the **Record** button to capture a sequence by playing notes on your keyboard.
 
 ## The step sequencer
 
@@ -64,7 +64,7 @@ Below the step sequencer is the **SEQUENCE** section:
 - **Rate**: the step length, synced to host tempo. Choose from triplet, straight or dotted divisions from 1/64 up to 4/1.
 - **Auto Rate** (only visible for sliced instruments): picks a rate automatically based on the instrument's loop length and the host tempo. While Auto Rate is on, the Rate control is replaced with a read-only display showing the chosen rate.
 - **Length**: how many steps are active in the pattern (1–64).
-- **Order** (Played Notes only): how held notes are picked across the steps — Up, Down, Up/Down, Down/Up, Random, Random No Repeat, Up x2, Down x2, Up/Down x2, Converge, Diverge, Thumb, Up+.
+- **Order** (Played Notes only): how held notes are picked across the steps — Chord, Up, Down, Up/Down, Down/Up, Random, Random No Repeat, Up x2, Down x2, Up/Down x2, Converge, Diverge, Thumb, Up+.
 - **Humanise**: adds random timing and velocity variation to each step. Small amounts loosen up a rigid pattern; larger amounts produce a much more human-feeling performance.
 
 ## Config controls
@@ -84,3 +84,8 @@ Some instruments come with built-in slice markers (for example, a sliced drum lo
 - **Length**: how many slices to loop through (or _All_ for everything from the offset onwards).
 
 The step sequencer still shows per-step velocity and gate, so you can shape the dynamics and rhythmic feel of the slice playback.
+
+## Tips
+- Use the interesting Polyrate _Double at octaves_ and hold an octave (2 Cs for example) on your keyboard for a unique doubling-up effect.
+- When in _Chord_ order, be careful to trigger your chords at precisely the same time. If there's a slight gap, the arpeggiator will begin with the first note, and only add the second note in the next step since it didn't see the second note at the time the first was hit.
+- For percussion, _Chord_ order with a generous _Humanise_ setting is normally best.

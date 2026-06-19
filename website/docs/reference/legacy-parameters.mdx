@@ -26,7 +26,7 @@ In every case the old parameter stays alive behind the scenes so your projects s
 
 ## Presets vs. DAW projects
 
-When you load a **preset**, Floe automatically modernises any legacy values it finds: the audibly-equivalent value is copied onto the modern parameter and the legacy slot is cleared. You'll see no legacy parameters and the modern UI controls work as expected.
+When you load a **preset**, Floe typically automatically modernises any legacy values it finds: the audibly-equivalent value is copied onto the modern parameter and the legacy slot is cleared. You'll see no legacy parameters and the modern UI controls work as expected.
 
 When you load a **DAW project**, Floe can't modernise automatically: it has no way of knowing whether your DAW is automating a legacy parameter, and silently changing the target would break your automation. Instead, Floe keeps the legacy value intact, lets the legacy parameter override its modern equivalent, and shows a small yellow warning badge on the affected control. The Legacy Parameters panel (accessible from the 3-dots menu) lists every legacy parameter that is currently overriding a modern control.
 
@@ -38,10 +38,10 @@ The control's knob position and any associated visualisers (filter response curv
 
 ## Modernising a legacy parameter
 
-"Modernising" hands control over from the legacy parameter to its modern replacement, copying across an audibly-equivalent value so the sound doesn't change. The Legacy Parameters panel offers two ways to do this:
+"Modernisting" (or "updating") hands control over from the legacy parameter to its modern replacement, copying across an audibly-equivalent value so the sound doesn't change. The Legacy Parameters panel offers two ways to do this:
 
-- **Modernise all** — modernises every overriding parameter at once.
-- **Modernise (per row)** — modernises a single parameter.
+- **Update all** — modernises every overriding parameter at once.
+- **Update (per row)** — modernises a single parameter.
 
 Your project will sound exactly as it did before, and from then on the modern control on the main UI is live again.
 
