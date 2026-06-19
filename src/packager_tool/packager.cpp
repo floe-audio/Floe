@@ -257,12 +257,21 @@ struct PackageInfo {
         Instrument* next;
     };
 
+    struct PresetName {
+        String name;
+        PresetName* next;
+    };
+
     struct Library {
         String name;
         String author;
         sample_lib::FileFormat file_format {};
         OrderedHashTable<String, Instrument*> instruments_by_folder;
-        Set<String> instrument_tags;
+    };
+
+    struct TagCount {
+        TagCategoryGroup group;
+        u32 count;
     };
 
     static bool LibraryLessThan(sample_lib::LibraryId const& a,
@@ -273,12 +282,33 @@ struct PackageInfo {
     }
 
     OrderedHashTable<sample_lib::LibraryId, Library, NoHash, LibraryLessThan> libraries;
-    OrderedHashTable<String, u32> preset_folders; // path -> num presets
-    OrderedHashTable<String, u32> preset_tags;
+    OrderedHashTable<String, PresetName*> preset_folders;
+    OrderedHashTable<String, TagCount> instrument_tags;
+    OrderedHashTable<String, TagCount> preset_tags;
     Set<String> extra_files;
-    usize package_size {0}; // total size of the package in bytes
+    usize package_size {0};
     String name;
 };
+
+static TagCategoryGroup GroupOfTag(TagType t) {
+    for (auto const c : EnumIterator<TagCategory>()) {
+        auto const info = Tags(c);
+        for (auto const tag : info.tags)
+            if (tag == t) return info.group;
+    }
+    PanicIfReached();
+}
+
+static String GroupLabel(TagCategoryGroup g) {
+    switch (g) {
+        case TagCategoryGroup::Source: return "Sources"_s;
+        case TagCategoryGroup::Type: return "Sound types"_s;
+        case TagCategoryGroup::Mood: return "Moods & genres"_s;
+        case TagCategoryGroup::Timbre: return "Timbres"_s;
+        case TagCategoryGroup::Count: PanicIfReached();
+    }
+    return {};
+}
 
 static void AddLibrary(PackageInfo& info,
                        sample_lib::Library const& lib,
@@ -314,10 +344,14 @@ static void AddLibrary(PackageInfo& info,
         }
 
         inst->tags.ForEachSetBit([&](usize bit) {
-            auto const tag_name = GetTagInfo((TagType)bit).name;
-            auto tag_result =
-                lib_result.element.data.instrument_tags.FindOrInsertGrowIfNeeded(arena, tag_name);
+            auto const tag_type = (TagType)bit;
+            auto const tag_name = GetTagInfo(tag_type).name;
+            auto tag_result = info.instrument_tags.FindOrInsertGrowIfNeeded(
+                arena,
+                tag_name,
+                PackageInfo::TagCount {.group = GroupOfTag(tag_type), .count = 0});
             if (tag_result.inserted) tag_result.element.key = arena.Clone(tag_name);
+            ++tag_result.element.data.count;
         });
     }
 }
@@ -331,24 +365,72 @@ AddPresetIfNeeded(PackageInfo& info, String path_in_zip, ArenaAllocator& arena, 
         path_in_zip = path_in_zip.SubSpan(package::k_presets_subdir.size);
         path_in_zip = path::TrimDirectorySeparatorsStart(path_in_zip);
 
-        auto const folder = path::Directory(path_in_zip, path::Format::Posix).ValueOr("/");
-        auto found = info.preset_folders.FindOrInsertGrowIfNeeded(arena, folder, 0);
+        auto const folder = path::Directory(path_in_zip, path::Format::Posix).ValueOr(""_s);
+        auto const preset_name = path::FilenameWithoutExtension(path_in_zip);
+
+        auto preset = arena.New<PackageInfo::PresetName>(PackageInfo::PresetName {
+            .name = arena.Clone(preset_name),
+            .next = nullptr,
+        });
+
+        auto found = info.preset_folders.FindOrInsertGrowIfNeeded(arena, folder, preset);
         if (found.inserted) found.element.key = arena.Clone(folder);
-        ++found.element.data;
+        if (!found.inserted) SinglyLinkedListPrepend(found.element.data, preset);
     }
 
     if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile); outcome.HasValue()) {
         auto const& state = outcome.Value();
         state.metadata.tags.ForEachSetBit([&](usize bit) {
-            auto const tag_name = GetTagInfo((TagType)bit).name;
-            auto tag_result = info.preset_tags.FindOrInsertGrowIfNeeded(arena, tag_name, 0);
+            auto const tag_type = (TagType)bit;
+            auto const tag_name = GetTagInfo(tag_type).name;
+            auto tag_result = info.preset_tags.FindOrInsertGrowIfNeeded(
+                arena,
+                tag_name,
+                PackageInfo::TagCount {.group = GroupOfTag(tag_type), .count = 0});
             if (tag_result.inserted) tag_result.element.key = arena.Clone(tag_name);
-            ++tag_result.element.data;
+            ++tag_result.element.data.count;
         });
     }
 }
 
+static ErrorCodeOr<void> WriteTagGroups(json::WriteContext& json,
+                                        String key,
+                                        OrderedHashTable<String, PackageInfo::TagCount> const& tags,
+                                        ArenaAllocator& scratch) {
+    if (tags.size == 0) return k_success;
+
+    struct Entry {
+        String name;
+        u32 count;
+    };
+
+    TRY(json::WriteKeyArrayBegin(json, key));
+    for (auto const group : EnumIterator<TagCategoryGroup>()) {
+        DynamicArray<Entry> group_tags {scratch};
+        for (auto const& [name, tc, _] : tags)
+            if (tc.group == group) dyn::Append(group_tags, Entry {name, tc.count});
+        if (group_tags.size == 0) continue;
+
+        Sort(group_tags, [](Entry const& a, Entry const& b) { return a.count > b.count; });
+
+        TRY(json::WriteObjectBegin(json));
+        TRY(json::WriteKeyValue(json, "label", GroupLabel(group)));
+        TRY(json::WriteKeyArrayBegin(json, "tags"));
+        for (auto const& t : group_tags) {
+            TRY(json::WriteObjectBegin(json));
+            TRY(json::WriteKeyValue(json, "name", t.name));
+            TRY(json::WriteKeyValue(json, "count", t.count));
+            TRY(json::WriteObjectEnd(json));
+        }
+        TRY(json::WriteArrayEnd(json));
+        TRY(json::WriteObjectEnd(json));
+    }
+    TRY(json::WriteArrayEnd(json));
+    return k_success;
+}
+
 static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena) {
+    ArenaAllocator scratch {PageAllocator::Instance()};
     DynamicArray<char> json_buffer {arena};
     json::WriteContext json {
         .out = dyn::WriterFor(json_buffer),
@@ -356,64 +438,62 @@ static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena
 
     TRY(json::WriteObjectBegin(json));
 
-    TRY(json::WriteKeyValue(json, "size", info.package_size));
+    TRY(json::WriteKeyValue(json, "schema_version", 2));
     TRY(json::WriteKeyValue(json, "name", info.name));
+    TRY(json::WriteKeyValue(json, "size", info.package_size));
 
-    TRY(json::WriteKeyArrayBegin(json, "libraries"));
-    for (auto const& [lib_id, lib, _] : info.libraries) {
-        TRY(json::WriteObjectBegin(json));
-        TRY(json::WriteKeyValue(json, "name", lib.name));
-        TRY(json::WriteKeyValue(json, "file_format", ({
-                                    String s;
-                                    switch (lib.file_format) {
-                                        case sample_lib::FileFormat::Lua: s = "Floe"_s; break;
-                                        case sample_lib::FileFormat::Mdata: s = "Mirage"_s; break;
-                                    }
-                                    s;
-                                })));
-        TRY(json::WriteKeyArrayBegin(json, "instrument_folders"));
-        for (auto const& [folder, inst_list, _] : lib.instruments_by_folder) {
+    if (info.libraries.size) {
+        TRY(json::WriteKeyArrayBegin(json, "libraries"));
+        for (auto const& [lib_id, lib, _] : info.libraries) {
             TRY(json::WriteObjectBegin(json));
-            TRY(json::WriteKeyValue(json, "name", folder));
-
-            TRY(json::WriteKeyArrayBegin(json, "instruments"));
-            for (auto i = inst_list; i; i = i->next) {
-                auto const inst = i;
-                TRY(json::WriteObjectBegin(json));
-                TRY(json::WriteKeyValue(json, "name", inst->name));
-                if (inst->description) TRY(json::WriteKeyValue(json, "description", *inst->description));
-                TRY(json::WriteObjectEnd(json));
+            TRY(json::WriteKeyValue(json, "name", lib.name));
+            TRY(json::WriteKeyValue(json, "file_format", ({
+                                        String s;
+                                        switch (lib.file_format) {
+                                            case sample_lib::FileFormat::Lua: s = "Floe"_s; break;
+                                            case sample_lib::FileFormat::Mdata: s = "Mirage"_s; break;
+                                        }
+                                        s;
+                                    })));
+            if (lib.instruments_by_folder.size) {
+                TRY(json::WriteKeyArrayBegin(json, "folders"));
+                for (auto const& [folder, inst_list, _] : lib.instruments_by_folder) {
+                    TRY(json::WriteObjectBegin(json));
+                    TRY(json::WriteKeyValue(json, "name", folder));
+                    TRY(json::WriteKeyArrayBegin(json, "instruments"));
+                    for (auto i = inst_list; i; i = i->next) {
+                        TRY(json::WriteObjectBegin(json));
+                        TRY(json::WriteKeyValue(json, "name", i->name));
+                        if (i->description && i->description->size)
+                            TRY(json::WriteKeyValue(json, "description", *i->description));
+                        TRY(json::WriteObjectEnd(json));
+                    }
+                    TRY(json::WriteArrayEnd(json));
+                    TRY(json::WriteObjectEnd(json));
+                }
+                TRY(json::WriteArrayEnd(json));
             }
-            TRY(json::WriteArrayEnd(json)); // instruments
-
-            TRY(json::WriteKeyArrayBegin(json, "instrument_tags"));
-            for (auto const [tag, _] : lib.instrument_tags)
-                TRY(json::WriteValue(json, tag));
-            TRY(json::WriteArrayEnd(json)); // instrument_tags
-
-            TRY(json::WriteObjectEnd(json)); // folder
+            TRY(json::WriteObjectEnd(json));
         }
-        TRY(json::WriteArrayEnd(json)); // instruments
-        TRY(json::WriteObjectEnd(json)); // library
+        TRY(json::WriteArrayEnd(json));
     }
-    TRY(json::WriteArrayEnd(json)); // libraries
 
-    TRY(json::WriteKeyObjectBegin(json, "presets"));
-    for (auto const& [folder, num_presets, _] : info.preset_folders) {
-        TRY(json::WriteKeyObjectBegin(json, folder));
-        TRY(json::WriteKeyValue(json, "num_presets", num_presets));
-        TRY(json::WriteObjectEnd(json));
+    if (info.preset_folders.size) {
+        TRY(json::WriteKeyArrayBegin(json, "presets"));
+        for (auto const& [folder, preset_list, _] : info.preset_folders) {
+            TRY(json::WriteObjectBegin(json));
+            TRY(json::WriteKeyValue(json, "folder", folder));
+            TRY(json::WriteKeyArrayBegin(json, "names"));
+            for (auto p = preset_list; p; p = p->next)
+                TRY(json::WriteValue(json, p->name));
+            TRY(json::WriteArrayEnd(json));
+            TRY(json::WriteObjectEnd(json));
+        }
+        TRY(json::WriteArrayEnd(json));
     }
-    TRY(json::WriteObjectEnd(json));
 
-    TRY(json::WriteKeyArrayBegin(json, "preset_tags"));
-    for (auto const& [tag, num_presets, _] : info.preset_tags) {
-        TRY(json::WriteObjectBegin(json));
-        TRY(json::WriteKeyValue(json, "name", tag));
-        TRY(json::WriteKeyValue(json, "num_presets", num_presets));
-        TRY(json::WriteObjectEnd(json));
-    }
-    TRY(json::WriteArrayEnd(json)); // preset_tags
+    TRY(WriteTagGroups(json, "instrument_tags"_s, info.instrument_tags, scratch));
+    TRY(WriteTagGroups(json, "preset_tags"_s, info.preset_tags, scratch));
 
     TRY(json::WriteObjectEnd(json));
 
@@ -437,7 +517,9 @@ static void PrintSummary(PackageInfo const& info, ArenaAllocator& arena) {
 
     if (info.preset_folders.size) {
         OrderedHashTable<String, u32> top_level;
-        for (auto const& [folder, count, _] : info.preset_folders) {
+        for (auto const& [folder, preset_list, _] : info.preset_folders) {
+            u32 count = 0;
+            for (auto p = preset_list; p; p = p->next) ++count;
             auto top = folder;
             if (auto const slash = Find(folder, '/')) top = folder.SubSpan(0, *slash);
             auto r = top_level.FindOrInsertGrowIfNeeded(arena, top, 0);
