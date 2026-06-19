@@ -650,8 +650,7 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
                                     VersionDifference d {};
                                     if (existing_bank->revision == component->preset_bank->revision)
                                         d = VersionDifference::Equal;
-                                    else if (existing_bank->revision <
-                                             component->preset_bank->revision)
+                                    else if (existing_bank->revision < component->preset_bank->revision)
                                         d = VersionDifference::InstalledIsOlder;
                                     else
                                         d = VersionDifference::InstalledIsNewer;

@@ -519,7 +519,8 @@ static void PrintSummary(PackageInfo const& info, ArenaAllocator& arena) {
         OrderedHashTable<String, u32> top_level;
         for (auto const& [folder, preset_list, _] : info.preset_folders) {
             u32 count = 0;
-            for (auto p = preset_list; p; p = p->next) ++count;
+            for (auto p = preset_list; p; p = p->next)
+                ++count;
             auto top = folder;
             if (auto const slash = Find(folder, '/')) top = folder.SubSpan(0, *slash);
             auto r = top_level.FindOrInsertGrowIfNeeded(arena, top, 0);
