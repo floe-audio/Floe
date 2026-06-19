@@ -5,6 +5,8 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "foundation/utils/algorithm.hpp"
+
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/state/legacy_param_logic.hpp"
 
@@ -28,78 +30,27 @@ static bool IsVelocityLegacyParam(ParamIndex p) {
     return p == ParamIndex::MasterVelocity;
 }
 
-// The legacy velocity system is a per-layer mode + a global master strength that combine into the
-// modern per-layer velocity curve points. Modernising it touches all layers + the master at
-// once, regardless of which row the user clicked.
-static void ModerniseLegacyVelocity(AudioProcessor& processor) {
-    auto const strength = processor.main_params.LinearValue(ParamIndex::MasterVelocity);
-
-    for (auto const layer_index : Range<u8>(k_num_layers)) {
-        auto const legacy_pi =
-            ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping);
-        auto const mode =
-            (param_values::VelocityMappingMode)Round(processor.main_params.LinearValue(legacy_pi));
-        auto const points = ModerniseVelocityToCurve(mode, strength);
-        processor.layer_processors[layer_index].velocity_curve_map.SetNewPoints(points);
-        SetParameterValue(processor, legacy_pi, (f32)param_values::VelocityMappingMode::None, {});
-    }
-
-    SetParameterValue(processor, ParamIndex::MasterVelocity, 0, {});
-}
-
-static void ModerniseLegacyWetDryEffect(AudioProcessor& processor, WetDryMapping const& mapping) {
-    auto const wet_lin = processor.main_params.LinearValue(mapping.legacy_wet);
-    auto const dry_lin = processor.main_params.LinearValue(mapping.legacy_dry);
-    auto const mix_output = ConvertWetDryLinearToMixOutput(mapping, wet_lin, dry_lin);
-
-    SetParameterValue(processor, mapping.modern_mix, mix_output.mix_linear, {});
-    SetParameterValue(processor, mapping.modern_output, mix_output.output_linear, {});
-
-    SetParameterValue(processor,
-                      mapping.legacy_wet,
-                      k_param_descriptors[ToInt(mapping.legacy_wet)].default_linear_value,
-                      {});
-    SetParameterValue(processor,
-                      mapping.legacy_dry,
-                      k_param_descriptors[ToInt(mapping.legacy_dry)].default_linear_value,
-                      {});
-
-    RetargetMacroDestinations(processor, mapping.legacy_wet, mapping.modern_mix);
-    RetargetMacroDestinations(processor, mapping.legacy_dry, mapping.modern_output);
-}
-
-static void ModerniseLegacyParam(AudioProcessor& processor, ParamIndex legacy) {
+static void ModerniseLegacyInSnapshot(StateSnapshot& snapshot, ParamIndex legacy) {
     if (IsVelocityLegacyParam(legacy)) {
-        ModerniseLegacyVelocity(processor);
+        auto const strength = snapshot.LinearParam(ParamIndex::MasterVelocity);
+        for (auto const layer_index : Range<u8>(k_num_layers)) {
+            auto const legacy_pi =
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping);
+            auto const mode = (param_values::VelocityMappingMode)Round(snapshot.LinearParam(legacy_pi));
+            snapshot.velocity_curve_points[layer_index] = ModerniseVelocityToCurve(mode, strength);
+            snapshot.LinearParam(legacy_pi) = (f32)param_values::VelocityMappingMode::None;
+        }
+        snapshot.LinearParam(ParamIndex::MasterVelocity) = 0;
         return;
     }
 
     if (auto const mapping = WetDryMappingContaining(legacy);
         mapping && (legacy == mapping->legacy_wet || legacy == mapping->legacy_dry)) {
-        ModerniseLegacyWetDryEffect(processor, *mapping);
+        ModerniseWetDryEffect(snapshot, *mapping, StateSource::PresetFile);
         return;
     }
 
-    // Walk to the ultimate modern at the end of `legacy`'s chain.
-    auto const chain_end =
-        TopmostSuccessorOfLegacyValue(legacy, k_param_descriptors[ToInt(legacy)].default_linear_value);
-    if (!chain_end) return;
-    auto const modern = chain_end->successor_param;
-
-    // Resolve the audibly-active value for `modern` (oldest overriding ancestor wins). This
-    // is what the user is currently hearing — preserve it across the modernisation.
-    auto const resolved_linear = ResolveLegacyAware(modern, processor.main_params.values);
-    SetParameterValue(processor, modern, resolved_linear, {});
-
-    // Clear every legacy ancestor in the chain and retarget any macros pointing at them to
-    // the modern. Without this, an older non-default legacy would still override the modern
-    // we just wrote, defeating the modernisation.
-    auto current = LegacyPredecessor(modern);
-    while (current) {
-        SetParameterValue(processor, *current, k_param_descriptors[ToInt(*current)].default_linear_value, {});
-        RetargetMacroDestinations(processor, *current, modern);
-        current = LegacyPredecessor(*current);
-    }
+    ModerniseLegacyParam(snapshot, legacy, StateSource::PresetFile);
 }
 
 static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor const& desc, Box parent) {
@@ -214,7 +165,9 @@ static void LegacyParamRow(GuiBuilder& builder, GuiState& g, ParamDescriptor con
     if (reset_btn.button_fired) {
         BeginUndoableStep(g.engine, "Modernise legacy parameter"_s);
         DEFER { EndUndoableStep(g.engine); };
-        ModerniseLegacyParam(g.engine.processor, desc.index);
+        auto snapshot = CurrentStateSnapshot(g.engine);
+        ModerniseLegacyInSnapshot(snapshot, desc.index);
+        ApplyState(g.engine.processor, snapshot, StateSource::InMemorySource);
     }
 }
 
@@ -245,31 +198,17 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
 
     // TL;DR / at-a-glance summary.
     {
-        auto const tldr_box =
-            DoBox(builder,
-                  {
-                      .parent = panel,
-                      .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
-                      .round_background_corners = 0b1111,
-                      .corner_rounding = k_corner_rounding,
-                      .layout {
-                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                          .contents_padding = {.lrtb = 10},
-                          .contents_gap = 4,
-                          .contents_direction = layout::Direction::Column,
-                          .contents_align = layout::Alignment::Start,
-                          .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                      },
-                  });
-
-        DoBox(builder,
-              {
-                  .parent = tldr_box,
-                  .text = "At a glance",
-                  .size_from_text = true,
-                  .font = FontType::Heading2,
-                  .text_colours = Col {.c = Col::Text, .dark_mode = true},
-              });
+        auto const tldr_box = DoBox(builder,
+                                    {
+                                        .parent = panel,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_gap = 4,
+                                            .contents_direction = layout::Direction::Column,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                        },
+                                    });
 
         DoBox(
             builder,
@@ -277,7 +216,7 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
                 .parent = tldr_box,
                 .text =
                     any_overriding
-                        ? "Older versions of some parameters are currently driving Floe instead of the modern controls on the main UI. Your project sounds exactly as it did when saved. If you don't automate these parameters in your DAW, click 'Modernise all' to switch over to the modern controls — your sound won't change. If you do automate them in your DAW, leave them alone, or remove the automation first."_s
+                        ? "This state comes from an older version of Floe that used slightly different parameters. Floe has perfectly retained the original sound. You can update to the latest parameters — perfectly retaining the original sound (except that further tweaks to macros might have a slightly different shape).\n\nIt's perfectly safe to update unless you have DAW automation on any of the legacy parameters. You don't have to update: Floe is stable and safe in the legacy state, except that it's harder to make further tweaks to the sound unless you modernise first."_s
                         : "No legacy parameters are currently overriding modern controls. Nothing for you to do here."_s,
                 .wrap_width = k_wrap_to_parent,
                 .size_from_text = true,
@@ -323,7 +262,7 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
         DoBox(builder,
               {
                   .parent = modernise_btn,
-                  .text = "Modernise all"_s,
+                  .text = "Modernise State"_s,
                   .size_from_text = true,
                   .font = FontType::Body,
                   .text_colours = Col {.c = Col::Text, .dark_mode = true},
@@ -333,36 +272,34 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
         if (modernise_btn.button_fired) {
             BeginUndoableStep(g.engine, "Modernise all legacy parameters"_s);
             DEFER { EndUndoableStep(g.engine); };
+            auto snapshot = CurrentStateSnapshot(g.engine);
             for (auto const& desc : k_param_descriptors) {
                 if (!desc.flags.legacy) continue;
-                if (!IsLegacyParamOverridingModern(desc,
-                                                   g.engine.processor.main_params.LinearValue(desc.index)))
-                    continue;
-                ModerniseLegacyParam(g.engine.processor, desc.index);
+                if (!IsLegacyParamOverridingModern(desc, snapshot.LinearParam(desc.index))) continue;
+                ModerniseLegacyInSnapshot(snapshot, desc.index);
             }
+            ApplyState(g.engine.processor, snapshot, StateSource::InMemorySource);
         }
     }
 
-    // Full explanation (collapsible).
-    {
-        static bool more_info_open = false;
-
-        auto const more_info_btn = DoBox(builder,
-                                         {
-                                             .parent = panel,
-                                             .layout {
-                                                 .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                                 .contents_gap = 4,
-                                                 .contents_direction = layout::Direction::Row,
-                                                 .contents_align = layout::Alignment::Start,
-                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                             },
-                                             .button_behaviour = imgui::ButtonConfig {},
-                                         });
+    auto const collapsible_btn = [&](String text, bool& state, u64 loc_hash = SourceLocationHash()) {
+        auto const btn = DoBox(builder,
+                               {
+                                   .parent = panel,
+                                   .id_extra = loc_hash,
+                                   .layout {
+                                       .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                       .contents_gap = 4,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_align = layout::Alignment::Start,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                                   .button_behaviour = imgui::ButtonConfig {},
+                               });
         DoBox(builder,
               {
-                  .parent = more_info_btn,
-                  .text = more_info_open ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT,
+                  .parent = btn,
+                  .text = state ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT,
                   .size_from_text = true,
                   .font = FontType::Icons,
                   .text_colours =
@@ -375,17 +312,24 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
               });
         DoBox(builder,
               {
-                  .parent = more_info_btn,
-                  .text = "More info"_s,
+                  .parent = btn,
+                  .text = text,
                   .size_from_text = true,
                   .font = FontType::Body,
                   .text_colours = Col {.c = Col::Text, .dark_mode = true},
                   .parent_dictates_hot_and_active = true,
               });
 
-        if (more_info_btn.button_fired) more_info_open = !more_info_open;
+        if (btn.button_fired) state = !state;
 
-        if (more_info_open) {
+        return state;
+    };
+
+    // Full explanation (collapsible).
+    {
+        static bool more_info_open = false;
+
+        if (collapsible_btn("More info", more_info_open)) {
             DoBox(
                 builder,
                 {
@@ -402,23 +346,26 @@ static void LegacyParamsPanelContent(GuiBuilder& builder, GuiState& g) {
 
     // Param list.
     if (any_overriding) {
-        auto const list = DoBox(builder,
-                                {
-                                    .parent = panel,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_gap = 2,
-                                        .contents_direction = layout::Direction::Column,
-                                        .contents_align = layout::Alignment::Start,
-                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                    },
-                                });
+        static bool show_params = false;
+        if (collapsible_btn("Show active legacy parameters", show_params)) {
+            auto const list = DoBox(builder,
+                                    {
+                                        .parent = panel,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_gap = 2,
+                                            .contents_direction = layout::Direction::Column,
+                                            .contents_align = layout::Alignment::Start,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                        },
+                                    });
 
-        for (auto const& desc : k_param_descriptors) {
-            if (!desc.flags.legacy) continue;
-            auto const linear_value = g.engine.processor.main_params.LinearValue(desc.index);
-            if (!IsLegacyParamOverridingModern(desc, linear_value)) continue;
-            LegacyParamRow(builder, g, desc, list);
+            for (auto const& desc : k_param_descriptors) {
+                if (!desc.flags.legacy) continue;
+                auto const linear_value = g.engine.processor.main_params.LinearValue(desc.index);
+                if (!IsLegacyParamOverridingModern(desc, linear_value)) continue;
+                LegacyParamRow(builder, g, desc, list);
+            }
         }
     }
 }
