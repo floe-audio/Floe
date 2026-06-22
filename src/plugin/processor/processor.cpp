@@ -915,12 +915,14 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     auto const chan_note = message.ChannelNote();
                     if (HandleResetKeyswitch(processor, chan_note.note)) break;
 
-                    processor.audio_processing_context.midi_note_state.NoteOn(chan_note,
-                                                                              message.Velocity() / 127.0f);
+                    ASSERT_HOT(message.Velocity() >= 1);
+                    auto const velocity = ((f32)message.Velocity() - 1.0f) / 126.0f;
+                    ASSERT_HOT(velocity >= 0 && velocity <= 1);
+                    processor.audio_processing_context.midi_note_state.NoteOn(chan_note, velocity);
 
                     dyn::Append(changes.note_events,
                                 {
-                                    .velocity = message.Velocity() / 127.0f,
+                                    .velocity = velocity,
                                     .offset = event.time - block_start_frame,
                                     .note = chan_note,
                                     .type = NoteEvent::Type::On,
