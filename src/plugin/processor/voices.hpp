@@ -220,6 +220,7 @@ struct VoicePool {
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_fil_env_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceGrainMarkersForGui, k_num_voices>, true> grain_markers_for_gui {};
     Array<Atomic<s16>, 128> voices_per_midi_note_for_gui {};
+    Array<Atomic<s16>, k_num_layers> active_voices_per_layer_for_gui {};
     Array<Atomic<f32>, k_num_layers> last_velocity = {};
 
     Array<Atomic<u64>, k_num_layers> last_activated_audio_data_hash {};
@@ -235,12 +236,7 @@ struct VoicePool {
     } multithread_processing;
 };
 
-inline void EndVoiceInstantly(Voice& voice) {
-    ASSERT(voice.is_active);
-    voice.pool.num_active_voices.FetchSub(1, RmwMemoryOrder::Relaxed);
-    voice.pool.voices_per_midi_note_for_gui[voice.midi_key_trigger.note].FetchSub(1, RmwMemoryOrder::Relaxed);
-    voice.is_active = false;
-}
+void EndVoiceInstantly(Voice& voice);
 void EndVoice(Voice& voice);
 
 void UpdateLFOWaveform(Voice& v);

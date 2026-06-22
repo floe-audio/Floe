@@ -510,6 +510,9 @@ void StartVoice(VoicePool& pool,
     voice.is_active = true;
     voice.pool.num_active_voices.FetchAdd(1, RmwMemoryOrder::Relaxed);
     voice.pool.voices_per_midi_note_for_gui[voice.midi_key_trigger.note].FetchAdd(1, RmwMemoryOrder::Relaxed);
+    voice.pool.active_voices_per_layer_for_gui[voice.controller->layer_index].FetchAdd(
+        1,
+        RmwMemoryOrder::Relaxed);
     voice.pool.last_velocity[voice.controller->layer_index].Store(params.note_vel, StoreMemoryOrder::Relaxed);
 }
 
@@ -529,6 +532,16 @@ void OnMainThread(VoicePool& pool) {
             }
         }
     }
+}
+
+void EndVoiceInstantly(Voice& voice) {
+    ASSERT(voice.is_active);
+    voice.pool.num_active_voices.FetchSub(1, RmwMemoryOrder::Relaxed);
+    voice.pool.voices_per_midi_note_for_gui[voice.midi_key_trigger.note].FetchSub(1, RmwMemoryOrder::Relaxed);
+    voice.pool.active_voices_per_layer_for_gui[voice.controller->layer_index].FetchSub(
+        1,
+        RmwMemoryOrder::Relaxed);
+    voice.is_active = false;
 }
 
 void EndVoice(Voice& voice) {

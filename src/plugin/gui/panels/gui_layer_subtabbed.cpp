@@ -1582,7 +1582,8 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
 
             Optional<f32> velocity {};
-            if (g.engine.processor.voice_pool.num_active_voices.Load(LoadMemoryOrder::Relaxed))
+            if (g.engine.processor.voice_pool.active_voices_per_layer_for_gui[layer_index].Load(
+                    LoadMemoryOrder::Relaxed))
                 velocity =
                     g.engine.processor.voice_pool.last_velocity[layer_index].Load(LoadMemoryOrder::Relaxed);
 
