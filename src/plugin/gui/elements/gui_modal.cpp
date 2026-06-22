@@ -361,7 +361,6 @@ TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions cons
                     .escape_unfocuses = true,
                     .select_all_when_opening = false,
                     .multiline = options.multiline,
-                    .multiline_wordwrap_hack = options.multiline,
                 },
             .button_cfg =
                 {

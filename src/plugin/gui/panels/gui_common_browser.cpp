@@ -2226,7 +2226,6 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                             .escape_unfocuses = true,
                             .select_all_when_opening = true,
                             .multiline = false,
-                            .multiline_wordwrap_hack = false,
                         },
                     .button_cfg =
                         {
@@ -2458,7 +2457,6 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                 .escape_unfocuses = true,
                                 .select_all_when_opening = true,
                                 .multiline = false,
-                                .multiline_wordwrap_hack = false,
                             },
                         .button_cfg =
                             {

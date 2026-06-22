@@ -419,7 +419,6 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                         .escape_unfocuses = true,
                         .select_all_when_opening = true,
                         .multiline = false,
-                        .multiline_wordwrap_hack = false,
                     },
                 .button_cfg =
                     {

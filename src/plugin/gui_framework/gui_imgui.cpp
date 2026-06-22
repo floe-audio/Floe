@@ -141,65 +141,138 @@ static int STB_TEXTEDIT_KEYTOTEXT(int key) { return key >= 0x10000 ? 0 : key; }
 // NOLINTNEXTLINE(readability-identifier-naming)
 static Char32 const STB_TEXTEDIT_NEWLINE = '\n';
 
-static f32x2 InputTextCalcTextSizeW(Context* imgui,
-                                    Char32 const* text_begin,
-                                    Char32 const* text_end,
-                                    Char32 const** remaining,
-                                    f32x2* out_offset,
-                                    bool stop_on_new_line) {
-    auto font = imgui->draw_list->fonts.Current();
-    auto line_height = font->font_size;
-
-    auto text_size = f32x2 {0, 0};
+// Mirror of Font::CalcWordWrapPositionA but operating on the UTF-32 edit buffer, so it can be used by the
+// stb_textedit row-layout callback. Returns the position to wrap at: the first '\n', the soft-wrap point, or
+// text_end - whichever comes first.
+// This function is from dear imgui
+// Copyright (c) 2014-2024 Omar Cornut
+// SPDX-License-Identifier: MIT
+static Char32 const*
+CalcWordWrapPositionW(Font const* font, Char32 const* text, Char32 const* text_end, f32 wrap_width) {
     f32 line_width = 0.0f;
+    f32 word_width = 0.0f;
+    f32 blank_width = 0.0f;
 
-    Char32 const* s = text_begin;
+    Char32 const* word_end = text;
+    Char32 const* prev_word_end = nullptr;
+    bool inside_word = true;
+
+    Char32 const* s = text;
     while (s < text_end) {
-        auto c = (unsigned int)(*s++);
-        if (c == '\n') {
-            text_size.x = Max(text_size.x, line_width);
-            text_size.y += line_height;
-            line_width = 0.0f;
-            if (stop_on_new_line) break;
+        auto const c = *s;
+        if (c == '\n') return s;
+        Char32 const* const next_s = s + 1;
+        if (c == '\r') {
+            s = next_s;
             continue;
         }
-        if (c == '\r') continue;
 
-        f32 const char_width = font->GetCharAdvance((unsigned short)c);
-        line_width += char_width;
+        f32 const char_width = font->GetCharAdvance((Char16)c);
+        if (IsSpaceU32(c)) {
+            if (inside_word) {
+                line_width += blank_width;
+                blank_width = 0.0f;
+            }
+            blank_width += char_width;
+            inside_word = false;
+        } else {
+            word_width += char_width;
+            if (inside_word) {
+                word_end = next_s;
+            } else {
+                prev_word_end = word_end;
+                line_width += word_width + blank_width;
+                word_width = blank_width = 0.0f;
+            }
+
+            // Allow wrapping after punctuation.
+            inside_word = !(c == '.' || c == ',' || c == ';' || c == '!' || c == '?' || c == '\"');
+        }
+
+        if (line_width + word_width >= wrap_width) {
+            if (word_width < wrap_width) {
+                s = prev_word_end ? prev_word_end : word_end;
+                // Keep the blanks between the words on the current row rather than starting the next row with
+                // them - matching how editors render the trailing space of a wrapped line.
+                while (s < text_end && *s != '\n' && IsSpaceU32(*s))
+                    ++s;
+            }
+            break;
+        }
+
+        s = next_s;
     }
 
-    if (text_size.x < line_width) text_size.x = line_width;
+    return s;
+}
 
-    if (out_offset)
-        // Offset to allow for the possibility of sitting after a trailing newline.
-        *out_offset = f32x2 {line_width, text_size.y + line_height};
+struct RowInfo {
+    int num_chars; // chars in this visual row, including a trailing '\n' if the row ends with one
+    f32 width; // pixel width of the rendered chars (a trailing '\n' contributes nothing)
+};
 
-    if (line_width > 0 || text_size.y == 0.0f) // Whereas size.y will ignore the trailing newline.
-        text_size.y += line_height;
+// Lays out a single visual row of the edit buffer starting at char index 'start_index', accounting for
+// word-wrapping at Context::textedit_wrap_width (0 disables wrapping) and hard newlines.
+static RowInfo TexteditLayoutRow(Context const* imgui, int start_index) {
+    auto const* font = imgui->draw_list->fonts.Current();
+    auto const* const text = imgui->textedit_text.data;
+    auto const* const text_end = text + imgui->textedit_len;
+    auto const* const row_begin = text + start_index;
+    auto const wrap_width = imgui->textedit_wrap_width;
 
-    if (remaining) *remaining = s;
+    auto const* wrap_end = text_end;
+    if (wrap_width > 0) {
+        wrap_end = CalcWordWrapPositionW(font, row_begin, text_end, wrap_width);
+        if (wrap_end == row_begin && row_begin < text_end && *row_begin != '\n')
+            wrap_end = row_begin + 1; // Force at least one char so we always make progress.
+    }
 
-    return text_size;
+    f32 width = 0.0f;
+    for (auto const* s = row_begin; s < wrap_end; ++s) {
+        auto const c = *s;
+        if (c == '\n' || c == '\r') continue;
+        width += font->GetCharAdvance((Char16)c);
+    }
+
+    int num_chars = (int)(wrap_end - row_begin);
+    if (wrap_end < text_end && *wrap_end == '\n') ++num_chars; // The newline belongs to this row.
+    return {num_chars, width};
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming)
 static void STB_TEXTEDIT_LAYOUTROW(StbTexteditRow* r, STB_TEXTEDIT_STRING* imgui, int start_index) {
-    Char32 const* text = imgui->textedit_text.data;
-    Char32 const* text_remaining = nullptr;
-    auto size = InputTextCalcTextSizeW(imgui,
-                                       text + start_index,
-                                       text + imgui->textedit_len,
-                                       &text_remaining,
-                                       nullptr,
-                                       true);
-
+    auto const font_size = imgui->draw_list->fonts.Current()->font_size;
+    auto const row = TexteditLayoutRow(imgui, start_index);
     r->x0 = 0.0f;
-    r->x1 = size.x;
-    r->baseline_y_delta = size.y;
+    r->x1 = row.width;
+    r->baseline_y_delta = font_size;
     r->ymin = 0.0f;
-    r->ymax = size.y;
-    r->num_chars = (int)(text_remaining - (text + start_index));
+    r->ymax = font_size;
+    r->num_chars = row.num_chars;
+}
+
+struct RowLocation {
+    int row_start; // char index of the first char of the row
+    int row_end; // char index just past the row (includes a trailing newline if present)
+    u32 line_index;
+    bool ends_with_newline;
+};
+
+// Locates the visual row that the cursor position 'index' sits on. A position at the end of a row that ends
+// with a newline - including the very end of the buffer after a trailing newline - belongs to the start of
+// the following row.
+static RowLocation TexteditLocateRow(Context const* imgui, int index) {
+    int pos = 0;
+    u32 line_index = 0;
+    for (;;) {
+        auto const row = TexteditLayoutRow(imgui, pos);
+        int const next = pos + row.num_chars;
+        bool const ends_with_newline = row.num_chars > 0 && imgui->textedit_text[(usize)(next - 1)] == '\n';
+        bool const is_final_row = next >= imgui->textedit_len && !ends_with_newline;
+        if (index < next || is_final_row) return {pos, next, line_index, ends_with_newline};
+        pos = next;
+        line_index++;
+    }
 }
 
 // NOLINTNEXTLINE(readability-identifier-naming)
@@ -1065,9 +1138,11 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     auto const& button_cfg = args.button_cfg;
 
     ASSERT(!(cfg.multiline && cfg.centre_align), "not supported");
-    if (cfg.multiline_wordwrap_hack) ASSERT(cfg.multiline);
+
+    auto const multiline_wrap_width = cfg.multiline ? Max(1.0f, r.w - (cfg.x_padding * 2)) : 0.0f;
 
     TextInputResult result {};
+    result.multiline_wrap_width = multiline_wrap_width;
 
     int const starting_cursor = stb_state.cursor;
     bool reset_cursor = false;
@@ -1149,8 +1224,8 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     }
 
     active_text_input_shown = true;
+    textedit_wrap_width = multiline_wrap_width;
 
-    auto const initial_textedit_len = textedit_len;
     auto const x_offset = TextInputTextPos(textedit_text_utf8, r, cfg, draw_list->fonts).x - r.pos.x;
 
     if (ButtonBehaviour(r, id, {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
@@ -1203,6 +1278,26 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
             return event.modifiers.Get(ModifierKey::Shift) ? STB_TEXTEDIT_K_SHIFT : 0;
         };
 
+        // Home/End operate on visual rows (accounting for word-wrapping), which the stb_textedit defaults
+        // don't - they only consider hard newlines. We compute the target index ourselves and apply it.
+        auto const do_line_edge = [&](bool to_end, bool select) {
+            if (select) {
+                if (stb_state.select_start == stb_state.select_end)
+                    stb_state.select_start = stb_state.select_end = stb_state.cursor;
+                else
+                    stb_state.cursor = stb_state.select_end;
+            } else if (stb_state.select_start != stb_state.select_end) {
+                auto const lo = ::Min(stb_state.select_start, stb_state.select_end);
+                stb_state.cursor = lo;
+                stb_state.select_start = stb_state.select_end = lo;
+            }
+            auto const loc = stb::TexteditLocateRow(this, stb_state.cursor);
+            stb_state.cursor =
+                to_end ? (loc.ends_with_newline ? loc.row_end - 1 : loc.row_end) : loc.row_start;
+            if (select) stb_state.select_end = stb_state.cursor;
+            stb_state.has_preferred_x = 0;
+        };
+
         if (auto const backspaces = frame_input.Key(KeyCode::Backspace).presses_or_repeats; backspaces.size) {
             for (auto const& event : backspaces)
                 stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_BACKSPACE | shift_bit(event));
@@ -1217,13 +1312,13 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         }
         if (auto const ends = frame_input.Key(KeyCode::End).presses_or_repeats; ends.size) {
             for (auto const& event : ends)
-                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_LINEEND | shift_bit(event));
-            result.buffer_changed = true;
+                do_line_edge(true, event.modifiers.Get(ModifierKey::Shift));
+            reset_cursor = true;
         }
         if (auto const homes = frame_input.Key(KeyCode::Home).presses_or_repeats; homes.size) {
             for (auto const& event : homes)
-                stb_textedit_key(this, &stb_state, STB_TEXTEDIT_K_LINESTART | shift_bit(event));
-            result.buffer_changed = true;
+                do_line_edge(false, event.modifiers.Get(ModifierKey::Shift));
+            reset_cursor = true;
         }
         if (auto const zs = frame_input.Key(KeyCode::Z).presses_or_repeats; zs.size) {
             for (auto const& event : zs)
@@ -1339,54 +1434,13 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     auto const font_size = font->font_size;
 
     if (result.buffer_changed) {
-        for (u8 iteration = 0; iteration < 2; ++iteration) {
-            dyn::Resize(textedit_text_utf8,
-                        (usize)textedit_len * 4); // 1 utf32 could at most be 4 utf8 bytes
-            dyn::Resize(textedit_text_utf8,
-                        (usize)imstring::Narrow(textedit_text_utf8.data,
-                                                (int)textedit_text_utf8.size,
-                                                textedit_text.data,
-                                                textedit_text.data + textedit_len));
-
-            // Word-wrap for when we add 1 character and it goes over the edge. The string will end up
-            // with newlines in it. IMPROVE: this is an absolute hack to just cover the most common case.
-            if (cfg.multiline_wordwrap_hack && stb_state.cursor == textedit_len &&
-                textedit_len == (initial_textedit_len + 1)) {
-
-                auto const max_width = r.w - (cfg.x_padding * 4);
-                if (max_width <= 0) break;
-
-                auto const* line_end = textedit_text_utf8.data + textedit_text_utf8.size - 1;
-                auto const* line_start = line_end;
-                while (line_start > textedit_text_utf8.data && *line_start != '\n')
-                    line_start--;
-                if (*line_start == '\n') line_start++;
-
-                if (line_end <= line_start) break;
-
-                auto const line_width =
-                    font->CalcTextSize({line_start, (usize)(line_end - line_start)}, {.font_size = font_size})
-                        .x;
-
-                if (line_width < max_width) break;
-
-                auto* word_start = line_end;
-                while (word_start > line_start && *word_start != ' ')
-                    word_start--;
-                if (*word_start == ' ') ++word_start;
-                if (word_start != line_start) {
-                    u32 num_codepoints = 0;
-                    for (auto* c = word_start; c <= line_end; c = IncrementUTF8Characters(c, 1))
-                        num_codepoints++;
-                    stb_state.cursor -= num_codepoints;
-                    ASSERT(stb_state.cursor >= 0);
-                    stb_textedit_key(this, &stb_state, '\n');
-                    stb_state.cursor = textedit_len;
-                    continue; // loop again to re-narrow the text
-                }
-            }
-            break;
-        }
+        dyn::Resize(textedit_text_utf8,
+                    (usize)textedit_len * 4); // 1 utf32 could at most be 4 utf8 bytes
+        dyn::Resize(textedit_text_utf8,
+                    (usize)imstring::Narrow(textedit_text_utf8.data,
+                                            (int)textedit_text_utf8.size,
+                                            textedit_text.data,
+                                            textedit_text.data + textedit_len));
     }
 
     result.cursor = stb_state.cursor;
@@ -1404,29 +1458,40 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
             text_cursor_is_shown = !text_cursor_is_shown;
     }
 
+    // Build the visual rows (the result of word-wrapping) so the caller can render each row, and so cursor
+    // and selection geometry agrees with what's rendered.
+    if (cfg.multiline) {
+        dyn::Clear(textedit_visual_rows);
+        auto const* utf8 = result.text.data;
+        int pos = 0;
+        while (pos < textedit_len) {
+            auto const row = stb::TexteditLayoutRow(this, pos);
+            ASSERT(row.num_chars > 0);
+            auto const* const utf8_next = IncrementUTF8Characters(utf8, row.num_chars);
+            auto const ends_with_newline = textedit_text[(usize)(pos + row.num_chars - 1)] == '\n';
+            auto const render_len = (usize)(utf8_next - utf8) - (ends_with_newline ? 1 : 0);
+            dyn::Append(textedit_visual_rows, String {utf8, render_len});
+            utf8 = utf8_next;
+            pos += row.num_chars;
+        }
+        if (textedit_visual_rows.size == 0) dyn::Append(textedit_visual_rows, String {result.text.data, 0});
+        result.visual_rows = textedit_visual_rows.Items();
+    }
+
     if (text_cursor_is_shown && !result.HasSelection()) {
         constexpr u8 k_cursor_width = 1;
-        u32 line_index = 0;
-        auto cursor_ptr = result.text.data;
-        auto line_start = result.text.data;
-        for (auto _ : Range(result.cursor)) {
-            if (*cursor_ptr == '\n') {
-                line_start = cursor_ptr + 1;
-                line_index++;
-            }
-            cursor_ptr = IncrementUTF8Characters(cursor_ptr, 1);
+        auto const loc = stb::TexteditLocateRow(this, result.cursor);
+        f32 cursor_x = 0;
+        for (int idx = loc.row_start; idx < result.cursor; ++idx) {
+            auto const c = textedit_text[(usize)idx];
+            if (c == '\n' || c == '\r') continue;
+            cursor_x += font->GetCharAdvance((Char16)c);
         }
-        ASSERT(cursor_ptr >= line_start);
-        auto const text_up_to_cursor = String {line_start, (usize)(cursor_ptr - line_start)};
-        ASSERT(!Contains(text_up_to_cursor, '\n'));
-        f32 const cursor_start = font->CalcTextSize(text_up_to_cursor, {.font_size = font_size}).x;
 
-        auto const cursor_r = Rect {.x = Round(result.text_pos.x + cursor_start) - k_cursor_width,
-                                    .y = result.text_pos.y + (line_index * font_size),
-                                    .w = k_cursor_width,
-                                    .h = font_size};
-
-        result.cursor_rect = cursor_r;
+        result.cursor_rect = Rect {.x = Round(result.text_pos.x + cursor_x) - k_cursor_width,
+                                   .y = result.text_pos.y + (loc.line_index * font_size),
+                                   .w = k_cursor_width,
+                                   .h = font_size};
     }
 
     // We do this at the end because we might have run stb_click code; we want to override the value set
@@ -1438,56 +1503,46 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
 
 Optional<Rect> TextInputResult::NextSelectionRect(TextInputResult::SelectionIterator& it) const {
     ASSERT(HasSelection());
-    if (it.reached_end) return {};
+    if (it.reached_end) return k_nullopt;
 
     auto const& font = *it.imgui.draw_list->fonts.Current();
+    auto const font_size = font.font_size;
+    auto const len = it.imgui.textedit_len;
 
-    f32 x_offset = 0;
+    // Walk visual rows, emitting one rect for the portion of each row that intersects the selection.
+    while (it.row_start_char <= len) {
+        auto const row = stb::TexteditLayoutRow(&it.imgui, it.row_start_char);
+        int const row_start = it.row_start_char;
+        int const row_end = row_start + row.num_chars;
+        u32 const line_index = it.line_index;
+        bool const is_last = row_end >= len;
 
-    if (!it.pos) {
-        // First call: walk to selection_start, tracking the current line's start so we can compute x_offset.
-        it.pos = text.data;
-        auto line_start = it.pos;
+        it.row_start_char = row_end;
+        it.line_index++;
 
-        for (auto _ : Range(selection_start)) {
-            if (*it.pos == '\n') {
-                line_start = it.pos + 1;
-                it.line_index++;
-                ++it.pos;
-            } else {
-                it.pos = IncrementUTF8Characters(it.pos, 1);
+        int const a = ::Max(selection_start, row_start);
+        int const b = ::Min(selection_end, row_end);
+        if (a < b) {
+            f32 x0 = 0;
+            f32 x1 = 0;
+            for (int idx = row_start; idx < b; ++idx) {
+                auto const c = it.imgui.textedit_text[(usize)idx];
+                f32 const w = (c == '\n' || c == '\r') ? 0.0f : font.GetCharAdvance((Char16)c);
+                if (idx < a) x0 += w;
+                x1 += w;
             }
+            if (b >= selection_end || is_last) it.reached_end = true;
+            return Rect {.x = text_pos.x + x0,
+                         .y = text_pos.y + (line_index * font_size),
+                         .w = x1 - x0,
+                         .h = font_size};
         }
-        x_offset =
-            font.CalcTextSize({line_start, (usize)(it.pos - line_start)}, {.font_size = font.font_size}).x;
-        it.remaining_chars = (u32)(selection_end - selection_start);
-    } else if (it.remaining_chars == 0) {
-        return k_nullopt;
+
+        if (is_last || row_end > selection_end) break;
     }
 
-    auto const start_pos = it.pos;
-    auto const start_line_index = it.line_index;
-
-    // Walk until end-of-line or end-of-selection.
-    for (auto _ : Range(it.remaining_chars)) {
-        ASSERT(it.remaining_chars);
-        --it.remaining_chars;
-
-        if (*it.pos == '\n') {
-            it.line_index++;
-            ++it.pos;
-            break;
-        }
-        it.pos = IncrementUTF8Characters(it.pos, 1);
-    }
-
-    auto const end_pos = it.pos;
-
-    return Rect {
-        .x = text_pos.x + x_offset,
-        .y = text_pos.y + (start_line_index * font.font_size),
-        .w = font.CalcTextSize({start_pos, (usize)(end_pos - start_pos)}, {.font_size = font.font_size}).x,
-        .h = font.font_size};
+    it.reached_end = true;
+    return k_nullopt;
 }
 
 Context::PopupMenuButtonBehaviourResult

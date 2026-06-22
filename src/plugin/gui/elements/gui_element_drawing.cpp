@@ -103,10 +103,20 @@ void DrawTextInput(imgui::Context const& imgui,
 
     if (result.cursor_rect) imgui.draw_list->AddRectFilled(*result.cursor_rect, ToU32(config.cursor_col));
 
-    imgui.draw_list->AddText(result.text_pos,
-                             WithAlphaU8(ToU32(config.text_col), result.is_placeholder ? 140 : 255),
-                             result.text,
-                             {});
+    auto const text_col = WithAlphaU8(ToU32(config.text_col), result.is_placeholder ? 140 : 255);
+    if (result.visual_rows.size) {
+        auto const font_size = imgui.draw_list->fonts.Current()->font_size;
+        for (auto const row_index : Range(result.visual_rows.size))
+            imgui.draw_list->AddText(result.text_pos + f32x2 {0, (f32)row_index * font_size},
+                                     text_col,
+                                     result.visual_rows[row_index],
+                                     {});
+    } else {
+        imgui.draw_list->AddText(result.text_pos,
+                                 text_col,
+                                 result.text,
+                                 {.wrap_width = result.multiline_wrap_width});
+    }
 }
 
 // The width is filled by the knob. The height is not actually used.

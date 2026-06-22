@@ -149,9 +149,9 @@ struct TextInputConfig {
     bool32 escape_unfocuses : 1 = true;
     bool32 select_all_when_opening : 1 = true;
 
-    // Our multi-line text input leaves a lot to be desired... but it sort of works for now.
+    // Multi-line text input with word-wrapping. The text is wrapped to the width of the input rect; no
+    // newlines are inserted into the buffer - wrapping is purely a layout concern.
     bool32 multiline : 1 = false;
-    bool32 multiline_wordwrap_hack : 1 = false;
 };
 
 // Draw the background of the imgui.curr_viewport. Typically using the viewport's unpadded bounded.
@@ -328,7 +328,9 @@ struct Viewport {
 // - Check if HasSelection, if so, create an iterator and loop NextSelectionRect - drawing a blue highlight
 //   box for each.
 // - Check cursor_rect - fill black if present.
-// - Draw the text at position text_pos.
+// - Draw the text: if visual_rows is non-empty, draw each row at text_pos offset by (row_index * font_size)
+//   on the y-axis; otherwise draw the whole text at text_pos (passing multiline_wrap_width as the
+//   AddText wrap width if it's non-zero).
 struct TextInputResult {
     bool HasSelection() const { return selection_start != selection_end; }
 
@@ -337,8 +339,7 @@ struct TextInputResult {
     // input.
     struct SelectionIterator {
         Context const& imgui;
-        char const* pos {};
-        u32 remaining_chars {};
+        int row_start_char {};
         u32 line_index {};
         bool reached_end {};
     };
@@ -347,6 +348,14 @@ struct TextInputResult {
     // The current text in the text input. Temporary memory. Changes when another text input is run. Copy this
     // into your own buffer if buffer_changed is true (or other criteria that you want).
     String text {};
+
+    // For a focused multi-line input, the text split into visual rows (the result of word-wrapping). Each is
+    // a slice of 'text'. Render each row offset downwards by (row_index * font_size). Empty otherwise.
+    Span<String> visual_rows {};
+
+    // For a multi-line input, the width that the text wraps at. Used to render the text of an unfocused
+    // multi-line input (where visual_rows is not populated). 0 for single-line inputs.
+    f32 multiline_wrap_width = 0;
 
     // Information about if the text has changed.
     bool enter_pressed {};
@@ -527,7 +536,7 @@ struct Context {
 
     // A text input is an element that you can type text into. Only one text input can be focused at a time.
     // You receive a result struct with lots of data about the text, selection, interactions. Multi-line text
-    // input is sort of supported but it's incredibly hacky - it needs to be redone.
+    // input is supported, with word-wrapping (see TextInputConfig::multiline).
     struct TextInputBehaviourArgs {
         Rect rect_in_window_coords {};
         Id id {};
@@ -774,6 +783,10 @@ struct Context {
     DynamicArray<Char32> textedit_text {Malloc::Instance()};
     DynamicArray<char> textedit_text_utf8 {Malloc::Instance()};
     int textedit_len = 0;
+    // The width that the focused multi-line input wraps at; read by the stb_textedit row-layout callback.
+    // 0 disables wrapping (single-line inputs).
+    f32 textedit_wrap_width = 0;
+    DynamicArray<String> textedit_visual_rows {Malloc::Instance()};
     bool active_text_input_shown = false; // Unfocus active input if it's not shown in the frame
 
     DynamicArray<Viewport*> sorted_viewports {Malloc::Instance()};
