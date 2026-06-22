@@ -722,6 +722,23 @@ static void DevicesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
 
     if (TextButton(builder, root, {.text = "Refresh", .tooltip = "Rescan for connected devices"_s}))
         if (host->refresh_devices) host->refresh_devices(host);
+
+    if (host->get_tempo && host->set_tempo) {
+        auto const row = PreferencesRow(builder, root);
+        PreferencesLhsTextWidget(builder, row, "Tempo");
+        auto const rhs = PreferencesRhsColumn(builder, row, k_small_gap);
+        if (auto const v = IntField(builder,
+                                    rhs,
+                                    {
+                                        .label = "BPM"_s,
+                                        .tooltip = "Tempo in beats per minute"_s,
+                                        .width = k_settings_int_field_width,
+                                        .value = (s64)host->get_tempo(host),
+                                        .constrainer = [](s64 value) { return Clamp<s64>(value, 20, 999); },
+                                    })) {
+            host->set_tempo(host, (f64)*v);
+        }
+    }
 }
 
 static void

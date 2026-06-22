@@ -217,10 +217,21 @@ static bool RenderAudio(void* ctx,
         for (auto const i : Range(num_frames))
             chan[i] = -1000.0f;
 
+    clap_event_transport transport {};
+    transport.header = {
+        .size = sizeof(transport),
+        .time = 0,
+        .space_id = CLAP_CORE_EVENT_SPACE_ID,
+        .type = CLAP_EVENT_TRANSPORT,
+        .flags = 0,
+    };
+    transport.flags = CLAP_TRANSPORT_HAS_TEMPO;
+    transport.tempo = standalone.devices.tempo.Load(LoadMemoryOrder::Relaxed);
+
     clap_process_t process {};
     process.frames_count = num_frames;
     process.steady_time = -1;
-    process.transport = nullptr;
+    process.transport = &transport;
 
     clap_audio_buffer_t buffer {};
     buffer.channel_count = 2;

@@ -99,6 +99,8 @@ struct DeviceManager {
         } stream;
     } midi;
 
+    Atomic<f64> tempo {120.0};
+
     DeviceManagerHostCallbacks host_callbacks {};
 
     ArenaAllocator enum_arena {PageAllocator::Instance()};

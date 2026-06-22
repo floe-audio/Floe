@@ -161,6 +161,9 @@ struct FloeClapExtensionHost {
     // id == "" means default device
     void (*set_device)(FloeClapExtensionHost const* host, HostDeviceType type, String id);
     void (*refresh_devices)(FloeClapExtensionHost const* host);
+
+    f64 (*get_tempo)(FloeClapExtensionHost const* host);
+    void (*set_tempo)(FloeClapExtensionHost const* host, f64 tempo_bpm);
 };
 
 struct FloeClapExtension {

@@ -751,4 +751,14 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
         ASSERT(host->context);
         ((DeviceManager*)host->context)->pending_command = DeviceManager::PendingCommand::Refresh;
     };
+    ext.get_tempo = [](FloeClapExtensionHost const* host) -> f64 {
+        ASSERT(g_is_logical_main_thread);
+        ASSERT(host->context);
+        return ((DeviceManager*)host->context)->tempo.Load(LoadMemoryOrder::Relaxed);
+    };
+    ext.set_tempo = [](FloeClapExtensionHost const* host, f64 tempo_bpm) {
+        ASSERT(g_is_logical_main_thread);
+        ASSERT(host->context);
+        ((DeviceManager*)host->context)->tempo.Store(tempo_bpm, StoreMemoryOrder::Relaxed);
+    };
 }
