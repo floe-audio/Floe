@@ -298,3 +298,11 @@ void ProcessLayerPreVoices(LayerProcessor& layer,
                            u32 num_frames);
 
 void LayerApplyState(LayerProcessor& layer, StateSnapshot const& state, StateSource source);
+
+// Walks every layer's current arp auto-rate state and host tempo to refresh
+// context.shared_arp_auto_rate_shift. Pass the current block's ChangedParams (or nullptr outside
+// block processing, e.g. after a reset) so newly-arrived ArpAutoRate values are picked up before
+// per-layer change processing applies them. Must run before any code that resolves auto-rate.
+void RecomputeSharedArpAutoRateShift(Span<LayerProcessor> layers,
+                                     ChangedParams const* changed_params,
+                                     AudioProcessingContext& context);

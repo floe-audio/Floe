@@ -161,6 +161,18 @@ constexpr bool ArpAutoRateEnabled(param_values::ArpAutoRate v) { return v != par
 
 u32 ArpFramesPerStep(SyncedTimes rate, AudioProcessingContext const& context);
 
+// Pure: the synced time this layer would pick at the reference tempo. nullopt if Auto Rate is off
+// or there's no sliced region. The orchestrator gathers anchors across all layers and feeds them
+// to ComputeSharedArpAutoRateShift to get a project-wide shift that's safe for every anchor.
+Optional<SyncedTimes> ArpAutoRateAnchor(sample_lib::Region const* sliced_region,
+                                        param_values::ArpAutoRate auto_rate_mode);
+
+// Pure: choose the project-wide octave shift from the host tempo, pre-clamped so that every layer's
+// (anchor + 3 * shift) stays in range. Layers contribute via the anchors span; nullopt entries are
+// ignored. Result is meaningful only if at least one anchor is present; otherwise it falls back to
+// the raw tempo-derived shift (no consumers in that case).
+int ComputeSharedArpAutoRateShift(Span<Optional<SyncedTimes> const> anchors, f64 tempo);
+
 void ArpProcessBlock(ArpeggiatorState& arp,
                      AudioProcessingContext const& context,
                      sample_lib::Region const* sliced_region,

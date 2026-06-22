@@ -713,8 +713,20 @@ static AutoRateResolution ResolveAutoRate(param_values::ArpAutoRate mode) {
     return {1.0, SyncedTimesType::Straight};
 }
 
-static SyncedTimes AutoSyncedTimeForSlicedRegion(sample_lib::Region const& sliced_region,
-                                                 AudioProcessingContext const& context,
+// The auto-rate decision is split into two pure halves that are combined by the orchestrator:
+//   1. Per-layer anchor: the synced time we'd pick at a fixed reference tempo, independent of host
+//      tempo. Depends only on the layer's region and its auto-rate multiplier+feel.
+//   2. Shared octave shift: a single integer (units of octaves in the enum's interleaved T/_/D
+//      structure, so +/-3 enum slots per step) chosen by the orchestrator from the host tempo and
+//      the minimum headroom across all Auto Rate layers. Because every layer applies the SAME shift,
+//      any two layers' chosen synced times stay the same number of grid steps apart at all tempos.
+// The shared shift must be pre-clamped to fit every layer's anchor, so the final index never escapes
+// SyncedTimes::Count and we never need a per-layer clamp here (which would silently break the ratio
+// invariant by letting one layer saturate while another doesn't).
+
+constexpr int k_arp_auto_rate_entries_per_octave = 3;
+
+static SyncedTimes AutoRateAnchorForSlicedRegion(sample_lib::Region const& sliced_region,
                                                  AutoRateResolution resolution) {
     u32 total_prop = 0;
     for (auto const& s : sliced_region.slices)
@@ -726,10 +738,50 @@ static SyncedTimes AutoSyncedTimeForSlicedRegion(sample_lib::Region const& slice
 
     auto const native_step_ms =
         ((f64)sliced_region.loop_beats * 60000.0 / (f64)sliced_region.native_bpm) / (f64)total_prop;
+    auto const target_ms = native_step_ms * resolution.step_ms_multiplier;
 
-    return LargestSyncedTimeWithinTarget(native_step_ms * resolution.step_ms_multiplier,
-                                         context.tempo,
-                                         resolution.feel);
+    constexpr f64 k_ref_tempo = 120.0;
+    return LargestSyncedTimeWithinTarget(target_ms, k_ref_tempo, resolution.feel);
+}
+
+static SyncedTimes ApplyArpAutoRateSharedShift(SyncedTimes anchor, int shared_shift) {
+    auto const idx = (int)ToInt(anchor) + (k_arp_auto_rate_entries_per_octave * shared_shift);
+    ASSERT_HOT(idx >= 0 && idx < (int)ToInt(SyncedTimes::Count));
+    return (SyncedTimes)idx;
+}
+
+Optional<SyncedTimes> ArpAutoRateAnchor(sample_lib::Region const* sliced_region,
+                                        param_values::ArpAutoRate auto_rate_mode) {
+    if (!sliced_region) return k_nullopt;
+    if (!ArpAutoRateEnabled(auto_rate_mode)) return k_nullopt;
+    return AutoRateAnchorForSlicedRegion(*sliced_region, ResolveAutoRate(auto_rate_mode));
+}
+
+int ComputeSharedArpAutoRateShift(Span<Optional<SyncedTimes> const> anchors, f64 tempo) {
+    constexpr f64 k_ref_tempo = 120.0;
+    // Bias the bucket boundary so the upward crossing happens before playback gets too fast at the
+    // top of a bucket. With bias 0, crossings are at host_tempo = ref * 2^(±0.5) (~85 / ~170 BPM
+    // around 120 BPM), and the top of each bucket plays at ~1.41x native. With bias +0.2, the upward
+    // crossing moves to ref * 2^0.3 (~148 BPM) — top of bucket caps at ~1.23x native at the cost of
+    // the bottom going slightly slower (~0.62x instead of ~0.71x).
+    constexpr f64 k_bucket_shift_bias = 0.2;
+    auto const raw = (int)Round(Log2(tempo / k_ref_tempo) + k_bucket_shift_bias);
+
+    auto const max_idx = (int)ToInt(SyncedTimes::Count) - 1;
+    int min_up_room = LargestRepresentableValue<int>();
+    int min_down_room = LargestRepresentableValue<int>();
+    bool any = false;
+    for (auto const& a : anchors) {
+        if (!a) continue;
+        any = true;
+        auto const anchor_idx = (int)ToInt(*a);
+        auto const up_room = (max_idx - anchor_idx) / k_arp_auto_rate_entries_per_octave;
+        auto const down_room = anchor_idx / k_arp_auto_rate_entries_per_octave;
+        if (up_room < min_up_room) min_up_room = up_room;
+        if (down_room < min_down_room) min_down_room = down_room;
+    }
+    if (!any) return raw;
+    return Clamp(raw, -min_down_room, min_up_room);
 }
 
 static void ArpUpdateRate(ArpeggiatorState& arp,
@@ -737,9 +789,8 @@ static void ArpUpdateRate(ArpeggiatorState& arp,
                           AudioProcessingContext const& context) {
     arp.audio.rate = arp.audio.user_rate;
 
-    if (sliced_region && ArpAutoRateEnabled(arp.audio.auto_rate))
-        arp.audio.rate =
-            AutoSyncedTimeForSlicedRegion(*sliced_region, context, ResolveAutoRate(arp.audio.auto_rate));
+    if (auto const anchor = ArpAutoRateAnchor(sliced_region, arp.audio.auto_rate))
+        arp.audio.rate = ApplyArpAutoRateSharedShift(*anchor, context.shared_arp_auto_rate_shift);
 
     arp.resolved_rate_for_gui.Store(arp.audio.rate, StoreMemoryOrder::Relaxed);
 }
@@ -1019,4 +1070,69 @@ TEST_CASE(TestArpOneShotPolyrateWaitsForSlowest) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterArpeggiatorTests) { REGISTER_TEST(TestArpOneShotPolyrateWaitsForSlowest); }
+TEST_CASE(TestAutoRateSharedShiftPreservesCrossLayerRatios) {
+    // The invariant: for ANY set of per-layer anchors and ANY shared shift returned by
+    // ComputeSharedArpAutoRateShift, every layer's (resolved - anchor) offset equals the same
+    // 3 * shared_shift integer — i.e. the ratio between any two layers' resolved rates is preserved
+    // exactly. Drive shared_shift directly across the full integer range and include anchors at the
+    // SyncedTimes enum edges (which is precisely where the old per-layer Clamp broke the invariant).
+
+    // Anchors spanning the whole enum, including both edges and every feel column.
+    Optional<SyncedTimes> const anchor_set[] {
+        SyncedTimes::_1_64T, // idx 0  — low edge, Triplet
+        SyncedTimes::_1_64,  // idx 1
+        SyncedTimes::_1_64D, // idx 2
+        SyncedTimes::_1_16,  // idx 4
+        SyncedTimes::_1_8T,  // idx 9
+        SyncedTimes::_1_4,   // idx 13 — mid
+        SyncedTimes::_1_2D,  // idx 17
+        SyncedTimes::_1_1,   // idx 19
+        SyncedTimes::_4_1T,  // idx 24 — high edge, Triplet
+        SyncedTimes::_4_1,   // idx 25
+        SyncedTimes::_4_1D,  // idx 26 — top
+    };
+
+    // Shared-shift inputs: spans well beyond any realistic host tempo. Negative values exercise the
+    // low edge, positive values the high edge.
+    f64 const tempos[] {20, 30, 45, 60, 80, 100, 120, 150, 200, 300, 500, 999};
+
+    for (auto const tempo : tempos) {
+        auto const shift = ComputeSharedArpAutoRateShift(anchor_set, tempo);
+
+        // Sanity: shift must keep every anchor in range.
+        for (auto const& a : anchor_set) {
+            auto const idx = (int)ToInt(*a) + 3 * shift;
+            REQUIRE(idx >= 0);
+            REQUIRE(idx < (int)ToInt(SyncedTimes::Count));
+        }
+
+        // The invariant itself: every layer ends up exactly 3*shift slots from its own anchor.
+        for (auto const& a : anchor_set) {
+            auto const resolved = ApplyArpAutoRateSharedShift(*a, shift);
+            auto const offset = (int)ToInt(resolved) - (int)ToInt(*a);
+            REQUIRE_EQ(offset, 3 * shift);
+        }
+    }
+
+    // Single-anchor case: shift should not be clamped by anything other than that one anchor's
+    // headroom. Mid-range anchor with a moderate tempo should produce a non-zero shift.
+    {
+        Optional<SyncedTimes> const single[] {SyncedTimes::_1_4};
+        auto const shift_fast = ComputeSharedArpAutoRateShift(single, 240.0);
+        REQUIRE(shift_fast >= 1);
+    }
+
+    // Empty/all-nullopt: returns the raw tempo-derived shift unconstrained (no consumers will read
+    // it, so the exact value isn't load-bearing — just must not crash).
+    {
+        Optional<SyncedTimes> const none[] {Optional<SyncedTimes> {k_nullopt}};
+        (void)ComputeSharedArpAutoRateShift(none, 60.0);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterArpeggiatorTests) {
+    REGISTER_TEST(TestArpOneShotPolyrateWaitsForSlowest);
+    REGISTER_TEST(TestAutoRateSharedShiftPreservesCrossLayerRatios);
+}

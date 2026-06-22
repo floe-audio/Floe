@@ -377,6 +377,13 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
         if (mute_or_solo_changed) HandleMuteSolo(processor);
     }
 
+    // Auto Rate needs a project-wide octave shift that's safe for every layer's anchor. Refresh it
+    // before per-layer change processing so ArpUpdateRate (which reads it from the context) picks up
+    // tempo or auto-rate-mode changes from this same block.
+    RecomputeSharedArpAutoRateShift(processor.layer_processors,
+                                    &changes.changed_params,
+                                    processor.audio_processing_context);
+
     for (auto [index, l] : Enumerate(processor.layer_processors))
         ProcessLayerChanges(l, processor.audio_processing_context, changes, processor.voice_pool);
 
@@ -696,6 +703,10 @@ inline void ResetProcessor(AudioProcessor& processor, ProcessBlockChanges& chang
     for (auto [layer_index, l] : Enumerate(processor.layer_processors))
         if (ChangeInstrumentIfNeededAndReset(l, processor.voice_pool, processor.audio_processing_context))
             processor.restart_voices_for_layer_bitset.Set(layer_index);
+
+    // Instrument swaps may have changed every layer's anchor — recompute so the next block's
+    // ArpUpdateRate calls observe a coherent shift across the new layer set.
+    RecomputeSharedArpAutoRateShift(processor.layer_processors, nullptr, processor.audio_processing_context);
 
     Reset(processor.voice_pool);
 }

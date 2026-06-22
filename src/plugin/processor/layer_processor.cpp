@@ -46,6 +46,25 @@ static bool ArpIsOnForLayer(LayerProcessor const& layer) {
     return ArpIsOn(layer.arp_state.audio.on, SlicesForInstrument(layer.audio_thread_inst));
 }
 
+void RecomputeSharedArpAutoRateShift(Span<LayerProcessor> layers,
+                                     ChangedParams const* changed_params,
+                                     AudioProcessingContext& context) {
+    DynamicArrayBounded<Optional<SyncedTimes>, k_num_layers> anchors;
+    ASSERT(layers.size <= k_num_layers);
+    for (auto const& layer : layers) {
+        auto auto_rate_mode = layer.arp_state.audio.auto_rate;
+        if (changed_params) {
+            if (auto const p =
+                    changed_params->IntValue<param_values::ArpAutoRate>(layer.index,
+                                                                       LayerParamIndex::ArpAutoRate))
+                auto_rate_mode = *p;
+        }
+        dyn::Append(anchors,
+                    ArpAutoRateAnchor(SlicesForInstrument(layer.audio_thread_inst), auto_rate_mode));
+    }
+    context.shared_arp_auto_rate_shift = ComputeSharedArpAutoRateShift(anchors, context.tempo);
+}
+
 bool LayerHasAudioActivity(LayerProcessor const& layer) {
     return !layer.peak_meter.Silent() || (ArpIsOnForLayer(layer) && layer.arp_state.audio.any_notes_held);
 }

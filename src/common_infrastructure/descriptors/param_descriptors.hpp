@@ -3808,7 +3808,7 @@ consteval auto CreateParams() {
             .name = "Auto Rate"_s,
             .gui_label = "Auto Rate"_s,
             .tooltip =
-                "Automatically pick an arpeggiator rate based on the sliced instrument's loop length and host tempo."_s,
+                "Let Floe decide the rate so that the loop plays near to its original recorded rate rather than having to add large silent gaps between slices. The rate that Floe chooses varies depending on your host tempo."_s,
         };
         lp(ArpLength) = Args {
             .id = id(region, 73), // never change
