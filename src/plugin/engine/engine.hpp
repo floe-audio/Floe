@@ -42,12 +42,9 @@ struct Engine : ProcessorListener {
 
     struct PinnedSnapshot {
         struct DescriptionCache {
-            AutoDescription auto_desc {};
-            String short_text {};
-            String long_text {};
-            bool long_is_user_desc = false;
-            bool short_is_user_desc = false;
-            bool mid_sentence_chop = false;
+            DynamicArrayBounded<char, k_max_preset_description_size> short_text {};
+            DynamicArrayBounded<char, k_max_preset_description_size> long_text {};
+            LongDescriptionKind long_kind = LongDescriptionKind::Auto;
         };
 
         StateSnapshot state {DefaultStateSnapshot()};

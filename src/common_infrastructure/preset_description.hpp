@@ -9,24 +9,24 @@
 #include "common_infrastructure/loop_behaviour.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
-// Per-layer info needed by the auto-description generator. Keeps the generator
-// decoupled from LayerProcessor and its dependencies so it can be unit-tested
-// with a hand-constructed StateSnapshot.
 struct AutoDescriptionLayerInfo {
-    String inst_name; // instrument display name, empty if unknown
-    LoopBehaviour actual_loop_behaviour; // resolved loop behaviour for the layer
+    String inst_name;
+    LoopBehaviour actual_loop_behaviour;
 };
 
 using AutoDescriptionString = DynamicArrayBounded<char, 200>;
 
 struct AutoDescription {
-    AutoDescriptionString short_text; // instrument name + lead phrase + folder
-    AutoDescriptionString long_text; // remaining phrases and FX summary
+    AutoDescriptionString short_text;
+    AutoDescriptionString long_text;
 };
 
-// Generate a short human-readable description of the preset state. Used when a preset has no explicit
-// description. The random_seed picks between wording variations so the output is stable for a given preset
-// but varies between presets - typically seeded by Hash(preset_name).
+enum class LongDescriptionKind : u8 {
+    Auto,
+    User,
+    UserContinued,
+};
+
 AutoDescription GenerateAutoDescription(StateSnapshot const& state,
                                         Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
                                         String folder_name,

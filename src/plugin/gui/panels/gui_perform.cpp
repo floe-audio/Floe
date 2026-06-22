@@ -7,6 +7,7 @@
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/persistent_store.hpp"
+#include "common_infrastructure/preset_description.hpp"
 #include "common_infrastructure/state/macros.hpp"
 
 #include "engine/engine.hpp"
@@ -780,18 +781,22 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                   },
                               });
 
-    DoSectionLabel(builder,
-                   column,
-                   cache.mid_sentence_chop   ? "DESCRIPTION (CONTINUED)"_s
-                   : cache.long_is_user_desc ? "DESCRIPTION"_s
-                                             : "AUTO DESCRIPTION"_s);
+    DoSectionLabel(builder, column, [&]() {
+        switch (cache.long_kind) {
+            case LongDescriptionKind::UserContinued: return "DESCRIPTION (CONTINUED)"_s;
+            case LongDescriptionKind::User: return "DESCRIPTION"_s;
+            case LongDescriptionKind::Auto: return "AUTO DESCRIPTION"_s;
+        }
+        return ""_s;
+    }());
 
     if (!cache.long_text.size) return;
 
     auto long_text = fmt::FormatStringReplace(g.scratch_arena,
                                               cache.long_text,
                                               ArrayT<fmt::StringReplacement>({{"\n"_s, " "_s}}));
-    if (cache.mid_sentence_chop) long_text = fmt::Format(g.scratch_arena, "…{}", long_text);
+    if (cache.long_kind == LongDescriptionKind::UserContinued)
+        long_text = fmt::Format(g.scratch_arena, "…{}", long_text);
 
     DoBox(builder,
           {

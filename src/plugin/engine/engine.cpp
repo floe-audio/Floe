@@ -57,33 +57,29 @@ static void RefreshPresetDescriptionCache(Engine& engine) {
                                 layer.VolumeEnvelopeIsOn(engine.processor.main_params));
     }
 
-    auto& cache = engine.pinned_snapshot.description_cache;
-
-    cache.auto_desc = GenerateAutoDescription(engine.pinned_snapshot.state,
-                                              layer_info,
-                                              PinnedPresetFolderName(engine),
-                                              Hash(engine.pinned_snapshot.state.extras.display_name));
+    auto const auto_desc = GenerateAutoDescription(engine.pinned_snapshot.state,
+                                                   layer_info,
+                                                   PinnedPresetFolderName(engine),
+                                                   Hash(engine.pinned_snapshot.state.extras.display_name));
 
     String const real_desc = engine.pinned_snapshot.state.metadata.description;
     auto const real_split = SplitPresetDescription(real_desc);
 
-    if (real_desc.size) {
-        cache.short_text = real_split.short_part.ValueOr(real_desc);
-        cache.short_is_user_desc = true;
-    } else {
-        cache.short_text = cache.auto_desc.short_text;
-        cache.short_is_user_desc = false;
-    }
+    auto& cache = engine.pinned_snapshot.description_cache;
+
+    if (real_desc.size)
+        dyn::Assign(cache.short_text, real_split.short_part.ValueOr(real_desc));
+    else
+        dyn::Assign(cache.short_text, auto_desc.short_text);
 
     if (real_desc.size && real_split.long_part) {
-        cache.long_text = *real_split.long_part;
-        cache.long_is_user_desc = true;
+        dyn::Assign(cache.long_text, *real_split.long_part);
+        cache.long_kind =
+            real_split.mid_sentence_chop ? LongDescriptionKind::UserContinued : LongDescriptionKind::User;
     } else {
-        cache.long_text = cache.auto_desc.long_text;
-        cache.long_is_user_desc = false;
+        dyn::Assign(cache.long_text, auto_desc.long_text);
+        cache.long_kind = LongDescriptionKind::Auto;
     }
-
-    cache.mid_sentence_chop = real_desc.size && real_split.mid_sentence_chop;
 }
 
 Optional<sample_lib::LibraryId> LibraryForOverallBackground(Engine const& engine) {
