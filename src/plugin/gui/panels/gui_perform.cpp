@@ -23,6 +23,7 @@
 #include "gui/panels/gui_mid_panel.hpp"
 #include "gui/panels/gui_preset_browser.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_framework/gui_frame.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "gui_framework/layout.hpp"
 #include "preset_server/preset_server.hpp"
@@ -59,6 +60,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                                  });
 
     // Library name
+    String library_name {};
     {
         Optional<sample_lib::LibraryId> first_lib_id {};
         bool mixed = false;
@@ -73,7 +75,6 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
             }
         }
 
-        String library_name {};
         if (mixed) {
             library_name = "Mixed Libraries"_s;
         } else if (first_lib_id) {
@@ -108,7 +109,8 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                               .parent = lib_name_row,
                               .background_tex = imgs.icon.NullableValue(),
                               .layout {
-                                  .size = k_library_icon_standard_size,
+                                  .size = 26,
+                                  .margins = {.t = WwToPixels(1.0f)},
                               },
                           });
                 }
@@ -119,7 +121,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                       .parent = lib_name_row,
                       .text = library_name,
                       .size_from_text = true,
-                      .font = FontType::Heading1,
+                      .font = FontType::LargeTitle,
                       .text_colours = Col {.c = Col::White},
                       .text_justification = TextJustification::Centred,
                   });
@@ -137,7 +139,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                       .text = name,
                       .wrap_width = k_wrap_to_parent,
                       .size_from_text = true,
-                      .font = FontType::LargeTitle,
+                      .font = library_name.size ? FontType::Heading1 : FontType::LargeTitle,
                       .text_colours = Col {.c = Col::White},
                       .text_justification = TextJustification::Centred,
                   });
