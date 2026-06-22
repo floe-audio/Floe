@@ -1080,16 +1080,16 @@ TEST_CASE(TestAutoRateSharedShiftPreservesCrossLayerRatios) {
     // Anchors spanning the whole enum, including both edges and every feel column.
     Optional<SyncedTimes> const anchor_set[] {
         SyncedTimes::_1_64T, // idx 0  — low edge, Triplet
-        SyncedTimes::_1_64,  // idx 1
+        SyncedTimes::_1_64, // idx 1
         SyncedTimes::_1_64D, // idx 2
-        SyncedTimes::_1_16,  // idx 4
-        SyncedTimes::_1_8T,  // idx 9
-        SyncedTimes::_1_4,   // idx 13 — mid
-        SyncedTimes::_1_2D,  // idx 17
-        SyncedTimes::_1_1,   // idx 19
-        SyncedTimes::_4_1T,  // idx 24 — high edge, Triplet
-        SyncedTimes::_4_1,   // idx 25
-        SyncedTimes::_4_1D,  // idx 26 — top
+        SyncedTimes::_1_16, // idx 4
+        SyncedTimes::_1_8T, // idx 9
+        SyncedTimes::_1_4, // idx 13 — mid
+        SyncedTimes::_1_2D, // idx 17
+        SyncedTimes::_1_1, // idx 19
+        SyncedTimes::_4_1T, // idx 24 — high edge, Triplet
+        SyncedTimes::_4_1, // idx 25
+        SyncedTimes::_4_1D, // idx 26 — top
     };
 
     // Shared-shift inputs: spans well beyond any realistic host tempo. Negative values exercise the

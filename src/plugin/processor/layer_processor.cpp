@@ -56,11 +56,10 @@ void RecomputeSharedArpAutoRateShift(Span<LayerProcessor> layers,
         if (changed_params) {
             if (auto const p =
                     changed_params->IntValue<param_values::ArpAutoRate>(layer.index,
-                                                                       LayerParamIndex::ArpAutoRate))
+                                                                        LayerParamIndex::ArpAutoRate))
                 auto_rate_mode = *p;
         }
-        dyn::Append(anchors,
-                    ArpAutoRateAnchor(SlicesForInstrument(layer.audio_thread_inst), auto_rate_mode));
+        dyn::Append(anchors, ArpAutoRateAnchor(SlicesForInstrument(layer.audio_thread_inst), auto_rate_mode));
     }
     context.shared_arp_auto_rate_shift = ComputeSharedArpAutoRateShift(anchors, context.tempo);
 }
