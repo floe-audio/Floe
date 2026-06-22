@@ -247,7 +247,7 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
                                                      container,
                                                      {
                                                          .text = state.metadata.description,
-                                                         .size = f32x2 {layout::k_fill_parent, 60},
+                                                         .size = f32x2 {layout::k_fill_parent, 80},
                                                          .multiline = true,
                                                      });
             description_field.result && description_field.result->buffer_changed)
