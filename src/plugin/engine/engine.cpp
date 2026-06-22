@@ -82,6 +82,8 @@ static void RefreshPresetDescriptionCache(Engine& engine) {
         cache.long_text = cache.auto_desc.long_text;
         cache.long_is_user_desc = false;
     }
+
+    cache.mid_sentence_chop = real_desc.size && real_split.mid_sentence_chop;
 }
 
 Optional<sample_lib::LibraryId> LibraryForOverallBackground(Engine const& engine) {

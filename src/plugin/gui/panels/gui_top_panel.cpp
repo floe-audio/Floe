@@ -372,7 +372,9 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         {
             // IMPROVE: should this be a text input that changes the description?
             auto const& desc_cache = g.engine.pinned_snapshot.description_cache;
-            String const desc_text = desc_cache.short_is_user_desc || !desc_cache.short_text.size
+            String const desc_text = desc_cache.mid_sentence_chop
+                                         ? (String)fmt::Format(builder.arena, "{}…", desc_cache.short_text)
+                                     : desc_cache.short_is_user_desc || !desc_cache.short_text.size
                                          ? (String)desc_cache.short_text
                                          : (String)fmt::Format(builder.arena, "{}", desc_cache.short_text);
             DoBox(builder,

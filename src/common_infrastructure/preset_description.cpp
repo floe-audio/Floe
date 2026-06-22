@@ -613,39 +613,12 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
         dyn::AppendSpan(long_text, "."_s);
     }
 
-    if (show_trailing_fx_line) {
-        auto const count = mentioned_fx == 0 ? num_fx : unmentioned_fx;
-        // Pick a phrase that suggests the magnitude of FX usage rather than reporting the exact count.
-        auto const fx_phrase = ({
-            String s;
-            auto const seed = random_seed ^ 0x57FE5757FE5757FEULL;
-            if (count >= 5) {
-                static constexpr String k_variants[] = {
-                    "many effects"_s,
-                    "an array of effects"_s,
-                    "numerous effects"_s,
-                };
-                s = k_variants[seed % ArraySize(k_variants)];
-            } else if (count >= 3) {
-                static constexpr String k_variants[] = {
-                    "several effects"_s,
-                };
-                s = k_variants[seed % ArraySize(k_variants)];
-            } else {
-                static constexpr String k_variants[] = {
-                    "a few effects"_s,
-                };
-                s = k_variants[seed % ArraySize(k_variants)];
-            }
-            s;
-        });
-
+    if (show_trailing_fx_line && num_fx) {
         if (long_text.size) dyn::AppendSpan(long_text, " "_s);
         auto const sentence_start = long_text.size;
-        if (mentioned_fx == 0)
-            fmt::Append(long_text, "{}.", fx_phrase);
-        else
-            fmt::Append(long_text, "Plus {}.", fx_phrase);
+
+        fmt::Append(long_text, "Uses {} effects.", num_fx);
+
         if (sentence_start < long_text.size && long_text[sentence_start] >= 'a' &&
             long_text[sentence_start] <= 'z') {
             long_text[sentence_start] -= 32;

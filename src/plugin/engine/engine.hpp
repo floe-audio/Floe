@@ -47,6 +47,7 @@ struct Engine : ProcessorListener {
             String long_text {};
             bool long_is_user_desc = false;
             bool short_is_user_desc = false;
+            bool mid_sentence_chop = false;
         };
 
         StateSnapshot state {DefaultStateSnapshot()};
