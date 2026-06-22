@@ -34,7 +34,7 @@ struct DrawTextInputConfig {
     Col selection_col = {.c = Col::Highlight, .alpha = 128};
 };
 
-void DrawTextInput(imgui::Context const& imgui,
+void DrawTextInput(imgui::Context& imgui,
                    imgui::TextInputResult const& result,
                    DrawTextInputConfig const& config = {});
 

@@ -91,9 +91,14 @@ void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInpu
     imgui.draw_list->AddText(text_pos, LiveCol(UiColMap::MidText), result.text, {});
 }
 
-void DrawTextInput(imgui::Context const& imgui,
+void DrawTextInput(imgui::Context& imgui,
                    imgui::TextInputResult const& result,
                    DrawTextInputConfig const& config) {
+    if (result.clip_rect) imgui.PushRectToCurrentScissorStack(*result.clip_rect);
+    DEFER {
+        if (result.clip_rect) imgui.PopRectFromCurrentScissorStack();
+    };
+
     if (result.HasSelection()) {
         imgui::TextInputResult::SelectionIterator it {imgui};
         auto const selection_col = ToU32(config.selection_col);

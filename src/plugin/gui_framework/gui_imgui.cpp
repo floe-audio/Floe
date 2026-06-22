@@ -1147,9 +1147,19 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     int const starting_cursor = stb_state.cursor;
     bool reset_cursor = false;
 
-    auto get_rel_click_point = [](f32x2 pos, f32 offset) {
+    // For multi-line inputs, the click point is offset by the internal vertical scroll so that a click on
+    // visible text maps to the correct content row.
+    f32 const cached_scroll_y = ({
+        f32 v = 0.0f;
+        if (cfg.multiline)
+            if (auto const* existing = multiline_scroll_offsets.Find(id)) v = *existing;
+        v;
+    });
+
+    auto get_rel_click_point = [cached_scroll_y](f32x2 pos, f32 offset) {
         f32x2 relative_click = GuiIo().in.cursor_pos - pos;
         relative_click -= f32x2 {offset, 0};
+        relative_click.y += cached_scroll_y;
         return relative_click;
     };
 
@@ -1220,6 +1230,7 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
             result.is_placeholder = true;
         }
         result.text_pos = TextInputTextPos(result.text, r, cfg, draw_list->fonts);
+        if (cfg.multiline) result.clip_rect = r;
         return result;
     }
 
@@ -1478,9 +1489,11 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         result.visual_rows = textedit_visual_rows.Items();
     }
 
+    u32 cursor_line_index = 0;
     if (text_cursor_is_shown && !result.HasSelection()) {
         constexpr u8 k_cursor_width = 1;
         auto const loc = stb::TexteditLocateRow(this, result.cursor);
+        cursor_line_index = loc.line_index;
         f32 cursor_x = 0;
         for (int idx = loc.row_start; idx < result.cursor; ++idx) {
             auto const c = textedit_text[(usize)idx];
@@ -1492,6 +1505,53 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
                                    .y = result.text_pos.y + (loc.line_index * font_size),
                                    .w = k_cursor_width,
                                    .h = font_size};
+    } else {
+        cursor_line_index = stb::TexteditLocateRow(this, result.cursor).line_index;
+    }
+
+    if (cfg.multiline) {
+        // The visual_rows builder doesn't emit the trailing empty row after a final '\n' - but the cursor
+        // can sit there, so include it in the height the scroll logic sees.
+        bool const has_trailing_newline =
+            textedit_len > 0 && textedit_text[(usize)(textedit_len - 1)] == '\n';
+        f32 const total_height =
+            ((f32)textedit_visual_rows.size + (has_trailing_newline ? 1.0f : 0.0f)) * font_size;
+        f32 const max_scroll = Max(0.0f, total_height - r.h);
+        f32 scroll_y = Clamp(cached_scroll_y, 0.0f, max_scroll);
+
+        // Keep the cursor row in view whenever the cursor moved or the buffer changed this frame.
+        bool const cursor_changed = (starting_cursor != stb_state.cursor) || result.buffer_changed ||
+                                    reset_cursor || IsActive(id, MouseButton::Left);
+        if (cursor_changed && max_scroll > 0) {
+            f32 const cursor_top = (f32)cursor_line_index * font_size;
+            f32 const cursor_bottom = cursor_top + font_size;
+            if (cursor_top < scroll_y)
+                scroll_y = cursor_top;
+            else if (cursor_bottom > scroll_y + r.h)
+                scroll_y = cursor_bottom - r.h;
+        }
+
+        // Mouse wheel scrolling when the cursor is over the input.
+        if (max_scroll > 0) {
+            ConsumeScrollAtRect(r);
+            if (r.Contains(frame_input.cursor_pos) && frame_input.mouse_scroll_delta_in_lines != 0) {
+                scroll_y -= frame_input.mouse_scroll_delta_in_lines * font_size * 3.0f;
+            }
+        }
+
+        scroll_y = Clamp(Round(scroll_y), 0.0f, max_scroll);
+        if (auto* existing = multiline_scroll_offsets.Find(id))
+            *existing = scroll_y;
+        else
+            multiline_scroll_offsets.Insert(id, scroll_y);
+
+        if (scroll_y != 0) {
+            result.text_pos.y -= scroll_y;
+            if (result.cursor_rect) result.cursor_rect->y -= scroll_y;
+        }
+        result.multiline_total_height = total_height;
+        result.multiline_scroll_y = scroll_y;
+        result.clip_rect = r;
     }
 
     // We do this at the end because we might have run stb_click code; we want to override the value set

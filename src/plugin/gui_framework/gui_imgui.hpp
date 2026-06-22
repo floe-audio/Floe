@@ -325,6 +325,9 @@ struct Viewport {
 // Data about interactions with a text input, and data required to draw a text input.
 // Example processor to draw a text input:
 // - Draw a background using the rectangle you passed into the text input behaviour function.
+// - If clip_rect is set, push it onto the scissor stack before drawing text/selection/cursor and pop
+//   afterwards. This is set for multi-line inputs whose content exceeds the input rect (the widget handles
+//   its own vertical scrolling internally).
 // - Check if HasSelection, if so, create an iterator and loop NextSelectionRect - drawing a blue highlight
 //   box for each.
 // - Check cursor_rect - fill black if present.
@@ -366,6 +369,18 @@ struct TextInputResult {
 
     // The rectangle for the cursor if it should currently be shown.
     Optional<Rect> cursor_rect = {};
+
+    // When set, the caller should push this onto the scissor stack before drawing the text, cursor and
+    // selection rects, and pop it afterwards. Set for multi-line inputs that are vertically scrolling.
+    Optional<Rect> clip_rect = {};
+
+    // For a focused multi-line input, the total pixel height of all visual rows. Useful for callers that
+    // want to display a scrollbar.
+    f32 multiline_total_height = 0;
+
+    // For a focused multi-line input, the pixel offset that has been subtracted from text_pos.y due to
+    // internal vertical scrolling. 0 if there's no scrolling.
+    f32 multiline_scroll_y = 0;
 
     // Internals.
     int cursor = 0;
@@ -788,6 +803,10 @@ struct Context {
     f32 textedit_wrap_width = 0;
     DynamicArray<String> textedit_visual_rows {Malloc::Instance()};
     bool active_text_input_shown = false; // Unfocus active input if it's not shown in the frame
+
+    // Persistent vertical scroll offsets for multi-line text inputs that overflow their rect, keyed by
+    // widget id. The widget handles its own scrolling so we don't need an enclosing viewport.
+    DynamicHashTable<Id, f32> multiline_scroll_offsets {Malloc::Instance()};
 
     DynamicArray<Viewport*> sorted_viewports {Malloc::Instance()};
 
