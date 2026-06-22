@@ -78,7 +78,6 @@ const sidebars = {
             items: [
                 'about-the-project/sponsorship',
                 'about-the-project/beta-testing',
-                'about-the-project/roadmap',
                 'about-the-project/mirage',
             ],
         },

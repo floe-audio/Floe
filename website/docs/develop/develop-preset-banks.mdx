@@ -18,9 +18,9 @@ Presets are saved as individual files using the <FAIcon icon="fa-solid fa-floppy
 
 A _preset bank_ is small, optional, extension to this concept. By creating a `floe-preset-bank.ini` inside a folder of presets, it becomes a preset bank, where the entire tree of presets in the folder and all its subfolders become more easily identifiable and can feature metadata such as a subtitle and ID.
 
-Creating a bank is normally a good idea for custom presets: the preset browser can isolate the bank, present it with the best name, and surface it at the top level. In the preset browser, the icon for the bank is taken from the sample library used by the bank's presets. If the bank contains presets that depend on multiple different libraries, a 'mixed' icon is shown instead to denote that the bank spans more than one library.
+Creating a bank is normally a good idea for custom presets: the preset browser can isolate the bank, present it with the best name, and surface it at the top level. In the preset browser, the icon for the bank is taken from the sample library used by the bank's presets. If the bank contains presets that depend on multiple different libraries, a 'mixed' icon is shown instead to denote that the bank spans more than one library. Alternatively, you can instruct Floe using the _preset bank file_ to use the visuals from a given library ID.
 
-The preset bank file is a simple INI text file with the following fields - all are optional:
+The _preset bank file_ is a simple INI text file with the following fields - all are optional:
 
 ```ini
 ; A short and descriptive name for the preset bank.

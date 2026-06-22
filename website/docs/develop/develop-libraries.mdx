@@ -27,22 +27,26 @@ We made these tools for our own use and are sharing them with the community. Con
 
 ### What you'll need
 - Tools and experience writing and editing code
-- Understanding of sample mapping concepts (key ranges, velocity layers)
+- Understanding of sample mapping concepts (key ranges, velocity layers, etc.)
+- It's recommended to have experience programming other samplers like Kontakt, SFZ, Decent Sampler, etc.
 
 ## Floe's sample library format
 
 Floe's format is designed for configuring audio files into playable instruments. It does not add any audio-manipulation or custom GUIs. Floe has a ready-to-use GUI and lots of audio parameters. In the future we might add more advanced scripting/GUI creation features to the format. The format is designed to be extended whilst retaining backwards compatibility.
 
-Floe's sample library format currently supports the following features: 
+Floe's sample library format currently supports the following features:
 - Velocity layers
 - Round-robin
 - Crossfade layers
-- Loop points with crossfade 
+- Loop points with crossfade
 - Convolution reverb IRs
 - Velocity layer feathering
 - Trigger samples on note-off
 
-As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well. 
+As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well.
+
+_The basics are covered, but there are plenty of features that other samplers might have that Floe doesn't. We expand our format to meet the needs of our products rather than add add things that we don't currently need._
+
 
 ### Why a new format?
 No existing format met our requirements for Floe, which are:

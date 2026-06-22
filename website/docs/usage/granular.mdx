@@ -17,11 +17,16 @@ import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 - Two granular modes: _Granular Playback_ (time-stretched movement through the sample) and _Granular Fixed_ (frozen at one position).
 - Selected from the **Play Mode** menu at the top of the layer's [Playback tab](./layers#playback-tab), alongside _Standard Playback_.
 
-## What is granular synthesis?
+## About Floe's granular engine
 
-A granular engine plays many tiny snippets of the loaded sample — typically tens to hundreds of milliseconds long — and overlaps them in time. Each grain has its own start point, pitch, pan and direction, and the way grains are scheduled determines whether you hear a smooth time-stretched playback, a frozen drone, or a cloud of pitched debris.
+Floe's granular engine works like most other granular synths — short, overlapping snippets of audio (_grains_) are spawned from the loaded sample, and parameters like grain length, density, position and pitch shape the resulting texture. If you've used granular engines elsewhere, the controls here will feel familiar.
 
-In Floe, granular synthesis works with any sample-based instrument loaded into a layer. The same controls are available regardless of whether the instrument is a single sample or a multisampled library — Floe sources its grains from whichever sample would be played for the incoming note.
+Granular synthesis works with any sample-based instrument loaded into a layer. The same controls are available regardless of whether the instrument is a single sample or a multisampled library — Floe sources its grains from whichever sample would be played for the incoming note.
+
+A few things that set Floe's granular engine apart:
+- Two distinct modes — a time-stretched _Granular Playback_ mode where the playhead moves through the sample at a controllable speed, and a _Granular Fixed_ mode where it stays parked at one position.
+- A harmony grid that lets grains randomly spawn at chosen intervals — pick from musical presets like _Octaves_, _Major Triad_, _Pentatonic_, _Whole Tone_, or toggle individual semitones yourself.
+- A focus on smooth, easy-to-use parameters: knobs are tuned for musical results across their whole range, so it's hard to land on a setting that sounds broken or harsh.
 
 ## Choosing a mode
 
@@ -77,5 +82,5 @@ The Random section adds per-grain variation so the texture doesn't sound mechani
 
 ## Tips
 
-- It's often interesting to control the Position (when in _Granular Fixed_ mode) using the LFO or a [macro](./macros) for added movement.
+- It's often interesting to control the Position (_Granular Fixed_ mode) using the LFO or a [macro](./macros) for added movement.
 - The volume envelope, filter and effects all apply to the granular output exactly as they would for standard playback, so you can shape granular textures with the same tools you'd use anywhere else in Floe.

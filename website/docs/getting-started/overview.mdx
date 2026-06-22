@@ -14,7 +14,7 @@ import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
 
 ## What is Floe?
 
-Floe is an audio plugin for your digital audio workstation (DAW). It's a platform for performing, finding and transforming sounds from sample libraries — closer to a ROMpler or sample-based synth than a traditional sampler. It hosts sample-based [_instruments_](../reference/instruments) (sampled pianos, synths, textures, and so on) and exposes an extensive set of parameters for venturing into sample-based synthesis. A comprehensive presets system with powerful browsers, macros, a random variation generator, and other features make it a formidable engine for sample libraries.
+Floe is an audio plugin for your digital audio workstation (DAW). It's a platform for performing, finding, and transforming sounds from sample libraries — closer to a sample-based synth or ROMpler than a traditional sampler. It hosts sample-based [_instruments_](../reference/instruments) (sampled pianos, synths, textures, and so on) and exposes an extensive set of parameters for venturing into sample-based synthesis. A comprehensive presets system with powerful browsers, macros, a random variation generator, and other features make it a formidable engine for sample libraries.
 
 Floe is designed to be efficient with your CPU and can be added multiple times in a single project; multiple instances will share resources such as sample libraries to keep memory usage low.
 
@@ -35,7 +35,7 @@ The recent version 2 update of Floe offers a substantial set of new features and
 
 ## Signal flow
 
-Notes are sent in parallel to three identical layers, each hosting its own instrument with per-layer envelope, tuning, filter and LFO. The layers are summed and fed through a shared, reorderable effects rack, then a master volume.
+Notes are sent in parallel to three identical layers — each hosting its own instrument with per-layer envelope, tuning, filter and LFO. The layers are combined and fed through a shared, reorderable effects rack, then a master volume.
 
 ```mermaid
 graph LR

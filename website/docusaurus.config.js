@@ -370,13 +370,6 @@ const config = {
                             "/about-the-project/mirage.html",
                         ],
                     },
-                    {
-                        to: "/docs/about-the-project/roadmap",
-                        from: [
-                            "/about-the-project/roadmap",
-                            "/about-the-project/roadmap.html",
-                        ],
-                    },
                     { to: "/docs/changelog", from: ["/changelog", "/changelog.html"] },
                 ],
             },

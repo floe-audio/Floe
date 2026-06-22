@@ -12,11 +12,22 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 # Legacy Parameters
 
+## At a glance
+Sometimes when loading an old DAW project some parameters on Floe might have <FAIcon icon="fa-triangle-exclamation fa-trash" /> exclamation icons next to them - don't panic! Your sound is perfectly safe and stable.
+
+What's happened is that an update Floe has added new parameters. The old parameter still exists and works the same but it's hidden out of sight - that's what the exclamation means.
+
+To resolve:
+- Do nothing! If you don't need to further edit the preset, you can just leave it with the legacy parameters. Floe is stable in this state and sounds identical to when it was saved.
+- Update or 'modernise' the legacy parameter. Do this if you want to edit the preset further. It will allow you to use the main UI and new parameters without the <FAIcon icon="fa-triangle-exclamation fa-trash" /> icons blocking you. Modernisation performs a lossless migration from the old parameter to the new version. It's normally perfectly safe to do this but there's a couple of important caveats. Please read below.
+
+## Overview
+
 Floe strives for perfect backwards compatibility: a preset or DAW project saved with any version of Floe will load up sounding exactly the same in any later version. To make this possible without dragging an ever-growing pile of outdated UI into the main interface, Floe **never deletes a parameter**. When a parameter needs to change, we add a new parameter to the main UI and move the old one out of sight as a "legacy" parameter that quietly keeps doing its old job.
 
 ## When does a parameter become legacy?
 
-A parameter becomes legacy when we change it in a way that would otherwise alter how an existing project sounds. Common reasons:
+A parameter becomes legacy when we change it in a way that would otherwise alter how an existing project sounds. We try to keep this to a minimum. Common reasons:
 
 - **Adding new options to a menu** — for example, new LFO shapes, new filter types, or new modes for monophonic voice behaviour. Automation written against the old menu would land on different values in a wider menu, so we add a new menu parameter and keep the old one for compatibility.
 - **Improving a parameter's feel** — adjusting how the knob's position maps to the audible value so the response is better spread across the range, or has a more intuitive projection at low or high values.
@@ -28,7 +39,7 @@ In every case the old parameter stays alive behind the scenes so your projects s
 
 When you load a **preset**, Floe typically automatically modernises any legacy values it finds: the audibly-equivalent value is copied onto the modern parameter and the legacy slot is cleared. You'll see no legacy parameters and the modern UI controls work as expected.
 
-When you load a **DAW project**, Floe can't modernise automatically: it has no way of knowing whether your DAW is automating a legacy parameter, and silently changing the target would break your automation. Instead, Floe keeps the legacy value intact, lets the legacy parameter override its modern equivalent, and shows a small yellow warning badge on the affected control. The Legacy Parameters panel (accessible from the 3-dots menu) lists every legacy parameter that is currently overriding a modern control.
+When you load a **DAW project**, Floe can't modernise automatically because _it has no way of knowing whether your DAW is automating a legacy parameter_ — silently changing the target would break your automation. So instead, Floe keeps the legacy value intact, lets the legacy parameter override its modern equivalent, and shows a small yellow warning badge on the affected control. The Legacy Parameters panel (accessible from the 3-dots menu) lists every legacy parameter that is currently overriding a modern control.
 
 ## What the modern control looks like while overridden
 
