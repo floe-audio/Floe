@@ -12,9 +12,12 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 import data from "@site/static/generated-data.json";
 
-For reference purposes, this page lists all of Floe's parameters in case you need to look up specific IDs or details.
+## Shorten parameter names
+In your DAW, the names of Floe's parameters are long and descriptive, such as "Effect Distortion On". You can switch to abbreviated names if you need the names to show in a smaller width, for example, "Dist On". Enable this option on Floe's preferences panel. You might need to close and re-open your DAW for this change to take effect.
 
-For more of a usage guide, consult the documentation pages on layers, effects, looping, etc.
+## Parameter table
+
+For reference purposes, this section lists all of Floe's parameters in case you need to look up specific IDs or details. For more of a usage guide, consult the documentation pages on layers, effects, looping, etc.
 
 <table>
   <thead>
@@ -22,6 +25,7 @@ For more of a usage guide, consult the documentation pages on layers, effects, l
       <th>Module</th>
       <th>Name</th>
       <th>ID</th>
+      <th>Abbreviated Name</th>
       <th>Description</th>
     </tr>
   </thead>
@@ -31,6 +35,7 @@ For more of a usage guide, consult the documentation pages on layers, effects, l
         <td>{param.module}</td>
         <td>{param.name}</td>
         <td>{param.id}</td>
+        <td>{param.abbreviated_name}</td>
         <td>{param.description}</td>
       </tr>
     ))}

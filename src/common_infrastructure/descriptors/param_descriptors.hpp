@@ -111,7 +111,7 @@ enum class ParamIndex : u16 {
     FirstNonLayerParam = ToInt(LayerParamIndex::Count) * k_num_layers,
 
     MasterVolume = FirstNonLayerParam,
-    MasterVelocity, // Legacy
+    LegacyMasterVelocity, // Legacy
     MasterTimbre,
 
     Macro1,
@@ -308,42 +308,47 @@ enum class ParameterModule : u8 {
     Count
 };
 
-constexpr String k_parameter_module_strings[] = {
-    "",
+struct ModuleNames {
+    String name;
+    String abbr;
+};
 
-    "Layer 1",
-    "Layer 2",
-    "Layer 3",
+constexpr ModuleNames k_parameter_module_strings[] = {
+    {"", ""},
 
-    "Effect",
-    "Master",
-    "Macro",
+    {"Layer 1", "L1"},
+    {"Layer 2", "L2"},
+    {"Layer 3", "L3"},
 
-    "Main",
-    "Playback",
-    "LFO",
-    "EQ",
-    "Config",
-    "Arp",
+    {"Effect", ""},
+    {"Master", "Mst"},
+    {"Macro", ""},
 
-    "Volume Envelope",
-    "Filter",
-    "Loop",
-    "Granular",
+    {"Main", ""},
+    {"Playback", ""},
+    {"LFO", "Lfo"},
+    {"EQ", "Eq"},
+    {"Config", ""},
+    {"Arp", "Arp"},
 
-    "Distortion",
-    "Reverb",
-    "Delay",
-    "StereoWiden",
-    "Chorus",
-    "Phaser",
-    "Convolution Reverb",
-    "Bitcrush",
-    "Compressor",
+    {"Volume Envelope", "Vol"},
+    {"Filter", "Filt"},
+    {"Loop", "Lp"},
+    {"Granular", "Grn"},
 
-    "Band 1",
-    "Band 2",
-    "Band 3",
+    {"Distortion", "Dist"},
+    {"Reverb", "Rvrb"},
+    {"Delay", "Dly"},
+    {"StereoWiden", "Ster"},
+    {"Chorus", "Chr"},
+    {"Phaser", "Phs"},
+    {"Convolution Reverb", "Conv"},
+    {"Bitcrush", "Bitc"},
+    {"Compressor", "Comp"},
+
+    {"Band 1", "B1"},
+    {"Band 2", "B2"},
+    {"Band 3", "B3"},
 };
 
 static_assert(ArraySize(k_parameter_module_strings) == ToInt(ParameterModule::Count));
@@ -1224,12 +1229,14 @@ struct ParamDescriptor {
     constexpr bool IsEffectParam() const { return module_parts[0] == ParameterModule::Effect; }
     constexpr bool IsLayerParam() const { return LayerIndexFromModule(module_parts[0]).HasValue(); }
 
-    DynamicArrayBounded<char, 128> ModuleString(String separator = "/") const {
+    DynamicArrayBounded<char, 128> ModuleString(String separator = "/", bool abbreviated = false) const {
         DynamicArrayBounded<char, 128> result {};
         for (auto m : module_parts) {
             if (m == ParameterModule::None) break;
             if (result.size != 0) dyn::AppendSpan(result, separator);
-            dyn::AppendSpan(result, k_parameter_module_strings[int(m)]);
+            dyn::AppendSpan(result,
+                            !abbreviated ? k_parameter_module_strings[int(m)].name
+                                         : k_parameter_module_strings[int(m)].abbr);
         }
         return result;
     }
@@ -1634,15 +1641,15 @@ consteval auto CreateParams() {
         .tooltip = "Master volume"_s,
     };
 
-    mp(MasterVelocity) = Args {
+    mp(LegacyMasterVelocity) = Args {
         .id = id(IdRegion::Master, 1), // never change
         .id_string = "master.legacy_velocity"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Master},
-        .name = "Velocity To Volume Strength"_s,
+        .name = "Legacy Velocity To Volume Strength"_s,
         .gui_label = "Velo"_s,
         .tooltip =
-            "The amount that the MIDI velocity affects the volume of notes; 100% means notes will be silent when the velocity is very soft, and 0% means that notes will play full volume regardless of the velocity"_s,
+            "Legacy parameter. The amount that the MIDI velocity affects the volume of notes; 100% means notes will be silent when the velocity is very soft, and 0% means that notes will play full volume regardless of the velocity"_s,
         .flags = {.legacy = true},
     };
     mp(MasterTimbre) = Args {
@@ -1664,7 +1671,7 @@ consteval auto CreateParams() {
         .id_string = "macro.1"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
-        .name = "Macro 1"_s,
+        .name = "1"_s,
         .gui_label = "Macro 1"_s,
         .tooltip = k_macro_tooltip,
     };
@@ -1673,7 +1680,7 @@ consteval auto CreateParams() {
         .id_string = "macro.2"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
-        .name = "Macro 2"_s,
+        .name = "2"_s,
         .gui_label = "Macro 2"_s,
         .tooltip = k_macro_tooltip,
     };
@@ -1682,7 +1689,7 @@ consteval auto CreateParams() {
         .id_string = "macro.3"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
-        .name = "Macro 3"_s,
+        .name = "3"_s,
         .gui_label = "Macro 3"_s,
         .tooltip = k_macro_tooltip,
     };
@@ -1691,7 +1698,7 @@ consteval auto CreateParams() {
         .id_string = "macro.4"_s,
         .value_config = val_config_helpers::Percent({.default_percent = 0}),
         .modules = {ParameterModule::Macro},
-        .name = "Macro 4"_s,
+        .name = "4"_s,
         .gui_label = "Macro 4"_s,
         .tooltip = k_macro_tooltip,
     };
@@ -3620,7 +3627,7 @@ consteval auto CreateParams() {
                 };
             }),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Speed"_s,
+            .name = "Speed"_s,
             .gui_label = "Speed"_s,
             .tooltip = "How fast the grain position moves through the sample"_s,
         };
@@ -3630,7 +3637,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Position"_s,
+            .name = "Position"_s,
             .gui_label = "Position"_s,
             .tooltip = "Where in the sample grains are sourced from"_s,
         };
@@ -3640,7 +3647,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Density"_s,
+            .name = "Density"_s,
             .gui_label = "Density"_s,
             .tooltip =
                 "Controls how densely grains overlap, relative to the grain length. At the midpoint, grains play end-to-end. Lower values add gaps between grains for a sparse texture; higher values make grains overlap for a denser, richer sound"_s,
@@ -3651,7 +3658,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Ms({.projection = {{5, 1000}, 1.5f}, .default_ms = 200}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Length"_s,
+            .name = "Length"_s,
             .gui_label = "Length"_s,
             .tooltip = "Duration of each grain snippet"_s,
         };
@@ -3670,7 +3677,7 @@ consteval auto CreateParams() {
                 };
             }),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Spread"_s,
+            .name = "Spread"_s,
             .gui_label = "Spread"_s,
             .tooltip =
                 "Region around the playhead where grains can start from. Small values focus grains near the playhead, large values spread them across a wider area"_s,
@@ -3681,7 +3688,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 50}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Smoothing"_s,
+            .name = "Smooth"_s,
             .gui_label = "Smooth"_s,
             .tooltip =
                 "Crossfade between grains to remove clicks. Low is hard cuts, high is full overlap fade"_s,
@@ -3692,7 +3699,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 20}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Random Pan"_s,
+            .name = "Pan"_s,
             .gui_label = "Pan"_s,
             .tooltip =
                 "Randomise the stereo position of each grain. At 0% all grains play centred, at 100% grains can be panned anywhere from fully left to fully right"_s,
@@ -3703,7 +3710,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Random Detune"_s,
+            .name = "Detune"_s,
             .gui_label = "Detune"_s,
             .tooltip =
                 "Randomise the pitch of each grain. At 0% all grains play at the original pitch, at 100% grains can be detuned up to a semitone up or down"_s,
@@ -3714,7 +3721,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Random Direction"_s,
+            .name = "Direction"_s,
             .gui_label = "Direction"_s,
             .tooltip =
                 "Chance that grains spawn playing in the opposite direction to the main playhead. At 0% all grains play in the main direction, at 100% there's a 50/50 chance of each grain playing forwards or backwards"_s,
@@ -3725,7 +3732,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Percent({.default_percent = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Granular Harmony"_s,
+            .name = "Harmony"_s,
             .gui_label = "Harmony"_s,
             .tooltip =
                 "Chance that grains spawn at one of the selected harmony intervals instead of the root pitch. Configure which intervals are active using the Intervals button"_s,
@@ -3840,7 +3847,7 @@ consteval auto CreateParams() {
                 .default_val = (u32)param_values::ArpOctavePolyrate::Off,
             }),
             .modules = {layer_module, ParameterModule::Arp},
-            .name = "Oct Polyrate"_s,
+            .name = "Polyrate"_s,
             .gui_label = "Polyrate"_s,
             .tooltip =
                 "Each octave plays at a different rate. Double means each octave up is 2x faster. 3:2 and 4:3 create polyrhythmic relationships between octaves"_s,

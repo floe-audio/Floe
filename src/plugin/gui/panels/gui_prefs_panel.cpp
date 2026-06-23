@@ -618,6 +618,7 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         Setting(builder, context, options_rhs_column, check_for_update::CheckBetaPrefDescriptor());
         if (k_num_experimental_parameters)
             Setting(builder, context, options_rhs_column, ExperimentalParamsPreferenceDescriptor());
+        Setting(builder, context, options_rhs_column, AbbreviatedParamNamesPreferenceDescriptor());
     }
 }
 

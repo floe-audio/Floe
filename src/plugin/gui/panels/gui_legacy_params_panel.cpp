@@ -27,12 +27,12 @@ static void DrawDarkModePanelBackground(imgui::Context const& imgui) {
 static bool IsVelocityLegacyParam(ParamIndex p) {
     if (auto const lp = LayerParamIndexAndLayerFor(p))
         return lp->param == LayerParamIndex::LegacyVelocityMapping;
-    return p == ParamIndex::MasterVelocity;
+    return p == ParamIndex::LegacyMasterVelocity;
 }
 
 static void ModerniseLegacyInSnapshot(StateSnapshot& snapshot, ParamIndex legacy) {
     if (IsVelocityLegacyParam(legacy)) {
-        auto const strength = snapshot.LinearParam(ParamIndex::MasterVelocity);
+        auto const strength = snapshot.LinearParam(ParamIndex::LegacyMasterVelocity);
         for (auto const layer_index : Range<u8>(k_num_layers)) {
             auto const legacy_pi =
                 ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyVelocityMapping);
@@ -40,7 +40,7 @@ static void ModerniseLegacyInSnapshot(StateSnapshot& snapshot, ParamIndex legacy
             snapshot.velocity_curve_points[layer_index] = ModerniseVelocityToCurve(mode, strength);
             snapshot.LinearParam(legacy_pi) = (f32)param_values::VelocityMappingMode::None;
         }
-        snapshot.LinearParam(ParamIndex::MasterVelocity) = 0;
+        snapshot.LinearParam(ParamIndex::LegacyMasterVelocity) = 0;
         return;
     }
 

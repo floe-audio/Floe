@@ -547,7 +547,7 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
         case ParamIndex::ReverbChorusFrequency:
         case ParamIndex::ReverbChorusAmount: return is_on(ParamIndex::ReverbOn);
 
-        case ParamIndex::MasterVelocity:
+        case ParamIndex::LegacyMasterVelocity:
         case ParamIndex::LegacyBitCrushWet:
         case ParamIndex::LegacyBitCrushDry:
         case ParamIndex::LegacyCompressorThreshold:
@@ -645,7 +645,7 @@ struct NonLayerParamId {
 
 constexpr auto k_non_layer_params = ArrayT<NonLayerParamId>({
     {"MastVol", ParamIndex::MasterVolume},
-    {"MastVel", ParamIndex::MasterVelocity},
+    {"MastVel", ParamIndex::LegacyMasterVelocity},
     {"MastDyn", ParamIndex::MasterTimbre},
     {"DistType", ParamIndex::DistortionType},
     {"DistDrive", ParamIndex::DistortionDrive},

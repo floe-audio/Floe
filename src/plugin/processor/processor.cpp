@@ -41,7 +41,7 @@ consteval auto DefaultPinnedCcMappingsString() {
             auto const p = k_param_descriptors[ToInt(m.param)];
             for (auto const mod : p.module_parts) {
                 if (mod == ParameterModule::None) break;
-                size += k_parameter_module_strings[ToInt(mod)].size;
+                size += k_parameter_module_strings[ToInt(mod)].name.size;
                 size += 1; // ' '
             }
             size += p.name.size;
@@ -61,7 +61,7 @@ consteval auto DefaultPinnedCcMappingsString() {
         auto const p = k_param_descriptors[ToInt(m.param)];
         for (auto const mod : p.module_parts) {
             if (mod == ParameterModule::None) break;
-            WriteAndIncrement(i, result, k_parameter_module_strings[ToInt(mod)]);
+            WriteAndIncrement(i, result, k_parameter_module_strings[ToInt(mod)].name);
             WriteAndIncrement(i, result, ' ');
         }
         WriteAndIncrement(i, result, p.name);
@@ -357,7 +357,7 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
             UpdateXfade(voice, processor.shared_layer_params.timbre_value_01, false);
     }
 
-    if (auto p = changes.changed_params.ProjectedValue(ParamIndex::MasterVelocity))
+    if (auto p = changes.changed_params.ProjectedValue(ParamIndex::LegacyMasterVelocity))
         processor.shared_layer_params.velocity_to_volume_01 = *p;
 
     {

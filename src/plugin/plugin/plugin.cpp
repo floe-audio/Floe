@@ -17,6 +17,8 @@
 #include <clapwrapper/auv2.h>
 
 #include "foundation/foundation.hpp"
+#include "foundation/utils/memory.hpp"
+#include "os/threading.hpp"
 #include "utils/debug/debug.hpp"
 #include "utils/debug/tracy_wrapped.hpp"
 
@@ -26,6 +28,7 @@
 #include "common_infrastructure/preferences.hpp"
 
 #include "engine/engine.hpp"
+#include "engine/engine_prefs.hpp"
 #include "engine/shared_engine_systems.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui_framework/app_window.hpp"
@@ -815,23 +818,40 @@ static bool ClapParamsGetInfo(clap_plugin_t const* plugin, u32 param_index, clap
         param_info->max_value = (f64)desc.linear_range.max;
         param_info->min_value = (f64)desc.linear_range.min;
 
+        auto const abbreviated_names = ({
+            bool a = false;
+            // It's simple for us to check for correct thread & init conditions, so we do - just in case
+            // there's any misbehaving hosts.
+            if (IsMainThread(floe.host) != IsThreadResult::No) {
+                if (EnterLogicalMainThread()) {
+                    if (g_shared_engine_systems) {
+                        a = prefs::GetBool(g_shared_engine_systems->prefs,
+                                           AbbreviatedParamNamesPreferenceDescriptor());
+                    }
+                    LeaveLogicalMainThread();
+                }
+            }
+            a;
+        });
+
         // CLAP hosts do not show the module as well as the name - despite this being part of the spec. We
         // have no option but to also put the module in the name.
-        if (auto const name_prefix = desc.ModuleString(" ");
-            name_prefix.size + 1 + desc.name.size + 1 > CLAP_NAME_SIZE) {
-            CopyStringIntoBufferWithNullTerm(param_info->name, desc.name);
-        } else {
+        if (auto const module_string = desc.ModuleString(abbreviated_names ? ""_s : " ", abbreviated_names);
+            (module_string.size + 1 + desc.name.size + 1 <= CLAP_NAME_SIZE)) {
+            // Fill module + name.
             usize pos = 0;
 
-            CopyMemory(param_info->name, name_prefix.data, name_prefix.size);
-            pos += name_prefix.size;
+            if (module_string.size) {
+                WriteAndIncrement(pos, param_info->name, module_string);
+                WriteAndIncrement(pos, param_info->name, ' ');
+            }
+            WriteAndIncrement(pos, param_info->name, desc.name);
+            WriteAndIncrement(pos, param_info->name, '\0');
 
-            param_info->name[pos++] = ' ';
-
-            CopyMemory(param_info->name + pos, desc.name.data, desc.name.size);
-            pos += desc.name.size;
-
-            param_info->name[pos] = '\0';
+            ASSERT(pos <= CLAP_NAME_SIZE);
+        } else {
+            // Too large, just fill the name.
+            CopyStringIntoBufferWithNullTerm(param_info->name, desc.name);
         }
 
         CopyStringIntoBufferWithNullTerm(param_info->module, desc.ModuleString());

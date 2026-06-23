@@ -355,6 +355,9 @@ static ErrorCodeOr<void> WriteParameterData(json::WriteContext& ctx) {
         TRY(json::WriteKeyValue(ctx, "module", p->ModuleString()));
         TRY(json::WriteKeyValue(ctx, "name", p->name));
         TRY(json::WriteKeyValue(ctx, "id", p->id));
+        TRY(json::WriteKeyValue(ctx,
+                                "abbreviated_name",
+                                fmt::Format(scratch, "{} {}", p->ModuleString("", true), p->name)));
         TRY(json::WriteKeyValue(ctx, "description", p->tooltip));
         TRY(json::WriteObjectEnd(ctx));
     }

@@ -14,3 +14,14 @@ PUBLIC prefs::Descriptor ExperimentalParamsPreferenceDescriptor() {
             "Enable experimental parameters. These are not yet finalised and may change or be removed. It is not recommended saving presets when in this mode.",
     };
 }
+
+PUBLIC prefs::Descriptor AbbreviatedParamNamesPreferenceDescriptor() {
+    return {
+        .key = "abbreviated-param-names"_s,
+        .value_requirements = prefs::ValueType::Bool,
+        .default_value = false,
+        .gui_label = "Abbreviate parameter names in DAW",
+        .long_description =
+            "Enable short parameters names in the DAW. e.g. instead of \"Effect Distortion On\", show \"FxDs On\". Restarting your DAW might be required for this change to take effect.",
+    };
+}

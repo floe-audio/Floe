@@ -170,9 +170,10 @@ static Optional<ParamProjection> ParamProjection(ParamIndex index) {
         IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqResonance1) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::LegacyEqResonance2) ||
         IsLayerParamOfSpecificType(index, LayerParamIndex::FilterSustain) ||
-        IsLayerParamOfSpecificType(index, LayerParamIndex::Pan) || (index == ParamIndex::MasterVelocity) ||
-        (index == ParamIndex::MasterTimbre) || (index == ParamIndex::DistortionDrive) ||
-        (index == ParamIndex::StereoWidenWidth) || (index == ParamIndex::LegacyFilterResonance)) {
+        IsLayerParamOfSpecificType(index, LayerParamIndex::Pan) ||
+        (index == ParamIndex::LegacyMasterVelocity) || (index == ParamIndex::MasterTimbre) ||
+        (index == ParamIndex::DistortionDrive) || (index == ParamIndex::StereoWidenWidth) ||
+        (index == ParamIndex::LegacyFilterResonance)) {
         ASSERT(k_param_descriptors[(u32)index].linear_range.min == 0 ||
                k_param_descriptors[(u32)index].linear_range.min == -1);
         ASSERT_EQ(k_param_descriptors[(u32)index].linear_range.max, 1.0f);
@@ -630,7 +631,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                 state.velocity_curve_points[layer_index] =
                     ModerniseVelocityToCurve(param_values::VelocityMappingMode::None, 0);
         } else {
-            auto& master_val = state.LinearParam(ParamIndex::MasterVelocity);
+            auto& master_val = state.LinearParam(ParamIndex::LegacyMasterVelocity);
             ASSERT(master_val >= 0.0f && master_val <= 1.0f);
             auto const velocity_volume_strength = master_val;
             master_val = 0.0f;
@@ -2090,22 +2091,22 @@ TEST_CASE(TestAdaptPreAddedLayerVelocityCurvesParams) {
 
     SUBCASE("when master velocity is set to 0") {
         // No additional mapping should occur.
-        state.LinearParam(ParamIndex::MasterVelocity) = 0;
+        state.LinearParam(ParamIndex::LegacyMasterVelocity) = 0;
 
         AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
         // Master velocity should be set to 0.
-        CHECK_APPROX_EQ(state.LinearParam(ParamIndex::MasterVelocity), 0.0f, 0.01f);
+        CHECK_APPROX_EQ(state.LinearParam(ParamIndex::LegacyMasterVelocity), 0.0f, 0.01f);
     }
 
     SUBCASE("when master velocity is set to 1") {
         // No additional mapping should occur.
-        state.LinearParam(ParamIndex::MasterVelocity) = 1;
+        state.LinearParam(ParamIndex::LegacyMasterVelocity) = 1;
 
         AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
         // Master velocity should be set to 1.
-        CHECK_APPROX_EQ(state.LinearParam(ParamIndex::MasterVelocity), 0.0f, 0.01f);
+        CHECK_APPROX_EQ(state.LinearParam(ParamIndex::LegacyMasterVelocity), 0.0f, 0.01f);
     }
 
     // All velocity mapping modes should be set to the none.
