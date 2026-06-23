@@ -152,7 +152,7 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
             };
             return pick(k_variants);
         }
-        case PhraseKind::LfoVolumeSwell: return {"swelling"_s, "a volume swell"_s};
+        case PhraseKind::LfoVolumeSwell: return {"volume pulse"_s, "a volume pulse"_s};
         case PhraseKind::LfoSteppedFilter: return {"stepped filter"_s, "a stepped filter"_s};
         case PhraseKind::LfoFilterWobble: {
             static constexpr PhraseText k_variants[] = {
