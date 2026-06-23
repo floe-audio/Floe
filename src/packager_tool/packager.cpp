@@ -257,14 +257,16 @@ struct PackageInfo {
         Instrument* next;
     };
 
-    struct PresetName {
-        String name;
-        PresetName* next;
+    struct Preset {
+        String folder; // immediate folder, relative to the presets subdir
+        String name; // filename without extension
+        Preset* next;
     };
 
     struct Library {
         String name;
         String author;
+        u32 revision;
         sample_lib::FileFormat file_format {};
         OrderedHashTable<String, Instrument*> instruments_by_folder;
     };
@@ -282,7 +284,9 @@ struct PackageInfo {
     }
 
     OrderedHashTable<sample_lib::LibraryId, Library, NoHash, LibraryLessThan> libraries;
-    OrderedHashTable<String, PresetName*> preset_folders;
+    Preset* presets_head {};
+    Preset* presets_tail {};
+    OrderedHashTable<String, PresetBank> preset_banks;
     OrderedHashTable<String, TagCount> instrument_tags;
     OrderedHashTable<String, TagCount> preset_tags;
     Set<String> extra_files;
@@ -318,6 +322,7 @@ static void AddLibrary(PackageInfo& info,
     if (lib_result.inserted) {
         lib_result.element.data.name = arena.Clone(lib.name);
         lib_result.element.data.author = arena.Clone(lib.author);
+        lib_result.element.data.revision = lib.revision;
         lib_result.element.data.file_format = lib.file_format_specifics.tag;
     }
 
@@ -356,26 +361,42 @@ static void AddLibrary(PackageInfo& info,
     }
 }
 
-static void
-AddPresetIfNeeded(PackageInfo& info, String path_in_zip, ArenaAllocator& arena, Span<u8 const> file_data) {
+static void ProcessPresetFolderFile(PackageInfo& info,
+                                    String path_in_zip,
+                                    ArenaAllocator& arena,
+                                    Span<u8 const> file_data) {
     if (!StartsWithSpan(path_in_zip, package::k_presets_subdir)) return;
-    if (!PresetFormatFromPath(path_in_zip)) return;
+
+    auto const is_preset = PresetFormatFromPath(path_in_zip).HasValue();
+    auto const is_bank = path::Filename(path_in_zip) == k_preset_bank_filename;
+    if (!is_preset && !is_bank) return;
+
+    path_in_zip = path_in_zip.SubSpan(package::k_presets_subdir.size);
+    path_in_zip = path::TrimDirectorySeparatorsStart(path_in_zip);
+    auto const folder = path::Directory(path_in_zip, path::Format::Posix).ValueOr(""_s);
+
+    if (is_bank) {
+        auto const bank = ParsePresetBankFile(String {(char const*)file_data.data, file_data.size}, arena);
+        auto found = info.preset_banks.FindOrInsertGrowIfNeeded(arena, folder, bank);
+        if (found.inserted)
+            found.element.key = arena.Clone(folder);
+        else
+            found.element.data = bank;
+        return;
+    }
 
     {
-        path_in_zip = path_in_zip.SubSpan(package::k_presets_subdir.size);
-        path_in_zip = path::TrimDirectorySeparatorsStart(path_in_zip);
-
-        auto const folder = path::Directory(path_in_zip, path::Format::Posix).ValueOr(""_s);
-        auto const preset_name = path::FilenameWithoutExtension(path_in_zip);
-
-        auto preset = arena.New<PackageInfo::PresetName>(PackageInfo::PresetName {
-            .name = arena.Clone(preset_name),
+        auto preset = arena.New<PackageInfo::Preset>(PackageInfo::Preset {
+            .folder = arena.Clone(folder),
+            .name = arena.Clone(path::FilenameWithoutExtension(path_in_zip)),
             .next = nullptr,
         });
 
-        auto found = info.preset_folders.FindOrInsertGrowIfNeeded(arena, folder, preset);
-        if (found.inserted) found.element.key = arena.Clone(folder);
-        if (!found.inserted) SinglyLinkedListPrepend(found.element.data, preset);
+        if (info.presets_tail)
+            info.presets_tail->next = preset;
+        else
+            info.presets_head = preset;
+        info.presets_tail = preset;
     }
 
     if (auto const outcome = DecodeFromMemory(file_data, StateSource::PresetFile); outcome.HasValue()) {
@@ -391,6 +412,26 @@ AddPresetIfNeeded(PackageInfo& info, String path_in_zip, ArenaAllocator& arena, 
             ++tag_result.element.data.count;
         });
     }
+}
+
+// A preset belongs to the nearest ancestor folder (including itself) that has a preset bank, mirroring
+// ContainingPresetBank() in preset_server.cpp. Returns k_nullopt if no ancestor folder defines a bank.
+static Optional<String> ContainingBankFolder(PackageInfo const& info, String folder) {
+    while (true) {
+        if (info.preset_banks.Find(folder)) return folder;
+        if (folder.size == 0) return k_nullopt;
+        auto const slash = FindLast(folder, '/');
+        folder = slash ? folder.SubSpan(0, *slash) : ""_s;
+    }
+}
+
+static String
+PresetNameRelativeToBank(String bank_folder, String preset_folder, String name, ArenaAllocator& arena) {
+    if (preset_folder == bank_folder) return name;
+    auto sub = preset_folder;
+    if (bank_folder.size) sub = path::TrimDirectorySeparatorsStart(preset_folder.SubSpan(bank_folder.size));
+    if (!sub.size) return name;
+    return fmt::Format(arena, "{}/{}", sub, name);
 }
 
 static ErrorCodeOr<void> WriteTagGroups(json::WriteContext& json,
@@ -438,7 +479,7 @@ static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena
 
     TRY(json::WriteObjectBegin(json));
 
-    TRY(json::WriteKeyValue(json, "schema_version", 2));
+    TRY(json::WriteKeyValue(json, "schema_version", 3));
     TRY(json::WriteKeyValue(json, "name", info.name));
     TRY(json::WriteKeyValue(json, "size", info.package_size));
 
@@ -447,6 +488,7 @@ static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena
         for (auto const& [lib_id, lib, _] : info.libraries) {
             TRY(json::WriteObjectBegin(json));
             TRY(json::WriteKeyValue(json, "name", lib.name));
+            TRY(json::WriteKeyValue(json, "revision", lib.revision));
             TRY(json::WriteKeyValue(json, "file_format", ({
                                         String s;
                                         switch (lib.file_format) {
@@ -478,18 +520,44 @@ static ErrorCodeOr<String> ToJson(PackageInfo const& info, ArenaAllocator& arena
         TRY(json::WriteArrayEnd(json));
     }
 
-    if (info.preset_folders.size) {
-        TRY(json::WriteKeyArrayBegin(json, "presets"));
-        for (auto const& [folder, preset_list, _] : info.preset_folders) {
-            TRY(json::WriteObjectBegin(json));
-            TRY(json::WriteKeyValue(json, "folder", folder));
-            TRY(json::WriteKeyArrayBegin(json, "names"));
-            for (auto p = preset_list; p; p = p->next)
-                TRY(json::WriteValue(json, p->name));
-            TRY(json::WriteArrayEnd(json));
-            TRY(json::WriteObjectEnd(json));
+    // Presets are grouped by the bank they belong to (the nearest ancestor folder with a preset bank file).
+    // Presets with no such ancestor are grouped by their own folder, without bank metadata.
+    {
+        DynamicArray<String> bank_folders {scratch};
+        for (auto const& [folder, bank, _] : info.preset_banks)
+            dyn::Append(bank_folders, folder);
+        Set<String> seen_bankless;
+        for (auto p = info.presets_head; p; p = p->next) {
+            if (ContainingBankFolder(info, p->folder)) continue;
+            auto r = seen_bankless.FindOrInsertGrowIfNeeded(scratch, p->folder);
+            if (r.inserted) {
+                r.element.key = p->folder;
+                dyn::Append(bank_folders, p->folder);
+            }
         }
-        TRY(json::WriteArrayEnd(json));
+
+        if (bank_folders.size) {
+            TRY(json::WriteKeyArrayBegin(json, "preset_banks"));
+            for (auto const& bank_folder : bank_folders) {
+                auto const bank = info.preset_banks.Find(bank_folder);
+
+                TRY(json::WriteObjectBegin(json));
+                TRY(json::WriteKeyValue(json, "folder", bank_folder));
+                if (bank) {
+                    TRY(json::WriteKeyValue(json, "revision", bank->revision));
+                    if (bank->subtitle.size) TRY(json::WriteKeyValue(json, "subtitle", bank->subtitle));
+                }
+                TRY(json::WriteKeyArrayBegin(json, "presets"));
+                for (auto p = info.presets_head; p; p = p->next) {
+                    if (ContainingBankFolder(info, p->folder).ValueOr(p->folder) != bank_folder) continue;
+                    TRY(json::WriteValue(json,
+                                         PresetNameRelativeToBank(bank_folder, p->folder, p->name, scratch)));
+                }
+                TRY(json::WriteArrayEnd(json));
+                TRY(json::WriteObjectEnd(json));
+            }
+            TRY(json::WriteArrayEnd(json));
+        }
     }
 
     TRY(WriteTagGroups(json, "instrument_tags"_s, info.instrument_tags, scratch));
@@ -515,21 +583,28 @@ static void PrintSummary(PackageInfo const& info, ArenaAllocator& arena) {
         }
     }
 
-    if (info.preset_folders.size) {
-        OrderedHashTable<String, u32> top_level;
-        for (auto const& [folder, preset_list, _] : info.preset_folders) {
-            u32 count = 0;
-            for (auto p = preset_list; p; p = p->next)
-                ++count;
-            auto top = folder;
-            if (auto const slash = Find(folder, '/')) top = folder.SubSpan(0, *slash);
-            auto r = top_level.FindOrInsertGrowIfNeeded(arena, top, 0);
-            if (r.inserted) r.element.key = top;
-            r.element.data += count;
+    if (info.presets_head || info.preset_banks.size) {
+        OrderedHashTable<String, u32> counts;
+        for (auto const& [folder, bank, _] : info.preset_banks) {
+            auto r = counts.FindOrInsertGrowIfNeeded(arena, folder, 0);
+            if (r.inserted) r.element.key = folder;
+        }
+        for (auto p = info.presets_head; p; p = p->next) {
+            auto const bank_folder = ContainingBankFolder(info, p->folder).ValueOr(p->folder);
+            auto r = counts.FindOrInsertGrowIfNeeded(arena, bank_folder, 0);
+            if (r.inserted) r.element.key = bank_folder;
+            ++r.element.data;
         }
         StdPrintF(out, "  {}/\n", package::k_presets_subdir);
-        for (auto const& [folder, count, _] : top_level)
-            StdPrintF(out, "    {}/ ({} presets)\n", folder, count);
+        for (auto const& [folder, count, _] : counts)
+            if (auto const bank = info.preset_banks.Find(folder))
+                StdPrintF(out,
+                          "    {}/ ({} presets, preset bank revision {})\n",
+                          folder,
+                          count,
+                          bank->revision);
+            else
+                StdPrintF(out, "    {}/ ({} presets)\n", folder, count);
     }
 
     for (auto const& [name, _] : info.extra_files)
@@ -715,7 +790,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                    scratch,
                    program_name,
                    [&](String path, Span<u8 const> file_data) {
-                       AddPresetIfNeeded(package_info, path, arena, file_data);
+                       ProcessPresetFolderFile(package_info, path, arena, file_data);
                    },
                    omit_unreferenced ? FunctionRef<bool(String)> {IsPresetFolderFileNeeded}
                                      : FunctionRef<bool(String)> {}),
@@ -787,7 +862,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                                          input_package,
                                          scratch,
                                          [&](String path, Span<u8 const> file_data) {
-                                             AddPresetIfNeeded(package_info, path, arena, file_data);
+                                             ProcessPresetFolderFile(package_info, path, arena, file_data);
                                          }),
                {
                    StdPrintF(StdStream::Err,
