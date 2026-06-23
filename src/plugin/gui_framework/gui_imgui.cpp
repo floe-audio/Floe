@@ -1534,9 +1534,8 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         // Mouse wheel scrolling when the cursor is over the input.
         if (max_scroll > 0) {
             ConsumeScrollAtRect(r);
-            if (r.Contains(frame_input.cursor_pos) && frame_input.mouse_scroll_delta_in_lines != 0) {
+            if (r.Contains(frame_input.cursor_pos) && frame_input.mouse_scroll_delta_in_lines != 0)
                 scroll_y -= frame_input.mouse_scroll_delta_in_lines * font_size * 3.0f;
-            }
         }
 
         scroll_y = Clamp(Round(scroll_y), 0.0f, max_scroll);
