@@ -102,17 +102,17 @@ void AssignDiffDescription(DynArrayT& diff_desc,
                     old_state.extras.display_category,
                     new_state.extras.display_category);
 
-    if (old_state.extras.origin_preset_hash != new_state.extras.origin_preset_hash)
+    if (old_state.extras.preset_uuid != new_state.extras.preset_uuid)
         fmt::Append(diff_desc,
-                    "origin preset hash changed: {} vs {}\n"_s,
-                    old_state.extras.origin_preset_hash,
-                    new_state.extras.origin_preset_hash);
+                    "preset uuid changed: {} vs {}\n"_s,
+                    old_state.extras.preset_uuid,
+                    new_state.extras.preset_uuid);
 
-    if (old_state.extras.modified_from_origin_preset != new_state.extras.modified_from_origin_preset)
+    if (old_state.extras.modified_from_preset != new_state.extras.modified_from_preset)
         fmt::Append(diff_desc,
-                    "modified from origin preset changed: {} vs {}\n"_s,
-                    old_state.extras.modified_from_origin_preset,
-                    new_state.extras.modified_from_origin_preset);
+                    "modified from preset changed: {} vs {}\n"_s,
+                    old_state.extras.modified_from_preset,
+                    new_state.extras.modified_from_preset);
 
     for (auto layer_index : Range(k_num_layers))
         if (old_state.velocity_curve_points[layer_index] != new_state.velocity_curve_points[layer_index])

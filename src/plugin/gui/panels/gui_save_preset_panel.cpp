@@ -333,10 +333,10 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
 
                     if (context.engine.pinned_snapshot.preset_path_needs_lookup) {
                         auto& preset_server = context.engine.shared_engine_systems.preset_server;
-                        auto const path = FindPresetMatchingSnapshotHash(
-                            preset_server,
-                            context.engine.pinned_snapshot.state.extras.origin_preset_hash,
-                            builder.arena);
+                        auto const path =
+                            FindPresetMatchingUuid(preset_server,
+                                                   context.engine.pinned_snapshot.state.extras.preset_uuid,
+                                                   builder.arena);
                         if (path) {
                             dyn::Assign(context.engine.pinned_snapshot.preset_path, *path);
                             context.engine.pinned_snapshot.preset_path_needs_lookup = false;

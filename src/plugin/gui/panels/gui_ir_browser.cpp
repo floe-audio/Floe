@@ -169,10 +169,24 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
         IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
 
+    auto const total_irs = ({
+        usize n = 0;
+        for (auto const& lib : context.frame_context.libraries)
+            n += lib->sorted_irs.size;
+        n;
+    });
+
+    struct PendingFavouriteToggle {
+        u64 hash;
+        bool was_favourite;
+    };
+    Optional<PendingFavouriteToggle> pending_favourite_toggle {};
+
     sample_lib::Library const* previous_library {};
     ItemIcon lib_icon {ItemIconType::None};
     auto cursor = *first;
-    while (true) {
+    for (usize guard = 0;; ++guard) {
+        ASSERT(guard <= total_irs, "render loop exceeded IR count — filter set mutated mid-frame");
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& ir = *lib.sorted_irs[cursor.ir_index];
         auto const& folder = ir.folder;
@@ -267,7 +281,7 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
             }
 
             if (item.favourite_toggled)
-                ToggleFavourite(context.prefs, k_favourite_ir_key, ir_hash, is_favourite);
+                pending_favourite_toggle = PendingFavouriteToggle {ir_hash, is_favourite};
         }
 
         if (auto next = IterateIr(context, state, cursor, SearchDirection::Forward, false)) {
@@ -277,6 +291,12 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
             break;
         }
     }
+
+    if (pending_favourite_toggle)
+        ToggleFavourite(context.prefs,
+                        k_favourite_ir_key,
+                        pending_favourite_toggle->hash,
+                        pending_favourite_toggle->was_favourite);
 }
 
 void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserState& state) {

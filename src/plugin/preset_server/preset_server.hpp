@@ -20,8 +20,8 @@ struct PresetFolder {
         StateMetadataRef metadata {};
         u64 author_hash {}; // cached Hash(metadata.author)
         OrderedSet<sample_lib::LibraryId, NoHash, sample_lib::LibraryIdLessThanSet> used_libraries {};
-        u64 file_hash {};
-        u64 snapshot_hash {}; // StateExtras::origin_preset_hash
+        u64 file_hash {}; // used for duplicate detection
+        u64 preset_uuid {}; // stable ID across changes/renames
         u64 full_path_hash {};
         String file_extension {}; // Only if file_format is Mirage. Mirage had variable extensions.
         PresetFormat file_format {};
@@ -167,8 +167,7 @@ void StartScanningIfNeeded(PresetServer& server);
 BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& arena);
 void EndReadFolders(PresetServer& server, PresetServerReadHandle handle);
 
-Optional<String>
-FindPresetMatchingSnapshotHash(PresetServer& server, u64 snapshot_hash, Allocator& allocator);
+Optional<String> FindPresetMatchingUuid(PresetServer& server, u64 preset_uuid, Allocator& allocator);
 
 // Waits until all folders have finished scanning.
 // Returns true if loading completed, false if timeout was reached. If timeout is nullopt, waits indefinitely.

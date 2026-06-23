@@ -176,8 +176,7 @@ void StartScanningIfNeeded(PresetServer& server) {
 }
 
 // Reader thread
-Optional<String>
-FindPresetMatchingSnapshotHash(PresetServer& server, u64 snapshot_hash, Allocator& allocator) {
+Optional<String> FindPresetMatchingUuid(PresetServer& server, u64 preset_uuid, Allocator& allocator) {
     StartScanningIfNeeded(server);
 
     server.mutex.Lock();
@@ -185,7 +184,7 @@ FindPresetMatchingSnapshotHash(PresetServer& server, u64 snapshot_hash, Allocato
 
     for (auto const folder : server.folders) {
         for (auto const& preset : folder->presets)
-            if (preset.snapshot_hash == snapshot_hash) return folder->FullPathForPreset(preset, allocator);
+            if (preset.preset_uuid == preset_uuid) return folder->FullPathForPreset(preset, allocator);
     }
 
     return k_nullopt;
@@ -315,6 +314,7 @@ static void AddPresetToFolder(PresetFolder& folder,
                               dir_iterator::Entry const& entry,
                               StateSnapshot const& state,
                               u64 file_hash,
+                              u64 full_path_hash,
                               PresetFormat file_format) {
     auto presets = DynamicArray<PresetFolder::Preset>::FromOwnedSpan(folder.presets,
                                                                      folder.preset_array_capacity,
@@ -338,7 +338,7 @@ static void AddPresetToFolder(PresetFolder& folder,
         }
     }
 
-    ASSERT(state.extras.origin_preset_hash);
+    ASSERT(state.extras.preset_uuid);
 
     dyn::Append(presets,
                 PresetFolder::Preset {
@@ -354,8 +354,8 @@ static void AddPresetToFolder(PresetFolder& folder,
                     .author_hash = Hash(state.metadata.author),
                     .used_libraries = used_libraries,
                     .file_hash = file_hash,
-                    .snapshot_hash = state.extras.origin_preset_hash,
-                    .full_path_hash = HashMultiple(Array {folder.scan_folder, folder.folder, entry.subpath}),
+                    .preset_uuid = state.extras.preset_uuid,
+                    .full_path_hash = full_path_hash,
                     .file_extension = file_format == PresetFormat::Mirage
                                           ? (String)folder.arena.Clone(path::Extension(entry.subpath))
                                           : ""_s,
@@ -1020,12 +1020,12 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
 
         if constexpr (IS_WINDOWS) Replace(entry.subpath, '\\', '/');
 
-        auto const file_data = TRY_OR(
-            ReadEntireFile(path::Join(scratch_arena, Array {absolute_folder, entry.subpath}), scratch_arena),
-            {
-                LogDebug(ModuleName::PresetServer, "filesystem: failed to read {}, {}", entry.subpath, error);
-                continue;
-            });
+        auto const full_path = (String)path::Join(scratch_arena, Array {absolute_folder, entry.subpath});
+
+        auto const file_data = TRY_OR(ReadEntireFile(full_path, scratch_arena), {
+            LogDebug(ModuleName::PresetServer, "filesystem: failed to read {}, {}", entry.subpath, error);
+            continue;
+        });
         DEFER {
             if (file_data.size) scratch_arena.Free(file_data.ToByteSpan());
         };
@@ -1046,7 +1046,7 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
         if (!preset_folder)
             preset_folder = CreatePresetFolder(server, scan_folder.path, subfolder_of_scan_folder);
 
-        AddPresetToFolder(*preset_folder, entry, snapshot, file_hash, *preset_format);
+        AddPresetToFolder(*preset_folder, entry, snapshot, file_hash, Hash(full_path), *preset_format);
     }
 
     if (preset_folder) {

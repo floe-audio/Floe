@@ -66,9 +66,9 @@ Autosave(AutosaveState& state, StateSnapshot const& snapshot, FloePaths const& p
     ZoneScoped;
     PathArena arena {PageAllocator::Instance()};
 
+    auto seed = RandomSeed();
     DynamicArrayBounded<char, 64> filename;
     {
-        auto seed = RandomSeed();
         auto const date = LocalTimeNow();
         fmt::Assign(filename,
                     "{} {02}-{02}-{02} {} {} {} {} {} ({})" FLOE_PRESET_FILE_EXTENSION,
@@ -88,8 +88,14 @@ Autosave(AutosaveState& state, StateSnapshot const& snapshot, FloePaths const& p
     TRY(CreateDirectory(paths.autosave_path,
                         {.create_intermediate_directories = false, .fail_if_exists = false}));
 
+    // Each autosave file is its own preset with its own identity, so it can be favourited independently.
+    auto snapshot_with_uuid = snapshot;
+    snapshot_with_uuid.extras.preset_uuid = RandomU64(seed);
+
     auto const path = path::Join(arena, Array {paths.autosave_path, filename});
-    TRY(SavePresetFile(path, snapshot, state.write_experimental_params.Load(LoadMemoryOrder::Relaxed)));
+    TRY(SavePresetFile(path,
+                       snapshot_with_uuid,
+                       state.write_experimental_params.Load(LoadMemoryOrder::Relaxed)));
 
     return k_success;
 }

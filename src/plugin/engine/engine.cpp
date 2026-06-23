@@ -140,15 +140,13 @@ static void FillStateExtrasFromPath(StateSnapshot& state, String preset_path) {
                              path::Filename(path::Directory(preset_path).ValueOr({})));
 }
 
-static void
-SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path, u64 known_preset_id) {
+static void SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String preset_path) {
     if (preset_path.size) {
         ASSERT(IsValidUtf8(preset_path));
         ASSERT(path::IsAbsolute(preset_path));
     }
     engine.pinned_snapshot.state = state;
     dyn::Assign(engine.pinned_snapshot.preset_path, preset_path);
-    engine.pinned_snapshot.known_preset_id = known_preset_id;
     engine.pinned_snapshot.preset_path_needs_lookup = preset_path.size == 0;
     RefreshPresetDescriptionCache(engine);
     ASSERT(engine.pinned_snapshot.state.extras.display_name.size);
@@ -162,7 +160,6 @@ static void AfterStateChanged(Engine& engine) {
 
 void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts) {
     auto const preset_path = opts.preset_path;
-    auto const known_preset_id = opts.known_preset_id;
     auto const source = opts.source;
     auto const update_pinned_snapshot = opts.update_pinned_snapshot;
     ZoneScoped;
@@ -210,7 +207,7 @@ void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions cons
         engine.macro_names = state.macro_names;
         engine.fx_visible = state.fx_visible;
         ApplyState(engine.processor, state, source);
-        if (update_pinned_snapshot) SetPinnedSnapshot(engine, state, preset_path, known_preset_id);
+        if (update_pinned_snapshot) SetPinnedSnapshot(engine, state, preset_path);
 
         MarkNeedsAttributionTextUpdate(engine.attribution_requirements);
         AfterStateChanged(engine);
@@ -219,7 +216,6 @@ void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions cons
         auto& pending = *engine.pending_state_change;
         pending.snapshot = state;
         dyn::Assign(pending.preset_path, preset_path);
-        pending.known_preset_id = known_preset_id;
         pending.source = source;
         pending.update_pinned_snapshot_on_complete = update_pinned_snapshot;
 
@@ -317,13 +313,12 @@ static void CompletePendingStateLoad(Engine& engine) {
     auto const preset_path = pending_state_change.preset_path.size
                                  ? String(temp_arena.Clone(pending_state_change.preset_path))
                                  : ""_s;
-    auto const known_preset_id = pending_state_change.known_preset_id;
     auto const source = pending_state_change.source;
     auto const update_pinned_snapshot = pending_state_change.update_pinned_snapshot_on_complete;
     engine.pending_state_change.Clear();
 
     ApplyState(engine.processor, snapshot, source);
-    if (update_pinned_snapshot) SetPinnedSnapshot(engine, snapshot, preset_path, known_preset_id);
+    if (update_pinned_snapshot) SetPinnedSnapshot(engine, snapshot, preset_path);
     AfterStateChanged(engine);
 }
 
@@ -447,11 +442,11 @@ StateSnapshot CurrentStateSnapshot(Engine& engine) {
     }
 
     auto const& last = PinnedSnapshotForModificationCheck(engine);
-    if (last.extras.modified_from_origin_preset) {
+    if (last.extras.modified_from_preset) {
         snapshot.extras = last.extras;
     } else {
         snapshot.extras = last.extras; // Ignore extras before the != next line.
-        snapshot.extras.modified_from_origin_preset = snapshot != last;
+        snapshot.extras.modified_from_preset = snapshot != last;
     }
 
     snapshot.extras.instance_id = InstanceId(engine.autosave_state);
@@ -669,13 +664,13 @@ void ApplySectionOfState(Engine& engine,
 }
 
 StateSnapshot const* PinnedPresetState(Engine const& engine) {
-    if (engine.pinned_snapshot.state.extras.origin_preset_hash == 0) return nullptr;
+    if (engine.pinned_snapshot.state.extras.preset_uuid == 0) return nullptr;
     return &engine.pinned_snapshot.state;
 }
 
 bool StateModifiedFromPinned(Engine& engine) {
     auto const current = CurrentStateSnapshot(engine);
-    bool const changed = current.extras.modified_from_origin_preset;
+    bool const changed = current.extras.modified_from_preset;
 
     if constexpr (!PRODUCTION_BUILD) {
         auto const& last = PinnedSnapshotForModificationCheck(engine);
@@ -809,7 +804,6 @@ void TogglePinnedView(Engine& engine) {
               {
                   .source = StateSource::InMemorySource,
                   .preset_path = engine.pinned_snapshot.preset_path,
-                  .known_preset_id = engine.pinned_snapshot.known_preset_id,
                   .update_pinned_snapshot = false,
               });
     RecordUndoableStep(engine, "View preset"_s);
@@ -817,7 +811,7 @@ void TogglePinnedView(Engine& engine) {
     engine.stashed_modifications = stash;
 }
 
-void LoadPresetFromFile(Engine& engine, String path, u64 known_preset_id) {
+void LoadPresetFromFile(Engine& engine, String path) {
     PageAllocator page_allocator;
     ArenaAllocator scratch_arena {page_allocator, Kb(16)};
     auto state_outcome = LoadPresetFile(path, scratch_arena);
@@ -831,7 +825,6 @@ void LoadPresetFromFile(Engine& engine, String path, u64 known_preset_id) {
                   {
                       .source = StateSource::PresetFile,
                       .preset_path = path,
-                      .known_preset_id = known_preset_id,
                   });
         engine.error_notifications.RemoveError(error_id);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
@@ -850,21 +843,28 @@ void SaveCurrentStateToFile(Engine& engine, String path) {
 
     auto state = CurrentStateSnapshot(engine);
 
+    // Mint a new UUID only when the snapshot has none, or the user is saving to a different
+    // file than the currently-pinned one. An empty pinned preset_path is treated as "unknown",
+    // not "different": a DAW project restore can carry a valid preset_uuid before the lazy
+    // path lookup runs, and overwriting the UUID would orphan favourites and sibling instances.
+    auto const save_to_different_file =
+        engine.pinned_snapshot.preset_path.size && !path::Equal(engine.pinned_snapshot.preset_path, path);
+    if (save_to_different_file || state.extras.preset_uuid == 0) {
+        auto seed = RandomSeed();
+        state.extras.preset_uuid = RandomU64(seed);
+    }
+
     auto const error_id = HashMultiple(Array {"preset-save"_s, path});
     if (auto const outcome = SavePresetFile(
             path,
             state,
             prefs::GetBool(engine.shared_engine_systems.prefs, ExperimentalParamsPreferenceDescriptor()));
-        outcome.HasValue()) {
-        // The file we just wrote is now this snapshot's origin: rebase extras so the GUI no longer
-        // shows "modified" and the new hash identifies the saved preset.
-        state.extras.origin_preset_hash = outcome.Value();
-        state.extras.modified_from_origin_preset = false;
-        auto const preserved_known_preset_id = path::Equal(engine.pinned_snapshot.preset_path, path)
-                                                   ? engine.pinned_snapshot.known_preset_id
-                                                   : 0;
+        outcome.Succeeded()) {
+        // The file we just wrote is now this snapshot's origin: clear the modified flag so the GUI
+        // no longer shows "modified". preset_uuid was set above and is what's embedded in the file.
+        state.extras.modified_from_preset = false;
         FillStateExtrasFromPath(state, path);
-        SetPinnedSnapshot(engine, state, path, preserved_known_preset_id);
+        SetPinnedSnapshot(engine, state, path);
         RecordUndoableStep(engine, path::FilenameWithoutExtension(path), true);
         engine.error_notifications.RemoveError(error_id);
     } else if (auto err = engine.error_notifications.BeginWriteError(error_id)) {
@@ -907,6 +907,15 @@ static void OnMainThread(Engine& engine) {
             MigrateLegacyFavourites(engine.shared_engine_systems.prefs, server);
         else
             // Let's try again in a bit.
+            engine.request_main_thread_callback_at.Store(TimePoint::Now() + 2.0, StoreMemoryOrder::Release);
+    }
+
+    if (HasLegacyPresetFavourites(engine.shared_engine_systems.prefs)) {
+        auto& preset_server = engine.shared_engine_systems.preset_server;
+        StartScanningIfNeeded(preset_server);
+        if (!AreFoldersScanning(preset_server))
+            MigrateLegacyPresetFavourites(engine.shared_engine_systems.prefs, preset_server);
+        else
             engine.request_main_thread_callback_at.Store(TimePoint::Now() + 2.0, StoreMemoryOrder::Release);
     }
 
@@ -1163,14 +1172,14 @@ void EndUndoableStep(Engine& engine) {
 
 // Walks the undo stack backwards from the current top to find the most recent pinned-snapshot-anchor
 // entry, and sets the engine's pinned snapshot to that anchor's snapshot. The path is left empty so the
-// existing preset_path_needs_lookup mechanism resolves it from origin_preset_hash. If no anchor is
+// existing preset_path_needs_lookup mechanism resolves it from preset_uuid. If no anchor is
 // reachable (e.g. the oldest scrolled off the ring), the pinned snapshot is left untouched.
 static void RestorePinnedSnapshotFromAnchor(Engine& engine) {
     auto const& undo = engine.undo_history.undo;
     for (auto i = undo.Size(); i > 0; --i) {
         auto const& step = undo.At(i - 1);
         if (step.is_pinned_snapshot_anchor) {
-            SetPinnedSnapshot(engine, step.snapshot, ""_s, 0);
+            SetPinnedSnapshot(engine, step.snapshot, ""_s);
             return;
         }
     }

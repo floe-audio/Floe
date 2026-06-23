@@ -39,6 +39,13 @@ struct PresetBrowserContext {
     u32 init = 0;
     PresetsSnapshot presets_snapshot;
     PresetServerReadHandle preset_read_handle;
+
+    struct CachedCurrentLoaded {
+        u64 uuid;
+        Optional<usize> folder_index;
+        Optional<usize> preset_index;
+    };
+    mutable Optional<CachedCurrentLoaded> cached_current_loaded {};
 };
 
 enum class PresetBrowserFilter : u8 {

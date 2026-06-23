@@ -8,9 +8,11 @@
 namespace sample_lib_server {
 struct Server;
 }
+struct PresetServer;
 
 constexpr auto k_favourite_inst_key = "favourite-instrument-v2"_s;
 constexpr auto k_favourite_ir_key = "favourite-ir-v2"_s;
+constexpr auto k_favourite_preset_key = "favourite-preset-v2"_s;
 
 bool IsFavourite(prefs::PreferencesTable const& prefs, prefs::Key const& key, u64 item_hash);
 void AddFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_hash);
@@ -19,3 +21,6 @@ void ToggleFavourite(prefs::Preferences& prefs, prefs::Key const& key, u64 item_
 
 bool HasLegacyFavourites(prefs::PreferencesTable const& prefs);
 void MigrateLegacyFavourites(prefs::Preferences& prefs, sample_lib_server::Server& server);
+
+bool HasLegacyPresetFavourites(prefs::PreferencesTable const& prefs);
+void MigrateLegacyPresetFavourites(prefs::Preferences& prefs, PresetServer& server);

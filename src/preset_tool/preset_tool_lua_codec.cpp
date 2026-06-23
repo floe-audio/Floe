@@ -83,6 +83,9 @@ struct IntH {
     static void Read(lua_State* lua, T& v) {
         if (lua_isinteger(lua, -1)) v = (T)lua_tointeger(lua, -1);
     }
+    static void AppendHelp(DynamicArray<char>& out, String name) {
+        fmt::Append(out, "  {} = 0   integer\n", name);
+    }
 };
 
 struct ParamValuesH {
@@ -760,6 +763,7 @@ static void VisitPreset(V& v, S& s) {
     v.Field("fx_visible", s.fx_visible, FxVisibleH {});
     v.Field("metadata", s.metadata, MetadataH {});
     v.Field("instance_id", s.extras.instance_id, StringH {});
+    v.Field("preset_uuid", s.extras.preset_uuid, IntH<u64> {});
     v.Field("ir_id", s.ir_id, IrIdH {});
     v.Field("velocity_curve_points", s.velocity_curve_points, VelocityCurvePointsH {});
     v.Field("harmony_intervals", s.harmony_intervals, HarmonyIntervalsH {});
@@ -981,6 +985,7 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
     if (ToInt(TagType::Count) > 4) s.metadata.tags.Set(4);
 
     dyn::Assign(s.extras.instance_id, "instance-123"_s);
+    s.extras.preset_uuid = 0x0123456789abcdefull;
 
     // ir_id
     {

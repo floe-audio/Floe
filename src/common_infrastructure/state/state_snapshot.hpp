@@ -49,10 +49,11 @@ struct StateExtras {
     DynamicArrayBounded<char, k_max_preset_name_size> display_name {};
     DynamicArrayBounded<char, k_max_preset_name_size> display_category {};
 
-    // The hash of the preset when it was loaded from file - if any. This allows us to identify the preset
-    // this state is based on and track if state has been modified since loading.
-    u64 origin_preset_hash {}; // 0 == unknown. Filled automatically when decoding a preset.
-    bool modified_from_origin_preset {};
+    // Stable identifier of the preset this state was loaded from - if any. UUID embedded in the preset
+    // file when present; otherwise a content-derived fallback. Lets us identify the source preset and
+    // track whether state has been modified since loading.
+    u64 preset_uuid {}; // 0 == none. Filled automatically when decoding a preset.
+    bool modified_from_preset {};
 };
 
 struct StateSnapshot {

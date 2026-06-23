@@ -328,7 +328,12 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
     auto modified_state = preset_state;
     ExtractPresetFromLuaTable(lua, -1, modified_state);
 
-    if (modified_state == preset_state) return k_success;
+    // Skip rewriting only if the script changed nothing AND the file already has an embedded UUID.
+    // For legacy files (no embedded UUID) we always re-save: preset_uuid was auto-populated on load to
+    // the content-derived fallback, and embedding that into the file stamps a stable UUID without
+    // breaking favourites users have already migrated to.
+    if (modified_state == preset_state && !PresetFilePredatesEmbeddedUuid(file_versions.state_version))
+        return k_success;
 
     auto const temp_dir = TRY(TemporaryDirectoryOnSameFilesystemAs(opts.preset_path, arena));
     DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };

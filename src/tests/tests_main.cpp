@@ -31,6 +31,7 @@
     X(RegisterEncryptedPackageTests)                                                                         \
     X(RegisterErrorCodeTests)                                                                                \
     X(RegisterErrorNotificationsTests)                                                                       \
+    X(RegisterFavouriteItemsTests)                                                                           \
     X(RegisterFilesystemTests)                                                                               \
     X(RegisterFolderNodeTests)                                                                               \
     X(RegisterFormatTests)                                                                                   \

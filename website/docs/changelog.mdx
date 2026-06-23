@@ -15,6 +15,7 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 2.0.0-beta.6
+- Preset favourites now survive re-saving and library updates: each preset file carries a stable UUID embedded by Floe at save time, used as the identity for favourites and the "currently loaded" indicator. Older preset files without an embedded UUID continue to work via a content-derived fallback. Existing favourites are migrated automatically.
 - Show the revision number of a library/preset in the browsers, e.g. v1.2.
 - Lua and preset banks: rename `minor_version` to `revision` to better reflect what it means
 - Fix legacy parameters panel 'Modernise all' sometimes not correctly retaining perfect sound compatibility when macros are involved

@@ -599,6 +599,11 @@ enum class StateVersion : u16 {
     // change; the pre-fill block defaults any of these IDs that are missing in older files.
     PromotedGranularAndArpParams,
 
+    // Added stable random preset_uuid embedded inside preset files. Acts as the identity for favourites
+    // and "currently loaded preset" matching, surviving edits. Legacy preset files without an embedded UUID
+    // fall back to the encoded-bytes hash, matching the prior implicit behaviour.
+    AddedPresetUuid,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -1249,7 +1254,7 @@ ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
     if (adapt_for_latest_version) AdaptNewerParams(state, StateVersion::Initial, StateSource::PresetFile);
 
     state.extras = {};
-    state.extras.origin_preset_hash = RapidHash64(data);
+    state.extras.preset_uuid = RapidHash64(data);
 
     return k_success;
 }
@@ -1406,25 +1411,32 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                                           // write the magic value
     };
 
-    // When writing a preset file, we don't want to include any extras in the file so we clear the field for
-    // the duration of this function. We restore it back to where since it would be confusing for a 'write'
-    // operation to modify the data.
+    // When writing a preset file, we don't want to include any extras in the file except for
+    // preset_uuid, which is the preset's stable identity. We clear the rest for the duration of this
+    // function and restore them after, since it would be confusing for a 'write' operation to modify
+    // the data.
     auto const scrub_extras = coder.IsWriting() && args.source == StateSource::PresetFile;
     auto const initial_extras = state.extras;
-    if (scrub_extras) state.extras = {};
+    if (scrub_extras) {
+        auto const uuid = state.extras.preset_uuid;
+        state.extras = {};
+        state.extras.preset_uuid = uuid;
+    }
     DEFER {
         if (scrub_extras) state.extras = initial_extras;
     };
 
-    // We have a special behaviour when decoding a preset file: we auto-populate the origin_preset_hash
-    // because it's very useful for us to be able to have a quick unique identifier for snapshots.
+    // When decoding a preset file we discard whatever extras a caller had, keeping only the
+    // preset_uuid: from the file when present, or a content-derived fallback for legacy files written
+    // before AddedPresetUuid.
     DEFER {
-        if (args.source == StateSource::PresetFile && coder.IsReading())
+        if (args.source == StateSource::PresetFile && coder.IsReading()) {
+            auto const uuid_from_file = state.extras.preset_uuid;
             state.extras = {
-                .origin_preset_hash = coder.hash,
-                .modified_from_origin_preset = false,
+                .preset_uuid = uuid_from_file != 0 ? uuid_from_file : coder.hash,
+                .modified_from_preset = false,
             };
-        if (args.out_hash) *args.out_hash = coder.hash;
+        }
     };
 
     // =======================================================================================================
@@ -1946,8 +1958,11 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         TRY(coder.CodeDynArray(state.extras.display_name, k_added));
         TRY(coder.CodeDynArray(state.extras.display_category, k_added));
-        TRY(coder.CodeNumber(state.extras.origin_preset_hash, k_added));
-        TRY(coder.CodeNumber(state.extras.modified_from_origin_preset, k_added));
+        // Pre-AddedPresetUuid this field held a hash of the encoded bytes that the loader filled in
+        // automatically and DAW state captured. From AddedPresetUuid onward it's a stable UUID embedded
+        // in preset files; DAW state continues to carry it across saves.
+        TRY(coder.CodeNumber(state.extras.preset_uuid, k_added));
+        TRY(coder.CodeNumber(state.extras.modified_from_preset, k_added));
     }
 
     // =======================================================================================================
@@ -2022,7 +2037,11 @@ LoadPresetFile(String const filepath, ArenaAllocator& scratch_arena, DecodeState
                           options);
 }
 
-ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
+bool PresetFilePredatesEmbeddedUuid(u16 state_version) {
+    return state_version < ToInt(StateVersion::AddedPresetUuid);
+}
+
+ErrorCodeOr<void> SavePresetFile(String path, StateSnapshot const& state, bool write_experiment_params) {
     ASSERT(path.size);
     ASSERT(IsValidUtf8(path));
     ASSERT(path::IsAbsolute(path));
@@ -2033,19 +2052,16 @@ ErrorCodeOr<u64> SavePresetFile(String path, StateSnapshot const& state, bool wr
     }
 
     auto file = TRY(OpenFile(path, FileMode::Write()));
-    u64 hash = 0;
-    TRY(CodeState(const_cast<StateSnapshot&>(state),
-                  CodeStateArguments {
-                      .mode = CodeStateArguments::Mode::Encode,
-                      .read_or_write_data = [&file](void* data, usize bytes) -> ErrorCodeOr<void> {
-                          TRY(file.Write({(u8 const*)data, bytes}));
-                          return k_success;
-                      },
-                      .source = StateSource::PresetFile,
-                      .write_experimental_params = write_experiment_params,
-                      .out_hash = &hash,
-                  }));
-    return hash;
+    return CodeState(const_cast<StateSnapshot&>(state),
+                     CodeStateArguments {
+                         .mode = CodeStateArguments::Mode::Encode,
+                         .read_or_write_data = [&file](void* data, usize bytes) -> ErrorCodeOr<void> {
+                             TRY(file.Write({(u8 const*)data, bytes}));
+                             return k_success;
+                         },
+                         .source = StateSource::PresetFile,
+                         .write_experimental_params = write_experiment_params,
+                     });
 }
 
 ErrorCodeOr<StateSnapshot>
@@ -2356,8 +2372,8 @@ TEST_CASE(TestSerialisation) {
                 }
                 dyn::Assign(state.extras.display_name, "TEST"_s);
                 dyn::Assign(state.extras.display_category, "CATEGORY"_s);
-                state.extras.origin_preset_hash = 0x12356789ull;
-                state.extras.modified_from_origin_preset = true;
+                state.extras.preset_uuid = 0x12356789ull;
+                state.extras.modified_from_preset = true;
             } else {
                 state.extras = {};
             }
@@ -2404,8 +2420,8 @@ TEST_CASE(TestSerialisation) {
 
             if (source == StateSource::PresetFile) {
                 // When decoding a preset file we expect it to to have populated the hash for us.
-                CHECK(out_state.extras.origin_preset_hash != 0);
-                out_state.extras.origin_preset_hash = 0; // Clear it for correct equality checks below.
+                CHECK(out_state.extras.preset_uuid != 0);
+                out_state.extras.preset_uuid = 0; // Clear it for correct equality checks below.
             }
 
             if (!(state == out_state)) {
@@ -3052,6 +3068,73 @@ TEST_CASE(TestAdaptPreservesLegacyAudioUnderMacros) {
     return k_success;
 }
 
+TEST_CASE(TestPresetUuidRoundTrip) {
+    auto const encode = [&](StateSnapshot& state) {
+        DynamicArray<u8> data {tester.scratch_arena};
+        REQUIRE(CodeState(state,
+                          CodeStateArguments {
+                              .mode = CodeStateArguments::Mode::Encode,
+                              .read_or_write_data = [&](void* p, usize n) -> ErrorCodeOr<void> {
+                                  dyn::AppendSpan(data, Span<u8 const> {(u8 const*)p, n});
+                                  return k_success;
+                              },
+                              .source = StateSource::PresetFile,
+                              .write_experimental_params = false,
+                          })
+                    .Succeeded());
+        return data.ToOwnedSpan();
+    };
+
+    auto const decode = [&](Span<u8 const> data) {
+        StateSnapshot out {};
+        usize pos = 0;
+        REQUIRE(CodeState(out,
+                          CodeStateArguments {
+                              .mode = CodeStateArguments::Mode::Decode,
+                              .read_or_write_data = [&](void* p, usize n) -> ErrorCodeOr<void> {
+                                  CHECK(pos + n <= data.size);
+                                  CopyMemory(p, data.data + pos, n);
+                                  pos += n;
+                                  return k_success;
+                              },
+                              .source = StateSource::PresetFile,
+                          })
+                    .Succeeded());
+        return out;
+    };
+
+    SUBCASE("explicit UUID survives encode -> decode") {
+        StateSnapshot state {};
+        constexpr u64 k_uuid = 0xdeadbeefcafef00d;
+        state.extras.preset_uuid = k_uuid;
+        auto const data = encode(state);
+        auto const out = decode(data);
+        CHECK_EQ(out.extras.preset_uuid, k_uuid);
+    }
+
+    SUBCASE("UUID is preserved across the caller's view of state on write") {
+        StateSnapshot state {};
+        constexpr u64 k_uuid = 0x0123456789abcdef;
+        state.extras.preset_uuid = k_uuid;
+        dyn::Assign(state.extras.display_name, "ignored-on-write"_s);
+        encode(state);
+        // After write, the caller's state is unchanged (scrub_extras restores it).
+        CHECK_EQ(state.extras.preset_uuid, k_uuid);
+        CHECK_EQ((String)state.extras.display_name, "ignored-on-write"_s);
+    }
+
+    SUBCASE("zero UUID in a written file is replaced with the byte-stream hash on decode") {
+        StateSnapshot state {};
+        state.extras.preset_uuid = 0;
+        auto const data = encode(state);
+        auto const out = decode(data);
+        // Legacy-style fallback: non-zero identity derived from file contents.
+        CHECK(out.extras.preset_uuid != 0);
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterStateCodingTests) {
     REGISTER_TEST(TestAdaptPreservesLegacyAudio);
     REGISTER_TEST(TestAdaptPreservesLegacyAudioUnderMacros);
@@ -3061,4 +3144,5 @@ TEST_REGISTRATION(RegisterStateCodingTests) {
     REGISTER_TEST(TestSerialisation);
     REGISTER_TEST(TestParsersHandleInvalidData);
     REGISTER_TEST(TestAdaptPreAddedLayerVelocityCurvesParams);
+    REGISTER_TEST(TestPresetUuidRoundTrip);
 }

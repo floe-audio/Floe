@@ -17,7 +17,7 @@
 constexpr String k_no_preset_author = "<no author>"_s;
 constexpr u64 k_no_preset_author_hash = HashFnv1a(k_no_preset_author);
 
-inline prefs::Key FavouriteItemKey() { return "favourite-preset"_s; }
+inline prefs::Key FavouriteItemKey() { return k_favourite_preset_key; }
 
 static FolderNode const* FindFolderByHash(PresetBrowserContext const& context, u64 folder_hash) {
     FolderNode const* result = nullptr;
@@ -38,27 +38,68 @@ struct PresetCursor {
     usize preset_index;
 };
 
-static Optional<PresetCursor>
-CurrentCursor(PresetBrowserContext const& context, u64 snapshot_hash, u64 known_preset_id) {
-    if (!snapshot_hash && !known_preset_id) return k_nullopt;
+static u64 CurrentLoadedPresetUuid(PresetBrowserContext const& context) {
+    auto const& engine = context.engine;
+    if (engine.pending_state_change) return engine.pending_state_change->snapshot.extras.preset_uuid;
+    return engine.pinned_snapshot.state.extras.preset_uuid;
+}
 
-    Optional<PresetCursor> first_hash_match;
-    Optional<PresetCursor> known_id_match;
-    for (auto const [folder_index, folder] : Enumerate(context.presets_snapshot.folders)) {
-        ASSERT(folder->folder);
-        for (auto const [preset_index, preset] : Enumerate(folder->folder->presets)) {
-            PresetCursor const cursor {folder_index, preset_index};
-            if (known_preset_id && preset.full_path_hash == known_preset_id) {
-                if (preset.snapshot_hash == snapshot_hash) return cursor;
-                if (!known_id_match) known_id_match = cursor;
+static Optional<PresetCursor> ResolveCurrentLoadedCursor(PresetBrowserContext const& context) {
+    auto const uuid = CurrentLoadedPresetUuid(context);
+    if (uuid == 0) return k_nullopt;
+
+    if (context.cached_current_loaded && context.cached_current_loaded->uuid == uuid) {
+        if (context.cached_current_loaded->folder_index && context.cached_current_loaded->preset_index)
+            return PresetCursor {*context.cached_current_loaded->folder_index,
+                                 *context.cached_current_loaded->preset_index};
+        return k_nullopt;
+    }
+
+    // Collect every cursor whose preset_uuid matches. Usually 0 or 1; only when the user has
+    // copy-pasted preset files via the OS file manager will multiple matches exist (the copies
+    // share the UUID embedded in the file). In that rare case, we tiebreak by path equality
+    // below — so no path comparison happens on the normal path.
+    DynamicArrayBounded<PresetCursor, 4> matches;
+    for (auto const [folder_index, folder_listing] : Enumerate(context.presets_snapshot.folders)) {
+        ASSERT(folder_listing->folder);
+        for (auto const [preset_index, preset] : Enumerate(folder_listing->folder->presets)) {
+            if (preset.preset_uuid == uuid) {
+                if (matches.size < matches.Capacity())
+                    dyn::Append(matches, PresetCursor {folder_index, preset_index});
             }
-            if (snapshot_hash && preset.snapshot_hash == snapshot_hash && !first_hash_match)
-                first_hash_match = cursor;
         }
     }
 
-    if (known_id_match) return known_id_match;
-    return first_hash_match;
+    Optional<PresetCursor> result;
+    if (matches.size == 1) {
+        result = matches[0];
+    } else if (matches.size > 1) {
+        auto const& engine = context.engine;
+        String const loaded_path = engine.pending_state_change
+                                       ? (String)engine.pending_state_change->preset_path
+                                       : (String)engine.pinned_snapshot.preset_path;
+        if (loaded_path.size) {
+            PathArena scratch {Malloc::Instance()};
+            for (auto const cursor : matches) {
+                scratch.ResetCursorAndConsolidateRegions();
+                auto const& folder = *context.presets_snapshot.folders[cursor.folder_index]->folder;
+                auto const& preset = folder.presets[cursor.preset_index];
+                if (path::Equal(folder.FullPathForPreset(preset, scratch), loaded_path)) {
+                    result = cursor;
+                    break;
+                }
+            }
+        }
+        // No path or no path match: fall back to the first occurrence — same row stays
+        // highlighted across frames, navigation remains deterministic.
+        if (!result) result = matches[0];
+    }
+
+    context.cached_current_loaded = PresetBrowserContext::CachedCurrentLoaded {
+        .uuid = uuid,
+        .folder_index = result.HasValue() ? Optional<usize> {result->folder_index} : k_nullopt,
+        .preset_index = result.HasValue() ? Optional<usize> {result->preset_index} : k_nullopt};
+    return result;
 }
 
 static bool ShouldSkipPreset(PresetBrowserContext const& context,
@@ -74,7 +115,7 @@ static bool ShouldSkipPreset(PresetBrowserContext const& context,
     return IsFilteredOut(state.common_state, [&](usize index, FilterSelection const& filter) -> bool {
         switch ((BrowserFilter)index) {
             case BrowserFilter::Favourites:
-                return IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
+                return IsFavourite(context.prefs, FavouriteItemKey(), preset.preset_uuid);
             case BrowserFilter::Folder:
                 return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
                     return IsInsideFolder(&folder, key);
@@ -179,37 +220,18 @@ LoadPreset(PresetBrowserContext const& context, PresetBrowserState& state, Prese
     auto const& preset = folder->folder->presets[cursor.preset_index];
 
     PathArena path_arena {PageAllocator::Instance()};
-    LoadPresetFromFile(context.engine,
-                       folder->folder->FullPathForPreset(preset, path_arena),
-                       preset.full_path_hash);
+    LoadPresetFromFile(context.engine, folder->folder->FullPathForPreset(preset, path_arena));
 
     if (scroll) state.scroll_to_show_selected = true;
-}
-
-static u64 CurrentLoadedPresetSnapshotHash(PresetBrowserContext const& context) {
-    auto const& engine = context.engine;
-    if (engine.pending_state_change) return engine.pending_state_change->snapshot.extras.origin_preset_hash;
-    return engine.pinned_snapshot.state.extras.origin_preset_hash;
-}
-
-static u64 CurrentLoadedKnownPresetId(PresetBrowserContext const& context) {
-    auto const& engine = context.engine;
-    if (engine.pending_state_change) return engine.pending_state_change->known_preset_id;
-    return engine.pinned_snapshot.known_preset_id;
 }
 
 void LoadAdjacentPreset(PresetBrowserContext const& context,
                         PresetBrowserState& state,
                         SearchDirection direction) {
     ASSERT(context.init);
-    auto const current_hash = CurrentLoadedPresetSnapshotHash(context);
-    auto const current_known_id = CurrentLoadedKnownPresetId(context);
-
-    if (current_hash) {
-        if (auto const current = CurrentCursor(context, current_hash, current_known_id)) {
-            if (auto const next = IteratePreset(context, state, *current, direction, false))
-                LoadPreset(context, state, *next, true);
-        }
+    if (auto const current = ResolveCurrentLoadedCursor(context)) {
+        if (auto const next = IteratePreset(context, state, *current, direction, false))
+            LoadPreset(context, state, *next, true);
     } else if (auto const first =
                    IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, direction, true)) {
         LoadPreset(context, state, *first, true);
@@ -412,15 +434,28 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
         IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
 
-    auto const current_loaded_snapshot_hash = CurrentLoadedPresetSnapshotHash(context);
-    auto const current_loaded_known_id = CurrentLoadedKnownPresetId(context);
+    auto const current_loaded_cursor = ResolveCurrentLoadedCursor(context);
 
     Optional<u64> previous_folder_hash = {};
 
     Optional<BrowserSection> folder_section;
 
+    auto const total_presets = ({
+        usize n = 0;
+        for (auto const& folder : context.presets_snapshot.folders)
+            n += folder->folder->presets.size;
+        n;
+    });
+
+    struct PendingFavouriteToggle {
+        u64 uuid;
+        bool was_favourite;
+    };
+    Optional<PendingFavouriteToggle> pending_favourite_toggle {};
+
     auto cursor = *first;
-    while (true) {
+    for (usize guard = 0;; ++guard) {
+        ASSERT(guard <= total_presets, "render loop exceeded preset count — filter set mutated mid-frame");
         auto const& preset_folder = context.presets_snapshot.folders[cursor.folder_index];
         auto const& preset = preset_folder->folder->presets[cursor.preset_index];
         auto const folder_hash = preset_folder->node.Hash();
@@ -440,12 +475,9 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
         }
 
         if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
-            auto const is_current = current_loaded_known_id
-                                        ? preset.full_path_hash == current_loaded_known_id
-                                        : (current_loaded_snapshot_hash != 0 &&
-                                           preset.snapshot_hash == current_loaded_snapshot_hash);
+            auto const is_current = current_loaded_cursor && *current_loaded_cursor == cursor;
 
-            auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash);
+            auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.preset_uuid);
 
             auto const item = DoBrowserItem(
                 builder,
@@ -563,7 +595,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
             }
 
             if (item.favourite_toggled)
-                ToggleFavourite(context.prefs, FavouriteItemKey(), preset.file_hash, is_favourite);
+                pending_favourite_toggle = PendingFavouriteToggle {preset.preset_uuid, is_favourite};
         }
 
         if (auto next = IteratePreset(context, state, cursor, SearchDirection::Forward, false)) {
@@ -573,6 +605,12 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
             break;
         }
     }
+
+    if (pending_favourite_toggle)
+        ToggleFavourite(context.prefs,
+                        FavouriteItemKey(),
+                        pending_favourite_toggle->uuid,
+                        pending_favourite_toggle->was_favourite);
 }
 
 void PresetBrowserExtraFilters(GuiBuilder& builder,
@@ -722,7 +760,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
         for (auto const& preset : folder->folder->presets) {
             bool const skip = ShouldSkipPreset(context, state, *folder, preset);
 
-            if (IsFavourite(context.prefs, FavouriteItemKey(), preset.file_hash)) {
+            if (IsFavourite(context.prefs, FavouriteItemKey(), preset.preset_uuid)) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
                 ++favourites_info.total_available;
             }

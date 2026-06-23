@@ -311,10 +311,25 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
         IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
 
+    auto const total_instruments = ({
+        usize n = 0;
+        for (auto const& lib : context.frame_context.libraries)
+            n += lib->sorted_instruments.size;
+        n;
+    });
+
+    struct PendingFavouriteToggle {
+        u64 hash;
+        bool was_favourite;
+    };
+    Optional<PendingFavouriteToggle> pending_favourite_toggle {};
+
     sample_lib::Library const* previous_library {};
     ItemIcon lib_icon {ItemIconType::None};
     auto cursor = *first;
-    while (true) {
+    for (usize guard = 0;; ++guard) {
+        ASSERT(guard <= total_instruments,
+               "render loop exceeded instrument count — filter set mutated mid-frame");
         auto const& lib = *context.frame_context.libraries[cursor.lib_index];
         auto const& inst = *lib.sorted_instruments[cursor.inst_index];
         auto const& folder = inst.folder;
@@ -412,7 +427,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
             }
 
             if (item.favourite_toggled)
-                ToggleFavourite(context.prefs, k_favourite_inst_key, inst_hash, is_favourite);
+                pending_favourite_toggle = PendingFavouriteToggle {inst_hash, is_favourite};
         }
 
         if (auto next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false)) {
@@ -422,6 +437,12 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
             break;
         }
     }
+
+    if (pending_favourite_toggle)
+        ToggleFavourite(context.prefs,
+                        k_favourite_inst_key,
+                        pending_favourite_toggle->hash,
+                        pending_favourite_toggle->was_favourite);
 }
 
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
