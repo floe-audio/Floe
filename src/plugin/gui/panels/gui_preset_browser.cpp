@@ -8,7 +8,6 @@
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
 #include "gui/core/gui_state.hpp"
-#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/overlays/gui_notifications.hpp"
 #include "gui/panels/gui_common_browser.hpp"
