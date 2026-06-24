@@ -249,6 +249,8 @@ enum class ParamDisplayFormat : u8 {
     Cents,
     Semitones,
     Ratio,
+    CompressorAttackMs,
+    CompressorReleaseMs,
 };
 
 enum class ParamValueType : u8 {
@@ -1923,7 +1925,10 @@ consteval auto CreateParams() {
         .id = id(IdRegion::Master, 34), // never change
         .id_string = "fx.compressor.attack"_s,
         .added_in_generation = 1,
-        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .value_config = val_config_helpers::Percent({
+            .default_percent = 50,
+            .display_format = ParamDisplayFormat::CompressorAttackMs,
+        }),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Attack"_s,
         .gui_label = "Attack"_s,
@@ -1933,7 +1938,10 @@ consteval auto CreateParams() {
         .id = id(IdRegion::Master, 35), // never change
         .id_string = "fx.compressor.release"_s,
         .added_in_generation = 1,
-        .value_config = val_config_helpers::Percent({.default_percent = 50}),
+        .value_config = val_config_helpers::Percent({
+            .default_percent = 50,
+            .display_format = ParamDisplayFormat::CompressorReleaseMs,
+        }),
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "Release"_s,
         .gui_label = "Release"_s,

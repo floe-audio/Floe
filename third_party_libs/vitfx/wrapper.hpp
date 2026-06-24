@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <math.h>
+
 namespace vitfx {
 
 namespace reverb {
@@ -151,6 +153,28 @@ void Destroy(Compressor* compressor);
 void Process(Compressor& compressor, ProcessCompressorArgs args);
 void HardReset(Compressor& compressor);
 void SetSampleRate(Compressor& compressor, int sample_rate);
+
+constexpr float kBaseAttackMs = 1.4f;
+constexpr float kBaseReleaseMs = 28.0f;
+
+inline float EnvelopeParamToMs(float param_01, float base_ms) {
+    if (param_01 < 0.0f) param_01 = 0.0f;
+    if (param_01 > 1.0f) param_01 = 1.0f;
+    return expf(param_01 * 8.0f - 4.0f) * base_ms;
+}
+
+inline float EnvelopeMsToParam(float ms, float base_ms) {
+    if (ms <= 0.0f) return 0.0f;
+    float p = (logf(ms / base_ms) + 4.0f) / 8.0f;
+    if (p < 0.0f) p = 0.0f;
+    if (p > 1.0f) p = 1.0f;
+    return p;
+}
+
+inline float AttackParamToMs(float param_01) { return EnvelopeParamToMs(param_01, kBaseAttackMs); }
+inline float ReleaseParamToMs(float param_01) { return EnvelopeParamToMs(param_01, kBaseReleaseMs); }
+inline float AttackMsToParam(float ms) { return EnvelopeMsToParam(ms, kBaseAttackMs); }
+inline float ReleaseMsToParam(float ms) { return EnvelopeMsToParam(ms, kBaseReleaseMs); }
 
 } // namespace compressor
 

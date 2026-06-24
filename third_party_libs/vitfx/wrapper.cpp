@@ -214,8 +214,7 @@ namespace compressor {
 
 // Match the "band" (mid) defaults from vital::MultibandCompressor so a single-band wrapper
 // behaves like a sensible general-purpose compressor.
-constexpr float kBaseAttackMs = 1.4f;
-constexpr float kBaseReleaseMs = 28.0f;
+// kBaseAttackMs / kBaseReleaseMs are defined in wrapper.hpp.
 
 struct Compressor {
     vital::Compressor compressor {kBaseAttackMs, kBaseReleaseMs, kBaseAttackMs, kBaseReleaseMs};

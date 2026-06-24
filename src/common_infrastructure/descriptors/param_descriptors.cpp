@@ -3,6 +3,8 @@
 
 #include "param_descriptors.hpp"
 
+#include <vitfx/wrapper.hpp>
+
 #include "foundation/foundation.hpp"
 #include "tests/framework.hpp"
 
@@ -122,6 +124,20 @@ Optional<f32> ParamDescriptor::StringToLinearValue(String str) const {
             break;
         }
         case ParamDisplayFormat::Ratio: {
+            break;
+        }
+        case ParamDisplayFormat::CompressorAttackMs:
+        case ParamDisplayFormat::CompressorReleaseMs: {
+            usize num_chars_read = 0;
+            if (auto const opt_value = ParseFloat(str, &num_chars_read)) {
+                auto suffix = WhitespaceStripped(str.SubSpan(num_chars_read));
+                auto ms = (f32)*opt_value;
+                if (StartsWithCaseInsensitiveAscii(suffix, "s"_s)) ms *= 1000.0f;
+                auto const p = (display_format == ParamDisplayFormat::CompressorAttackMs)
+                                   ? vitfx::compressor::AttackMsToParam(ms)
+                                   : vitfx::compressor::ReleaseMsToParam(ms);
+                return LineariseValue(p, true);
+            }
             break;
         }
     }
@@ -257,6 +273,19 @@ Optional<DynamicArrayBounded<char, 128>> ParamDescriptor::LinearValueToString(f3
         }
         case ParamDisplayFormat::Ratio: {
             result = fmt::FormatInline<k_size>("{.2} : 1", value);
+            break;
+        }
+        case ParamDisplayFormat::CompressorAttackMs:
+        case ParamDisplayFormat::CompressorReleaseMs: {
+            auto const ms = (display_format == ParamDisplayFormat::CompressorAttackMs)
+                                ? vitfx::compressor::AttackParamToMs(value)
+                                : vitfx::compressor::ReleaseParamToMs(value);
+            if (RoundPositiveFloat(ms) >= 1000)
+                result = fmt::FormatInline<k_size>("{.1} s", ms / 1000);
+            else if (ms < 10)
+                result = fmt::FormatInline<k_size>("{.2} ms", ms);
+            else
+                result = fmt::FormatInline<k_size>("{.0} ms", ms);
             break;
         }
     }
