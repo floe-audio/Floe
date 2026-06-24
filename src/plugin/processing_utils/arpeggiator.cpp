@@ -768,8 +768,8 @@ int ComputeSharedArpAutoRateShift(Span<Optional<SyncedTimes> const> anchors, f64
     auto const raw = (int)Round(Log2(tempo / k_ref_tempo) + k_bucket_shift_bias);
 
     auto const max_idx = (int)ToInt(SyncedTimes::Count) - 1;
-    int min_up_room = LargestRepresentableValue<int>();
-    int min_down_room = LargestRepresentableValue<int>();
+    auto min_up_room = LargestRepresentableValue<int>();
+    auto min_down_room = LargestRepresentableValue<int>();
     bool any = false;
     for (auto const& a : anchors) {
         if (!a) continue;
@@ -1101,7 +1101,7 @@ TEST_CASE(TestAutoRateSharedShiftPreservesCrossLayerRatios) {
 
         // Sanity: shift must keep every anchor in range.
         for (auto const& a : anchor_set) {
-            auto const idx = (int)ToInt(*a) + 3 * shift;
+            auto const idx = (int)ToInt(*a) + (3 * shift);
             REQUIRE(idx >= 0);
             REQUIRE(idx < (int)ToInt(SyncedTimes::Count));
         }

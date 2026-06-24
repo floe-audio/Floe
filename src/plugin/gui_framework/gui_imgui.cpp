@@ -234,7 +234,7 @@ static RowInfo TexteditLayoutRow(Context const* imgui, int start_index) {
         width += font->GetCharAdvance((Char16)c);
     }
 
-    int num_chars = (int)(wrap_end - row_begin);
+    auto num_chars = (int)(wrap_end - row_begin);
     if (wrap_end < text_end && *wrap_end == '\n') ++num_chars; // The newline belongs to this row.
     return {num_chars, width};
 }
