@@ -1,0 +1,86 @@
+# Arpeggiator
+
+> Information about Floe's per-layer arpeggiator
+
+## At a glance
+
+-   A per-layer note sequencer that retriggers the layer's instrument in time with your host.
+-   Each [layer](/docs/beta/usage/layers) has its own independent arpeggiator on the **Arp tab**.
+-   Two modes: _Played Notes_ (arpeggiates the chord you're holding) and _Fixed Notes_ (plays a recorded note sequence).
+-   Up to 64 steps, each with its own velocity, gate, note/interval, on/off and tie.
+
+## What is the arpeggiator?
+
+The arpeggiator turns a held chord — or a recorded note sequence — into a rhythmic pattern of individual notes, synced to your host's tempo. Each step of the pattern triggers the layer's instrument as if you'd played it from a keyboard, so the volume envelope, filter, LFOs and effects all respond exactly the same way they would for a manually played note.
+
+Because the arpeggiator is per-layer, you can create interesting combination of sequences across layers.
+
+![Layer Arp Tab](/images/screenshots/layer-arp.png)
+
+## Turning it on
+
+Open a layer's **Arp tab** and click the _Arpeggiator_ button to enable it. Next to that button is the **Mode menu**:
+
+-   **Played Notes**: the held chord is arpeggiated. Each step plays one of the notes you're holding, transposed by an optional per-step semitone interval. The order in which the notes are picked is set by _Note Order_ (Up, Down, Up/Down, Random, Thumb, Up+, and so on).
+-   **Fixed Notes**: each step plays a specific MIDI note that you set yourself, regardless of what you play in. Use the **Record** button to capture a sequence by playing notes on your keyboard.
+
+## The step sequencer
+
+Below the mode controls is the step sequencer. The number of active steps is set by _Length_.
+
+### Velocity bars
+
+Each step has a vertical bar. Click and drag inside the sequencer to set velocities — drag across multiple steps to draw a shape. The bars represent **velocity, not volume**. How that velocity becomes loudness is shaped by the [_Velocity to volume curve_](/docs/beta/usage/midi#velocity) on the layer's Config tab. By default that curve doesn't start at zero, so even a zero-velocity step still produces a quiet sound.
+
+This distinction matters most for multisampled instruments that have separate velocity layers: a step's velocity selects which velocity layer is played, not just how loud it is. A low-velocity step on a piano, for example, gives you the soft-velocity samples rather than just a quieter version of the loud ones.
+
+### Step rows
+
+Under each bar you'll find:
+
+-   **Step number / on-off**: click to mute or unmute the step. A disabled step stays silent but keeps its other settings.
+-   **Note / interval**: in _Fixed Notes_ mode this is the MIDI note name; in _Played Notes_ mode it's a semitone offset added to whichever held note is being played at that step. Drag to change, or double-click to type a value.
+-   **Tie** (link icon): fuses the step with the previous one to create a single, longer note. Tied steps inherit the velocity and gate of the tie-chain's root step.
+-   **Gate** (small knob): the proportion of the step duration that the note actually sounds for. 100% is legato-like; lower values create staccato patterns. Gated notes still trigger the Release of the volume envelope on the MAIN tab.
+
+Right-click any step for a context menu with options to reset the step, apply its settings to all steps, or rotate the whole pattern forwards/backwards.
+
+When the pattern is longer than fits on screen, an **Overview** toggle in the top-right of the sequencer shows a compact, non-editable view of all steps at once.
+
+### How a step triggers the instrument
+
+Each step starts a new note on the layer, which triggers the **volume envelope's attack**. When the step ends — either at its gate-off point or when a following non-tied step begins — the **volume envelope's release** is triggered. If your volume envelope has a slow attack or long release, steps will overlap and bleed into one another; with a fast attack and short release, you'll get a tight, percussive feel.
+
+## Sequence controls
+
+Below the step sequencer is the **SEQUENCE** section:
+
+-   **Rate**: the step length, synced to host tempo. Choose from triplet, straight or dotted divisions from 1/64 up to 4/1.
+-   **Auto Rate** (only visible for sliced instruments): picks a rate automatically so the slices play back close to the loop's originally recorded speed, avoiding long silent gaps between slices when your host tempo is far from the loop's native tempo. While Auto Rate is on, the Rate control is replaced with a read-only display showing the chosen rate. The multiplier (1x, 2x, 1/2x, dotted, triplet, and so on) lets you offset that choice up or down without losing the auto-fit behaviour. Because the chosen rate has to land on one of the tempo-synced divisions (1/4, 1/8, 1/16T, …), it can only change in discrete steps as the host tempo moves. So as you sweep the host tempo, you'll cross boundary points where the chosen rate jumps to the next division. The jump is calibrated so the upper end of each range stays close to the loop's native feel — which means crossing upward into a new range actually slows the perceived rate. It can therefore feel faster at, say, 147 BPM than at 148 BPM, even though your host is running faster. The same boundary points apply to every layer in the project, so two arpeggiators using Auto Rate stay in the same rhythmic ratio across tempo changes.
+-   **Length**: how many steps are active in the pattern (1–64).
+-   **Order** (Played Notes only): how held notes are picked across the steps — Chord, Up, Down, Up/Down, Down/Up, Random, Random No Repeat, Up x2, Down x2, Up/Down x2, Converge, Diverge, Thumb, Up+.
+-   **Humanise**: adds random timing and velocity variation to each step. Small amounts loosen up a rigid pattern; larger amounts produce a much more human-feeling performance.
+
+## Config controls
+
+The **CONFIG** section holds behaviour switches:
+
+-   **Trigger**: _Free_ keeps the arpeggiator running across new key presses, so playing new notes changes the held chord without restarting the pattern. _Retrigger_ restarts the pattern from step 1 every time a new chord is pressed.
+-   **Polyrate**: lets each octave of the held chord play at a different rate. _Double at octaves_ doubles the rate per octave up; _3:2 at octaves_ and _4:3 at octaves_ create polyrhythmic relationships between octaves. Useful for creating complex, evolving patterns from a simple chord.
+-   **One Shot**: when enabled, the pattern plays through once and then stops instead of looping.
+-   **Record** (Fixed Notes mode): click to start recording, then play notes on your keyboard to fill the sequence step-by-step. Click again to stop.
+
+## Sliced instruments
+
+Some instruments come with built-in slice markers (for example, a sliced drum loop). When you load one of these, the arpeggiator switches into a locked **slice mode**: it plays the instrument's slices in order as its steps, rather than running a user-defined pattern. The mode/length/order controls are hidden, and a **SLICING** section appears with two extra controls:
+
+-   **Offset**: the first slice to play.
+-   **Length**: how many slices to loop through (or _All_ for everything from the offset onwards).
+
+The step sequencer still shows per-step velocity and gate, so you can shape the dynamics and rhythmic feel of the slice playback.
+
+## Tips
+
+-   Use the interesting Polyrate _Double at octaves_ and hold an octave (2 Cs for example) on your keyboard for a unique doubling-up effect.
+-   When in _Chord_ order, be careful to trigger your chords at precisely the same time. If there's a slight gap, the arpeggiator will begin with the first note, and only add the second note in the next step since it didn't see the second note at the time the first was hit.
+-   For percussion, _Chord_ order with a generous _Humanise_ setting is normally best.

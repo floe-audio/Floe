@@ -1,0 +1,83 @@
+# Granular Synthesis
+
+> Information about Floe's per-layer granular synthesis
+
+## At a glance
+
+-   A per-layer granular engine that resynthesises the layer's instrument from short, overlapping snippets of audio called _grains_.
+-   Two granular modes: _Granular Playback_ (time-stretched movement through the sample) and _Granular Fixed_ (frozen at one position).
+-   Selected from the **Play Mode** menu at the top of the layer's [Playback tab](/docs/beta/usage/layers#playback-tab), alongside _Standard Playback_.
+
+## About Floe's granular engine
+
+Floe's granular engine works like most other granular synths — short, overlapping snippets of audio (_grains_) are spawned from the loaded sample, and parameters like grain length, density, position and pitch shape the resulting texture. If you've used granular engines elsewhere, the controls here will feel familiar.
+
+Granular synthesis works with any sample-based instrument loaded into a layer. The same controls are available regardless of whether the instrument is a single sample or a multisampled library — Floe sources its grains from whichever sample would be played for the incoming note.
+
+A few things that set Floe's granular engine apart:
+
+-   Two distinct modes — a time-stretched _Granular Playback_ mode where the playhead moves through the sample at a controllable speed, and a _Granular Fixed_ mode where it stays parked at one position.
+-   A harmony grid that lets grains randomly spawn at chosen intervals — pick from musical presets like _Octaves_, _Major Triad_, _Pentatonic_, _Whole Tone_, or toggle individual semitones yourself.
+-   A focus on smooth, easy-to-use parameters: knobs are tuned for musical results across their whole range, so it's hard to land on a setting that sounds broken or harsh.
+
+## Choosing a mode
+
+The Play Mode menu at the top of the Playback tab switches the layer between three modes:
+
+-   **Standard Playback**: the normal sample-playback engine — straight playback with optional looping. The granular controls are hidden.
+-   **Granular Playback**: a granular engine where the grain playhead moves through the sample at a user-controlled speed. Use this to time-stretch, slow down, or reverse-scrub the sample without changing pitch.
+-   **Granular Fixed**: a granular engine where the playhead is frozen at a user-controlled position in the sample. Use this to "spray" grains around a single point — perfect for drones, pads, and ambient textures.
+
+The two granular modes share the same parameter set, with one exception: _Granular Playback_ has a **Speed** knob, while _Granular Fixed_ has a **Position** knob. Everything else is identical.
+
+## Granular Playback
+
+![Layer Playback tab in Granular Playback mode](/images/screenshots/layer-playback-granular-speed.png)
+
+In _Granular Playback_ mode the playhead moves continuously through the sample, and grains are spawned from the playhead's current location. The looping controls remain available, so the playhead can loop in the same way as standard playback.
+
+This mode is great for:
+
+-   Slow, drifting playback of long evolving samples.
+-   Blurry time-stretching a sample to fit a slower tempo without pitching it down.
+
+## Granular Fixed
+
+![Layer Playback tab in Granular Fixed mode](/images/screenshots/layer-playback-granular-fixed.png)
+
+In _Granular Fixed_ mode the playhead is locked at a fixed position in the sample, set by the **Position** knob. A vertical band on the waveform shows where grains are being sourced from, and its width reflects the **Spread** setting. Loop controls and the sample-start handle are hidden because they have no meaning here — the sample isn't being played back linearly.
+
+This mode is great for:
+
+-   Freezing a moment of a sample into a sustained pad or drone.
+-   Using a very large Spread to source grains from all over the sample.
+-   Finding interesting timbres hiding inside a longer recording and holding on them.
+-   Combining with a slow LFO on Position to create evolving, scanned textures.
+
+## Parameters
+
+### Playhead
+
+-   **Speed** (Granular Playback): how fast the grain playhead moves through the sample. The centre-detent position is 1× — normal speed — and you can dial all the way down to a complete stop or up to several times faster than the original. To play backwards, use the **Reverse** toggle.
+-   **Position** (Granular Fixed): where in the sample grains are sourced from, as a percentage from start to end.
+-   **Spread**: the size of the region around the playhead that grains can start within. Small values keep grains tightly focused on the playhead; large values scatter them across a wider window, which softens transients and creates more diffuse, cloud-like textures.
+
+### Grains
+
+-   **Density**: how heavily grains overlap relative to their length. At the midpoint, grains play end-to-end. Lower values introduce gaps for sparse, pointillistic textures; higher values pack many grains on top of each other for a thick, smeared sound.
+-   **Length**: the duration of each grain, from a few milliseconds up to a second. Short grains sound granular and percussive; long grains preserve more of the original tone.
+-   **Smooth**: the crossfade applied at the edges of each grain to avoid clicks. Low values give hard, percussive grain edges; high values fully overlap-fade neighbouring grains for a glassy, smooth result.
+
+### Random
+
+The Random section adds per-grain variation so the texture doesn't sound mechanical. Each control sets the _range_ of randomisation; at 0% the grains are uniform, at 100% they vary across the full range.
+
+-   **Pan**: randomises each grain's stereo position. Higher values widen the granular cloud across the stereo field.
+-   **Detune**: randomises each grain's pitch within ±1 semitone. Useful for thickening and chorusing.
+-   **Direction**: chance that a grain plays backwards. At 100% every grain has a 50/50 chance of forwards or backwards.
+-   **Harmony**: chance that a grain spawns at one of the selected harmony intervals rather than at the root pitch. The **Intervals** menu next to the knob picks which intervals are active — pick from presets like _Octaves_, _Fifth_, _Major Triad_, _Pentatonic_, _Whole Tone_, _Chromatic_, _Cluster_, and many more, or toggle individual semitones on and off. The knob is greyed out until at least one non-unison interval is selected.
+
+## Tips
+
+-   It's often interesting to control the Position (_Granular Fixed_ mode) using the LFO or a [macro](/docs/beta/usage/macros) for added movement.
+-   The volume envelope, filter and effects all apply to the granular output exactly as they would for standard playback, so you can shape granular textures with the same tools you'd use anywhere else in Floe.

@@ -1,0 +1,630 @@
+# Changelog
+
+> A detailed changelog of all versions of Floe
+
+## 2.0.0-beta.6
+
+-   Preset favourites now survive re-saving and library updates: each preset file carries a stable UUID embedded by Floe at save time, used as the identity for favourites and the "currently loaded" indicator. Older preset files without an embedded UUID continue to work via a content-derived fallback. Existing favourites are migrated automatically.
+-   Show the revision number of a library/preset in the browsers, e.g. v1.2.
+-   Lua and preset banks: rename `minor_version` to `revision` to better reflect what it means
+-   Fix legacy parameters panel 'Modernise all' sometimes not correctly retaining perfect sound compatibility when macros are involved
+-   Packager CLI: change shape of JSON output
+-   Tweak preset auto-description logic
+-   On the PERFORM page, make the library name use the larger font
+-   Fix buggy multiline text input like the description box on the Save Preset panel
+-   Fix the lowest MIDI velocities mapping slightly too high; velocity 1 now reaches the bottom of the velocity-to-volume curve and the softest velocity layer
+-   Add option to abbreviate parameter names in the DAW
+-   Packager CLI: include preset\_banks in JSON output
+
+## 2.0.0-beta.5
+
+-   Higher precision for holding shift while dragging waveform handles (loop, crossfade, offset)
+-   Show 2 decimal places for layer loop points and sample offset
+-   Show 1 decimal places for all percentage parameter printouts to aid precision
+-   Fix recent regression where right-click menu for libraries didn't work
+-   File pickers remember the last folder you used across sessions
+-   Packager CLI: rename flags to singular form (`--library-folder`, `--preset-folder`, `--input-package`, `--output-dir`, `--info-json`), add short aliases (`-l`, `-p`, `-i`, `-o`, `-n`, `-j`, `-e`), rename `--omit-unreferenced` to `--prune`, support `--info-json -` to write JSON to stdout
+-   Fix case where voices weren't retriggering when changing instrument/preset
+-   Tweak PERFORM page layer layout
+-   Fix FX Mix knob not being correct when loading an old preset that has a macro assigned to either Wet or Dry of Convolution, Chorus or Bitcrush FX.
+-   Lua: replace `vignette_intensity` with a `background_overlay` sub-table for tuning the mid-panel vignette (colour, inner radius) and an independent panel tint when this library is the active background
+-   Preset bank `floe-preset-bank.ini` supports an optional `library_for_visuals` field to pick which library's icon/background represents the bank
+
+## 2.0.0-beta.4
+
+-   Fix package install failing on Linux in sandboxed environments such as steam-run
+-   Show the underlying error in the notification when a package install fails
+-   Instance Config (reset on transport, reset keyswitch, seed) is preserved when loading presets
+-   Sample library creation: add 'fade\_out\_frames' to add\_region
+-   Expanded arpeggiator Auto Rate from on/off to a menu with speed multipliers (0.25x–4x) and dotted/triplet variants. Note: existing DAW parameter automation written against the old on/off toggle may not behave as expected
+-   Show the auto-picked rate as a read-only readout when Auto Rate is on, instead of greying out the Rate menu
+-   Fix arpeggiator step gate being ignored when the step was followed by tied steps
+-   Fix arpeggiator sliced instrument length and offset not loading from saved state
+-   Show step numbers at the end of tie chains and always label the final step in the arpeggiator overview
+-   Fix missing tooltip on LAYERS page instrument selection buttons
+-   Add mute/solo buttons to the PERFORM page
+-   Minor layout improvements to PERFORM page UI
+
+## 2.0.0-beta.3
+
+-   Fix arpeggiator not resetting when loading a preset or changing instruments
+-   Fix AU parameter automation lane order when loading a Floe 1.x session into Floe 2.x
+-   Fix misc VST3/AU format details (clap-wrapper library bump)
+-   Improve tag descriptions and category questions for clarity
+-   Fix preset name not updating when undoing past initial state
+-   Library development: use instrument ID on the library dev panel, not name
+-   Library development: add `kit` tag
+
+## 2.0.0-beta.2
+
+Our biggest update to date. This follows on from 1.2.0-beta.1; we chose to skip 1.2.0 and jump straight to 2.0.0.
+
+### Major new features
+
+-   Added granular synthesis (including a random detune parameter)
+-   Added EQ to effects rack
+-   Added arpeggiator
+-   GUI: split the single main page into separate Layers, Effects and Perform pages
+-   Added perform page with access to common controls and visual display, with 'Vary' random-variation control replaces the old randomise buttons; click-position strip lets you choose how much to vary
+-   Original/Modified toggle on Perform page to audition the original vs modified preset
+-   7 new LFO shapes: Random Steps, Random Glide, Pluck, Pluck Sharp, Pulse Narrow, Pulse Wide, Trapezoid
+-   Effects rack improvements:
+    -   Bypass button for each effect
+    -   Mix knob for each effect - replacing separate Wet and Dry controls where appropriate. Loading presets that were saved with the separate wet/dry parameters are perfectly re-mapped to the new Mix and Output parameters where necessary. Loading an old DAW project with separate wet/dry actives the _legacy parameters_ system.
+    -   Bypass-all and remove-all buttons on the effects panel header
+    -   Right-click reset menus on effect headings and switchboard buttons
+    -   New EQ effect
+    -   Improve Stereo Widen effect with Bass Mono and Balanced modes
+    -   New Modern compressor algorithm alongside the original
+-   Third EQ band per layer
+-   New EQ band types: low-pass, high-pass and notch
+-   Visual graphs added for the layer filter, effect filter, EQ, LFO, convolution reverb pre-filter/post-shelf, and delay filter. EQ and filter graphs have draggable nodes for editing.
+-   Undo/redo system added
+-   Per-layer stereo width knob
+-   Copy/paste/reset added throughout the GUI on right-click menus: parameters, EQ bands, layer tabs, macros, envelope background, and curve maps
+-   Reproducible playback added. New panel (3-dots menu -> Instance Config) offers features to reset variability in performances so that you can always render the exact same audio from Floe.
+-   Added a new MIDI CC Assignments panel (3-dots menu) for viewing and controls your MIDI CC mappings to Floe parameters
+-   New default background image
+-   Library-provided background images can declare attribution via `floe.set_attribution_requirement`, shown as a subtle credit on the Perform page
+
+### Improvements
+
+-   Improve parameters:
+    -   Filter and EQ frequency controls now use logarithmic mapping
+    -   Compressor ratio now skews towards more control for ratios nearer 1:1
+-   Improved legacy parameter system
+    -   Legacy-override params now show a warning badge
+    -   Redesigned legacy parameter panel (3-dots menu -> Legacy Parameters)
+    -   'Modernise' feature to convert params from legacy to modern
+-   Effect filter: new 12dB and 24dB low-pass and high-pass types
+-   Layer filter type menu reworked: clearer band-pass names, all-pass removed
+-   New menu option to rescan all libraries and presets
+-   Auto-generated preset descriptions for presets that have none
+-   Quality of life improvements:
+    -   'Unload' x-mark button on instrument selector and IR selector to clear the item
+    -   'Unload all instruments' button on the layers page
+-   Support encrypted packages (`.floe-pkg-enc`) that require a license key to install, with a paste button on the licence key dialog
+-   Fix voices from jumping into the loop region if you toggle the 'reversed' mode of a playing voice.
+-   GUI: improve browsers panels:
+    -   Cards are now expand and collapsible, selecting all items in a card is now done with a separate 'All' button.
+    -   Left panel (filters) is now dark to better differentiate it and make the cards and icons look nicer.
+    -   Sections are collapsed by default, but retains the collapse/expand state across Floe sessions.
+    -   Fix toggle not working for Favourites button
+    -   Use smaller radius corner rounding for tag buttons to match the rest of the UI
+    -   Remove 3-dots menu and instead put the filter selection modes (One, AND, OR) at the top of the filters panel.
+    -   Remove dividers between filter sections
+    -   Remove "Show Primary Filter Section Header" option. Libraries/folders are now always collapsible - more consistent and intuitive.
+    -   Expanded keyboard navigation: section headings, library/preset-bank cards, and filter buttons in the left panel are now reachable with the arrow keys and toggled with Enter
+-   Library development: removed the ability to add custom tags for instruments/IRs. Only tags from the known set are now allowed. This change allowed for simpler and faster code and enforces standardisation. Non-standard tags are now ignored. [https://floe.audio/docs/develop/tags-and-folders](https://floe.audio/docs/develop/tags-and-folders)
+-   Library development: new [`floe-library-inspector` CLI tool](https://floe.audio/docs/beta/develop/develop-libraries#library-inspector) for debugging libraries — dumps the parsed library as JSON or Lua, captures `print()` output, and reports orphan/missing samples
+-   Info panel moved from the top of Floe into a menu item within the 3-dots menu.
+-   The tabs within a layer have been adjusted: MAIN tab now contains the envelope and the filter, and the old 'Play' tab has been renamed CONFIG.
+-   Added ability to reset parameters and groups (try right-clicking on things!) to their default settings OR the settings of the last loaded preset.
+-   Lua: add `vignette_intensity` for controlling background image
+-   Save and load preset functions now remember the folder that you chose and will use that when you next use the action.
+-   LFO: show a warning icon next to the Target label when the selected destination is silent (Filter target with the filter off, or Grain Position target when not in a granular playback mode).
+-   macOS: fix keyboard text input not working in some hosts such as Logic Pro, while still letting the host receive its own keyboard shortcuts
+
+## 1.2.0-beta.1
+
+Small but noticeable improvements - mostly GUI related. Behind the scenes, a huge amount of work has been put into restructuring our GUI system for upcoming features. This is the first step towards the bigger 1.2 update. Help us out by giving this beta a spin and test that it's working well.
+
+-   GUI: improve crispness of all visuals
+-   GUI: minor visual improvements throughout: even spacing, move layer menu labels to left, standardised colours, updated popup menus, legacy parameters and error panels to the new style
+-   GUI: add instrument info strip with info about sample length, root key, number of samples
+-   GUI: split loop controls into a new Playback tab, ready for new engine mode that need more space
+-   GUI: notifications now appear on top of the window you have open and can be closed
+-   Add 'Copy to Clipboard' for errors
+-   Support installing packages with `.floe-pkg` as well as `.zip`
+-   Help protect against rare edge-case crashes
+-   Fix package installation errors due to a timeout
+-   Fix rare memory bug
+-   Fix possible memory leak related to background images
+-   Fix possible rare crash when closing Floe
+-   GUI: fix some strange behaviours when using the velocity curve map control
+-   Dev-only: support a kind of hot-reload in the standalone version
+-   File pickers: show both Mirage and Floe presets under the same file filter
+
+## 1.1.2
+
+Bug-fixes and robustness. Includes all changes from 1.1.2-beta.1 and 1.1.2.beta.2, plus:
+
+-   Fix Windows text input - no more duplicate letters, proper focusing and passing keyboard shortcuts back to DAW
+-   Fix some rare edge-case crashes
+-   Fix some rare cases where macro destination changes weren't being applied
+
+## 1.1.2-beta.2
+
+-   GUI: improve default size of Floe UI, it now considers the real DPI of the monitor if possible
+-   GUI: only show full paths for preset banks if there's ambiguity
+-   Fix error related to trying to install invalid ZIP files
+-   Windows: fix error related to graphics change in 1.1.2-beta.1
+-   Linux: changed required glibc from 2.29 to 2.31
+-   Improve GUI performance slightly (batched draw-calls and smaller memory usage)
+-   Update FLAC library and protect against edge cases
+-   Linux: fix error related to filesystem watching
+-   macOS: fix error related to opening a file dialog
+-   Handle edge cases related to loading images for sample libraries
+
+## 1.1.2-beta.1
+
+-   Improve graphics reliability on Windows (use DirectX instead of OpenGL)
+-   GUI: fix the UI keyboard octave offset defaulting to 2 rather then 0 when first loading Floe
+-   Fix possible memory leaks related to graphics (OpenGL texture destroying) and improve error checking
+-   Improve automatic error reporting
+-   Add 'drone' tag
+
+## 1.1.1
+
+-   New monophonic mode: latch. The monophonic switch parameter is replaced by a menu with this new option. In latch mode, the note only ends when all notes are released; new key-presses are ignored and the original note continues playing unchanged.
+-   GUI: show more decimal points with very slow LFO rates
+-   GUI: better icon for 'missing library' on the preset browser
+-   Add infrastructure for updating Mirage libraries to backwards-compatible Floe versions of the library. IDs are now used for libraries, instruments and IRs allowing for changing names without breaking backwards compatibility
+-   Add 'fluctuating', 'ringing' and 'whining' tags
+-   Package installation: support upgrading preset banks based on minor\_version field
+-   Package installation: add 'keep both' option when user input is required
+-   Fix EQ parameters sometimes not being correctly applied when changing presets.
+-   Fix some parameters not loading correctly related to the velocity curves
+-   Fix layer voices duplicating when just changing one instrument at a time
+-   Fix error with displaying presets with many unknown libraries
+-   Fix possible hang when installing packages
+-   Fix incorrect loop end\_frame when set in Lua as 0
+
+## 1.1.0
+
+-   Fix pop sometimes possible at ping-pong loop boundary and make adjusting the loop points while playing have less audible artefacts.
+-   Fix sometimes not correctly loading in Reaper or FL Studio, leaving UI looking correct but audio not reflective of the current state.
+-   Fix preset being silent when convolution reverb effect had -inf dB dry level.
+-   Fix possible crash related to file paths on Windows.
+-   Fix possible crash related to error reporting.
+-   Fix possible package installation failure
+-   Fix Mirage presets sometimes being too quiet if they used certain convolution reverb IRs.
+-   Major infrastructure improvements to how we build and release Floe.
+
+## 1.1.0-beta.1
+
+-   **Browser UI overhaul** (instruments, presets, IRs)
+    -   Filtering mode is now 'one' mode by default, and alternate modes for 'AND' or 'OR' filtering are selected in the 3-dots menu
+    -   New 'cards' on left panel for libraries or preset-packs
+    -   Full keyboard arrow navigation, enter to select, CTRL+F/CMD+F to focus search box, page up/down, home/end, CTRL+up/down to jump sections
+    -   Search for libraries, preset-packs and tags
+    -   Favourites system - 'star' items as for easy access later
+    -   Scrollbars are less intrusive and only appear when needed
+    -   Header is more compact leaving more space for the content
+    -   Tooltips no longer get in the way of the browser items
+-   Load images in a background thread so the GUI stays responsive
+-   Uninstall libraries and presets by right-clicking them in the browsers. Or use the Info panel uninstall libraries.
+-   New concept of 'preset banks' - a folder of presets can be tagged as a bank and given more metadata such as a description. To create one add `floe-preset-bank.ini` to a folder of presets.
+-   Press escape on the keyboard to close panels
+-   Increase threads for loading audio up to 75% of CPU cores instead of maximum of 4.
+-   Fix silent output in Ableton Live 10
+-   Fix rare startup crash (#179)
+-   Add 'Include beta version when checking for updates' preference
+
+## 1.0.6
+
+-   Add Reset Audio Engine to the menu for stopping all sound and voices
+-   macOS installer: use different method to try and avoid 'cannot install to system volume' error
+-   Fix rare crash when shutting down Floe on macOS when file-browser is open
+-   Fix rare crash when host sends an out-of-bounds parameter value
+-   Fix 'library not found' error message repeating itself
+-   Fix hover effect for tag button on the Save panel
+
+## 1.0.5
+
+-   Fix issue where mute/solo buttons sometimes wouldn't correctly work
+-   Website: improve download page layout
+-   Add additional check for existing Mirage folders, and add ability to run this manually from the menu
+-   Fix potential crash when host has a tempo near to 0 BPM
+
+## 1.0.4
+
+-   Add Linux support - CLAP and VST3
+
+## 1.0.3
+
+-   Fix issue with Bitwig, where presets wouldn't sometimes load completely
+-   Fix crackle possible crackle in audio when host uses an odd-sized audio buffer
+-   Fix rare crash when MDATA file is corrupted
+
+## 1.0.2
+
+-   Tweak the smoothing of very short attack times to allow for more sharpness
+-   GUI: show more decimal places on parameters for less than 10 ms
+
+## 1.0.1
+
+-   Fix crackle in audio when the hosts use audio buffers that are not a multiple of 32 frames.
+-   Fix crackle in Bitwig Studio due to the host not correctly using the thread\_pool extension.
+
+## 1.0.0
+
+-   Ready for widespread use.
+
+## 0.12.2-beta
+
+-   Fix sample offset start being too large and triggering an assertion failure
+
+## 0.12.1-beta
+
+-   Fix pops and clicks related to note-starting: a regression introduced in 0.12.0-beta
+
+## 0.12.0-beta
+
+-   Macros parameters:
+    -   Bottom GUI panel now has tabs: Play and Macros
+    -   Macros parameters allow for controlling multiple other parameters at once with a single knob and with a custom name
+    -   On the Macros tab, you can add and remove the parameters that are linked to each macro and control the strength of the link
+-   Add pitch wheel support: configure the bend range using the 'Pitch Bend Range' parameter on each layer.
+-   Add key range controls for splitting the keyboard into zones for each layer. These ranges are shown above the keyboard. They are controlled using new parameters on the Config tab of each layer.
+-   Fix velocity curves being clear when randomising parameters
+-   Add more information to the velocity curve tooltips
+-   New documentation pages for velocity curves
+-   Include instrument/preset descriptions in tooltips for open-browser buttons
+-   Fix window size jumping if the width was exactly 1000 pixels
+-   Fix jumps when first grabbing the resize corner
+-   Improve smoothness of audio processing when using parameter automation; Floe's engine now processes parameter changes at a fixed interval of 32 frames.
+-   Slightly improve top and bottom panel layout and colours
+-   Fix noise caused by reverb history not being cleared when loading a preset
+-   Library creation: support more than 100 velocity layers and add helper functions `midi_range_to_hundred_range` and `midi_range_to_thousand_range`
+
+## 0.11.3-beta
+
+-   Revert unintended change in intensity of Atan distortion in version 0.11-0 - unfortunately this will make presets/DAW projects (created using Floe 0.11.0-0.11.2) sound different if they used Atan distortion.
+-   Fix regression where GUI might not update when sound is playing
+-   Library creation: add audio\_properties for impulse response for setting gain\_db for IRs
+
+## 0.11.2-beta
+
+-   Fix rare crash when resizing the GUI to a very small size
+-   Improve UI size control on the preferences panel so that incrementing/decrementing feels more significant
+-   Fix memory leak
+
+## 0.11.1-beta
+
+-   Add sitemap.xml for the website
+-   Improve the website homepage, installation, mirage, packages, roadmap pages.
+-   Packager tool:
+    -   Add ability to merge multiple packages into one
+    -   Add ability to output a JSON file with comprehensive information about the package
+-   Improve error reporting: show RAM, let Sentry decide on fingerprint, fix getting reports of crashes from outside of the plugin
+-   Fix a whole bunch of rare crashes
+-   Windows: fix uninstaller not uninstalling some small files
+
+## 0.11.0-beta
+
+-   Add new velocity -> volume curve for each layer. This replaces the old mapping buttons and the master 'Velo' button. There's now much more control. The old parameters are available in a new 'legacy' parameters section but are no longer used unless loading a DAW preset that uses them.
+-   Add new algorithms to distortion: foldback, rectifier and ring-modulator
+-   Fix LFO and delay time not updating with the tempo
+-   Reduce pops and clicks with high-frequency LFOs, sharp changes in ADSR and some parameter changes
+-   GUI: improve browsers behaviour:
+    -   Background darkens when panel is open
+    -   New close button on the top right
+    -   Remove unnecessary padding around the browser content
+    -   Single-click loads an item, double-click loads and closes the browser
+    -   Add right-click menu on libraries with option to open the library folder
+    -   Add right-click menu to presets and preset folders with option to open the folder, or delete the preset
+-   Improve menus:
+    -   Add left/right buttons to all menus on the GUI
+    -   Allow most menus to be dragged like a slider to change the value
+    -   Add randomise button to convolution IR menu as well as left/right buttons
+    -   Make all left/right buttons on the UI the same style
+    -   Move the left/right buttons to the right of the menu so it's consistent and easy to click forward and back without having to move the mouse long distances
+    -   Make the UI window size buttons consistent with the left/right buttons
+-   GUI: show loop points if an instrument has a single sample with built-in loop
+-   GUI: add resize corner to the bottom right of the GUI window
+-   Add missing tooltips for some preferences
+-   Work-around CLAP Studio One not using the correct threads
+-   GUI: right-click menu for the IR browser with 'unload IR' option
+-   GUI: don't show markers on ADSR when it's inactive
+-   GUI: Instrument browsers now have their own stat for filters (libraries, tags, etc.) allowing for more flexibility particularly with the randomise buttons
+-   GUI: remove option to show/hide the keyboard. It's not often used, and coming soon are new features that only make sense with the keyboard shown.
+-   Fix crash when changing tabs on the 'Legal' tab of the Info panel
+-   Fix presets browser not showing nesting of folder on Windows
+-   Fix rare crash when loading a library on Windows
+
+## 0.10.3-beta
+
+-   Sample library creation: add 'fade\_in\_frames' to add\_region
+-   GUI: remove the status panel from the browsers, instead, items show a tooltip when hovered for a moment. This make the browsers less cluttered and fixes the issue where the text would be too long to fit in the status panel.
+-   GUI: make sections in the browser collapsible
+-   GUI: improve the layout of the browser filters
+
+## 0.10.2-beta
+
+-   Fix issue where layer volume would be automatically MIDI learned
+-   Fix some persistent MIDI CCs not being applied
+
+## 0.10.1-beta
+
+-   Replace 'Reset all parameters' option with 'Reset State' which also clears things such as instruments.
+-   Fix crash with floe-package when using relative paths
+-   Fix possible error with installing/opening preset-browser
+-   Fix a set of possible rare errors
+
+## 0.10.0-beta
+
+-   Browsers:
+    -   Add filters for folders (tree view)
+    -   Put tags into categories and add icons
+    -   Add 2 filter modes: match-all and match-any, allowing for more powerful filtering. Every filter button has a label showing the number of matching items that dynamically updates as you change the filters.
+    -   Fix instrument browser not showing waveform instruments when no Mirage libraries installed
+    -   Show library icons for each library used by a preset
+    -   Show (?) icon for missing libraries
+    -   Add `<untagged>` filter for items that don't have any tags
+-   Add "Library Developer Panel" on the GUI with tag-builder tool for generating instrument tags in Lua.
+-   Add right-click menu to the instrument browser button with 'unload instrument' option.
+-   Add lock/unlock mode for Save Preset panel for allowing changing presets with it still open
+-   Sample library creation: add support for multiple Lua files by using `dofile()`
+-   Sample library creation: add set\_required\_floe\_version function
+-   Sample library creation: add generated Floe API definition file for Lua Language Server allowing for code completion and documentation as you type - available on the Library Developer Panel
+-   GUI: slightly improved icons
+-   GUI: use same toggle icon for all toggle buttons
+-   GUI: make mute/solo buttons more obvious when they're on
+-   Fix mute/solo buttons not greying out layers
+-   Fix cases where mute/solo button would get stuck on
+-   Fix preset selection buttons not working on the first click due to the scanning not having started. Now, scanning begins when the cursor is hovering over the button.
+
+## 0.9.9-beta
+
+-   Sample library creation: add start\_offset\_frames to add\_region
+-   Sample library creation: add tune\_cents to add\_region
+-   Normalise waveform GUI so that quiet samples are easier to see
+-   Fix rare crash related to sample library folder scanning
+
+## 0.9.8-beta
+
+-   Fix rare error on Windows when closing the GUI when there's a file picker open
+-   Fix rare errors in some VST3 hosts
+-   Fix rare crash related to sample library folder scanning
+
+## 0.9.7-beta
+
+-   Fix rare crash related to closing the GUI on Floe AU
+-   Fix rare crash related to library images
+-   Fix rare crash related to voice stealing
+-   Fix edge cases related to file paths on Windows
+
+## 0.9.6-beta
+
+-   Check for updates on startup; a small indicator on the Info button will appear - leading to more information on the Info panel. Can be disabled in the preferences.
+-   Fix file picker on Windows not opened when there's missing folders
+-   Fix rare crash in Floe AU in Ableton Live
+
+## 0.9.5-beta
+
+-   Fix potential crash in Floe AU format
+-   Fix errors related to filesystem watching on Windows
+-   Fix error related to sample library folders - could happen when installing a package
+
+## 0.9.4-beta
+
+-   Offer separate downloads for Intel and Apple Silicon Macs rather than a universal binary, this reduces the size of the download to ~50 MB.
+-   Fix missing diagnostic information on macOS
+
+## 0.9.3-beta
+
+-   Fix more errors with threads
+-   Fix memory leaks
+-   Fix some edge cases with certain hosts
+-   Improve automatic error reporting allowing us to fix bugs faster
+-   Protect against hosts that try to use multiple main threads
+
+## 0.9.2-beta
+
+-   Slightly improve performance of Intel Mac builds
+-   Fix crash with Intel Mac builds
+-   Fix errors with threads
+
+## 0.9.1-beta
+
+-   AU: fix crash when trying to open the file/folder picker
+-   Fix missing logo on macOS
+
+## 0.9.0-beta
+
+-   Library creation: fix specifying loop end points relative to the end of the file.
+-   Library creation: replace always\_loop, never\_loop field with enum `loop_requirement`.
+-   Library creation: add round\_robin\_sequencing\_group field to allow for different sets of variations.
+-   Library creation: separate note-off round-robin sequencing group from note-on round-robin sequencing group.
+-   Library creation: disable volume envelope for note-off regions
+-   Library creation: improve memory usage when reading Lua scripts
+-   Library creation: fix crash when an image file is empty
+-   VST3: fix not responding to note-on/note-off messages when they weren't on channel 0
+-   GUI: on the Save Preset dialog, add the ability to store/load a preset author
+-   GUI: make the Save Preset dialog larger and scroll to top when a new preset is loaded
+-   Fix potential crash when reporting an error
+-   Rename parameter right-click menu Set Value to Enter Value
+-   Support CLAP reset() function
+
+## 0.8.3-beta
+
+-   Fix crash when error occurs in the Windows native file picker
+-   Fix crash when given invalid arguments to CLAP activate
+-   Fix crash when opening VST3 in FL Studio on Windows
+
+## 0.8.2-beta
+
+-   Fix crash when trying to randomise instruments, presets or IRs when there's only one of them
+-   Fix presets folder still showing tags after a folder is removed. #120
+-   Fix crash when first opening the GUI
+
+## 0.8.1-beta
+
+See the [main release notes](https://github.com/floe-audio/Floe/releases/tag/v0.8.0-beta).
+
+-   Fix issue where Mirage and Floe libraries with the same name would conflict
+
+## 0.8.0-beta
+
+First beta release of Floe. This release is feature-complete. We are looking for feedback on the new features and any bugs you find.
+
+-   Add AU (Audio Unit v2) support
+-   Brand new instrument browser supporting tags, search, and filtering by library
+-   Brand new impulse response browser featuring all the options of the instrument browser
+-   Brand new preset browser with tags, search, and filtering by library. Preset metadata is tracked, library information is tracked, file changes are detected, duplicate presets are hidden.
+-   New built-in convolution reverb impulse library with 33 impulse responses
+-   New save preset dialog with author, description, and tags
+-   Fix instrument left/right and randomise buttons
+-   Fix instance ID not retaining
+-   Fix freeze when trying to resize GUI
+-   Fix GUI opening but only ever showing black
+-   Fix randomise parameters
+
+Note: we have jumped from 0.0.7 to 0.8.0. This is to signify the change from alpha to beta but also because it wasn't really right in the first place only incrementing by the patch number. To make the jump obvious we start the minor version at 0.8.0 rather than 0.1.0.
+
+## 0.0.7-alpha
+
+The focus of this version has been bug fixes; in particular around loading Mirage libraries and presets.
+
+-   Max voice is increased from 32 to 256 allowing for more complex instruments
+-   Show the instrument type on the GUI: single sample, multisample or oscillator waveform
+-   Rename 'Dynamics' knob to 'Timbre' and fix its behaviour - for instruments such as Arctic Strings, it can be used to crossfade between different sets of samples.
+-   Fix missing code signing on Windows installer resulting in 'Unknown Publisher' warning
+-   Fix layer filter type menu being the incorrect width
+-   Fix crash when loop points were very close together
+-   Improve loop modes on GUI: it's obvious when a loop is built-in or custom, what modes are available for a given instrument, why loop modes are invalid.
+-   Add docs about looping
+-   Fix sustain pedal incorrectly ending notes
+
+Mirage loading:
+
+-   Fix incorrect loading of Mirage on/off switches - resulting in parameters being on when they should be off
+-   Fix incorrect handling of Mirage's 'always loop' instruments
+-   Fix incorrect conversion from Mirage's effects to Floe's effects
+-   Improve sound matching when loading Mirage presets
+-   Fix failure loading some FrozenPlain Squeaky Gate instruments
+
+Library creation:
+
+-   Re-organise the fields for add\_region - grouping better into correct sections and allowing for easier expansion in the future.
+-   Sample library region loops now are custom tables with `start_frame`, `end_frame`, `crossfade` and `mode` fields instead of an array.
+-   Add `always_loop` and `never_loop` fields to sample library regions allowing for more control over custom loop usage on Floe's GUI.
+-   Show an error if there's more than 2 velocity layers that are using 'feathering' mode. We don't support this yet. Same for timbre layers.
+
+## 0.0.6-alpha
+
+-   Add VST3 support
+-   Standardise how tags and folders will be used in instruments, presets and impulse responses: [https://floe.audio/develop/tags-and-folders.html](https://floe.audio/develop/tags-and-folders.html)
+-   Fix sustain pedal
+-   Remove 'retrig CC 64' parameter from layer MIDI. This was mostly a legacy workaround from Mirage. Instead, we just use the typical behaviour that when you play the same note multiple times while holding the sustain pedal, the note plays again - stacking up.
+-   Fix package installation crash after removing folders
+-   Fix markers staying on ADSR envelope even when sound is silent
+-   Fix MIDI transpose causing notes to never stop
+-   Fix peak meters dropping to zero unexpectedly
+-   Fix not finding Mirage libraries/presets folders
+
+## 0.0.5-alpha
+
+-   Fix text being pasted into text field when just pressing 'V' rather than 'Ctrl+V'
+-   Windows: fix unable to use spacebar in text fields due to the host stealing the keypress
+-   Fix crash when trying to load or save a preset from file
+-   Improve the default background image
+
+## 0.0.4-alpha
+
+Fix crash when opening the preset browser.
+
+## 0.0.3-alpha
+
+Version 0.0.3-alpha is a big step towards a stable release. There's been 250 changed files with 17,898 code additions and 7,634 deletions since the last release.
+
+It's still alpha quality, and CLAP only. But if you're feeling adventurous, we'd love for you to try it out and give us feedback:
+
+-   [Download Floe](https://floe.audio/installation/download-and-install-floe.html)
+-   [Download some libraries](https://floe.audio/packages/available-packages.html)
+-   [Install libraries](https://floe.audio/packages/install-packages.html)
+
+Error reporting has been a significant focus of this release. We want to be able to fix bugs quickly and make Floe as stable as possible. A part of this is a new a Share Feedback panel on the GUI - please use this!
+
+Floe's website has been filled out a lot too.
+
+New/edited documentation pages:
+
+-   [Floe support for using CC BY libraries](https://floe.audio/usage/attribution.html)
+-   [Autosave feature added](https://floe.audio/usage/autosave.html)
+-   [New error reports, crash protection, feedback form](https://floe.audio/usage/error-reporting.html)
+-   [New uninstaller for Windows](https://floe.audio/installation/uninstalling.html)
+
+### Highlights
+
+-   Add new Info panel featuring info about installed libraries. 'About', 'Metrics' and 'Licenses' have been moved here too instead of being separate panels.
+-   Add new Share Feedback panel for submitting bug reports and feature requests
+-   Add attribution-required panel which appears when needed with generated copyable text for fulfilling attribution requirements. Synchronised between all instances of Floe. Makes complying with licenses like CC BY easy.
+-   Add new fields to the Lua API to support license info and attribution, such as CC BY
+-   Add lots of new content to floe.audio
+-   Add error reporting. We are now better able to fix bugs. When an error occurs, an anonymous report is sent to us. You can disable this in the preferences. This pairs with the new Share Feedback panel - that form can also be used to report bugs.
+-   Add autosave feature, which efficiently saves the current state of Floe at a configurable interval. This is useful for recovering from crashes. Configurable in the preferences.
+-   Add a Floe uninstaller for Windows, integrated into Windows' 'Add or Remove Programs' control panel
+-   Preferences system is more robust and flexible. Preferences are saved in a small file. It syncs between all instances of Floe - even if the instances are in different processes. Additionally, you can edit the preferences file directly if you want to; the results will be instantly reflected in Floe.
+-   Improve window resizing: fixed aspect ratio, correct remembering of previous size, correct keyboard show/hide, resizable to any size within a reasonable range.
+
+### Other changes
+
+-   Add support for packaging and installing MDATA libraries (Mirage)
+-   Add tooltips to the preferences GUI
+-   Add ability to select multiple packages to install at once
+-   Rename 'settings' to 'preferences' everywhere
+-   Rename 'Appearance' preferences to 'General' since it's small and can be used for other preferences
+-   Make notifications dismiss themselves after a few seconds
+-   Fix externally deleted or moved-to-trash libraries not being removed from Floe
+-   Fix not installing to the chosen location
+-   Fix Windows installer creating nonsense CLAP folder
+-   Fix packager adding documents into the actual library rather than the package
+
+## 0.0.2
+
+-   Fix Windows installer crash
+-   Don't show a console window with the Windows installer
+-   Better logo for Windows installer
+-   Remove unnecessary 'Floe Folders' component from macOS installer
+
+## 0.0.1
+
+This is the first release of Floe. It's 'alpha quality' at the moment - there will be bugs and there are a couple of missing features. This release is designed mostly to test our release process.
+
+This release only contains the CLAP plugin. The VST3 and AU plugins will be released soon.
+
+## Mirage
+
+Floe used to be called [Mirage](https://floe.audio/about-the-project/mirage.html). Mirage contained many of the same features seen in Floe v0.0.1. But there are large structural changes, and some new features and improvements:
+
+-   Use multiple different libraries in the same instance.
+-   CLAP version added - VST3 and AU coming soon, VST2 support dropped.
+-   New installer: offline, no account/download-tickets needed. Libraries are installed separately.
+-   Ability for anyone to develop sample libraries using new Lua-based sample library format. The new format features a new system to tag instruments and libraries. Hot-reload library development: changes to a library are instantly applied to Floe.
+-   New [comprehensive documentation](https://floe.audio).
+-   Floe now can have multiple library and preset folders. It will scan all of them for libraries and presets. This is a much more robust and flexible way to manage assets rather than trying to track individual files.
+-   New, robust infrastructure:
+    -   Floe settings are saved in a more robust way avoiding issues with permissions/missing files.
+    -   Improved default locations for saving libraries and presets to avoid permissions issues.
+    -   New format for saving presets and DAW state - smaller and faster than before and allows for more expandability.
+-   New settings GUI.
+-   Floe packages: a robust way to install libraries and presets. Floe packages are zip files with a particular layout that contain libraries and presets. In the settings of Floe, you can install these packages. It handles all the details of installing/updating libraries and presets. It checks for existing installations and updates them if needed. It even checks if the files of any existing installation have been modified and will ask if you want to replace them. Everything just works as you'd expect.
+
+Technical changes:
+
+-   Huge refactor of the codebase to be more maintainable and expandable. There's still more to be done yet though.
+-   New build system using Zig; cross-compilation, dependency management, etc.
+-   Comprehensive CI/CD pipeline for testing and creating release builds.
+-   New 'sample library server', our system for providing libraries and audio files to Floe in a fast, async way.
