@@ -721,7 +721,7 @@ static void DevicesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
             PreferencesRhsText(builder, rhs, "Device unavailable"_s);
     }
 
-    if (TextButton(builder, root, {.text = "Refresh", .tooltip = "Rescan for connected devices"_s}))
+    if (TextButton(builder, root, {.text = "Refresh devices", .tooltip = "Rescan for connected devices"_s}))
         if (host->refresh_devices) host->refresh_devices(host);
 
     if (host->get_tempo && host->set_tempo) {
