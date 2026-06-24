@@ -542,6 +542,8 @@ void EndVoiceInstantly(Voice& voice) {
         1,
         RmwMemoryOrder::Relaxed);
     voice.is_active = false;
+
+    voice.grain_pool.DeactivateAllGrains();
 }
 
 void EndVoice(Voice& voice) {

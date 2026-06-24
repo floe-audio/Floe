@@ -152,13 +152,17 @@ struct Grain {
 };
 
 struct GrainPool {
-    void Reset(f32 sample_rate) {
+    void DeactivateAllGrains() {
         for (auto& g : grains)
             g.active = false;
         for (auto& c : spawn_counters)
             c = 0;
-        steal_fade_dec_value = 1.0f / Max(1.0f, k_grain_steal_fadeout_ms * 0.001f * sample_rate);
         num_active_non_stealing = 0;
+    }
+
+    void Reset(f32 sample_rate) {
+        DeactivateAllGrains();
+        steal_fade_dec_value = 1.0f / Max(1.0f, k_grain_steal_fadeout_ms * 0.001f * sample_rate);
         smoothing_smoother.Reset();
     }
 
