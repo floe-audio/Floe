@@ -19,6 +19,7 @@
 #include "common_infrastructure/state/state_coding.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
+#include "build_resources/embedded_files.h"
 #include "preset_tool_lua_codec.hpp"
 
 // IMPROVE: export a Lua LSP def file for the preset table.
@@ -29,6 +30,7 @@ enum class CliArgId : u8 {
     ReadOnly,
     PrintShape,
     PrintParamsJson,
+    Json,
     Count,
 };
 
@@ -46,6 +48,7 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
             "  preset_path               string - absolute path of the preset being processed.\n"
             "  inspect_library(path)     function - returns a table describing a floe.lua file\n"
             "                            (same shape as library-inspector --format=lua).\n"
+            "  json                      table - rxi/json.lua, exposing json.encode and json.decode.\n"
             "Use --print-shape for a description of the preset table, and --print-params-json for\n"
             "the parameter id_strings, ranges, and enum integer values.\n",
         .value_type = "path",
@@ -87,6 +90,16 @@ auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
                        "numeric and formatted display forms, legacy flag) plus the enum integer tables\n"
                        "(InstrumentType, WaveformType, EffectType). Pipe into jq to query. No preset file\n"
                        "required.\n",
+        .value_type = "",
+        .required = false,
+        .num_values = 0,
+    },
+    {
+        .id = (u32)CliArgId::Json,
+        .key = "json",
+        .description = "Print the preset as JSON instead of a Lua table. Has no effect with --script-file\n"
+                       "(scripts that want JSON can call json.encode(preset) directly; a 'json' global\n"
+                       "exposing rxi/json.lua's encode/decode is always available).\n",
         .value_type = "",
         .required = false,
         .num_values = 0,
@@ -234,6 +247,24 @@ print("local preset = " .. serializeValue(preset))
 print("return preset")
 )lua";
 
+constexpr auto k_lua_json_serializer = "print(json.encode(preset))\n";
+
+// Load the embedded rxi/json.lua module and bind it as a 'json' global so scripts (and the
+// --json print serializer) can call json.encode / json.decode.
+static ErrorCodeOr<void> RegisterJsonGlobal(lua_State* lua) {
+    auto const data = EmbeddedJsonLua();
+    if (luaL_loadbuffer(lua, (char const*)data.data, data.size, "json.lua") != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: failed to load json.lua: {}\n", lua_tostring(lua, -1));
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    if (lua_pcall(lua, 0, 1, 0) != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: failed to run json.lua: {}\n", lua_tostring(lua, -1));
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    lua_setglobal(lua, "json");
+    return k_success;
+}
+
 static ErrorCodeOr<void> PrintShape(ArenaAllocator& arena) {
     constexpr auto k_header =
         "preset-tool: 'preset' Lua table shape.\n"
@@ -296,6 +327,7 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
     BuildPresetLuaTable(lua, DefaultStateSnapshot(), {.global_name = "default_preset"});
 
     luaL_openlibs(lua);
+    TRY(RegisterJsonGlobal(lua));
     lua_register(lua, "inspect_library", LuaInspectLibrary);
     lua_pushlstring(lua, opts.preset_path.data, opts.preset_path.size);
     lua_setglobal(lua, "preset_path");
@@ -499,6 +531,9 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         });
         script_source = script_file_data;
         script_name = script_path;
+    } else if (cli_args[ToInt(CliArgId::Json)].was_provided) {
+        script_source = FromNullTerminated(k_lua_json_serializer);
+        script_name = "json-serializer"_s;
     } else {
         script_source = FromNullTerminated(k_lua_print_serializer);
         script_name = "print-serializer"_s;

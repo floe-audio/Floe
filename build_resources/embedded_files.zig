@@ -63,6 +63,10 @@ export fn EmbeddedPackageInstallationRtf() c.BinaryData {
     return embeddedFile("package_installation.rtf");
 }
 
+export fn EmbeddedJsonLua() c.BinaryData {
+    return embeddedFile("json.lua");
+}
+
 const embedded_irs = [_]c.EmbeddedIr{
     // Bizarre FX
     .{
