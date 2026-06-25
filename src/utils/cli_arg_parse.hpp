@@ -478,6 +478,140 @@ ParseCommandLineArgsStandard(ArenaAllocator& arena,
     return result.Value();
 }
 
+// Subcommand support.
+//
+// Layered on top of ParseCommandLineArgs without modifying it. The first non-flag arg is treated
+// as the verb; everything after it is forwarded to the per-verb arg defs unchanged. Each verb is
+// parsed by an unmodified call into ParseCommandLineArgs, so per-verb `--help`, `--version`,
+// `--log-level`, positionals, and validation all behave exactly as for a flat CLI.
+//
+// Help routing:
+//   <exe>                 -> top-level help, returns InvalidArguments (missing command)
+//   <exe> --help          -> top-level help, returns HelpRequested
+//   <exe> <verb> --help   -> per-verb help, returns HelpRequested (handled by inner parser)
+//   <exe> --version       -> prints version, returns VersionRequested
+//
+// --log-level is per-verb only (no pre-verb position is recognised).
+struct CommandLineSubcommand {
+    u32 id; // normally an enum, matches the verb's index
+    String name; // verb token, e.g. "inspect"
+    String description; // one-liner shown in top-level help; also used as the per-verb help description
+    Span<CommandLineArgDefinition const> args; // built with MakeCommandLineArgDefs
+    PositionalArgsInfo positionals {};
+};
+
+struct ParsedSubcommand {
+    u32 id;
+    Span<CommandLineArg> args;
+};
+
+struct ParseSubcommandsOptions {
+    String description {}; // top-level (printed above the command list)
+    String version {};
+    bool handle_log_level_option = true;
+    bool print_usage_on_error = true;
+};
+
+PUBLIC ErrorCodeOr<void> PrintSubcommandsUsage(Writer writer,
+                                               String exe_name,
+                                               String description,
+                                               Span<CommandLineSubcommand const> subs) {
+    if (description.size) TRY(fmt::FormatToWriter(writer, "{}\n\n", description));
+    TRY(fmt::FormatToWriter(writer, "Usage: {} <command> [OPTIONS]\n\n", exe_name));
+    TRY(fmt::FormatToWriter(writer, "Commands:\n"));
+
+    usize max_name = 0;
+    for (auto const& s : subs)
+        max_name = Max(max_name, s.name.size);
+
+    for (auto const& s : subs) {
+        TRY(fmt::FormatToWriter(writer, "  {}", s.name));
+        TRY(writer.WriteCharRepeated(' ', (max_name - s.name.size) + 2));
+        TRY(fmt::FormatToWriter(writer, "{}\n", s.description));
+    }
+    TRY(fmt::FormatToWriter(writer,
+                            "\nRun '{} <command> --help' for more information on a command.\n",
+                            exe_name));
+    return k_success;
+}
+
+PUBLIC ErrorCodeOr<ParsedSubcommand> ParseCommandLineSubcommands(Writer writer,
+                                                                 ArenaAllocator& arena,
+                                                                 ArgsCstr argv,
+                                                                 Span<CommandLineSubcommand const> subs,
+                                                                 ParseSubcommandsOptions options = {}) {
+    ASSERT(argv.size > 0);
+    auto const program_name = FromNullTerminated(argv.args[0]);
+
+    auto print_top_help = [&]() {
+        return PrintSubcommandsUsage(writer, program_name, options.description, subs);
+    };
+
+    if (argv.size < 2) {
+        if (options.print_usage_on_error) {
+            TRY(fmt::FormatToWriter(writer, "Error: a command is required\n\n"));
+            TRY(print_top_help());
+        }
+        return ErrorCode {CliError::InvalidArguments};
+    }
+
+    auto const first = FromNullTerminated(argv.args[1]);
+
+    if (first == "--help"_s || first == "-h"_s) {
+        TRY(print_top_help());
+        return ErrorCode {CliError::HelpRequested};
+    }
+    if (options.version.size && first == "--version"_s) {
+        TRY(fmt::FormatToWriter(writer, "Version {}\n", options.version));
+        return ErrorCode {CliError::VersionRequested};
+    }
+
+    auto const sub_index = FindIf(subs, [&](auto const& s) { return s.name == first; });
+    if (!sub_index) {
+        if (options.print_usage_on_error) {
+            TRY(fmt::FormatToWriter(writer, "Error: unknown command '{}'\n\n", first));
+            TRY(print_top_help());
+        }
+        return ErrorCode {CliError::InvalidArguments};
+    }
+    auto const& sub = subs[*sub_index];
+
+    auto const sub_program_name = fmt::Join(arena, Array {program_name, " "_s, sub.name});
+    auto const after_verb =
+        ArgsToStringsSpan(arena, ArgsCstr {argv.size - 1, argv.args + 1}, /*include_program_name=*/false);
+
+    auto result = TRY(ParseCommandLineArgs(writer,
+                                           arena,
+                                           sub_program_name,
+                                           after_verb,
+                                           sub.args,
+                                           {
+                                               .handle_help_option = true,
+                                               .print_usage_on_error = options.print_usage_on_error,
+                                               .handle_log_level_option = options.handle_log_level_option,
+                                               .description = sub.description,
+                                               .version = options.version,
+                                               .positionals = sub.positionals,
+                                           }));
+
+    return ParsedSubcommand {.id = sub.id, .args = result};
+}
+
+PUBLIC ValueOrError<ParsedSubcommand, int>
+ParseCommandLineSubcommandsStandard(ArenaAllocator& arena,
+                                    ArgsCstr argv,
+                                    Span<CommandLineSubcommand const> subs,
+                                    ParseSubcommandsOptions options = {}) {
+    auto writer = StdWriter(StdStream::Err);
+    auto result = ParseCommandLineSubcommands(writer, arena, argv, subs, options);
+    if (result.HasError()) {
+        if (result.Error() == CliError::HelpRequested) return 0;
+        if (result.Error() == CliError::VersionRequested) return 0;
+        return 1;
+    }
+    return result.Value();
+}
+
 // Compile-time helper that ensures command line arg definitions exactly match an enum. Allowing for easy
 // lookup.
 template <EnumWithCount EnumType, usize N>
@@ -502,6 +636,28 @@ consteval Array<CommandLineArgDefinition, N> MakeCommandLineArgDefs(CommandLineA
     }
 
     return args;
+}
+
+template <EnumWithCount EnumType, usize N>
+consteval Array<CommandLineSubcommand, N> MakeSubcommands(CommandLineSubcommand (&&a)[N]) {
+    auto subs = ArrayT(a);
+
+    if (subs.size != ToInt(EnumType::Count)) throw "MakeSubcommands: size of array doesn't match enum count";
+
+    for (auto const [sub_index, sub] : Enumerate(subs)) {
+        if (sub.id != (u32)sub_index) throw "MakeSubcommands: id is out of order with enum value";
+        if (!sub.name.size) throw "MakeSubcommands: name is empty";
+        if (!sub.description.size) throw "MakeSubcommands: description is empty";
+        if (sub.name == "--help"_s || sub.name == "-h"_s || sub.name == "--version"_s)
+            throw "MakeSubcommands: name collides with a reserved option";
+
+        for (auto const& other : subs) {
+            if (&sub == &other) continue;
+            if (sub.name == other.name) throw "MakeSubcommands: duplicate name";
+        }
+    }
+
+    return subs;
 }
 
 // NOTE: not necessary if you created args with MakeCommandLineArgDefs - you can just use array indexing

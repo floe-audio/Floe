@@ -467,4 +467,168 @@ TEST_CASE(TestParseCommandLineArgs) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterCliArgParseTests) { REGISTER_TEST(TestParseCommandLineArgs); }
+TEST_CASE(TestParseCommandLineSubcommands) {
+    auto& a = tester.scratch_arena;
+
+    enum class Verb : u8 { Inspect, Run, Count };
+
+    enum class InspectId : u8 { Format, Raw, Count };
+    constexpr auto k_inspect_defs = MakeCommandLineArgDefs<InspectId>({
+        {
+            .id = (u32)InspectId::Format,
+            .key = "format",
+            .description = "lua|json",
+            .value_type = "format",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)InspectId::Raw,
+            .key = "raw",
+            .description = "Skip adaptation.",
+            .value_type = "",
+            .required = false,
+            .num_values = 0,
+        },
+    });
+
+    enum class RunId : u8 { ReadOnly, Count };
+    constexpr auto k_run_defs = MakeCommandLineArgDefs<RunId>({
+        {
+            .id = (u32)RunId::ReadOnly,
+            .key = "read-only",
+            .description = "No writes.",
+            .value_type = "",
+            .required = false,
+            .num_values = 0,
+        },
+    });
+
+    Span<String> inspect_positionals {};
+    Span<String> run_positionals {};
+
+    auto const subs = Array {
+        CommandLineSubcommand {
+            .id = (u32)Verb::Inspect,
+            .name = "inspect"_s,
+            .description = "Print preset(s)."_s,
+            .args = k_inspect_defs,
+            .positionals = {.name = "path"_s, .out = &inspect_positionals},
+        },
+        CommandLineSubcommand {
+            .id = (u32)Verb::Run,
+            .name = "run"_s,
+            .description = "Run a Lua script."_s,
+            .args = k_run_defs,
+            .positionals = {.name = "path"_s, .out = &run_positionals},
+        },
+    };
+
+    DynamicArray<char> buffer {a};
+    auto writer = dyn::WriterFor(buffer);
+
+    SUBCASE("valid verb with flag and positionals") {
+        char const* argv[] = {"tool", "inspect", "--format=json", "a.preset", "b.preset"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.print_usage_on_error = false});
+        auto const parsed = REQUIRE_UNWRAP(o);
+        CHECK_EQ(parsed.id, (u32)Verb::Inspect);
+        CHECK(parsed.args[ToInt(InspectId::Format)].was_provided);
+        CHECK(parsed.args[ToInt(InspectId::Format)].values == Array {"json"_s});
+        CHECK(!parsed.args[ToInt(InspectId::Raw)].was_provided);
+        REQUIRE(inspect_positionals.size == 2);
+        CHECK_EQ(inspect_positionals[0], "a.preset"_s);
+        CHECK_EQ(inspect_positionals[1], "b.preset"_s);
+    }
+
+    SUBCASE("different verb routes to its own defs") {
+        char const* argv[] = {"tool", "run", "--read-only", "x.preset"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.print_usage_on_error = false});
+        auto const parsed = REQUIRE_UNWRAP(o);
+        CHECK_EQ(parsed.id, (u32)Verb::Run);
+        CHECK(parsed.args[ToInt(RunId::ReadOnly)].was_provided);
+        REQUIRE(run_positionals.size == 1);
+        CHECK_EQ(run_positionals[0], "x.preset"_s);
+    }
+
+    SUBCASE("missing verb is an error") {
+        char const* argv[] = {"tool"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.print_usage_on_error = false});
+        REQUIRE(o.HasError());
+        CHECK(o.Error() == CliError::InvalidArguments);
+    }
+
+    SUBCASE("unknown verb is an error") {
+        char const* argv[] = {"tool", "bogus"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.print_usage_on_error = false});
+        REQUIRE(o.HasError());
+        CHECK(o.Error() == CliError::InvalidArguments);
+    }
+
+    SUBCASE("top-level --help") {
+        char const* argv[] = {"tool", "--help"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.print_usage_on_error = false});
+        REQUIRE(o.HasError());
+        CHECK(o.Error() == CliError::HelpRequested);
+        CHECK(buffer.size > 0);
+    }
+
+    SUBCASE("per-verb --help is handled by inner parser") {
+        char const* argv[] = {"tool", "inspect", "--help"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.print_usage_on_error = false});
+        REQUIRE(o.HasError());
+        CHECK(o.Error() == CliError::HelpRequested);
+    }
+
+    SUBCASE("--version at top level") {
+        char const* argv[] = {"tool", "--version"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.version = "9.9.9"_s, .print_usage_on_error = false});
+        REQUIRE(o.HasError());
+        CHECK(o.Error() == CliError::VersionRequested);
+    }
+
+    SUBCASE("verb name in usage line uses 'exe verb'") {
+        char const* argv[] = {"tool", "inspect", "--help"};
+        auto const o = ParseCommandLineSubcommands(writer,
+                                                   a,
+                                                   {(int)ArraySize(argv), argv},
+                                                   subs,
+                                                   {.print_usage_on_error = false});
+        REQUIRE(o.HasError());
+        CHECK(ContainsSpan((String)buffer, "tool inspect"_s));
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterCliArgParseTests) {
+    REGISTER_TEST(TestParseCommandLineArgs);
+    REGISTER_TEST(TestParseCommandLineSubcommands);
+}
