@@ -24,82 +24,36 @@
 
 // IMPROVE: export a Lua LSP def file for the preset table.
 
-enum class CliArgId : u8 {
-    ScriptFile,
-    Raw,
-    ReadOnly,
-    PrintShape,
-    PrintParamsJson,
-    Json,
-    Count,
-};
+enum class Verb : u8 { Inspect, Run, DocsShape, DocsParams, Count };
 
-auto constexpr k_command_line_args_defs = MakeCommandLineArgDefs<CliArgId>({
+enum class InspectArg : u8 { Format, Raw, Count };
+constexpr auto k_inspect_arg_defs = MakeCommandLineArgDefs<InspectArg>({
     {
-        .id = (u32)CliArgId::ScriptFile,
-        .key = "script-file",
-        .description =
-            "Path to a Lua script to run for each preset. Without --script-file the preset is\n"
-            "serialised to stdout (no writes). The script sees these globals:\n"
-            "  preset                    table - the current preset. Modify it to save (unless\n"
-            "                            --read-only). Run --print-shape for its full structure.\n"
-            "  default_preset            table - a default-initialised preset in the same shape.\n"
-            "                            Useful as a reference or source of default values.\n"
-            "  preset_path               string - absolute path of the preset being processed.\n"
-            "  inspect_library(path)     function - returns a table describing a floe.lua file\n"
-            "                            (same shape as library-inspector --format=lua).\n"
-            "  json                      table - rxi/json.lua, exposing json.encode and json.decode.\n"
-            "Use --print-shape for a description of the preset table, and --print-params-json for\n"
-            "the parameter id_strings, ranges, and enum integer values.\n",
-        .value_type = "path",
+        .id = (u32)InspectArg::Format,
+        .key = "format",
+        .description = "Output format: 'lua' (default) or 'json'.\n",
+        .value_type = "format",
         .required = false,
         .num_values = 1,
     },
     {
-        .id = (u32)CliArgId::Raw,
+        .id = (u32)InspectArg::Raw,
         .key = "raw",
         .description = "Load the preset without applying legacy→modern parameter adaptation. The printed\n"
-                       "values reflect what is actually stored in the file. Cannot be combined with\n"
-                       "--script-file (saving a raw-loaded preset would corrupt it).\n",
+                       "values reflect what is actually stored in the file.\n",
         .value_type = "",
         .required = false,
         .num_values = 0,
     },
+});
+
+enum class RunArg : u8 { ReadOnly, Count };
+constexpr auto k_run_arg_defs = MakeCommandLineArgDefs<RunArg>({
     {
-        .id = (u32)CliArgId::ReadOnly,
+        .id = (u32)RunArg::ReadOnly,
         .key = "read-only",
-        .description = "Never write the preset file, even if --script-file modifies the 'preset' global.\n"
+        .description = "Never write the preset file, even if the script modifies the 'preset' global.\n"
                        "Useful for inspection scripts that print or assert.\n",
-        .value_type = "",
-        .required = false,
-        .num_values = 0,
-    },
-    {
-        .id = (u32)CliArgId::PrintShape,
-        .key = "print-shape",
-        .description = "Print a description of every field in the 'preset' Lua table (types, ranges,\n"
-                       "encoding notes). No preset file required.\n",
-        .value_type = "",
-        .required = false,
-        .num_values = 0,
-    },
-    {
-        .id = (u32)CliArgId::PrintParamsJson,
-        .key = "print-params-json",
-        .description = "Print a JSON catalog of every parameter (id_string, default, range - both projected\n"
-                       "numeric and formatted display forms, legacy flag) plus the enum integer tables\n"
-                       "(InstrumentType, WaveformType, EffectType). Pipe into jq to query. No preset file\n"
-                       "required.\n",
-        .value_type = "",
-        .required = false,
-        .num_values = 0,
-    },
-    {
-        .id = (u32)CliArgId::Json,
-        .key = "json",
-        .description = "Print the preset as JSON instead of a Lua table. Has no effect with --script-file\n"
-                       "(scripts that want JSON can call json.encode(preset) directly; a 'json' global\n"
-                       "exposing rxi/json.lua's encode/decode is always available).\n",
         .value_type = "",
         .required = false,
         .num_values = 0,
@@ -269,7 +223,7 @@ static ErrorCodeOr<void> PrintShape(ArenaAllocator& arena) {
     constexpr auto k_header =
         "preset-tool: 'preset' Lua table shape.\n"
         "\n"
-        "Pass --script-file to run a Lua script that modifies the global 'preset' table. The\n"
+        "Use 'run <script>' to run a Lua script that modifies the global 'preset' table. The\n"
         "script also sees 'default_preset' (a default-initialised preset of the same shape) and\n"
         "'preset_path' (the current file), and can call inspect_library(path).\n"
         "\n"
@@ -414,6 +368,81 @@ CollectPresetFiles(ArenaAllocator& arena, String input_path, DynamicArray<String
     return k_success;
 }
 
+static ErrorCodeOr<Span<String>> ResolvePresetPathInputs(ArenaAllocator& arena, Span<String> provided) {
+    if (provided.size > 0) return provided;
+    if (StdinIsTty()) {
+        StdPrintF(StdStream::Err,
+                  "Error: at least one preset file or directory must be provided "
+                  "(as arguments or piped to stdin, one path per line)\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    auto const stdin_data = TRY_OR(ReadAllStdin(arena), {
+        StdPrintF(StdStream::Err, "Error: failed to read stdin: {}\n", error);
+        return error;
+    });
+    DynamicArray<String> paths {arena};
+    for (auto line : SplitIterator {.whole = stdin_data, .token = '\n'}) {
+        if (line.size && Last(line) == '\r') line.RemoveSuffix(1);
+        line = WhitespaceStripped(line);
+        if (line.size == 0) continue;
+        dyn::Append(paths, line);
+    }
+    if (paths.size == 0) {
+        StdPrintF(StdStream::Err, "Error: no preset paths provided on stdin\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    return paths.ToOwnedSpan();
+}
+
+static ErrorCodeOr<Span<String>> ExpandPresetFiles(ArenaAllocator& arena, Span<String> inputs) {
+    DynamicArray<String> files {arena};
+    for (auto const& p : inputs) {
+        if (auto const r = CollectPresetFiles(arena, p, files); r.HasError()) {
+            StdPrintF(StdStream::Err, "Error: cannot read '{}': {}\n", p, r.Error());
+            return r.Error();
+        }
+    }
+    if (files.size == 0) {
+        StdPrintF(StdStream::Err, "Error: no preset files found in the given paths\n");
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    return files.ToOwnedSpan();
+}
+
+struct RunOverPresetsOptions {
+    Span<String> preset_files;
+    String script_source;
+    String script_name;
+    bool have_script;
+    bool raw;
+    bool read_only;
+};
+
+static int RunOverPresets(RunOverPresetsOptions const& opts) {
+    LibraryDumpCache library_dump_cache {};
+    auto const print_path_header = opts.preset_files.size > 1;
+    int exit_code = 0;
+    for (auto const& preset_path : opts.preset_files) {
+        ArenaAllocatorWithInlineStorage<4000> scratch {PageAllocator::Instance()};
+        auto const r = ProcessPreset(scratch,
+                                     {
+                                         .preset_path = preset_path,
+                                         .script_source = opts.script_source,
+                                         .script_name = opts.script_name,
+                                         .library_dump_cache = &library_dump_cache,
+                                         .have_script = opts.have_script,
+                                         .raw = opts.raw,
+                                         .read_only = opts.read_only,
+                                         .print_path_header = print_path_header,
+                                     });
+        if (r.HasError()) {
+            StdPrintF(StdStream::Err, "Error processing '{}': {}\n", preset_path, r.Error());
+            exit_code = 1;
+        }
+    }
+    return exit_code;
+}
+
 static ErrorCodeOr<int> Main(ArgsCstr args) {
     GlobalInit({
         .init_error_reporting = false,
@@ -424,147 +453,135 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 
     ArenaAllocator arena {PageAllocator::Instance()};
 
-    Span<String> positional_paths {};
-    auto const cli_args = TRY(ParseCommandLineArgsStandard(
+    Span<String> inspect_positionals {};
+    Span<String> run_positionals {};
+
+    auto const subcommands = Array {
+        CommandLineSubcommand {
+            .id = (u32)Verb::Inspect,
+            .name = "inspect"_s,
+            .description = "Print preset(s) as a Lua table or JSON."_s,
+            .args = k_inspect_arg_defs,
+            .positionals = {.name = "preset-path"_s,
+                            .description = "Preset file or directory (scanned recursively). If omitted, one path "
+                                           "per line is read from stdin."_s,
+                            .out = &inspect_positionals},
+        },
+        CommandLineSubcommand {
+            .id = (u32)Verb::Run,
+            .name = "run"_s,
+            .description = "Run a Lua script over preset(s) to transform them in place."_s,
+            .args = k_run_arg_defs,
+            .positionals =
+                {.name = "lua-script"_s,
+                 .description =
+                     "Lua script path, followed by preset files or directories (scanned recursively). "
+                     "If no preset paths are given, one path per line is read from stdin. The script "
+                     "sees these globals: 'preset' (mutable), 'default_preset', 'preset_path', "
+                     "'inspect_library(path)', 'json'. Run 'docs-shape' for the table structure."_s,
+                 .min_count = 1,
+                 .out = &run_positionals},
+        },
+        CommandLineSubcommand {
+            .id = (u32)Verb::DocsShape,
+            .name = "docs-shape"_s,
+            .description =
+                "Reference: describe every field in the 'preset' Lua table seen by 'run' scripts."_s,
+        },
+        CommandLineSubcommand {
+            .id = (u32)Verb::DocsParams,
+            .name = "docs-params"_s,
+            .description =
+                "Reference: JSON catalog of every parameter (id_string, default, range, enums)."_s,
+        },
+    };
+
+    auto const parsed = TRY(ParseCommandLineSubcommandsStandard(
         arena,
         args,
-        k_command_line_args_defs,
+        subcommands,
         {
-            .handle_help_option = true,
-            .print_usage_on_error = true,
-            .description = "Edit one or more presets using a Lua script.\n"
-                           "\n"
-                           "Library names are not stored in preset files (only "
-                           "their hashed IDs are). On startup, this tool loads "
-                           "the library name cache (library_id_cache.bin) "
-                           "written by Floe's library scanner so libraries you "
-                           "have open in Floe resolve to names instead of raw "
-                           "integers. Cache location:\n"
-                           "  Linux:   ~/.local/state/Floe/library_id_cache.bin\n"
-                           "  macOS:   ~/Library/Application Support/Floe/"
-                           "library_id_cache.bin\n"
-                           "  Windows: %APPDATA%\\Floe\\library_id_cache.bin\n"
-                           "Open Floe once after installing a new library to "
-                           "refresh the cache; delete the cache file to force a "
-                           "full rescan on next launch.",
+            .description =
+                "Inspect and transform Floe preset files.\n"
+                "\n"
+                "Library names are not stored in preset files (only their hashed IDs are). On startup, "
+                "this tool loads the library name cache (library_id_cache.bin) written by Floe's "
+                "library scanner so libraries you have open in Floe resolve to names instead of raw "
+                "integers. Cache location:\n"
+                "  Linux:   ~/.local/state/Floe/library_id_cache.bin\n"
+                "  macOS:   ~/Library/Application Support/Floe/library_id_cache.bin\n"
+                "  Windows: %APPDATA%\\Floe\\library_id_cache.bin\n"
+                "Open Floe once after installing a new library to refresh the cache; delete the cache "
+                "file to force a full rescan on next launch.",
             .version = FLOE_VERSION_STRING,
-            .positionals =
-                {
-                    .name = "preset-path",
-                    .description =
-                        "Preset file or directory. Directories are scanned recursively for *" FLOE_PRESET_FILE_EXTENSION
-                        " files. If no paths are given, one path per line is read from stdin "
-                        "(e.g. `fd -e " FLOE_PRESET_FILE_EXTENSION " | floe-preset-tool`).",
-                    .out = &positional_paths,
-                },
         }));
 
-    if (cli_args[ToInt(CliArgId::PrintShape)].was_provided) {
-        TRY(PrintShape(arena));
-        return 0;
-    }
-
-    if (cli_args[ToInt(CliArgId::PrintParamsJson)].was_provided) {
-        TRY(PrintParamsJson(arena));
-        return 0;
-    }
-
-    DynamicArray<String> stdin_paths {arena};
-    if (positional_paths.size == 0) {
-        if (StdinIsTty()) {
-            StdPrintF(StdStream::Err,
-                      "Error: at least one preset file or directory must be provided "
-                      "(as arguments or piped to stdin, one path per line)\n");
-            return ErrorCode {CommonError::InvalidFileFormat};
+    switch ((Verb)parsed.id) {
+        case Verb::DocsShape: {
+            TRY(PrintShape(arena));
+            return 0;
         }
-        auto const stdin_data = TRY_OR(ReadAllStdin(arena), {
-            StdPrintF(StdStream::Err, "Error: failed to read stdin: {}\n", error);
-            return error;
-        });
-        for (auto line : SplitIterator {.whole = stdin_data, .token = '\n'}) {
-            if (line.size && Last(line) == '\r') line.RemoveSuffix(1);
-            line = WhitespaceStripped(line);
-            if (line.size == 0) continue;
-            dyn::Append(stdin_paths, line);
+        case Verb::DocsParams: {
+            TRY(PrintParamsJson(arena));
+            return 0;
         }
-        if (stdin_paths.size == 0) {
-            StdPrintF(StdStream::Err, "Error: no preset paths provided on stdin\n");
-            return ErrorCode {CommonError::InvalidFileFormat};
+        case Verb::Inspect: {
+            auto const path_inputs = TRY(ResolvePresetPathInputs(arena, inspect_positionals));
+
+            String script_source = FromNullTerminated(k_lua_print_serializer);
+            String script_name = "print-serializer"_s;
+            if (auto const& fmt_arg = parsed.args[ToInt(InspectArg::Format)]; fmt_arg.was_provided) {
+                if (fmt_arg.values[0] == "json"_s) {
+                    script_source = FromNullTerminated(k_lua_json_serializer);
+                    script_name = "json-serializer"_s;
+                } else if (fmt_arg.values[0] != "lua"_s) {
+                    StdPrintF(StdStream::Err,
+                              "Error: --format must be 'lua' or 'json', got '{}'\n",
+                              fmt_arg.values[0]);
+                    return ErrorCode {CommonError::InvalidFileFormat};
+                }
+            }
+
+            LoadLibraryIdCache(arena);
+            auto const preset_files = TRY(ExpandPresetFiles(arena, path_inputs));
+            return RunOverPresets({
+                .preset_files = preset_files,
+                .script_source = script_source,
+                .script_name = script_name,
+                .have_script = false,
+                .raw = parsed.args[ToInt(InspectArg::Raw)].was_provided,
+                .read_only = false,
+            });
         }
-        positional_paths = stdin_paths.Items();
-    }
+        case Verb::Run: {
+            ASSERT(run_positionals.size >= 1);
+            auto const script_input = run_positionals[0];
+            auto const path_inputs =
+                TRY(ResolvePresetPathInputs(arena, run_positionals.SubSpan(1)));
 
-    auto const raw = cli_args[ToInt(CliArgId::Raw)].was_provided;
-    if (raw && cli_args[ToInt(CliArgId::ScriptFile)].was_provided) {
-        StdPrintF(StdStream::Err, "Error: --raw cannot be combined with --script-file\n");
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
-
-    LoadLibraryIdCache(arena);
-
-    DynamicArray<String> preset_files {arena};
-    for (auto const& p : positional_paths) {
-        if (auto const r = CollectPresetFiles(arena, p, preset_files); r.HasError()) {
-            StdPrintF(StdStream::Err, "Error: cannot read '{}': {}\n", p, r.Error());
-            return r.Error();
-        }
-    }
-
-    if (preset_files.size == 0) {
-        StdPrintF(StdStream::Err, "Error: no preset files found in the given paths\n");
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
-
-    String script_source {};
-    String script_name {};
-    auto const have_script = cli_args[ToInt(CliArgId::ScriptFile)].was_provided;
-    if (have_script) {
-        auto const script_path =
-            TRY_OR(AbsolutePath(arena, cli_args[ToInt(CliArgId::ScriptFile)].values[0]), {
+            auto const script_path = TRY_OR(AbsolutePath(arena, script_input), {
                 StdPrintF(StdStream::Err, "Error: failed to resolve script path\n");
                 return error;
             });
+            auto const script_source = TRY_OR(ReadEntireFile(script_path, arena), {
+                StdPrintF(StdStream::Err, "Error: failed to read script file: {}\n", error);
+                return error;
+            });
 
-        auto const script_file_data = TRY_OR(ReadEntireFile(script_path, arena), {
-            StdPrintF(StdStream::Err, "Error: failed to read script file: {}\n", error);
-            return error;
-        });
-        script_source = script_file_data;
-        script_name = script_path;
-    } else if (cli_args[ToInt(CliArgId::Json)].was_provided) {
-        script_source = FromNullTerminated(k_lua_json_serializer);
-        script_name = "json-serializer"_s;
-    } else {
-        script_source = FromNullTerminated(k_lua_print_serializer);
-        script_name = "print-serializer"_s;
-    }
-
-    auto const read_only = cli_args[ToInt(CliArgId::ReadOnly)].was_provided;
-    auto const print_path_header = preset_files.size > 1;
-
-    LibraryDumpCache library_dump_cache {};
-
-    int exit_code = 0;
-    for (auto const& preset_path : preset_files) {
-        ArenaAllocatorWithInlineStorage<4000> scratch {PageAllocator::Instance()};
-        auto const r = ProcessPreset(scratch,
-                                     {
-                                         .preset_path = preset_path,
-                                         .script_source = script_source,
-                                         .script_name = script_name,
-                                         .library_dump_cache = &library_dump_cache,
-                                         .have_script = have_script,
-                                         .raw = raw,
-                                         .read_only = read_only,
-                                         .print_path_header = print_path_header,
-                                     });
-        if (r.HasError()) {
-            StdPrintF(StdStream::Err, "Error processing '{}': {}\n", preset_path, r.Error());
-            exit_code = 1;
+            LoadLibraryIdCache(arena);
+            auto const preset_files = TRY(ExpandPresetFiles(arena, path_inputs));
+            return RunOverPresets({
+                .preset_files = preset_files,
+                .script_source = script_source,
+                .script_name = script_path,
+                .have_script = true,
+                .raw = false,
+                .read_only = parsed.args[ToInt(RunArg::ReadOnly)].was_provided,
+            });
         }
+        case Verb::Count: PanicIfReached();
     }
-
-    return exit_code;
+    return 0;
 }
 
 int main(int argc, char** argv) {
