@@ -24,7 +24,7 @@
 
 // IMPROVE: export a Lua LSP def file for the preset table.
 
-enum class Verb : u8 { Inspect, Run, DocsShape, DocsParams, Count };
+enum class Verb : u8 { Inspect, Run, ApplyJson, DocsShape, DocsParams, Count };
 
 enum class InspectArg : u8 { Format, Raw, Count };
 constexpr auto k_inspect_arg_defs = MakeCommandLineArgDefs<InspectArg>({
@@ -455,6 +455,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 
     Span<String> inspect_positionals {};
     Span<String> run_positionals {};
+    Span<String> apply_json_positionals {};
 
     auto const subcommands = Array {
         CommandLineSubcommand {
@@ -463,8 +464,9 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             .description = "Print preset(s) as a Lua table or JSON."_s,
             .args = k_inspect_arg_defs,
             .positionals = {.name = "preset-path"_s,
-                            .description = "Preset file or directory (scanned recursively). If omitted, one path "
-                                           "per line is read from stdin."_s,
+                            .description =
+                                "Preset file or directory (scanned recursively). If omitted, one path "
+                                "per line is read from stdin."_s,
                             .out = &inspect_positionals},
         },
         CommandLineSubcommand {
@@ -483,6 +485,19 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                  .out = &run_positionals},
         },
         CommandLineSubcommand {
+            .id = (u32)Verb::ApplyJson,
+            .name = "apply-json"_s,
+            .description = "Overwrite a preset file from a JSON document read on stdin (same shape as "
+                           "'inspect --format=json')."_s,
+            .positionals = {.name = "preset-path"_s,
+                            .description = "Target preset file. Overwritten if it exists, created otherwise. "
+                                           "Any unknown JSON fields are ignored; missing fields keep their "
+                                           "default values."_s,
+                            .min_count = 1,
+                            .max_count = 1,
+                            .out = &apply_json_positionals},
+        },
+        CommandLineSubcommand {
             .id = (u32)Verb::DocsShape,
             .name = "docs-shape"_s,
             .description =
@@ -491,8 +506,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         CommandLineSubcommand {
             .id = (u32)Verb::DocsParams,
             .name = "docs-params"_s,
-            .description =
-                "Reference: JSON catalog of every parameter (id_string, default, range, enums)."_s,
+            .description = "Reference: JSON catalog of every parameter (id_string, default, range, enums)."_s,
         },
     };
 
@@ -556,8 +570,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         case Verb::Run: {
             ASSERT(run_positionals.size >= 1);
             auto const script_input = run_positionals[0];
-            auto const path_inputs =
-                TRY(ResolvePresetPathInputs(arena, run_positionals.SubSpan(1)));
+            auto const path_inputs = TRY(ResolvePresetPathInputs(arena, run_positionals.SubSpan(1)));
 
             auto const script_path = TRY_OR(AbsolutePath(arena, script_input), {
                 StdPrintF(StdStream::Err, "Error: failed to resolve script path\n");
@@ -578,6 +591,72 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                 .raw = false,
                 .read_only = parsed.args[ToInt(RunArg::ReadOnly)].was_provided,
             });
+        }
+        case Verb::ApplyJson: {
+            ASSERT(apply_json_positionals.size == 1);
+            auto const preset_path = TRY_OR(AbsolutePath(arena, apply_json_positionals[0]), {
+                StdPrintF(StdStream::Err, "Error: failed to resolve preset path\n");
+                return error;
+            });
+
+            auto const json_text = TRY_OR(ReadAllStdin(arena), {
+                StdPrintF(StdStream::Err, "Error: failed to read JSON from stdin: {}\n", error);
+                return error;
+            });
+            if (json_text.size == 0) {
+                StdPrintF(StdStream::Err, "Error: no JSON provided on stdin\n");
+                return ErrorCode {CommonError::InvalidFileFormat};
+            }
+
+            LoadLibraryIdCache(arena);
+
+            auto lua = luaL_newstate();
+            DEFER { lua_close(lua); };
+            luaL_openlibs(lua);
+            TRY(RegisterJsonGlobal(lua));
+
+            lua_getglobal(lua, "json");
+            lua_getfield(lua, -1, "decode");
+            lua_remove(lua, -2);
+            lua_pushlstring(lua, json_text.data, json_text.size);
+            if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
+                StdPrintF(StdStream::Err, "Error: failed to decode JSON: {}\n", lua_tostring(lua, -1));
+                return ErrorCode {CommonError::InvalidFileFormat};
+            }
+            if (!lua_istable(lua, -1)) {
+                StdPrintF(StdStream::Err, "Error: decoded JSON is not an object\n");
+                return ErrorCode {CommonError::InvalidFileFormat};
+            }
+
+            auto state = DefaultStateSnapshot();
+            ExtractPresetFromLuaTable(lua, -1, state);
+            lua_pop(lua, 1);
+
+            auto new_preset_path = (String)preset_path;
+            if (auto const ext = path::Extension(new_preset_path); ext != FLOE_PRESET_FILE_EXTENSION) {
+                new_preset_path.RemoveSuffix(ext.size);
+                new_preset_path =
+                    fmt::Join(arena, Array {new_preset_path, (String)FLOE_PRESET_FILE_EXTENSION});
+            }
+
+            auto const parent_dir = path::Directory(new_preset_path);
+            if (!parent_dir) {
+                StdPrintF(StdStream::Err, "Error: preset path has no parent directory\n");
+                return ErrorCode {CommonError::InvalidFileFormat};
+            }
+            TRY(CreateDirectory(*parent_dir,
+                                {.create_intermediate_directories = true, .fail_if_exists = false}));
+
+            auto const temp_dir = TRY(TemporaryDirectoryOnSameFilesystemAs(*parent_dir, arena));
+            DEFER { auto _ = Delete(temp_dir, {.type = DeleteOptions::Type::DirectoryRecursively}); };
+
+            auto seed = RandomSeed();
+            auto const out_path = path::Join(
+                arena,
+                Array {(String)temp_dir, UniqueFilename("preset- ", FLOE_PRESET_FILE_EXTENSION, seed)});
+            TRY(SavePresetFile(out_path, state, false));
+            TRY(Rename(out_path, new_preset_path));
+            return 0;
         }
         case Verb::Count: PanicIfReached();
     }
