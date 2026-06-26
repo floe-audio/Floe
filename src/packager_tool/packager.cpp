@@ -210,30 +210,27 @@ static ErrorCodeOr<AboutLibraryDocument> WriteAboutLibraryDocument(sample_lib::L
     };
 }
 
-static ErrorCodeOr<void> CheckNeededPackageCliArgs(Span<CommandLineArg const> args) {
-    if (!args[ToInt(PackagerCliArgId::OutputPackageFolder)].was_provided) return k_success;
+struct VerbInputs {
+    Span<String> library_folders;
+    Span<String> preset_folders;
+    Span<String> input_packages;
+    Optional<String> package_name_override;
+    bool prune {};
+};
 
-    auto const library_folders_arg = args[ToInt(PackagerCliArgId::LibraryFolder)];
-    auto const presets_folders_arg = args[ToInt(PackagerCliArgId::PresetFolder)];
-    auto const input_packages_arg = args[ToInt(PackagerCliArgId::InputPackages)];
-
-    if (!library_folders_arg.values.size && !presets_folders_arg.values.size &&
-        !input_packages_arg.values.size) {
+static ErrorCodeOr<void> CheckHasAnyInputSource(VerbInputs const& inputs) {
+    if (!inputs.library_folders.size && !inputs.preset_folders.size && !inputs.input_packages.size) {
         StdPrintF(StdStream::Err,
-                  "Error: at least one of --{}, --{}, or --{} must be provided\n",
-                  library_folders_arg.info.key,
-                  presets_folders_arg.info.key,
-                  input_packages_arg.info.key);
+                  "Error: at least one of --library-folder, --preset-folder, or --input-package "
+                  "must be provided\n");
         return ErrorCode {CliError::InvalidArguments};
     }
-
     return k_success;
 }
 
-static String
-PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, Span<CommandLineArg const> args) {
-    if (args[ToInt(PackagerCliArgId::PackageName)].was_provided) {
-        auto raw = args[ToInt(PackagerCliArgId::PackageName)].values[0];
+static String PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, VerbInputs const& inputs) {
+    if (inputs.package_name_override) {
+        auto raw = *inputs.package_name_override;
         if (package::HasPackageExtension(raw)) raw = path::FilenameWithoutExtension(raw);
         return fmt::Format(arena,
                            "{} Package{}",
@@ -244,8 +241,7 @@ PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, Span<CommandL
         return path::MakeSafeForFilename(
             fmt::Format(arena, "{} - {} Package{}", lib->author, lib->name, package::k_file_extension),
             arena);
-    if (args[ToInt(PackagerCliArgId::InputPackages)].was_provided)
-        return args[ToInt(PackagerCliArgId::InputPackages)].values[0];
+    if (inputs.input_packages.size) return inputs.input_packages[0];
 
     return fmt::Format(arena, "Floe Package{}", package::k_file_extension);
 }
@@ -623,16 +619,48 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     ArenaAllocator scratch {PageAllocator::Instance()};
     auto const program_name = path::Filename(FromNullTerminated(args.args[0]));
 
-    auto const cli_args = TRY(ParseCommandLineArgsStandard(arena,
-                                                           args,
-                                                           k_packager_command_line_args_defs,
-                                                           {
-                                                               .handle_help_option = true,
-                                                               .print_usage_on_error = true,
-                                                               .description = k_packager_description,
-                                                               .version = FLOE_VERSION_STRING,
-                                                           }));
-    TRY(CheckNeededPackageCliArgs(cli_args));
+    Span<String> pack_positionals {};
+    Span<String> info_positionals {};
+    auto subcommands = PackagerSubcommands(&pack_positionals, &info_positionals);
+
+    auto const parsed = TRY(ParseCommandLineSubcommandsStandard(arena,
+                                                                args,
+                                                                subcommands,
+                                                                {
+                                                                    .description = k_packager_description,
+                                                                    .version = FLOE_VERSION_STRING,
+                                                                }));
+
+    VerbInputs inputs {};
+    auto const verb = (PackagerVerb)parsed.id;
+    switch (verb) {
+        case PackagerVerb::Pack: {
+            inputs.library_folders = parsed.args[ToInt(PackArgId::LibraryFolder)].values;
+            inputs.preset_folders = parsed.args[ToInt(PackArgId::PresetFolder)].values;
+            inputs.input_packages = parsed.args[ToInt(PackArgId::InputPackages)].values;
+            inputs.prune = parsed.args[ToInt(PackArgId::Prune)].was_provided;
+            if (parsed.args[ToInt(PackArgId::PackageName)].was_provided)
+                inputs.package_name_override = parsed.args[ToInt(PackArgId::PackageName)].values[0];
+            break;
+        }
+        case PackagerVerb::Info: {
+            inputs.library_folders = parsed.args[ToInt(InfoArgId::LibraryFolder)].values;
+            inputs.preset_folders = parsed.args[ToInt(InfoArgId::PresetFolder)].values;
+            inputs.input_packages = parsed.args[ToInt(InfoArgId::InputPackages)].values;
+            inputs.prune = parsed.args[ToInt(InfoArgId::Prune)].was_provided;
+            if (parsed.args[ToInt(InfoArgId::PackageName)].was_provided)
+                inputs.package_name_override = parsed.args[ToInt(InfoArgId::PackageName)].values[0];
+            break;
+        }
+        case PackagerVerb::Count: PanicIfReached();
+    }
+    TRY(CheckHasAnyInputSource(inputs));
+
+    auto const create_package = verb == PackagerVerb::Pack;
+    auto const generate_package_info = verb == PackagerVerb::Info;
+    auto const omit_unreferenced = inputs.prune;
+    bool const should_encrypt =
+        verb == PackagerVerb::Pack && parsed.args[ToInt(PackArgId::Encrypt)].was_provided;
 
     DynamicArray<u8> zip_data {arena};
     auto writer = dyn::WriterFor(zip_data);
@@ -641,16 +669,9 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 
     PackageInfo package_info {};
 
-    auto const create_package = cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].was_provided;
-
-    auto const generate_package_info =
-        cli_args[ToInt(PackagerCliArgId::OutputPackageInfoJsonFile)].was_provided;
-
-    auto const omit_unreferenced = cli_args[ToInt(PackagerCliArgId::OmitUnreferenced)].was_provided;
-
     sample_lib::Library* lib_for_package_name = nullptr;
 
-    for (auto const path : cli_args[ToInt(PackagerCliArgId::LibraryFolder)].values) {
+    for (auto const path : inputs.library_folders) {
         auto const library_path = TRY_OR(AbsolutePath(scratch, path), {
             StdPrintF(StdStream::Err, "Error: failed to resolve library path '{}'\n", path);
             return error;
@@ -761,7 +782,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         }
     }
 
-    for (auto const p : cli_args[ToInt(PackagerCliArgId::PresetFolder)].values) {
+    for (auto const p : inputs.preset_folders) {
         auto const preset_folder = TRY_OR(AbsolutePath(scratch, p), {
             StdPrintF(StdStream::Err, "Error: failed to resolve preset folder '{}'\n", p);
             return error;
@@ -820,7 +841,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 
     // We do input packages last because we prioritise file from libraries/presets. We ignore files from
     // packages if they already exist from the libraries/presets.
-    for (auto const path : cli_args[ToInt(PackagerCliArgId::InputPackages)].values) {
+    for (auto const path : inputs.input_packages) {
         auto const package_path = TRY_OR(AbsolutePath(scratch, path), {
             StdPrintF(StdStream::Err, "Error: failed to resolve input package path '{}'\n", path);
             return error;
@@ -876,20 +897,18 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     {
         package::WriterFinalise(package);
 
-        auto const package_name = PackageName(arena, lib_for_package_name, cli_args);
+        auto const package_name = PackageName(arena, lib_for_package_name, inputs);
         package_info.name = package_name;
 
         Array<u8, encrypted_package::k_key_size> package_key {};
-        bool const should_encrypt = cli_args[ToInt(PackagerCliArgId::Encrypt)].was_provided;
         if (should_encrypt) CryptoRandomBytes(package_key.data, encrypted_package::k_key_size);
 
         if (create_package) {
-            String const folder = TRY_OR(
-                AbsolutePath(arena, cli_args[ToInt(PackagerCliArgId::OutputPackageFolder)].values[0]),
-                {
-                    StdPrintF(StdStream::Err, "Error: failed to resolve output package folder: {}\n", error);
-                    return error;
-                });
+            ASSERT(pack_positionals.size == 1);
+            String const folder = TRY_OR(AbsolutePath(arena, pack_positionals[0]), {
+                StdPrintF(StdStream::Err, "Error: failed to resolve output package folder: {}\n", error);
+                return error;
+            });
             TRY_OR(
                 CreateDirectory(folder, {.create_intermediate_directories = true, .fail_if_exists = false}),
                 {
@@ -947,7 +966,8 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             return error;
         });
 
-        auto const output_json_path = cli_args[ToInt(PackagerCliArgId::OutputPackageInfoJsonFile)].values[0];
+        ASSERT(info_positionals.size == 1);
+        auto const output_json_path = info_positionals[0];
         if (output_json_path == "-"_s) {
             StdPrintF(StdStream::Out, "{}\n", json);
         } else {

@@ -318,10 +318,14 @@ static ErrorCodeOr<void> WriteGithubReleaseData(json::WriteContext& ctx) {
 static ErrorCodeOr<void> WritePackagerData(json::WriteContext& ctx) {
     ArenaAllocator scratch {PageAllocator::Instance()};
     DynamicArray<char> packager_help {scratch};
-    TRY(PrintUsage(dyn::WriterFor(packager_help),
-                   "floe-packager",
-                   k_packager_description,
-                   k_packager_command_line_args_defs));
+    auto writer = dyn::WriterFor(packager_help);
+    auto subcommands = PackagerSubcommands();
+    TRY(PrintSubcommandsUsage(writer, "floe-packager", k_packager_description, subcommands));
+    for (auto const& sub : subcommands) {
+        TRY(fmt::FormatToWriter(writer, "\n"));
+        auto const sub_name = fmt::Join(scratch, Array {"floe-packager "_s, sub.name});
+        TRY(PrintUsage(writer, sub_name, sub.description, sub.args, {}, sub.positionals));
+    }
     TRY(json::WriteKeyValue(ctx, "packager-help", WhitespaceStrippedEnd(String(packager_help))));
     return k_success;
 }
