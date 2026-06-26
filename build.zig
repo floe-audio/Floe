@@ -452,8 +452,8 @@ pub fn build(b: *std.Build) void {
         .include_git_hash = b.option(
             bool,
             "include-git-hash",
-            "Include the git commit hash in the version string as semver build metadata",
-        ) orelse false,
+            "Include the git commit hash in the version string as semver build metadata. Default is true if not production build.",
+        ),
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 
@@ -461,7 +461,10 @@ pub fn build(b: *std.Build) void {
         var ver: []const u8 = b.build_root.handle.readFileAlloc(b.allocator, "version.txt", 256) catch @panic("version.txt error");
         ver = std.mem.trim(u8, ver, " \r\n\t");
 
-        if (options.build_mode != .production or options.include_git_hash) {
+        var include_git_hash = options.build_mode != .production;
+        if (options.include_git_hash) |i| include_git_hash = i;
+
+        if (include_git_hash) {
             ver = b.fmt("{s}+{s}", .{
                 ver,
                 std.mem.trim(u8, b.run(&.{ "git", "rev-parse", "--short", "HEAD" }), " \r\n\t"),
