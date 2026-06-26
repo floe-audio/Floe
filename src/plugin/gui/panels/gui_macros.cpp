@@ -423,7 +423,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 .button_cfg =
                     {
                         .mouse_button = MouseButton::Left,
-                        .event = MouseButtonEvent::Up,
+                        .event = MouseButtonEvent::Down,
                     },
             });
 

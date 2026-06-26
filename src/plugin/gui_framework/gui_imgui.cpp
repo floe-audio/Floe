@@ -1169,13 +1169,17 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     };
 
     bool set_focus = false;
+    bool focus_via_click = false;
     if (tab_to_focus_next_input) {
         tab_to_focus_next_input = false;
         set_focus = true;
     }
 
     if (!TextInputHasFocus(id)) {
-        if (ButtonBehaviour(r, id, button_cfg)) set_focus = true;
+        if (ButtonBehaviour(r, id, button_cfg)) {
+            set_focus = true;
+            focus_via_click = true;
+        }
     }
 
     if (set_focus) {
@@ -1270,6 +1274,14 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     };
 
     if (ButtonBehaviour(r, id, {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
+        auto rel_pos = get_rel_click_point(r.pos, x_offset);
+        stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
+        update_wrap_eol_flag(rel_pos);
+        reset_cursor = true;
+    } else if (focus_via_click && !cfg.select_all_when_opening) {
+        // When the button_cfg fires focus on mouse-up, the mouse-down event has already passed by the time
+        // we get here, so the Down-event branch above won't run on the focusing click. Position the cursor
+        // from the current pointer location so the caret lands where the user actually clicked.
         auto rel_pos = get_rel_click_point(r.pos, x_offset);
         stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
         update_wrap_eol_flag(rel_pos);

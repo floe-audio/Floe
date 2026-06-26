@@ -365,7 +365,7 @@ TextInputResult TextInput(GuiBuilder& builder, Box parent, TextInputOptions cons
             .button_cfg =
                 {
                     .mouse_button = MouseButton::Left,
-                    .event = MouseButtonEvent::Up,
+                    .event = MouseButtonEvent::Down,
                 },
         });
 

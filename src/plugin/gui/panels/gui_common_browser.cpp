@@ -2230,7 +2230,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     .button_cfg =
                         {
                             .mouse_button = MouseButton::Left,
-                            .event = MouseButtonEvent::Up,
+                            .event = MouseButtonEvent::Down,
                         },
                 });
 
@@ -2461,7 +2461,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                         .button_cfg =
                             {
                                 .mouse_button = MouseButton::Left,
-                                .event = MouseButtonEvent::Up,
+                                .event = MouseButtonEvent::Down,
                             },
                     });
 
