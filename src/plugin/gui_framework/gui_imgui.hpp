@@ -802,6 +802,10 @@ struct Context {
     // 0 disables wrapping (single-line inputs).
     f32 textedit_wrap_width = 0;
     DynamicArray<String> textedit_visual_rows {Malloc::Instance()};
+    // When the cursor sits at a buffer position that is both the end of a soft-wrapped row and the start of
+    // the next visual row, this flag biases rendering to place it at the end of the previous row. Set by
+    // mouse clicks past the end of a soft-wrap; cleared by keyboard navigation.
+    bool textedit_cursor_at_wrap_eol = false;
     bool active_text_input_shown = false; // Unfocus active input if it's not shown in the frame
 
     // Persistent vertical scroll offsets for multi-line text inputs that overflow their rect, keyed by

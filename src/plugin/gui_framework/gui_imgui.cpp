@@ -260,8 +260,10 @@ struct RowLocation {
 
 // Locates the visual row that the cursor position 'index' sits on. A position at the end of a row that ends
 // with a newline - including the very end of the buffer after a trailing newline - belongs to the start of
-// the following row.
-static RowLocation TexteditLocateRow(Context const* imgui, int index) {
+// the following row. When 'prefer_prev_row_at_soft_wrap' is true, a position at the end of a soft-wrapped
+// row (no trailing newline) stays on that row instead of moving to the start of the wrapped continuation.
+static RowLocation
+TexteditLocateRow(Context const* imgui, int index, bool prefer_prev_row_at_soft_wrap = false) {
     int pos = 0;
     u32 line_index = 0;
     for (;;) {
@@ -269,7 +271,10 @@ static RowLocation TexteditLocateRow(Context const* imgui, int index) {
         int const next = pos + row.num_chars;
         bool const ends_with_newline = row.num_chars > 0 && imgui->textedit_text[(usize)(next - 1)] == '\n';
         bool const is_final_row = next >= imgui->textedit_len && !ends_with_newline;
-        if (index < next || is_final_row) return {pos, next, line_index, ends_with_newline};
+        bool const at_soft_wrap_boundary =
+            prefer_prev_row_at_soft_wrap && index == next && !ends_with_newline && !is_final_row;
+        if (index < next || is_final_row || at_soft_wrap_boundary)
+            return {pos, next, line_index, ends_with_newline};
         pos = next;
         line_index++;
     }
@@ -1239,9 +1244,35 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
 
     auto const x_offset = TextInputTextPos(textedit_text_utf8, r, cfg, draw_list->fonts).x - r.pos.x;
 
+    // After a click/drag, recompute whether the cursor landed past the end of a soft-wrapped row. The
+    // buffer position for that case coincides with the start of the next visual row, so without this hint
+    // the renderer would draw the caret on the next line instead of where the user clicked.
+    auto update_wrap_eol_flag = [&](f32x2 rel_pos) {
+        textedit_cursor_at_wrap_eol = false;
+        if (!cfg.multiline) return;
+        auto const font_size = draw_list->fonts.Current()->font_size;
+        int pos = 0;
+        f32 y_top = 0;
+        while (pos < textedit_len) {
+            auto const row = stb::TexteditLayoutRow(this, pos);
+            if (row.num_chars == 0) break;
+            int const next = pos + row.num_chars;
+            if (rel_pos.y >= y_top && rel_pos.y < y_top + font_size) {
+                bool const ends_with_newline = textedit_text[(usize)(next - 1)] == '\n';
+                bool const is_final_row = next >= textedit_len && !ends_with_newline;
+                if (!ends_with_newline && !is_final_row && rel_pos.x > row.width && stb_state.cursor == next)
+                    textedit_cursor_at_wrap_eol = true;
+                return;
+            }
+            y_top += font_size;
+            pos = next;
+        }
+    };
+
     if (ButtonBehaviour(r, id, {.mouse_button = MouseButton::Left, .event = MouseButtonEvent::Down})) {
         auto rel_pos = get_rel_click_point(r.pos, x_offset);
         stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
+        update_wrap_eol_flag(rel_pos);
         reset_cursor = true;
     }
     if (IsActive(id, button_cfg.mouse_button)) {
@@ -1251,10 +1282,12 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
             if (frame_input.Mouse(MouseButton::Left).dragging_started) {
                 auto rel_pos = get_rel_click_point(r.pos, x_offset);
                 stb_textedit_click(this, &stb_state, rel_pos.x, rel_pos.y);
+                update_wrap_eol_flag(rel_pos);
                 reset_cursor = true;
             } else if (frame_input.Mouse(MouseButton::Left).is_dragging) {
                 auto rel_pos = get_rel_click_point(r.pos, x_offset);
                 stb_textedit_drag(this, &stb_state, rel_pos.x, rel_pos.y);
+                update_wrap_eol_flag(rel_pos);
             }
         }
     }
@@ -1284,6 +1317,7 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         }
     }
 
+    int const cursor_before_kb = stb_state.cursor;
     if (IsKeyboardFocus(id)) {
         auto const shift_bit = [](GuiFrameInput::KeyState::Event const& event) -> int {
             return event.modifiers.Get(ModifierKey::Shift) ? STB_TEXTEDIT_K_SHIFT : 0;
@@ -1441,6 +1475,8 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
         }
     }
 
+    if (stb_state.cursor != cursor_before_kb) textedit_cursor_at_wrap_eol = false;
+
     auto font = draw_list->fonts.Current();
     auto const font_size = font->font_size;
 
@@ -1492,7 +1528,7 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     u32 cursor_line_index = 0;
     if (text_cursor_is_shown && !result.HasSelection()) {
         constexpr u8 k_cursor_width = 1;
-        auto const loc = stb::TexteditLocateRow(this, result.cursor);
+        auto const loc = stb::TexteditLocateRow(this, result.cursor, textedit_cursor_at_wrap_eol);
         cursor_line_index = loc.line_index;
         f32 cursor_x = 0;
         for (int idx = loc.row_start; idx < result.cursor; ++idx) {
@@ -1506,7 +1542,8 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
                                    .w = k_cursor_width,
                                    .h = font_size};
     } else {
-        cursor_line_index = stb::TexteditLocateRow(this, result.cursor).line_index;
+        cursor_line_index =
+            stb::TexteditLocateRow(this, result.cursor, textedit_cursor_at_wrap_eol).line_index;
     }
 
     if (cfg.multiline) {
