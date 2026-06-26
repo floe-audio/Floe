@@ -7,6 +7,7 @@
 
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
+#include "engine/loop_modes.hpp"
 #include "gui/controls/gui_pinned_view_toggle.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
@@ -371,27 +372,65 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
         {
             // IMPROVE: should this be a text input that changes the description?
-            auto const& desc_cache = g.engine.pinned_snapshot.description_cache;
-            String const desc_text = desc_cache.long_kind == LongDescriptionKind::UserContinued
-                                         ? (String)fmt::Format(builder.arena, "{}…", desc_cache.short_text)
-                                         : (String)desc_cache.short_text;
-            DoBox(builder,
-                  {
-                      .parent = preset_box_left,
-                      .text = desc_text,
-                      .font = FontType::BodyItalic,
-                      .text_colours =
-                          ColSet {
-                              .base {.c = Col::Subtext0, .dark_mode = true},
-                              .hot {.c = Col::Subtext1, .dark_mode = true},
-                              .active {.c = Col::Subtext1, .dark_mode = true},
-                          },
-                      .text_overflow = TextOverflowType::ShowDotsOnRight,
-                      .parent_dictates_hot_and_active = true,
-                      .layout {
-                          .size = {layout::k_fill_parent, k_font_body_italic_size},
-                      },
-                  });
+            auto const& snapshot = g.engine.pinned_snapshot;
+            auto const seed = Hash(snapshot.state.extras.display_name);
+            auto const folder = PinnedPresetFolderName(g.engine);
+
+            Array<AutoDescriptionLayerInfo, k_num_layers> layer_info {};
+            for (auto const i : Range(k_num_layers)) {
+                auto& layer = g.engine.processor.layer_processors[i];
+                layer_info[i].inst_name = layer.InstName();
+                auto const desired_loop_mode =
+                    g.engine.processor.main_params.IntValue<param_values::LoopMode>(
+                        layer.index,
+                        LayerParamIndex::LoopMode);
+                layer_info[i].actual_loop_behaviour =
+                    ActualLoopBehaviour(layer.instrument,
+                                        desired_loop_mode,
+                                        layer.VolumeEnvelopeIsOn(g.engine.processor.main_params));
+            }
+
+            auto const auto_headline =
+                WriteAutoDescription(builder.arena,
+                                     snapshot.state,
+                                     layer_info,
+                                     {.form = AutoDescriptionForm::Headline,
+                                      .random_seed = seed,
+                                      .folder_name = folder});
+            auto const auto_full_block =
+                WriteAutoDescription(builder.arena,
+                                     snapshot.state,
+                                     layer_info,
+                                     {.form = AutoDescriptionForm::FullBlock, .random_seed = seed});
+            auto const* italic_font = builder.fonts.atlas[ToInt(FontType::BodyItalic)];
+            auto const display = SplitPresetDescriptionForDisplay(snapshot.state.metadata.description,
+                                                                   auto_headline,
+                                                                   auto_full_block,
+                                                                   *italic_font,
+                                                                   g.top_panel_description_width);
+            g.preset_description_display = display;
+            String const desc_text = display.kind == LongDescriptionKind::UserContinued
+                                         ? (String)fmt::Format(builder.arena, "{}…", display.top_text)
+                                         : display.top_text;
+            auto const desc_box = DoBox(
+                builder,
+                {
+                    .parent = preset_box_left,
+                    .text = desc_text,
+                    .font = FontType::BodyItalic,
+                    .text_colours =
+                        ColSet {
+                            .base {.c = Col::Subtext0, .dark_mode = true},
+                            .hot {.c = Col::Subtext1, .dark_mode = true},
+                            .active {.c = Col::Subtext1, .dark_mode = true},
+                        },
+                    .text_overflow = TextOverflowType::ShowDotsOnRight,
+                    .parent_dictates_hot_and_active = true,
+                    .layout {
+                        .size = {layout::k_fill_parent, k_font_body_italic_size},
+                    },
+                });
+            if (auto const r = BoxRect(builder, desc_box)) g.top_panel_description_width = r->w;
         }
 
         {

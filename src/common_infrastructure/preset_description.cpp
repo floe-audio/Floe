@@ -241,13 +241,11 @@ static PhraseText ResolvePhraseText(PhraseKind kind, u64 seed) {
     return {};
 }
 
-AutoDescription GenerateAutoDescription(StateSnapshot const& state,
-                                        Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
-                                        String folder_name,
-                                        u64 random_seed) {
-    AutoDescription out {};
-    auto& short_text = out.short_text;
-    auto& long_text = out.long_text;
+String WriteAutoDescription(Allocator& allocator,
+                            StateSnapshot const& state,
+                            Array<AutoDescriptionLayerInfo, k_num_layers> const& layer_info,
+                            AutoDescriptionWriteOptions options) {
+    DynamicArray<char> out {allocator};
 
     auto const lp = [&](u32 layer, LayerParamIndex p) -> f32 {
         return state.param_values[ToInt(ParamIndexFromLayerParamIndex(layer, p))];
@@ -277,7 +275,7 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
         }
     }
 
-    if (num_layers == 0) return out;
+    if (num_layers == 0) return out.ToOwnedSpan();
 
     // Analyse per-layer characteristics
     u32 slow_attack_count = 0;
@@ -576,58 +574,66 @@ AutoDescription GenerateAutoDescription(StateSnapshot const& state,
     auto const unmentioned_fx = num_fx - mentioned_fx;
     bool const show_trailing_fx_line = unmentioned_fx > 0;
 
-    // Short text: instrument name plus the most salient phrase descriptor, optionally followed by " —
-    // folder". Long text: remaining phrases as a second sentence, plus an FX summary line.
+    DynamicArrayBounded<char, k_max_preset_description_size> text {};
+
+    // Headline: instrument name plus the most salient phrase descriptor.
     if (is_stacked)
-        fmt::Append(short_text, "layered {}", first_inst_name);
+        fmt::Append(text, "layered {}", first_inst_name);
     else if (num_layers == 1 && first_inst_name.size)
-        dyn::AppendSpan(short_text, first_inst_name);
+        dyn::AppendSpan(text, first_inst_name);
 
     if (phrases.size) {
-        if (short_text.size) dyn::AppendSpan(short_text, ", ");
-        dyn::AppendSpan(short_text, ResolvePhraseText(phrases[0].kind, random_seed).descriptor);
+        if (text.size) dyn::AppendSpan(text, ", ");
+        dyn::AppendSpan(text, ResolvePhraseText(phrases[0].kind, options.random_seed).descriptor);
     }
 
-    if (!short_text.size) return out;
+    if (!text.size) return out.ToOwnedSpan();
 
-    dyn::AppendSpan(short_text, "."_s);
+    dyn::AppendSpan(text, "."_s);
 
-    if (folder_name.size) {
-        auto const start = short_text.size;
-        fmt::Append(short_text, " [{}]", folder_name);
-        for (usize i = start + 3; i < short_text.size; i++)
-            if (short_text[i] >= 'A' && short_text[i] <= 'Z') short_text[i] += 32;
-        // dyn::AppendSpan(short_text, "."_s);
-    }
-
-    if (phrases.size > 1) {
-        for (usize i = 1; i < phrases.size; i++) {
-            if (i > 1) {
-                if (i == phrases.size - 1)
-                    dyn::AppendSpan(long_text, " and "_s);
-                else
-                    dyn::AppendSpan(long_text, ", "_s);
+    switch (options.form) {
+        case AutoDescriptionForm::Headline: {
+            if (options.folder_name.size) {
+                auto const start = text.size;
+                fmt::Append(text, " [{}]", options.folder_name);
+                for (usize i = start + 3; i < text.size; i++)
+                    if (text[i] >= 'A' && text[i] <= 'Z') text[i] += 32;
             }
-            dyn::AppendSpan(long_text, ResolvePhraseText(phrases[i].kind, random_seed).modifier);
+            break;
         }
-        dyn::AppendSpan(long_text, "."_s);
+        case AutoDescriptionForm::FullBlock: {
+            usize detail_letter = 0;
+            if (phrases.size > 1) {
+                dyn::AppendSpan(text, " "_s);
+                detail_letter = text.size;
+                for (usize i = 1; i < phrases.size; i++) {
+                    if (i > 1) {
+                        if (i == phrases.size - 1)
+                            dyn::AppendSpan(text, " and "_s);
+                        else
+                            dyn::AppendSpan(text, ", "_s);
+                    }
+                    dyn::AppendSpan(text, ResolvePhraseText(phrases[i].kind, options.random_seed).modifier);
+                }
+                dyn::AppendSpan(text, "."_s);
+            }
+
+            if (show_trailing_fx_line && num_fx) {
+                dyn::AppendSpan(text, " "_s);
+                if (!detail_letter) detail_letter = text.size;
+                fmt::Append(text, "Uses {} effects.", num_fx);
+            }
+
+            if (detail_letter && detail_letter < text.size && text[detail_letter] >= 'a' &&
+                text[detail_letter] <= 'z') {
+                text[detail_letter] -= 32;
+            }
+            break;
+        }
     }
 
-    if (show_trailing_fx_line && num_fx) {
-        if (long_text.size) dyn::AppendSpan(long_text, " "_s);
-        auto const sentence_start = long_text.size;
+    if (text[0] >= 'a' && text[0] <= 'z') text[0] -= 32;
 
-        fmt::Append(long_text, "Uses {} effects.", num_fx);
-
-        if (sentence_start < long_text.size && long_text[sentence_start] >= 'a' &&
-            long_text[sentence_start] <= 'z') {
-            long_text[sentence_start] -= 32;
-        }
-    }
-
-    // Capitalise first letter of each part
-    if (short_text.size && short_text[0] >= 'a' && short_text[0] <= 'z') short_text[0] -= 32;
-    if (long_text.size && long_text[0] >= 'a' && long_text[0] <= 'z') long_text[0] -= 32;
-
-    return out;
+    dyn::AppendSpan(out, (String)text);
+    return out.ToOwnedSpan();
 }

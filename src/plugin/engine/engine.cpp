@@ -43,45 +43,6 @@ String PinnedPresetFolderName(Engine const& engine) {
     return StripNumberedPrefix(folder_name);
 }
 
-static void RefreshPresetDescriptionCache(Engine& engine) {
-    Array<AutoDescriptionLayerInfo, k_num_layers> layer_info {};
-    for (auto const i : Range(k_num_layers)) {
-        auto& layer = engine.processor.layer_processors[i];
-        layer_info[i].inst_name = layer.InstName();
-        auto const desired_loop_mode =
-            engine.processor.main_params.IntValue<param_values::LoopMode>(layer.index,
-                                                                          LayerParamIndex::LoopMode);
-        layer_info[i].actual_loop_behaviour =
-            ActualLoopBehaviour(layer.instrument,
-                                desired_loop_mode,
-                                layer.VolumeEnvelopeIsOn(engine.processor.main_params));
-    }
-
-    auto const auto_desc = GenerateAutoDescription(engine.pinned_snapshot.state,
-                                                   layer_info,
-                                                   PinnedPresetFolderName(engine),
-                                                   Hash(engine.pinned_snapshot.state.extras.display_name));
-
-    String const real_desc = engine.pinned_snapshot.state.metadata.description;
-    auto const real_split = SplitPresetDescription(real_desc);
-
-    auto& cache = engine.pinned_snapshot.description_cache;
-
-    if (real_desc.size)
-        dyn::Assign(cache.short_text, real_split.short_part.ValueOr(real_desc));
-    else
-        dyn::Assign(cache.short_text, auto_desc.short_text);
-
-    if (real_desc.size && real_split.long_part) {
-        dyn::Assign(cache.long_text, *real_split.long_part);
-        cache.long_kind =
-            real_split.mid_sentence_chop ? LongDescriptionKind::UserContinued : LongDescriptionKind::User;
-    } else {
-        dyn::Assign(cache.long_text, auto_desc.long_text);
-        cache.long_kind = LongDescriptionKind::Auto;
-    }
-}
-
 Optional<sample_lib::LibraryId> LibraryForOverallBackground(Engine const& engine) {
     ASSERT(g_is_logical_main_thread);
 
@@ -148,7 +109,6 @@ static void SetPinnedSnapshot(Engine& engine, StateSnapshot const& state, String
     engine.pinned_snapshot.state = state;
     dyn::Assign(engine.pinned_snapshot.preset_path, preset_path);
     engine.pinned_snapshot.preset_path_needs_lookup = preset_path.size == 0;
-    RefreshPresetDescriptionCache(engine);
     ASSERT(engine.pinned_snapshot.state.extras.display_name.size);
 }
 
@@ -946,8 +906,6 @@ Engine::Engine(clap_host const& host,
                           [lib_id, &engine]() { SampleLibraryChanged(engine, lib_id); });
                   },
           })} {
-
-    RefreshPresetDescriptionCache(*this);
 
     InitAutosaveState(autosave_state, shared_engine_systems.prefs, random_seed, pinned_snapshot.state);
 

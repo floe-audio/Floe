@@ -39,20 +39,12 @@ struct Engine : ProcessorListener {
     };
 
     struct PinnedSnapshot {
-        struct DescriptionCache {
-            DynamicArrayBounded<char, k_max_preset_description_size> short_text {};
-            DynamicArrayBounded<char, k_max_preset_description_size> long_text {};
-            LongDescriptionKind long_kind = LongDescriptionKind::Auto;
-        };
-
         StateSnapshot state {DefaultStateSnapshot()};
         DynamicArray<char> preset_path {Malloc::Instance()}; // May be empty
 
         // We sometimes don't have the full path, but it's worth seeing if it's our known preset index. To
         // avoid wasteful repeated lookup in the preset index, we use this bool to only do it once.
         bool preset_path_needs_lookup {};
-
-        DescriptionCache description_cache {};
     };
 
     Engine(clap_host const& host,

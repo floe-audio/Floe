@@ -764,7 +764,7 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     constexpr f32 k_desc_column_width = 160;
 
-    auto const& cache = g.engine.pinned_snapshot.description_cache;
+    auto const& display = g.preset_description_display;
 
     auto const column = DoBox(builder,
                               {
@@ -782,7 +782,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                               });
 
     DoSectionLabel(builder, column, [&]() {
-        switch (cache.long_kind) {
+        switch (display.kind) {
             case LongDescriptionKind::UserContinued: return "DESCRIPTION (CONTINUED)"_s;
             case LongDescriptionKind::User: return "DESCRIPTION"_s;
             case LongDescriptionKind::Auto: return "AUTO DESCRIPTION"_s;
@@ -790,18 +790,17 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
         return ""_s;
     }());
 
-    if (!cache.long_text.size) return;
+    if (!display.bottom_text.size) return;
 
-    auto long_text = fmt::FormatStringReplace(g.scratch_arena,
-                                              cache.long_text,
-                                              ArrayT<fmt::StringReplacement>({{"\n"_s, " "_s}}));
-    if (cache.long_kind == LongDescriptionKind::UserContinued)
-        long_text = fmt::Format(g.scratch_arena, "…{}", long_text);
+    auto const bottom_text =
+        display.kind == LongDescriptionKind::UserContinued
+            ? (String)fmt::Format(g.scratch_arena, "…{}", display.bottom_text)
+            : display.bottom_text;
 
     DoBox(builder,
           {
               .parent = column,
-              .text = long_text,
+              .text = bottom_text,
               .wrap_width = k_wrap_to_parent,
               .size_from_text = true,
               .font = FontType::BodyItalic,

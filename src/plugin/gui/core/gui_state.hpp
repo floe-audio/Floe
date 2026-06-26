@@ -12,6 +12,7 @@
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_library_images.hpp"
+#include "gui/core/gui_preset_description.hpp"
 #include "gui/core/gui_screenshot.hpp"
 #include "gui/core/gui_waveform_images.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
@@ -81,6 +82,11 @@ struct GuiState : EngineListener {
     MacrosGuiState macros_gui_state {};
     u32 screenshot_consecutive_clear_frames {};
     f32x2 curve_map_add_point_click_pos {};
+
+    // Updated by the top panel each frame, consumed by the perform panel.
+    PresetDescriptionDisplay preset_description_display {};
+    // Last frame's resolved width of the top panel description region (0 on first frame).
+    f32 top_panel_description_width {};
 
     Engine& engine;
     SharedEngineSystems& shared_engine_systems;
