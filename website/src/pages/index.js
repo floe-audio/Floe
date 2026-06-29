@@ -55,24 +55,30 @@ function HeroSection() {
     );
 }
 
-function FeatureSection({ title, description, image, imageAlt, reverse = false, fullWidth = false }) {
+function AspectSection({ eyebrow, title, image, imageAlt, description, bullets, reverse = false }) {
     return (
-        <section className={clsx(styles.featureSection, reverse && styles.reverse, fullWidth && styles.fullWidth)}>
-            <div className={fullWidth ? "" : "container"}>
-                <div className={styles.featureContent}>
-                    <div className={styles.featureText}>
-                        <Heading as="h2">{title}</Heading>
-                        <p>{description}</p>
+        <section className={clsx(styles.aspectSection, reverse && styles.aspectReverse)}>
+            <div className="container">
+                <div className={styles.aspectGrid}>
+                    <div className={styles.aspectMedia}>
+                        <img src={image} alt={imageAlt} className={styles.aspectImage} />
                     </div>
-                    <div className={styles.featureImage}>
-                        <img src={image} alt={imageAlt} />
+                    <div className={styles.aspectBody}>
+                        <Heading as="h2" className={styles.aspectTitle}>{title}</Heading>
+                        <p className={styles.aspectDescription}>{description}</p>
+                        {bullets && (
+                            <ul className={styles.checkList}>
+                                {bullets.map((item) => (
+                                    <li key={item}>{item}</li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
                 </div>
             </div>
         </section>
     );
 }
-
 
 export default function Home() {
     const { siteConfig } = useDocusaurusContext();
@@ -94,156 +100,77 @@ export default function Home() {
                         />
                     </div>
                 </section>
-
-                {/* Three key aspects: Find, Perform, Transform */}
-                <section className={styles.coreAspectsSection}>
+                <section className={styles.introSection}>
                     <div className="container">
-                        <Heading as="h2">Floe's Workflow</Heading>
-
-                        <div className={styles.aspectsGrid}>
-                            <div className={styles.aspectItem}>
-                                <div className={styles.aspectImageContainer}>
-                                    <img
-                                        src="/images/find-16-11.png"
-                                        alt="Floe's search and browse interface"
-                                        className={styles.aspectImage}
-                                    />
-                                </div>
-                                <div className={styles.aspectContent}>
-                                    <h3>Find</h3>
-                                    <p>
-                                        Floe's unified browser works across all your libraries with comprehensive search, tags (mood, type, genre), and categorisation. The sound you need is always a few clicks away, whether you're hunting for something specific or exploring new territory.
-                                    </p>
-                                </div>
+                        <div className={styles.introGrid}>
+                            <div className={styles.introBlock}>
+                                <Heading as="h2">Open platform</Heading>
+                                <p>
+                                    Floe is an open platform for <em>Floe-format sample libraries</em>, providing a streamlined workflow for <strong>finding</strong>, <strong>performing</strong> and <strong>transforming</strong> sounds.</p><p>Designed for producers, composers and musicians. Developers use Floe's open tools to build curated sample library products on top of it.
+                                </p>
                             </div>
-
-                            <div className={styles.aspectItem}>
-                                <div className={styles.aspectImageContainer}>
-                                    <img
-                                        src="/images/perform-16-11.png"
-                                        alt="Floe's performance controls and interface"
-                                        className={styles.aspectImage}
-                                    />
-                                </div>
-                                <div className={styles.aspectContent}>
-                                    <h3>Perform</h3>
-                                    <p>
-                                        Expressively play sample-based instruments: velocity, modulation, and pitch bend work as expected. Use MIDI controllers, DAW automation and Floe's macro knobs to further create lively performances.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className={styles.aspectItem}>
-                                <div className={styles.aspectImageContainer}>
-                                    <img
-                                        src="/images/transform-16-11.png"
-                                        alt="Floe's sound transformation features"
-                                        className={styles.aspectImage}
-                                    />
-                                </div>
-                                <div className={styles.aspectContent}>
-                                    <h3>Transform</h3>
-                                    <p>
-                                        Take sounds beyond their natural boundaries. Layer instruments across libraries, sculpt with loop and crossfade controls that bridge multisampling and synthesis, then process through built-in effects.
-                                    </p>
-                                </div>
+                            <div className={styles.introBlock}>
+                                <Heading as="h2">User-friendly</Heading>
+                                <p>
+                                    Our philosophy is to be hassle-free and allow you to focus on what really matters: making beautiful music.
+                                </p>
+                                <ul className={styles.checkList}>
+                                    <li>Offline installation</li>
+                                    <li>No accounts, no subscriptions, no interruptions</li>
+                                    <li>Resizable vector UI</li>
+                                    <li>Flexible folders &mdash; supports external drives and instantly detects changes</li>
+                                    <li>Visual UI: see what's happening in the sound</li>
+                                </ul>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                {/* Core Values section */}
-                <section className={styles.coreValuesSection}>
-                    <div className="container">
-                        <Heading as="h2">Key Benefits</Heading>
-
-                        <div className={styles.coreValuesGrid}>
-                            <div className={styles.coreValueItem}>
-                                <div className={styles.coreValueIcon}>🎛️</div>
-                                <div className={styles.coreValueContent}>
-                                    <h3>Layer across libraries</h3>
-                                    <p>
-                                        Break free from single-library limitations. Floe's 3-layer architecture lets you blend instruments from completely different sample libraries, creating rich, complex textures.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className={styles.coreValueItem}>
-                                <div className={styles.coreValueIcon}>🎚️</div>
-                                <div className={styles.coreValueContent}>
-                                    <h3>Sample-based synthesis, not just playback</h3>
-                                    <p>
-                                        More than a sample player — Floe features synthesis capabilities with filters, envelopes, LFOs, and crossfade controls. Take sounds beyond their natural boundaries, creating textures impossible with the original recordings.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className={styles.coreValueItem}>
-                                <div className={styles.coreValueIcon}>🔊</div>
-                                <div className={styles.coreValueContent}>
-                                    <h3>Professional effects rack</h3>
-                                    <p>
-                                        Shape your sound with 11 high-quality effects in customizable order, including pro-standard reverb and delay. Each layer processes individually before flowing through the shared effects chain.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className={styles.coreValueItem}>
-                                <div className={styles.coreValueIcon}>📁</div>
-                                <div className={styles.coreValueContent}>
-                                    <h3>Works with your workflow</h3>
-                                    <p>
-                                        Flexible folder management adapts to your organization, supports external drives, and instantly detects changes. No rigid requirements — Floe allows you to manage files your way.
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className={styles.coreValueItem}>
-                                <div className={styles.coreValueIcon}>🎵</div>
-                                <div className={styles.coreValueContent}>
-                                    <h3>No accounts, no subscriptions, no interruptions</h3>
-                                    <p>
-                                        Focus entirely on your creative process. Floe works offline, respects your privacy, and never interrupts your workflow with authentication prompts or payment reminders.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className={styles.moreFeatures}>
-                            <h3>More Features</h3>
-                            <ul className={styles.featureList}>
-                                <li>Per-layer arpeggiators (coming in v2)</li>
-                                <li>Comprehensive granular synthesis (coming in v2)</li>
-                                <li>Visual 3-band EQs (coming in v2)</li>
-                                <li>Undo/redo system (coming in v2)</li>
-                                <li>A/B comparison for preset edits (coming in v2)</li>
-                                <li>Autosave</li>
-                                <li>Random variation generator (coming in v2)</li>
-                                <li>Core per-layer controls: ADSR, filter, LFO, EQ, tuning, stereo width</li>
-                                <li>Sustain pedal support</li>
-                                <li>Customisable MIDI CC mapping</li>
-                                <li>Pitchbend with controllable range</li>
-                                <li>Velocity-volume curve</li>
-                                <li>Split sounds across keyboard ranges</li>
-                                <li>11 reorderable effects: reverb, distortion, delay, 2 compressors, and more</li>
-                                <li>Install libraries on separate drives</li>
-                                <li>Offline installation</li>
-                                <li>Load a random sound</li>
-                                <li>Options for fully reproducible recordings (coming in v2)</li>
-                                <li>4 renamable macro knobs</li>
-                                <li>Resizable vector UI</li>
-                                <li>Copy/paste/reset for all parameters and sections (coming in v2)</li>
-                            </ul>
-                        </div>
-                    </div>
-                </section>
+                <AspectSection
+                    eyebrow="Find"
+                    title="Find the right sound"
+                    image="/images/find-16-11.png"
+                    imageAlt="Floe's search and browse interface"
+                    description="Floe's unified browser works across all your libraries with comprehensive search, tags (mood, type, genre), and categorisation. The sound you need is always a few clicks away, whether you're hunting for something specific or exploring new territory."
+                />
+                <AspectSection
+                    eyebrow="Perform"
+                    title="Performance-ready"
+                    image="/images/perform-16-11.png"
+                    imageAlt="Floe's performance controls and interface"
+                    description="Expressively play sample-based instruments: velocity, modulation, and pitch bend work as expected. Use MIDI controllers, DAW automation and Floe's macro knobs to shape lively performances."
+                    bullets={[
+                        'A/B comparison for preset edits',
+                        'Undo/redo',
+                        'MIDI CC mappings',
+                        'Velocity to volume curve',
+                        'Settings for fully reproducible recordings',
+                    ]}
+                    reverse
+                />
+                <AspectSection
+                    eyebrow="Transform"
+                    title="Transform with sample-based synthesis"
+                    image="/images/transform-16-11.png"
+                    imageAlt="Floe's sound transformation features"
+                    description="Take sounds beyond their natural boundaries. Layer instruments across libraries, sculpt with loop and crossfade controls that bridge multisampling and synthesis, and process with built-in effects."
+                    bullets={[
+                        '3-layer architecture',
+                        'Powerful granular synthesis',
+                        '11 reorderable effects',
+                        'Per-layer arpeggiators',
+                        'Add loops with crossfade',
+                        'Envelopes, filters, LFOs',
+                        'Random variation generator',
+                    ]}
+                />
 
                 {/* Growing ecosystem section */}
                 <section className={styles.ecosystemSection}>
                     <div className="container">
                         <Heading as="h2">Growing ecosystem</Heading>
                         <p className={styles.ecosystemDescription}>
-                            Already in use by professionals, Floe is alive and improving. More packages are becoming available including community libraries and professional content. <Link to="/packages">Browse all packages →</Link>
+                            Already in use by professionals, Floe is alive and improving. More packages are becoming available, including community libraries and professional content. <Link to="/packages">Browse all packages →</Link>
                         </p>
                         <div className={styles.packagePreview}>
                             {(() => {
@@ -271,7 +198,7 @@ export default function Home() {
                         <div className={styles.highlightGrid}>
                             <div className={styles.highlightItem}>
                                 <h3>Widely supported</h3>
-                                <p>A sample-based synthesiser/ROMpler available as a CLAP, VST3, or AU plugin for Windows, macOS, and Linux. Compatible with all major DAWs (Logic Pro, Cubase, Studio One, FL Studio, Ableton Live, Reaper, and more), and uses the open Floe sample library format.</p>
+                                <p>A sample-based platform available as a CLAP, VST3, or AU plugin for Windows, macOS, and Linux. Compatible with all major DAWs — Logic Pro, Cubase, Studio One, FL Studio, Ableton Live, Reaper, and more. Uses the open Floe sample library format.</p>
                                 <div className={styles.osIcons} aria-label="Supported operating systems">
                                     <FontAwesomeIcon icon={faWindows} title="Windows" />
                                     <FontAwesomeIcon icon={faApple} title="macOS" />
@@ -286,7 +213,7 @@ export default function Home() {
 
                             <div className={styles.highlightItem}>
                                 <h3>FrozenPlain</h3>
-                                <p>Floe and <a href="https://www.frozenplain.com">FrozenPlain</a> are companion projects — both created by Sam Windell, with FrozenPlain's cinematic and ambient libraries primarily shaping Floe's direction. However, Floe is intentionally encapsulated as its own open platform, free to explore wider applications and serve the broader music-making community.</p>
+                                <p>Floe and <a href="https://www.frozenplain.com">FrozenPlain</a> are companion projects — both created by Sam Windell, with FrozenPlain's cinematic and ambient libraries primarily shaping Floe's direction. However, Floe is intentionally kept as its own open platform, free to explore wider applications and serve the broader music-making community.</p>
                                 <a href="https://www.frozenplain.com" aria-label="FrozenPlain" className={styles.tileLogoLink}>
                                     <img
                                         src="https://www.frozenplain.com/icons/logo-adj.svg"
