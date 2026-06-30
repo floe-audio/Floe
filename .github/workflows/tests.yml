@@ -67,6 +67,25 @@ jobs:
         with:
           submodules: recursive
 
+      # Nix provides our toolchain and build-time deps, but the plugin is run (by clap-validator,
+      # pluginval, etc.) against the system's libraries, exactly as it is on an end user's machine.
+      # This runner is not NixOS, so we install those runtime libraries here. The -dev package names
+      # are stable across Ubuntu releases and pull in the runtime sonames.
+      - name: Install runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libcurl4-openssl-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libxcb1-dev \
+            libvulkan-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxext-dev \
+            zenity
+
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
 

@@ -103,79 +103,6 @@ pub fn maybeAddWindowsCodesign(
     return cmd.output_file;
 }
 
-// These helpers are for dealing with Nix-related issues when building inside a Nix devshell.
-const NixHelper = struct {
-    binary_patch_needed: ?bool = null,
-
-    // Executables (as opposed to shared libraries) will default to being interpreted by the system's dynamic
-    // linker (often /lib64/ld-linux-x86-64.so.2). This can cause problems relating to using different versions
-    // of glibc at the same time. So we use patchelf to force using the same ld.
-    pub fn maybePatchElfExecutable(self: *NixHelper, compile_step: *std.Build.Step.Compile) std.Build.LazyPath {
-        const b = compile_step.step.owner;
-
-        if (compile_step.rootModuleTarget().os.tag != .linux) return compile_step.getEmittedBin();
-        if (!self.patchElfNeeded(b)) return compile_step.getEmittedBin();
-
-        const dyn_linker = b.graph.env_map.get("FLOE_DYNAMIC_LINKER") orelse return compile_step.getEmittedBin();
-        const rpath = b.graph.env_map.get("FLOE_RPATH") orelse return compile_step.getEmittedBin();
-
-        const patch_step = b.addSystemCommand(&.{
-            "patchelf",
-            "--set-interpreter",
-            dyn_linker,
-            "--set-rpath",
-            rpath,
-            "--output",
-        });
-        const result = patch_step.addOutputFileArg(compile_step.name);
-        patch_step.addFileArg(compile_step.getEmittedBin());
-
-        return result;
-    }
-
-    // The dynamic linker can normally find the libraries inside the nix devshell except when we are running
-    // an external program that hosts our audio plugin. For example clap-validator fails to load our clap with
-    // the error 'libGL.so.1 cannot be found'. Possible this is due to LD_LIBRARY_PATH not being available to
-    // the external program.
-    // As well as LD_LIBRARY_PATH, dynamic linkers also look at the rpath of the binary (which is embedded in
-    // the binary itself) to find the libraries. So that's what we use patchelf for here.
-    pub fn maybePatchElfSharedLibrary(
-        self: *NixHelper,
-        compile_step: *std.Build.Step.Compile,
-    ) std.Build.LazyPath {
-        const b = compile_step.step.owner;
-
-        if (compile_step.rootModuleTarget().os.tag != .linux) return compile_step.getEmittedBin();
-        if (!self.patchElfNeeded(b)) return compile_step.getEmittedBin();
-
-        const rpath = b.graph.env_map.get("FLOE_RPATH") orelse return compile_step.getEmittedBin();
-
-        const patch_step = b.addSystemCommand(&.{
-            "patchelf",
-            "--set-rpath",
-            rpath,
-            "--output",
-        });
-        const result = patch_step.addOutputFileArg("patched_plugin");
-        patch_step.addFileArg(compile_step.getEmittedBin());
-
-        return result;
-    }
-
-    fn patchElfNeeded(self: *NixHelper, b: *std.Build) bool {
-        if (self.binary_patch_needed == null)
-            self.binary_patch_needed = builtin.os.tag == .linux and inNixShell(b);
-
-        return self.binary_patch_needed.?;
-    }
-
-    fn inNixShell(b: *std.Build) bool {
-        return b.graph.env_map.get("IN_NIX_SHELL") != null;
-    }
-};
-
-pub var nix_helper: NixHelper = .{};
-
 pub fn maybeProcessExecutable(
     compile_step: *std.Build.Step.Compile,
     codesign: ?CodesignInfo,
@@ -185,7 +112,6 @@ pub fn maybeProcessExecutable(
             maybeAddWindowsCodesign(compile_step, c)
         else
             compile_step.getEmittedBin(),
-        .linux => nix_helper.maybePatchElfExecutable(compile_step),
         else => compile_step.getEmittedBin(),
     };
 }
@@ -243,7 +169,7 @@ pub fn addConfiguredPlugin(
 ) ConfiguredPlugin {
     switch (compile_step.rootModuleTarget().os.tag) {
         .linux => {
-            const path = nix_helper.maybePatchElfSharedLibrary(compile_step);
+            const path = compile_step.getEmittedBin();
 
             // Path to the actual plugin (whether a binary or a bundle folder).
             const plugin_path = switch (plugin_type) {

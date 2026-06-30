@@ -705,7 +705,7 @@ pub fn build(b: *std.Build) void {
         // Run the docs generator. It takes no args but outputs JSON to stdout.
         {
             const run = std.Build.Step.Run.create(b, b.fmt("run {s}", .{docs_generator.name}));
-            run.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(docs_generator));
+            run.addFileArg(docs_generator.getEmittedBin());
 
             const copy = b.addUpdateSourceFiles();
             copy.addCopyFileToSource(run.captureStdOut(), "website/static/generated-data.json");
@@ -3125,7 +3125,7 @@ fn doTarget(
                     cfg.target,
                     "run VST3-Validator",
                 );
-                run_tests.addFileArg(configure_binaries.nix_helper.maybePatchElfExecutable(vst3_validator));
+                run_tests.addFileArg(vst3_validator.getEmittedBin());
                 vst3.addToRunStepArgs(run_tests);
                 run_tests.expectExitCode(0);
 
@@ -3302,7 +3302,7 @@ fn doTarget(
     if (ctx.build_mode != .production) {
         const exe = buildTests(ctx, cfg, .{ .plugin = plugin });
 
-        const test_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
+        const test_binary = exe.getEmittedBin();
 
         const install = ctx.b.addInstallBinFile(test_binary, exe.out_filename);
         top_level_steps.install_bin.dependOn(&install.step);
@@ -3381,7 +3381,7 @@ fn doTarget(
     if (ctx.build_mode != .production) {
         const exe = buildBenchmarks(ctx, cfg, .{ .plugin = plugin });
 
-        const benchmark_binary = configure_binaries.nix_helper.maybePatchElfExecutable(exe);
+        const benchmark_binary = exe.getEmittedBin();
 
         const install = ctx.b.addInstallBinFile(benchmark_binary, exe.out_filename);
         top_level_steps.install_bin.dependOn(&install.step);
