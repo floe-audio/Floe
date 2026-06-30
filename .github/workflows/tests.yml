@@ -84,7 +84,8 @@ jobs:
             libx11-dev \
             libxcursor-dev \
             libxext-dev \
-            zenity
+            zenity \
+            libc6-dbg
 
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/flakehub-cache-action@main
