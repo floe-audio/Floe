@@ -20,6 +20,7 @@ pub const Options = struct {
     fetch_floe_logos: bool,
     no_runtime_safety_checks: bool,
     include_git_hash: ?bool,
+    use_system_pluginval: bool,
     targets: ?[]const u8,
 };
 

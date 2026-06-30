@@ -454,6 +454,11 @@ pub fn build(b: *std.Build) void {
             "include-git-hash",
             "Include the git commit hash in the version string as semver build metadata. Default is true if not production build.",
         ),
+        .use_system_pluginval = b.option(
+            bool,
+            "use-system-pluginval",
+            "Use a pluginval found on PATH rather than the build.zig.zon release artifact",
+        ) orelse onNixOS(),
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 
@@ -3164,7 +3169,7 @@ fn doTarget(
                         // Pluginval puts all of it's output in stdout, not stderr.
                         const run = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run pluginval AU");
 
-                        addPluginvalCommand(run, cfg.target);
+                        addPluginvalCommand(run, cfg.target, options.use_system_pluginval);
 
                         run.addArgs(&.{ "--validate", installed_au_path });
 
@@ -3467,7 +3472,7 @@ fn doTarget(
         // Pluginval puts all of it's output in stdout, not stderr.
         const run = std_extras.createCommandWithStdoutToStderr(ctx.b, cfg.target, "run pluginval");
 
-        addPluginvalCommand(run, cfg.target);
+        addPluginvalCommand(run, cfg.target, options.use_system_pluginval);
 
         // In headless environments such as CI, GUI tests always fail on Linux so we skip them.
         if (builtin.os.tag == .linux and ctx.b.graph.env_map.get("DISPLAY") == null) {
@@ -3530,13 +3535,21 @@ fn chmodExeStep(b: *std.Build, path: std.Build.LazyPath) *std.Build.Step.Run {
     return mod;
 }
 
-fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target) void {
+fn onNixOS() bool {
+    if (builtin.os.tag != .linux) return false;
+    std.fs.accessAbsolute("/etc/NIXOS", .{}) catch return false;
+    return true;
+}
+
+fn addPluginvalCommand(run: *std.Build.Step.Run, target: std.Target, use_system: bool) void {
     const b = run.step.owner;
 
-    if (b.findProgram(
+    const system_program = if (use_system) b.findProgram(
         &.{if (target.os.tag != .windows) "pluginval" else "pluginval.exe"},
         &[0][]const u8{},
-    ) catch null) |program| {
+    ) catch null else null;
+
+    if (system_program) |program| {
         run.addArg(program); // We found a system installation.
     } else if (target.os.tag == .windows) {
         if (b.lazyDependency("pluginval_windows", .{})) |dep| {
