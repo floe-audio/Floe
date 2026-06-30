@@ -29,13 +29,19 @@ This project is licensed under GPL version 3 or later. See the LICENCES folder f
 ### More info
 We typically use our Nix development environment on Linux or macOS to build Floe, and cross-compile to Windows. Enter this environment by installing Nix, enabling Nix flakes, and running `nix develop` in the root of the project. This ensures the correct Zig version and all dependencies are available. However, the Nix environment is not often necessary.
 
+You can also build Floe as a Nix package: `nix build` produces a production build, and the `floe-profiling` and `floe-development` flake outputs build the other modes (Linux only). On NixOS, the resulting binaries find their runtime libraries via [nix-ld](https://github.com/nix-community/nix-ld).
+
+To install it into your Nix profile, run `nix profile add .#floe`. This puts the command-line binaries in your profile's `bin` directory and the plugins in `lib/clap` and `lib/vst3`, so setups that wire up those profile directories (such as [musnix](https://github.com/musnix/musnix)) pick the plugins up automatically.
+
+The variants share binary names, so only one fits in a profile at once. Swap with `nix profile remove --regex '.*floe.*' ; nix profile add .#floe-development`.
+
 Run `zig build --help` to see more options.
 
 To build an optimised release binaries, do something like `zig build install -Dbuild-mode=production`. You can also use Zig's standard `--prefix` option to specify an installation directory. We have configured this so that it will install audio plugins to the standard subfolders on each platform. On Linux, set the prefix to your home directory, on macOS set it to `~/Library/Audio/Plug-Ins`, and on Windows set it to `%LOCALAPPDATA%\Programs\Common`. Alternatively, omit the `--prefix` option and copy the binaries from the `zig-out` directory manually to wherever you need them.
 
 We support cross-compiling using the `-Dtargets=` option. So for example you can compile the Windows and macOS plugins on a Linux machine. Valid targets are `x86_64-windows`, `x86_64-linux`, `x86_64-macos` and `aarch64-macos`. You can specify multiple targets separated by commas. Note that we don't support cross-compiling to Linux from any OS; you need to be on Linux to build Linux binaries at the moment.
 
-Building on Linux, you will need libraries for curl, x11, OpenGL, GLX, Vulkan (handled automatically in the Nix environment); these are also normally installed by default on your distro. Runtime dependencies are `xdg-open` and `zenity`.
+Building on Linux, you will need libraries for curl, x11, OpenGL, GLX, Vulkan (handled automatically in the Nix environment); these are also normally installed by default on your distro. ALSA is additionally needed, but only for the standalone build (a dev-only artifact). Runtime dependencies are `xdg-open` and `zenity`.
 
 ### Testing
 Run `zig build test` to run the unit tests. Add arguments after `--` to configure our test runner's command-line options. We also have easy to use testing using pluginval, vst3-validator, clap-validator, valgrind, thread sanitizer, clang-tidy; see `zig build --help`.

@@ -552,6 +552,7 @@ pub fn build(b: *std.Build) void {
         .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused size/colour-map entries from def files"),
         .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
         .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe-standalone for each known GUI area"),
+        .zon2nix = b.step("script:zon2nix", "Regenerate build.zig.zon.nix from build.zig.zon"),
     };
 
     top_level_steps.install_all.dependOn(top_level_steps.install_bin);
@@ -744,6 +745,13 @@ pub fn build(b: *std.Build) void {
 
             top_level_steps.website_dev.dependOn(&run.step);
         }
+    }
+
+    // Regenerate the Nix expression for the Zig dependencies.
+    {
+        const run = b.addSystemCommand(&.{ "zon2nix", "build.zig.zon", "--nix", "build.zig.zon.nix" });
+        run.expectExitCode(0);
+        top_level_steps.zon2nix.dependOn(&run.step);
     }
 }
 

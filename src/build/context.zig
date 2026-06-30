@@ -98,6 +98,7 @@ pub const TopLevelSteps = struct {
     remove_unused_gui_defs: *std.Build.Step,
     update_copyright_years: *std.Build.Step,
     gen_doc_screenshots: *std.Build.Step,
+    zon2nix: *std.Build.Step,
 };
 
 pub const TargetConfig = struct {
