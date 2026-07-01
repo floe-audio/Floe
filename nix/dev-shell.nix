@@ -60,6 +60,7 @@ pkgs.mkShell rec {
     pkgs.pkg-config
     pkgs.zenity
     pkgs.kcov
+    pkgs.patchelf
     pkgs.valgrind
     pkgs.pluginval
   ]
@@ -85,14 +86,20 @@ pkgs.mkShell rec {
     export ZIG_GLOBAL_CACHE_DIR=".zig-cache-global"
   ''
   + pkgs.lib.optionalString pkgs.stdenv.isLinux ''
-    # On NixOS there are no system libraries at the standard paths, so point the dynamic linker at the
-    # Nix-provided ones: nix-ld (which our binaries reach via the standard ELF interpreter) honours
-    # NIX_LD_LIBRARY_PATH, and native Nix binaries use LD_LIBRARY_PATH. On non-NixOS (e.g. CI) we leave
-    # these unset so binaries resolve the system libraries, exactly as end users do.
+    # Expose the Nix-provided dynamic linker and library path so the Zig build can bake them into
+    # binaries that need to run in isolated environments (e.g. the TSan-instrumented tests exe,
+    # which can't rely on the system loader). Regular release builds ignore these and resolve
+    # against the system's libraries, exactly as end users do.
+    export FLOE_RPATH="${pkgs.lib.makeLibraryPath buildInputs}"
+    export FLOE_DYNAMIC_LINKER="${pkgs.glibc}/lib/ld-linux-x86-64.so.2"
+
+    # On NixOS there are no system libraries at the standard paths, so point the dynamic linker at
+    # the Nix-provided ones: nix-ld (which our binaries reach via the standard ELF interpreter)
+    # honours NIX_LD_LIBRARY_PATH, and native Nix binaries use LD_LIBRARY_PATH. On non-NixOS (e.g.
+    # CI) we leave these unset so binaries resolve the system libraries.
     if [ -e /etc/NIXOS ]; then
-      floe_lib_path="${pkgs.lib.makeLibraryPath buildInputs}"
-      export LD_LIBRARY_PATH="$floe_lib_path''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-      export NIX_LD_LIBRARY_PATH="$floe_lib_path''${NIX_LD_LIBRARY_PATH:+:$NIX_LD_LIBRARY_PATH}"
+      export LD_LIBRARY_PATH="$FLOE_RPATH''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      export NIX_LD_LIBRARY_PATH="$FLOE_RPATH''${NIX_LD_LIBRARY_PATH:+:$NIX_LD_LIBRARY_PATH}"
     fi
   '';
 }

@@ -3315,6 +3315,22 @@ fn doTarget(
     if (ctx.build_mode != .production) {
         const exe = buildTests(ctx, cfg, .{ .plugin = plugin });
 
+        // TSan-instrumented binaries can't rely on the system loader/libraries — the interceptors
+        // and the host glibc need to match. When the Nix devshell has exported FLOE_DYNAMIC_LINKER
+        // and FLOE_RPATH, bake them into the tests exe at link time via Zig's own --dynamic-linker
+        // and DT_RUNPATH support, replacing the patchelf pass we used previously.
+        if (cfg.target.os.tag == .linux and options.sanitize_thread) {
+            if (ctx.b.graph.env_map.get("FLOE_DYNAMIC_LINKER")) |dl|
+                exe.root_module.resolved_target.?.query.dynamic_linker.set(dl);
+            if (ctx.b.graph.env_map.get("FLOE_RPATH")) |rpath| {
+                var it = std.mem.splitScalar(u8, rpath, ':');
+                while (it.next()) |dir| {
+                    if (dir.len == 0) continue;
+                    exe.addRPath(.{ .cwd_relative = dir });
+                }
+            }
+        }
+
         const test_binary = exe.getEmittedBin();
 
         const install = ctx.b.addInstallBinFile(test_binary, exe.out_filename);
