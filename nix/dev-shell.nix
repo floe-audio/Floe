@@ -60,7 +60,6 @@ pkgs.mkShell rec {
     pkgs.pkg-config
     pkgs.zenity
     pkgs.kcov
-    pkgs.patchelf
     pkgs.valgrind
     pkgs.pluginval
   ]
