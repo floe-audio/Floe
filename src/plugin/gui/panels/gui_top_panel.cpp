@@ -390,13 +390,11 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                         layer.VolumeEnvelopeIsOn(g.engine.processor.main_params));
             }
 
-            auto const auto_headline =
-                WriteAutoDescription(builder.arena,
-                                     snapshot.state,
-                                     layer_info,
-                                     {.form = AutoDescriptionForm::Headline,
-                                      .random_seed = seed,
-                                      .folder_name = folder});
+            auto const auto_headline = WriteAutoDescription(
+                builder.arena,
+                snapshot.state,
+                layer_info,
+                {.form = AutoDescriptionForm::Headline, .random_seed = seed, .folder_name = folder});
             auto const auto_full_block =
                 WriteAutoDescription(builder.arena,
                                      snapshot.state,
@@ -404,32 +402,31 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                      {.form = AutoDescriptionForm::FullBlock, .random_seed = seed});
             auto const* italic_font = builder.fonts.atlas[ToInt(FontType::BodyItalic)];
             auto const display = SplitPresetDescriptionForDisplay(snapshot.state.metadata.description,
-                                                                   auto_headline,
-                                                                   auto_full_block,
-                                                                   *italic_font,
-                                                                   g.top_panel_description_width);
+                                                                  auto_headline,
+                                                                  auto_full_block,
+                                                                  *italic_font,
+                                                                  g.top_panel_description_width);
             g.preset_description_display = display;
             String const desc_text = display.kind == LongDescriptionKind::UserContinued
                                          ? (String)fmt::Format(builder.arena, "{}…", display.top_text)
                                          : display.top_text;
-            auto const desc_box = DoBox(
-                builder,
-                {
-                    .parent = preset_box_left,
-                    .text = desc_text,
-                    .font = FontType::BodyItalic,
-                    .text_colours =
-                        ColSet {
-                            .base {.c = Col::Subtext0, .dark_mode = true},
-                            .hot {.c = Col::Subtext1, .dark_mode = true},
-                            .active {.c = Col::Subtext1, .dark_mode = true},
-                        },
-                    .text_overflow = TextOverflowType::ShowDotsOnRight,
-                    .parent_dictates_hot_and_active = true,
-                    .layout {
-                        .size = {layout::k_fill_parent, k_font_body_italic_size},
-                    },
-                });
+            auto const desc_box = DoBox(builder,
+                                        {
+                                            .parent = preset_box_left,
+                                            .text = desc_text,
+                                            .font = FontType::BodyItalic,
+                                            .text_colours =
+                                                ColSet {
+                                                    .base {.c = Col::Subtext0, .dark_mode = true},
+                                                    .hot {.c = Col::Subtext1, .dark_mode = true},
+                                                    .active {.c = Col::Subtext1, .dark_mode = true},
+                                                },
+                                            .text_overflow = TextOverflowType::ShowDotsOnRight,
+                                            .parent_dictates_hot_and_active = true,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, k_font_body_italic_size},
+                                            },
+                                        });
             if (auto const r = BoxRect(builder, desc_box)) g.top_panel_description_width = r->w;
         }
 

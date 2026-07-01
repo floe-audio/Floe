@@ -792,10 +792,9 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
 
     if (!display.bottom_text.size) return;
 
-    auto const bottom_text =
-        display.kind == LongDescriptionKind::UserContinued
-            ? (String)fmt::Format(g.scratch_arena, "…{}", display.bottom_text)
-            : display.bottom_text;
+    auto const bottom_text = display.kind == LongDescriptionKind::UserContinued
+                                 ? (String)fmt::Format(g.scratch_arena, "…{}", display.bottom_text)
+                                 : display.bottom_text;
 
     DoBox(builder,
           {

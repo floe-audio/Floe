@@ -20,10 +20,10 @@ struct PresetDescriptionDisplay {
 // otherwise split at '\n', sentence boundary, or word boundary) and auto_full_block fills the bottom;
 // if user_text is empty, auto_headline takes the top and the bottom is left blank.
 PUBLIC PresetDescriptionDisplay SplitPresetDescriptionForDisplay(String user_text,
-                                                                  String auto_headline,
-                                                                  String auto_full_block,
-                                                                  Font const& font,
-                                                                  f32 max_top_width) {
+                                                                 String auto_headline,
+                                                                 String auto_full_block,
+                                                                 Font const& font,
+                                                                 f32 max_top_width) {
     if (!user_text.size)
         return {.top_text = auto_headline, .bottom_text = {}, .kind = LongDescriptionKind::Auto};
 
@@ -45,7 +45,8 @@ PUBLIC PresetDescriptionDisplay SplitPresetDescriptionForDisplay(String user_tex
         if (has_newline) {
             for (usize i = 0; i < text.size; i++) {
                 if (text[i] == '\n') {
-                    if (measure_width(text.SubSpan(0, i)) <= max_top_width) return Pair<usize, bool> {i, true};
+                    if (measure_width(text.SubSpan(0, i)) <= max_top_width)
+                        return Pair<usize, bool> {i, true};
                     break;
                 }
             }
@@ -59,8 +60,8 @@ PUBLIC PresetDescriptionDisplay SplitPresetDescriptionForDisplay(String user_tex
         auto const split_byte = (usize)(wrap_eol - text.data);
 
         usize tail = split_byte;
-        while (tail > 0 && (text[tail - 1] == ' ' || text[tail - 1] == '\t' ||
-                            is_trailing_punct(text[tail - 1])))
+        while (tail > 0 &&
+               (text[tail - 1] == ' ' || text[tail - 1] == '\t' || is_trailing_punct(text[tail - 1])))
             tail--;
         bool const clean = tail > 0 && text[tail - 1] == '.';
         return Pair<usize, bool> {split_byte, clean};
@@ -68,16 +69,12 @@ PUBLIC PresetDescriptionDisplay SplitPresetDescriptionForDisplay(String user_tex
 
     auto const split = find_split(user_text);
     if (!split)
-        return {.top_text = user_text,
-                .bottom_text = auto_full_block,
-                .kind = LongDescriptionKind::Auto};
+        return {.top_text = user_text, .bottom_text = auto_full_block, .kind = LongDescriptionKind::Auto};
 
     auto const top = WhitespaceStripped(user_text.SubSpan(0, split->first));
     auto const bottom = WhitespaceStripped(user_text.SubSpan(split->first));
     if (!top.size || !bottom.size)
-        return {.top_text = user_text,
-                .bottom_text = auto_full_block,
-                .kind = LongDescriptionKind::Auto};
+        return {.top_text = user_text, .bottom_text = auto_full_block, .kind = LongDescriptionKind::Auto};
 
     return {.top_text = top,
             .bottom_text = bottom,
