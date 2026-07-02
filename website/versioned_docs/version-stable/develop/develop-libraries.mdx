@@ -26,24 +26,27 @@ We made these tools for our own use and are sharing them with the community. Con
 :::
 
 ### What you'll need
-- Basic programming concepts (variables, functions, loops) or willingness to learn
-- Familiarity with text editors (Sublime Text, VS Code, etc.)
-- Understanding of sample mapping concepts (key ranges, velocity layers)
+- Tools and experience writing and editing code
+- Understanding of sample mapping concepts (key ranges, velocity layers, etc.)
+- It's recommended to have experience programming other samplers like Kontakt, SFZ, Decent Sampler, etc.
 
 ## Floe's sample library format
 
 Floe's format is designed for configuring audio files into playable instruments. It does not add any audio-manipulation or custom GUIs. Floe has a ready-to-use GUI and lots of audio parameters. In the future we might add more advanced scripting/GUI creation features to the format. The format is designed to be extended whilst retaining backwards compatibility.
 
-Floe's sample library format currently supports the following features: 
+Floe's sample library format currently supports the following features:
 - Velocity layers
 - Round-robin
 - Crossfade layers
-- Loop points with crossfade 
+- Loop points with crossfade
 - Convolution reverb IRs
 - Velocity layer feathering
 - Trigger samples on note-off
 
-As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well. 
+As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well.
+
+_The basics are covered, but there are plenty of features that other samplers might have that Floe doesn't. We expand our format to meet the needs of our products rather than add add things that we don't currently need._
+
 
 ### Why a new format?
 No existing format met our requirements for Floe, which are:
@@ -58,9 +61,10 @@ We're not trying to replace existing formats or create a new standard. Instead, 
 ### Developer friendly
 Floe's format is designed to be developer-friendly. It plays well into the tooling and experience of people who are used to dealing with code:
 - Works with version control: libraries are just folders of files, they're portable across filesystems and operating systems.
-- Hot reloading: Floe automatically reloads the library whenever you change a file: Lua, audio, or images. It creates a very fast feedback loop.
+- Hot reloading: Floe automatically reloads the library whenever you change a file: Lua, audio, or images. It creates a very fast feedback loop. If a change isn't picked up, use the top panel's 3-dots menu → Rescan Libraries & Presets to force a rescan.
 - Uses a full programming language: Lua is simple, powerful, and widely used. You can use variables, functions, loops, and conditionals to configure your library.
 - Floe's Lua API is simple and concise.
+- [`floe-library-inspector`](#library-inspector) CLI tool dumps the parsed library as JSON or Lua so you can verify exactly what Floe loaded — useful for debugging without launching the plugin.
 
 
 ## The structure
@@ -104,14 +108,14 @@ Here's a made-up example of a `floe.lua` file:
 
 ## How to get started
 
-1. Create a new folder in one of Floe's [sample library folders](../key-concepts/folders). We recommend naming it 'Author Name - Library Name'.
+1. Create a new folder in one of Floe's [sample library folders](../usage/folders). We recommend naming it 'Author Name - Library Name'.
 1. Create a file in that folder called `my-library.floe.lua`.
 1. Create a subfolder called `Samples` and put your audio files in there.
 1. Open the Lua file in your text editor. If you're not already familiar with an editor, then Sublime Text or Visual Studio Code are reasonable choices.
 1. Use the `floe.new_library()` function to create your library, filling in all the fields marked `[required]` in the [Floe's Lua reference](./library-lua-scripts).
 1. Use `floe.new_instrument()` to create an instrument, and then add regions to it using `floe.add_region()`, again, filling in the fields that are documented.
 1. At the end of the file, return the library object you just created: `return library`.
-1. Floe automatically detects whenever any library file changes and will tell you if there's any errors. If a library is correctly configured, it will instantly appear in Floe.
+1. Floe automatically detects whenever any library file changes and will tell you if there's any errors. If a library is correctly configured, it will instantly appear in Floe. For a fuller view of what was parsed — regions, loop points, missing samples — run [`floe-library-inspector`](#library-inspector).
 
 ### Approach to sample mapping
 You can start by manually writing individual `add_region` calls for each sample, filling out the required information as you go. When things start getting repetitive or you need to apply consistent logic across many samples, you'll want to leverage Lua's programming features:
@@ -172,6 +176,25 @@ For example, normalising all samples to a target level can be done using a simpl
 Floe doesn't generate this kind of audio data for you because it can be slow to scan large folders of samples. It's better for the sample library developer to generate it once with Signet and bake it into a Lua file, instead of the sample library users having to wait every time they load the library.
 
 
+## Library inspector
+`floe-library-inspector` is a small CLI tool for debugging libraries. It parses your library and dumps everything Floe loaded as JSON (or Lua with `--format=lua`) — surfacing parse errors, captured `print()` output, and any orphan or missing audio files.
+
+{data["latest-beta-release-version"]?.["Floe-Library-Inspector-Windows"] ? (
+<ul>
+  <li><FAIcon icon="fa-brands fa-windows" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].size})</li>
+  <li><FAIcon icon="fa-brands fa-apple" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].size})</li>
+  <li><FAIcon icon="fa-brands fa-apple" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].size})</li>
+  <li><FAIcon icon="fa-brands fa-linux" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].size})</li>
+</ul>
+) : (
+<p><em>Downloads will appear here with the next beta release.</em></p>
+)}
+
+<CodeBlock>
+{data["library-inspector-help"]}
+</CodeBlock>
+
+
 ## Creating high-quality samples
 
 ### Levels
@@ -212,3 +235,5 @@ Floe accepts any image. It uses "cover" scaling with top-left positioning — in
 - Avoid dramatic contrasts between very dark and very bright regions
 
 The most critical consideration is interface readability. Since Floe's knobs, buttons, and text render on top of your background image, the image needs consistent tones to ensure controls remain clearly visible. While some variation is acceptable, remember that interface legibility is paramount.
+
+Additionally, Floe has options to add a coloured vignette on the background image and an overlay tint to its blurred panels via options in the Lua code. Experiment with these options, starting with very transparent colours.

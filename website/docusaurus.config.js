@@ -196,31 +196,30 @@ const config = {
                             "/docs/beta/key-concepts/components",
                         ],
                     },
-                    // Uncomment when beta promotes to stable:
-                    // {
-                    //     to: "/docs/getting-started/overview",
-                    //     from: [
-                    //         "/docs/key-concepts/general-usage",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/usage/browsers",
-                    //     from: [
-                    //         "/docs/key-concepts/browsers",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/usage/folders",
-                    //     from: [
-                    //         "/docs/key-concepts/folders",
-                    //     ],
-                    // },
-                    // {
-                    //     to: "/docs/getting-started/glossary",
-                    //     from: [
-                    //         "/docs/key-concepts/components",
-                    //     ],
-                    // },
+                    {
+                        to: "/docs/getting-started/overview",
+                        from: [
+                            "/docs/key-concepts/general-usage",
+                        ],
+                    },
+                    {
+                        to: "/docs/usage/browsers",
+                        from: [
+                            "/docs/key-concepts/browsers",
+                        ],
+                    },
+                    {
+                        to: "/docs/usage/folders",
+                        from: [
+                            "/docs/key-concepts/folders",
+                        ],
+                    },
+                    {
+                        to: "/docs/getting-started/glossary",
+                        from: [
+                            "/docs/key-concepts/components",
+                        ],
+                    },
                     // Mostly old routes from our previous mdbook-based site.
                     {
                         to: "/docs/installation/install-packages",
@@ -231,11 +230,15 @@ const config = {
                         ],
                     },
                     {
-                        to: "/docs/key-concepts/components",
+                        to: "/docs/usage/presets",
                         from: [
-                            "/docs/usage/presets",
                             "/usage/presets",
                             "/usage/presets.html",
+                        ],
+                    },
+                    {
+                        to: "/docs/getting-started/glossary",
+                        from: [
                             "/docs/usage/sample-libraries",
                             "/usage/sample-libraries",
                             "/usage/sample-libraries.html",
