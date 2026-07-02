@@ -127,9 +127,8 @@ static Char32 STB_TEXTEDIT_GETCHAR(STB_TEXTEDIT_STRING* imgui, int idx) {
 // Returns the pixel delta from the x-position of the i'th character to the x-position of the i+1'th char for
 // a line of characters starting at character #n (i.e. accounts for kerning with previous char)
 // NOLINTNEXTLINE(readability-identifier-naming)
-static f32 STB_TEXTEDIT_GETWIDTH(STB_TEXTEDIT_STRING* imgui, int i, int n) {
-    (void)i;
-    auto c = imgui->textedit_text[(usize)n];
+static f32 STB_TEXTEDIT_GETWIDTH(STB_TEXTEDIT_STRING* imgui, int row_start_index, int offset_in_row) {
+    auto c = imgui->textedit_text[(usize)(row_start_index + offset_in_row)];
     if (c == '\n') return STB_TEXTEDIT_GETWIDTH_NEWLINE;
     auto font = imgui->draw_list->fonts.Current();
     return font->GetCharAdvance((Char16)c);
