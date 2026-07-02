@@ -188,7 +188,6 @@ static void SetTimers(AppWindow& window, SetTimerType type) {
 }
 
 inline FloeClapExtensionHost const* CustomFloeHost(clap_host const& host) {
-    if constexpr (PRODUCTION_BUILD) return nullptr;
     return (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id);
 }
 

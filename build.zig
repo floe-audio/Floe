@@ -3022,7 +3022,7 @@ fn doTarget(
 
     // Standalone is for development-only at the moment, so we can save a bit of time by not building it
     // in production builds.
-    if (ctx.build_mode != .production) {
+    {
         const exe = buildStandalone(ctx, cfg, .{ .plugin = plugin });
 
         const installed = configure_binaries.installProcessedExecutable(exe, null);
