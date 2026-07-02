@@ -11,18 +11,25 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  /* Floe brand colors - blue/purple theme */
-  --ifm-color-primary: #555e85;
-  --ifm-color-primary-dark: #4a5274;
-  --ifm-color-primary-darker: #454e6e;
-  --ifm-color-primary-darkest: #3a4259;
-  --ifm-color-primary-light: #606a96;
-  --ifm-color-primary-lighter: #656f9c;
-  --ifm-color-primary-lightest: #7481b3;
-  
+  /* Floe brand colors - aligned with plugin surface hue (~207deg) */
+  --ifm-color-primary: #366285;
+  --ifm-color-primary-dark: #305877;
+  --ifm-color-primary-darker: #2d5370;
+  --ifm-color-primary-darkest: #25445c;
+  --ifm-color-primary-light: #3d6c92;
+  --ifm-color-primary-lighter: #427197;
+  --ifm-color-primary-lightest: #5786a8;
+  --ifm-color-primary-rgb: 54, 98, 133;
+
+  /* Warm gold accent - matches the plugin highlight (#fbe595) */
+  --floe-gold: #fbe595;
+  --floe-gold-rgb: 251, 229, 149;
+  --floe-gold-strong: #b8892a;   /* darker gold, usable as text/icon on white */
+  --floe-gold-strong-rgb: 184, 137, 42;
+
   /* Enhanced color system */
-  --ifm-color-secondary: #7481b3;
-  --ifm-color-accent: #8a96c7;
+  --ifm-color-secondary: #5786a8;
+  --ifm-color-accent: var(--floe-gold-strong);
   
   /* Typography */
   --ifm-code-font-size: 95%;
@@ -45,16 +52,17 @@
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #7481b3;
-  --ifm-color-primary-dark: #6370a5;
-  --ifm-color-primary-darker: #5d6a9e;
-  --ifm-color-primary-darkest: #4d5885;
-  --ifm-color-primary-light: #8592c1;
-  --ifm-color-primary-lighter: #8c98c8;
-  --ifm-color-primary-lightest: #a3aed6;
-  
-  --ifm-color-secondary: #8a96c7;
-  --ifm-color-accent: #9ca7d2;
+  --ifm-color-primary: #7fb4d6;
+  --ifm-color-primary-dark: #6ba7cd;
+  --ifm-color-primary-darker: #61a1c9;
+  --ifm-color-primary-darkest: #4589b6;
+  --ifm-color-primary-light: #93c1dd;
+  --ifm-color-primary-lighter: #9dc7e0;
+  --ifm-color-primary-lightest: #c0daea;
+  --ifm-color-primary-rgb: 127, 180, 214;
+
+  --ifm-color-secondary: #9dc7e0;
+  --ifm-color-accent: var(--floe-gold);
   
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
@@ -79,9 +87,19 @@ h2, h3, h4, h5, h6 {
     margin-top: 1.8em;
 }
 
-/* Enhanced footer contrast */
-.theme-layout-footer {
-  --ifm-footer-link-color: #ffffff;
+/* Footer — same subtle tint as the alternating aspect sections */
+.footer--dark {
+  --ifm-footer-background-color: #f6f9fb;
+  --ifm-footer-color: var(--ifm-color-content);
+  --ifm-footer-link-color: var(--ifm-color-content);
+  --ifm-footer-title-color: var(--ifm-heading-color);
+}
+
+[data-theme='dark'] .footer--dark {
+  --ifm-footer-background-color: #1f2225;
+  --ifm-footer-color: var(--ifm-color-content);
+  --ifm-footer-link-color: var(--ifm-color-content);
+  --ifm-footer-title-color: var(--ifm-heading-color);
 }
 
 /* docs images have rounded corners */
@@ -101,6 +119,17 @@ h2, h3, h4, h5, h6 {
 /* Prevent text color change on outline button hover */
 .button--outline:hover {
   color: var(--ifm-color-primary) !important;
+}
+
+/* Gold-tinted link hover — subtle brand pull-through */
+.markdown a:hover,
+.footer__link-item:hover {
+  color: var(--floe-gold-strong);
+}
+
+[data-theme='dark'] .markdown a:hover,
+[data-theme='dark'] .footer__link-item:hover {
+  color: var(--floe-gold);
 }
 
 /* Adjustments for the blog page */

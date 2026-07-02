@@ -28,6 +28,7 @@
   transition: all 0.3s ease;
   min-width: 250px;
   cursor: pointer;
+  border: 1px solid transparent;
 }
 
 .downloadButton:hover {
@@ -35,7 +36,9 @@
   color: white;
   text-decoration: none;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: var(--floe-gold);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18),
+              0 0 0 3px rgba(var(--floe-gold-rgb), 0.25);
 }
 
 .downloadContent {
@@ -127,8 +130,13 @@
 }
 
 .additionalDownloads a:hover {
-  color: var(--ifm-color-primary-dark);
+  color: var(--floe-gold-strong);
   text-decoration: underline;
+  text-decoration-color: var(--floe-gold);
+}
+
+[data-theme='dark'] .additionalDownloads a:hover {
+  color: var(--floe-gold);
 }
 
 /* Responsive design */

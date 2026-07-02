@@ -106,7 +106,7 @@ export default function Home() {
                             <div className={styles.introBlock}>
                                 <Heading as="h2">Open platform</Heading>
                                 <p>
-                                    Floe is an open platform for <em>Floe-format sample libraries</em>, providing a streamlined workflow for <strong>finding</strong>, <strong>performing</strong> and <strong>transforming</strong> sounds.</p><p>Designed for producers, composers and musicians. Developers use Floe's open tools to build curated sample library products on top of it.
+                                    Floe is an open platform for <em>Floe-format sample libraries</em>, providing a streamlined workflow for <strong>finding</strong>, <strong>performing</strong> and <strong>transforming</strong> sounds.</p><p>It’s designed for producers, composers and musicians. But additionally, developers with programming experience can use Floe's open tools to build sample library products for the platform.
                                 </p>
                             </div>
                             <div className={styles.introBlock}>
@@ -117,9 +117,9 @@ export default function Home() {
                                 <ul className={styles.checkList}>
                                     <li>Offline installation</li>
                                     <li>No accounts, no subscriptions, no interruptions</li>
+                                    <li>Visual UI: see what's happening in the sound</li>
                                     <li>Resizable vector UI</li>
                                     <li>Flexible folders &mdash; supports external drives and instantly detects changes</li>
-                                    <li>Visual UI: see what's happening in the sound</li>
                                 </ul>
                             </div>
                         </div>
