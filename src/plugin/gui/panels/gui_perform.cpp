@@ -62,6 +62,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
 
     // Library name
     String library_name {};
+    constexpr String k_mixed_libraries = "Mixed Libraries";
     {
         Optional<sample_lib::LibraryId> first_lib_id {};
         bool mixed = false;
@@ -77,7 +78,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
         }
 
         if (mixed) {
-            library_name = "Mixed Libraries"_s;
+            library_name = k_mixed_libraries;
         } else if (first_lib_id) {
             if (auto const maybe_lib = frame_context.lib_table.Find(*first_lib_id))
                 if (*maybe_lib) library_name = (*maybe_lib)->name;
@@ -122,7 +123,8 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                       .parent = lib_name_row,
                       .text = library_name,
                       .size_from_text = true,
-                      .font = FontType::LargeTitle,
+                      .font = library_name.data != k_mixed_libraries.data ? FontType::LargeTitle
+                                                                          : FontType::Heading1,
                       .text_colours = Col {.c = Col::White},
                       .text_justification = TextJustification::Centred,
                   });
@@ -140,7 +142,9 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                       .text = name,
                       .wrap_width = k_wrap_to_parent,
                       .size_from_text = true,
-                      .font = library_name.size ? FontType::Heading1 : FontType::LargeTitle,
+                      .font = library_name.size && library_name.data != k_mixed_libraries.data
+                                  ? FontType::Heading1
+                                  : FontType::LargeTitle,
                       .text_colours = Col {.c = Col::White},
                       .text_justification = TextJustification::Centred,
                   });
