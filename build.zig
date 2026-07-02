@@ -3032,32 +3032,34 @@ fn doTarget(
             const screenshot_filter = ctx.b.option(
                 []const u8,
                 "screenshot-id",
-                "Only generate the screenshot matching this id_name (default: all)",
+                "Only generate the screenshot whose output PNG stem matches this value (default: all)",
             );
             const DocScreenshot = struct {
                 id_name: []const u8,
                 preset: ?[]const u8 = null, // relative to test_files/presets
+                out_name: ?[]const u8 = null, // output filename stem; defaults to id_name
+                chord: []const u8 = &.{}, // MIDI note numbers to hold as note-ons on channel 1
             };
             const doc_screenshots = [_]DocScreenshot{
-                .{ .id_name = "overview", .preset = "Fading Silhouettes.floe-preset" },
-                .{ .id_name = "top-panel", .preset = "Fading Silhouettes.floe-preset" },
-                .{ .id_name = "save-preset", .preset = "Fading Silhouettes.floe-preset" },
-                .{ .id_name = "layer-top-controls", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "layer-main", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "layer-playback", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "layer-playback-granular-speed", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "layer-playback-granular-fixed", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "layer-lfo", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "layer-eq", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "overview", .preset = "Drones/Faded Silhouettes.floe-preset" },
+                .{ .id_name = "top-panel", .preset = "Drones/Faded Silhouettes.floe-preset" },
+                .{ .id_name = "save-preset", .preset = "Drones/Faded Silhouettes.floe-preset" },
+                .{ .id_name = "layer-top-controls", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "layer-main", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "layer-playback", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "layer-playback-granular-speed", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "layer-playback-granular-fixed", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "layer-lfo", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "layer-eq", .preset = "Drones/Rumbler.floe-preset" },
                 .{ .id_name = "layer-arp", .preset = "arp-screenshot.floe-preset" },
-                .{ .id_name = "layer-config", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "layer-config", .preset = "Drones/Rumbler.floe-preset" },
                 .{ .id_name = "layers", .preset = "Harp Trio.floe-preset" },
-                .{ .id_name = "perform", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "perform-variation-strip", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "effects", .preset = "stress-test.mirage-phoenix" },
+                .{ .id_name = "perform", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "perform-variation-strip", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "effects", .preset = "Pads/Celestial Heights.floe-preset" },
                 .{ .id_name = "key-range-controls", .preset = "Real Dulcitone.floe-preset" },
-                .{ .id_name = "velocity-curve", .preset = "Low End.mirage-wraith" },
-                .{ .id_name = "loop-mode-menu", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "velocity-curve", .preset = "Drones/Rumbler.floe-preset" },
+                .{ .id_name = "loop-mode-menu", .preset = "Drones/Rumbler.floe-preset" },
                 .{ .id_name = "key-range-bars", .preset = "Real Dulcitone.floe-preset" },
                 .{ .id_name = "key-range-enlarged", .preset = "Real Dulcitone.floe-preset" },
                 .{ .id_name = "check-for-updates" },
@@ -3065,7 +3067,7 @@ fn doTarget(
                 .{ .id_name = "install-packages" },
                 .{ .id_name = "folders" },
                 .{ .id_name = "instance-config" },
-                .{ .id_name = "midi-cc-assignments", .preset = "Low End.mirage-wraith" },
+                .{ .id_name = "midi-cc-assignments", .preset = "Drones/Rumbler.mirage-wraith" },
                 .{ .id_name = "uninstall-preset-bank" },
                 .{ .id_name = "uninstall-library" },
                 .{ .id_name = "browser-full" },
@@ -3075,15 +3077,57 @@ fn doTarget(
                 .{ .id_name = "filter-card-body-tree" },
                 .{ .id_name = "filter-button" },
                 .{ .id_name = "browser-menu" },
+                .{
+                    .id_name = "perform:full",
+                    .preset = "Risers/Caustic Build-up.floe-preset",
+                    .out_name = "floe-whole-gui-1",
+                },
+                .{
+                    .id_name = "layers:full",
+                    .preset = "Pads/Celestial Heights.floe-preset",
+                    .out_name = "floe-whole-gui-2",
+                    .chord = &.{60},
+                },
+                .{
+                    .id_name = "effects:full",
+                    .preset = "Risers/Caustic Build-up.floe-preset",
+                    .out_name = "floe-whole-gui-3",
+                },
+                .{
+                    .id_name = "perform:full",
+                    .preset = "Drones/Rumbler.floe-preset",
+                    .out_name = "floe-whole-gui-4",
+                },
+                .{
+                    .id_name = "layer-eq:full",
+                    .preset = "Drones/Faded Silhouettes.floe-preset",
+                    .out_name = "floe-whole-gui-5",
+                },
+                .{
+                    .id_name = "browser-full:full",
+                    .preset = "Drones/Faded Silhouettes.floe-preset",
+                    .out_name = "floe-whole-gui-6",
+                },
+                .{
+                    .id_name = "browser-full:full",
+                    .preset = "Drones/Faded Silhouettes.floe-preset",
+                    .out_name = "floe-whole-gui-6",
+                },
+                .{
+                    .id_name = "folders:full",
+                    .preset = "Drones/Rumbler.floe-preset",
+                    .out_name = "floe-whole-gui-7",
+                },
             };
 
             var matched_any = false;
             for (doc_screenshots) |shot| {
+                const out_stem = shot.out_name orelse shot.id_name;
                 if (screenshot_filter) |filter| {
-                    if (!std.mem.eql(u8, filter, shot.id_name)) continue;
+                    if (!std.mem.eql(u8, filter, out_stem)) continue;
                 }
                 matched_any = true;
-                const out_path = ctx.b.fmt("website/static/images/screenshots/{s}.png", .{shot.id_name});
+                const out_path = ctx.b.fmt("website/static/images/screenshots/{s}.png", .{out_stem});
                 const run = ctx.b.addRunArtifact(exe);
                 run.has_side_effects = true;
                 run.addArg(ctx.b.fmt("--screenshot={s}", .{shot.id_name}));
@@ -3099,11 +3143,21 @@ fn doTarget(
                 }
                 run.addArg("--fixed-window-size=18");
                 run.addArg("--log-level=warning");
+                if (shot.chord.len != 0) {
+                    run.addArg("--midi-stdin");
+                    var midi_bytes = ctx.b.allocator.alloc(u8, shot.chord.len * 3) catch @panic("OOM");
+                    for (shot.chord, 0..) |note, note_index| {
+                        midi_bytes[note_index * 3 + 0] = 0x90; // Note On, channel 1
+                        midi_bytes[note_index * 3 + 1] = note;
+                        midi_bytes[note_index * 3 + 2] = 100; // velocity
+                    }
+                    run.setStdIn(.{ .bytes = midi_bytes });
+                }
                 top_level_steps.gen_doc_screenshots.dependOn(&run.step);
             }
             if (screenshot_filter) |filter| {
                 if (!matched_any) {
-                    std.debug.panic("No screenshot found with id_name '{s}'", .{filter});
+                    std.debug.panic("No screenshot found matching '{s}'", .{filter});
                 }
             }
         }

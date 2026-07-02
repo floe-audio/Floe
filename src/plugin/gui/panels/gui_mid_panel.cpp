@@ -3,6 +3,10 @@
 
 #include "gui_mid_panel.hpp"
 
+#include "os/filesystem.hpp"
+
+#include "common_infrastructure/final_binary_type.hpp"
+
 #include "gui/core/gui_frame_context.hpp"
 #include "gui/core/gui_library_images.hpp"
 #include "gui/core/gui_prefs.hpp"
@@ -245,7 +249,58 @@ DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_
     return {extras};
 }
 
+static void HandleStandaloneScreenshotHotkey(GuiState& g, GuiFrameContext const& frame_context) {
+    if (g_final_binary_type != FinalBinaryType::Standalone) return;
+
+    GuiIo().out.wants.keyboard_keys.Set(ToInt(KeyCode::F3));
+    if (!GuiIo().in.Key(KeyCode::F3).presses.size) return;
+
+    String lib_name = "floe"_s;
+    if (auto const lib_id = LibraryForOverallBackground(g.engine)) {
+        if (auto const lib_ptr = frame_context.lib_table.Find(*lib_id); lib_ptr && *lib_ptr)
+            lib_name = (*lib_ptr)->name;
+    }
+
+    ArenaAllocator scratch {PageAllocator::Instance()};
+
+    DynamicArray<char> slug {scratch};
+    for (auto const c : lib_name) {
+        if (IsAlphanum(c))
+            dyn::Append(slug, ToLowercaseAscii(c));
+        else if (slug.size && Last(slug) != '-')
+            dyn::Append(slug, '-');
+    }
+    while (slug.size && Last(slug) == '-')
+        dyn::Pop(slug);
+    if (slug.size == 0) dyn::AppendSpan(slug, "floe"_s);
+
+    auto const dir = KnownDirectoryWithSubdirectories(scratch,
+                                                     KnownDirectoryType::Documents,
+                                                     Array {"Floe-Screenshots"_s},
+                                                     k_nullopt,
+                                                     {.create = true});
+
+    DynamicArray<char> path {scratch};
+    dyn::AppendSpan(path, dir);
+    auto const initial_size = path.size;
+    for (int n = 1;; ++n) {
+        dyn::Resize(path, initial_size);
+        fmt::Append(path, "/{}-gui-{}.png", (String)slug, n);
+        auto const t = GetFileType(path);
+        if (!t.HasValue() || t.Value() != FileType::File) break;
+    }
+
+    auto const& in = GuiIo().in;
+    GuiFrameOutput::ScreenshotRequest req {
+        .rect = Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}},
+    };
+    dyn::AssignFitInCapacity(req.output_path, (String)path);
+    GuiIo().out.request_screenshot = req;
+}
+
 void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
+    HandleStandaloneScreenshotHotkey(g, frame_context);
+
     for (auto const tab : EnumIterator<MidPanelTab>()) {
         if (!IsScreenshotRequest(EnumToString(tab))) continue;
         g.mid_panel_state.tab = tab;

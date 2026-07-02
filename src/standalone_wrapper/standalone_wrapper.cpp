@@ -1019,7 +1019,8 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
 
         PollDeviceChanges(standalone.devices);
 
-        if (options.midi_stdin && standalone.stdin_midi.eof.Load(LoadMemoryOrder::Acquire)) {
+        if (options.midi_stdin && !options.screenshot_region &&
+            standalone.stdin_midi.eof.Load(LoadMemoryOrder::Acquire)) {
             SleepThisThread(250); // Tail to help avoid abrupt ends in audio.
             standalone.quit = true;
         } else if (options.headless) {

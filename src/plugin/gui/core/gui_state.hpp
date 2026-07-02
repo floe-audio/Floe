@@ -80,7 +80,7 @@ struct GuiState : EngineListener {
     BottomPanelState bottom_panel_state {};
     MidPanelState mid_panel_state {};
     MacrosGuiState macros_gui_state {};
-    u32 screenshot_consecutive_clear_frames {};
+    Optional<TimePoint> screenshot_clear_since {};
     f32x2 curve_map_add_point_click_pos {};
 
     // Updated by the top panel each frame, consumed by the perform panel.

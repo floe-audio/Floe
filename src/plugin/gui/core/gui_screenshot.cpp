@@ -38,13 +38,21 @@ static bool ScreenshotPreconditionsMet(GuiState& g) {
         return true;
     }();
 
-    // Bit hacky, but we wait a couple of frames to ensure images are actually rendered.
     if (!clear_this_frame) {
-        g.screenshot_consecutive_clear_frames = 0;
+        g.screenshot_clear_since = k_nullopt;
         return false;
     }
-    g.screenshot_consecutive_clear_frames++;
-    return g.screenshot_consecutive_clear_frames >= 2;
+    if (!g.screenshot_clear_since) g.screenshot_clear_since = TimePoint::Now();
+
+    auto const notes_held =
+        g.engine.processor.audio_processing_context.midi_note_state.NotesCurrentlyHeldAllChannels()
+            .AnyValuesSet();
+    auto const settle_seconds = notes_held ? 1.0 : 0.05;
+    if ((TimePoint::Now() - *g.screenshot_clear_since) < settle_seconds) {
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+        return false;
+    }
+    return true;
 }
 
 struct CaptureSpec {

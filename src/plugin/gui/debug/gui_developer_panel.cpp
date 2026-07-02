@@ -7,6 +7,8 @@
 #include "os/filesystem.hpp"
 #include "utils/logger/logger.hpp"
 
+#include "common_infrastructure/final_binary_type.hpp"
+
 #include "engine/engine.hpp"
 #include "gui/debug/gui_developer_panel.hpp"
 #include "gui_framework/colours.hpp"
@@ -697,7 +699,8 @@ void DoDeveloperPanel(DeveloperPanel& g) {
         GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
 
-    if (GuiIo().in.Key(KeyCode::F3).presses.size) {
+    if (g_final_binary_type != FinalBinaryType::Standalone &&
+        GuiIo().in.Key(KeyCode::F3).presses.size) {
         auto const& in = GuiIo().in;
         GuiIo().out.request_screenshot = GuiFrameOutput::ScreenshotRequest {
             .rect = Rect {.xywh {0, 0, (f32)in.window_size.width, (f32)in.window_size.height}},
