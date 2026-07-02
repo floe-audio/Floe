@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Sam Windell
 // SPDX-License-Identifier: MIT
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
@@ -55,6 +55,75 @@ function HeroSection() {
     );
 }
 
+const showcaseSlides = Array.from(
+    { length: 7 },
+    (_, slideIndex) => `/images/screenshots/floe-whole-gui-${slideIndex + 1}.png`
+);
+
+function ShowcaseSlideshow() {
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    useEffect(() => {
+        for (const delta of [-1, 1]) {
+            const img = new Image();
+            img.src =
+                showcaseSlides[(activeIndex + delta + showcaseSlides.length) % showcaseSlides.length];
+        }
+    }, [activeIndex]);
+
+    const step = (delta) =>
+        setActiveIndex((index) => (index + delta + showcaseSlides.length) % showcaseSlides.length);
+
+    const onKeyDown = (event) => {
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            step(-1);
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            step(1);
+        }
+    };
+
+    return (
+        <div className={styles.slideshow} onKeyDown={onKeyDown} aria-roledescription="carousel">
+            <img
+                src={showcaseSlides[activeIndex]}
+                alt={`Floe complete interface, screenshot ${activeIndex + 1} of ${showcaseSlides.length}`}
+                className={styles.showcaseImage}
+            />
+            <button
+                type="button"
+                className={clsx(styles.slideshowArrow, styles.slideshowArrowPrev)}
+                onClick={() => step(-1)}
+                aria-label="Previous screenshot">
+                ‹
+            </button>
+            <button
+                type="button"
+                className={clsx(styles.slideshowArrow, styles.slideshowArrowNext)}
+                onClick={() => step(1)}
+                aria-label="Next screenshot">
+                ›
+            </button>
+            <div className={styles.slideshowDots}>
+                {showcaseSlides.map((src, slideIndex) => (
+                    <button
+                        key={src}
+                        type="button"
+                        className={clsx(
+                            styles.slideshowDot,
+                            slideIndex === activeIndex && styles.slideshowDotActive
+                        )}
+                        onClick={() => setActiveIndex(slideIndex)}
+                        aria-label={`Go to screenshot ${slideIndex + 1}`}
+                        aria-current={slideIndex === activeIndex}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function AspectSection({ eyebrow, title, image, imageAlt, description, bullets, reverse = false }) {
     return (
         <section className={clsx(styles.aspectSection, reverse && styles.aspectReverse)}>
@@ -93,11 +162,7 @@ export default function Home() {
                 {/* Large hi-res image showcasing the full interface */}
                 <section className={styles.showcaseSection}>
                     <div className="container">
-                        <img
-                            src="/images/whole-gui.png"
-                            alt="Floe complete interface showing all features"
-                            className={styles.showcaseImage}
-                        />
+                        <ShowcaseSlideshow />
                     </div>
                 </section>
                 <section className={styles.introSection}>
@@ -116,7 +181,7 @@ export default function Home() {
                                 </p>
                                 <ul className={styles.checkList}>
                                     <li>Offline installation</li>
-                                    <li>No accounts, no subscriptions, no interruptions</li>
+                                    <li>Open source (GPL license), no accounts, no subscriptions, no interruptions</li>
                                     <li>Visual UI: see what's happening in the sound</li>
                                     <li>Resizable vector UI</li>
                                     <li>Flexible folders &mdash; supports external drives and instantly detects changes</li>
@@ -129,14 +194,14 @@ export default function Home() {
                 <AspectSection
                     eyebrow="Find"
                     title="Find the right sound"
-                    image="/images/find-16-11.png"
+                    image="/images/aspect-find.png"
                     imageAlt="Floe's search and browse interface"
                     description="Floe's unified browser works across all your libraries with comprehensive search, tags (mood, type, genre), and categorisation. The sound you need is always a few clicks away, whether you're hunting for something specific or exploring new territory."
                 />
                 <AspectSection
                     eyebrow="Perform"
                     title="Performance-ready"
-                    image="/images/perform-16-11.png"
+                    image="/images/aspect-perform.png"
                     imageAlt="Floe's performance controls and interface"
                     description="Expressively play sample-based instruments: velocity, modulation, and pitch bend work as expected. Use MIDI controllers, DAW automation and Floe's macro knobs to shape lively performances."
                     bullets={[
@@ -151,9 +216,9 @@ export default function Home() {
                 <AspectSection
                     eyebrow="Transform"
                     title="Transform with sample-based synthesis"
-                    image="/images/transform-16-11.png"
+                    image="/images/aspect-transform.png"
                     imageAlt="Floe's sound transformation features"
-                    description="Take sounds beyond their natural boundaries. Layer instruments across libraries, sculpt with loop and crossfade controls that bridge multisampling and synthesis, and process with built-in effects."
+                    description="Take sounds beyond their natural boundaries. Layer instruments across libraries, sculpt with loop and granular controls that bridge multisampling and synthesis, and process with built-in effects."
                     bullets={[
                         '3-layer architecture',
                         'Powerful granular synthesis',

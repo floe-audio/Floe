@@ -15,11 +15,27 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 2.0.0
-Major update. Includes all changes from 1.2.0-beta.1 and 2.0.0-beta.1 through to 2.0.0-beta.6. Changes since beta 6:
+Massive set of new features and improvements. In summary:
+- UI split into 3 pages: perform, layers, effects
+- Granular synthesis
+- Arpeggiators
+- Visual design improved throughout including displays for filters, EQ, etc.
+- Improved shape of many parameters
+- New LFO shapes
+- New compressor mode
+- Extra band added to EQ
+- EQ added to the FX rack
+- Better settings for MIDI CC setup, and reproducibility
+- Random variation strip for exploring new presets
+- New default background image
+
+This release includes all changes listed through the beta changelogs: 1.2.0-beta.1, and 2.0.0-beta.1 through to 2.0.0-beta.6:
+
+Additionally, this version differs from 2.0.0-beta.6:
 - New background image
 - Show Modern compressor Attack and Release as milliseconds instead of percentage
 - Fix remaining issue with carat position in text inputs
-- Package CLI: change to subcommand format: info or pack.
+- Packager CLI: change to subcommand format: info or pack.
 
 ## 2.0.0-beta.6
 - Preset favourites now survive re-saving and library updates: each preset file carries a stable UUID embedded by Floe at save time, used as the identity for favourites and the "currently loaded" indicator. Older preset files without an embedded UUID continue to work via a content-derived fallback. Existing favourites are migrated automatically.
