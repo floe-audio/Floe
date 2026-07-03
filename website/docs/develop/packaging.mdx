@@ -21,7 +21,7 @@ Floe offers an easy-to-use GUI for [installing packages](../installation/install
 
 As with Floe's sample library format, openness is key. That's why Floe Packages are just ZIP files with a specific structure and a `.floe-pkg` extension. Anyone can create them and anyone can open them (rename to `.zip` to extract). Additionally, it gives the user the option to extract them manually rather than use Floe's GUI if they wish.
 
-Create Floe Packages using our command-line tool or any ZIP program.
+Create Floe Packages using our command-line tool or any ZIP program. We often recommend not leaving packages with the `.zip` extension though because the common thing to do with ZIPs is extract them, which is not what Floe's 'Install Package' button wants, leading to confusion. Instead, always change the file extension to `.floe-pkg`.
 
 ## Encrypted packages
 Floe also supports encrypted packages. Whilst not open, these are implemented in a spirit of Floe's hassle-free philosophy. A license key is needed to unlock the package. No internet connection is required.
@@ -29,7 +29,7 @@ Floe also supports encrypted packages. Whilst not open, these are implemented in
 ## Packager command-line tool
 If you're comfortable with such things, we have a command-line tool to create Floe Packages. It ensures everything is set up correctly and adds a couple of nice-to-have features, particularly for users who want to install the package manually rather than with Floe's GUI.
 
-However, for regular packages, you can use any ZIP program to create them. Just make sure they follow the structure described in the next section, and rename the resulting `.zip` to `.floe-pkg`. Creating encrypted packages requires `floe-packager`.
+However, for regular packages, you can use any ZIP program to create them. Just make sure they follow the structure described in the next section, and rename the resulting `.zip` to `.floe-pkg`. Creating encrypted packages requires `floe-packager` and is not yet documented.
 
 #### Download
 
