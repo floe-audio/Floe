@@ -1417,18 +1417,26 @@ TEST_CASE(TestPresetServer) {
         auto const [snapshot, handle] = BeginReadFolders(server, tester.scratch_arena);
         DEFER { EndReadFolders(server, handle); };
 
-        CHECK_EQ(snapshot.folders.size, 1u);
+        CHECK_EQ(snapshot.folders.size, 4u); // root + Drones, Pads, Risers
         CHECK_EQ(snapshot.banks.size, 1u);
 
         auto const& bank_listing = REQUIRE_DEREF(snapshot.banks[0]);
         auto const bank = PresetBankAtNode(bank_listing.node);
         REQUIRE(bank);
 
-        auto const& f = REQUIRE_DEREF(snapshot.folders[0]);
+        auto const root_folder = ({
+            PresetFolderListing const* found = nullptr;
+            for (auto const folder_listing : snapshot.folders) {
+                if (FolderPath(&folder_listing->node, tester.scratch_arena) == folder) {
+                    found = folder_listing;
+                    break;
+                }
+            }
+            found;
+        });
+        auto const& f = REQUIRE_DEREF(root_folder);
         REQUIRE(f.folder);
         CHECK(ContainingPresetBank(&f.node) == bank);
-
-        CHECK_EQ(FolderPath(&f.node, tester.scratch_arena), folder);
     }
 
     return k_success;
