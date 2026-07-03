@@ -59,7 +59,7 @@ PUBLIC ErrorCodeOr<void> PrintUsage(Writer writer,
                                     PositionalArgsInfo const& positionals = {}) {
     if (description.size) TRY(fmt::FormatToWriter(writer, "{}\n\n", description));
 
-    TRY(fmt::FormatToWriter(writer, "Usage: {} [OPTIONS]", exe_name));
+    TRY(fmt::FormatToWriter(writer, "Usage: {}", exe_name));
     if (positionals.name.size) {
         bool const optional = positionals.min_count == 0;
         bool const multi = positionals.max_count != 1;
@@ -70,7 +70,7 @@ PUBLIC ErrorCodeOr<void> PrintUsage(Writer writer,
                                 multi ? "..."_s : ""_s,
                                 optional ? "]"_s : ""_s));
     }
-    TRY(fmt::FormatToWriter(writer, "\n\n"));
+    TRY(fmt::FormatToWriter(writer, " [OPTIONS]\n\n"));
 
     static auto print_arg_key_val = [](Writer writer,
                                        CommandLineArgDefinition const& arg) -> ErrorCodeOr<void> {

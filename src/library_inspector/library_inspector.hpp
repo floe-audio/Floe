@@ -20,7 +20,8 @@ auto constexpr k_library_inspector_command_line_args_defs = MakeCommandLineArgDe
     },
 });
 
-constexpr String k_library_inspector_positional_description = "Path to a floe.lua or .mdata file.";
+constexpr String k_library_inspector_positional_description =
+    "Path to a floe.lua file (e.g. ./my-lib/my-lib.floe.lua).";
 
 constexpr String k_library_inspector_description =
     "Inspect a Floe sample library and dump structured information to stdout.\n"
@@ -34,25 +35,25 @@ constexpr String k_library_inspector_description =
     "\n"
     "Examples (piping JSON output into jq):\n"
     "  # Check whether the library parsed and show any error:\n"
-    "  floe-library-inspector ./my-lib | jq '.parse'\n"
+    "  floe-library-inspector ./my-lib/my-lib.floe.lua | jq '.parse'\n"
     "\n"
     "  # Top-level library metadata (name, author, version, counts):\n"
-    "  floe-library-inspector ./my-lib | jq '.library'\n"
+    "  floe-library-inspector ./my-lib/my-lib.floe.lua | jq '.library'\n"
     "\n"
     "  # List orphan and missing sample files:\n"
-    "  floe-library-inspector ./my-lib | jq '.samples'\n"
+    "  floe-library-inspector ./my-lib/my-lib.floe.lua | jq '.samples'\n"
     "\n"
     "  # List every instrument id and how many regions it has:\n"
-    "  floe-library-inspector ./my-lib \\\n"
+    "  floe-library-inspector ./my-lib/my-lib.floe.lua \\\n"
     "    | jq '.instruments[] | {id, num_regions}'\n"
     "\n"
     "  # List every sample path referenced by an instrument:\n"
-    "  floe-library-inspector ./my-lib \\\n"
+    "  floe-library-inspector ./my-lib/my-lib.floe.lua \\\n"
     "    | jq -r '.instruments[].regions[].sample_path'\n"
     "\n"
     "  # Show the key/velocity range of every region of an instrument:\n"
-    "  floe-library-inspector ./my-lib \\\n"
+    "  floe-library-inspector ./my-lib/my-lib.floe.lua \\\n"
     "    | jq '.instruments[] | select(.id==\"My Inst\") | .regions[].trigger'\n"
     "\n"
     "  # List IR ids and their file paths:\n"
-    "  floe-library-inspector ./my-lib | jq '.irs[] | {id, path}'";
+    "  floe-library-inspector ./my-lib/my-lib.floe.lua | jq '.irs[] | {id, path}'";
