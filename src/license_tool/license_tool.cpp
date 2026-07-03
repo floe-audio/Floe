@@ -65,18 +65,10 @@ static ErrorCodeOr<int> DoGenerateKeypair() {
 }
 
 static ErrorCodeOr<int> DoSignLicense(Span<CommandLineArg const> cli_args, ArenaAllocator& arena) {
-    auto const key_arg = cli_args[ToInt(LicenseToolCliArgId::SecretKeyHex)];
-    auto const package_key_arg = cli_args[ToInt(LicenseToolCliArgId::PackageKeyHex)];
-    auto const email_arg = cli_args[ToInt(LicenseToolCliArgId::Email)];
-    auto const key_id_arg = cli_args[ToInt(LicenseToolCliArgId::KeyId)];
-
-    if (!key_arg.was_provided || !package_key_arg.was_provided || !email_arg.was_provided ||
-        !key_id_arg.was_provided) {
-        StdPrintF(StdStream::Err,
-                  "Error: --sign-license requires --secret-key, --package-key, --email, "
-                  "and --key-id\n");
-        return 1;
-    }
+    auto const key_arg = cli_args[ToInt(SignLicenseArgId::SecretKeyHex)];
+    auto const package_key_arg = cli_args[ToInt(SignLicenseArgId::PackageKeyHex)];
+    auto const email_arg = cli_args[ToInt(SignLicenseArgId::Email)];
+    auto const key_id_arg = cli_args[ToInt(SignLicenseArgId::KeyId)];
 
     Array<u8, k_ed25519_secret_key_size> secret_key;
     if (!ParseHexString(key_arg.values[0], secret_key)) {
@@ -121,32 +113,20 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
 
     ArenaAllocator arena {PageAllocator::Instance()};
 
-    auto const cli_args = TRY(ParseCommandLineArgsStandard(arena,
-                                                           args,
-                                                           k_license_tool_command_line_args_defs,
-                                                           {
-                                                               .handle_help_option = true,
-                                                               .print_usage_on_error = true,
-                                                               .description = k_license_tool_description,
-                                                               .version = FLOE_VERSION_STRING,
-                                                           }));
+    auto subcommands = LicenseToolSubcommands();
+    auto const parsed = TRY(ParseCommandLineSubcommandsStandard(arena,
+                                                                args,
+                                                                subcommands,
+                                                                {
+                                                                    .description = k_license_tool_description,
+                                                                    .version = FLOE_VERSION_STRING,
+                                                                }));
 
-    auto const generate_keypair = cli_args[ToInt(LicenseToolCliArgId::GenerateKeypair)].was_provided;
-    auto const sign_license = cli_args[ToInt(LicenseToolCliArgId::SignLicense)].was_provided;
-
-    if (!generate_keypair && !sign_license) {
-        StdPrintF(StdStream::Err, "Error: specify --generate-keypair or --sign-license\n");
-        return 1;
+    switch ((LicenseVerb)parsed.id) {
+        case LicenseVerb::GenerateKeypair: return DoGenerateKeypair();
+        case LicenseVerb::SignLicense: return DoSignLicense(parsed.args, arena);
+        case LicenseVerb::Count: PanicIfReached();
     }
-
-    if (generate_keypair && sign_license) {
-        StdPrintF(StdStream::Err, "Error: specify only one of --generate-keypair or --sign-license\n");
-        return 1;
-    }
-
-    if (generate_keypair) return DoGenerateKeypair();
-    if (sign_license) return DoSignLicense(cli_args, arena);
-
     return 0;
 }
 

@@ -3,9 +3,9 @@
 #pragma once
 #include "utils/cli_arg_parse.hpp"
 
-enum class LicenseToolCliArgId : u8 {
-    GenerateKeypair,
-    SignLicense,
+enum class LicenseVerb : u8 { GenerateKeypair, SignLicense, Count };
+
+enum class SignLicenseArgId : u8 {
     SecretKeyHex,
     PackageKeyHex,
     Email,
@@ -13,59 +13,58 @@ enum class LicenseToolCliArgId : u8 {
     Count,
 };
 
-auto constexpr k_license_tool_command_line_args_defs = MakeCommandLineArgDefs<LicenseToolCliArgId>({
+auto constexpr k_sign_license_arg_defs = MakeCommandLineArgDefs<SignLicenseArgId>({
     {
-        .id = (u32)LicenseToolCliArgId::GenerateKeypair,
-        .key = "generate-keypair",
-        .description = "Generate a new Ed25519 keypair. Prints public and secret keys as hex to stdout.",
-        .value_type = {},
-        .required = false,
-        .num_values = 0,
-    },
-    {
-        .id = (u32)LicenseToolCliArgId::SignLicense,
-        .key = "sign-license",
-        .description = "Sign a license key. Requires --secret-key, --package-key, --email, and --key-id.",
-        .value_type = {},
-        .required = false,
-        .num_values = 0,
-    },
-    {
-        .id = (u32)LicenseToolCliArgId::SecretKeyHex,
+        .id = (u32)SignLicenseArgId::SecretKeyHex,
         .key = "secret-key",
         .description = "Ed25519 secret key as a 128-character hex string.",
         .value_type = "hex",
-        .required = false,
+        .required = true,
         .num_values = 1,
     },
     {
-        .id = (u32)LicenseToolCliArgId::PackageKeyHex,
+        .id = (u32)SignLicenseArgId::PackageKeyHex,
         .key = "package-key",
         .description = "The 32-byte package key as a 64-character hex string.",
         .value_type = "hex",
-        .required = false,
+        .required = true,
         .num_values = 1,
     },
     {
-        .id = (u32)LicenseToolCliArgId::Email,
+        .id = (u32)SignLicenseArgId::Email,
         .key = "email",
         .description = "Customer email address to embed in the license key.",
         .value_type = "email",
-        .required = false,
+        .required = true,
         .num_values = 1,
     },
     {
-        .id = (u32)LicenseToolCliArgId::KeyId,
+        .id = (u32)SignLicenseArgId::KeyId,
         .key = "key-id",
         .description = "The id (1-255) of the Floe-trusted signing key this signature corresponds to.",
         .value_type = "u8",
-        .required = false,
+        .required = true,
         .num_values = 1,
     },
 });
 
 constexpr String k_license_tool_description =
-    "Server-side utility for the Floe encrypted package license key system.\n"
-    "Two modes:\n"
-    "  --generate-keypair  Generate Ed25519 signing keys (one-time setup)\n"
-    "  --sign-license      Create a signed license key for a customer";
+    "Server-side utility for the Floe encrypted package license key system.";
+
+PUBLIC Array<CommandLineSubcommand, ToInt(LicenseVerb::Count)> LicenseToolSubcommands() {
+    return {
+        CommandLineSubcommand {
+            .id = (u32)LicenseVerb::GenerateKeypair,
+            .name = "generate-keypair"_s,
+            .description =
+                "Generate a new Ed25519 keypair. Prints public and secret keys as hex to stdout."_s,
+            .args = {},
+        },
+        CommandLineSubcommand {
+            .id = (u32)LicenseVerb::SignLicense,
+            .name = "sign-license"_s,
+            .description = "Create a signed license key for a customer."_s,
+            .args = k_sign_license_arg_defs,
+        },
+    };
+}
