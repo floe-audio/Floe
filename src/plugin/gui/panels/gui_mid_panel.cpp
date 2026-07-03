@@ -264,21 +264,20 @@ static void HandleStandaloneScreenshotHotkey(GuiState& g, GuiFrameContext const&
     ArenaAllocator scratch {PageAllocator::Instance()};
 
     DynamicArray<char> slug {scratch};
-    for (auto const c : lib_name) {
+    for (auto const c : lib_name)
         if (IsAlphanum(c))
             dyn::Append(slug, ToLowercaseAscii(c));
         else if (slug.size && Last(slug) != '-')
             dyn::Append(slug, '-');
-    }
     while (slug.size && Last(slug) == '-')
         dyn::Pop(slug);
     if (slug.size == 0) dyn::AppendSpan(slug, "floe"_s);
 
     auto const dir = KnownDirectoryWithSubdirectories(scratch,
-                                                     KnownDirectoryType::Documents,
-                                                     Array {"Floe-Screenshots"_s},
-                                                     k_nullopt,
-                                                     {.create = true});
+                                                      KnownDirectoryType::Documents,
+                                                      Array {"Floe-Screenshots"_s},
+                                                      k_nullopt,
+                                                      {.create = true});
 
     DynamicArray<char> path {scratch};
     dyn::AppendSpan(path, dir);
