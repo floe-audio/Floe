@@ -18,11 +18,11 @@
         },
         "description": "A high-quality multisampled harp with velocity layers and round robins.<br /><br />Port of <a href=\"https://versilian-studios.com/etherealwinds-harp/\">Etherealwinds Harp 2: Community Edition</a> by Versilian Studios.",
         "category": "community",
-        "direct_download_link": "https://github.com/floe-audio/Harp/releases/download/v1.6/Floe.Ports.-.Celtic.Harp.Package.zip",
+        "direct_download_link": "https://github.com/floe-audio/Harp/releases/download/v1.7/Floe.Ports.-.Celtic.Harp.Package.floe-pkg",
         "external_product_page": null,
         "repo_link": "https://github.com/floe-audio/Harp",
         "instruments": 26,
-        "presets": 3,
+        "presets": 4,
         "irs": 0
     },
     {
@@ -43,11 +43,11 @@
         },
         "description": "A basic multisampled xylophone with a well-rounded, smooth tone from <a href=\"https://freepats.zenvoid.org/ChromaticPercussion/xylophone.html\">FreePats</a>, converted into a Floe library.",
         "category": "community",
-        "direct_download_link": "https://github.com/floe-audio/Xylophone/releases/download/v1.5/Floe.Ports.-.Xylophone.Package.zip",
+        "direct_download_link": "https://github.com/floe-audio/Xylophone/releases/download/v1.6/Floe.Ports.-.Xylophone.Package.floe-pkg",
         "external_product_page": null,
         "repo_link": "https://github.com/floe-audio/Xylophone",
         "instruments": 1,
-        "presets": 0,
+        "presets": 2,
         "irs": 0
     },
     {
@@ -62,11 +62,11 @@
         "free": true,
         "description": "A basic ocarina virtual instrument of 'sustain' recordings including built-in loops from <a href=\"https://freepats.zenvoid.org/Wind/ocarina.html\">FreePats</a>, converted into a Floe library.",
         "category": "community",
-        "direct_download_link": "https://github.com/floe-audio/Ocarina/releases/download/v1.5/Floe.Ports.-.Ocarina.Package.zip",
+        "direct_download_link": "https://github.com/floe-audio/Ocarina/releases/download/v1.6/Floe.Ports.-.Ocarina.Package.floe-pkg",
         "external_product_page": null,
         "repo_link": "https://github.com/floe-audio/Ocarina",
         "instruments": 1,
-        "presets": 0,
+        "presets": 4,
         "irs": 0
     },
     {
@@ -89,7 +89,7 @@
         },
         "description": "Interesting sound design for Floe's convolution reverb effect, simulating old audio equipment (dicta-phones, film reels, vintage vinyl, wax cylinders). Port of <a href=\"https://freesound.org/people/NoiseCollector/packs/11613/\">NoiseCollector's library</a> from public domain historical recordings.",
         "category": "community",
-        "direct_download_link": "https://github.com/floe-audio/Antique-IRs/releases/download/v1.0/Floe.Ports.-.Antique.IRs.Package.zip",
+        "direct_download_link": "https://github.com/floe-audio/Antique-IRs/releases/download/v1.1/Floe.Ports.-.Antique.IRs.Package.floe-pkg",
         "external_product_page": null,
         "repo_link": "https://github.com/floe-audio/Antique-IRs",
         "instruments": 0,
@@ -126,7 +126,7 @@
         "attribution_required": false,
         "description": "Required compatibility package for using FrozenPlain's <a href=\"docs/about-the-project/mirage\">Mirage</a> libraries inside Floe. Provides images and IRs used by Mirage libraries.",
         "category": "professional",
-        "direct_download_link": "https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.1/FrozenPlain.-.Mirage.Compatibility.Package.zip",
+        "direct_download_link": "https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.2/FrozenPlain.-.Mirage.Compatibility.Package.floe-pkg",
         "external_product_page": null,
         "instruments": 0,
         "presets": 0,
@@ -202,11 +202,11 @@
         },
         "description": "A free multisampled Japanese taiko drum library with multiple velocity layers and round-robin samples. Each drum is triggered by a pair of adjacent keys (white + black) for easy drum rolls via trills. A great starting point for taiko percussion.<br /><br />Modified version of <a href=\"https://www.schristiancollins.com/percussion\">S. Christian Collins' SCC Taiko Drums v1.0</a>. Original samples by <a href=\"http://subaqueousmusic.com/\">Subaqueous</a>.",
         "category": "community",
-        "direct_download_link": "https://github.com/floe-audio/Taiko-Drums/releases/download/v1/Floe.Ports.-.Taiko.Drums.Package.zip",
+        "direct_download_link": "https://github.com/floe-audio/Taiko-Drums/releases/download/v1.1/Floe.Ports.-.Taiko.Drums.Package.floe-pkg",
         "external_product_page": null,
         "repo_link": "https://github.com/floe-audio/Taiko-Drums",
-        "instruments": 1,
-        "presets": 0,
+        "instruments": 15,
+        "presets": 3,
         "irs": 0
     }
 ]
