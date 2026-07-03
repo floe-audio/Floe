@@ -63,6 +63,25 @@ ErrorCodeOr<Paths> ScanLibraryFolder(ArenaAllocator& arena, String library_folde
     return result;
 }
 
+static bool ParseHexBytes(String hex, Span<u8> out) {
+    if (hex.size != out.size * 2) return false;
+    for (usize i = 0; i < out.size; i++) {
+        auto const hi_char = hex[i * 2];
+        auto const lo_char = hex[(i * 2) + 1];
+        auto const to_nibble = [](char c) -> Optional<u8> {
+            if (c >= '0' && c <= '9') return (u8)(c - '0');
+            if (c >= 'a' && c <= 'f') return (u8)(c - 'a' + 10);
+            if (c >= 'A' && c <= 'F') return (u8)(c - 'A' + 10);
+            return k_nullopt;
+        };
+        auto const hi = to_nibble(hi_char);
+        auto const lo = to_nibble(lo_char);
+        if (!hi || !lo) return false;
+        out[i] = (u8)(*hi << 4 | *lo);
+    }
+    return true;
+}
+
 static bool IsLibraryFileReferenced(String subpath, Set<String> const& referenced) {
     if (path::Extension(subpath) == ".lua") return true;
     return referenced.Find(subpath) != nullptr;
@@ -631,8 +650,18 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                                                                     .version = FLOE_VERSION_STRING,
                                                                 }));
 
-    VerbInputs inputs {};
     auto const verb = (PackagerVerb)parsed.id;
+
+    if (verb == PackagerVerb::GenKey) {
+        Array<u8, encrypted_package::k_key_size> key {};
+        CryptoRandomBytes(key.data, key.size);
+        for (auto const byte : key)
+            StdPrintF(StdStream::Out, "{02x}", byte);
+        StdPrintF(StdStream::Out, "\n");
+        return 0;
+    }
+
+    VerbInputs inputs {};
     switch (verb) {
         case PackagerVerb::Pack: {
             inputs.library_folders = parsed.args[ToInt(PackArgId::LibraryFolder)].values;
@@ -652,6 +681,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                 inputs.package_name_override = parsed.args[ToInt(InfoArgId::PackageName)].values[0];
             break;
         }
+        case PackagerVerb::GenKey: PanicIfReached();
         case PackagerVerb::Count: PanicIfReached();
     }
     TRY(CheckHasAnyInputSource(inputs));
@@ -659,8 +689,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     auto const create_package = verb == PackagerVerb::Pack;
     auto const generate_package_info = verb == PackagerVerb::Info;
     auto const omit_unreferenced = inputs.prune;
-    bool const should_encrypt =
-        verb == PackagerVerb::Pack && parsed.args[ToInt(PackArgId::Encrypt)].was_provided;
 
     DynamicArray<u8> zip_data {arena};
     auto writer = dyn::WriterFor(zip_data);
@@ -900,8 +928,17 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         auto const package_name = PackageName(arena, lib_for_package_name, inputs);
         package_info.name = package_name;
 
+        auto const& key_arg = parsed.args[ToInt(PackArgId::PackageKey)];
+        auto const should_encrypt = create_package && key_arg.was_provided;
         Array<u8, encrypted_package::k_key_size> package_key {};
-        if (should_encrypt) CryptoRandomBytes(package_key.data, encrypted_package::k_key_size);
+        if (should_encrypt) {
+            if (!ParseHexBytes(key_arg.values[0], package_key)) {
+                StdPrintF(StdStream::Err,
+                          "Error: --package-key must be a {}-character hex string\n",
+                          encrypted_package::k_key_size * 2);
+                return ErrorCode {CliError::InvalidArguments};
+            }
+        }
 
         if (create_package) {
             ASSERT(pack_positionals.size == 1);
@@ -938,12 +975,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                     return error;
                 });
                 StdPrintF(StdStream::Err, "Wrote encrypted package: {}\n", enc_path);
-                StdPrintF(StdStream::Err,
-                          "Package key written to stdout - store it securely, it is needed to sign "
-                          "license keys.\n");
-                for (auto const byte : package_key)
-                    StdPrintF(StdStream::Out, "{02x}", byte);
-                StdPrintF(StdStream::Out, "\n");
             } else {
                 auto const package_path = path::Join(arena, Array {folder, package_name});
                 TRY_OR(WriteFile(package_path, zip_data), {
