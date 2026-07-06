@@ -1814,7 +1814,7 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
     // have window-relative coords. Contained+ParentRelative remains viewport-relative.
     auto const is_window_coordinates = is_floating || cfg.positioning != ViewportPositioning::ParentRelative;
 
-    if (!window_centred) {
+    if (!window_centred && !auto_pos) {
         ASSERT(r.x >= 0);
         ASSERT(r.y >= 0);
     }
