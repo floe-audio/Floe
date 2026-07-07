@@ -94,6 +94,9 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
         auto const state = job.job->state.Load(LoadMemoryOrder::Acquire);
         if (state != package::InstallJob::State::AwaitingLicenseKey) continue;
 
+        builder.imgui.PushId((uintptr)(void*)job.job);
+        DEFER { builder.imgui.PopId(); };
+
         auto const container = DoBox(builder,
                                      {
                                          .parent = root,
