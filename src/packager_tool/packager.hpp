@@ -84,7 +84,7 @@ auto constexpr k_pack_arg_defs = MakeCommandLineArgDefs<PackArgId>({
     {
         .id = (u32)PackArgId::PackageKey,
         .key = "package-key",
-        .description = "64-character hex key for encrypting the package (use gen-key to create one). "
+        .description = "64-character hex key for encrypting the package (gen-key can create one). "
                        "When present, produces an encrypted .floe-pkg-enc instead of a plain .floe-pkg. "
                        "Reuse the same key across versions so existing license keys stay valid.",
         .value_type = "hex",
@@ -167,9 +167,9 @@ constexpr String k_packager_description =
     "- Embeds a checksum file into the package for better change detection if the package\n"
     "  is installed manually.\n"
     "\n"
-    "Encrypted workflow: run gen-key once per product line and store the key securely.\n"
-    "Pass it to pack via --package-key for every version so that a single license key\n"
-    "unlocks all of them.";
+    "Encrypted workflow: run gen-key once per product line and store the key securely (or\n"
+    "generate the key by some other means). Pass it to pack via --package-key for every version\n"
+    "so that a single license key unlocks all of them.";
 
 // Build the CommandLineSubcommand array. Pass non-null out pointers to capture positionals; pass
 // nullptrs (the default) for help/docs rendering.
