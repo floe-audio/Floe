@@ -6,9 +6,11 @@
 #include <miniz.h>
 
 #include "foundation/foundation.hpp"
+#include "foundation/utils/path.hpp"
 #include "os/misc.hpp"
 #include "utils/cli_arg_parse.hpp"
 #include "utils/json/json_writer.hpp"
+#include "utils/logger/logger.hpp"
 
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/encrypted_package.hpp"
@@ -247,22 +249,23 @@ static ErrorCodeOr<void> CheckHasAnyInputSource(VerbInputs const& inputs) {
     return k_success;
 }
 
-static String PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, VerbInputs const& inputs) {
-    if (inputs.package_name_override) {
-        auto raw = *inputs.package_name_override;
-        if (package::HasPackageExtension(raw)) raw = path::FilenameWithoutExtension(raw);
-        return fmt::Format(arena,
-                           "{} Package{}",
-                           path::MakeSafeForFilename(raw, arena),
-                           package::k_file_extension);
+static String
+PackageName(ArenaAllocator& arena, sample_lib::Library const* lib, VerbInputs const& inputs, bool encrypted) {
+    auto const ext = encrypted ? package::k_encrypted_file_extension : package::k_file_extension;
+
+    if (auto const n = inputs.package_name_override) {
+        if (auto const given_ext = path::Extension(*n); given_ext != ext)
+            StdPrintF(StdStream::Err, "Warning, non-standard extension \"{}\"", given_ext);
+        return path::MakeSafeForFilename(*inputs.package_name_override, arena);
     }
+
     if (lib)
-        return path::MakeSafeForFilename(
-            fmt::Format(arena, "{} - {} Package{}", lib->author, lib->name, package::k_file_extension),
-            arena);
+        return path::MakeSafeForFilename(fmt::Format(arena, "{} - {} Package{}", lib->author, lib->name, ext),
+                                         arena);
+
     if (inputs.input_packages.size) return inputs.input_packages[0];
 
-    return fmt::Format(arena, "Floe Package{}", package::k_file_extension);
+    return fmt::Format(arena, "Floe Package{}", ext);
 }
 
 struct PackageInfo {
@@ -925,9 +928,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     {
         package::WriterFinalise(package);
 
-        auto const package_name = PackageName(arena, lib_for_package_name, inputs);
-        package_info.name = package_name;
-
         auto const& key_arg = parsed.args[ToInt(PackArgId::PackageKey)];
         auto const should_encrypt = create_package && key_arg.was_provided;
         Array<u8, encrypted_package::k_key_size> package_key {};
@@ -939,6 +939,9 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                 return ErrorCode {CliError::InvalidArguments};
             }
         }
+
+        auto const package_name = PackageName(arena, lib_for_package_name, inputs, should_encrypt);
+        package_info.name = package_name;
 
         if (create_package) {
             ASSERT(pack_positionals.size == 1);
@@ -962,11 +965,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                     return error;
                 });
 
-                auto enc_name = fmt::Format(arena,
-                                            "{}{}",
-                                            path::FilenameWithoutExtension(package_name),
-                                            encrypted_package::k_file_extension);
-                auto const enc_path = path::Join(arena, Array {folder, String(enc_name)});
+                auto const enc_path = path::Join(arena, Array {folder, package_name});
                 TRY_OR(WriteFile(enc_path, encrypted), {
                     StdPrintF(StdStream::Err,
                               "Error: failed to write encrypted package to '{}': {}\n",

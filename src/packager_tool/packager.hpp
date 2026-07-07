@@ -34,8 +34,7 @@ constexpr String k_prune_desc =
     "(samples, images, IRs) or the .lua/license files; for preset folders, files that "
     "aren't presets or preset-bank info files. Without this, such files are warned about "
     "but still included."_s;
-constexpr String k_package_name_desc =
-    "Override the auto-generated package name. Any file extension is stripped."_s;
+constexpr String k_package_name_desc = "Override the auto-generated package name."_s;
 
 auto constexpr k_pack_arg_defs = MakeCommandLineArgDefs<PackArgId>({
     {
