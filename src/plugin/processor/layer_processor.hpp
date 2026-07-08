@@ -287,7 +287,8 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 AudioProcessingContext const& context,
                                 VoicePool& voice_pool,
                                 u32 num_frames,
-                                bool start_fade_out);
+                                bool start_fade_out,
+                                Span<f32x2> scratch_buffer);
 
 void ResetLayerAudioProcessing(LayerProcessor& layer);
 bool LayerHasAudioActivity(LayerProcessor const& layer);

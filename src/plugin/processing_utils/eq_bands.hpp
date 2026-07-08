@@ -86,6 +86,12 @@ struct EqBand {
         if (changed) eq_coeffs.Set(eq_params);
     }
 
+    bool IsSilent() const {
+        for (auto const stage_index : Range(num_stages))
+            if (!rbj_filter::IsSilent(eq_data[stage_index])) return false;
+        return true;
+    }
+
     void Reset() {
         eq_coeffs.ResetSmoothing();
         for (auto& d : eq_data)
@@ -113,6 +119,13 @@ struct EqBands {
             if (mix != 1) result = LinearInterpolate(mix, in, result);
         }
         return result;
+    }
+
+    bool IsSilent() const {
+        if (eq_mix == 0) return true;
+        for (auto const& band : eq_bands)
+            if (!band.IsSilent()) return false;
+        return true;
     }
 
     void Reset() {

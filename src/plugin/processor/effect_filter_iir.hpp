@@ -88,16 +88,23 @@ class FilterEffect final : public Effect {
 
     EffectProcessResult
     ProcessBlock(Span<f32x2> frames, AudioProcessingContext const& context, void*) override {
-        return ProcessBlockByFrame(
-            frames,
-            [&](f32x2 in) {
-                auto const [coeffs, filter_mix] = m_smoothed_coeffs.Value();
-                f32x2 out = in * filter_mix;
-                out = Process(m_filter1, coeffs, out);
-                if (m_num_stages == 2) out = Process(m_filter2, coeffs, out);
-                return out;
-            },
-            context);
+        if (!ShouldProcessBlock()) return EffectProcessResult::Done;
+
+        for (auto& frame : frames) {
+            auto const [coeffs, filter_mix] = m_smoothed_coeffs.Value();
+            f32x2 out = frame * filter_mix;
+            out = Process(m_filter1, coeffs, out);
+            if (m_num_stages == 2) out = Process(m_filter2, coeffs, out);
+            frame = ApplyBypassCrossfade(context, out, frame);
+        }
+
+        return IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
+    }
+
+    bool IsSilent() const {
+        if (!rbj_filter::IsSilent(m_filter1)) return false;
+        if (m_num_stages == 2 && !rbj_filter::IsSilent(m_filter2)) return false;
+        return true;
     }
 
     void ResetInternal() override {

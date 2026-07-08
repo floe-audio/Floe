@@ -666,10 +666,17 @@ struct VoiceProcessor {
             }
         }
 
-        if (block_result == VoiceBlockResult::End || !voice.num_active_voice_samples)
+        if (block_result == VoiceBlockResult::End ||
+            (!voice.num_active_voice_samples && FilterIsSilent(voice)))
             EndVoiceInstantly(voice);
 
         voice.produced_audio_this_block = true;
+    }
+
+    // Once the sample data has finished, the voice stays alive feeding the filter silence until its
+    // resonant ring-out has decayed, rather than truncating it into a pop.
+    static bool FilterIsSilent(Voice const& voice) {
+        return !voice.controller->filter_on || sv_filter::IsSilent(voice.filters);
     }
 
     static bool HasPitchLfo(Voice const& v) {

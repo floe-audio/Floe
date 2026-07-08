@@ -7,6 +7,9 @@
 #include "stereo_audio_frame.hpp"
 #include "volume_fade.hpp"
 
+// Recursive filter state below this is inaudible (~-60 dB) and can be treated as silent.
+constexpr f32 k_filter_silence_threshold = 0.001f;
+
 template <ScalarOrVectorFloat T>
 struct OnePoleLowPassFilter {
     using ElementType = UnderlyingTypeOfVecOrScalar<T>;
@@ -127,6 +130,10 @@ inline f32x2 Process(StereoData& d, Coeffs const& c, f32x2 in) {
 }
 
 inline f32 Process(Filter& f, f32 in) { return Process(f.data, f.coeffs, in); }
+
+inline bool IsSilent(StereoData const& d) {
+    return All(Abs(d.out1) < k_filter_silence_threshold && Abs(d.out2) < k_filter_silence_threshold);
+}
 
 static Coeffs Coefficients(Params const& p) {
     ASSERT_HOT(p.fs > 0);
@@ -485,6 +492,14 @@ template <ScalarOrVector<f32> FloatType>
 struct Data {
     FloatType z1_a = {}, z2_a = {}; // State variables (z^-1).
 };
+
+template <ScalarOrVector<f32> FloatType>
+inline bool IsSilent(Data<FloatType> const& d) {
+    if constexpr (Vector<FloatType>)
+        return All(Abs(d.z1_a) < k_filter_silence_threshold && Abs(d.z2_a) < k_filter_silence_threshold);
+    else
+        return Abs(d.z1_a) < k_filter_silence_threshold && Abs(d.z2_a) < k_filter_silence_threshold;
+}
 
 inline f32 ResonanceToQ(f32 resonance) {
     ASSERT(resonance >= 0 && resonance <= 1);

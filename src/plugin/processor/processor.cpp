@@ -1485,13 +1485,18 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     auto const output = Span<f32x2>(output_buffer.data, sub_block_size);
     Fill(output, 0.0f);
 
+    // Safe to share between layers: each layer's result is consumed before the next layer runs.
+    Array<f32x2, k_block_size_max> layer_scratch_buffer;
+    auto const layer_scratch = Span<f32x2>(layer_scratch_buffer.data, sub_block_size);
+
     bool audio_was_generated_by_layers = false;
     for (auto const layer_index : Range(k_num_layers)) {
         auto const process_result = ProcessLayer(processor.layer_processors[layer_index],
                                                  processor.audio_processing_context,
                                                  processor.voice_pool,
                                                  sub_block_size,
-                                                 layers_changed.Get(layer_index));
+                                                 layers_changed.Get(layer_index),
+                                                 layer_scratch);
 
         if (process_result.output) {
             audio_was_generated_by_layers = true;

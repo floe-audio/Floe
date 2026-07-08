@@ -47,10 +47,12 @@ class Eq final : public Effect {
     EffectProcessResult
     ProcessBlock(Span<f32x2> io_frames, AudioProcessingContext const& context, void*) override {
         ZoneNamedN(process_block, "Eq ProcessBlock", true);
-        return ProcessBlockByFrame(
-            io_frames,
-            [&](f32x2 frame) { return eq_bands.Process(context, frame); },
-            context);
+        if (!ShouldProcessBlock()) return EffectProcessResult::Done;
+
+        for (auto& frame : io_frames)
+            frame = ApplyBypassCrossfade(context, eq_bands.Process(context, frame), frame);
+
+        return eq_bands.IsSilent() ? EffectProcessResult::Done : EffectProcessResult::ProcessingTail;
     }
 
     EqBands eq_bands {};

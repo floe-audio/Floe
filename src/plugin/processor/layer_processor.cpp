@@ -873,7 +873,8 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
                                 AudioProcessingContext const& context,
                                 VoicePool& voice_pool,
                                 u32 num_frames,
-                                bool start_fade_out) {
+                                bool start_fade_out,
+                                Span<f32x2> scratch_buffer) {
     ZoneScoped;
     ZoneValue(layer.index);
 
@@ -899,6 +900,14 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
     // audio at the moment because we want the swapping of instruments to be in sync with any other layers
     if (start_fade_out)
         layer.inst_change_fade.SetAsFadeOutIfNotAlready(context.sample_rate, k_inst_change_fade_ms);
+
+    // With no voices sounding, feed the EQ silence until its resonant ring-out has decayed, rather than
+    // truncating it into a pop.
+    if (!result.output && layer.audio_thread_inst.tag != InstrumentType::None && !layer.eq_bands.IsSilent()) {
+        auto const silence = scratch_buffer.SubSpan(0, num_frames);
+        Fill(silence, 0.0f);
+        result.output = silence;
+    }
 
     if (!result.output || layer.audio_thread_inst.tag == InstrumentType::None) {
         if (layer.inst_change_fade.JumpMultipleSteps(num_frames) == VolumeFade::State::Silent)
