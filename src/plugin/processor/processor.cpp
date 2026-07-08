@@ -819,6 +819,8 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
 
             processor.audio_processing_context.midi_note_state.NoteOn(chan_note, vel);
 
+            processor.uses_fractional_velocity_values.Store(true, StoreMemoryOrder::Relaxed);
+
             dyn::Append(changes.note_events,
                         {
                             .velocity = vel,

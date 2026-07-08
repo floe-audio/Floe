@@ -236,6 +236,7 @@ struct AudioProcessor {
     Bitset<k_num_parameters> pending_param_changes;
 
     AtomicBitset<128> notes_currently_held;
+    Atomic<bool> uses_fractional_velocity_values {false};
 
     Atomic<audio_thread_inbox::Flags> inbox_flags {}; // From main-thread to audio.
 

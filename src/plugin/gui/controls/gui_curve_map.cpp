@@ -3,6 +3,8 @@
 
 #include "gui/controls/gui_curve_map.hpp"
 
+#include "common_infrastructure/audio_utils.hpp"
+
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -33,6 +35,33 @@ DrawCurvedSegment(DrawList& graphics, f32x2 p0, f32x2 p1, float curve_value, int
         f32x2 curved_point = {p0.x + ((p1.x - p0.x) * x_t), p0.y + ((p1.y - p0.y) * y_t)};
         graphics.PathLineTo(curved_point);
     }
+}
+
+// x is velocity 0-1, y is the curve's 0-1 output which gets squared before being used as an amplitude.
+static void
+CurvePointValuePopup(GuiState& g, imgui::Id id, MouseButton mouse_button, Rect window_r, f32x2 point) {
+    if (!g.imgui.IsActive(id, mouse_button)) return;
+
+    auto const uses_fractional_velocity =
+        g.engine.processor.uses_fractional_velocity_values.Load(LoadMemoryOrder::Relaxed);
+    auto const velocity_str = uses_fractional_velocity
+                                  ? fmt::Format(g.scratch_arena, "{.1}%", point.x * 100.0f)
+                                  : fmt::Format(g.scratch_arena, "{}", RoundPositiveFloat(point.x * 127.0f));
+
+    auto const amp = point.y * point.y;
+    auto const volume_str = amp > k_silence_amp_80
+                                ? fmt::Format(g.scratch_arena, "{.1} dB", AmpToDb(amp))
+                                : g.scratch_arena.Clone("-∞ dB"_s);
+
+    DrawOverlayTooltipForRect(
+        g.imgui,
+        g.fonts,
+        fmt::Format(g.scratch_arena, "Velocity: {}\nVolume: {}", velocity_str, volume_str),
+        {
+            .r = window_r,
+            .avoid_r = window_r,
+            .justification = TooltipJustification::AboveOrBelow,
+        });
 }
 
 void DoCurveMap(GuiState& g,
@@ -417,6 +446,13 @@ void DoCurveMap(GuiState& g,
                 curve_map.points[(usize)working_point.real_index].y = new_pos.y;
                 changed_values = true;
             }
+
+            CurvePointValuePopup(g,
+                                 imgui_id,
+                                 drag_activation_cfg.mouse_button,
+                                 grabber_rect,
+                                 f32x2 {curve_map.points[(usize)working_point.real_index].x,
+                                        curve_map.points[(usize)working_point.real_index].y});
 
             draw_list.AddCircleFilled(pos,
                                       point_radius,
