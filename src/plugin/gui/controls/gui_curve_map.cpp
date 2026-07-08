@@ -49,9 +49,8 @@ CurvePointValuePopup(GuiState& g, imgui::Id id, MouseButton mouse_button, Rect w
                                   : fmt::Format(g.scratch_arena, "{}", RoundPositiveFloat(point.x * 127.0f));
 
     auto const amp = point.y * point.y;
-    auto const volume_str = amp > k_silence_amp_80
-                                ? fmt::Format(g.scratch_arena, "{.1} dB", AmpToDb(amp))
-                                : g.scratch_arena.Clone("-∞ dB"_s);
+    auto const volume_str = amp > k_silence_amp_80 ? fmt::Format(g.scratch_arena, "{.1} dB", AmpToDb(amp))
+                                                   : g.scratch_arena.Clone("-∞ dB"_s);
 
     DrawOverlayTooltipForRect(
         g.imgui,
