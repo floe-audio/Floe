@@ -149,6 +149,79 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
             }
         }
 
+        if (auto const layer_param = LayerParamIndexAndLayerFor(param_index)) {
+            if (layer_param->param == LayerParamIndex::TuneSemitone) {
+                MenuDivider(g.builder, root);
+
+                auto const pitch = g.engine.processor.main_params.DescribedValue(param_index);
+
+                struct OctaveItem {
+                    f32 delta;
+                    String text;
+                    String tooltip;
+                };
+                for (auto const [index, item] : Enumerate(ArrayT<OctaveItem>({
+                         {12, "+1 Octave"_s, "Raise the pitch by 12 semitones"_s},
+                         {-12, "-1 Octave"_s, "Lower the pitch by 12 semitones"_s},
+                     }))) {
+                    g.imgui.PushId(index);
+                    DEFER { g.imgui.PopId(); };
+
+                    auto const new_value = pitch.LinearValue() + item.delta;
+                    auto const fits = pitch.info.linear_range.Contains(new_value);
+                    if (MenuItem(g.builder,
+                                 root,
+                                 {
+                                     .text = item.text,
+                                     .tooltip = item.tooltip,
+                                     .mode = fits ? MenuItemOptions::Mode::Active
+                                                  : MenuItemOptions::Mode::Disabled,
+                                 })
+                            .button_fired &&
+                        fits) {
+                        SetParameterValue(g.engine.processor, param_index, new_value, {});
+                    }
+                }
+            } else if (layer_param->param == LayerParamIndex::TuneCents) {
+                MenuDivider(g.builder, root);
+
+                auto const detune = g.engine.processor.main_params.DescribedValue(param_index);
+                auto const cents_value = detune.ProjectedValue();
+
+                auto const whole_semitones = Trunc(Round(cents_value) / 100.0f);
+
+                auto const semitone_index =
+                    ParamIndexFromLayerParamIndex(layer_param->layer_num, LayerParamIndex::TuneSemitone);
+                auto const pitch = g.engine.processor.main_params.DescribedValue(semitone_index);
+
+                auto const foldable_semitones =
+                    Trunc(Clamp(whole_semitones,
+                                pitch.info.linear_range.min - pitch.LinearValue(),
+                                pitch.info.linear_range.max - pitch.LinearValue()));
+
+                if (MenuItem(g.builder,
+                             root,
+                             {
+                                 .text = "Fold into Pitch"_s,
+                                 .tooltip = "Move whole semitones from Detune into the Pitch parameter"_s,
+                                 .mode = foldable_semitones != 0 ? MenuItemOptions::Mode::Active
+                                                                 : MenuItemOptions::Mode::Disabled,
+                             })
+                        .button_fired &&
+                    foldable_semitones != 0) {
+                    auto const new_semitone = pitch.LinearValue() + foldable_semitones;
+                    auto const new_cents_value = cents_value - (foldable_semitones * 100);
+                    auto const new_cents_linear =
+                        detune.info.LineariseValue(new_cents_value, false).ValueOr(detune.LinearValue());
+
+                    BeginUndoableStep(g.engine, "Fold Detune into Pitch"_s);
+                    DEFER { EndUndoableStep(g.engine); };
+                    SetParameterValue(g.engine.processor, semitone_index, new_semitone, {});
+                    SetParameterValue(g.engine.processor, param_index, new_cents_linear, {});
+                }
+            }
+        }
+
         MenuDivider(g.builder, root);
 
         if (IsMidiCCLearnActive(g.engine.processor)) {
