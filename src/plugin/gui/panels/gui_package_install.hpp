@@ -199,7 +199,9 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
         for (auto& component : job.job->components) {
             if (!package::UserInputIsRequired(component.existing_installation_status)) continue;
 
-            //
+            builder.imgui.PushId((uintptr)(void*)&component);
+            DEFER { builder.imgui.PopId(); };
+
             auto const container = DoBox(builder,
                                          {
                                              .parent = root,
