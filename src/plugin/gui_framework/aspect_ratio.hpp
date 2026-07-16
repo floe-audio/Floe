@@ -5,16 +5,19 @@
 #include "foundation/foundation.hpp"
 
 constexpr UiSize SizeWithAspectRatio(u16 target_width, UiSize aspect_ratio) {
-    u16 const low_index = target_width / aspect_ratio.width;
-    u16 const high_index = low_index + 1;
-    u16 const low_width = aspect_ratio.width * low_index;
-    u16 const high_width = aspect_ratio.width * high_index;
+    u32 const low_index = target_width / aspect_ratio.width;
+    u32 const high_index = low_index + 1;
+    u32 const low_width = aspect_ratio.width * low_index;
+    u32 const high_width = aspect_ratio.width * high_index;
 
-    if ((target_width - low_width) < (high_width - target_width))
-        return {low_width, (u16)(low_index * aspect_ratio.height)};
+    if (high_width > LargestRepresentableValue<u16>() ||
+        (target_width - low_width) < (high_width - target_width))
+        return {(u16)low_width, (u16)(low_index * aspect_ratio.height)};
     else
-        return {high_width, (u16)(high_index * aspect_ratio.height)};
+        return {(u16)high_width, (u16)(high_index * aspect_ratio.height)};
 }
+
+static_assert(SizeWithAspectRatio(65530, {10, 7}).width == 65530);
 
 constexpr auto GreatestCommonDivisor(auto a, auto b) {
     ASSERT(a >= 0);

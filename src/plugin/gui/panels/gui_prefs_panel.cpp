@@ -573,25 +573,27 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
             auto const desc = SettingDescriptor(gui_setting);
             if (gui_setting == GuiPreference::WindowWidth) {
                 auto const& int_info = desc.value_requirements.Get<prefs::Descriptor::IntRequirements>();
-                if (auto const v = IntField(
-                        builder,
-                        options_rhs_column,
-                        {
-                            .label = "Window size",
-                            .tooltip = desc.long_description,
-                            .width = k_settings_int_field_width,
-                            .value =
-                                prefs::GetValue(context.prefs, desc).value.Get<s64>() / k_window_width_step,
-                            .constrainer =
-                                [&int_info](s64 value) {
-                                    s64 new_value;
-                                    if (__builtin_mul_overflow(value, k_window_width_step, &new_value))
-                                        new_value = value;
-                                    if (int_info.validator) int_info.validator(new_value);
-                                    return new_value;
-                                },
-                        })) {
-                    prefs::SetValue(context.prefs, desc, *v);
+                auto const stored = prefs::GetValue(context.prefs, desc);
+                auto const width_pixels =
+                    stored.is_default ? (s64)GuiIo().in.window_size.width : stored.value.Get<s64>();
+                if (auto const v =
+                        IntField(builder,
+                                 options_rhs_column,
+                                 {
+                                     .label = "Window size",
+                                     .tooltip = desc.long_description,
+                                     .width = k_settings_int_field_width,
+                                     .value = width_pixels / k_window_width_step,
+                                     .constrainer =
+                                         [&int_info](s64 steps) {
+                                             s64 pixels;
+                                             if (__builtin_mul_overflow(steps, k_window_width_step, &pixels))
+                                                 pixels = steps;
+                                             if (int_info.validator) int_info.validator(pixels);
+                                             return pixels / k_window_width_step;
+                                         },
+                                 })) {
+                    prefs::SetValue(context.prefs, desc, *v * k_window_width_step);
                 }
                 continue;
             }

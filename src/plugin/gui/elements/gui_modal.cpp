@@ -385,7 +385,9 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
     auto const dm = IsDarkMode(options.style);
     auto const greyed = options.greyed_out;
     auto const text_col = Col {.c = greyed ? Col::Overlay0 : Col::Text, .dark_mode = dm};
-    auto value = options.value;
+    auto const min = options.constrainer(SmallestRepresentableValue<s64>());
+    auto const max = options.constrainer(LargestRepresentableValue<s64>());
+    auto value = Clamp(options.value, min, max);
     auto const initial_value = value;
     auto const container = DoBox(builder,
                                  {
@@ -415,8 +417,6 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
                   },
               });
 
-    auto const min = options.constrainer(SmallestRepresentableValue<s64>());
-    auto const max = options.constrainer(LargestRepresentableValue<s64>());
     String display_string;
     if (options.midi_note_names && value >= 0 && value <= 127)
         display_string = builder.arena.Clone(NoteName((u7)value));
