@@ -82,7 +82,8 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
     if (!native_file_picker.panel) return false;
 
     ASSERT([NSThread isMainThread]);
-    ASSERT(!native_file_picker.panel.visible, "panel should be closed");
+    // When presented as a sheet, the panel may still be on-screen when the completion handler runs.
+    [native_file_picker.panel orderOut:nil];
     window.frame_state.file_picker_results = {};
     window.file_picker_result_arena.ResetCursorAndConsolidateRegions();
 
@@ -163,16 +164,14 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
 
         auto panel = native_file_picker.panel;
 
-        panel.parentWindow = ((__bridge NSView*)(void*)puglGetNativeView(window.view)).window;
         panel.title = StringToNSString(options.title);
-        [panel setLevel:NSModalPanelWindowLevel];
         panel.showsResizeIndicator = YES;
         panel.showsHiddenFiles = NO;
         panel.canCreateDirectories = YES;
         if (options.default_folder)
             panel.directoryURL = [NSURL fileURLWithPath:StringToNSString(*options.default_folder)];
 
-        [panel beginWithCompletionHandler:^(NSInteger response) {
+        auto const completion_handler = ^(NSModalResponse response) {
           // I don't think we can assert that this is always the main thread, so let's send it via
           // Pugl's event system which should guarantee main thread.
           // This triggers NativeFilePickerOnClientMessage eventually.
@@ -184,7 +183,14 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
                                  }};
           auto const rc = puglSendEvent(window.view, &event);
           ASSERT(rc == PUGL_SUCCESS);
-        }];
+        };
+
+        if (NSWindow* parent_window = ((__bridge NSView*)(void*)puglGetNativeView(window.view)).window) {
+            [panel beginSheetModalForWindow:parent_window completionHandler:completion_handler];
+        } else {
+            [panel setLevel:NSModalPanelWindowLevel];
+            [panel beginWithCompletionHandler:completion_handler];
+        }
 
     } @catch (NSException* e) {
         LogError(ModuleName::Gui, "error opening native file picker: {}", e.description.UTF8String);
@@ -207,12 +213,13 @@ void CloseNativeFilePicker(AppWindow& window) {
     {
         native_file_picker.mutex.Lock();
         DEFER { native_file_picker.mutex.Unlock(); };
+        // cancel: rather than close: it ends the sheet session on the parent window.
         if ([NSThread isMainThread]) {
-            [native_file_picker.panel close];
+            [native_file_picker.panel cancel:nil];
         } else {
             LogInfo(ModuleName::Gui, "Closing native file picker from non-main thread");
             // We assume here that there's a main thread regularly pumping the run loop.
-            [native_file_picker.panel performSelectorOnMainThread:@selector(close)
+            [native_file_picker.panel performSelectorOnMainThread:@selector(cancel:)
                                                        withObject:nil
                                                     waitUntilDone:YES];
         }
