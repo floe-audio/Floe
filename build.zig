@@ -377,7 +377,7 @@ fn resolveTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.Ar
             var cpu_features: []const u8 = undefined;
             switch (t) {
                 .native => {
-                    arch_os_abi = if (builtin.os.tag == .linux) "native-linux-gnu.2.31" else "native";
+                    arch_os_abi = "native";
                     // valgrind doesn't like some AVX instructions so we'll target the baseline x86_64 for now
                     cpu_features = if (builtin.cpu.arch == .x86_64) x86_cpu else "native";
                 },
@@ -593,6 +593,10 @@ pub fn build(b: *std.Build) void {
     for (targets.items, 0..) |target, i| {
         if (target.result.os.tag == .windows and options.sanitize_thread)
             @panic("thread sanitiser is not supported on Windows targets");
+
+        // The thread sanitiser build breaks on Linux due to glibc version issues unless the ABI is pinned.
+        if (target.result.os.tag == .linux and options.sanitize_thread and target.query.glibc_version == null)
+            @panic("thread sanitiser on Linux requires a pinned glibc ABI: pass -Dtargets=linux");
 
         const cfg = TargetConfig.create(&ctx, target, &options);
 

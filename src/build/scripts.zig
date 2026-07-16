@@ -1027,12 +1027,14 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
                 spawnZigBuild(&pool, &wg, &ci_report, &.{
                     "test",
                     "-Dsanitize-thread",
+                    "-Dtargets=linux",
                     "--prefix",
                     "zig-out/debug-sanitized",
                 });
                 spawnZigBuild(&pool, &wg, &ci_report, &.{
                     "test",
                     "-Dsanitize-thread",
+                    "-Dtargets=linux",
                     "-Dbuild-mode=performance_profiling",
                     "--prefix",
                     "zig-out/optimised-sanitized",
