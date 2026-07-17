@@ -943,6 +943,17 @@ fn spawnZigBuild(pool: *std.Thread.Pool, wg: *std.Thread.WaitGroup, ci_report: *
     pool.spawnWg(wg, runZigBuild, .{ ci_report, args_copy });
 }
 
+// On Linux, CI runs inside a Nix devshell, where an unpinned "native" target resolves to Nix's own glibc rather
+// than the runner's, so binaries built that way fail to run.
+const native_glibc_target_arg: ?[]const u8 = if (builtin.os.tag == .linux) "-Dtargets=linux" else null;
+
+// Like spawnZigBuild, but for invocations that build and run native binaries.
+fn spawnZigBuildNative(pool: *std.Thread.Pool, wg: *std.Thread.WaitGroup, ci_report: *CiReport, args: []const []const u8) void {
+    const extra: []const []const u8 = if (native_glibc_target_arg) |a| &.{a} else &.{};
+    const args_copy = std.mem.concat(ci_report.arena.allocator(), []const u8, &.{ args, extra }) catch @panic("OOM");
+    pool.spawnWg(wg, runZigBuild, .{ ci_report, args_copy });
+}
+
 // Outputs markdown table to stdout.
 fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
     var tsa: std.heap.ThreadSafeAllocator = .{ .child_allocator = context.allocator };
@@ -987,7 +998,7 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
 
     // Tests in debug mode.
     for (core_tests) |test_cmd| {
-        spawnZigBuild(&pool, &wg, &ci_report, &.{
+        spawnZigBuildNative(&pool, &wg, &ci_report, &.{
             test_cmd,
             "--prefix",
             "zig-out/debug",
@@ -997,7 +1008,7 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
     // Tests in optimised mode.
     if (test_level == .full) {
         for (core_tests) |test_cmd| {
-            spawnZigBuild(&pool, &wg, &ci_report, &.{
+            spawnZigBuildNative(&pool, &wg, &ci_report, &.{
                 test_cmd,
                 "-Dbuild-mode=performance_profiling",
                 "--prefix",
@@ -1009,16 +1020,16 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
     switch (builtin.os.tag) {
         .linux => {
             if (test_level == .full) {
-                spawnZigBuild(&pool, &wg, &ci_report, &.{
+                spawnZigBuildNative(&pool, &wg, &ci_report, &.{
                     "test-coverage",
                 });
 
                 // Valgrind.
                 // IMPROVE: run validators (in single-process mode) through valgrind
-                spawnZigBuild(&pool, &wg, &ci_report, &.{
+                spawnZigBuildNative(&pool, &wg, &ci_report, &.{
                     "test:valgrind",
                 });
-                spawnZigBuild(&pool, &wg, &ci_report, &.{
+                spawnZigBuildNative(&pool, &wg, &ci_report, &.{
                     "test:valgrind",
                     "-Dbuild-mode=performance_profiling",
                 });
@@ -1045,7 +1056,7 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
                     "check:clang-tidy",
                     "-Dtargets=x86_64-linux,x86_64-windows,aarch64-macos",
                 });
-                spawnZigBuild(&pool, &wg, &ci_report, &.{"script:website-build"});
+                spawnZigBuildNative(&pool, &wg, &ci_report, &.{"script:website-build"});
             }
 
             spawnZigBuild(&pool, &wg, &ci_report, &.{"check:reuse"});
@@ -1242,9 +1253,11 @@ fn runBenchmarkCi(context: *Context) !u8 {
             return 1;
         };
 
+        const targets_arg = native_glibc_target_arg orelse "-Dtargets=native";
+
         const result = try std.process.Child.run(.{
             .allocator = allocator,
-            .argv = &.{ zig_exe, "build", "install:all", "-Dtargets=native", "-Dbuild-mode=performance_profiling" },
+            .argv = &.{ zig_exe, "build", "install:all", targets_arg, "-Dbuild-mode=performance_profiling" },
         });
 
         if (result.term != .Exited or result.term.Exited != 0) {
