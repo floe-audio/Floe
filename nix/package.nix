@@ -79,6 +79,7 @@ stdenv.mkDerivation {
       --prefix "$out" \
       --system "${deps}" \
       --color off \
+      -Dtargets=linux \
       -Dbuild-mode=${buildMode} \
       -Dinclude-git-hash=false \
       ${lib.optionalString fetchFloeLogos "-Dfetch-floe-logos"}
