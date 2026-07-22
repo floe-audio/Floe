@@ -23,6 +23,8 @@ static_assert(path::k_max >= PATH_MAX);
 
 ErrorCodeOr<void> WindowsSetFileAttributes(String, Optional<WindowsFileAttributes>) { return k_success; }
 
+ErrorCodeOr<void> WindowsScheduleFileDeletionOnReboot(String) { return k_success; }
+
 ErrorCodeOr<void> Rename(String from, String to) {
     PathArena temp_path_allocator {Malloc::Instance()};
     auto const result =
@@ -82,28 +84,44 @@ ErrorCodeOr<Optional<Entry>> Next(Iterator& it, ArenaAllocator& result_arena) {
                 (it.options.skip_dot_files && entry_name.size && entry_name[0] == '.')) {
                 skip = true;
             } else {
-                Entry result {
-                    .subpath = result_arena.Clone(entry_name),
-                    .type = entry->d_type == DT_DIR ? FileType::Directory : FileType::File,
-                    .file_size = ({
-                        u64 s = 0;
-                        if (it.options.get_file_size) {
-                            PathArena temp_path_allocator {Malloc::Instance()};
-                            auto const full_path = fmt::Join(temp_path_allocator,
-                                                             Array {
-                                                                 it.base_path,
-                                                                 "/"_s,
-                                                                 entry_name,
-                                                                 "\0"_s,
-                                                             });
-                            struct stat info;
-                            if (stat(full_path.data, &info) != 0) return FilesystemErrnoErrorCode(errno);
-                            s = (u64)info.st_size;
+                auto file_type = entry->d_type == DT_DIR ? FileType::Directory : FileType::File;
+
+                // d_type doesn't follow symlinks, so we need to stat() to find out what a symlink actually
+                // points to.
+                bool const needs_stat = it.options.get_file_size || entry->d_type == DT_LNK ||
+                                        entry->d_type == DT_UNKNOWN;
+
+                struct stat info {};
+                if (needs_stat) {
+                    PathArena temp_path_allocator {Malloc::Instance()};
+                    auto const full_path = fmt::Join(temp_path_allocator,
+                                                     Array {
+                                                         it.base_path,
+                                                         "/"_s,
+                                                         entry_name,
+                                                         "\0"_s,
+                                                     });
+                    if (stat(full_path.data, &info) != 0) {
+                        if (errno == ENOENT) {
+                            // Broken symlink, or the entry vanished between readdir() and stat().
+                            skip = true;
+                        } else {
+                            return FilesystemErrnoErrorCode(errno);
                         }
-                        s;
-                    }),
-                };
-                return result;
+                    }
+                }
+
+                if (!skip) {
+                    if (entry->d_type == DT_LNK || entry->d_type == DT_UNKNOWN)
+                        file_type = (info.st_mode & S_IFMT) == S_IFDIR ? FileType::Directory : FileType::File;
+
+                    Entry result {
+                        .subpath = result_arena.Clone(entry_name),
+                        .type = file_type,
+                        .file_size = it.options.get_file_size ? (u64)info.st_size : 0,
+                    };
+                    return result;
+                }
             }
         } else {
             it.reached_end = true;
