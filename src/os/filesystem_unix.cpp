@@ -88,8 +88,8 @@ ErrorCodeOr<Optional<Entry>> Next(Iterator& it, ArenaAllocator& result_arena) {
 
                 // d_type doesn't follow symlinks, so we need to stat() to find out what a symlink actually
                 // points to.
-                bool const needs_stat = it.options.get_file_size || entry->d_type == DT_LNK ||
-                                        entry->d_type == DT_UNKNOWN;
+                bool const needs_stat =
+                    it.options.get_file_size || entry->d_type == DT_LNK || entry->d_type == DT_UNKNOWN;
 
                 struct stat info {};
                 if (needs_stat) {
