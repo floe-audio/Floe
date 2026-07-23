@@ -9,6 +9,7 @@
 #include <stb_image.h>
 
 //
+#include "foundation/memory/allocators.hpp"
 #include "os/undef_windows_macros.h"
 //
 
@@ -98,14 +99,40 @@ ErrorCodeOr<Span<u8 const>> GetResource(int resource_id) {
     return Span<u8 const> {res_data, (size_t)res_size};
 }
 
-static ErrorCodeOr<void> TryInstall(Component const& comp) {
+static MutableString TempPathInSameDirAs(String dest_path, Allocator& arena, u64& seed) {
+    return path::Join(
+        arena,
+        Array {path::Directory(dest_path).Value(), UniqueFilename(k_temporary_directory_prefix, "", seed)});
+}
+
+static ErrorCodeOr<void>
+WriteFileViaRename(String dest_path, Span<u8 const> data, u64& seed, ArenaAllocator& scratch) {
+    auto const temp_path = TempPathInSameDirAs(dest_path, scratch, seed);
+    bool success = false;
+
+    // Always try clean up any failed or partially written temp.
+    DEFER {
+        if (!success)
+            auto _ = Delete(temp_path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
+    };
+
+    // Write to a temp file. Then rename to file - atomic.
+    TRY(WriteFile(temp_path, data));
+    TRY(Rename(temp_path, dest_path));
+
+    success = true;
+    return k_success;
+}
+
+static ErrorCodeOr<void> TryInstall(Component const& comp, u64& seed) {
     ASSERT(comp.data.size != 0);
     ASSERT(comp.info.filename.size != 0);
     ASSERT(IsValidUtf8(comp.info.filename));
 
-    PathArena arena {Malloc::Instance()};
+    ArenaAllocatorWithInlineStorage<3000> arena {Malloc::Instance()};
+
     auto const path = path::Join(arena, Array {comp.install_dir, comp.info.filename});
-    TRY_OR(WriteFile(path, comp.data), {
+    TRY_OR(WriteFileViaRename(path, comp.data, seed, arena), {
         if (error != FilesystemError::UsedByAnotherProcess)
             ReportError(ErrorLevel::Warning, k_nullopt, "Failed to install file: {}", error);
         return error;
@@ -114,8 +141,8 @@ static ErrorCodeOr<void> TryInstall(Component const& comp) {
     return k_success;
 }
 
-static void TryInstallUninstaller() {
-    ArenaAllocatorWithInlineStorage<1000> arena {Malloc::Instance()};
+static void TryInstallUninstaller(u64& seed) {
+    ArenaAllocatorWithInlineStorage<3000> arena {Malloc::Instance()};
 
     auto const uninstaller_exe_path = TRY_OPT_OR(UninstallerPath(arena, true), return);
 
@@ -123,7 +150,7 @@ static void TryInstallUninstaller() {
     {
         auto const file_data =
             TRY_OR(GetResource(UNINSTALLER_RESOURCE_ID), Panic("Failed to load uninstaller"));
-        TRY_OR(WriteFile(uninstaller_exe_path, file_data), {
+        TRY_OR(WriteFileViaRename(uninstaller_exe_path, file_data, seed, arena), {
             ReportError(ErrorLevel::Warning,
                         k_nullopt,
                         "Failed to install uninstaller '{}': {}",
@@ -139,15 +166,16 @@ static void TryInstallUninstaller() {
 static void BackgroundInstallingThread(Application& app) {
     ArenaAllocatorWithInlineStorage<1000> arena {Malloc::Instance()};
     auto const start_time = TimePoint::Now();
+    auto seed = RandomSeed();
     for (auto const i : Range(ToInt(ComponentTypes::Count))) {
         if (!app.components_selected[i]) continue;
         auto const& comp = app.components[i];
         InstallResult outcome = k_success;
-        if (comp.data.size != 0) outcome = TryInstall(comp);
+        if (comp.data.size != 0) outcome = TryInstall(comp, seed);
         app.installation_results.Use([i, outcome](InstallationResults& r) { r[i] = outcome; });
     }
 
-    TryInstallUninstaller();
+    TryInstallUninstaller(seed);
 
     // Intentional delay because it feels good
     constexpr auto k_min_seconds = 1.5;
