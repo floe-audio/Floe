@@ -23,8 +23,6 @@ static_assert(path::k_max >= PATH_MAX);
 
 ErrorCodeOr<void> WindowsSetFileAttributes(String, Optional<WindowsFileAttributes>) { return k_success; }
 
-ErrorCodeOr<void> WindowsScheduleFileDeletionOnReboot(String) { return k_success; }
-
 ErrorCodeOr<void> Rename(String from, String to) {
     PathArena temp_path_allocator {Malloc::Instance()};
     auto const result =
