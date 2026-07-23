@@ -1234,42 +1234,41 @@ TEST_CASE(TestFilesystemApi) {
             }
         }
 
-        if constexpr (!IS_WINDOWS) {
-            SUBCASE("symlinked directory") {
-                auto const real_dir = String(path::Join(a, Array {dir, "real_dir"_s}));
-                auto const real_file = path::Join(a, Array {real_dir, "file.txt"_s});
-                auto const link = path::Join(a, Array {dir, "link_to_real_dir"_s});
+#if !IS_WINDOWS
+        SUBCASE("symlinked directory") {
+            auto const real_dir = String(path::Join(a, Array {dir, "real_dir"_s}));
+            auto const real_file = path::Join(a, Array {real_dir, "file.txt"_s});
+            auto const link = path::Join(a, Array {dir, "link_to_real_dir"_s});
 
-                TRY(CreateDirectory(real_dir, {.create_intermediate_directories = false}));
-                TRY(WriteFile(real_file, "data"_s.ToByteSpan()));
-                REQUIRE(::symlink(NullTerminated(real_dir, a), NullTerminated(link, a)) == 0);
+            TRY(CreateDirectory(real_dir, {.create_intermediate_directories = false}));
+            TRY(WriteFile(real_file, "data"_s.ToByteSpan()));
+            REQUIRE(::symlink(NullTerminated(real_dir, a), NullTerminated(link, a)) == 0);
 
-                SUBCASE("non-recursive") {
-                    auto it = REQUIRE_UNWRAP(dir_iterator::Create(a, dir, {.skip_dot_files = false}));
-                    DEFER { dir_iterator::Destroy(it); };
+            SUBCASE("non-recursive") {
+                auto it = REQUIRE_UNWRAP(dir_iterator::Create(a, dir, {.skip_dot_files = false}));
+                DEFER { dir_iterator::Destroy(it); };
 
-                    Optional<dir_iterator::Entry> link_entry {};
-                    while (auto opt_entry = REQUIRE_UNWRAP(dir_iterator::Next(it, a)))
-                        if (opt_entry->subpath == "link_to_real_dir"_s) link_entry = opt_entry;
+                Optional<dir_iterator::Entry> link_entry {};
+                while (auto opt_entry = REQUIRE_UNWRAP(dir_iterator::Next(it, a)))
+                    if (opt_entry->subpath == "link_to_real_dir"_s) link_entry = opt_entry;
 
-                    REQUIRE(link_entry.HasValue());
-                    CHECK(link_entry->type == FileType::Directory);
-                }
+                REQUIRE(link_entry.HasValue());
+                CHECK(link_entry->type == FileType::Directory);
+            }
 
-                SUBCASE("recursive descends through the symlink") {
-                    auto it = REQUIRE_UNWRAP(dir_iterator::RecursiveCreate(a, dir, {.skip_dot_files = false}));
-                    DEFER { dir_iterator::Destroy(it); };
+            SUBCASE("recursive descends through the symlink") {
+                auto it = REQUIRE_UNWRAP(dir_iterator::RecursiveCreate(a, dir, {.skip_dot_files = false}));
+                DEFER { dir_iterator::Destroy(it); };
 
-                    bool found_file_through_link = false;
-                    while (auto opt_entry = REQUIRE_UNWRAP(dir_iterator::Next(it, a)))
-                        if (opt_entry->subpath ==
-                            path::Join(a, Array {"link_to_real_dir"_s, "file.txt"_s}))
-                            found_file_through_link = true;
+                bool found_file_through_link = false;
+                while (auto opt_entry = REQUIRE_UNWRAP(dir_iterator::Next(it, a)))
+                    if (opt_entry->subpath == path::Join(a, Array {"link_to_real_dir"_s, "file.txt"_s}))
+                        found_file_through_link = true;
 
-                    CHECK(found_file_through_link);
-                }
+                CHECK(found_file_through_link);
             }
         }
+#endif
     }
 
     SUBCASE("Absolute") {
