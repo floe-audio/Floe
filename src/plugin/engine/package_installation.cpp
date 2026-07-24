@@ -828,7 +828,30 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
             }
         }
 
-        TRY_J(ReaderInstallComponent(*job.reader, component.component, component.install_config, job.arena));
+        {
+            auto install_outcome =
+                ReaderInstallComponent(*job.reader, component.component, component.install_config, job.arena);
+
+            auto const default_folder = job.install_folders[ToInt(component.component.type)];
+            if (install_outcome.HasError() && install_outcome.Error() == FilesystemError::AccessDenied &&
+                !path::Equal(component.install_config.folder, default_folder)) {
+                // We were probably trying to update an existing installation in-place in a folder we don't
+                // have permission to write to - such as Mirage's old admin-created libraries folder. Install
+                // to the configured location instead; the servers will prefer the higher-revision version.
+                component.install_config = {
+                    .filename = path::Filename(component.component.path),
+                    .folder = default_folder,
+                    .allow_overwrite = false,
+                };
+                component.installed_to_fallback_folder = true;
+                install_outcome = ReaderInstallComponent(*job.reader,
+                                                         component.component,
+                                                         component.install_config,
+                                                         job.arena);
+            }
+
+            TRY_J(install_outcome);
+        }
 
         switch (component.component.type) {
             case ComponentType::Library: {
@@ -1047,6 +1070,8 @@ String TypeOfActionTaken(ExistingInstalledComponent existing_installation_status
 
 // [main-thread]
 String TypeOfActionTaken(InstallJob::Component const& component) {
+    if (component.installed_to_fallback_folder)
+        return "installed as copy (existing version's folder was not writable)";
     return TypeOfActionTaken(component.existing_installation_status, component.user_decision);
 }
 

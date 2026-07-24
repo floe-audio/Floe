@@ -96,6 +96,7 @@ struct InstallJob {
         ExistingInstalledComponent existing_installation_status {};
         UserDecision user_decision {UserDecision::Unknown};
         ComponentInstallConfig install_config {};
+        bool installed_to_fallback_folder {};
     };
     ArenaList<Component> components;
 };
