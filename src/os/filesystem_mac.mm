@@ -30,6 +30,10 @@ static ErrorCode FilesystemErrorFromNSError(NSError* error,
     if ([error.domain isEqualToString:NSCocoaErrorDomain]) {
         if (error.code == NSFileNoSuchFileError || error.code == NSFileReadNoSuchFileError)
             return ErrorCode(FilesystemError::PathDoesNotExist, extra_debug_info, loc);
+        else if (error.code == NSFileWriteFileExistsError)
+            return ErrorCode(FilesystemError::PathAlreadyExists, extra_debug_info, loc);
+        else if (error.code == NSFileWriteNoPermissionError)
+            return ErrorCode(FilesystemError::AccessDenied, extra_debug_info, loc);
         else if (error.code == NSURLErrorUserAuthenticationRequired)
             return ErrorCode(FilesystemError::AccessDenied, extra_debug_info, loc);
     } else if ([error.domain isEqualToString:NSURLErrorDomain]) {
@@ -155,6 +159,7 @@ ErrorCodeOr<void> CreateDirectory(String path, CreateDirectoryOptions options) {
                                   error:&error]) {
         auto const ec = FilesystemErrorFromNSError(error);
         if (ec == FilesystemError::PathAlreadyExists && !options.fail_if_exists) return k_success;
+        return ec;
     }
     return k_success;
 }
