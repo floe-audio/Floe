@@ -710,7 +710,7 @@ struct VoiceProcessor {
         if (HasPitchLfo(voice)) {
             auto const pitch_addition_in_semitones =
                 (f64)current_lfo_value * (f64)voice.controller->lfo.amount * k_lfo_range_semitones;
-            pitch_ratio *= Exp2(pitch_addition_in_semitones / 12.0);
+            pitch_ratio *= Exp2Fast(pitch_addition_in_semitones / 12.0);
         }
         return s.pitch_ratio_smoother.LowPass(pitch_ratio, (f64)context.one_pole_smoothing_cutoff_0_2ms);
     }

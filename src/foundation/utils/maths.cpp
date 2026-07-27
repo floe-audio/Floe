@@ -88,8 +88,21 @@ TEST_CASE(TestQuarterSineFade) {
     return k_success;
 }
 
+TEST_CASE(TestExp2Fast) {
+    REQUIRE(ApproxEqual(Exp2Fast(0.0), 1.0, 1e-6));
+
+    // Far wider than any pitch range we use; stay well under a cent (~6e-4 relative error).
+    for (int i = -12000; i <= 12000; ++i) {
+        auto const x = (f64)i / 100.0;
+        auto const expected = Exp2(x);
+        REQUIRE(ApproxEqual(Exp2Fast(x), expected, expected * 1e-6));
+    }
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterMathsTests) {
     REGISTER_TEST(TestTrigLookupTable);
     REGISTER_TEST(TestMathsTrigTurns);
     REGISTER_TEST(TestQuarterSineFade);
+    REGISTER_TEST(TestExp2Fast);
 }
