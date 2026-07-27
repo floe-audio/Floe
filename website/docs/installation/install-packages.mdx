@@ -54,17 +54,11 @@ But alternatively, a package could also contain only presets, or a collection of
 
 Floe doesn't remember packages after installation; they're just a means to get content onto your computer. Packages are created using Floe's [packaging tools](../develop/packaging), or using a ZIP utility.
 
-### ZIPs
-
-Floe's default for packages now use `.floe-pkg` or `.floe-pkg-enc` format. The default used to be `.zip` files.
-
-Floe still supports packages in ZIP format. We switched to `floe-pkg` because it's natural to extract a ZIP as soon as you download it, but Floe's 'Install Package' button wanted the ZIP un-extracted, often leaving to confusion and hassle.
-
-If you still have a package ZIP, you can still install it. Don't extract it, leave it as a ZIP file and direct Floe to it using 'Install Package'. If you're on macOS: be aware that Safari automatically extracts ZIP files after downloading. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab.
-
 ### Encrypted packages
 
 Some packages use the `.floe-pkg-enc` format. Installation is the same as any other package — click 'Install package' and select the file — with one extra step: Floe prompts for a license key.
+
+Encrypted packages require Floe version 2 or later.
 
 ![License key prompt](/images/encrypted-package-key-required.png)
 
@@ -76,6 +70,13 @@ Once installed, Floe shows who the package is licensed to:
 
 ![Installed encrypted package showing license holder](/images/encrypted-package-installed.png)
 
+### ZIPs
+
+As of Floe version 2, Floe's default for packages now use `.floe-pkg` or `.floe-pkg-enc` format. The default used to be `.zip` files.
+
+Floe still supports packages in ZIP format. We switched to `floe-pkg` because it's natural to extract a ZIP as soon as you download it, but Floe's 'Install Package' button wanted the ZIP un-extracted, often leaving to confusion and hassle.
+
+If you still have a package ZIP, you can still install it. Don't extract it, leave it as a ZIP file and direct Floe to it using 'Install Package'. If you're on macOS: be aware that Safari automatically extracts ZIP files after downloading. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab.
 
 ### Install to a custom location
 1. Create custom folders using Finder/File Explorer such as "Floe Libraries" and "Floe Presets"
