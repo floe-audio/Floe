@@ -160,7 +160,7 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryId lib_id,
             // If the image is quite a lot larger than we need, resize it down to avoid storing a huge
             // image on the GPU
             auto const background =
-                pixels->size.width > CheckedCast<u16>(window_width * 1.3f)
+                (f32)pixels->size.width > (f32)window_width * 1.3f
                     ? ResizeImage(*pixels, window_width, ImageBytesAllocator()).OrElse([&] {
                           return pixels->Clone(ImageBytesAllocator());
                       })
