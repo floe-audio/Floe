@@ -54,8 +54,8 @@
             .hash = "N-V-__8AANOnVADPVDjIiG7D_MKWmVQypIKAQFJ04Uc97KTA",
         },
         .miniz = .{
-            .url = "https://github.com/richgel999/miniz/archive/refs/tags/3.0.2.tar.gz",
-            .hash = "N-V-__8AAERZCACWezRV1bLpUKNG2scSJbJdweF1Id_3JKc7",
+            .url = "https://github.com/richgel999/miniz/archive/refs/tags/3.1.2.tar.gz",
+            .hash = "N-V-__8AAJmKFgANnVgLMCG4IKGFiSk_OceSUlZrQfI_Lo-r",
         },
         .lua = .{
             .url = "https://github.com/lua/lua/archive/refs/tags/v5.4.7.tar.gz",
