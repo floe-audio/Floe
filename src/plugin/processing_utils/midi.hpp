@@ -58,7 +58,7 @@ struct MidiMessage {
     u7 PolyAftertouch() const { return data2 & k_u7_max; }
     u7 ChannelPressure() const { return data1 & k_u7_max; }
     u14 PitchBend() const { // 14 bit value, 0 to 16383. 8192 is centre
-        return CheckedCast<u14>(data1 | (data2 << 7));
+        return (u14)((data1 & k_u7_max) | ((data2 & k_u7_max) << 7));
     }
     u4 ChannelNum() const { return 0xf & status; }
 
