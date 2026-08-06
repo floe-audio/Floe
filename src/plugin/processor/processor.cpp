@@ -815,7 +815,8 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             if (HandleResetKeyswitch(processor, (u7)note.key)) break;
 
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
-            auto const vel = Clamp((f32)note.velocity, 0.0f, 1.0f); // MuLab 10 VST3 sent invalid values
+            // MuLab 10 VST3 sent invalid values.
+            auto const vel = __builtin_isnan(note.velocity) ? 1.0f : Clamp((f32)note.velocity, 0.0f, 1.0f);
 
             processor.audio_processing_context.midi_note_state.NoteOn(chan_note, vel);
 
@@ -837,7 +838,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             if (note.key > MidiMessage::k_u7_max) break;
             if (note.channel > MidiMessage::k_u4_max) break;
             MidiChannelNote const chan_note {.note = (u7)note.key, .channel = (u4)note.channel};
-            auto const vel = Clamp((f32)note.velocity, 0.0f, 1.0f);
+            auto const vel = __builtin_isnan(note.velocity) ? 1.0f : Clamp((f32)note.velocity, 0.0f, 1.0f);
 
             processor.audio_processing_context.midi_note_state.NoteOff(chan_note);
 
@@ -1078,9 +1079,8 @@ static void ConsumeParamEventsFromHost(Parameters& params,
         if ((value->note_id != -1 && value->note_id != 0) || value->channel > 0 || value->key > 0) continue;
 
         if (auto const index = ParamIdToIndex(value->param_id)) {
-            auto const range = k_param_descriptors[ToInt(*index)].linear_range;
-            auto const clamped_value = Clamp((f32)value->value, range.min, range.max);
-            params.values[ToInt(*index)] = clamped_value;
+            params.values[ToInt(*index)] =
+                k_param_descriptors[ToInt(*index)].SanitiseLinearValue((f32)value->value);
             changes.changed_params.changed.Set(ToInt(*index));
             changes_for_main_thread.changed.Set(ToInt(*index));
         }
@@ -1247,7 +1247,8 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 changes.tempo_changed = true;
             }
         }
-        if (processor.audio_processing_context.tempo < 0.01) {
+        if (!__builtin_isfinite(processor.audio_processing_context.tempo) ||
+            processor.audio_processing_context.tempo < 0.01) {
             processor.audio_processing_context.tempo = 120;
             changes.tempo_changed = true;
         }

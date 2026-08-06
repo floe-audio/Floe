@@ -779,7 +779,7 @@ static clap_plugin_gui const floe_gui {
             auto const opt_index = ParamIdToIndex(value.param_id);
             if (!opt_index) return false;
             auto const param_desc = k_param_descriptors[(usize)*opt_index];
-            if (value.value < (f64)param_desc.linear_range.min ||
+            if (__builtin_isnan(value.value) || value.value < (f64)param_desc.linear_range.min ||
                 value.value > (f64)param_desc.linear_range.max)
                 return false;
         }
@@ -1477,7 +1477,11 @@ static bool ClapActivate(const struct clap_plugin* plugin,
 
         if (!Check(floe, IsMainThread(floe.host) != IsThreadResult::No, k_func, "not main thread"))
             return false;
-        if (!Check(floe, sample_rate > 0, k_func, "sample rate is invalid")) return false;
+        if (!Check(floe,
+                   sample_rate > 0 && __builtin_isfinite(sample_rate),
+                   k_func,
+                   "sample rate is invalid"))
+            return false;
 
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };

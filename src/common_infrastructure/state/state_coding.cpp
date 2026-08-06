@@ -1237,7 +1237,7 @@ ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
         for (auto const i : Range(k_num_parameters)) {
             auto const& info = k_param_descriptors[i];
             auto const v = state.param_values[i];
-            if (v < info.linear_range.min || v > info.linear_range.max) {
+            if (!info.linear_range.Contains(v)) {
                 LogDebug({},
                          "Param \"{} {}\" value ({}) is outside of the expected "
                          "range: ({}, {})",
@@ -1785,7 +1785,8 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
                     if (read_dest_index < k_max_macro_destinations) {
                         dests.items[read_dest_index].param_index = *param_index;
-                        dests.items[read_dest_index].value = dest_value;
+                        dests.items[read_dest_index].value =
+                            __builtin_isnan(dest_value) ? 0 : Clamp(dest_value, -1.0f, 1.0f);
                         ++read_dest_index;
                     }
                 }
@@ -1969,15 +1970,12 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
     if (!args.skip_param_adaptation) AdaptNewerParams(state, coder.version, args.source);
 
     // =======================================================================================================
-    // Clamp all param values to their valid ranges. This is necessary because experimental param ranges
-    // may change between versions, and transformations above could push values out of bounds.
-    if (coder.IsReading()) {
-        for (auto const i : Range(k_num_parameters)) {
-            auto const& info = k_param_descriptors[i];
-            state.param_values[i] =
-                Clamp(state.param_values[i], info.linear_range.min, info.linear_range.max);
-        }
-    }
+    // Sanitise all param values: clamp to their valid ranges and replace NaNs with defaults. This is
+    // necessary because experimental param ranges may change between versions, transformations above could
+    // push values out of bounds, and corrupted files could contain non-finite values.
+    if (coder.IsReading())
+        for (auto const i : Range(k_num_parameters))
+            state.param_values[i] = k_param_descriptors[i].SanitiseLinearValue(state.param_values[i]);
 
     return k_success;
 }
@@ -3135,6 +3133,62 @@ TEST_CASE(TestPresetUuidRoundTrip) {
     return k_success;
 }
 
+TEST_CASE(TestDecodeSanitisesParamValues) {
+    auto& scratch_arena = tester.scratch_arena;
+
+    StateSnapshot state {};
+    for (auto [index, param] : Enumerate(state.param_values))
+        param = k_param_descriptors[index].default_linear_value;
+    for (auto [i, type] : Enumerate(state.fx_order))
+        type = (EffectType)i;
+
+    auto const nan_param = ToInt(ParamIndex::FilterCutoff);
+    auto const inf_param = ToInt(ParamIndex::FilterResonance);
+    auto const neg_inf_param = ToInt(ParamIndex::FilterGain);
+    state.param_values[nan_param] = k_nan<f32>;
+    state.param_values[inf_param] = __builtin_inff();
+    state.param_values[neg_inf_param] = -__builtin_inff();
+
+    state.macro_destinations[0].items[0] = {
+        .param_index = ParamIndex::ChorusDepth,
+        .value = k_nan<f32>,
+    };
+
+    DynamicArray<u8> serialised_data {scratch_arena};
+    REQUIRE(CodeState(state,
+                      CodeStateArguments {
+                          .mode = CodeStateArguments::Mode::Encode,
+                          .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                              dyn::AppendSpan(serialised_data, Span<u8 const> {(u8 const*)data, bytes});
+                              return k_success;
+                          },
+                          .source = StateSource::Daw,
+                      })
+                .Succeeded());
+
+    StateSnapshot out_state {};
+    usize read_pos = 0;
+    REQUIRE(CodeState(out_state,
+                      CodeStateArguments {
+                          .mode = CodeStateArguments::Mode::Decode,
+                          .read_or_write_data = [&](void* data, usize bytes) -> ErrorCodeOr<void> {
+                              CHECK(read_pos + bytes <= serialised_data.size);
+                              CopyMemory(data, serialised_data.data + read_pos, bytes);
+                              read_pos += bytes;
+                              return k_success;
+                          },
+                          .source = StateSource::Daw,
+                      })
+                .Succeeded());
+
+    CHECK_EQ(out_state.param_values[nan_param], k_param_descriptors[nan_param].default_linear_value);
+    CHECK_EQ(out_state.param_values[inf_param], k_param_descriptors[inf_param].linear_range.max);
+    CHECK_EQ(out_state.param_values[neg_inf_param], k_param_descriptors[neg_inf_param].linear_range.min);
+    CHECK_EQ(out_state.macro_destinations[0].items[0].value, 0.0f);
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterStateCodingTests) {
     REGISTER_TEST(TestAdaptPreservesLegacyAudio);
     REGISTER_TEST(TestAdaptPreservesLegacyAudioUnderMacros);
@@ -3145,4 +3199,5 @@ TEST_REGISTRATION(RegisterStateCodingTests) {
     REGISTER_TEST(TestParsersHandleInvalidData);
     REGISTER_TEST(TestAdaptPreAddedLayerVelocityCurvesParams);
     REGISTER_TEST(TestPresetUuidRoundTrip);
+    REGISTER_TEST(TestDecodeSanitisesParamValues);
 }

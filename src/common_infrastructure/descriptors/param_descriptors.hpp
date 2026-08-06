@@ -1213,7 +1213,17 @@ struct ParamDescriptor {
 
     constexpr f32 DefaultProjectedValue() const { return ProjectValue(default_linear_value); }
 
+    // NaN-proof: Clamp passes NaN through, so handle it explicitly.
+    constexpr f32 SanitiseLinearValue(f32 linear_value) const {
+        if (__builtin_isnan(linear_value)) return default_linear_value;
+        return Clamp(linear_value, linear_range.min, linear_range.max);
+    }
+
     constexpr Optional<f32> LineariseValue(f32 projected_value, bool clamp_if_out_of_range) const {
+        if (__builtin_isnan(projected_value)) {
+            if (clamp_if_out_of_range) return default_linear_value;
+            return k_nullopt;
+        }
         auto const projection_range = ProjectionRange();
         if (clamp_if_out_of_range)
             projected_value = Clamp(projected_value, projection_range.min, projection_range.max);
