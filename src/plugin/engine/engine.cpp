@@ -946,7 +946,7 @@ Engine::~Engine() {
 
 static void PluginOnTimer(Engine& engine, clap_id timer_id) {
     ASSERT(g_is_logical_main_thread);
-    if (timer_id == *engine.timer_id) OnMainThread(engine);
+    if (engine.timer_id == timer_id) OnMainThread(engine);
 }
 
 static void PluginOnPollThread(Engine& engine) {
