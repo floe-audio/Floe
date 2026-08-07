@@ -244,11 +244,11 @@ linkFarm name [
     };
   }
   {
-    name = "N-V-__8AAERZCACWezRV1bLpUKNG2scSJbJdweF1Id_3JKc7";
+    name = "N-V-__8AAJmKFgANnVgLMCG4IKGFiSk_OceSUlZrQfI_Lo-r";
     path = fetchZigArtifact {
       name = "miniz";
-      url = "https://github.com/richgel999/miniz/archive/refs/tags/3.0.2.tar.gz";
-      hash = "sha256-xLTCWk64GINEj/iSTm26lcgACUoZjcnOZqKSrC744Bg=";
+      url = "https://github.com/richgel999/miniz/archive/refs/tags/3.1.2.tar.gz";
+      hash = "sha256-mEaPiSSTS3IydmgPhSOLbHi/H4tJtEWcybchSiDi6fs=";
       unpack = false;
     };
   }
