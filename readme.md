@@ -14,7 +14,9 @@ SPDX-License-Identifier: CC0-1.0
 ---
 
 ### Streamlined sample-based instrument platform
-Floe is a CLAP, VST3 and AU plugin for Windows, macOS, and Linux. It loads and plays sample libraries in the Floe format. Visit [floe.audio](https://floe.audio) for more information about the project. 
+Floe is a CLAP, VST3 and AU plugin for Windows, macOS, and Linux. It loads and plays sample libraries in the Floe format. Visit [floe.audio](https://floe.audio) for more information about the project.
+
+Currently, FrozenPlain, Sam's sample library company, is the primary force funding and steering Floe's development. We're open to discuss more directions, see our [sponsorship](https://floe.audio/docs/about-the-project/sponsorship) page.
 
 ## License
 This project is licensed under GPL version 3 or later. See the LICENCES folder for the full licence text. We follow the [REUSE](https://reuse.software/) recommendations for this repository.
