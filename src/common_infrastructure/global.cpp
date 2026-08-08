@@ -116,10 +116,7 @@ void GlobalInit(GlobalInitOptions options) {
     });
 
     if (auto const err = InitStacktraceState())
-        ReportError(ErrorLevel::Warning,
-                    HashFnv1a("stacktrace_init_failed"),
-                    "Failed to initialize stacktrace state: {}",
-                    *err);
+        LogWarning(ModuleName::Global, "Failed to initialize stacktrace state: {}", *err);
 
     InitLogger({});
 
