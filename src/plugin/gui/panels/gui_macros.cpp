@@ -9,6 +9,7 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
+#include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
@@ -185,26 +186,161 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                     BeginUndoableStep(g.engine, "Macro destination amount"_s);
                 if (builder.imgui.WasJustDeactivated(imgui_id, MouseButton::Left)) EndUndoableStep(g.engine);
 
-                auto norm_value = MapTo01(dest.value, -1, 1);
-                if (builder.imgui.SliderBehaviourFraction({
+                Optional<f32> new_dest_value {};
+                Optional<imgui::TextInputResult> dest_text_input_result {};
+                {
+                    auto norm_value = MapTo01(dest.value, -1, 1);
+                    auto const dragger_result = builder.imgui.DraggerBehaviour({
                         .rect_in_window_coords = knob_r,
                         .id = imgui_id,
-                        .fraction = norm_value,
-                        .default_fraction = MapTo01(0, -1, 1),
-                        .cfg =
+                        .text = fmt::Format(builder.arena, "{.0}%", dest.ProjectedValue() * 100),
+                        .min = 0,
+                        .max = 1,
+                        .value = norm_value,
+                        .default_value = MapTo01(0, -1, 1),
+                        .text_input_button_cfg =
+                            {
+                                .mouse_button = MouseButton::Left,
+                                .event = MouseButtonEvent::DoubleClick,
+                            },
+                        .text_input_cfg =
+                            {
+                                .chars_decimal = true,
+                                .centre_align = true,
+                                .escape_unfocuses = true,
+                                .select_all_when_opening = true,
+                            },
+                        .slider_cfg =
                             {
                                 .sensitivity = 400,
                                 .slower_with_shift = true,
                                 .default_on_modifer = true,
                             },
-                    })) {
-                    dest.value = MapFrom01(norm_value, -1, 1);
+                    });
+
+                    if (dragger_result.value_changed) new_dest_value = MapFrom01(norm_value, -1, 1);
+                    if (dragger_result.new_string_value) {
+                        if (auto const parsed = ParseFloat(*dragger_result.new_string_value))
+                            new_dest_value =
+                                MacroDestination::ValueFromProjected(Clamp<f32>((f32)*parsed / 100, -1, 1));
+                    }
+                    dest_text_input_result = dragger_result.text_input_result;
+                }
+
+                if (new_dest_value) {
+                    dest.value = *new_dest_value;
                     MacroDestinationValueChanged(g.engine.processor,
                                                  {
                                                      .value = dest.value,
                                                      .macro_index = macro_index,
                                                      .destination_index = dest_knob_index,
                                                  });
+                }
+
+                auto const set_dest_value = [&](f32 value, String undo_name) {
+                    dest.value = value;
+                    MacroDestinationValueChanged(g.engine.processor,
+                                                 {
+                                                     .value = dest.value,
+                                                     .macro_index = macro_index,
+                                                     .destination_index = dest_knob_index,
+                                                 });
+                    RecordUndoableStep(g.engine, undo_name);
+                };
+
+                DoRightClickMenu(
+                    g,
+                    {
+                        .button_id = imgui_id,
+                        .popup_id = builder.imgui.MakeId("dest-knob-menu"_s),
+                        .interaction_r = knob_r,
+                        .do_menu_items =
+                            [&](Box root) {
+                                StateSnapshotSection const target_section {MacroDestinationSection {
+                                    .macro_index = macro_index,
+                                    .destination_index = dest_knob_index,
+                                }};
+
+                                if (MenuItem(builder,
+                                             root,
+                                             {
+                                                 .text = "Copy Value"_s,
+                                                 .tooltip = "Copy this destination's amount"_s,
+                                             })
+                                        .button_fired) {
+                                    g.snapshot_clipboard = GuiState::CopiedSection {
+                                        .snapshot = CurrentStateSnapshot(g.engine),
+                                        .section = target_section,
+                                    };
+                                }
+
+                                auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                                                       g.snapshot_clipboard->section.tag ==
+                                                           StateSnapshotSectionKind::MacroDestination;
+
+                                if (MenuItem(
+                                        builder,
+                                        root,
+                                        {
+                                            .text = "Paste Value"_s,
+                                            .tooltip =
+                                                "Overwrite this destination's amount with the copied amount"_s,
+                                            .mode = can_paste ? MenuItemOptions::Mode::Active
+                                                              : MenuItemOptions::Mode::Disabled,
+                                        })
+                                        .button_fired &&
+                                    can_paste) {
+                                    ApplySectionOfState(g.engine,
+                                                        g.snapshot_clipboard->snapshot,
+                                                        g.snapshot_clipboard->section,
+                                                        target_section);
+                                }
+
+                                MenuDivider(builder, root);
+
+                                if (MenuItem(builder,
+                                             root,
+                                             {
+                                                 .text = "Enter Value"_s,
+                                                 .tooltip = "Type an amount for this destination"_s,
+                                             })
+                                        .button_fired) {
+                                    g.macros_gui_state.destination_text_editor_to_open =
+                                        MacrosGuiState::DestinationTextEditor {
+                                            .macro_index = macro_index,
+                                            .destination_index = dest_knob_index,
+                                        };
+                                }
+                                if (MenuItem(builder,
+                                             root,
+                                             {
+                                                 .text = "Reset Value"_s,
+                                                 .tooltip = "Reset this destination's amount to zero"_s,
+                                             })
+                                        .button_fired)
+                                    set_dest_value(0, "Reset macro destination amount"_s);
+                                if (MenuItem(builder,
+                                             root,
+                                             {
+                                                 .text = "Invert"_s,
+                                                 .tooltip = "Flip the sign of this destination's amount"_s,
+                                             })
+                                        .button_fired)
+                                    set_dest_value(-dest.value, "Invert macro destination amount"_s);
+                            },
+                    });
+
+                if (g.builder.IsInputAndRenderPass()) {
+                    auto& to_open = g.macros_gui_state.destination_text_editor_to_open;
+                    if (to_open && to_open->macro_index == macro_index &&
+                        to_open->destination_index == dest_knob_index) {
+                        to_open.Clear();
+                        builder.imgui.SetTextInputFocus(
+                            imgui_id,
+                            fmt::Format(builder.arena, "{.0}%", dest.ProjectedValue() * 100),
+                            false);
+                        builder.imgui.TextInputSelectAll();
+                    }
                 }
 
                 auto const centre = knob_r.Centre();
@@ -239,6 +375,9 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                              .line_col = ToU32({.c = Col::Blue}),
                              .bidirectional = true,
                          });
+
+                if (dest_text_input_result)
+                    DrawParameterTextInput(builder.imgui, knob_r, *dest_text_input_result);
 
                 if (builder.imgui.IsHotOrActive(imgui_id, MouseButton::Left)) {
                     dyn::Append(g.macros_gui_state.draw_overlays, [&dest, r = knob_r](GuiState& g) {

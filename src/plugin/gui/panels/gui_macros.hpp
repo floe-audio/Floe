@@ -33,6 +33,13 @@ struct MacrosGuiState {
     };
     Optional<HotDestinationParam> hot_destination_param {};
 
+    // If set, open a text editor for this destination knob on the next frame.
+    struct DestinationTextEditor {
+        u8 macro_index;
+        u8 destination_index;
+    };
+    Optional<DestinationTextEditor> destination_text_editor_to_open {};
+
     imgui::Id open_remove_destination_button_id {0};
 };
 

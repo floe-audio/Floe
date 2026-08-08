@@ -515,6 +515,18 @@ void ApplySectionOfState(Engine& engine,
                 SendMacroDestination(engine.processor, dst, d);
             break;
         }
+        case StateSnapshotSectionKind::MacroDestination: {
+            auto const src = source_section.Get<MacroDestinationSection>();
+            auto const dst = target_section.Get<MacroDestinationSection>();
+            ASSERT(src.macro_index < k_num_macros && dst.macro_index < k_num_macros);
+            ASSERT(src.destination_index < k_max_macro_destinations &&
+                   dst.destination_index < k_max_macro_destinations);
+
+            engine.processor.main_macro_destinations[dst.macro_index].items[dst.destination_index].value =
+                source.macro_destinations[src.macro_index].items[src.destination_index].value;
+            SendMacroDestination(engine.processor, dst.macro_index, dst.destination_index);
+            break;
+        }
         case StateSnapshotSectionKind::Instrument: {
             auto const src = source_section.Get<InstrumentSection>().layer_index;
             auto const dst = target_section.Get<InstrumentSection>().layer_index;

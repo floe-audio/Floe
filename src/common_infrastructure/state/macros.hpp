@@ -16,6 +16,7 @@ struct MacroDestination {
         // It feels more useful to have more granularity with smaller values so we use a cubic projection.
         return Copysign(value * value, value);
     }
+    static f32 ValueFromProjected(f32 projected) { return Copysign(Sqrt(Abs(projected)), projected); }
     Optional<ParamIndex> param_index {}; // nullopt if this is unused.
     f32 value = 0; // Bidirectional percentage from -1 to 1.
 };

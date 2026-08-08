@@ -113,6 +113,12 @@ struct MacroSection {
     u8 macro_index;
 };
 
+struct MacroDestinationSection {
+    bool operator==(MacroDestinationSection const&) const = default;
+    u8 macro_index;
+    u8 destination_index;
+};
+
 struct InstrumentSection {
     bool operator==(InstrumentSection const&) const = default;
     u8 layer_index;
@@ -155,6 +161,7 @@ struct EqBandSection {
 enum class StateSnapshotSectionKind : u8 {
     Param,
     Macro,
+    MacroDestination,
     Instrument,
     VelocityCurve,
     Envelope,
@@ -167,6 +174,7 @@ using StateSnapshotSection =
     TaggedUnion<StateSnapshotSectionKind,
                 TypeAndTag<ParamSection, StateSnapshotSectionKind::Param>,
                 TypeAndTag<MacroSection, StateSnapshotSectionKind::Macro>,
+                TypeAndTag<MacroDestinationSection, StateSnapshotSectionKind::MacroDestination>,
                 TypeAndTag<InstrumentSection, StateSnapshotSectionKind::Instrument>,
                 TypeAndTag<VelocityCurveSection, StateSnapshotSectionKind::VelocityCurve>,
                 TypeAndTag<EnvelopeSection, StateSnapshotSectionKind::Envelope>,
