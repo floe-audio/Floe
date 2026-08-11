@@ -197,6 +197,18 @@
   padding: 2rem 0 4rem;
 }
 
+.introLead {
+  max-width: 700px;
+  margin: 0 auto 3rem;
+  text-align: center;
+}
+
+.introLead p {
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--ifm-color-content);
+}
+
 .introGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

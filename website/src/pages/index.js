@@ -167,6 +167,10 @@ export default function Home() {
                 </section>
                 <section className={styles.introSection}>
                     <div className="container">
+                        <div className={styles.introLead}>
+                            <p>Floe is a free audio plugin for your digital audio workstation (DAW). It is the engine for a growing catalogue of <em>Floe format sample libraries</em>, offering easy playback of sample-based instruments. But it's more than just playback — Floe allows you to transform the sounds using easy-to-use sample-based synthesis features: layering, looping, granular, FX and more.
+                            </p>
+                        </div>
                         <div className={styles.introGrid}>
                             <div className={styles.introBlock}>
                                 <Heading as="h2">Open platform</Heading>
