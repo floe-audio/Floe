@@ -106,7 +106,7 @@ const config = {
                         position: "left",
                         label: "Docs",
                     },
-                    { to: "blog", label: "Blog", position: "left" },
+                    { to: "blog", label: "News", position: "left" },
                     {
                         type: "docsVersionDropdown",
                         position: "right",
@@ -143,7 +143,7 @@ const config = {
                     {
                         items: [
                             {
-                                label: "Blog",
+                                label: "News",
                                 to: "/blog",
                             },
                             {
