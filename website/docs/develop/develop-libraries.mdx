@@ -32,9 +32,11 @@ We made these tools for our own use and are sharing them with the community. Con
 
 ## Floe's sample library format
 
-Floe's format is designed for configuring audio files into playable instruments. It does not add any audio-manipulation or custom GUIs. Floe has a ready-to-use GUI and lots of audio parameters. In the future we might add more advanced scripting/GUI creation features to the format. The format is designed to be extended whilst retaining backwards compatibility.
+Floe's format is revolved around configuring audio files into playable _instruments_ (a playable sound-source loaded into one of Floe's 3 layers). Instruments are always created as part of a _library_. The format also allows for adding IRs to the convolution reverb. Floe has a fixed GUI and engine - offering the same powerful playback and sample-based synthesis features to all instruments that you can load. Typically, after creating a sample libary, you'd create a bank of factory presets - this is done using Floe's standard GUI - saving preset files that utilise the instruments that you created.
 
-Floe's sample library format currently supports the following features:
+As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well.
+
+In terms of features, the basics are covered, but there are plenty of features that other samplers might have that Floe doesn't. We expand our format to meet the needs of our products rather than add add things that we don't currently need. We have chosen a design that we can easily extend whilst retaining backwards compatibility. Floe's format currently supports:
 - Velocity layers
 - Round-robin
 - Crossfade layers
@@ -42,11 +44,6 @@ Floe's sample library format currently supports the following features:
 - Convolution reverb IRs
 - Velocity layer feathering
 - Trigger samples on note-off
-
-As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well.
-
-_The basics are covered, but there are plenty of features that other samplers might have that Floe doesn't. We expand our format to meet the needs of our products rather than add add things that we don't currently need._
-
 
 ### Why a new format?
 No existing format met our requirements for Floe, which are:
