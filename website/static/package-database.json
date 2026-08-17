@@ -6,7 +6,13 @@
         "last_updated": "2025-04-01",
         "developer_icon": "/images/favicon.png",
         "developer_website": "/floe-ports",
-        "background_image": "https://raw.githubusercontent.com/floe-audio/Harp/1e747e6e300c928b1154193bef87f481b633dca5/Harpe%20Celtique%20Telenn%20Genta%C3%B1%20-%20Alan%20Stivell%20-%2004.jpg",
+        "background_image": "https://assets.floe.audio/packages/Harpe%20Celtique%20Telenn%20Genta%C3%B1%20-%20Alan%20Stivell%20-%2004.jpg",
+        "demo_video": "https://assets.floe.audio/packages/harp.mp4",
+        "gallery": [
+            "https://assets.floe.audio/packages/celtic-harp-gui-1.png",
+            "https://assets.floe.audio/packages/celtic-harp-gui-2.png",
+            "https://assets.floe.audio/packages/celtic-harp-gui-3.png"
+        ],
         "attribution_required": true,
         "free": true,
         "image_attribution": {
@@ -32,7 +38,13 @@
         "last_updated": "2025-04-01",
         "developer_icon": "/images/favicon.png",
         "developer_website": "/floe-ports",
-        "background_image": "https://raw.githubusercontent.com/floe-audio/Xylophone/2d7c799b5abe575f2116edaf4b22a42bd3cc0209/688290359_8128ed73da_k.jpg",
+        "background_image": "https://assets.floe.audio/packages/688290359_8128ed73da_k.jpg",
+        "demo_video": "https://assets.floe.audio/packages/xylophone.mp4",
+        "gallery": [
+            "https://assets.floe.audio/packages/xylophone-gui-1.png",
+            "https://assets.floe.audio/packages/xylophone-gui-2.png",
+            "https://assets.floe.audio/packages/xylophone-gui-3.png"
+        ],
         "attribution_required": false,
         "free": true,
         "image_attribution": {
@@ -57,7 +69,13 @@
         "last_updated": "2025-04-01",
         "developer_icon": "/images/favicon.png",
         "developer_website": "/floe-ports",
-        "background_image": "https://raw.githubusercontent.com/floe-audio/Ocarina/2ebd1f356b0766dc5cda89093e48c66d443572f9/picture.jpg",
+        "background_image": "https://assets.floe.audio/packages/ocarina-picture.jpg",
+        "demo_video": "https://assets.floe.audio/packages/ocarina.mp4",
+        "gallery": [
+            "https://assets.floe.audio/packages/ocarina-gui-1.png",
+            "https://assets.floe.audio/packages/ocarina-gui-2.png",
+            "https://assets.floe.audio/packages/ocarina-gui-3.png"
+        ],
         "attribution_required": false,
         "free": true,
         "description": "A basic ocarina virtual instrument of 'sustain' recordings including built-in loops from <a href=\"https://freepats.zenvoid.org/Wind/ocarina.html\">FreePats</a>, converted into a Floe library.",
@@ -76,7 +94,8 @@
         "last_updated": "2025-04-01",
         "developer_icon": "/images/favicon.png",
         "developer_website": "/floe-ports",
-        "background_image": "/images/12471914974_b1824cc800_c.jpg",
+        "background_image": "https://assets.floe.audio/packages/12471914974_b1824cc800_c.jpg",
+        "demo_video": "https://assets.floe.audio/packages/antique-irs.mp4",
         "attribution_required": false,
         "free": true,
         "image_attribution": {
@@ -190,7 +209,13 @@
         "last_updated": "2026-01-12",
         "developer_icon": "/images/favicon.png",
         "developer_website": "/floe-ports",
-        "background_image": "https://raw.githubusercontent.com/floe-audio/Taiko-Drums/refs/tags/v1/library/Images/Taiko_Pratice_in_Toba_(2629215936).jpg",
+        "background_image": "https://assets.floe.audio/packages/Taiko_Pratice_in_Toba_(2629215936).jpg",
+        "demo_video": "https://assets.floe.audio/packages/taiko.mp4",
+        "gallery": [
+            "https://assets.floe.audio/packages/taiko-drums-gui-1.png",
+            "https://assets.floe.audio/packages/taiko-drums-gui-2.png",
+            "https://assets.floe.audio/packages/taiko-drums-gui-3.png"
+        ],
         "attribution_required": true,
         "free": true,
         "image_attribution": {

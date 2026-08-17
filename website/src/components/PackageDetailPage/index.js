@@ -17,6 +17,23 @@ import styles from './styles.module.css';
 function PackageDetailPage(props) {
     const pkg = props.package; // Package data passed from the custom plugin
     const hasDownload = pkg.direct_download_link || pkg.external_product_page;
+    const gallery = pkg.gallery || [];
+    const [lightboxIndex, setLightboxIndex] = React.useState(null);
+
+    const closeLightbox = () => setLightboxIndex(null);
+    const showPrev = () => setLightboxIndex((i) => (i + gallery.length - 1) % gallery.length);
+    const showNext = () => setLightboxIndex((i) => (i + 1) % gallery.length);
+
+    React.useEffect(() => {
+        if (lightboxIndex === null) return undefined;
+        const onKey = (e) => {
+            if (e.key === 'Escape') closeLightbox();
+            else if (e.key === 'ArrowLeft') showPrev();
+            else if (e.key === 'ArrowRight') showNext();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [lightboxIndex]);
 
     return (
         <Layout
@@ -144,6 +161,39 @@ function PackageDetailPage(props) {
                             <div dangerouslySetInnerHTML={{ __html: pkg.description }} />
                         </div>
 
+                        {/* Demo Video */}
+                        {pkg.demo_video && (
+                            <div className={styles.videoSection}>
+                                <video
+                                    className={styles.demoVideo}
+                                    src={pkg.demo_video}
+                                    controls
+                                    playsInline
+                                    preload="metadata"
+                                />
+                            </div>
+                        )}
+
+                        {/* Gallery */}
+                        {gallery.length > 0 && (
+                            <div className={styles.gallery}>
+                                {gallery.map((image, index) => (
+                                    <button
+                                        key={image}
+                                        type="button"
+                                        className={styles.galleryThumb}
+                                        onClick={() => setLightboxIndex(index)}
+                                    >
+                                        <img
+                                            src={image}
+                                            alt={`${pkg.name} screenshot ${index + 1}`}
+                                            loading="lazy"
+                                        />
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
                         {/* Stats */}
                         <div className={styles.stats}>
                             <div className={styles.stat}>
@@ -195,6 +245,46 @@ function PackageDetailPage(props) {
                     </div>
                 </div>
             </div>
+
+            {/* Lightbox */}
+            {lightboxIndex !== null && (
+                <div className={styles.lightbox} onClick={closeLightbox}>
+                    <button
+                        type="button"
+                        className={styles.lightboxClose}
+                        aria-label="Close"
+                        onClick={closeLightbox}
+                    >
+                        &times;
+                    </button>
+                    {gallery.length > 1 && (
+                        <button
+                            type="button"
+                            className={styles.lightboxPrev}
+                            aria-label="Previous"
+                            onClick={(e) => { e.stopPropagation(); showPrev(); }}
+                        >
+                            &#8249;
+                        </button>
+                    )}
+                    <img
+                        src={gallery[lightboxIndex]}
+                        alt={`${pkg.name} screenshot ${lightboxIndex + 1}`}
+                        className={styles.lightboxImage}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    {gallery.length > 1 && (
+                        <button
+                            type="button"
+                            className={styles.lightboxNext}
+                            aria-label="Next"
+                            onClick={(e) => { e.stopPropagation(); showNext(); }}
+                        >
+                            &#8250;
+                        </button>
+                    )}
+                </div>
+            )}
         </Layout>
     );
 }
