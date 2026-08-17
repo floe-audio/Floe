@@ -24,7 +24,11 @@
 
 #include "draw_list.hpp"
 #include "renderer.hpp"
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wconversion"
 #include "tracy/TracyOpenGL.hpp"
+#pragma clang diagnostic pop
 
 static_assert(!IS_WINDOWS);
 

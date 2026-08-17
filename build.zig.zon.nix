@@ -316,11 +316,11 @@ linkFarm name [
     };
   }
   {
-    name = "N-V-__8AAMeOlQEipHjcyu0TCftdAi9AQe7EXUDJOoVe0k-t";
+    name = "N-V-__8AANdYcwFozAnhesSHS-Tdgtfe30bGHvDiiOPNdo57";
     path = fetchZigArtifact {
       name = "tracy";
-      url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.11.1.tar.gz";
-      hash = "sha256-LBHKgW8rdWvicw+GsAkpIEGfPavHpxc4Kf/Yl9kYiKE=";
+      url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.14.0.tar.gz";
+      hash = "sha256-qTLPKpCtv2P4e0SfpDdKUvGKNsSjhY1NadPnXWL6X2o=";
       unpack = false;
     };
   }

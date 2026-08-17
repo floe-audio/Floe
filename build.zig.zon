@@ -78,8 +78,8 @@
             .hash = "N-V-__8AANbpCgD12WyFfiC-ftVufWE_syD8oWqSURyueGec",
         },
         .tracy = .{
-            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.11.1.tar.gz",
-            .hash = "N-V-__8AAMeOlQEipHjcyu0TCftdAi9AQe7EXUDJOoVe0k-t",
+            .url = "https://github.com/wolfpld/tracy/archive/refs/tags/v0.14.0.tar.gz",
+            .hash = "N-V-__8AANdYcwFozAnhesSHS-Tdgtfe30bGHvDiiOPNdo57",
         },
         .vst3_sdk = .{
             .url = "https://github.com/floe-audio/vst3sdk/archive/refs/tags/v3.7.9.tar.gz",
