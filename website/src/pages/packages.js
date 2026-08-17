@@ -36,7 +36,7 @@ export default function Packages() {
                     </section>
 
                     {/* Community Section */}
-                    <section className={styles.section}>
+                    <section id="community-packages" className={styles.section}>
                         <div className={styles.sectionHeader}>
                             <h2>Community Packages ({packageDatabase.filter(pkg => pkg.category === 'community' && !pkg.hidden).length})</h2>
                             <p>

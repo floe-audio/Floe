@@ -11,6 +11,7 @@
 /* Standard section */
 .section {
   margin: 8rem 0;
+  scroll-margin-top: calc(var(--ifm-navbar-height) + 1rem);
 }
 
 /* Header section with intro text */
