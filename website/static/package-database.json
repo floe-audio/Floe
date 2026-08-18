@@ -22,7 +22,7 @@
             "license": "CC-BY-SA 4.0",
             "license_url": "https://creativecommons.org/licenses/by-sa/4.0/deed.en"
         },
-        "description": "A high-quality multisampled harp with velocity layers and round robins.<br /><br />Port of <a href=\"https://versilian-studios.com/etherealwinds-harp/\">Etherealwinds Harp 2: Community Edition</a> by Versilian Studios.",
+        "description": "A high-quality multisampled harp with velocity layers and round robins. Also includes a selection of 'ethereal' vocal phrases.<br /><br />Port of <a href=\"https://versilian-studios.com/etherealwinds-harp/\">Etherealwinds Harp 2: Community Edition</a> by Versilian Studios.",
         "category": "community",
         "direct_download_link": "https://github.com/floe-audio/Harp/releases/download/v1.7/Floe.Ports.-.Celtic.Harp.Package.floe-pkg",
         "external_product_page": null,
@@ -48,6 +48,7 @@
         "attribution_required": false,
         "free": true,
         "image_attribution": {
+            "source_title": "Xylophone and percussion",
             "source_url": "https://www.flickr.com/photos/crashingwaves/688290359",
             "author": "CrashingWaves",
             "license": "CC-BY 2.0",
