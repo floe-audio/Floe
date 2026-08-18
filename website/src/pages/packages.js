@@ -31,7 +31,7 @@ export default function Packages() {
                             <h2>Professional Packages ({packageDatabase.filter(pkg => pkg.category === 'professional' && !pkg.hidden).length})</h2>
                         </div>
                         <div className={styles.wideContent}>
-                            <PackageGrid packages={packageDatabase.filter(pkg => pkg.category === 'professional').sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))} />
+                            <PackageGrid pageSize={6} packages={packageDatabase.filter(pkg => pkg.category === 'professional').sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))} />
                         </div>
                     </section>
 
@@ -44,7 +44,7 @@ export default function Packages() {
                             </p>
                         </div>
                         <div className={styles.wideContent}>
-                            <PackageGrid packages={packageDatabase.filter(pkg => pkg.category === 'community').sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))} />
+                            <PackageGrid pageSize={6} packages={packageDatabase.filter(pkg => pkg.category === 'community').sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))} />
                         </div>
                     </section>
 
