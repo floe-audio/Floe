@@ -144,20 +144,27 @@ void ResetArpAudioPlayback(ArpeggiatorState& arp) {
     arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
 }
 
-static void EmitReleaseNotes(Array<Bitset<128>, 16>& notes, ArpNoteCommands& out_commands) {
+// last_triggered_notes stores the note-on velocity so the release can reuse it. 0 is reserved for
+// 'not triggered', so velocities map onto 1..255.
+static u8 EncodeTriggerVelocity(f32 vel) { return (u8)(1 + (u32)Round(Clamp(vel, 0.0f, 1.0f) * 254.0f)); }
+static f32 DecodeTriggerVelocity(u8 encoded) { return (f32)(encoded - 1) / 254.0f; }
+
+static void EmitReleaseNotes(Array<Array<u8, 128>, 16>& notes, ArpNoteCommands& out_commands) {
     for (auto const chan : Range<u8>(16))
-        notes[chan].ForEachSetBit([&](usize bit) {
+        for (auto const note : Range<u16>(128)) {
+            auto const encoded = notes[chan][note];
+            if (!encoded) continue;
             dyn::Append(out_commands,
                         ArpNoteCommand {
                             {
-                                .velocity = 0,
+                                .velocity = DecodeTriggerVelocity(encoded),
                                 .offset = 0,
-                                .note = {.note = (u7)bit, .channel = (u4)chan},
+                                .note = {.note = (u7)note, .channel = (u4)chan},
                                 .type = NoteEvent::Type::Off,
                             },
                             k_nullopt,
                         });
-        });
+        }
     notes = {};
 }
 
@@ -282,7 +289,7 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
                         },
                         slice,
                     });
-        head.last_triggered_notes[note.channel].Set(note.note);
+        head.last_triggered_notes[note.channel][note.note] = EncodeTriggerVelocity(velocity);
     };
 
     switch (args.type) {
@@ -1070,6 +1077,60 @@ TEST_CASE(TestArpOneShotPolyrateWaitsForSlowest) {
     return k_success;
 }
 
+TEST_CASE(TestArpReleaseCarriesNoteOnVelocity) {
+    // A step's release (note-off) command must carry the same velocity the note-on was triggered with, so
+    // note-off (release) samples play at a matching level.
+    sample_lib::Region const* const no_sliced_region = nullptr;
+
+    ArpeggiatorState arp {.audio {
+        .any_notes_held = true,
+        .type = param_values::ArpMode::Fixed,
+        .on = true,
+        .rate = SyncedTimes::_1_4,
+        .length = 1,
+    }};
+
+    constexpr f32 k_step_velocity = 0.6f;
+    arp.steps[0].Store(
+        {
+            .velocity = ArpStep::From01(k_step_velocity),
+            .gate = ArpStep::From01(0.5f), // gate-off fires mid-step, within the processed block
+            .on = true,
+            .note = 60,
+        },
+        StoreMemoryOrder::Relaxed);
+
+    AudioProcessingContext context {
+        .sample_rate = 44100,
+        .process_block_size_max = 512,
+        .tempo = 120,
+        .host = k_test_host,
+    };
+    context.midi_note_state.NoteOn({.note = 60, .channel = 0}, 0.8f);
+
+    arp.audio.playhead.frames_per_step = 100;
+
+    u64 random_seed = 1;
+    ArpNoteCommands commands {};
+    ArpProcessBlock(arp, context, no_sliced_region, random_seed, 100, commands);
+
+    Optional<f32> on_velocity {};
+    Optional<f32> off_velocity {};
+    for (auto const& cmd : commands) {
+        switch (cmd.type) {
+            case NoteEvent::Type::On: on_velocity = cmd.velocity; break;
+            case NoteEvent::Type::Off: off_velocity = cmd.velocity; break;
+        }
+    }
+
+    REQUIRE(on_velocity.HasValue());
+    REQUIRE(off_velocity.HasValue());
+    REQUIRE_EQ(*on_velocity, k_step_velocity);
+    REQUIRE(Abs(*off_velocity - *on_velocity) < 0.01f);
+
+    return k_success;
+}
+
 TEST_CASE(TestAutoRateSharedShiftPreservesCrossLayerRatios) {
     // The invariant: for ANY set of per-layer anchors and ANY shared shift returned by
     // ComputeSharedArpAutoRateShift, every layer's (resolved - anchor) offset equals the same
@@ -1134,5 +1195,6 @@ TEST_CASE(TestAutoRateSharedShiftPreservesCrossLayerRatios) {
 
 TEST_REGISTRATION(RegisterArpeggiatorTests) {
     REGISTER_TEST(TestArpOneShotPolyrateWaitsForSlowest);
+    REGISTER_TEST(TestArpReleaseCarriesNoteOnVelocity);
     REGISTER_TEST(TestAutoRateSharedShiftPreservesCrossLayerRatios);
 }

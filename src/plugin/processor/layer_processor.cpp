@@ -442,7 +442,8 @@ static void LayerHandleNoteOn(LayerProcessor& layer,
 static void HandleArpCommands(LayerProcessor& layer,
                               AudioProcessingContext const& context,
                               VoicePool& voice_pool,
-                              ArpNoteCommands const& commands) {
+                              ArpNoteCommands const& commands,
+                              bool trigger_release_samples) {
     for (auto const& cmd : commands) {
         switch (cmd.type) {
             case NoteEvent::Type::On: {
@@ -460,6 +461,19 @@ static void HandleArpCommands(LayerProcessor& layer,
             }
             case NoteEvent::Type::Off: {
                 NoteOff(voice_pool, layer.voice_controller, cmd.note);
+
+                // Trigger note-off (release) samples as if the user had released the key. Skipped in
+                // sliced mode, where the arp steps through one region's slices rather than playing notes.
+                if (trigger_release_samples && !SlicesForInstrument(layer.audio_thread_inst))
+                    TriggerVoicesIfNeeded(layer,
+                                          context,
+                                          voice_pool,
+                                          {
+                                              .trigger_event = sample_lib::TriggerEvent::NoteOff,
+                                              .note = cmd.note,
+                                              .velocity = cmd.velocity,
+                                              .offset = cmd.offset,
+                                          });
                 break;
             }
         }
@@ -485,7 +499,7 @@ void ProcessLayerPreVoices(LayerProcessor& layer,
                         num_frames,
                         commands);
 
-        HandleArpCommands(layer, context, voice_pool, commands);
+        HandleArpCommands(layer, context, voice_pool, commands, true);
     }
 }
 
@@ -524,7 +538,9 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer,
                                       .context = context,
                                   },
                                   commands);
-        HandleArpCommands(layer, context, voice_pool, commands);
+        // Teardown on an instrument swap: voices were already ended and the instrument replaced, so don't
+        // fire release samples (they'd spawn voices on the new instrument for the old one's notes).
+        HandleArpCommands(layer, context, voice_pool, commands, false);
     }
 
     return true;
@@ -831,7 +847,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
                               .note_events = changes.note_events,
                           },
                           arp_commands);
-    HandleArpCommands(layer, context, voice_pool, arp_commands);
+    HandleArpCommands(layer, context, voice_pool, arp_commands, true);
 
     // Start/end notes.
     // =======================================================================================================
