@@ -809,6 +809,7 @@ fn buildTracy(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Ste
     switch (cfg.target.os.tag) {
         .windows => {
             lib.linkSystemLibrary("ws2_32");
+            lib.linkSystemLibrary("secur32");
         },
         .macos => {},
         .linux => {},

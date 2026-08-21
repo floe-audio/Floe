@@ -27,6 +27,7 @@
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wconversion"
+#pragma clang diagnostic ignored "-W#warnings"
 #include "tracy/TracyOpenGL.hpp"
 #pragma clang diagnostic pop
 
