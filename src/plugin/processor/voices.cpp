@@ -447,12 +447,21 @@ void StartVoice(VoicePool& pool,
                                                            s_params.region.audio_props.start_offset_frames,
                                                            s_sampler.data->num_frames);
 
+                    // Note-off samples never loop: with no envelope to end them, a loop would sustain
+                    // them forever.
+                    auto const loop = ({
+                        Optional<BoundsCheckedLoop> l {};
+                        if (s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff)
+                            l = ConfigureLoop(voice_controller.loop_mode,
+                                              s_sampler.region->loop,
+                                              s_sampler.data->num_frames,
+                                              voice_controller.loop);
+                        l;
+                    });
+
                     ResetPlayhead(s_sampler.playhead,
                                   offs,
-                                  ConfigureLoop(voice_controller.loop_mode,
-                                                s_sampler.region->loop,
-                                                s_sampler.data->num_frames,
-                                                voice_controller.loop),
+                                  loop,
                                   voice_controller.reverse,
                                   s_sampler.data->num_frames);
                 }
@@ -1728,6 +1737,32 @@ TEST_CASE(TestVoiceProcessingSampler) {
         fix.controller.play_mode = param_values::PlayMode::Standard;
         fix.controller.vol_env_on = false;
         StartTestSamplerVoice(fix, region, short_data);
+
+        for (int i = 0; i < 10; ++i)
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
+    }
+
+    SUBCASE("note-off sample ignores loop mode and ends") {
+        Array<f32, 64> short_buf {};
+        auto short_data = CreateTestAudioData(short_buf, 64);
+
+        sample_lib::Region const note_off_region {
+            .root_key = 60,
+            .trigger = {.trigger_event = sample_lib::TriggerEvent::NoteOff},
+        };
+
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        fix.controller.loop_mode = param_values::LoopMode::Standard;
+        fix.controller.loop = {.start = 0.0f, .end = 1.0f, .crossfade_size = 0.0f};
+        DEFER {
+            fix.controller.loop_mode = {};
+            fix.controller.loop = {};
+        };
+
+        StartTestSamplerVoice(fix, note_off_region, short_data);
 
         for (int i = 0; i < 10; ++i)
             ProcessVoices(*fix.pool, k_block_size_max, fix.context);

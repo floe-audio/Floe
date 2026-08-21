@@ -1130,7 +1130,7 @@ struct TableFields<Region> {
     static constexpr char const* k_trigger_event_names[] = {"note-on", "note-off", nullptr};
     static constexpr char const* k_trigger_event_descriptions[] = {
         "key is pressed down",
-        "key is released - note-off regions have no volume envelope and play out entirely",
+        "key is released - note-off regions are one-shots: they have no volume envelope, never loop, and play out entirely",
         nullptr};
     static_assert(ArraySize(k_trigger_event_names) == ToInt(TriggerEvent::Count) + 1);
     static_assert(ArraySize(k_trigger_event_descriptions) == ToInt(TriggerEvent::Count) + 1);
