@@ -21,6 +21,7 @@ enum class FilePickerStateType : u8 {
     None,
     AddScanFolder,
     InstallPackage,
+    LoadLicenseFile,
     SavePreset,
     LoadPreset,
 };
@@ -52,6 +53,8 @@ void OpenFilePickerAddExtraScanFolders(FilePickerState& state,
                                        AddScanFolderFilePickerState data);
 
 void OpenFilePickerInstallPackage(FilePickerState& state, persistent_store::Store& store);
+
+void OpenFilePickerLoadLicenseFile(FilePickerState& state, persistent_store::Store& store);
 
 void OpenFilePickerSavePreset(FilePickerState& state, FloePaths const& paths, persistent_store::Store& store);
 

@@ -146,6 +146,26 @@ ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text,
     return result;
 }
 
+void ParseAndVerifyAll(String text,
+                       DynamicArray<LicensePayload>& out,
+                       Span<TrustedSigningKey const> trusted_keys_override) {
+    usize search_pos = 0;
+    while (search_pos < text.size) {
+        auto const begin_pos = FindSpan(text, k_license_begin_delimiter, search_pos);
+        if (!begin_pos) break;
+        auto const after_begin = *begin_pos + k_license_begin_delimiter.size;
+        auto const end_pos = FindSpan(text, k_license_end_delimiter, after_begin);
+        if (!end_pos) break;
+        auto const block_end = *end_pos + k_license_end_delimiter.size;
+
+        auto const block = text.SubSpan(*begin_pos, block_end - *begin_pos);
+        if (auto result = ParseAndVerify(block, trusted_keys_override); !result.HasError())
+            dyn::Append(out, result.ReleaseValue());
+
+        search_pos = block_end;
+    }
+}
+
 ErrorCodeOr<MutableString> CreateSignedLicense(u8 key_id,
                                                Span<u8 const> package_key,
                                                String email,
@@ -260,6 +280,66 @@ TEST_CASE(TestLicenseRoundtrip) {
     return k_success;
 }
 
+TEST_CASE(TestLicenseParseAll) {
+    Array<u8, k_ed25519_public_key_size> public_key;
+    Array<u8, k_ed25519_secret_key_size> secret_key;
+    Ed25519KeypairCreate(public_key.data, secret_key.data);
+
+    constexpr u8 k_test_key_id = 42;
+    auto const trusted_keys = ArrayT<TrustedSigningKey>({
+        {.id = k_test_key_id, .public_key = public_key},
+    });
+
+    ArenaAllocatorWithInlineStorage<8192> arena {PageAllocator::Instance()};
+
+    constexpr usize k_num_licenses = 3;
+    Array<Array<u8, k_package_key_size>, k_num_licenses> package_keys;
+    DynamicArray<char> combined {arena};
+    dyn::AppendSpan(combined, "Floe license keys for test@example.com\n\n"_s);
+    for (auto const i : Range(k_num_licenses)) {
+        CryptoRandomBytes(package_keys[i].data, k_package_key_size);
+        auto const text = REQUIRE_UNWRAP(CreateSignedLicense(k_test_key_id,
+                                                             package_keys[i],
+                                                             "test@example.com"_s,
+                                                             secret_key.data,
+                                                             arena));
+        dyn::AppendSpan(combined, text);
+    }
+
+    DynamicArray<LicensePayload> payloads {arena};
+    ParseAndVerifyAll(combined, payloads, trusted_keys);
+    CHECK_EQ(payloads.size, k_num_licenses);
+    for (auto const i : Range(k_num_licenses))
+        CHECK(MemoryIsEqual(payloads[i].package_key.data, package_keys[i].data, k_package_key_size));
+
+    SUBCASE("garbage between blocks is ignored, invalid blocks skipped") {
+        DynamicArray<char> mixed {arena};
+        dyn::AppendSpan(mixed, "junk\n"_s);
+        auto const good = REQUIRE_UNWRAP(CreateSignedLicense(k_test_key_id,
+                                                             package_keys[0],
+                                                             "test@example.com"_s,
+                                                             secret_key.data,
+                                                             arena));
+        dyn::AppendSpan(mixed, good);
+        dyn::AppendSpan(mixed, ":FLOE PACKAGE LICENSE\nnot-valid-base64!!!\n:END\n"_s);
+
+        DynamicArray<LicensePayload> out {arena};
+        ParseAndVerifyAll(mixed, out, trusted_keys);
+        CHECK_EQ(out.size, 1uz);
+    }
+
+    SUBCASE("empty text yields nothing") {
+        DynamicArray<LicensePayload> out {arena};
+        ParseAndVerifyAll(""_s, out, trusted_keys);
+        CHECK_EQ(out.size, 0uz);
+    }
+
+    return k_success;
+}
+
 } // namespace license
 
-TEST_REGISTRATION(RegisterLicenseTests) { REGISTER_TEST(license::TestLicenseRoundtrip); }
+TEST_REGISTRATION(RegisterLicenseTests) {
+    REGISTER_TEST(license::TestLicenseRoundtrip);
+    REGISTER_TEST(license::TestLicenseParseAll);
+}

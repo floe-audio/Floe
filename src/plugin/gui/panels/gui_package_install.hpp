@@ -3,11 +3,20 @@
 
 #pragma once
 
+#include "common_infrastructure/persistent_store.hpp"
+
 #include "engine/package_installation.hpp"
+#include "gui/core/gui_file_picker.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/overlays/gui_notifications.hpp"
 #include "gui_framework/gui_builder.hpp"
+
+struct PackageInstallPanelState {
+    enum class LicenseInputMode : u8 { AllKeysAtOnce, PerProduct };
+    // Resolved the first frame the license modal is shown, based on how many packages need a key.
+    Optional<LicenseInputMode> license_input_mode {};
+};
 
 PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component const& comp,
                                                ArenaAllocator& arena) {
@@ -69,27 +78,65 @@ PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component co
                        package::ComponentTypeString(comp.component.type));
 }
 
-PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
-                                     package::InstallJobs& package_install_jobs,
-                                     ThreadPool& thread_pool) {
-    auto const root = DoBox(builder,
-                            {
-                                .layout {
-                                    .size = layout::k_fill_parent,
-                                    .contents_padding = {.lrtb = k_default_spacing},
-                                    .contents_gap = k_default_spacing,
-                                    .contents_direction = layout::Direction::Column,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            });
+// A modal-styled radio row: circular indicator + label, the whole row clickable. Returns true when clicked.
+static bool LicenseMethodRadio(GuiBuilder& builder, Box parent, String label, bool selected, u64 id_extra) {
+    auto const row = DoBox(builder,
+                           {
+                               .parent = parent,
+                               .id_extra = id_extra,
+                               .layout {
+                                   .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                   .contents_gap = k_medium_gap,
+                                   .contents_direction = layout::Direction::Row,
+                                   .contents_align = layout::Alignment::Start,
+                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                               },
+                               .button_behaviour = imgui::ButtonConfig {},
+                           });
+
+    auto const indicator = DoBox(builder,
+                                 {
+                                     .parent = row,
+                                     .background_fill_colours = Col {.c = Col::Background2},
+                                     .background_fill_auto_hot_active_overlay = true,
+                                     .border_colours = Col {.c = Col::Overlay0},
+                                     .border_auto_hot_active_overlay = true,
+                                     .parent_dictates_hot_and_active = true,
+                                     .round_background_corners = 0b1111,
+                                     .corner_rounding = k_icon_button_size / 2.0f,
+                                     .layout {
+                                         .size = k_icon_button_size,
+                                         .contents_align = layout::Alignment::Middle,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                 });
+    if (selected)
+        DoBox(builder,
+              {
+                  .parent = indicator,
+                  .background_fill_colours = Col {.c = Col::Text},
+                  .parent_dictates_hot_and_active = true,
+                  .round_background_corners = 0b1111,
+                  .corner_rounding = k_icon_button_size / 4.0f,
+                  .layout {.size = k_icon_button_size / 2.0f},
+              });
 
     DoBox(builder,
           {
-              .parent = root,
-              .text = "License Key Required",
+              .parent = row,
+              .text = label,
               .size_from_text = true,
+              .text_colours = Col {.c = Col::Text},
           });
 
+    return row.button_fired;
+}
+
+// Renders the per-package "paste a key" blocks. Used by the "Enter each key manually" method.
+static void PackageLicensePerProductInputs(GuiBuilder& builder,
+                                           Box root,
+                                           package::InstallJobs& package_install_jobs,
+                                           ThreadPool& thread_pool) {
     for (auto& job : package_install_jobs) {
         auto const state = job.job->state.Load(LoadMemoryOrder::Acquire);
         if (state != package::InstallJob::State::AwaitingLicenseKey) continue;
@@ -173,6 +220,123 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
     }
 }
 
+PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
+                                     package::InstallJobs& package_install_jobs,
+                                     ThreadPool& thread_pool,
+                                     PackageInstallPanelState& panel_state,
+                                     FilePickerState& file_picker_state,
+                                     persistent_store::Store& persistent_store) {
+    using Mode = PackageInstallPanelState::LicenseInputMode;
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = "License Key Required",
+              .size_from_text = true,
+          });
+
+    u32 num_awaiting = 0;
+    for (auto& job : package_install_jobs)
+        if (job.job->state.Load(LoadMemoryOrder::Acquire) == package::InstallJob::State::AwaitingLicenseKey)
+            ++num_awaiting;
+
+    if (!panel_state.license_input_mode)
+        panel_state.license_input_mode = num_awaiting > 1 ? Mode::AllKeysAtOnce : Mode::PerProduct;
+
+    auto const radio_group = DoBox(builder,
+                                   {
+                                       .parent = root,
+                                       .layout {
+                                           .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                           .contents_gap = k_small_gap,
+                                           .contents_direction = layout::Direction::Column,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                       },
+                                   });
+    if (LicenseMethodRadio(builder,
+                           radio_group,
+                           "Load a license file",
+                           *panel_state.license_input_mode == Mode::AllKeysAtOnce,
+                           0))
+        panel_state.license_input_mode = Mode::AllKeysAtOnce;
+    if (LicenseMethodRadio(builder,
+                           radio_group,
+                           "Enter each key manually",
+                           *panel_state.license_input_mode == Mode::PerProduct,
+                           1))
+        panel_state.license_input_mode = Mode::PerProduct;
+
+    switch (*panel_state.license_input_mode) {
+        case Mode::AllKeysAtOnce: {
+            DoBox(builder,
+                  {
+                      .parent = root,
+                      .text = "Load the license file you downloaded to activate all your packages at once.",
+                      .wrap_width = -1,
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                  });
+
+            for (auto& job : package_install_jobs) {
+                if (job.job->state.Load(LoadMemoryOrder::Acquire) !=
+                    package::InstallJob::State::AwaitingLicenseKey)
+                    continue;
+                if (!job.job->error_buffer.size) continue;
+                DoBox(builder,
+                      {
+                          .parent = root,
+                          .text = fmt::Format(builder.arena,
+                                              "{}: {}",
+                                              path::FilenameWithoutExtension(job.job->path),
+                                              job.job->error_buffer),
+                          .wrap_width = -1,
+                          .size_from_text = true,
+                          .font = FontType::Body,
+                          .text_colours = Col {.c = Col::Red},
+                      });
+            }
+
+            auto const button_row = DoBox(builder,
+                                          {
+                                              .parent = root,
+                                              .layout {
+                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                  .contents_gap = k_medium_gap,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_align = layout::Alignment::Start,
+                                              },
+                                          });
+            if (TextButton(builder, button_row, {.text = "Load license file…"}))
+                OpenFilePickerLoadLicenseFile(file_picker_state, persistent_store);
+            if (TextButton(builder, button_row, {.text = "Cancel"})) {
+                for (auto& job : package_install_jobs)
+                    if (job.job->state.Load(LoadMemoryOrder::Acquire) ==
+                        package::InstallJob::State::AwaitingLicenseKey) {
+                        dyn::Assign(job.job->error_buffer, "Cancelled"_s);
+                        job.job->state.Store(package::InstallJob::State::DoneError,
+                                             StoreMemoryOrder::Release);
+                    }
+            }
+            break;
+        }
+        case Mode::PerProduct:
+            PackageLicensePerProductInputs(builder, root, package_install_jobs, thread_pool);
+            break;
+    }
+}
+
 PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs& package_install_jobs) {
     auto const root = DoBox(builder,
                             {
@@ -252,7 +416,10 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                           package::InstallJobs& package_install_jobs,
                                           Notifications& notifications,
                                           ThreadsafeErrorNotifications& error_notifs,
-                                          ThreadPool& thread_pool) {
+                                          ThreadPool& thread_pool,
+                                          PackageInstallPanelState& panel_state,
+                                          FilePickerState& file_picker_state,
+                                          persistent_store::Store& persistent_store) {
     constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
     if (!package_install_jobs.Empty()) {
         if (notifications.AddOrUpdate(
@@ -372,13 +539,24 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
             }
         }
 
+        if (!license_key_needed) panel_state.license_input_mode = k_nullopt;
+
         if (license_key_needed) {
             DoBoxViewport(
                 builder,
                 {
                     .run =
-                        [&package_install_jobs, &thread_pool](GuiBuilder& b) {
-                            PackageLicenseInputPanel(b, package_install_jobs, thread_pool);
+                        [&package_install_jobs,
+                         &thread_pool,
+                         &panel_state,
+                         &file_picker_state,
+                         &persistent_store](GuiBuilder& b) {
+                            PackageLicenseInputPanel(b,
+                                                     package_install_jobs,
+                                                     thread_pool,
+                                                     panel_state,
+                                                     file_picker_state,
+                                                     persistent_store);
                         },
                     .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
                         WwToPixels(f32x2 {500, 400})),
@@ -415,5 +593,6 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
         }
     } else {
         notifications.Remove(k_installing_packages_notif_id);
+        panel_state.license_input_mode = k_nullopt;
     }
 }

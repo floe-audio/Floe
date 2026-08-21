@@ -459,7 +459,10 @@ void GuiUpdate(GuiState& g) {
                                   g.engine.package_install_jobs,
                                   g.notifications,
                                   g.engine.error_notifications,
-                                  g.shared_engine_systems.thread_pool);
+                                  g.shared_engine_systems.thread_pool,
+                                  g.package_install_panel_state,
+                                  g.file_picker_state,
+                                  g.shared_engine_systems.persistent_store);
 
     DoDeveloperPanel(g.dev_gui);
 

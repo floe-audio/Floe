@@ -37,6 +37,10 @@ constexpr usize k_max_email_size = 256;
 constexpr String k_license_begin_delimiter = ":FLOE PACKAGE LICENSE"_s;
 constexpr String k_license_end_delimiter = ":END"_s;
 
+// A downloadable file bundling one or more license blocks back-to-back, so a customer can activate all
+// their encrypted packages in one step. It's plain text; the extension just lets Floe recognise it.
+constexpr String k_license_file_extension = ".floe-license"_s;
+
 // Identifies a Floe-trusted Ed25519 signing key. New entries get a fresh, never-reused id. To retire a
 // key, remove its entry; licenses signed by it stop verifying immediately on the next Floe build.
 struct TrustedSigningKey {
@@ -68,6 +72,14 @@ PUBLIC ErrorCodeCategory const& ErrorCategoryForEnum(LicenseError) { return g_li
 // tests).
 ErrorCodeOr<LicensePayload> ParseAndVerify(String pasted_text,
                                            Span<TrustedSigningKey const> trusted_keys_override = {});
+
+// Parse every ":FLOE PACKAGE LICENSE" ... ":END" block found in the text, verifying each. Verified
+// payloads are appended to `out`; malformed or unverifiable blocks are skipped. Any text outside the
+// delimiters (e.g. a human-readable header naming the buyer and their libraries) is ignored. This is used
+// to activate several encrypted packages at once from a single combined license file.
+void ParseAndVerifyAll(String text,
+                       DynamicArray<LicensePayload>& out,
+                       Span<TrustedSigningKey const> trusted_keys_override = {});
 
 // For server-side tooling: create a signed license key block. key_id is embedded in the payload so
 // Floe can look up which trusted public key to verify against.

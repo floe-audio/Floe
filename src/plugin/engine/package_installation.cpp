@@ -970,30 +970,14 @@ void OnAllUserInputReceived(InstallJob& job, ThreadPool& thread_pool) {
     });
 }
 
-bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
-    ASSERT_EQ(job.state.Load(LoadMemoryOrder::Acquire), InstallJob::State::AwaitingLicenseKey);
-    ASSERT(job.encrypted_header.HasValue());
-
-    // Verify the license
-    auto const license_result = license::ParseAndVerify(job.pasted_license_text);
-    if (license_result.HasError()) {
-        dyn::Clear(job.error_buffer);
-        fmt::Append(job.error_buffer, "Invalid license key: {}", license_result.Error());
-        return false;
-    }
-
-    auto const& payload = license_result.Value();
+// Set up decryption from a license payload whose key has already been verified against this package
+// (via VerifyContentKey) and resume installation on the worker thread. Returns false and fills
+// error_buffer if the decrypting reader could not be created.
+// [main thread]
+static bool
+ResumeWithMatchedLicense(InstallJob& job, license::LicensePayload const& payload, ThreadPool& thread_pool) {
     CopyMemory(job.package_key.data, payload.package_key.data, encrypted_package::k_key_size);
     dyn::Assign(job.license_email, payload.email);
-
-    // Verify the content key matches this package
-    auto const verify_result =
-        encrypted_package::VerifyContentKey(*job.file_reader, *job.encrypted_header, job.package_key);
-    if (verify_result.HasError()) {
-        dyn::Clear(job.error_buffer);
-        fmt::Append(job.error_buffer, "License key does not match this package");
-        return false;
-    }
 
     // Move the raw file reader aside (DecryptingReader needs it to stay alive)
     job.encrypted_file_reader = Move(job.file_reader);
@@ -1004,6 +988,7 @@ bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
                                                                job.package_key,
                                                                job.arena);
     if (dr_result.HasError()) {
+        job.file_reader = Move(job.encrypted_file_reader);
         dyn::Clear(job.error_buffer);
         fmt::Append(job.error_buffer, "Failed to set up decryption: {}", dr_result.Error());
         return false;
@@ -1029,6 +1014,66 @@ bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
         }
     });
     return true;
+}
+
+bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
+    ASSERT_EQ(job.state.Load(LoadMemoryOrder::Acquire), InstallJob::State::AwaitingLicenseKey);
+    ASSERT(job.encrypted_header.HasValue());
+
+    // Verify the license
+    auto const license_result = license::ParseAndVerify(job.pasted_license_text);
+    if (license_result.HasError()) {
+        dyn::Clear(job.error_buffer);
+        fmt::Append(job.error_buffer, "Invalid license key: {}", license_result.Error());
+        return false;
+    }
+
+    auto const& payload = license_result.Value();
+
+    // Verify the content key matches this package
+    if (encrypted_package::VerifyContentKey(*job.file_reader, *job.encrypted_header, payload.package_key)
+            .HasError()) {
+        dyn::Clear(job.error_buffer);
+        fmt::Append(job.error_buffer, "License key does not match this package");
+        return false;
+    }
+
+    return ResumeWithMatchedLicense(job, payload, thread_pool);
+}
+
+u32 ApplyCombinedLicenseKeys(InstallJobs& jobs, String combined_license_text, ThreadPool& thread_pool) {
+    ArenaAllocatorWithInlineStorage<8192> arena {PageAllocator::Instance()};
+    DynamicArray<license::LicensePayload> payloads {arena};
+    license::ParseAndVerifyAll(combined_license_text, payloads);
+
+    u32 num_activated = 0;
+    for (auto& managed : jobs) {
+        auto& job = *managed.job;
+        if (job.state.Load(LoadMemoryOrder::Acquire) != InstallJob::State::AwaitingLicenseKey) continue;
+
+        bool matched = false;
+        for (auto const& payload : payloads) {
+            if (encrypted_package::VerifyContentKey(*job.file_reader,
+                                                    *job.encrypted_header,
+                                                    payload.package_key)
+                    .HasError())
+                continue;
+            dyn::Clear(job.error_buffer);
+            if (ResumeWithMatchedLicense(job, payload, thread_pool)) ++num_activated;
+            matched = true;
+            break;
+        }
+
+        if (!matched) {
+            dyn::Clear(job.error_buffer);
+            if (payloads.size == 0)
+                fmt::Append(job.error_buffer, "No valid license keys found in the file");
+            else
+                fmt::Append(job.error_buffer, "No matching license key for this package in the file");
+        }
+    }
+
+    return num_activated;
 }
 
 // [threadsafe]

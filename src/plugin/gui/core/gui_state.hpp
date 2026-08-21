@@ -29,6 +29,7 @@
 #include "gui/panels/gui_macros.hpp"
 #include "gui/panels/gui_mid_panel.hpp"
 #include "gui/panels/gui_midi_cc_panel.hpp"
+#include "gui/panels/gui_package_install.hpp"
 #include "gui/panels/gui_prefs_panel.hpp"
 #include "gui/panels/gui_preset_browser.hpp"
 #include "gui/panels/gui_save_preset_panel.hpp"
@@ -65,6 +66,7 @@ struct GuiState : EngineListener {
     ConfirmationDialogState confirmation_dialog_state {};
     Notifications notifications {};
     FilePickerState file_picker_state {.data = FilePickerStateType::None};
+    PackageInstallPanelState package_install_panel_state {};
     Array<InstBrowserState, k_num_layers> inst_browser_state {{
         {.id = HashFnv1a("inst-browser-1")},
         {.id = HashFnv1a("inst-browser-2")},

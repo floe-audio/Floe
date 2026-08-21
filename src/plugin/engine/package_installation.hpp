@@ -184,6 +184,13 @@ void AddJob(InstallJobs& jobs,
             sample_lib_server::Server& sample_library_server,
             PresetServer& preset_server);
 
+// Parse a combined license text (containing one or more license key blocks) and apply each matching key to
+// the jobs currently awaiting a license key. A job is licensed by the first block whose key decrypts it, so
+// several packages can be activated at once from a single downloaded license file. Jobs left without a match
+// have their error_buffer set explaining why. Returns the number of jobs that were licensed and resumed.
+// [main thread]
+u32 ApplyCombinedLicenseKeys(InstallJobs& jobs, String combined_license_text, ThreadPool& thread_pool);
+
 // [main thread]
 InstallJobs::Iterator RemoveJob(InstallJobs& jobs, InstallJobs::Iterator it);
 

@@ -3,7 +3,10 @@
 
 #include "gui_file_picker.hpp"
 
+#include "os/filesystem.hpp"
+
 constexpr u64 k_save_preset_last_path_store_id = HashFnv1a("file_picker.save_preset_last_path");
+constexpr u64 k_load_license_last_path_store_id = HashFnv1a("file_picker.load_license_last_path");
 constexpr u64 k_load_preset_last_path_store_id = HashFnv1a("file_picker.load_preset_last_path");
 constexpr u64 k_install_package_last_path_store_id = HashFnv1a("file_picker.install_package_last_path");
 constexpr u64 k_add_scan_libs_last_path_store_id =
@@ -109,6 +112,34 @@ void OpenFilePickerInstallPackage(FilePickerState& state, persistent_store::Stor
     state.data = FilePickerStateType::InstallPackage;
 }
 
+void OpenFilePickerLoadLicenseFile(FilePickerState& state, persistent_store::Store& store) {
+    static constexpr auto k_license_wildcards = Array {"*.floe-license"_s, "*.txt"_s};
+    static constexpr auto k_filters = ArrayT<FilePickerDialogOptions::FileFilter>({
+        {
+            .description = "Floe License File"_s,
+            .wildcard_filters = k_license_wildcards,
+        },
+    });
+
+    auto& out = GuiIo().out;
+
+    String const default_folder = PersistedFolder(store, k_load_license_last_path_store_id)
+                                      .ValueOr(KnownDirectory(out.file_picker_options_arena,
+                                                              KnownDirectoryType::Downloads,
+                                                              {.create = false}));
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::OpenFile,
+            .title = "Select Floe License File",
+            .default_folder = default_folder,
+            .filters = k_filters,
+            .allow_multiple_selection = false,
+        }
+            .Clone(out.file_picker_options_arena);
+
+    state.data = FilePickerStateType::LoadLicenseFile;
+}
+
 static String FirstTimeSavePresetFolder(FloePaths const& paths, ArenaAllocator& arena) {
     auto const base = paths.always_scanned_folder[ToInt(ScanFolderType::Presets)];
     auto const user_dir = path::Join(arena, Array {base, "User"_s});
@@ -212,6 +243,16 @@ void CheckForFilePickerResults(GuiFrameInput const& frame_input,
             RememberPickedFileFolder(store,
                                      k_install_package_last_path_store_id,
                                      frame_input.file_picker_results.first->data);
+            break;
+        }
+        case FilePickerStateType::LoadLicenseFile: {
+            auto const& license_path = frame_input.file_picker_results.first->data;
+            if (auto const contents = ReadEntireFile(license_path, context.scratch_arena);
+                !contents.HasError())
+                package::ApplyCombinedLicenseKeys(context.package_install_jobs,
+                                                  contents.Value(),
+                                                  context.thread_pool);
+            RememberPickedFileFolder(store, k_load_license_last_path_store_id, license_path);
             break;
         }
         case FilePickerStateType::SavePreset: {
