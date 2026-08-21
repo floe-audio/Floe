@@ -235,26 +235,47 @@ f64 DoubleClickTimeMs(AppWindow const&) {
     return result;
 }
 
+static NSScreen* ResolveScreen(void* native_window) {
+    NSScreen* s = nil;
+
+    if (native_window) {
+        auto const view = (__bridge NSView*)native_window;
+        auto const window = [view window];
+        if (window) s = [window screen];
+    }
+
+    if (!s && NSApp) {
+        auto const key_window = [NSApp keyWindow];
+        if (key_window) s = [key_window screen];
+    }
+    if (!s) s = [NSScreen mainScreen];
+    if (!s) {
+        auto const screens = [NSScreen screens];
+        if (screens && screens.count) s = screens[0];
+    }
+
+    return s;
+}
+
+Optional<UiSize> ScreenSizePhysicalPixels(PuglWorld*, void* native_window) {
+    auto const screen = ResolveScreen(native_window);
+    if (!screen) return k_nullopt;
+
+    auto const backing_scale = [screen backingScaleFactor];
+    if (backing_scale <= 0) return k_nullopt;
+
+    auto const size = [screen frame].size;
+    if (size.width <= 0 || size.height <= 0) return k_nullopt;
+
+    return UiSize {
+        CheckedCast<u16>(size.width * backing_scale),
+        CheckedCast<u16>(size.height * backing_scale),
+    };
+}
+
 UiSize DefaultUiSizeFromDpi(void* native_window) {
     auto const screen = ({
-        NSScreen* s = nil;
-
-        if (native_window) {
-            auto const view = (__bridge NSView*)native_window;
-            auto const window = [view window];
-            if (window) s = [window screen];
-        }
-
-        if (!s && NSApp) {
-            auto const key_window = [NSApp keyWindow];
-            if (key_window) s = [key_window screen];
-        }
-        if (!s) s = [NSScreen mainScreen];
-        if (!s) {
-            auto const screens = [NSScreen screens];
-            if (screens && screens.count) s = screens[0];
-        }
-
+        NSScreen* s = ResolveScreen(native_window);
         if (!s) return SizeWithAspectRatio(600, k_gui_aspect_ratio);
         s;
     });

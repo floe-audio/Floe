@@ -491,7 +491,10 @@ GetUsableSizeWithinClapDimensions(AppWindow& app_window, u32 clap_width, u32 cla
     if (!aspect_ratio_conformed_size) return k_nullopt;
     if (aspect_ratio_conformed_size->width < k_min_gui_width) return k_nullopt;
 
-    return PhysicalPixelsToClapPixels(app_window.view, *aspect_ratio_conformed_size);
+    auto const clamped_size =
+        ClampWindowSizeToScreen(*aspect_ratio_conformed_size, ScreenSizeForWindow(app_window));
+
+    return PhysicalPixelsToClapPixels(app_window.view, clamped_size);
 }
 
 // If the plugin GUI is resizable, then the plugin will calculate the closest usable size which fits in the
@@ -628,6 +631,18 @@ static bool ClapGuiShow(clap_plugin_t const* plugin) {
             if (auto const host_gui =
                     (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI)) {
                 auto const clap_size = PhysicalPixelsToClapPixels(floe.app_window->view, new_size);
+                host_gui->request_resize(&floe.host, clap_size.width, clap_size.height);
+            }
+        } else if (auto const clamped_size =
+                       ClampWindowSizeToScreen(size, ScreenSizeForWindow(*floe.app_window));
+                   clamped_size != size) {
+            // Our earlier size negotiation with the host may have used the wrong monitor - only now that
+            // we're parented can we reliably know the screen. Shrink if we'd overflow it.
+            SetSize(*floe.app_window, clamped_size);
+
+            if (auto const host_gui =
+                    (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI)) {
+                auto const clap_size = PhysicalPixelsToClapPixels(floe.app_window->view, clamped_size);
                 host_gui->request_resize(&floe.host, clap_size.width, clap_size.height);
             }
         }
@@ -1855,10 +1870,16 @@ HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, pre
         w;
     });
 
+    // Clamp to the screen before comparing: an over-screen value (e.g. written by an instance on a larger
+    // monitor, arriving via the prefs file watcher) that clamps to our current size must be a complete
+    // no-op, otherwise instances on different screens would endlessly request resizes off each other.
+    auto const new_size =
+        ClampWindowSizeToScreen(SizeWithAspectRatio(CheckedCast<u16>(new_width), k_gui_aspect_ratio),
+                                ScreenSizeForWindow(*floe.app_window));
+
     auto const current_width = GetSize(*floe.app_window).width;
 
-    if (current_width != new_width) {
-        auto const new_size = SizeWithAspectRatio(CheckedCast<u16>(new_width), k_gui_aspect_ratio);
+    if (current_width != new_size.width) {
         LogInfo(ModuleName::Gui, "Requesting resize to {}x{}", new_size.width, new_size.height);
 
         {

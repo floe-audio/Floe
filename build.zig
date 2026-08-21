@@ -1671,6 +1671,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui/panels/gui_save_preset_panel.cpp",
             "gui/panels/gui_top_panel.cpp",
             "gui_framework/app_window.cpp",
+            "gui_framework/app_window_sizes.cpp",
             "gui_framework/draw_list.cpp",
             "gui_framework/fonts.cpp",
             "gui_framework/gui_builder.cpp",

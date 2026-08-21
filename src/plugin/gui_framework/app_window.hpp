@@ -65,6 +65,10 @@ inline ErrorCodeCategory const& ErrorCategoryForEnum(AppWindowErrorCode) { retur
 
 UiSize DefaultUiSize(AppWindow& window);
 
+// Physical pixels. Resolves the screen via the realised view if available, else the given hint (e.g. the
+// parent window), else platform fallbacks.
+Optional<UiSize> ScreenSizeForWindow(AppWindow& window, void* native_handle_hint = nullptr);
+
 ErrorCodeOr<void> Init(AppWindow& window);
 void Deinit(AppWindow& window);
 
@@ -100,6 +104,9 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
 
 f64 DoubleClickTimeMs(AppWindow const& window);
 UiSize DefaultUiSizeFromDpi(void* native_window);
+
+// Physical pixels. native_window is a best-effort hint for which monitor; may be null.
+Optional<UiSize> ScreenSizePhysicalPixels(PuglWorld* world, void* native_window);
 
 // Linux only
 int FdFromPuglWorld(PuglWorld* world);

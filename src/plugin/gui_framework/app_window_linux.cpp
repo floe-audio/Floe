@@ -33,6 +33,22 @@ UiSize DefaultUiSizeFromDpi(void*) {
                                k_gui_aspect_ratio);
 }
 
+// NOTE: this is the X11 virtual screen, which spans all monitors in a multi-monitor setup. Per-monitor
+// bounds would need XRandR.
+Optional<UiSize> ScreenSizePhysicalPixels(PuglWorld* world, void*) {
+    if (!world) return k_nullopt;
+    auto display = (Display*)puglGetNativeWorld(world);
+    if (!display) return k_nullopt;
+
+    auto const width = DisplayWidth(display, DefaultScreen(display));
+    auto const height = DisplayHeight(display, DefaultScreen(display));
+    if (width <= 0 || height <= 0) return k_nullopt;
+    if (width > LargestRepresentableValue<u16>() || height > LargestRepresentableValue<u16>())
+        return k_nullopt;
+
+    return UiSize {(u16)width, (u16)height};
+}
+
 ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
     auto& native = *window.native_state;

@@ -116,7 +116,7 @@ struct DpiAwareness {
     GetDpiForSystemFunc dpi_for_system {};
 };
 
-UiSize DefaultUiSizeFromDpi(void* native_window) {
+Optional<UiSize> ScreenSizePhysicalPixels(PuglWorld*, void* native_window) {
     DpiAwareness dpi_awareness {};
 
     auto const hwnd = native_window ? (HWND)native_window : GetForegroundWindow();
@@ -124,30 +124,39 @@ UiSize DefaultUiSizeFromDpi(void* native_window) {
     auto const dpi = (hwnd ? dpi_awareness.Dpi(hwnd) : dpi_awareness.Dpi()).ValueOr(k_default_dpi);
     auto const backing_scale = dpi / 96.0f;
 
-    auto const screen_size = ({
-        UiSize sz {};
+    UiSize sz {};
 
-        if (hwnd) {
-            auto const monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-            MONITORINFO info {};
-            info.cbSize = sizeof(MONITORINFO);
-            if (GetMonitorInfoA(monitor, &info)) {
-                auto const r = info.rcMonitor;
-                sz = {
-                    CheckedCast<u16>((f32)(r.right - r.left) * backing_scale),
-                    CheckedCast<u16>((f32)(r.bottom - r.top) * backing_scale),
-                };
-            }
+    if (hwnd) {
+        auto const monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO info {};
+        info.cbSize = sizeof(MONITORINFO);
+        if (GetMonitorInfoA(monitor, &info)) {
+            auto const r = info.rcMonitor;
+            sz = {
+                CheckedCast<u16>((f32)(r.right - r.left) * backing_scale),
+                CheckedCast<u16>((f32)(r.bottom - r.top) * backing_scale),
+            };
         }
+    }
 
-        // Fallback to default screen size.
-        if (!sz.width) {
-            sz = {CheckedCast<u16>((f32)GetSystemMetrics(SM_CXSCREEN) * backing_scale),
-                  CheckedCast<u16>((f32)GetSystemMetrics(SM_CYSCREEN) * backing_scale)};
-        }
+    // Fallback to default screen size.
+    if (!sz.width) {
+        sz = {CheckedCast<u16>((f32)GetSystemMetrics(SM_CXSCREEN) * backing_scale),
+              CheckedCast<u16>((f32)GetSystemMetrics(SM_CYSCREEN) * backing_scale)};
+    }
 
-        sz;
-    });
+    if (!sz.width || !sz.height) return k_nullopt;
+    return sz;
+}
+
+UiSize DefaultUiSizeFromDpi(void* native_window) {
+    DpiAwareness dpi_awareness {};
+
+    auto const hwnd = native_window ? (HWND)native_window : GetForegroundWindow();
+
+    auto const dpi = (hwnd ? dpi_awareness.Dpi(hwnd) : dpi_awareness.Dpi()).ValueOr(k_default_dpi);
+
+    auto const screen_size = ScreenSizePhysicalPixels(nullptr, native_window).ValueOr({});
 
     return DefaultUiSizeInternal(screen_size, dpi);
 }

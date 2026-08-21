@@ -772,7 +772,8 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
                 // windows to be resized to non-aspect-ratio sizes or tiny sizes. We need to handle this. We
                 // save the size in the preferences because it's likely that this size is the user's request.
                 // The prefs descriptor will constrain the width to a valid number, we can just pass it
-                // anything.
+                // anything. We deliberately store the actual size unclamped; screen-clamping happens
+                // wherever the preference is applied.
                 prefs::SetValue(window.prefs,
                                 SettingDescriptor(GuiPreference::WindowWidth),
                                 (s64)configure.width,
@@ -884,6 +885,12 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
 
 UiSize DefaultUiSize(AppWindow& window) {
     return native::DefaultUiSizeFromDpi((void*)puglGetNativeView(window.view));
+}
+
+Optional<UiSize> ScreenSizeForWindow(AppWindow& window, void* native_handle_hint) {
+    void* handle = window.view ? (void*)puglGetNativeView(window.view) : nullptr;
+    if (!handle) handle = native_handle_hint;
+    return native::ScreenSizePhysicalPixels(window.world, handle);
 }
 
 static constexpr u16 k_invalid_size = 12345;
@@ -1053,8 +1060,9 @@ ErrorCodeOr<void> SetParent(AppWindow& window, clap_window_t const& new_parent) 
     }
 
     if (puglGetSizeHint(window.view, PUGL_CURRENT_SIZE).width == k_invalid_size) {
-        auto const window_size =
-            DesiredWindowSize(window.prefs).ValueOr(native::DefaultUiSizeFromDpi(new_parent.ptr));
+        auto const window_size = ClampWindowSizeToScreen(
+            DesiredWindowSize(window.prefs).ValueOr(native::DefaultUiSizeFromDpi(new_parent.ptr)),
+            ScreenSizeForWindow(window, new_parent.ptr));
         puglSetSizeHint(window.view, PUGL_DEFAULT_SIZE, window_size.width, window_size.height);
         puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, window_size.width, window_size.height);
     }
@@ -1072,7 +1080,9 @@ bool SetSize(AppWindow& window, UiSize new_size) {
 
 UiSize GetSize(AppWindow& window) {
     auto const size = puglGetSizeHint(window.view, PUGL_CURRENT_SIZE);
-    if (size.width == k_invalid_size) return DesiredWindowSize(window.prefs).ValueOr(DefaultUiSize(window));
+    if (size.width == k_invalid_size)
+        return ClampWindowSizeToScreen(DesiredWindowSize(window.prefs).ValueOr(DefaultUiSize(window)),
+                                       ScreenSizeForWindow(window));
     return {size.width, size.height};
 }
 
