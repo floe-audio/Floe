@@ -231,7 +231,7 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = layout::k_fill_parent,
+                                    .size = {500, layout::k_hug_contents},
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -258,7 +258,7 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
                                    {
                                        .parent = root,
                                        .layout {
-                                           .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                                            .contents_gap = k_small_gap,
                                            .contents_direction = layout::Direction::Column,
                                            .contents_align = layout::Alignment::Start,
@@ -557,11 +557,13 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                                                file_picker_state,
                                                                persistent_store);
                                   },
-                              .bounds = CentredModalRect(f32x2 {500, 400}),
+                              .bounds = Rect {},
                               .imgui_id = builder.imgui.MakeId("license input"),
                               .viewport_config = ({
                                   auto cfg = k_default_modal_viewport;
                                   cfg.mode = imgui::ViewportMode::Floating;
+                                  cfg.positioning = imgui::ViewportPositioning::WindowCentred;
+                                  cfg.auto_size = true;
                                   cfg.exclusive_focus = true;
                                   cfg.z_order = 200;
                                   cfg;
