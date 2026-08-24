@@ -2240,6 +2240,7 @@ void Context::SetTextInputFocus(Id id, String new_text, bool multiline) {
     } else if (active_text_input != id) {
         active_text_input = id;
         SetImguiTextEditState(new_text, multiline);
+        RequestKeyboardFocus(id); // so keyboard focus goes live next frame, not the frame after
         ResetTextInputCursorAnim();
         active_text_input_shown = true;
         update_needed = true;
