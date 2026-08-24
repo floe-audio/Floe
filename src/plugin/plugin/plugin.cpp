@@ -1298,6 +1298,15 @@ static FloeClapExtension const floe_custom_ext {
                 if (!Check(f, "state_change_is_pending", "plugin ptr is invalid")) return false;
                 f;
             });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "state_change_is_pending",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "state_change_is_pending", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
+            if (!floe.engine) return false;
             return floe.engine->pending_state_change.HasValue();
         } catch (PanicException) {
             return false;
@@ -1313,6 +1322,14 @@ static FloeClapExtension const floe_custom_ext {
                 if (!Check(f, "save_gui_state", "plugin ptr is invalid")) return false;
                 f;
             });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "save_gui_state",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "save_gui_state", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
             if (!floe.app_window || !floe.app_window->gui) return true;
             return !EncodeGuiState(*floe.app_window->gui, writer).HasError();
         } catch (PanicException) {
@@ -1329,6 +1346,14 @@ static FloeClapExtension const floe_custom_ext {
                 if (!Check(f, "load_gui_state", "plugin ptr is invalid")) return false;
                 f;
             });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "load_gui_state",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "load_gui_state", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
             if (!floe.app_window || !floe.app_window->gui) return true;
             DecodeGuiState(*floe.app_window->gui, bytes);
             return true;
@@ -1346,6 +1371,14 @@ static FloeClapExtension const floe_custom_ext {
                 if (!Check(f, "request_screenshot_region", "plugin ptr is invalid")) return false;
                 f;
             });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "request_screenshot_region",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "request_screenshot_region", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
             if (!floe.app_window || !floe.app_window->gui) return false;
             auto base = id_name;
             bool full_window = false;
@@ -1372,6 +1405,14 @@ static FloeClapExtension const floe_custom_ext {
                 if (!Check(f, "screenshot_request_pending", "plugin ptr is invalid")) return false;
                 f;
             });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "screenshot_request_pending",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "screenshot_request_pending", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
             if (!floe.app_window || !floe.app_window->gui) return false;
             return floe.app_window->frame_state.requested_screenshot_id_name.size != 0;
         } catch (PanicException) {
@@ -1388,6 +1429,14 @@ static FloeClapExtension const floe_custom_ext {
                 if (!Check(f, "load_preset_file", "plugin ptr is invalid")) return false;
                 f;
             });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "load_preset_file",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "load_preset_file", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
             if (!floe.engine) return false;
 
             PathArena path_arena {PageAllocator::Instance()};
