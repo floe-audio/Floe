@@ -125,7 +125,8 @@ void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions cons
     ZoneScoped;
     ASSERT(g_is_logical_main_thread);
 
-    if (source == StateSource::Daw) SetInstanceId(engine.autosave_state, state.extras.instance_id);
+    if (source == StateSource::Daw && state.extras.instance_id.size)
+        SetInstanceId(engine.autosave_state, state.extras.instance_id);
 
     auto const async = ({
         bool a = false;
