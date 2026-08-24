@@ -828,8 +828,7 @@ void DoPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext& context, P
         if (init) EndReadFolders(context.presets_server, context.presets->handle);
     };
 
-    auto const modal_bounds =
-        Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(WwToPixels(f32x2 {625, 443}));
+    auto const modal_bounds = CentredModalRect(f32x2 {625, 443});
     builder.imgui.RegisterNamedRect("prefs-panel.modal"_s,
                                     builder.imgui.ViewportRectToWindowRect(modal_bounds));
     DoBoxViewport(

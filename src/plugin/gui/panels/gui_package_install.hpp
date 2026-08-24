@@ -542,34 +542,32 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
         if (!license_key_needed) panel_state.license_input_mode = k_nullopt;
 
         if (license_key_needed) {
-            DoBoxViewport(
-                builder,
-                {
-                    .run =
-                        [&package_install_jobs,
-                         &thread_pool,
-                         &panel_state,
-                         &file_picker_state,
-                         &persistent_store](GuiBuilder& b) {
-                            PackageLicenseInputPanel(b,
-                                                     package_install_jobs,
-                                                     thread_pool,
-                                                     panel_state,
-                                                     file_picker_state,
-                                                     persistent_store);
-                        },
-                    .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                        WwToPixels(f32x2 {500, 400})),
-                    .imgui_id = builder.imgui.MakeId("license input"),
-                    .viewport_config = ({
-                        auto cfg = k_default_modal_viewport;
-                        cfg.mode = imgui::ViewportMode::Floating;
-                        cfg.exclusive_focus = true;
-                        cfg.z_order = 200;
-                        cfg;
-                    }),
-                    .debug_name = "pkg-license-input-dialog",
-                });
+            DoBoxViewport(builder,
+                          {
+                              .run =
+                                  [&package_install_jobs,
+                                   &thread_pool,
+                                   &panel_state,
+                                   &file_picker_state,
+                                   &persistent_store](GuiBuilder& b) {
+                                      PackageLicenseInputPanel(b,
+                                                               package_install_jobs,
+                                                               thread_pool,
+                                                               panel_state,
+                                                               file_picker_state,
+                                                               persistent_store);
+                                  },
+                              .bounds = CentredModalRect(f32x2 {500, 400}),
+                              .imgui_id = builder.imgui.MakeId("license input"),
+                              .viewport_config = ({
+                                  auto cfg = k_default_modal_viewport;
+                                  cfg.mode = imgui::ViewportMode::Floating;
+                                  cfg.exclusive_focus = true;
+                                  cfg.z_order = 200;
+                                  cfg;
+                              }),
+                              .debug_name = "pkg-license-input-dialog",
+                          });
         }
 
         if (user_input_needed) {
@@ -578,8 +576,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                 {
                     .run = [&package_install_jobs](
                                GuiBuilder& b) { PackageInstallAlertsPanel(b, package_install_jobs); },
-                    .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                        WwToPixels(f32x2 {400, 300})),
+                    .bounds = CentredModalRect(f32x2 {400, 300}),
                     .imgui_id = builder.imgui.MakeId("install alerts"),
                     .viewport_config = ({
                         auto cfg = k_default_modal_viewport;

@@ -86,8 +86,7 @@ PUBLIC void DoAttributionPanel(GuiBuilder& builder, AttributionPanelContext& con
     DoBoxViewport(builder,
                   {
                       .run = [&context](GuiBuilder& b) { AttributionPanel(b, context); },
-                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          WwToPixels(f32x2 {625, 443})),
+                      .bounds = CentredModalRect(f32x2 {625, 443}),
                       .imgui_id = context.k_panel_id,
                       .viewport_config = k_default_modal_viewport,
                   });

@@ -377,8 +377,7 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                         if (!state.modeless) builder.imgui.CloseTopModal();
                     }
                 },
-            .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                WwToPixels(f32x2 {640, 600})),
+            .bounds = CentredModalRect(f32x2 {640, 600}),
             .imgui_id = state.k_panel_id,
             .viewport_config = ({
                 auto cfg = k_default_modal_viewport;

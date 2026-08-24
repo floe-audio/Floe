@@ -348,6 +348,12 @@ bool GuiIoValid();
 inline auto WwToPixels(auto ww) { return ww * GuiIo().in.pixels_per_ww; }
 inline auto PixelsToWw(auto pixels) { return pixels / GuiIo().in.pixels_per_ww; }
 
+inline Rect CentredModalRect(f32x2 size_ww) {
+    auto const window_size = GuiIo().in.window_size.ToFloat2();
+    auto const size = Min(WwToPixels(size_ww), window_size);
+    return {.pos = (window_size - size) / 2, .size = size};
+}
+
 // These are totally safe with regards to threads and lifetimes since they just work with global atomic bools.
 // The GUI doesn't even have to exist.
 // [threadsafe]

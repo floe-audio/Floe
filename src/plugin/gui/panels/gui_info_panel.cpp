@@ -644,8 +644,7 @@ void DoInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&
         if (check_for_update::ShowNewVersionIndicator(context.check_for_update_state, context.prefs))
             state.tab = InfoPanelState::Tab::About;
     }
-    auto const bounds =
-        Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(WwToPixels(f32x2 {625, 443}));
+    auto const bounds = CentredModalRect(f32x2 {625, 443});
     builder.imgui.RegisterNamedRect("info-panel.modal"_s, builder.imgui.ViewportRectToWindowRect(bounds));
     DoBoxViewport(builder,
                   {

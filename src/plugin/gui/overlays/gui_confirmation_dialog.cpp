@@ -81,8 +81,7 @@ void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
     DoBoxViewport(builder,
                   {
                       .run = [&state](GuiBuilder& b) { ConfirmationDialog(b, state); },
-                      .bounds = Rect {.pos = 0, .size = GuiIo().in.window_size.ToFloat2()}.CentredRect(
-                          WwToPixels(f32x2 {380.0f, 300.0f})),
+                      .bounds = CentredModalRect(f32x2 {380.0f, 300.0f}),
                       .imgui_id = state.k_id,
                       .viewport_config = k_default_modal_viewport,
                   });
