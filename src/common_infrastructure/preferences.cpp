@@ -496,26 +496,47 @@ ErrorCodeOr<void> WritePreferencesTable(PreferencesTable const& table, Writer wr
 ErrorCodeOr<void>
 WritePreferencesFile(PreferencesTable const& table, String path, Optional<s128> set_last_modified) {
     LogDebug(ModuleName::Preferences, "Writing preferences file: {}", path);
-    auto file = TRY(OpenFile(path,
-                             {
-                                 .capability = FileMode::Capability::Write,
-                                 .win32_share = FileMode::Share::ReadWrite,
-                                 .creation = FileMode::Creation::CreateAlways,
-                                 .everyone_read_write = true,
-                             }));
 
-    TRY(file.Lock({.type = FileLockOptions::Type::Exclusive}));
-    DEFER { auto _ = file.Unlock(); };
+    // We want to avoid partially-written files and so use the atomic rename approach.
 
-    BufferedWriter<Kb(4)> buffered_writer {
-        .unbuffered_writer = file.Writer(),
+    ArenaAllocatorWithInlineStorage<1000> scratch {PageAllocator::Instance()};
+    auto seed = RandomSeed();
+    auto const temp_path =
+        path::Join(scratch,
+                   Array {*path::Directory(path), UniqueFilename(k_temporary_directory_prefix, "", seed)});
+
+    bool success = false;
+    DEFER {
+        if (!success)
+            auto _ = Delete(temp_path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
     };
-    DEFER { buffered_writer.Reset(); };
-    TRY(WritePreferencesTable(table, buffered_writer.Writer()));
 
-    TRY(buffered_writer.Flush());
-    TRY(file.Flush());
-    if (set_last_modified) TRY(file.SetLastModifiedTimeNsSinceEpoch(*set_last_modified));
+    {
+        auto file = TRY(OpenFile(temp_path,
+                                 {
+                                     .capability = FileMode::Capability::Write,
+                                     .creation = FileMode::Creation::CreateNew,
+                                     .everyone_read_write = true,
+                                 }));
+
+        BufferedWriter<Kb(4)> buffered_writer {
+            .unbuffered_writer = file.Writer(),
+        };
+        DEFER { buffered_writer.Reset(); };
+        TRY(WritePreferencesTable(table, buffered_writer.Writer()));
+
+        TRY(buffered_writer.Flush());
+        TRY(file.Flush());
+
+        // Rename preserves mtime: the final file's mtime is exact, and the watcher keeps ignoring our
+        // self-writes.
+        if (set_last_modified) TRY(file.SetLastModifiedTimeNsSinceEpoch(*set_last_modified));
+
+        // Close before renaming: an open handle blocks rename on Windows.
+    }
+
+    TRY(Rename(temp_path, path));
+    success = true;
 
     return k_success;
 }
@@ -1255,6 +1276,40 @@ TEST_CASE(TestPreferences) {
         {
             auto const file_data = TRY(ReadEntirePreferencesFile(filename, tester.scratch_arena));
             CHECK_EQ(file_data.file_data, k_file_data);
+        }
+
+        // Overwrite with a smaller file.
+        {
+            auto const smaller_table =
+                ParsePreferencesFile(tester.scratch_arena.Clone("only = one\n"_s), tester.scratch_arena);
+            TRY(WritePreferencesFile(smaller_table, filename));
+
+            auto const file_data = TRY(ReadEntirePreferencesFile(filename, tester.scratch_arena));
+            auto const table = ParsePreferencesFile(file_data.file_data, tester.scratch_arena);
+            CHECK_EQ(table.size, 1u);
+            CHECK_EQ(*LookupString(table, "only"_s), "one"_s);
+        }
+
+        // set_last_modified is honoured exactly.
+        {
+            auto const table =
+                ParsePreferencesFile(tester.scratch_arena.Clone(k_file_data), tester.scratch_arena);
+            s128 const mtime = 1234567890000000000;
+            TRY(WritePreferencesFile(table, filename, mtime));
+            CHECK_EQ(TRY(LastModifiedTimeNsSinceEpoch(filename)), mtime);
+        }
+
+        // No temp file is left behind.
+        {
+            auto const entries = TRY(FindEntriesInFolder(tester.scratch_arena,
+                                                         *path::Directory(filename),
+                                                         {
+                                                             .options {.wildcard = "*"_s},
+                                                             .recursive = false,
+                                                             .only_file_type = FileType::File,
+                                                         }));
+            for (auto const& entry : entries)
+                CHECK(!ContainsSpan(entry.subpath, k_temporary_directory_prefix));
         }
     }
 
