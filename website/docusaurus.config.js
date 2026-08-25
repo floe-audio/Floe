@@ -30,6 +30,16 @@ const config = {
 
     onBrokenLinks: "throw",
 
+    headTags: [
+        {
+            tagName: "meta",
+            attributes: {
+                name: "algolia-site-verification",
+                content: "5322EB0EFA41644D",
+            },
+        },
+    ],
+
     // Global scripts
     scripts: [
         {
@@ -81,6 +91,11 @@ const config = {
         ({
             colorMode: {
                 respectPrefersColorScheme: true,
+            },
+            algolia: {
+                appId: "C36D44T8FT",
+                apiKey: "bf9029d8547ce0a0bb10048fe56ea698",
+                indexName: "Docs Website",
             },
             navbar: {
                 // title: '',
