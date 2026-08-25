@@ -81,7 +81,13 @@ static void FeedbackPanel(GuiBuilder& builder, FeedbackPanelContext& context, Fe
     if (CheckboxButton(builder, panel, "Include anonymous diagnostic data"_s, state.send_diagnostic_data))
         state.send_diagnostic_data = !state.send_diagnostic_data;
 
-    if (TextButton(builder, panel, {.text = "Submit"})) {
+    if (TextButton(builder,
+                   panel,
+                   {
+                       .text = "Submit",
+                       .disabled = state.description.size == 0,
+                       .is_default = true,
+                   })) {
         auto const return_code = ReportFeedback(state.description,
                                                 state.email.size ? Optional<String> {state.email} : k_nullopt,
                                                 state.send_diagnostic_data);

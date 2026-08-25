@@ -95,6 +95,9 @@ struct TextButtonOptions {
     TooltipString tooltip = k_nullopt;
     bool fill_x = false;
     bool disabled = false;
+    // The recommended or most-common action. Styled with the accent colour. Place it last (rightmost) in
+    // the button row.
+    bool is_default = false;
 };
 
 bool TextButton(GuiBuilder& builder,

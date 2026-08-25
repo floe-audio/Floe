@@ -369,7 +369,11 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                         }
                     } else if (TextButton(builder,
                                           button_container,
-                                          {.text = "Save"_s, .tooltip = "Save the preset to a new file"_s})) {
+                                          {
+                                              .text = "Save"_s,
+                                              .tooltip = "Save the preset to a new file"_s,
+                                              .is_default = true,
+                                          })) {
                         CommitMetadataToEngine(context.engine, state);
                         OpenFilePickerSavePreset(context.file_picker_state,
                                                  context.paths,

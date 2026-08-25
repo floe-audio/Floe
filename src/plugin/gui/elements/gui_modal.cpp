@@ -256,23 +256,24 @@ bool CheckboxButton(GuiBuilder& builder,
 }
 
 bool TextButton(GuiBuilder& builder, Box parent, TextButtonOptions const& options, u64 id_extra) {
-    auto const button =
-        DoBox(builder,
-              {
-                  .parent = parent,
-                  .id_extra = id_extra,
-                  .background_fill_colours = Col {.c = Col::Background2},
-                  .background_fill_auto_hot_active_overlay = !options.disabled,
-                  .round_background_corners = 0b1111,
-                  .layout {
-                      .size = {options.fill_x ? layout::k_fill_parent : layout::k_hug_contents,
-                               layout::k_hug_contents},
-                      .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
-                  },
-                  .tooltip = options.disabled ? k_nullopt : options.tooltip,
-                  .button_behaviour =
-                      options.disabled ? k_nullopt : Optional<imgui::ButtonConfig>(imgui::ButtonConfig {}),
-              });
+    auto const button = DoBox(
+        builder,
+        {
+            .parent = parent,
+            .id_extra = id_extra,
+            .background_fill_colours =
+                Col {.c = options.is_default && !options.disabled ? Col::Highlight400 : Col::Background2},
+            .background_fill_auto_hot_active_overlay = !options.disabled,
+            .round_background_corners = 0b1111,
+            .layout {
+                .size = {options.fill_x ? layout::k_fill_parent : layout::k_hug_contents,
+                         layout::k_hug_contents},
+                .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
+            },
+            .tooltip = options.disabled ? k_nullopt : options.tooltip,
+            .button_behaviour =
+                options.disabled ? k_nullopt : Optional<imgui::ButtonConfig>(imgui::ButtonConfig {}),
+        });
 
     DoBox(builder,
           {
@@ -280,7 +281,9 @@ bool TextButton(GuiBuilder& builder, Box parent, TextButtonOptions const& option
               .text = options.text,
               .size_from_text = !options.fill_x,
               .font = FontType::Body,
-              .text_colours = Col {.c = options.disabled ? Col::Surface1 : Col::Text},
+              .text_colours = Col {.c = options.disabled     ? Col::Surface1
+                                        : options.is_default ? Col::Highlight950
+                                                             : Col::Text},
               .text_justification = TextJustification::Centred,
               .text_overflow = TextOverflowType::ShowDotsOnRight,
               .layout {

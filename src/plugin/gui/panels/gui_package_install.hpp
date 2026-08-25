@@ -211,23 +211,29 @@ static void PackageLicensePerProductInputs(GuiBuilder& builder,
                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
                                               .contents_gap = k_medium_gap,
                                               .contents_direction = layout::Direction::Row,
-                                              .contents_align = layout::Alignment::Start,
+                                              .contents_align = layout::Alignment::End,
                                           },
                                       });
 
-        if (TextButton(builder, button_row, {.text = "Activate"})) {
-            dyn::Clear(job.job->error_buffer);
-            if (!package::OnLicenseKeyReceived(*job.job, thread_pool)) {
-                // Error is already in error_buffer, will be shown next frame
-            }
+        if (TextButton(builder, button_row, {.text = "Cancel"})) {
+            dyn::Assign(job.job->error_buffer, "Cancelled"_s);
+            job.job->state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
         }
         if (TextButton(builder, button_row, {.text = "Paste"})) {
             builder.imgui.SetTextInputFocus(text_input.box.imgui_id, job.job->pasted_license_text, true);
             GuiIo().out.wants.clipboard_text_paste = true;
         }
-        if (TextButton(builder, button_row, {.text = "Cancel"})) {
-            dyn::Assign(job.job->error_buffer, "Cancelled"_s);
-            job.job->state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
+        if (TextButton(builder,
+                       button_row,
+                       {
+                           .text = "Activate",
+                           .disabled = job.job->pasted_license_text.size == 0,
+                           .is_default = true,
+                       })) {
+            dyn::Clear(job.job->error_buffer);
+            if (!package::OnLicenseKeyReceived(*job.job, thread_pool)) {
+                // Error is already in error_buffer, will be shown next frame
+            }
         }
     }
 }
@@ -295,7 +301,7 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
             DoBox(builder,
                   {
                       .parent = root,
-                      .text = "Load the license file you downloaded to activate all your packages at once.",
+                      .text = "Unlock your package(s) using your license key file. One file unlocks all.",
                       .wrap_width = -1,
                       .size_from_text = true,
                       .font = FontType::Body,
@@ -327,11 +333,9 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                   .contents_gap = k_medium_gap,
                                                   .contents_direction = layout::Direction::Row,
-                                                  .contents_align = layout::Alignment::Start,
+                                                  .contents_align = layout::Alignment::End,
                                               },
                                           });
-            if (TextButton(builder, button_row, {.text = "Load license file…"}))
-                OpenFilePickerLoadLicenseFile(file_picker_state, persistent_store);
             if (TextButton(builder, button_row, {.text = "Cancel"})) {
                 for (auto& job : package_install_jobs)
                     if (job.job->state.Load(LoadMemoryOrder::Acquire) ==
@@ -341,6 +345,8 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
                                              StoreMemoryOrder::Release);
                     }
             }
+            if (TextButton(builder, button_row, {.text = "Load license file…", .is_default = true}))
+                OpenFilePickerLoadLicenseFile(file_picker_state, persistent_store);
             break;
         }
         case Mode::PerProduct:
@@ -504,12 +510,13 @@ PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
                                           .contents_gap = k_medium_gap,
                                           .contents_direction = layout::Direction::Row,
-                                          .contents_align = layout::Alignment::Start,
+                                          .contents_align = layout::Alignment::End,
                                       },
                                   });
 
     auto const keep_clicked = TextButton(builder, button_row, {.text = "Keep File"});
-    auto const trash_clicked = TextButton(builder, button_row, {.text = "Send to " TRASH_NAME});
+    auto const trash_clicked =
+        TextButton(builder, button_row, {.text = "Send to " TRASH_NAME, .is_default = true});
 
     if (trash_clicked) {
         ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};

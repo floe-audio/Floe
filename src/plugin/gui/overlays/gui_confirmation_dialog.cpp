@@ -44,7 +44,7 @@ static void ConfirmationDialogContent(GuiBuilder& builder, ConfirmationDialogSta
         if (state.callback) state.callback(ConfirmationDialogResult::Cancel);
     }
 
-    if (TextButton(builder, buttons_container, {.text = "OK"})) {
+    if (TextButton(builder, buttons_container, {.text = "OK", .is_default = true})) {
         builder.imgui.CloseTopModal();
         if (state.callback) state.callback(ConfirmationDialogResult::Ok);
     }
