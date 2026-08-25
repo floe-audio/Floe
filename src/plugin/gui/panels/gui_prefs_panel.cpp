@@ -639,7 +639,7 @@ static void DeviceSelectionMenu(GuiBuilder& builder, PreferencesPanelContext& co
     if (host->current_device) host->current_device(host, type, &current);
 
     String const default_label = type == HostDeviceType::AudioBackend ? "Auto"_s : "System default"_s;
-    if (MenuItem(builder, root, {.text = default_label, .is_selected = current.id.size == 0}).button_fired) {
+    if (MenuItem(builder, root, {.text = default_label, .is_selected = current.is_default}).button_fired) {
         if (host->set_device) host->set_device(host, type, {});
     }
 
@@ -652,9 +652,9 @@ static void DeviceSelectionMenu(GuiBuilder& builder, PreferencesPanelContext& co
                      {
                          .text = info.name,
                          .subtext = info.is_default ? "System default"_s : String {},
-                         .is_selected = current.id.size != 0 && info.id == current.id,
+                         .is_selected = !current.is_default && info.id == current.id,
                      },
-                     Hash(info.id))
+                     info.id)
                 .button_fired) {
             if (host->set_device) host->set_device(host, type, info.id);
         }
@@ -694,7 +694,7 @@ static void DevicesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         HostDeviceInfo current {};
         if (host->current_device) host->current_device(host, device_row.type, &current);
         String const menu_text =
-            current.id.size
+            !current.is_default
                 ? current.name
                 : (device_row.type == HostDeviceType::AudioBackend ? "Auto"_s : "System default"_s);
 

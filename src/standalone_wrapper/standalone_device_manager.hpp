@@ -107,7 +107,7 @@ struct DeviceManager {
 
     enum class PendingCommand : u8 { None, SelectAudio, SelectMidi, SelectBackend, Refresh };
     PendingCommand pending_command = PendingCommand::None;
-    DynamicArray<char> pending_name {Malloc::Instance()};
+    u64 pending_id {0}; // 0 = default; resolved against the enumerated lists in PollDeviceChanges.
 
     ThreadsafeErrorNotifications error_notifications {};
 

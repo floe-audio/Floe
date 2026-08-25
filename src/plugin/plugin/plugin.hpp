@@ -139,9 +139,9 @@ static constexpr char k_floe_standalone_default_app_id[] = "org.floe-audio.floe"
 enum class HostDeviceType : u8 { AudioOutput, MidiInput, AudioBackend };
 
 struct HostDeviceInfo {
-    String id; // Empty for the default entry.
+    u64 id; // Session-scoped hash of the platform identifier; never 0 for enumerated devices.
     String name; // Display name.
-    bool is_default; // If the system default device.
+    bool is_default; // Enumerated devices: is the system default. current_device: no explicit selection.
 };
 
 struct FloeClapExtensionHost {
@@ -158,8 +158,8 @@ struct FloeClapExtensionHost {
                         HostDeviceInfo* out);
     void (*current_device)(FloeClapExtensionHost const* host, HostDeviceType type, HostDeviceInfo* out);
     bool (*device_has_error)(FloeClapExtensionHost const* host, HostDeviceType type);
-    // id == "" means default device
-    void (*set_device)(FloeClapExtensionHost const* host, HostDeviceType type, String id);
+    // id == 0 means default device
+    void (*set_device)(FloeClapExtensionHost const* host, HostDeviceType type, u64 id);
     void (*refresh_devices)(FloeClapExtensionHost const* host);
 
     f64 (*get_tempo)(FloeClapExtensionHost const* host);

@@ -183,7 +183,7 @@ static void EnumerateAudioBackends(DeviceManager& dm) {
     for (auto const i : Range(count)) {
         if (enabled[i] == ma_backend_null || enabled[i] == ma_backend_custom) continue;
         auto const name = dm.enum_arena.Clone(FromNullTerminated(ma_get_backend_name(enabled[i])));
-        infos[n] = {.id = name, .name = name, .is_default = false};
+        infos[n] = {.id = Hash(enabled[i]), .name = name, .is_default = false};
         ids[n] = enabled[i];
         ++n;
     }
@@ -253,7 +253,11 @@ static void EnumerateAudioDevices(DeviceManager& dm) {
     auto ids = dm.enum_arena.AllocateExactSizeUninitialised<ma_device_id>(playback_count);
     for (auto const i : Range(playback_count)) {
         auto const name = dm.enum_arena.Clone(FromNullTerminated(playback_infos[i].name));
-        infos[i] = {.id = name, .name = name, .is_default = (bool)playback_infos[i].isDefault};
+        // miniaudio zero-inits ma_device_info when enumerating, so the id union's unused bytes hash
+        // deterministically.
+        infos[i] = {.id = Hash(String {(char const*)&playback_infos[i].id, sizeof(playback_infos[i].id)}),
+                    .name = name,
+                    .is_default = (bool)playback_infos[i].isDefault};
         ids[i] = playback_infos[i].id;
     }
     dm.audio.devices = infos;
@@ -281,7 +285,7 @@ static void EnumerateMidiDevices(DeviceManager& dm) {
         auto const info = Pm_GetDeviceInfo(i);
         if (!info || !info->input) continue;
         auto const name = dm.enum_arena.Clone(FromNullTerminated(info->name));
-        infos[n] = {.id = name, .name = name, .is_default = i == default_id};
+        infos[n] = {.id = Hash(i), .name = name, .is_default = i == default_id};
         ids[n] = i;
         ++n;
     }
@@ -654,25 +658,39 @@ static void HandleAudioDeviceLost(DeviceManager& dm) {
     ReportAudioError(dm, selected, "Audio device disconnected."_s);
 }
 
+// "" for id 0 (default); nullopt if the id no longer matches any enumerated device — in that case the
+// selection is dropped rather than falling back to default, which would overwrite the saved selection.
+static Optional<String> DeviceNameForId(Span<HostDeviceInfo const> devices, u64 id) {
+    if (id == 0) return String {};
+    for (auto const& device : devices)
+        if (device.id == id) return device.name;
+    return k_nullopt;
+}
+
 void PollDeviceChanges(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
     if (dm.audio.stream.lost.Load(LoadMemoryOrder::Acquire)) HandleAudioDeviceLost(dm);
     auto const command = dm.pending_command;
     dm.pending_command = DeviceManager::PendingCommand::None;
+    // Resolve pending_id here rather than in set_device: HandleAudioDeviceLost may have just
+    // re-enumerated, resetting enum_arena; ids are content-derived so they remain valid, names don't.
     switch (command) {
         case DeviceManager::PendingCommand::None: break;
         case DeviceManager::PendingCommand::Refresh: ApplyRefresh(dm); break;
         case DeviceManager::PendingCommand::SelectAudio:
-            ApplyAudioSelection(dm, dm.pending_name);
-            dyn::Clear(dm.pending_name);
+            if (auto const name = DeviceNameForId(dm.audio.devices, dm.pending_id))
+                ApplyAudioSelection(dm, *name);
+            dm.pending_id = 0;
             break;
         case DeviceManager::PendingCommand::SelectMidi:
-            ApplyMidiSelection(dm, dm.pending_name);
-            dyn::Clear(dm.pending_name);
+            if (auto const name = DeviceNameForId(dm.midi.devices, dm.pending_id))
+                ApplyMidiSelection(dm, *name);
+            dm.pending_id = 0;
             break;
         case DeviceManager::PendingCommand::SelectBackend:
-            ApplyBackendSelection(dm, dm.pending_name);
-            dyn::Clear(dm.pending_name);
+            if (auto const name = DeviceNameForId(dm.audio.backends, dm.pending_id))
+                ApplyBackendSelection(dm, *name);
+            dm.pending_id = 0;
             break;
     }
 }
@@ -711,12 +729,29 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
         ASSERT(host->context);
         auto& dm = *(DeviceManager*)host->context;
         DynamicArray<char> const* name = nullptr;
+        Span<HostDeviceInfo const> list {};
         switch (type) {
-            case HostDeviceType::AudioOutput: name = &dm.audio.selected_name; break;
-            case HostDeviceType::MidiInput: name = &dm.midi.selected_name; break;
-            case HostDeviceType::AudioBackend: name = &dm.audio.selected_backend_name; break;
+            case HostDeviceType::AudioOutput:
+                name = &dm.audio.selected_name;
+                list = dm.audio.devices;
+                break;
+            case HostDeviceType::MidiInput:
+                name = &dm.midi.selected_name;
+                list = dm.midi.devices;
+                break;
+            case HostDeviceType::AudioBackend:
+                name = &dm.audio.selected_backend_name;
+                list = dm.audio.backends;
+                break;
         }
-        *out = {.id = *name, .name = *name, .is_default = name->size == 0};
+        u64 id = 0; // 0: default selected, or selected device not currently connected.
+        if (name->size)
+            for (auto const& device : list)
+                if (device.name == *name) {
+                    id = device.id;
+                    break;
+                }
+        *out = {.id = id, .name = *name, .is_default = name->size == 0};
     };
     ext.device_has_error = [](FloeClapExtensionHost const* host, HostDeviceType type) -> bool {
         ASSERT(g_is_logical_main_thread);
@@ -729,11 +764,11 @@ void SetupHostDeviceCallbacks(FloeClapExtensionHost& ext, DeviceManager& dm) {
         }
         return false;
     };
-    ext.set_device = [](FloeClapExtensionHost const* host, HostDeviceType type, String id) {
+    ext.set_device = [](FloeClapExtensionHost const* host, HostDeviceType type, u64 id) {
         ASSERT(g_is_logical_main_thread);
         ASSERT(host->context);
         auto& dm = *(DeviceManager*)host->context;
-        dyn::Assign(dm.pending_name, id);
+        dm.pending_id = id;
         switch (type) {
             case HostDeviceType::AudioOutput:
                 dm.pending_command = DeviceManager::PendingCommand::SelectAudio;
