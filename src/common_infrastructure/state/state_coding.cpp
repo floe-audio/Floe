@@ -604,6 +604,11 @@ enum class StateVersion : u16 {
     // fall back to the encoded-bytes hash, matching the prior implicit behaviour.
     AddedPresetUuid,
 
+    // Added MPE support: mpe_enabled and mpe_smoothing_ms instance-config fields, plus per-layer
+    // Press/Slide destination and amount parameters. Older states get the parameter defaults, which have
+    // no effect until MPE is enabled.
+    AddedMpe,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -618,7 +623,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 382,
+    static_assert(k_num_non_experimental_parameters == 394,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -1951,6 +1956,19 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
                 state.extras.instance_config.reset_keyswitch = k_nullopt;
             state.extras.instance_config.seed = Min(seed, (u8)99);
         }
+
+        {
+            u8 mpe_enabled {};
+            if (coder.IsWriting()) mpe_enabled = state.extras.instance_config.mpe_enabled ? 1 : 0;
+            TRY(coder.CodeNumber(mpe_enabled, StateVersion::AddedMpe));
+            if (coder.IsReading()) state.extras.instance_config.mpe_enabled = mpe_enabled != 0;
+
+            u16 mpe_smoothing_ms {100};
+            if (coder.IsWriting()) mpe_smoothing_ms = state.extras.instance_config.mpe_smoothing_ms;
+            TRY(coder.CodeNumber(mpe_smoothing_ms, StateVersion::AddedMpe));
+            if (coder.IsReading())
+                state.extras.instance_config.mpe_smoothing_ms = Min(mpe_smoothing_ms, (u16)500);
+        }
     }
 
     // =======================================================================================================
@@ -2349,6 +2367,7 @@ TEST_CASE(TestSerialisation) {
 
             state.extras.instance_config = {
                 .reset_on_transport = true,
+                .mpe_smoothing_ms = 250,
                 .reset_keyswitch = (u7)60,
                 .seed = 42,
             };

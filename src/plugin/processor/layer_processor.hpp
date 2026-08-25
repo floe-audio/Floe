@@ -51,8 +51,16 @@ struct VoiceProcessingController {
     Loop loop {};
 
     f32 tune_semitones = 1;
+    f32 pitch_bend_range_semitones = 0;
     f32 pan_pos = 0;
     f32 stereo_width = 1; // [0, 2]
+
+    struct {
+        param_values::MpeDestination press_dest {};
+        f32 press_amount {}; // [-1, 1]
+        param_values::MpeDestination slide_dest {};
+        f32 slide_amount {}; // [-1, 1]
+    } mpe {};
 
     f32 sv_filter_cutoff_linear = 0;
     f32 sv_filter_resonance = 0;
@@ -243,7 +251,6 @@ struct LayerProcessor {
     int midi_transpose = 0;
     f32 tune_semitone = 0;
     f32 tune_cents = 0;
-    f32 pitch_bend_range_semitone = 0;
     param_values::MonophonicMode monophonic_mode {};
     bool monophonic_latch {};
 

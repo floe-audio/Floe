@@ -1189,7 +1189,8 @@ ClapNotePortsGet(clap_plugin_t const* plugin, u32 index, bool is_input, clap_not
         LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         info->id = k_main_note_port_id;
-        info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
+        info->supported_dialects =
+            CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI | CLAP_NOTE_DIALECT_MIDI_MPE;
         info->preferred_dialect = CLAP_NOTE_DIALECT_MIDI;
         CopyStringIntoBufferWithNullTerm(info->name, "Notes In");
         return true;

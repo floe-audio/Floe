@@ -354,7 +354,7 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
     if (auto p = changes.changed_params.ProjectedValue(ParamIndex::MasterTimbre)) {
         processor.shared_layer_params.timbre_value_01 = *p;
         for (auto& voice : processor.voice_pool.EnumerateActiveVoices())
-            UpdateXfade(voice, processor.shared_layer_params.timbre_value_01, false);
+            UpdateXfade(voice, ExpressionAdjustedTimbre01(*p, voice), false);
     }
 
     if (auto p = changes.changed_params.ProjectedValue(ParamIndex::LegacyMasterVelocity))
@@ -795,6 +795,20 @@ static bool HandleResetKeyswitch(AudioProcessor& processor, u7 note_key) {
     return false;
 }
 
+// Voices eligible for incoming per-note expression: still tracking (key held) and matching the event's
+// channel/key, where nullopt matches everything.
+static void ForEachExpressionTrackedVoice(VoicePool& pool,
+                                          Optional<u4> channel,
+                                          Optional<u7> key,
+                                          FunctionRef<void(Voice&)> func) {
+    for (auto& v : pool.EnumerateActiveVoices()) {
+        if (!v.track_expression) continue;
+        if (channel && v.midi_key_trigger.channel != *channel) continue;
+        if (key && v.midi_key_trigger.note != *key) continue;
+        func(v);
+    }
+}
+
 static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
@@ -841,6 +855,9 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             auto const vel = __builtin_isnan(note.velocity) ? 1.0f : Clamp((f32)note.velocity, 0.0f, 1.0f);
 
             processor.audio_processing_context.midi_note_state.NoteOff(chan_note);
+            processor.audio_processing_context.mpe.ResetChannelExpression(chan_note.channel);
+            if (processor.audio_processing_context.mpe.IsMemberChannel(chan_note.channel))
+                processor.audio_processing_context.pitchwheel_position[chan_note.channel] = 0.0f;
 
             dyn::Append(changes.note_events,
                         {
@@ -895,7 +912,35 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
         }
 
         case CLAP_EVENT_NOTE_EXPRESSION: {
-            // IMPROVE: support expression.
+            auto const& expr = (clap_event_note_expression const&)event;
+            if (!__builtin_isfinite(expr.value)) break;
+            if (expr.channel > 15 || expr.key > 127) break;
+            auto const& context = processor.audio_processing_context;
+
+            ForEachExpressionTrackedVoice(processor.voice_pool,
+                                          expr.channel >= 0 ? Optional<u4> {(u4)expr.channel} : k_nullopt,
+                                          expr.key >= 0 ? Optional<u7> {(u7)expr.key} : k_nullopt,
+                                          [&](Voice& v) {
+                                              switch (expr.expression_id) {
+                                                  case CLAP_NOTE_EXPRESSION_TUNING: {
+                                                      v.expression_pitch_semitones =
+                                                          Clamp((f32)expr.value, -120.0f, 120.0f);
+                                                      UpdateVoicePitch(v, context);
+                                                      break;
+                                                  }
+                                                  case CLAP_NOTE_EXPRESSION_PRESSURE: {
+                                                      v.per_note_expression_active = true;
+                                                      v.pressure_target_01 = Clamp01((f32)expr.value);
+                                                      break;
+                                                  }
+                                                  case CLAP_NOTE_EXPRESSION_BRIGHTNESS: {
+                                                      v.per_note_expression_active = true;
+                                                      v.slide_pos_target_01 = Clamp01((f32)expr.value);
+                                                      break;
+                                                  }
+                                                  default: break;
+                                              }
+                                          });
             break;
         }
 
@@ -934,6 +979,9 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                 }
                 case MidiMessageType::NoteOff: {
                     processor.audio_processing_context.midi_note_state.NoteOff(message.ChannelNote());
+                    processor.audio_processing_context.mpe.ResetChannelExpression(message.ChannelNum());
+                    if (processor.audio_processing_context.mpe.IsMemberChannel(message.ChannelNum()))
+                        processor.audio_processing_context.pitchwheel_position[message.ChannelNum()] = 0.0f;
                     dyn::Append(changes.note_events,
                                 {
                                     .velocity = message.Velocity() / 127.0f,
@@ -954,28 +1002,72 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     auto const cc_num = message.CCNum();
                     auto const cc_val = message.CCValue();
                     auto const channel = message.ChannelNum();
+                    auto& context = processor.audio_processing_context;
+
+                    auto const release_sustain = [&](u4 sustain_channel) {
+                        auto const notes_to_end =
+                            context.midi_note_state.HandleSustainPedalOff(sustain_channel);
+                        notes_to_end.ForEachSetBit([&](usize note) {
+                            dyn::Append(changes.note_events,
+                                        NoteEvent {
+                                            .velocity = 0.0f,
+                                            .offset = event.time - block_start_frame,
+                                            .note = {CheckedCast<u7>(note), sustain_channel},
+                                            .created_by_cc64 = true,
+                                            .type = NoteEvent::Type::Off,
+                                        });
+                        });
+                    };
 
                     if (cc_num == 64) {
+                        // In MPE mode, sustain on a zone's master channel applies to the whole zone.
+                        auto const sustain_channels = ({
+                            Bitset<16> b {};
+                            b.Set(channel);
+                            if (context.mpe.IsMasterChannel(channel)) b |= context.mpe.ZoneChannels(channel);
+                            b;
+                        });
+
                         if (cc_val < 64) {
-                            auto const notes_to_end =
-                                processor.audio_processing_context.midi_note_state.HandleSustainPedalOff(
-                                    channel);
-                            notes_to_end.ForEachSetBit([&](usize note) {
-                                dyn::Append(changes.note_events,
-                                            NoteEvent {
-                                                .velocity = 0.0f,
-                                                .offset = event.time - block_start_frame,
-                                                .note = {CheckedCast<u7>(note), channel},
-                                                .created_by_cc64 = true,
-                                                .type = NoteEvent::Type::Off,
-                                            });
-                            });
+                            sustain_channels.ForEachSetBit(
+                                [&](usize sustain_channel) { release_sustain((u4)sustain_channel); });
                         } else {
-                            processor.audio_processing_context.midi_note_state.HandleSustainPedalOn(channel);
+                            sustain_channels.ForEachSetBit([&](usize sustain_channel) {
+                                context.midi_note_state.HandleSustainPedalOn((u4)sustain_channel);
+                            });
                         }
                     }
 
-                    if (k_midi_learn_controller_bitset.Get(cc_num)) {
+                    // MPE per-note slide: CC74 on a member channel modulates that channel's note instead
+                    // of behaving like a regular CC.
+                    bool consumed_as_mpe_slide = false;
+                    if (cc_num == 74 && context.mpe.IsMemberChannel(channel)) {
+                        consumed_as_mpe_slide = true;
+                        auto const slide = (f32)cc_val / 127.0f;
+                        context.mpe.slide_01[channel] = slide;
+                        ForEachExpressionTrackedVoice(processor.voice_pool,
+                                                      channel,
+                                                      k_nullopt,
+                                                      [&](Voice& v) {
+                                                          v.per_note_expression_active = true;
+                                                          v.slide_pos_target_01 = slide;
+                                                      });
+                    }
+
+                    if (context.mpe.enabled) {
+                        if (auto const rpn =
+                                context.mpe.rpn_detectors[channel].DetectRpnFromCcMessage(message)) {
+                            // Release sustain on any channel dropped from a zone: the pedal-up on the
+                            // zone's master would no longer cover it, leaving its notes stuck.
+                            auto const prev_zone_channels = context.mpe.AllZoneChannels();
+                            context.mpe.HandleRpn(channel, *rpn);
+                            (prev_zone_channels & ~context.mpe.AllZoneChannels())
+                                .ForEachSetBit(
+                                    [&](usize dropped_channel) { release_sustain((u4)dropped_channel); });
+                        }
+                    }
+
+                    if (!consumed_as_mpe_slide && k_midi_learn_controller_bitset.Get(cc_num)) {
                         if (auto param_index =
                                 processor.midi_learn_param_index.Exchange(k_nullopt, RmwMemoryOrder::Relaxed);
                             param_index.HasValue()) {
@@ -1018,32 +1110,24 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                 }
                 case MidiMessageType::PolyAftertouch: {
                     // NOTE: not supported at the moment
-                    if constexpr (false) {
-                        auto const note = message.NoteNum();
-                        auto const channel = message.ChannelNum();
-                        auto const value = message.PolyAftertouch();
-                        for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
-                            if (v.midi_key_trigger.channel == channel && v.midi_key_trigger.note == note) {
-                                v.aftertouch_multiplier =
-                                    1 + trig_table_lookup::SinTurns(value / 127.0f / 4.0f) * 2;
-                            }
-                        }
-                    }
                     break;
                 }
                 case MidiMessageType::ChannelAftertouch: {
-                    // NOTE: not supported at the moment
-                    if constexpr (false) {
-                        auto const channel = message.ChannelNum();
-                        auto const value = message.ChannelPressure();
-                        for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
-                            if (v.midi_key_trigger.channel == channel) {
-                                v.aftertouch_multiplier =
-                                    1 + trig_table_lookup::SinTurns(value / 127.0f / 4.0f) * 2;
-                            }
-                        }
+                    // MPE per-note press: channel pressure on a member channel modulates that channel's
+                    // note. Outside MPE mode channel pressure is not supported.
+                    auto const channel = message.ChannelNum();
+                    auto& context = processor.audio_processing_context;
+                    if (context.mpe.IsMemberChannel(channel)) {
+                        auto const pressure = (f32)message.ChannelPressure() / 127.0f;
+                        context.mpe.pressure_01[channel] = pressure;
+                        ForEachExpressionTrackedVoice(processor.voice_pool,
+                                                      channel,
+                                                      k_nullopt,
+                                                      [&](Voice& v) {
+                                                          v.per_note_expression_active = true;
+                                                          v.pressure_target_01 = pressure;
+                                                      });
                     }
-
                     break;
                 }
                 case MidiMessageType::SystemMessage: break;
@@ -1595,6 +1679,28 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
 
     if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
 
+    {
+        auto const instance_config = processor.instance_config.Load(LoadMemoryOrder::Acquire);
+        auto& mpe = processor.audio_processing_context.mpe;
+        if (mpe.enabled != instance_config.mpe_enabled) {
+            // Live voices must not keep frozen per-note bend/press/slide across a mode change.
+            for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
+                if (!v.per_note_expression_active) continue;
+                v.per_note_expression_active = false;
+                v.mpe_bend_semitones = 0;
+                UpdateVoicePitch(v, processor.audio_processing_context);
+                UpdateXfade(v,
+                            ExpressionAdjustedTimbre01(processor.shared_layer_params.timbre_value_01, v),
+                            false);
+            }
+            for (auto const channel : Range(16u))
+                mpe.ResetChannelExpression((u4)channel);
+            processor.audio_processing_context.pitchwheel_position = {};
+        }
+        mpe.enabled = instance_config.mpe_enabled;
+        mpe.press_slide_smoothing_ms = (f32)instance_config.mpe_smoothing_ms;
+    }
+
     clap_process_status result = CLAP_PROCESS_CONTINUE;
 
     ProcessorListener::ChangeFlags change_flags = ProcessorListener::None;
@@ -1686,6 +1792,7 @@ AudioProcessor::AudioProcessor(clap_host const& host,
       })) {
 
     voice_pool.master_random_seed = &master_random_seed;
+    voice_pool.master_timbre_01 = &shared_layer_params.timbre_value_01;
     ResetRandomState(*this, 0); // Initialise with default seed for deterministic starting state.
 
     for (auto const i : Range(k_num_parameters))

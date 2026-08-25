@@ -213,6 +213,59 @@ static void InstanceConfigPanel(GuiBuilder& builder, InstanceConfigPanelContext&
         }
     }
 
+    // MIDI section
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = "MIDI",
+              .font = FontType::Heading2,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .layout {
+                  .size = {layout::k_fill_parent, k_font_heading2_size},
+                  .margins = {.t = k_default_spacing, .lr = k_default_spacing},
+              },
+          });
+
+    {
+        auto const midi_controls = DoBox(builder,
+                                         {
+                                             .parent = root,
+                                             .layout {
+                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                 .contents_padding = {.lrtb = k_default_spacing},
+                                                 .contents_gap = 10,
+                                                 .contents_direction = layout::Direction::Column,
+                                                 .contents_align = layout::Alignment::Start,
+                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                             },
+                                         });
+
+        if (CheckboxButton(
+                builder,
+                midi_controls,
+                "MPE"_s,
+                config.mpe_enabled,
+                "Interpret incoming MIDI as MPE (MIDI Polyphonic Expression): each note gets per-note pitch bend, pressure ('press') and CC74 ('slide'). Configure what press and slide control on each layer's CONFIG page"_s,
+                GuiStyleSystem::TopBottomPanels))
+            config.mpe_enabled = !config.mpe_enabled;
+
+        if (auto const v = IntField(
+                builder,
+                midi_controls,
+                {
+                    .label = "Smoothing (ms)",
+                    .tooltip =
+                        "How gradually per-note press and slide changes are applied. Lower is more responsive; higher is smoother"_s,
+                    .width = k_field_width,
+                    .value = config.mpe_smoothing_ms,
+                    .constrainer = [](s64 value) { return Clamp<s64>(value, 0, 500); },
+                    .style = GuiStyleSystem::TopBottomPanels,
+                    .greyed_out = !config.mpe_enabled,
+                })) {
+            config.mpe_smoothing_ms = (u16)*v;
+        }
+    }
+
     if (config != initial_config) context.processor.instance_config.Store(config, StoreMemoryOrder::Release);
 }
 
@@ -228,7 +281,7 @@ void DoInstanceConfigPanel(GuiBuilder& builder,
     viewport_config.draw_background = DrawDarkModeModalBackground;
 
     auto const window_size = GuiIo().in.window_size.ToFloat2();
-    auto const panel_size = WwToPixels(f32x2 {400, 300});
+    auto const panel_size = WwToPixels(f32x2 {400, 410});
     auto const bounds = Rect {.pos = 0, .size = window_size}.CentredRect(panel_size);
 
     builder.imgui.RegisterNamedRect("instance-config-panel.modal"_s,

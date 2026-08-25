@@ -17,6 +17,9 @@ For instance: 0.0.1. Don't change the headings.
 ## 2.0.3
 - Add a dialog after installing a package offering to send the now-redundant package file to the trash
 - Highlight the recommended button in dialogs with an accent colour, and grey-out buttons that need text input first
+- Add MPE (MIDI Polyphonic Expression) support: enable it in the Instance Config panel for per-note pitch bend, press (channel pressure) and slide (CC74), and choose what press and slide control on each layer's Config tab. CLAP per-note expressions (pitch, pressure, brightness) are also supported
+- Fix newly played notes ignoring the current pitch wheel position until the wheel next moved
+- Show velocity markers on the layer volume slider
 - Add the ability to activate multiple encrypted packages at once by loading a single license file
 - Fix preferences file becoming blank or truncated: preferences are now written atomically
 - Add right-click menu and double-click value entry to macro destination knobs, with options to enter, copy, paste, reset and invert the amount

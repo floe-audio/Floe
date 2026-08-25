@@ -31,7 +31,10 @@ struct InstanceConfig {
     bool operator==(InstanceConfig const&) const = default;
     bool operator!=(InstanceConfig const&) const = default;
 
-    bool reset_on_transport {true};
+    // Bit-fields keep the struct small enough for a lock-free Atomic<InstanceConfig>.
+    bool reset_on_transport : 1 {true};
+    bool mpe_enabled : 1 {false}; // Interpret incoming MIDI as MPE (per-note bend, press and slide)
+    u16 mpe_smoothing_ms {100}; // 0-500, slew time for per-note press/slide
     Optional<u7> reset_keyswitch {}; // MIDI note that triggers a reset, or nullopt for disabled
     u8 seed {0}; // 0-99, determines what the master PRNG resets to
 };

@@ -85,6 +85,10 @@ struct GuiState : EngineListener {
     Optional<TimePoint> screenshot_clear_since {};
     f32x2 curve_map_add_point_click_pos {};
 
+    // Snapshotted once at the start of each frame; consuming the swap buffer at every use site could
+    // return different audio blocks within one frame.
+    Array<VoiceBlipMarkerForGui, k_num_voices> voice_blip_markers {};
+
     // Updated by the top panel each frame, consumed by the perform panel.
     PresetDescriptionDisplay preset_description_display {};
     // Last frame's resolved width of the top panel description region (0 on first frame).

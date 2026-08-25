@@ -430,6 +430,17 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::ArpOctavePolyrate:
             case LayerParamIndex::ArpOneShot: return layer_is_on(ln, LayerParamIndex::ArpOn);
 
+            case LayerParamIndex::MpePressDestination:
+            case LayerParamIndex::MpeSlideDestination: return true;
+            case LayerParamIndex::MpePressAmount:
+                return ParamToInt<param_values::MpeDestination>(
+                           layer_linear(ln, LayerParamIndex::MpePressDestination)) !=
+                       param_values::MpeDestination::Off;
+            case LayerParamIndex::MpeSlideAmount:
+                return ParamToInt<param_values::MpeDestination>(
+                           layer_linear(ln, LayerParamIndex::MpeSlideDestination)) !=
+                       param_values::MpeDestination::Off;
+
             case LayerParamIndex::LegacyFilterCutoff:
             case LayerParamIndex::LegacyFilterResonance:
             case LayerParamIndex::LegacyFilterType:

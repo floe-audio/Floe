@@ -27,6 +27,7 @@ struct ParameterComponentOptions {
     String override_tooltip {};
     String override_label {};
     StereoPeakMeter const* peak_meter = nullptr; // If set, draws a peak meter inside the knob.
+    Span<f32 const> voice_blips_01 {}; // Per-voice value markers drawn on the highlight arc.
 };
 
 Box DoKnobParameter(GuiState& g,
@@ -113,12 +114,21 @@ struct VerticalSliderParameterOptions {
     bool greyed_out = false;
     bool is_fake = false;
     String override_tooltip {};
+    Span<f32 const> voice_blips_01 {}; // Per-voice value markers drawn on the highlight bar.
 };
 
 Box DoVerticalSliderParameter(GuiState& g,
                               Box parent,
                               DescribedParamValue const& param,
                               VerticalSliderParameterOptions options);
+
+// Per-voice values mapped into dest_knob_param's 0-1 space, for drawing as blips on that parameter's
+// control. Pass no layer_index to include voices from all layers. Requests animation updates while any
+// blips are showing.
+Span<f32 const> VoiceBlips01(GuiState& g,
+                             Optional<u8> layer_index,
+                             param_values::MpeDestination destination,
+                             DescribedParamValue const& dest_knob_param);
 
 // Adds the standard pair of "Reset {name} to Default" / "Reset {name} to "<preset>" state" menu items for a
 // snapshot section. The pinned-preset item is only shown when a preset is loaded. Returns true on the frame

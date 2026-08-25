@@ -106,8 +106,21 @@ struct Voice {
     VolumeFade volume_fade;
     adsr::Processor vol_env = {};
     adsr::Processor fil_env = {};
-    f32 aftertouch_multiplier = 1;
     bool disable_vol_env = false;
+    f32 note_volume_amp = 1; // Velocity-curve gain combined with any key-range fade.
+
+    // Per-note expression from MPE member-channel messages or CLAP note expressions. The applied values
+    // chase the targets with a per-block slew. track_expression is cleared at key lift so release tails
+    // keep their values rather than following trailing messages on a reused MPE channel.
+    bool per_note_expression_active = false;
+    bool track_expression = false;
+    f32 pressure_target_01 = 0;
+    f32 slide_pos_target_01 = 0.5f;
+    f32 pressure_01 = 0;
+    f32 slide_pos_01 = 0.5f;
+    f32 mpe_bend_semitones = 0; // Per-note bend from the voice's member channel, frozen at key lift.
+    f32 expression_pitch_semitones = 0; // CLAP tuning expression.
+    OnePoleLowPassFilter<f32> expression_gain_smoother = {};
 
     GrainPool grain_pool {};
 
@@ -132,6 +145,19 @@ struct VoiceWaveformMarkerForGui {
 
 struct GrainMarkerForGui {
     u16 position {};
+};
+
+// Per-voice values shown as blips on parameter controls. press/slide are the effective MPE destination
+// values (0-255 mapping to the destination's 0-1 knob space), only meaningful when expression_active;
+// volume_gain is the voice's note gain (velocity curve and key-range fade) combined with any MPE volume
+// expression.
+struct VoiceBlipMarkerForGui {
+    u8 on : 1 {};
+    u8 expression_active : 1 {};
+    u8 layer_index : 6 {};
+    u8 press_dest_value {};
+    u8 slide_dest_value {};
+    u8 volume_gain {};
 };
 
 struct VoiceGrainMarkersForGui {
@@ -209,6 +235,8 @@ struct VoicePool {
     void EndAllVoicesInstantly();
 
     u64* master_random_seed {}; // Points to AudioProcessor::master_random_seed. Audio thread only.
+    f32 const* master_timbre_01 {}; // Points to SharedLayerParams::timbre_value_01. Audio thread only.
+    f32 press_slide_slew_cutoff = 1; // Computed once per voice-block. Audio thread only.
 
     u64 voice_start_counter = 0;
     u16 voice_id_counter = 0;
@@ -219,6 +247,7 @@ struct VoicePool {
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_vol_env_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceEnvelopeMarkerForGui, k_num_voices>, true> voice_fil_env_markers_for_gui {};
     AtomicSwapBuffer<Array<VoiceGrainMarkersForGui, k_num_voices>, true> grain_markers_for_gui {};
+    AtomicSwapBuffer<Array<VoiceBlipMarkerForGui, k_num_voices>, true> voice_blip_markers_for_gui {};
     Array<Atomic<s16>, 128> voices_per_midi_note_for_gui {};
     Array<Atomic<s16>, k_num_layers> active_voices_per_layer_for_gui {};
     Array<Atomic<f32>, k_num_layers> last_velocity = {};
@@ -245,6 +274,14 @@ void UpdateLFOTime(Voice& v, f32 sample_rate);
 void SetPan(Voice& v, f32 pan_pos);
 void UpdateLoopInfo(Voice& v);
 void UpdateXfade(Voice& v, f32 knob_pos_01, bool hard_set);
+
+// Recomputes a voice's pitch from its layer's tune, pitch bend (per-note aware in MPE mode) and any
+// CLAP tuning expression.
+void UpdateVoicePitch(Voice& v, AudioProcessingContext const& context);
+
+// The timbre crossfade position for a voice: the master timbre value offset by any press/slide routed
+// to the Timbre destination.
+f32 ExpressionAdjustedTimbre01(f32 timbre_01, Voice const& v);
 
 struct VoiceStartParams {
     struct SamplerParams {
@@ -280,10 +317,12 @@ struct VoiceStartParams {
     MidiChannelNote midi_key_trigger;
     u7 note_num;
     f32 note_vel;
+    f32 note_volume_amp = 1;
     LfoStartState lfo_start_state;
     u32 num_frames_before_starting;
     Params params;
     bool disable_vol_env;
+    bool track_expression;
 };
 
 void StartVoice(VoicePool& pool,

@@ -619,14 +619,20 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                           {.flash_when_clipping = false});
 
         // Volume slider
-        DoVerticalSliderParameter(g,
-                                  vol_col,
-                                  params.DescribedValue(layer_index, LayerParamIndex::Volume),
-                                  {
-                                      .width = k_vol_slider_width,
-                                      .height = k_vol_slider_height,
-                                      .style_system = GuiStyleSystem::MidPanel,
-                                  });
+        {
+            auto const volume_param = params.DescribedValue(layer_index, LayerParamIndex::Volume);
+            DoVerticalSliderParameter(
+                g,
+                vol_col,
+                volume_param,
+                {
+                    .width = k_vol_slider_width,
+                    .height = k_vol_slider_height,
+                    .style_system = GuiStyleSystem::MidPanel,
+                    .voice_blips_01 =
+                        VoiceBlips01(g, layer_index, param_values::MpeDestination::Volume, volume_param),
+                });
+        }
     }
 
     // Middle column: Pan knob + Stereo Width knob
@@ -903,14 +909,20 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                          },
                                      });
 
-        DoKnobParameter(g,
-                        knobs_row,
-                        params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff),
-                        {
-                            .width = k_small_knob_w,
-                            .style_system = GuiStyleSystem::MidPanel,
-                            .greyed_out = greyed_out,
-                        });
+        {
+            auto const cutoff_param = params.DescribedValue(layer_index, LayerParamIndex::FilterCutoff);
+            DoKnobParameter(
+                g,
+                knobs_row,
+                cutoff_param,
+                {
+                    .width = k_small_knob_w,
+                    .style_system = GuiStyleSystem::MidPanel,
+                    .greyed_out = greyed_out,
+                    .voice_blips_01 =
+                        VoiceBlips01(g, layer_index, param_values::MpeDestination::Filter, cutoff_param),
+                });
+        }
         DoKnobParameter(g,
                         knobs_row,
                         params.DescribedValue(layer_index, LayerParamIndex::FilterResonance),
@@ -1298,13 +1310,20 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     }
 }
 
+static void DrawDarkPopupMenuBackground(imgui::Context const& imgui) {
+    auto const rounding = WwToPixels(k_panel_rounding);
+    auto const r = imgui.curr_viewport->unpadded_bounds;
+    DrawDropShadow(imgui, r, rounding);
+    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
+}
+
 static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
     constexpr auto k_play_label_width = 105;
     constexpr auto k_control_width = 76;
-    constexpr auto k_narrow_control_width = 63;
+    constexpr auto k_narrow_control_width = 76;
     constexpr auto k_narrow_control_gap_x = 3;
 
     auto const page = DoBox(g.builder,
@@ -1440,6 +1459,329 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
               });
 
         DoMenuParameter(g, row, param, {.width = k_control_width, .label = false});
+    }
+
+    // MPE press/slide routing: summary button that opens a popup editor
+    {
+        auto const press_dest = params.DescribedValue(layer_index, LayerParamIndex::MpePressDestination);
+        auto const slide_dest = params.DescribedValue(layer_index, LayerParamIndex::MpeSlideDestination);
+        bool const mpe_enabled =
+            g.engine.processor.instance_config.Load(LoadMemoryOrder::Relaxed).mpe_enabled;
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .layout {
+                                       .size = layout::k_hug_contents,
+                                       .contents_gap = k_page_row_gap_x,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
+
+        DoBox(
+            g.builder,
+            {
+                .parent = row,
+                .text = "MPE"_s,
+                .text_colours = LiveColStruct(UiColMap::MidText),
+                .text_justification = TextJustification::CentredRight,
+                .layout {
+                    .size = {k_play_label_width, k_font_body_size},
+                },
+                .tooltip =
+                    "Route per-note MPE press and slide to destinations on this layer. MPE must be enabled in the Instance Config panel"_s,
+            });
+
+        // Like MenuOpenButton, but the summary mixes icon-font and body-font segments.
+        auto const menu_btn =
+            DoBox(g.builder,
+                  {
+                      .parent = row,
+                      .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
+                      .background_fill_auto_hot_active_overlay = true,
+                      .round_background_corners = 0b1111,
+                      .corner_rounding = k_corner_rounding,
+                      .layout {
+                          .size = {156, layout::k_hug_contents},
+                          .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
+                          .contents_gap = 4,
+                          .contents_direction = layout::Direction::Row,
+                          .contents_align = layout::Alignment::Justify,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                      },
+                      .tooltip = "Configure what MPE press and slide control on this layer"_s,
+                      .button_behaviour = imgui::ButtonConfig {},
+                  });
+
+        auto const summary_colours = ColSet {
+            .base = LiveColStruct(UiColMap::MidText),
+            .hot = LiveColStruct(UiColMap::MidTextHot),
+            .active = LiveColStruct(UiColMap::MidTextHot),
+        };
+
+        {
+            auto const segments = DoBox(g.builder,
+                                        {
+                                            .parent = menu_btn,
+                                            .parent_dictates_hot_and_active = true,
+                                            .layout {
+                                                .size = layout::k_hug_contents,
+                                                .contents_gap = 6,
+                                                .contents_direction = layout::Direction::Row,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                            },
+                                        });
+
+            auto const do_segment =
+                [&](String icon, DescribedParamValue const& dest, u64 loc_hash = SourceLocationHash()) {
+                    auto const segment =
+                        DoBox(g.builder,
+                              {
+                                  .parent = segments,
+                                  .id_extra = loc_hash,
+                                  .parent_dictates_hot_and_active = true,
+                                  .layout {
+                                      .size = layout::k_hug_contents,
+                                      .contents_gap = 3,
+                                      .contents_direction = layout::Direction::Row,
+                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                  },
+                              });
+                    DoBox(g.builder,
+                          {
+                              .parent = segment,
+                              .text = icon,
+                              .size_from_text = true,
+                              .font = FontType::Icons,
+                              .font_size = 10,
+                              .text_colours =
+                                  ColSet {
+                                      .base = LiveColStruct(UiColMap::MidTextDimmed),
+                                      .hot = LiveColStruct(UiColMap::MidTextDimmed),
+                                      .active = LiveColStruct(UiColMap::MidTextDimmed),
+                                  },
+                              .parent_dictates_hot_and_active = true,
+                          });
+                    DoBox(g.builder,
+                          {
+                              .parent = segment,
+                              .text = ParamMenuText(dest.info.index, dest.LinearValue()),
+                              .size_from_text = true,
+                              .text_colours = summary_colours,
+                              .parent_dictates_hot_and_active = true,
+                          });
+                };
+
+            if (!mpe_enabled) {
+                DoBox(g.builder,
+                      {
+                          .parent = segments,
+                          .text = "Inactive"_s,
+                          .size_from_text = true,
+                          .text_colours =
+                              ColSet {
+                                  .base = LiveColStruct(UiColMap::MidTextDimmed),
+                                  .hot = LiveColStruct(UiColMap::MidText),
+                                  .active = LiveColStruct(UiColMap::MidText),
+                              },
+                          .parent_dictates_hot_and_active = true,
+                      });
+            } else {
+                do_segment(ICON_FA_BULLSEYE, press_dest);
+                do_segment(ICON_FA_UP_DOWN, slide_dest);
+            }
+        }
+
+        DoBox(g.builder,
+              {
+                  .parent = menu_btn,
+                  .text = ICON_FA_CARET_DOWN,
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours = summary_colours,
+                  .parent_dictates_hot_and_active = true,
+              });
+
+        auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer_index);
+        if (menu_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, menu_btn.imgui_id);
+
+        // bounds is a Box so the run lambda is deferred: locals must be captured by value.
+        if (g.imgui.IsPopupMenuOpen(popup_id)) {
+            DoBoxViewport(
+                g.builder,
+                {
+                    .run =
+                        [&g, layer_index, mpe_enabled](GuiBuilder&) {
+                            auto& layer = g.engine.Layer(layer_index);
+                            auto& params = g.engine.processor.main_params;
+
+                            auto const root = DoBox(g.builder,
+                                                    {
+                                                        .layout {
+                                                            .size = layout::k_hug_contents,
+                                                            .contents_padding = {.lr = 8, .tb = 6},
+                                                            .contents_gap = 6,
+                                                            .contents_direction = layout::Direction::Column,
+                                                            .contents_align = layout::Alignment::Start,
+                                                        },
+                                                    });
+
+                            if (!mpe_enabled) {
+                                auto const note = DoBox(
+                                    g.builder,
+                                    {
+                                        .parent = root,
+                                        .layout {
+                                            .size = layout::k_hug_contents,
+                                            .contents_gap = 4,
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                        .tooltip =
+                                            "Press and slide only have an effect when MPE is enabled for this instance. Click to open the Instance Config panel"_s,
+                                        .button_behaviour = imgui::ButtonConfig {},
+                                    });
+
+                                DoBox(g.builder,
+                                      {
+                                          .parent = note,
+                                          .text = ICON_FA_TRIANGLE_EXCLAMATION,
+                                          .size_from_text = true,
+                                          .font = FontType::Icons,
+                                          .text_colours = {Col {.c = Col::Yellow, .dark_mode = true}},
+                                          .parent_dictates_hot_and_active = true,
+                                      });
+
+                                DoBox(g.builder,
+                                      {
+                                          .parent = note,
+                                          .text = "MPE is off — open Instance Config"_s,
+                                          .size_from_text = true,
+                                          .text_colours =
+                                              ColSet {
+                                                  .base = Col {.c = Col::Subtext0, .dark_mode = true},
+                                                  .hot = Col {.c = Col::Text, .dark_mode = true},
+                                                  .active = Col {.c = Col::Text, .dark_mode = true},
+                                              },
+                                          .parent_dictates_hot_and_active = true,
+                                      });
+
+                                if (note.button_fired) {
+                                    g.imgui.CloseTopPopupOnly();
+                                    g.imgui.OpenModalViewport(g.instance_config_panel_state.k_panel_id);
+                                }
+                            }
+
+                            auto const do_mpe_row = [&](LayerParamIndex dest_index,
+                                                        LayerParamIndex amount_index,
+                                                        u64 loc_hash = SourceLocationHash()) {
+                                auto const dest_param = params.DescribedValue(layer_index, dest_index);
+                                auto const amount_param = params.DescribedValue(layer_index, amount_index);
+
+                                auto const mpe_row =
+                                    DoBox(g.builder,
+                                          {
+                                              .parent = root,
+                                              .id_extra = loc_hash,
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_gap = k_narrow_control_gap_x,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
+
+                                auto const mpe_label_cell =
+                                    DoBox(g.builder,
+                                          {
+                                              .parent = mpe_row,
+                                              .layout {
+                                                  .size = {55, k_font_body_size},
+                                                  .margins {.r = k_page_row_gap_x - k_narrow_control_gap_x},
+                                                  .contents_gap = 3,
+                                                  .contents_direction = layout::Direction::Row,
+                                                  .contents_align = layout::Alignment::End,
+                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                              },
+                                          });
+
+                                auto const warning_tooltip = ({
+                                    String s {};
+                                    switch (dest_param.IntValue<param_values::MpeDestination>()) {
+                                        case param_values::MpeDestination::Timbre:
+                                            if (!layer.UsesTimbreLayering())
+                                                s = "This instrument doesn't have timbre information — timbre changes will have no effect"_s;
+                                            break;
+
+                                        case param_values::MpeDestination::Filter:
+                                            if (!params.BoolValue(layer_index, LayerParamIndex::FilterOn))
+                                                s = "Filter is off — turn the filter on to hear MPE modulation"_s;
+                                            break;
+
+                                        case param_values::MpeDestination::Off:
+                                        case param_values::MpeDestination::Volume:
+                                        case param_values::MpeDestination::Count: break;
+                                    }
+                                    s;
+                                });
+
+                                if (warning_tooltip.size) {
+                                    DoBox(g.builder,
+                                          {
+                                              .parent = mpe_label_cell,
+                                              .text = ICON_FA_TRIANGLE_EXCLAMATION,
+                                              .size_from_text = true,
+                                              .font = FontType::Icons,
+                                              .text_colours = {Col {.c = Col::Yellow}},
+                                              .tooltip = warning_tooltip,
+                                          });
+                                }
+
+                                DoBox(g.builder,
+                                      {
+                                          .parent = mpe_label_cell,
+                                          .text = dest_param.info.gui_label,
+                                          .size_from_text = true,
+                                          .text_colours = LiveColStruct(UiColMap::MidText),
+                                          .tooltip = FunctionRef<String()> {[&]() -> String {
+                                              return dest_param.info.tooltip;
+                                          }},
+                                      });
+
+                                DoMenuParameter(g,
+                                                mpe_row,
+                                                dest_param,
+                                                {
+                                                    .width = 90,
+                                                    .greyed_out = !mpe_enabled,
+                                                    .label = false,
+                                                });
+
+                                DoPercentDraggerParameter(
+                                    g,
+                                    mpe_row,
+                                    amount_param,
+                                    {
+                                        .width = k_narrow_control_width,
+                                        .greyed_out = !mpe_enabled ||
+                                                      dest_param.IntValue<param_values::MpeDestination>() ==
+                                                          param_values::MpeDestination::Off,
+                                        .label = false,
+                                    });
+                            };
+
+                            do_mpe_row(LayerParamIndex::MpePressDestination, LayerParamIndex::MpePressAmount);
+                            do_mpe_row(LayerParamIndex::MpeSlideDestination, LayerParamIndex::MpeSlideAmount);
+                        },
+                    .bounds = menu_btn,
+                    .imgui_id = popup_id,
+                    .viewport_config = ({
+                        auto cfg = k_default_popup_menu_viewport;
+                        cfg.draw_background = DrawDarkPopupMenuBackground;
+                        cfg;
+                    }),
+                });
+        }
     }
 
     auto const key_range_rows = DoBox(g.builder,

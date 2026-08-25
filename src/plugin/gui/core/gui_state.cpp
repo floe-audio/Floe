@@ -220,6 +220,8 @@ void GuiUpdate(GuiState& g) {
     g.show_new_version_indicator =
         check_for_update::ShowNewVersionIndicator(g.shared_engine_systems.check_for_update_state, g.prefs);
 
+    g.voice_blip_markers = g.engine.processor.voice_pool.voice_blip_markers_for_gui.Consume().data;
+
     g.scratch_arena.ResetCursorAndConsolidateRegions();
 
     layout::ReserveItemsCapacity(g.layout, g.scratch_arena, 2048);

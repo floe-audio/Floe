@@ -102,6 +102,11 @@ enum class LayerParamIndex : u8 {
     ArpOctavePolyrate,
     ArpOneShot,
 
+    MpePressDestination,
+    MpePressAmount,
+    MpeSlideDestination,
+    MpeSlideAmount,
+
     Count,
 };
 
@@ -518,6 +523,21 @@ constexpr auto k_lfo_destination_strings = ArrayT<String>({
     "Grain Position",
 });
 static_assert(k_lfo_destination_strings.size == ToInt(LfoDestination::Count));
+
+enum class MpeDestination : u8 { // never reorder
+    Off,
+    Volume,
+    Filter,
+    Timbre,
+    Count,
+};
+constexpr auto k_mpe_destination_strings = ArrayT<String>({
+    "Off",
+    "Volume",
+    "Filter",
+    "Timbre",
+});
+static_assert(k_mpe_destination_strings.size == ToInt(MpeDestination::Count));
 
 enum class LegacyLfoShapeV1 : u8 { // oldest. never reorder
     Sine,
@@ -1004,6 +1024,7 @@ struct ParamDescriptor {
         ArpSyncedRate,
         ArpOctavePolyrate,
         ArpAutoRate,
+        MpeDestination,
         Count,
     };
 
@@ -1352,6 +1373,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpSyncedRate: return k_arp_synced_rate_strings;
         case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
         case ParamDescriptor::MenuType::ArpAutoRate: return k_arp_auto_rate_strings;
+        case ParamDescriptor::MenuType::MpeDestination: return k_mpe_destination_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -3880,6 +3902,62 @@ consteval auto CreateParams() {
             .gui_label = "One Shot"_s,
             .tooltip =
                 "When enabled, the arpeggiator plays through the sequence once and then stops instead of looping"_s,
+        };
+
+        // =================================================================================================
+        lp(MpePressDestination) = Args {
+            .id = id(region, 96), // never change
+            .id_string = LAYER_ID("config.mpe_press_destination"),
+            .added_in_generation = 2,
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::MpeDestination,
+                .default_val = (u32)MpeDestination::Off,
+            }),
+            .modules = {layer_module, ParameterModule::Config},
+            .name = "MPE Press Target"_s,
+            .gui_label = "Press"_s,
+            .tooltip =
+                "What MPE 'press' (per-note channel pressure) controls on this layer. Only active when MPE is enabled in the instance config"_s,
+        };
+        lp(MpePressAmount) = Args {
+            .id = id(region, 97), // never change
+            .id_string = LAYER_ID("config.mpe_press_amount"),
+            .added_in_generation = 2,
+            .value_config = val_config_helpers::BidirectionalPercent({
+                .default_percent = 50,
+                .display_format = ParamDisplayFormat::Percent,
+            }),
+            .modules = {layer_module, ParameterModule::Config},
+            .name = "MPE Press Amount"_s,
+            .gui_label = "Amount"_s,
+            .tooltip = "Intensity of the MPE press effect; negative values invert it"_s,
+        };
+        lp(MpeSlideDestination) = Args {
+            .id = id(region, 98), // never change
+            .id_string = LAYER_ID("config.mpe_slide_destination"),
+            .added_in_generation = 2,
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::MpeDestination,
+                .default_val = (u32)MpeDestination::Off,
+            }),
+            .modules = {layer_module, ParameterModule::Config},
+            .name = "MPE Slide Target"_s,
+            .gui_label = "Slide"_s,
+            .tooltip =
+                "What MPE 'slide' (per-note CC74) controls on this layer. Slide is bipolar around its centre. Only active when MPE is enabled in the instance config"_s,
+        };
+        lp(MpeSlideAmount) = Args {
+            .id = id(region, 99), // never change
+            .id_string = LAYER_ID("config.mpe_slide_amount"),
+            .added_in_generation = 2,
+            .value_config = val_config_helpers::BidirectionalPercent({
+                .default_percent = 100,
+                .display_format = ParamDisplayFormat::Percent,
+            }),
+            .modules = {layer_module, ParameterModule::Config},
+            .name = "MPE Slide Amount"_s,
+            .gui_label = "Amount"_s,
+            .tooltip = "Intensity of the MPE slide effect; negative values invert it"_s,
         };
     }
 #undef LAYER_ID

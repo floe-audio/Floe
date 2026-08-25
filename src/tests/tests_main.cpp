@@ -55,6 +55,7 @@
     X(RegisterMathsTests)                                                                                    \
     X(RegisterMemoryTests)                                                                                   \
     X(RegisterMiscTests)                                                                                     \
+    X(RegisterMpeTests)                                                                                      \
     X(RegisterOptionalTests)                                                                                 \
     X(RegisterPackageFormatTests)                                                                            \
     X(RegisterPackageInstallationTests)                                                                      \

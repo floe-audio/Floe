@@ -43,6 +43,7 @@ struct DrawKnobOptions {
     u32 line_col;
     Optional<f32> overload_position;
     Optional<f32> outer_arc_percent;
+    Span<f32 const> voice_blips_01 {}; // Per-voice markers drawn on the outer arc.
     GuiStyleSystem style_system;
     bool greyed_out;
     bool is_fake;
@@ -61,6 +62,7 @@ struct DrawVerticalSliderOptions {
     u32 highlight_col;
     u32 line_col;
     Optional<f32> modulation_percent; // If set, draws a line at this position showing the modulated value.
+    Span<f32 const> voice_blips_01 {}; // Per-voice markers drawn on the channel.
     GuiStyleSystem style_system;
     bool greyed_out;
     bool is_fake;

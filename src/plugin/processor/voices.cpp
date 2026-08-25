@@ -152,10 +152,73 @@ void SetVoicePitch(Voice& v, f32 pitch_semitones, f32 sample_rate) {
     }
 }
 
+// Wheel bend, per-note MPE bend and CLAP tuning expression: everything except the layer tune. Only voices
+// that started as MPE notes get the per-note interpretation; enabling MPE mid-note must not reinterpret an
+// existing voice's channel wheel as per-note bend.
+static f32 TotalBendSemitones(Voice const& v, AudioProcessingContext const& context) {
+    auto const channel = v.midi_key_trigger.channel;
+    auto wheel_channel = channel;
+    if (v.per_note_expression_active)
+        if (auto const master = context.mpe.MasterChannelForMember(channel)) wheel_channel = *master;
+    return (context.pitchwheel_position[wheel_channel] * v.controller->pitch_bend_range_semitones) +
+           v.mpe_bend_semitones + v.expression_pitch_semitones;
+}
+
+void UpdateVoicePitch(Voice& v, AudioProcessingContext const& context) {
+    auto const channel = v.midi_key_trigger.channel;
+    if (v.per_note_expression_active && v.track_expression && context.mpe.IsMemberChannel(channel))
+        v.mpe_bend_semitones =
+            context.pitchwheel_position[channel] * context.mpe.PerNoteBendRangeSemitones(channel);
+    SetVoicePitch(v, v.controller->tune_semitones + TotalBendSemitones(v, context), context.sample_rate);
+}
+
+static f32 SlideBipolar(Voice const& v) { return (v.slide_pos_01 * 2) - 1; }
+
+// Combined press/slide contribution for an additively-applied destination.
+static f32 ExpressionOffset(Voice const& v, param_values::MpeDestination destination) {
+    if (!v.per_note_expression_active) return 0;
+    auto const& mpe = v.controller->mpe;
+    f32 offset = 0;
+    if (mpe.press_dest == destination) offset += mpe.press_amount * v.pressure_01;
+    if (mpe.slide_dest == destination) offset += mpe.slide_amount * SlideBipolar(v);
+    return offset;
+}
+
+f32 ExpressionAdjustedTimbre01(f32 timbre_01, Voice const& v) {
+    return Clamp01(timbre_01 + ExpressionOffset(v, param_values::MpeDestination::Timbre));
+}
+
+static f32 ExpressionVolumeGain(Voice const& v) {
+    if (!v.per_note_expression_active) return 1;
+    auto const& mpe = v.controller->mpe;
+    f32 gain = 1;
+    if (mpe.press_dest == param_values::MpeDestination::Volume)
+        gain *= mpe.press_amount >= 0 ? 1 - (mpe.press_amount * (1 - v.pressure_01))
+                                      : 1 + (mpe.press_amount * v.pressure_01);
+    if (mpe.slide_dest == param_values::MpeDestination::Volume)
+        gain *= Clamp01(1 + (mpe.slide_amount * SlideBipolar(v)));
+    return gain;
+}
+
+static f32 EffectiveMpeDestinationValueForGui(Voice const& v, param_values::MpeDestination dest) {
+    switch (dest) {
+        case param_values::MpeDestination::Off: break;
+        case param_values::MpeDestination::Volume: return Clamp01(ExpressionVolumeGain(v));
+        case param_values::MpeDestination::Filter:
+            return Clamp01(v.controller->sv_filter_cutoff_linear +
+                           ExpressionOffset(v, param_values::MpeDestination::Filter));
+        case param_values::MpeDestination::Timbre:
+            return ExpressionAdjustedTimbre01(*v.pool.master_timbre_01, v);
+        case param_values::MpeDestination::Count: break;
+    }
+    return 0;
+}
+
 void UpdateXfade(Voice& v, f32 knob_pos_01, bool hard_set) {
     auto set_xfade_smoother = [&](VoiceSoundSource::SampleSource& s, f32 val) {
-        ASSERT(val >= 0 && val <= 1);
-        s.xfade_vol = val;
+        // QuarterSineFade's polynomial approximation can overshoot [0, 1] by ~2.5e-5.
+        ASSERT(val >= -0.001f && val <= 1.001f);
+        s.xfade_vol = Clamp01(val);
         if (hard_set) s.xfade_vol_smoother.Reset();
     };
 
@@ -376,6 +439,7 @@ void StartVoice(VoicePool& pool,
     voice.vol_env.Reset();
     voice.vol_env.Gate(true);
     voice.disable_vol_env = params.disable_vol_env;
+    voice.note_volume_amp = params.note_volume_amp;
     voice.fil_env.Reset();
     voice.fil_env.Gate(true);
     voice.time_started = voice.pool.voice_start_counter++;
@@ -389,6 +453,30 @@ void StartVoice(VoicePool& pool,
     voice.filter_mix_smoother.Reset();
     voice.filter_resonance_smoother.Reset();
     voice.stereo_width_smoother.Reset();
+
+    voice.track_expression = params.track_expression;
+    voice.per_note_expression_active =
+        audio_processing_context.mpe.IsMemberChannel(params.midi_key_trigger.channel);
+    if (voice.per_note_expression_active) {
+        // The MPE spec requires controllers to send a note's initial press/slide/bend before the note-on.
+        auto const channel = params.midi_key_trigger.channel;
+        voice.pressure_01 = audio_processing_context.mpe.pressure_01[channel];
+        voice.slide_pos_01 = audio_processing_context.mpe.slide_01[channel];
+        voice.mpe_bend_semitones = audio_processing_context.pitchwheel_position[channel] *
+                                   audio_processing_context.mpe.PerNoteBendRangeSemitones(channel);
+    } else {
+        voice.pressure_01 = 0;
+        voice.slide_pos_01 = 0.5f;
+        voice.mpe_bend_semitones = 0;
+    }
+    voice.pressure_target_01 = voice.pressure_01;
+    voice.slide_pos_target_01 = voice.slide_pos_01;
+    voice.expression_pitch_semitones = 0;
+    voice.expression_gain_smoother.Reset();
+
+    // params.initial_pitch is the layer tune; add the current pitch bend so notes start in tune with a
+    // wheel that's already displaced.
+    auto const initial_pitch = params.initial_pitch + TotalBendSemitones(voice, audio_processing_context);
 
     switch (params.params.tag) {
         case InstrumentType::None: {
@@ -412,7 +500,7 @@ void StartVoice(VoicePool& pool,
                 s_sampler.data = &s_params.audio_data;
                 ASSERT(s_sampler.data != nullptr);
 
-                s.pitch_ratio = CalculatePitchRatio(RootKey(voice, s), s, params.initial_pitch, sample_rate);
+                s.pitch_ratio = CalculatePitchRatio(RootKey(voice, s), s, initial_pitch, sample_rate);
                 s.pitch_ratio_smoother.Reset();
 
                 if (sampler.slice_start_frame) {
@@ -469,7 +557,9 @@ void StartVoice(VoicePool& pool,
             for (u32 i = voice.num_active_voice_samples; i < k_max_num_voice_sound_sources; ++i)
                 voice.sound_sources[i].is_active = false;
 
-            UpdateXfade(voice, sampler.initial_timbre_param_value_01, true);
+            UpdateXfade(voice,
+                        ExpressionAdjustedTimbre01(sampler.initial_timbre_param_value_01, voice),
+                        true);
 
             if (IsGranular(voice_controller.play_mode)) voice.grain_pool.Reset(sample_rate);
 
@@ -509,7 +599,7 @@ void StartVoice(VoicePool& pool,
                 .type = waveform.type,
                 .pos = 0,
             };
-            s.pitch_ratio = CalculatePitchRatio(voice.note_num, s, params.initial_pitch, sample_rate);
+            s.pitch_ratio = CalculatePitchRatio(voice.note_num, s, initial_pitch, sample_rate);
             s.pitch_ratio_smoother.Reset();
 
             break;
@@ -574,7 +664,10 @@ void VoicePool::PrepareToPlay() {
 
 void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannelNote note) {
     for (auto& v : pool.voices)
-        if (v.is_active && v.midi_key_trigger == note && &controller == v.controller) EndVoice(v);
+        if (v.is_active && v.midi_key_trigger == note && &controller == v.controller) {
+            v.track_expression = false;
+            EndVoice(v);
+        }
 }
 
 struct VoiceProcessor {
@@ -590,6 +683,18 @@ struct VoiceProcessor {
         ASSERT_HOT(!voice.processed_this_block);
 
         voice.processed_this_block = true;
+
+        if (voice.per_note_expression_active && voice.track_expression) {
+            auto const cutoff = voice.pool.press_slide_slew_cutoff;
+            voice.pressure_01 += cutoff * (voice.pressure_target_01 - voice.pressure_01);
+            voice.slide_pos_01 += cutoff * (voice.slide_pos_target_01 - voice.slide_pos_01);
+
+            auto const& mpe = voice.controller->mpe;
+            if (mpe.press_dest == param_values::MpeDestination::Timbre ||
+                mpe.slide_dest == param_values::MpeDestination::Timbre) {
+                UpdateXfade(voice, ExpressionAdjustedTimbre01(*voice.pool.master_timbre_01, voice), false);
+            }
+        }
 
         auto output = Span<f32x2> {voice.buffer.data, num_frames};
         Fill(output, 0.0f);
@@ -643,6 +748,19 @@ struct VoiceProcessor {
                 .pos = (u16)(Clamp01(voice.fil_env.output) * k_max_u16),
                 .sustain_level = (u16)(Clamp01(voice.controller->fil_env.sustain_amount) * k_max_u16),
                 .id = voice.id,
+            };
+
+            auto const& mpe = voice.controller->mpe;
+            voice.pool.voice_blip_markers_for_gui.Write()[voice.index] = {
+                .on = true,
+                .expression_active = voice.per_note_expression_active,
+                .layer_index = voice.controller->layer_index,
+                .press_dest_value =
+                    (u8)(EffectiveMpeDestinationValueForGui(voice, mpe.press_dest) * 255.0f + 0.5f),
+                .slide_dest_value =
+                    (u8)(EffectiveMpeDestinationValueForGui(voice, mpe.slide_dest) * 255.0f + 0.5f),
+                .volume_gain =
+                    (u8)(Clamp01(voice.note_volume_amp * ExpressionVolumeGain(voice)) * 255.0f + 0.5f),
             };
 
             // Publish grain markers for GUI.
@@ -1336,6 +1454,9 @@ struct VoiceProcessor {
         auto const lfo_base = has_volume_lfo ? (1.0f - (Fabs(lfo_amp) / 2.0f)) : 1.0f;
         auto const lfo_half_amp = lfo_amp / 2.0f;
 
+        // Per-note expression gain (press/slide routed to Volume); block-constant, smoothed per frame-pair.
+        auto const expression_gain_target = ExpressionVolumeGain(voice);
+
         f32 final_gain1 = 1.0f;
 
         for (u32 frame = 0; frame < buffer.size; frame += 2) {
@@ -1354,10 +1475,14 @@ struct VoiceProcessor {
                 vol_lfo2 = (frame_p1_is_valid) ? lfo_base + (lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
             }
 
+            auto const expression_gain =
+                voice.expression_gain_smoother.LowPass(expression_gain_target,
+                                                       context.one_pole_smoothing_cutoff_10ms);
+
             // Calculate fade gain
-            f32 fade1 = voice.volume_fade.GetFade() * voice.aftertouch_multiplier;
+            f32 fade1 = voice.volume_fade.GetFade() * expression_gain;
             f32 fade2 = 1.0f;
-            if (frame_p1_is_valid) fade2 = voice.volume_fade.GetFade() * voice.aftertouch_multiplier;
+            if (frame_p1_is_valid) fade2 = voice.volume_fade.GetFade() * expression_gain;
 
             // Calculate pan positions
             auto pan_pos1 = voice.controller->pan_pos;
@@ -1431,6 +1556,7 @@ struct VoiceProcessor {
         ZoneScoped;
         auto const filter_type = voice.controller->filter_type;
         auto const has_filter_lfo = HasFilterLfo(voice);
+        auto const expression_cutoff_offset = ExpressionOffset(voice, param_values::MpeDestination::Filter);
 
         for (auto const [frame_index, val] : Enumerate(buffer)) {
             auto env = voice.fil_env.Process(voice.controller->fil_env);
@@ -1444,6 +1570,8 @@ struct VoiceProcessor {
                 auto res = voice.controller->sv_filter_resonance;
 
                 if (has_filter_lfo) cut += (lfo_amounts[frame_index] * voice.controller->lfo.amount) / 2;
+
+                cut += expression_cutoff_offset;
 
                 f32 res_change {};
                 res = voice.filter_resonance_smoother.LowPass(res,
@@ -1500,16 +1628,19 @@ void Reset(VoicePool& pool) {
     auto& vol_env_markers = pool.voice_vol_env_markers_for_gui.Write();
     auto& fil_env_markers = pool.voice_fil_env_markers_for_gui.Write();
     auto& grain_markers = pool.grain_markers_for_gui.Write();
+    auto& blip_markers = pool.voice_blip_markers_for_gui.Write();
     for (auto const i : Range(k_num_voices)) {
         waveform_markers[i] = {};
         vol_env_markers[i] = {};
         fil_env_markers[i] = {};
         grain_markers[i] = {};
+        blip_markers[i] = {};
     }
     pool.voice_waveform_markers_for_gui.Publish();
     pool.voice_vol_env_markers_for_gui.Publish();
     pool.voice_fil_env_markers_for_gui.Publish();
     pool.grain_markers_for_gui.Publish();
+    pool.voice_blip_markers_for_gui.Publish();
 }
 
 void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context) {
@@ -1520,6 +1651,16 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
     }
 
     if (pool.num_active_voices.Load(LoadMemoryOrder::Relaxed) == 0) return;
+
+    {
+        // Chase press/slide targets with a one-pole slew ticked once per voice-block; dividing the time
+        // constant by the block length makes the result block-size independent.
+        auto const smoothing_ms = context.mpe.press_slide_smoothing_ms;
+        pool.press_slide_slew_cutoff =
+            smoothing_ms == 0
+                ? 1.0f
+                : OnePoleLowPassFilter<f32>::MsToCutoff(smoothing_ms / (f32)num_frames, context.sample_rate);
+    }
 
     if (auto const thread_pool =
             (clap_host_thread_pool const*)context.host.get_extension(&context.host, CLAP_EXT_THREAD_POOL);
@@ -1555,6 +1696,7 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
             pool.voice_vol_env_markers_for_gui.Write()[v.index] = {};
             pool.voice_fil_env_markers_for_gui.Write()[v.index] = {};
             pool.grain_markers_for_gui.Write()[v.index] = {};
+            pool.voice_blip_markers_for_gui.Write()[v.index] = {};
         }
     }
 
@@ -1562,6 +1704,7 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
     pool.voice_vol_env_markers_for_gui.Publish();
     pool.voice_fil_env_markers_for_gui.Publish();
     pool.grain_markers_for_gui.Publish();
+    pool.voice_blip_markers_for_gui.Publish();
 }
 
 TEST_CASE(TestEqualPanGains) {

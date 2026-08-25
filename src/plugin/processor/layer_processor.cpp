@@ -327,10 +327,12 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
     }
 
     p.disable_vol_env = args.trigger_event == sample_lib::TriggerEvent::NoteOff;
+    p.track_expression = args.trigger_event != sample_lib::TriggerEvent::NoteOff;
     p.initial_pitch = layer.voice_controller.tune_semitones;
     p.midi_key_trigger = args.note;
     p.note_num = note_for_samples;
     p.note_vel = args.velocity;
+    p.note_volume_amp = amp;
     p.lfo_start_state = {};
     p.num_frames_before_starting = args.offset;
     if (layer.lfo_restart_mode == param_values::LfoRestartMode::Free) {
@@ -416,6 +418,11 @@ static void LayerHandleNoteOff(LayerProcessor& layer,
             EndVoice(v);
         layer.monophonic_latch = {};
     }
+
+    // Even if the voice keeps sounding (sustain pedal, no volume envelope), key lift ends its per-note
+    // expression tracking.
+    for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
+        if (v.midi_key_trigger == note) v.track_expression = false;
 
     if (ShouldEndNote(layer, context, note)) NoteOff(voice_pool, layer.voice_controller, note);
 
@@ -580,26 +587,29 @@ void ProcessLayerChanges(LayerProcessor& layer,
             set_tune = true;
         }
         if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::PitchBendRange)) {
-            layer.pitch_bend_range_semitone = *p;
+            vmst.pitch_bend_range_semitones = *p;
             set_tune = true;
         }
 
         if (changes.pitchwheel_changed.AnyValuesSet()) {
-            for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-                if (changes.pitchwheel_changed.Get(v.midi_key_trigger.channel)) {
+            for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller)) {
+                auto const channel = v.midi_key_trigger.channel;
+                auto relevant = changes.pitchwheel_changed.Get(channel);
+                if (!relevant)
+                    if (auto const master = context.mpe.MasterChannelForMember(channel))
+                        relevant = changes.pitchwheel_changed.Get(*master);
+                if (relevant) {
                     set_tune = true;
                     break;
                 }
+            }
         }
 
         if (set_tune) {
             auto const tune = layer.tune_semitone + (layer.tune_cents / 100.0f);
             layer.voice_controller.tune_semitones = tune;
             for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
-                SetVoicePitch(v,
-                              vmst.tune_semitones + (context.pitchwheel_position[v.midi_key_trigger.channel] *
-                                                     layer.pitch_bend_range_semitone),
-                              sample_rate);
+                UpdateVoicePitch(v, context);
         }
     }
 
@@ -668,6 +678,36 @@ void ProcessLayerChanges(LayerProcessor& layer,
         layer.midi_transpose = *p;
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::Keytrack))
         vmst.no_key_tracking = !*p;
+
+    {
+        bool mpe_routing_changed = false;
+        if (auto p = changes.changed_params.IntValue<param_values::MpeDestination>(
+                layer.index,
+                LayerParamIndex::MpePressDestination)) {
+            vmst.mpe.press_dest = *p;
+            mpe_routing_changed = true;
+        }
+        if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::MpePressAmount)) {
+            vmst.mpe.press_amount = *p;
+            mpe_routing_changed = true;
+        }
+        if (auto p = changes.changed_params.IntValue<param_values::MpeDestination>(
+                layer.index,
+                LayerParamIndex::MpeSlideDestination)) {
+            vmst.mpe.slide_dest = *p;
+            mpe_routing_changed = true;
+        }
+        if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::MpeSlideAmount)) {
+            vmst.mpe.slide_amount = *p;
+            mpe_routing_changed = true;
+        }
+
+        // The Timbre destination is applied via each voice's crossfade rather than in the render loop, so
+        // refresh it when the routing changes.
+        if (mpe_routing_changed)
+            for (auto& v : voice_pool.EnumerateActiveLayerVoices(vmst))
+                UpdateXfade(v, ExpressionAdjustedTimbre01(layer.shared_params.timbre_value_01, v), false);
+    }
 
     // LFO
     // =======================================================================================================

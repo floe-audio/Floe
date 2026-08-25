@@ -48,6 +48,13 @@ Optional<RpnDetector::Rpn> RpnDetector::DetectRpnFromCcMessage(MidiMessage msg) 
                     .param_val = param_val_msb,
                     .param_val_is_7_bit = true,
                 };
+            } else if (cc_num == k_midi_cc_rpn_lsb) {
+                // A new RPN is starting.
+                param_num_lsb = cc_value;
+                state = State::ExpectingParamNumMsb;
+            } else if (cc_num == k_midi_cc_rpn_msb) {
+                param_num_msb = cc_value;
+                state = State::ExpectingParamNumLsb;
             }
             break;
         }
@@ -59,8 +66,16 @@ Optional<RpnDetector::Rpn> RpnDetector::DetectRpnFromCcMessage(MidiMessage msg) 
                     .param_val = ((u14)param_val_msb << 7) | (u14)param_val_lsb,
                     .param_val_is_7_bit = false,
                 };
+            } else if (cc_num == k_midi_cc_rpn_lsb) {
+                // A new RPN is starting.
+                param_num_lsb = cc_value;
+                state = State::ExpectingParamNumMsb;
+            } else if (cc_num == k_midi_cc_rpn_msb) {
+                param_num_msb = cc_value;
+                state = State::ExpectingParamNumLsb;
+            } else {
+                state = State::ExpectingFirstParamNum;
             }
-            state = State::ExpectingFirstParamNum;
             break;
         }
     }

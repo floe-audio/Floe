@@ -6,6 +6,7 @@
 
 #include "clap/host.h"
 #include "plugin/processing_utils/midi.hpp"
+#include "plugin/processing_utils/mpe.hpp"
 #include "plugin/processor/param.hpp"
 
 struct MidiNoteState {
@@ -55,6 +56,7 @@ struct AudioProcessingContext {
     // any layer's anchor inputs change. Stored here so per-layer code can read it without plumbing.
     int shared_arp_auto_rate_shift = 0;
     Array<f32, 16> pitchwheel_position = {}; // -1.0 to 1.0
+    MpeState mpe {};
     MidiNoteState midi_note_state;
     f32 one_pole_smoothing_cutoff_0_2ms = 1;
     f32 one_pole_smoothing_cutoff_1ms = 1;

@@ -431,14 +431,18 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
         }
 
         if (active) {
-            DoVerticalSliderParameter(g,
-                                      meter_and_level_box,
-                                      params.DescribedValue(layer_index, LayerParamIndex::Volume),
-                                      {
-                                          .width = 12,
-                                          .height = layout::k_fill_parent,
-                                          .style_system = GuiStyleSystem::MidPanel,
-                                      });
+            auto const volume_param = params.DescribedValue(layer_index, LayerParamIndex::Volume);
+            DoVerticalSliderParameter(
+                g,
+                meter_and_level_box,
+                volume_param,
+                {
+                    .width = 12,
+                    .height = layout::k_fill_parent,
+                    .style_system = GuiStyleSystem::MidPanel,
+                    .voice_blips_01 =
+                        VoiceBlips01(g, layer_index, param_values::MpeDestination::Volume, volume_param),
+                });
         } else {
             DoBox(builder,
                   {

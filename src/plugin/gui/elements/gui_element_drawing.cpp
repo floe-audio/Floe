@@ -243,6 +243,23 @@ void DrawKnob(imgui::Context& imgui, imgui::Id id, Rect r, f32 percent, DrawKnob
 
         imgui.draw_list->AddLine(inner_point, outer_point, line_col, line_weight);
     }
+
+    // voice blips: thin radial ticks across the outer arc, same colour as waveform voice markers
+    if (!options.is_fake) {
+        auto const blip_col = LiveCol(UiColMap::WaveformLoopVoiceMarkers);
+        auto const blip_arc_radius = outer_arc_radius_mid - (outer_arc_thickness / 2);
+        auto const blip_half_length = outer_arc_thickness / 2;
+        for (auto const blip : options.voice_blips_01) {
+            auto const blip_angle = start_radians + (Clamp01(blip) * delta);
+            f32x2 const direction {Cos(blip_angle), Sin(blip_angle)};
+            auto const inner_radius = blip_arc_radius - blip_half_length;
+            auto const outer_radius = blip_arc_radius + blip_half_length;
+            imgui.draw_list->AddLine(c + (direction * f32x2 {inner_radius, inner_radius}),
+                                     c + (direction * f32x2 {outer_radius, outer_radius}),
+                                     blip_col,
+                                     WwToPixels(1.0f));
+        }
+    }
 }
 
 void DrawVerticalSlider(imgui::Context& imgui,
@@ -301,6 +318,23 @@ void DrawVerticalSlider(imgui::Context& imgui,
                                                rounding,
                                                0b0011);
             }
+        }
+    }
+
+    // Voice blips: thin horizontal lines across the channel, same colour as waveform voice markers. Drawn
+    // before the handle so they pass underneath it. Pixel-snapped filled rects rather than AddLine so that
+    // anti-aliasing doesn't feather them past the channel edges.
+    if (!options.is_fake) {
+        auto const blip_col = LiveCol(UiColMap::WaveformLoopVoiceMarkers);
+        auto const blip_thickness = Max(1.0f, Round(WwToPixels(1.0f)));
+        auto const blip_left = Round(channel_r.x);
+        auto const blip_right = Round(channel_r.Right());
+        for (auto const blip : options.voice_blips_01) {
+            auto const blip_y = Round(r.y + ((1 - Clamp01(blip)) * usable_height) + (handle_height / 2) -
+                                      (blip_thickness / 2));
+            imgui.draw_list->AddRectFilled(f32x2 {blip_left, blip_y},
+                                           f32x2 {blip_right, blip_y + blip_thickness},
+                                           blip_col);
         }
     }
 

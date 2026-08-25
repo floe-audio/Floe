@@ -16,6 +16,7 @@
 #include "gui/panels/gui_legacy_params_panel.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
+#include "processing_utils/filters.hpp"
 #include "processor/param.hpp"
 #include "processor/processor.hpp"
 
@@ -601,6 +602,75 @@ Box DoMenuParameter(GuiState& g,
     return container;
 }
 
+Span<f32 const> VoiceBlips01(GuiState& g,
+                             Optional<u8> layer_index,
+                             param_values::MpeDestination destination,
+                             DescribedParamValue const& dest_knob_param) {
+    auto& params = g.engine.processor.main_params;
+    auto const& markers = g.voice_blip_markers;
+
+    DynamicArray<f32> blips {g.builder.arena};
+    for (auto const& marker : markers) {
+        if (!marker.on) continue;
+        if (layer_index && marker.layer_index != *layer_index) continue;
+
+        auto const knob_linear = ({
+            Optional<f32> linear {};
+            switch (destination) {
+                case param_values::MpeDestination::Volume: {
+                    // volume_gain already includes any MPE volume expression, so every sounding voice
+                    // gets exactly one blip.
+                    auto const gain = (f32)marker.volume_gain / 255.0f;
+                    linear =
+                        dest_knob_param.info.LineariseValue(dest_knob_param.ProjectedValue() * gain, true)
+                            .ValueOr(0);
+                    break;
+                }
+                case param_values::MpeDestination::Filter:
+                case param_values::MpeDestination::Timbre: {
+                    if (!marker.expression_active) break;
+                    auto const press_dest =
+                        params.DescribedValue(marker.layer_index, LayerParamIndex::MpePressDestination)
+                            .IntValue<param_values::MpeDestination>();
+                    auto const slide_dest =
+                        params.DescribedValue(marker.layer_index, LayerParamIndex::MpeSlideDestination)
+                            .IntValue<param_values::MpeDestination>();
+
+                    // If both press and slide route to the same destination the marker values are identical
+                    // (they each contain the combined result), so one blip per voice is enough.
+                    Optional<f32> value_01 {};
+                    if (press_dest == destination)
+                        value_01 = (f32)marker.press_dest_value / 255.0f;
+                    else if (slide_dest == destination)
+                        value_01 = (f32)marker.slide_dest_value / 255.0f;
+
+                    if (value_01) {
+                        if (destination == param_values::MpeDestination::Filter)
+                            linear =
+                                dest_knob_param.info.LineariseValue(sv_filter::LinearToHz(*value_01), true)
+                                    .ValueOr(0);
+                        else
+                            linear = *value_01;
+                    }
+                    break;
+                }
+                case param_values::MpeDestination::Off:
+                case param_values::MpeDestination::Count: break;
+            }
+            linear;
+        });
+        if (!knob_linear) continue;
+
+        dyn::Append(blips,
+                    Clamp01(MapTo01(*knob_linear,
+                                    dest_knob_param.info.linear_range.min,
+                                    dest_knob_param.info.linear_range.max)));
+    }
+
+    if (blips.size) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+    return blips.ToOwnedSpan();
+}
+
 Box DoKnobParameter(GuiState& g,
                     Box parent,
                     DescribedParamValue const& param,
@@ -747,6 +817,7 @@ Box DoKnobParameter(GuiState& g,
                                               ? param.info.LineariseValue(1, true)
                                               : k_nullopt,
                      .outer_arc_percent = modulated_percent,
+                     .voice_blips_01 = options.voice_blips_01,
                      .style_system = options.style_system,
                      .greyed_out = options.greyed_out,
                      .is_fake = options.is_fake,
@@ -880,6 +951,7 @@ Box DoVerticalSliderParameter(GuiState& g,
                                .highlight_col = ToU32(options.highlight_col),
                                .line_col = ToU32(options.line_col),
                                .modulation_percent = modulated_percent,
+                               .voice_blips_01 = options.voice_blips_01,
                                .style_system = options.style_system,
                                .greyed_out = options.greyed_out,
                                .is_fake = options.is_fake,
@@ -1255,13 +1327,15 @@ Box DoPercentDraggerParameter(GuiState& g,
 
         if (!legacy_override) {
             auto val = (f32)percent;
+            auto const min_percent = param.info.linear_range.min * 100;
+            auto const max_percent = param.info.linear_range.max * 100;
 
             auto const dragger_result = g.builder.imgui.DraggerBehaviour({
                 .rect_in_window_coords = window_r,
                 .id = dragger_box.imgui_id,
                 .text = display_string,
-                .min = 0,
-                .max = 100,
+                .min = min_percent,
+                .max = max_percent,
                 .value = val,
                 .default_value = Round(param.info.default_linear_value * 100),
                 .text_input_button_cfg {
@@ -1284,7 +1358,7 @@ Box DoPercentDraggerParameter(GuiState& g,
 
             if (dragger_result.new_string_value) {
                 if (auto const o = ParseInt(*dragger_result.new_string_value, ParseIntBase::Decimal))
-                    new_val = Clamp((f32)o.Value(), 0.0f, 100.0f) / 100.0f;
+                    new_val = Clamp((f32)o.Value(), min_percent, max_percent) / 100.0f;
             }
             if (dragger_result.value_changed) new_val = Round(val) / 100.0f;
             param_text_input_result = dragger_result.text_input_result;

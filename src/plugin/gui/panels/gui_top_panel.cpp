@@ -659,10 +659,11 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             }
             r;
         });
+        auto const timbre_param = g.engine.processor.main_params.DescribedValue(ParamIndex::MasterTimbre);
         auto const box = DoKnobParameter(
             g,
             knob_container,
-            g.engine.processor.main_params.DescribedValue(ParamIndex::MasterTimbre),
+            timbre_param,
             {
                 .width = k_small_knob_width,
                 .greyed_out = !has_insts_with_timbre_layers,
@@ -671,6 +672,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     has_insts_with_timbre_layers
                         ? ""_s
                         : "Timbre: no currently loaded instruments have timbre information; this knob is inactive"_s,
+                .voice_blips_01 =
+                    VoiceBlips01(g, k_nullopt, param_values::MpeDestination::Timbre, timbre_param),
             });
 
         g.timbre_slider_is_held = box.is_active;
