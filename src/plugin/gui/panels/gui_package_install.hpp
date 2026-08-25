@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <IconsFontAwesome6.h>
+
+#include "os/filesystem.hpp"
+
 #include "common_infrastructure/persistent_store.hpp"
 
 #include "engine/package_installation.hpp"
@@ -16,6 +20,14 @@ struct PackageInstallPanelState {
     enum class LicenseInputMode : u8 { AllKeysAtOnce, PerProduct };
     // Resolved the first frame the license modal is shown, based on how many packages need a key.
     Optional<LicenseInputMode> license_input_mode {};
+
+    struct SuccessfulInstall {
+        DynamicArray<char> package_path {Malloc::Instance()};
+        DynamicArrayBounded<char, k_notification_buffer_size - 160> components_text {};
+        u8 num_truncated {};
+        DynamicArrayBounded<char, 128> license_email {};
+    };
+    DynamicArrayBounded<SuccessfulInstall, 16> successful_installs {};
 };
 
 PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component const& comp,
@@ -412,6 +424,120 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
     }
 }
 
+PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
+                                       PackageInstallPanelState& panel_state,
+                                       Notifications& notifications,
+                                       ThreadsafeErrorNotifications& error_notifs) {
+    auto& record = panel_state.successful_installs[0];
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = {500, layout::k_hug_contents},
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = k_default_spacing,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            });
+
+    auto const title_row = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                         .contents_gap = k_medium_gap,
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Start,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                 });
+    DoBox(builder,
+          {
+              .parent = title_row,
+              .text = ICON_FA_CHECK,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .text_colours = Col {.c = Col::Green},
+          });
+    DoBox(builder,
+          {
+              .parent = title_row,
+              .text = "Installation Complete",
+              .size_from_text = true,
+          });
+
+    auto const message = ({
+        String m = record.components_text;
+        if (record.num_truncated)
+            m = fmt::Format(builder.arena, "{}\n... and {} more", m, record.num_truncated);
+        if (record.license_email.size)
+            m = fmt::Format(builder.arena, "{}Licensed to: {}", m, record.license_email);
+        m;
+    });
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = message,
+              .wrap_width = -1,
+              .size_from_text = true,
+              .font = FontType::Body,
+          });
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = fmt::Format(
+                  builder.arena,
+                  "The package file \"{}\" is no longer needed. Would you like to send it to the " TRASH_NAME
+                  "?",
+                  path::Filename(record.package_path)),
+              .wrap_width = -1,
+              .size_from_text = true,
+              .font = FontType::Body,
+          });
+
+    auto const button_row = DoBox(builder,
+                                  {
+                                      .parent = root,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_gap = k_medium_gap,
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                  });
+
+    auto const keep_clicked = TextButton(builder, button_row, {.text = "Keep File"});
+    auto const trash_clicked = TextButton(builder, button_row, {.text = "Send to " TRASH_NAME});
+
+    if (trash_clicked) {
+        ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
+        auto const outcome = TrashFileOrDirectory(record.package_path, scratch_arena);
+        auto const id = HashMultiple(Array {"package-file-trash"_s, String(record.package_path)});
+
+        if (outcome.HasValue()) {
+            error_notifs.RemoveError(id);
+            notifications.AddOrUpdate(
+                id,
+                [f = DynamicArrayBounded<char, 200>(path::Filename(record.package_path))](ArenaAllocator&) {
+                    return NotificationDisplayInfo {
+                        .title = "Package File Sent to " TRASH_NAME,
+                        .message = f,
+                        .dismissable = true,
+                        .icon = NotificationDisplayInfo::IconType::Success,
+                    };
+                });
+        } else if (auto item = error_notifs.BeginWriteError(id)) {
+            DEFER { error_notifs.EndWriteError(*item); };
+            item->title = "Failed to send package file to " TRASH_NAME ""_s;
+            item->error_code = outcome.Error();
+        }
+    }
+
+    if (keep_clicked || trash_clicked) dyn::Remove(panel_state.successful_installs, 0);
+}
+
 PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                           package::InstallJobs& package_install_jobs,
                                           Notifications& notifications,
@@ -491,28 +617,41 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                             ++num_truncated;
                     }
 
-                    DynamicArrayBounded<char, 128> license_email {};
-                    dyn::AssignFitInCapacity(license_email, job.job->license_email);
+                    if (panel_state.successful_installs.size != panel_state.successful_installs.Capacity()) {
+                        PackageInstallPanelState::SuccessfulInstall record {};
+                        dyn::Assign(record.package_path, job.job->path);
+                        record.components_text = buffer;
+                        record.num_truncated = num_truncated;
+                        dyn::AssignFitInCapacity(record.license_email, job.job->license_email);
+                        dyn::Append(panel_state.successful_installs, Move(record));
+                    } else {
+                        DynamicArrayBounded<char, 128> license_email {};
+                        dyn::AssignFitInCapacity(license_email, job.job->license_email);
 
-                    notifications.AddOrUpdate(
-                        job_id,
-                        [buffer, num_truncated, license_email](
-                            ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
-                            NotificationDisplayInfo c {};
-                            c.icon = NotificationDisplayInfo::IconType::Success;
-                            c.dismissable = true;
-                            c.title = "Installation Complete";
-                            if (num_truncated == 0) {
-                                c.message = buffer;
-                            } else {
-                                c.message =
-                                    fmt::Format(scratch_arena, "{}\n... and {} more", buffer, num_truncated);
-                            }
-                            if (license_email.size)
-                                c.message =
-                                    fmt::Format(scratch_arena, "{}Licensed to: {}", c.message, license_email);
-                            return c;
-                        });
+                        notifications.AddOrUpdate(
+                            job_id,
+                            [buffer, num_truncated, license_email](
+                                ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
+                                NotificationDisplayInfo c {};
+                                c.icon = NotificationDisplayInfo::IconType::Success;
+                                c.dismissable = true;
+                                c.title = "Installation Complete";
+                                if (num_truncated == 0) {
+                                    c.message = buffer;
+                                } else {
+                                    c.message = fmt::Format(scratch_arena,
+                                                            "{}\n... and {} more",
+                                                            buffer,
+                                                            num_truncated);
+                                }
+                                if (license_email.size)
+                                    c.message = fmt::Format(scratch_arena,
+                                                            "{}Licensed to: {}",
+                                                            c.message,
+                                                            license_email);
+                                return c;
+                            });
+                    }
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 
                     next = package::RemoveJob(package_install_jobs, it);
@@ -593,5 +732,27 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
     } else {
         notifications.Remove(k_installing_packages_notif_id);
         panel_state.license_input_mode = k_nullopt;
+    }
+
+    if (panel_state.successful_installs.size) {
+        DoBoxViewport(builder,
+                      {
+                          .run =
+                              [&panel_state, &notifications, &error_notifs](GuiBuilder& b) {
+                                  PackageInstallSuccessPanel(b, panel_state, notifications, error_notifs);
+                              },
+                          .bounds = Rect {},
+                          .imgui_id = builder.imgui.MakeId("install success"),
+                          .viewport_config = ({
+                              auto cfg = k_default_modal_viewport;
+                              cfg.mode = imgui::ViewportMode::Floating;
+                              cfg.positioning = imgui::ViewportPositioning::WindowCentred;
+                              cfg.auto_size = true;
+                              cfg.exclusive_focus = true;
+                              cfg.z_order = 200;
+                              cfg;
+                          }),
+                          .debug_name = "pkg-install-success-dialog",
+                      });
     }
 }
