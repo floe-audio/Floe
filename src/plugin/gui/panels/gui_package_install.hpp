@@ -18,8 +18,7 @@
 
 struct PackageInstallPanelState {
     enum class LicenseInputMode : u8 { AllKeysAtOnce, PerProduct };
-    // Resolved the first frame the license modal is shown, based on how many packages need a key.
-    Optional<LicenseInputMode> license_input_mode {};
+    LicenseInputMode license_input_mode = LicenseInputMode::AllKeysAtOnce;
 
     struct SuccessfulInstall {
         DynamicArray<char> package_path {Malloc::Instance()};
@@ -184,7 +183,7 @@ static void PackageLicensePerProductInputs(GuiBuilder& builder,
                                           container,
                                           {
                                               .text = job.job->pasted_license_text,
-                                              .size = {layout::k_fill_parent, WwToPixels(140.0f)},
+                                              .size = {layout::k_fill_parent, 140.0f},
                                               .border = true,
                                               .background = true,
                                               .multiline = true,
@@ -249,7 +248,7 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = {500, layout::k_hug_contents},
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -263,14 +262,6 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
               .text = "License Key Required",
               .size_from_text = true,
           });
-
-    u32 num_awaiting = 0;
-    for (auto& job : package_install_jobs)
-        if (job.job->state.Load(LoadMemoryOrder::Acquire) == package::InstallJob::State::AwaitingLicenseKey)
-            ++num_awaiting;
-
-    if (!panel_state.license_input_mode)
-        panel_state.license_input_mode = num_awaiting > 1 ? Mode::AllKeysAtOnce : Mode::PerProduct;
 
     auto const radio_group = DoBox(builder,
                                    {
@@ -286,17 +277,17 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
     if (LicenseMethodRadio(builder,
                            radio_group,
                            "Load a license file",
-                           *panel_state.license_input_mode == Mode::AllKeysAtOnce,
+                           panel_state.license_input_mode == Mode::AllKeysAtOnce,
                            0))
         panel_state.license_input_mode = Mode::AllKeysAtOnce;
     if (LicenseMethodRadio(builder,
                            radio_group,
                            "Enter each key manually",
-                           *panel_state.license_input_mode == Mode::PerProduct,
+                           panel_state.license_input_mode == Mode::PerProduct,
                            1))
         panel_state.license_input_mode = Mode::PerProduct;
 
-    switch (*panel_state.license_input_mode) {
+    switch (panel_state.license_input_mode) {
         case Mode::AllKeysAtOnce: {
             DoBox(builder,
                   {
@@ -554,6 +545,8 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                           FilePickerState& file_picker_state,
                                           persistent_store::Store& persistent_store) {
     constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
+    bool user_input_needed = false;
+    bool license_key_needed = false;
     if (!package_install_jobs.Empty()) {
         if (notifications.AddOrUpdate(
                 k_installing_packages_notif_id,
@@ -571,9 +564,6 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                 })) {
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
-
-        bool user_input_needed = false;
-        bool license_key_needed = false;
 
         for (auto it = package_install_jobs.begin(); it != package_install_jobs.end();) {
             auto& job = *it;
@@ -685,7 +675,8 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
             }
         }
 
-        if (!license_key_needed) panel_state.license_input_mode = k_nullopt;
+        if (!license_key_needed)
+            panel_state.license_input_mode = PackageInstallPanelState::LicenseInputMode::AllKeysAtOnce;
 
         if (license_key_needed) {
             DoBoxViewport(builder,
@@ -703,13 +694,11 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                                                file_picker_state,
                                                                persistent_store);
                                   },
-                              .bounds = Rect {},
+                              .bounds = CentredModalRect(f32x2 {500, 400}),
                               .imgui_id = builder.imgui.MakeId("license input"),
                               .viewport_config = ({
                                   auto cfg = k_default_modal_viewport;
                                   cfg.mode = imgui::ViewportMode::Floating;
-                                  cfg.positioning = imgui::ViewportPositioning::WindowCentred;
-                                  cfg.auto_size = true;
                                   cfg.exclusive_focus = true;
                                   cfg.z_order = 200;
                                   cfg;
@@ -738,10 +727,13 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
         }
     } else {
         notifications.Remove(k_installing_packages_notif_id);
-        panel_state.license_input_mode = k_nullopt;
+        panel_state.license_input_mode = PackageInstallPanelState::LicenseInputMode::AllKeysAtOnce;
     }
 
-    if (panel_state.successful_installs.size) {
+    // Never show this at the same time as the license or file-conflict dialogs: they're all
+    // exclusive-focus viewports at the same z-order, so two at once fight over focus and can
+    // deadlock the whole GUI.
+    if (panel_state.successful_installs.size && !license_key_needed && !user_input_needed) {
         DoBoxViewport(builder,
                       {
                           .run =
