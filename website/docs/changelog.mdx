@@ -33,6 +33,7 @@ For instance: 0.0.1. Don't change the headings.
 - Fix note-off triggered samples playing forever when a loop mode is set: they now always play as one-shots
 - Fix note-off triggered samples not playing under the arpeggiator: each arp step now triggers release samples like a manually played note
 - Fix stuck notes and hanging voices in several cases: using the sustain pedal while notes play on other MIDI channels, releasing the sustain pedal after toggling MPE, and very large bursts of MIDI events
+- Fix instance config reverting to its previously-saved values when a DAW saved and reloaded a project
 
 ## 2.0.2
 - Fix possible crash when opening the General tab of the preferences panel
