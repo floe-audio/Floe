@@ -68,7 +68,10 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
     }
 }
 
-void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInputResult const& result) {
+void DrawParameterTextInput(imgui::Context const& imgui,
+                            Rect r,
+                            imgui::TextInputResult const& result,
+                            DrawParameterTextInputOptions const& options) {
     auto const font = imgui.draw_list->fonts.Current();
 
     auto const text_pos = result.text_pos;
@@ -76,19 +79,28 @@ void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInpu
     Rect const background_r {.xywh {r.CentreX() - (w / 2), text_pos.y, w, font->font_size}};
     auto const rounding = WwToPixels(k_corner_rounding);
 
-    imgui.draw_list->AddRectFilled(background_r, LiveCol(UiColMap::KnobTextInputBack), rounding);
-    imgui.draw_list->AddRect(background_r, LiveCol(UiColMap::KnobTextInputBorder), rounding);
+    auto const back_col = options.dark_mode ? LiveCol(UiColMap::KnobTextInputBack)
+                                            : ToU32(Col {.c = Col::Background2});
+    auto const border_col = options.dark_mode ? LiveCol(UiColMap::KnobTextInputBorder)
+                                              : ToU32(Col {.c = Col::Overlay1});
+    auto const selection_col = options.dark_mode ? LiveCol(UiColMap::TextInputSelection)
+                                                 : ToU32(Col {.c = Col::Highlight, .alpha = 128});
+    auto const cursor_col =
+        options.dark_mode ? LiveCol(UiColMap::TextInputCursor) : ToU32(Col {.c = Col::Text});
+    auto const text_col = options.dark_mode ? LiveCol(UiColMap::MidText) : ToU32(Col {.c = Col::Text});
+
+    imgui.draw_list->AddRectFilled(background_r, back_col, rounding);
+    if (options.draw_border) imgui.draw_list->AddRect(background_r, border_col, rounding);
 
     if (result.HasSelection()) {
         imgui::TextInputResult::SelectionIterator it {.imgui = imgui};
         while (auto rect = result.NextSelectionRect(it))
-            imgui.draw_list->AddRectFilled(*rect, LiveCol(UiColMap::TextInputSelection));
+            imgui.draw_list->AddRectFilled(*rect, selection_col);
     }
 
-    if (result.cursor_rect)
-        imgui.draw_list->AddRectFilled(*result.cursor_rect, LiveCol(UiColMap::TextInputCursor));
+    if (result.cursor_rect) imgui.draw_list->AddRectFilled(*result.cursor_rect, cursor_col);
 
-    imgui.draw_list->AddText(text_pos, LiveCol(UiColMap::MidText), result.text, {});
+    imgui.draw_list->AddText(text_pos, text_col, result.text, {});
 }
 
 void DrawTextInput(imgui::Context& imgui,

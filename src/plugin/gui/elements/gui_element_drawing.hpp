@@ -26,7 +26,15 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
                          Optional<Line> upper_line,
                          VoiceMarkerLineOptions const& options);
 
-void DrawParameterTextInput(imgui::Context const& imgui, Rect r, imgui::TextInputResult const& result);
+struct DrawParameterTextInputOptions {
+    bool dark_mode = true;
+    bool draw_border = true;
+};
+
+void DrawParameterTextInput(imgui::Context const& imgui,
+                            Rect r,
+                            imgui::TextInputResult const& result,
+                            DrawParameterTextInputOptions const& options = {});
 
 struct DrawTextInputConfig {
     Col text_col = {.c = Col::Text};

@@ -539,7 +539,10 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
     if (text_input_result) {
         if (auto const rel_r = BoxRect(builder, dragger_box)) {
             auto const r = builder.imgui.ViewportRectToWindowRect(*rel_r);
-            DrawParameterTextInput(builder.imgui, r, *text_input_result);
+            DrawParameterTextInput(builder.imgui,
+                                   r,
+                                   *text_input_result,
+                                   {.dark_mode = dm, .draw_border = false});
         }
     }
 
