@@ -960,13 +960,28 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     if (context.mpe.enabled) {
                         if (auto const rpn =
                                 context.mpe.rpn_detectors[channel].DetectRpnFromCcMessage(message)) {
-                            // Release sustain on any channel dropped from a zone: the pedal-up on the
-                            // zone's master would no longer cover it, leaving its notes stuck.
+                            // A Zone reconfiguration can add or remove channels from MPE control; stop
+                            // sounding notes and reset controls on every such channel so the sender can't
+                            // leave us with hanging notes or misinterpreted pitch/expression state.
                             auto const prev_zone_channels = context.mpe.AllZoneChannels();
                             context.mpe.HandleRpn(channel, *rpn);
-                            (prev_zone_channels & ~context.mpe.AllZoneChannels())
-                                .ForEachSetBit(
-                                    [&](usize dropped_channel) { release_sustain((u4)dropped_channel); });
+                            (prev_zone_channels ^ context.mpe.AllZoneChannels())
+                                .ForEachSetBit([&](usize changed_channel) {
+                                    auto const notes_to_end =
+                                        context.midi_note_state.HandleAllNotesOff((u4)changed_channel);
+                                    notes_to_end.ForEachSetBit([&](usize note) {
+                                        dyn::Append(
+                                            changes.note_events,
+                                            NoteEvent {
+                                                .velocity = 0.0f,
+                                                .offset = event.time - block_start_frame,
+                                                .note = {CheckedCast<u7>(note), (u4)changed_channel},
+                                                .type = NoteEvent::Type::Off,
+                                            });
+                                    });
+                                    context.mpe.ResetChannelExpression((u4)changed_channel);
+                                    context.pitchwheel_position[changed_channel] = 0.0f;
+                                });
                         }
                     }
 
@@ -1186,6 +1201,9 @@ static void AudioThreadReset(AudioProcessor& processor) {
     ClearInbox(processor);
     processor.voice_pool.EndAllVoicesInstantly();
     processor.audio_processing_context.pitchwheel_position = {};
+    processor.audio_processing_context.midi_note_state = {};
+    for (auto const channel : Range(16u))
+        processor.audio_processing_context.mpe.ResetChannelExpression((u4)channel);
     ProcessBlockChanges changes {
         .changed_params = {processor.audio_params, Bitset<k_num_parameters>()},
     };
