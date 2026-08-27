@@ -512,7 +512,7 @@ void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSour
 
     if (source == StateSource::Daw)
         processor.performance_settings.Store(state.extras.performance_controls.settings,
-                                              StoreMemoryOrder::Release);
+                                             StoreMemoryOrder::Release);
 
     processor.inbox_flags.FetchOr(audio_thread_inbox::ReloadAllAudioState, RmwMemoryOrder::Release);
 
@@ -712,6 +712,34 @@ static void ForEachExpressionTrackedVoice(VoicePool& pool,
     }
 }
 
+// Note-off events must never be lost - a sounding voice would hang forever. If the event buffer is full
+// (extreme event spam), first try cancelling the note against any not-yet-processed on-events for the same
+// key; failing that, its voices are already sounding so release them directly, mirroring the conditions the
+// layers' note-off handling would check but skipping its extras (release samples, expression tracking).
+static void AppendNoteOffEvent(AudioProcessor& processor, ProcessBlockChanges& changes, NoteEvent event) {
+    ASSERT_HOT(event.type == NoteEvent::Type::Off);
+    if (dyn::Append(changes.note_events, event)) return;
+
+    bool found_pending_note_on = false;
+    for (usize event_index = changes.note_events.size; event_index-- > 0;) {
+        auto const& pending = changes.note_events[event_index];
+        if (pending.type == NoteEvent::Type::On && pending.note == event.note) {
+            dyn::Remove(changes.note_events, event_index);
+            found_pending_note_on = true;
+        }
+    }
+    if (found_pending_note_on) return;
+
+    auto const& note_state = processor.audio_processing_context.midi_note_state;
+    if (note_state.sustain_pedal_on.Get(event.note.channel)) return; // Released later by the pedal.
+    if (note_state.keys_held[event.note.channel].Get(event.note.note)) return; // Key is still down.
+    for (auto& layer : processor.layer_processors) {
+        if (layer.monophonic_latch) continue;
+        if (!layer.voice_controller.vol_env_on) continue; // Voices play out fully.
+        NoteOff(processor.voice_pool, layer.voice_controller, event.note);
+    }
+}
+
 static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
@@ -762,13 +790,14 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             if (processor.audio_processing_context.mpe.IsMemberChannel(chan_note.channel))
                 processor.audio_processing_context.pitchwheel_position[chan_note.channel] = 0.0f;
 
-            dyn::Append(changes.note_events,
-                        {
-                            .velocity = vel,
-                            .offset = event.time - block_start_frame,
-                            .note = chan_note,
-                            .type = NoteEvent::Type::Off,
-                        });
+            AppendNoteOffEvent(processor,
+                               changes,
+                               {
+                                   .velocity = vel,
+                                   .offset = event.time - block_start_frame,
+                                   .note = chan_note,
+                                   .type = NoteEvent::Type::Off,
+                               });
             break;
         }
 
@@ -885,13 +914,14 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                     processor.audio_processing_context.mpe.ResetChannelExpression(message.ChannelNum());
                     if (processor.audio_processing_context.mpe.IsMemberChannel(message.ChannelNum()))
                         processor.audio_processing_context.pitchwheel_position[message.ChannelNum()] = 0.0f;
-                    dyn::Append(changes.note_events,
-                                {
-                                    .velocity = message.Velocity() / 127.0f,
-                                    .offset = event.time - block_start_frame,
-                                    .note = message.ChannelNote(),
-                                    .type = NoteEvent::Type::Off,
-                                });
+                    AppendNoteOffEvent(processor,
+                                       changes,
+                                       {
+                                           .velocity = message.Velocity() / 127.0f,
+                                           .offset = event.time - block_start_frame,
+                                           .note = message.ChannelNote(),
+                                           .type = NoteEvent::Type::Off,
+                                       });
                     break;
                 }
                 case MidiMessageType::PitchWheel: {
@@ -911,14 +941,15 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                         auto const notes_to_end =
                             context.midi_note_state.HandleSustainPedalOff(sustain_channel);
                         notes_to_end.ForEachSetBit([&](usize note) {
-                            dyn::Append(changes.note_events,
-                                        NoteEvent {
-                                            .velocity = 0.0f,
-                                            .offset = event.time - block_start_frame,
-                                            .note = {CheckedCast<u7>(note), sustain_channel},
-                                            .created_by_cc64 = true,
-                                            .type = NoteEvent::Type::Off,
-                                        });
+                            AppendNoteOffEvent(processor,
+                                               changes,
+                                               {
+                                                   .velocity = 0.0f,
+                                                   .offset = event.time - block_start_frame,
+                                                   .note = {CheckedCast<u7>(note), sustain_channel},
+                                                   .created_by_cc64 = true,
+                                                   .type = NoteEvent::Type::Off,
+                                               });
                         });
                     };
 
@@ -970,9 +1001,10 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                     auto const notes_to_end =
                                         context.midi_note_state.HandleAllNotesOff((u4)changed_channel);
                                     notes_to_end.ForEachSetBit([&](usize note) {
-                                        dyn::Append(
-                                            changes.note_events,
-                                            NoteEvent {
+                                        AppendNoteOffEvent(
+                                            processor,
+                                            changes,
+                                            {
                                                 .velocity = 0.0f,
                                                 .offset = event.time - block_start_frame,
                                                 .note = {CheckedCast<u7>(note), (u4)changed_channel},
@@ -1227,6 +1259,48 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     ProcessBlockChanges changes {
         .changed_params = {processor.audio_params, Bitset<k_num_parameters>()},
     };
+
+    {
+        auto const performance_settings = processor.performance_settings.Load(LoadMemoryOrder::Acquire);
+        auto& mpe = processor.audio_processing_context.mpe;
+        if (mpe.enabled != performance_settings.mpe_enabled) {
+            // Live voices must not keep frozen per-note bend/press/slide across a mode change.
+            for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
+                if (!v.per_note_expression_active) continue;
+                v.per_note_expression_active = false;
+                v.mpe_bend_semitones = 0;
+                UpdateVoicePitch(v, processor.audio_processing_context);
+                UpdateXfade(v,
+                            ExpressionAdjustedTimbre01(processor.shared_layer_params.timbre_value_01, v),
+                            false);
+            }
+            for (auto const channel : Range(16u))
+                mpe.ResetChannelExpression((u4)channel);
+            processor.audio_processing_context.pitchwheel_position = {};
+
+            // Sustain state was distributed using the old mode's channel interpretation (a pedal-down on
+            // an MPE master channel sustains the whole zone), so pedal-up events arriving after the switch
+            // would never release all of it, hanging notes and swallowing future note-offs. Release
+            // everything now.
+            auto& note_state = processor.audio_processing_context.midi_note_state;
+            for (auto const channel : Range(16u)) {
+                auto const notes_to_end = note_state.HandleSustainPedalOff((u4)channel);
+                notes_to_end.ForEachSetBit([&](usize note) {
+                    AppendNoteOffEvent(processor,
+                                       changes,
+                                       {
+                                           .velocity = 0.0f,
+                                           .offset = 0,
+                                           .note = {CheckedCast<u7>(note), (u4)channel},
+                                           .created_by_cc64 = true,
+                                           .type = NoteEvent::Type::Off,
+                                       });
+                });
+            }
+        }
+        mpe.enabled = performance_settings.mpe_enabled;
+        mpe.press_slide_smoothing_ms = (f32)performance_settings.mpe_smoothing_ms;
+    }
 
     // Check for tempo changes.
     {
@@ -1599,28 +1673,6 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     ASSERT_HOT(processor.activated);
 
     if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
-
-    {
-        auto const performance_settings = processor.performance_settings.Load(LoadMemoryOrder::Acquire);
-        auto& mpe = processor.audio_processing_context.mpe;
-        if (mpe.enabled != performance_settings.mpe_enabled) {
-            // Live voices must not keep frozen per-note bend/press/slide across a mode change.
-            for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
-                if (!v.per_note_expression_active) continue;
-                v.per_note_expression_active = false;
-                v.mpe_bend_semitones = 0;
-                UpdateVoicePitch(v, processor.audio_processing_context);
-                UpdateXfade(v,
-                            ExpressionAdjustedTimbre01(processor.shared_layer_params.timbre_value_01, v),
-                            false);
-            }
-            for (auto const channel : Range(16u))
-                mpe.ResetChannelExpression((u4)channel);
-            processor.audio_processing_context.pitchwheel_position = {};
-        }
-        mpe.enabled = performance_settings.mpe_enabled;
-        mpe.press_slide_smoothing_ms = (f32)performance_settings.mpe_smoothing_ms;
-    }
 
     clap_process_status result = CLAP_PROCESS_CONTINUE;
 

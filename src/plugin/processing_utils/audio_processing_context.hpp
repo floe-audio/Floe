@@ -22,7 +22,7 @@ struct MidiNoteState {
     void HandleSustainPedalOn(u4 channel) {
         if (sustain_pedal_on.Get(channel)) return;
         sustain_pedal_on.Set(channel);
-        sustain_keys = keys_held;
+        sustain_keys[channel] = keys_held[channel];
     }
 
     Bitset<128> HandleSustainPedalOff(u4 channel) {
@@ -81,7 +81,7 @@ struct NoteEvent {
 };
 
 // IMPROVE: it would be nice to not have this limitation even though rare.
-constexpr usize k_max_note_events = 100;
+constexpr usize k_max_note_events = 256;
 
 struct ProcessBlockChanges {
     ChangedParams changed_params;

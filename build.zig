@@ -1687,6 +1687,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "plugin/plugin.cpp",
             "preset_server/preset_server.cpp",
             "processing_utils/arpeggiator.cpp",
+            "processing_utils/audio_processing_context.cpp",
             "processing_utils/lfo.cpp",
             "processing_utils/midi.cpp",
             "processing_utils/mpe.cpp",

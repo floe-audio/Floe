@@ -54,6 +54,7 @@
     X(RegisterLogRingBufferTests)                                                                            \
     X(RegisterMathsTests)                                                                                    \
     X(RegisterMemoryTests)                                                                                   \
+    X(RegisterMidiNoteStateTests)                                                                            \
     X(RegisterMiscTests)                                                                                     \
     X(RegisterMpeTests)                                                                                      \
     X(RegisterOptionalTests)                                                                                 \
