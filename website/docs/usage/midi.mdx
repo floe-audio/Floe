@@ -68,23 +68,25 @@ Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configur
 
 ## MPE
 
-Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers — such as a Seaboard, LinnStrument, Osmose, and other expressive hardware — control each note independently.
+Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers — Seaboard, LinnStrument, Osmose, and similar — control each note independently.
 
-Enable MPE from the Performance Controls panel — open it from the top panel (the sliders icon). The setting is saved with your DAW project and stays as-is when you load presets.
+Enable MPE from the **Performance Controls** panel (sliders icon, top panel). The setting is saved with your DAW project and unaffected by loading presets.
 
-When MPE is enabled, Floe responds to the standard MPE per-note messages:
+When enabled, Floe responds to the standard MPE per-note messages:
 
-- **Glide**: pitch bend on a note's channel bends just that note. The bend range follows the MPE convention of ±48 semitones and adapts automatically if your controller or DAW negotiates a different range. The pitch wheel on the master channel still bends everything, using each layer's pitch bend range parameter as usual.
+- **Glide**: pitch bend on a note's channel bends just that note, following the MPE ±48-semitone convention (or whatever range your controller negotiates). The master channel's pitch wheel still bends everything, using each layer's pitch bend range parameter.
 - **Press**: each note's channel pressure (aftertouch).
-- **Slide**: each note's CC74, typically an up/down finger movement. Slide is bipolar: its centre position is neutral, and moving above or below it applies the effect.
+- **Slide**: each note's CC74 — bipolar, with its centre position neutral.
 
-Choose what press and slide control for each layer on the [Config tab](./layers#config-tab). Each has a target — volume, filter cutoff, or timbre — and an amount; negative amounts invert the response. The timbre target offsets the master timbre control per note, which is particularly expressive on instruments that have timbre layers.
+Choose what press and slide control per layer on the [Config tab](./layers#config-tab): a target (volume, filter cutoff, or timbre) and an amount, which can be negative to invert the response. The timbre target offsets the master timbre control per note.
 
-The smoothing setting in the Performance Controls panel controls how gradually press and slide changes are applied: lower values are more responsive, higher values are smoother.
+The smoothing setting in the Performance Controls panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
+
+While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, or the master Timbre knob in the top panel — so you can see the expression reaching each voice.
 
 Floe also understands the MPE Configuration Message for zone setup, and a sustain pedal on a zone's master channel sustains the whole zone.
 
-Additionally, Floe supports CLAP note expressions — per-note pitch, pressure, and brightness — in hosts that provide them, such as Bitwig Studio. These work regardless of the MPE setting and use the same press and slide routing.
+CLAP note expressions (per-note pitch, pressure, and brightness) work the same way in supporting hosts, such as Bitwig Studio, regardless of the MPE setting.
 
 ## Velocity
 
@@ -95,6 +97,8 @@ Additionally, Floe supports CLAP note expressions — per-note pitch, pressure, 
 ### How the curve works
 
 The horizontal axis is velocity — far left is the softest possible velocity (MIDI value 1), far right is the hardest (MIDI value 127), and higher-resolution velocity from DAWs that support it works too. The vertical axis is the resulting note volume. When you play a note, a red indicator appears at its velocity position on the curve so you can see where you're playing.
+
+While notes are sounding, each active voice also gets a red line on the layer's volume slider, showing the level that voice is currently playing at after the curve (and, in MPE mode, any per-note volume expression) has been applied.
 
 A straight line from bottom-left to top-right gives a 1:1 response — the harder you play, the louder the note, in equal proportion. By moving, adding, or removing control points (and reshaping the curve between them), you can change this relationship: make soft playing louder than it would be naturally, cap the volume of hard hits, or create a non-linear response that emphasises a particular dynamic range. Setting different curves across the 3 layers also opens up creative sound design — for example, fading one layer in as you play harder while another fades out.
 
