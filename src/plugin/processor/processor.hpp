@@ -11,6 +11,7 @@
 
 #include "common_infrastructure/constants.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
+#include "common_infrastructure/performance_profile.hpp"
 #include "common_infrastructure/state/macros.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
@@ -196,9 +197,7 @@ struct ProcessorListener {
 };
 
 struct AudioProcessor {
-    AudioProcessor(clap_host const& host,
-                   ProcessorListener& listener,
-                   prefs::PreferencesTable const& preferences);
+    AudioProcessor(clap_host const& host, ProcessorListener& listener, prefs::PreferencesTable const& prefs);
     ~AudioProcessor();
 
     clap_host const& host;
@@ -294,7 +293,8 @@ struct AudioProcessor {
     Atomic<u64> desired_effects_order {EncodeEffectsArray(effects_ordered_by_type)};
     EffectsArray actual_fx_order {effects_ordered_by_type};
 
-    Atomic<InstanceConfig> instance_config {}; // Written by main thread, read by audio thread.
+    // Written by main thread, read by audio thread.
+    Atomic<PerformanceControls::Settings> performance_settings {};
 
     u64 master_random_seed {}; // Audio thread only. Deterministic PRNG advanced per voice start.
     bool prev_transport_playing {}; // Audio thread only. Tracks transport state transitions.
@@ -303,12 +303,6 @@ struct AudioProcessor {
 };
 
 extern PluginCallbacks<AudioProcessor> const g_processor_callbacks;
-
-enum class ProcessorSetting : u8 {
-    DefaultCcParamMappings,
-};
-
-prefs::Descriptor SettingDescriptor(ProcessorSetting);
 
 struct SetInstrumentOptions {
     bool wipe_arp_slice_config {};
@@ -324,6 +318,9 @@ void SetConvolutionIrAudioData(AudioProcessor& processor,
 void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSource source);
 
 StateSnapshot CaptureStateSnapshot(AudioProcessor const& processor);
+
+void ApplyPerformanceProfile(AudioProcessor& processor, perf_profile::Profile const& profile);
+perf_profile::Profile CaptureCurrentPerformanceProfile(AudioProcessor const& processor);
 
 void ParameterJustStartedMoving(AudioProcessor& processor, ParamIndex index);
 void ParameterJustStoppedMoving(AudioProcessor& processor, ParamIndex index);
@@ -341,15 +338,10 @@ void ResetAudioProcessing(AudioProcessor&);
 bool IsMidiCCLearnActive(AudioProcessor const& processor);
 void LearnMidiCC(AudioProcessor& processor, ParamIndex param);
 void CancelMidiCCLearn(AudioProcessor& processor);
+void AddLearnedMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num);
 void UnlearnMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num_to_remove);
 Bitset<128> GetLearnedCCsBitsetForParam(AudioProcessor const& processor, ParamIndex param);
 bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex param);
-
-void PinCcToParam(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
-void UnpinCcFromParam(prefs::Preferences& preferences, u8 cc_num, u32 param_id);
-Bitset<128> PinnedCcsForParam(prefs::PreferencesTable const& preferences, u32 param_id);
-
-void UnlearnAndUnpinMidiCC(AudioProcessor& processor, prefs::Preferences& prefs, ParamIndex param, u7 cc_num);
 
 struct AppendMacroDestinationConfig {
     ParamIndex param;

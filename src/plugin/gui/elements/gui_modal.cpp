@@ -43,6 +43,8 @@ Box DoModalHeader(GuiBuilder& builder, ModalHeaderConfig const& config) {
                .size = {layout::k_fill_parent, k_font_heading1_size},
            }});
 
+    if (config.trailing_content) config.trailing_content(builder, title_container);
+
     if (config.modeless) {
         if (DoBox(builder,
                   {
@@ -300,21 +302,23 @@ Box IconButton(GuiBuilder& builder,
                String tooltip,
                f32 font_size,
                f32x2 size,
-               u64 id_extra) {
-    auto const button = DoBox(builder,
-                              {
-                                  .parent = parent,
-                                  .id_extra = id_extra,
-                                  .background_fill_auto_hot_active_overlay = true,
-                                  .round_background_corners = 0b1111,
-                                  .layout {
-                                      .size = size,
-                                      .contents_align = layout::Alignment::Middle,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                  },
-                                  .tooltip = tooltip,
-                                  .button_behaviour = imgui::ButtonConfig {},
-                              });
+               u64 id_extra,
+               bool closes_popup_or_modal) {
+    auto const button =
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .id_extra = id_extra,
+                  .background_fill_auto_hot_active_overlay = true,
+                  .round_background_corners = 0b1111,
+                  .layout {
+                      .size = size,
+                      .contents_align = layout::Alignment::Middle,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = tooltip,
+                  .button_behaviour = imgui::ButtonConfig {.closes_popup_or_modal = closes_popup_or_modal},
+              });
 
     DoBox(builder,
           {
@@ -540,15 +544,110 @@ Optional<s64> IntField(GuiBuilder& builder, Box parent, IntFieldOptions const& o
     }
 
     // label
-    DoBox(builder,
-          {
-              .parent = container,
-              .text = options.label,
-              .size_from_text = true,
-              .text_colours = Col {.c = Col::Text, .dark_mode = dm},
-              .tooltip = options.tooltip,
-          });
+    if (options.label.size)
+        DoBox(builder,
+              {
+                  .parent = container,
+                  .text = options.label,
+                  .size_from_text = true,
+                  .text_colours = Col {.c = Col::Text, .dark_mode = dm},
+                  .tooltip = options.tooltip,
+              });
 
     if (value != initial_value) return value;
     return k_nullopt;
+}
+
+void SearchBox(GuiBuilder& builder, Box parent, SearchBoxOptions const& options, u64 id_extra) {
+    auto const dm = IsDarkMode(options.style);
+
+    auto const box = DoBox(builder,
+                           {
+                               .parent = parent,
+                               .id_extra = id_extra,
+                               .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = dm},
+                               .round_background_corners = 0b1111,
+                               .layout {
+                                   .size = options.size,
+                                   .contents_padding = {.lr = k_small_gap},
+                                   .contents_direction = layout::Direction::Row,
+                                   .contents_align = layout::Alignment::Start,
+                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                               },
+                           });
+
+    DoBox(builder,
+          {
+              .parent = box,
+              .text = ICON_FA_MAGNIFYING_GLASS,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .font_size = options.size.y * 0.8f,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = dm},
+          });
+
+    auto const text_input_box = DoBox(builder,
+                                      {
+                                          .parent = box,
+                                          .round_background_corners = 0b1111,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, options.size.y},
+                                          },
+                                          .tooltip = options.tooltip,
+                                      });
+
+    Optional<imgui::TextInputResult> result {};
+    if (auto const r = BoxRect(builder, text_input_box)) {
+        auto const window_r = builder.imgui.RegisterAndConvertRect(*r);
+        result = builder.imgui.TextInputBehaviour({
+            .rect_in_window_coords = window_r,
+            .id = text_input_box.imgui_id,
+            .text = (String)options.text,
+            .placeholder_text = options.placeholder,
+            .input_cfg =
+                {
+                    .x_padding = WwToPixels(4.0f),
+                    .centre_align = false,
+                    .escape_unfocuses = true,
+                    .select_all_when_opening = true,
+                    .multiline = false,
+                },
+            .button_cfg =
+                {
+                    .mouse_button = MouseButton::Left,
+                    .event = MouseButtonEvent::Down,
+                },
+        });
+
+        DrawTextInput(builder.imgui,
+                      *result,
+                      {
+                          .text_col = {.c = Col::Text, .dark_mode = dm},
+                          .cursor_col = {.c = Col::Text, .dark_mode = dm},
+                          .selection_col = {.c = Col::Highlight, .dark_mode = dm, .alpha = 128},
+                      });
+    }
+
+    if (result && result->buffer_changed) {
+        dyn::AssignFitInCapacity(options.text, result->text);
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    }
+
+    if (options.text.size) {
+        if (DoBox(builder,
+                  {
+                      .parent = box,
+                      .text = ICON_FA_XMARK,
+                      .size_from_text = true,
+                      .font = FontType::Icons,
+                      .font_size = options.size.y * 0.9f,
+                      .text_colours = Col {.c = Col::Subtext0, .dark_mode = dm},
+                      .background_fill_auto_hot_active_overlay = true,
+                      .tooltip = "Clear search"_s,
+                      .button_behaviour = imgui::ButtonConfig {},
+                  })
+                .button_fired) {
+            dyn::Clear(options.text);
+        }
+    }
 }

@@ -124,6 +124,22 @@ Optional<String> LookupString(PreferencesTable const& table, Key const& key);
 // The order of values is always undefined. There's guaranteed to not be duplicate values for a key.
 Value const* LookupValues(PreferencesTable const& table, Key const& key);
 
+// Invokes 'callback(leaf)' for every section named "<prefix>.<leaf>", where 'leaf' is everything after the
+// prefix and its dot (so "a.b.c" under prefix "a" yields "b.c"). Useful for storing a list of records under a
+// shared dotted section prefix, where the leaf is each record's id. The callback may be invoked more than
+// once for the same section (once per key in it); handle duplicates yourself if that matters.
+PUBLIC void ForEachSubsectionLeaf(PreferencesTable const& table, String prefix, auto&& callback) {
+    for (auto const [key, _, _] : table) {
+        auto const sectioned = key.template TryGet<SectionedKey>();
+        if (!sectioned) continue;
+        auto const section = sectioned->section;
+        if (section.size <= prefix.size + 1) continue;
+        if (section[prefix.size] != '.') continue;
+        if (section.SubSpan(0, prefix.size) != prefix) continue;
+        callback(section.SubSpan(prefix.size + 1));
+    }
+}
+
 template <dyn::DynArray DynArrayType>
 PUBLIC void ValuesToArray(Value const* value_list, DynArrayType& array) {
     for (auto value = value_list; value; value = value->next)
@@ -326,6 +342,7 @@ namespace key {
 namespace section {
 constexpr String k_cc_to_param_id_map_section = "Default Map MIDI CC to Param IDs"_s;
 }
+constexpr String k_default_cc_param_mappings = "default-cc-param-mappings"_s;
 constexpr String k_extra_libraries_folder = "extra-libraries-folder"_s;
 constexpr String k_extra_presets_folder = "extra-presets-folder"_s;
 constexpr String k_gui_keyboard_octave = "gui-keyboard-octave"_s;

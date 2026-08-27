@@ -107,26 +107,6 @@ static void DoDotsMenu(GuiState& g) {
     if (MenuItem(g.builder,
                  root,
                  {
-                     .text = "MIDI CC Assignments",
-                     .tooltip = "View and manage all MIDI CC-to-parameter assignments"_s,
-                 })
-            .button_fired) {
-        g.imgui.OpenModalViewport(g.midi_cc_panel_state.k_panel_id);
-    }
-
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Instance Config",
-                     .tooltip = "Configure per-instance settings such as randomisation behaviour"_s,
-                 })
-            .button_fired) {
-        g.imgui.OpenModalViewport(g.instance_config_panel_state.k_panel_id);
-    }
-
-    if (MenuItem(g.builder,
-                 root,
-                 {
                      .text = "Share Feedback",
                      .tooltip = "Open the feedback panel to share your thoughts about Floe"_s,
                  })
@@ -544,6 +524,17 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         auto const prefs_button =
             do_icon_button(right_icon_buttons_container, ICON_FA_GEAR, "Open preferences window"_s, 0.9f, 5);
         if (prefs_button.button_fired) g.imgui.OpenModalViewport(g.preferences_panel_state.k_panel_id);
+    }
+
+    // performance configuration
+    {
+        auto const perf_config_button = do_icon_button(right_icon_buttons_container,
+                                                       ICON_FA_SLIDERS,
+                                                       "Open performance configuration window"_s,
+                                                       0.9f,
+                                                       5);
+        if (perf_config_button.button_fired)
+            g.imgui.OpenModalViewport(g.performance_controls_panel_state.k_panel_id);
     }
 
     {

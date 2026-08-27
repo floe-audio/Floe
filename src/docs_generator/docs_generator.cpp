@@ -11,11 +11,11 @@
 #include "utils/json/json_writer.hpp"
 #include "utils/logger/logger.hpp"
 
-#include "common_infrastructure/cc_mapping.hpp"
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/global.hpp"
+#include "common_infrastructure/performance_profile.hpp"
 #include "common_infrastructure/sample_library/sample_library.hpp"
 #include "common_infrastructure/tags.hpp"
 
@@ -392,13 +392,17 @@ static ErrorCodeOr<void> WriteCCMappingData(json::WriteContext& ctx) {
 
     TRY(json::WriteKeyArrayBegin(ctx, "default-cc-mappings"));
 
-    for (auto const& map : k_default_cc_to_param_mapping) {
-        auto const& desc = k_param_descriptors[ToInt(map.param)];
-        TRY(json::WriteObjectBegin(ctx));
-        TRY(json::WriteKeyValue(ctx, "cc", map.cc));
-        TRY(json::WriteKeyValue(ctx, "name", desc.name));
-        TRY(json::WriteKeyValue(ctx, "module", desc.ModuleString(" › ")));
-        TRY(json::WriteObjectEnd(ctx));
+    auto const fallback_profile = perf_profile::FallbackProfile();
+    for (auto const [param_index, ccs] : Enumerate(fallback_profile.controls.param_learned_ccs)) {
+        auto const& desc = k_param_descriptors[param_index];
+        for (auto const cc : Range(128uz)) {
+            if (!ccs.Get(cc)) continue;
+            TRY(json::WriteObjectBegin(ctx));
+            TRY(json::WriteKeyValue(ctx, "cc", cc));
+            TRY(json::WriteKeyValue(ctx, "name", desc.name));
+            TRY(json::WriteKeyValue(ctx, "module", desc.ModuleString(" › ")));
+            TRY(json::WriteObjectEnd(ctx));
+        }
     }
 
     TRY(json::WriteArrayEnd(ctx));

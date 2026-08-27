@@ -313,18 +313,12 @@ void GuiUpdate(GuiState& g) {
     }
 
     {
-        MidiCcPanelContext context {
+        PerformanceControlsPanelContext context {
             .processor = g.engine.processor,
             .prefs = g.prefs,
+            .confirmation_dialog_state = g.confirmation_dialog_state,
         };
-        DoMidiCcPanel(g.builder, context, g.midi_cc_panel_state);
-    }
-
-    {
-        InstanceConfigPanelContext context {
-            .processor = g.engine.processor,
-        };
-        DoInstanceConfigPanel(g.builder, context, g.instance_config_panel_state);
+        DoPerformanceControlsPanel(g.builder, context, g.performance_controls_panel_state);
     }
 
     {

@@ -5,9 +5,9 @@
 
 #include "os/threading.hpp"
 
-#include "common_infrastructure/cc_mapping.hpp"
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/error_reporting.hpp"
+#include "common_infrastructure/performance_profile.hpp"
 #include "common_infrastructure/preferences.hpp"
 
 #include "clap/ext/params.h"
@@ -17,80 +17,6 @@
 
 static auto HostsParamsExtension(AudioProcessor& processor) {
     return (clap_host_params const*)processor.host.get_extension(&processor.host, CLAP_EXT_PARAMS);
-}
-
-consteval auto DefaultPinnedCcMappingsString() {
-    constexpr String k_start = "CC ";
-    constexpr String k_middle = " -> ";
-    constexpr String k_end = "\n";
-
-    constexpr usize k_size = []() {
-        usize size = 0;
-        for (auto const m : k_default_cc_to_param_mapping) {
-            size += k_start.size;
-
-            if (m.cc < 10)
-                size += 1;
-            else if (m.cc < 100)
-                size += 2;
-            else
-                size += 3;
-
-            size += k_middle.size;
-
-            auto const p = k_param_descriptors[ToInt(m.param)];
-            for (auto const mod : p.module_parts) {
-                if (mod == ParameterModule::None) break;
-                size += k_parameter_module_strings[ToInt(mod)].name.size;
-                size += 1; // ' '
-            }
-            size += p.name.size;
-
-            size += k_end.size;
-        }
-        return size;
-    }();
-
-    Array<char, k_size> result {};
-    usize i = 0;
-    for (auto const m : k_default_cc_to_param_mapping) {
-        WriteAndIncrement(i, result, k_start);
-        i += fmt::IntToString(m.cc, result.data + i);
-        WriteAndIncrement(i, result, k_middle);
-
-        auto const p = k_param_descriptors[ToInt(m.param)];
-        for (auto const mod : p.module_parts) {
-            if (mod == ParameterModule::None) break;
-            WriteAndIncrement(i, result, k_parameter_module_strings[ToInt(mod)].name);
-            WriteAndIncrement(i, result, ' ');
-        }
-        WriteAndIncrement(i, result, p.name);
-
-        WriteAndIncrement(i, result, k_end);
-    }
-
-    return result;
-}
-
-constexpr auto k_str = DefaultPinnedCcMappingsString();
-static_assert(k_str[0] == 'C');
-
-prefs::Descriptor SettingDescriptor(ProcessorSetting s) {
-    switch (s) {
-        case ProcessorSetting::DefaultCcParamMappings: {
-            static constexpr auto k_description =
-                ConcatArrays("When Floe starts, map these MIDI CC to parameters:\n"_ca,
-                             DefaultPinnedCcMappingsString());
-            return {
-                .key = "default-cc-param-mappings"_s,
-                .value_requirements = prefs::ValueType::Bool,
-                .default_value = true,
-                .gui_label = "Pin default MIDI CC mappings"_s,
-                .long_description = k_description,
-
-            };
-        }
-    }
 }
 
 bool EffectIsOn(Parameters const& params, Effect* effect) {
@@ -112,6 +38,10 @@ void CancelMidiCCLearn(AudioProcessor& processor) {
     processor.midi_learn_param_index.Store(k_nullopt, StoreMemoryOrder::Relaxed);
 }
 
+void AddLearnedMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num) {
+    processor.param_learned_ccs[ToInt(param)].Set(cc_num);
+}
+
 void UnlearnMidiCC(AudioProcessor& processor, ParamIndex param, u7 cc_num_to_remove) {
     processor.param_learned_ccs[ToInt(param)].Clear(cc_num_to_remove);
 }
@@ -125,57 +55,6 @@ bool CcControllerMovedParamRecently(AudioProcessor const& processor, ParamIndex 
     ASSERT(g_is_logical_main_thread);
     return (processor.time_when_cc_moved_param[ToInt(param)].Load(LoadMemoryOrder::Relaxed) + 0.4) >
            TimePoint::Now();
-}
-
-void PinCcToParam(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
-    ASSERT(g_is_logical_main_thread);
-    ASSERT(cc_num > 0 && cc_num <= 127);
-    ASSERT(ParamIdToIndex(param_id));
-    prefs::AddValue(prefs,
-                    prefs::SectionedKey {prefs::key::section::k_cc_to_param_id_map_section, (s64)cc_num},
-                    (s64)param_id);
-}
-
-void UnpinCcFromParam(prefs::Preferences& prefs, u8 cc_num, u32 param_id) {
-    ASSERT(g_is_logical_main_thread);
-
-    prefs::RemoveValue(prefs,
-                       prefs::SectionedKey {prefs::key::section::k_cc_to_param_id_map_section, (s64)cc_num},
-                       (s64)param_id);
-}
-
-void UnlearnAndUnpinMidiCC(AudioProcessor& processor,
-                           prefs::Preferences& prefs,
-                           ParamIndex param,
-                           u7 cc_num) {
-    UnlearnMidiCC(processor, param, cc_num);
-    UnpinCcFromParam(prefs, (u8)cc_num, ParamIndexToId(param));
-}
-
-Bitset<128> PinnedCcsForParam(prefs::PreferencesTable const& prefs, u32 param_id) {
-    ASSERT(g_is_logical_main_thread);
-
-    Bitset<128> result {};
-
-    for (auto const [key_union, value_list, _] : prefs) {
-        auto const sectioned_key = key_union.TryGet<prefs::SectionedKey>();
-        if (!sectioned_key) continue;
-        auto const [section, key] = *sectioned_key;
-        if (section != prefs::key::section::k_cc_to_param_id_map_section) continue;
-        if (key.tag != prefs::KeyValueType::Int) continue;
-
-        auto const cc_num = key.Get<s64>();
-        if (cc_num < 1 || cc_num > 127) continue;
-
-        for (auto value = value_list; value; value = value->next) {
-            if (*value == (s64)param_id) {
-                result.Set((usize)cc_num);
-                break;
-            }
-        }
-    }
-
-    return result;
 }
 
 void AppendMacroDestination(AudioProcessor& processor, AppendMacroDestinationConfig config) {
@@ -588,7 +467,7 @@ void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSour
 
     if (source == StateSource::Daw)
         for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
-            cc.AssignBlockwise(state.extras.param_learned_ccs[i]);
+            cc.AssignBlockwise(state.extras.performance_controls.param_learned_ccs[i]);
 
     processor.main_params.values = state.param_values;
 
@@ -632,7 +511,8 @@ void ApplyState(AudioProcessor& processor, StateSnapshot const& state, StateSour
     }
 
     if (source == StateSource::Daw)
-        processor.instance_config.Store(state.extras.instance_config, StoreMemoryOrder::Release);
+        processor.performance_settings.Store(state.extras.performance_controls.settings,
+                                              StoreMemoryOrder::Release);
 
     processor.inbox_flags.FetchOr(audio_thread_inbox::ReloadAllAudioState, RmwMemoryOrder::Release);
 
@@ -669,9 +549,32 @@ StateSnapshot CaptureStateSnapshot(AudioProcessor const& processor) {
     result.macro_destinations = processor.main_macro_destinations;
 
     for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
-        result.extras.param_learned_ccs[i] = cc.GetBlockwise();
+        result.extras.performance_controls.param_learned_ccs[i] = cc.GetBlockwise();
 
-    result.extras.instance_config = processor.instance_config.Load(LoadMemoryOrder::Relaxed);
+    result.extras.performance_controls.settings =
+        processor.performance_settings.Load(LoadMemoryOrder::Relaxed);
+
+    return result;
+}
+
+void ApplyPerformanceProfile(AudioProcessor& processor, perf_profile::Profile const& profile) {
+    ASSERT(g_is_logical_main_thread);
+
+    for (auto const i : Range(k_num_parameters))
+        processor.param_learned_ccs[i].AssignBlockwise(profile.controls.param_learned_ccs[i]);
+
+    processor.performance_settings.Store(profile.controls.settings, StoreMemoryOrder::Release);
+}
+
+perf_profile::Profile CaptureCurrentPerformanceProfile(AudioProcessor const& processor) {
+    ASSERT(g_is_logical_main_thread);
+
+    perf_profile::Profile result {};
+
+    for (auto [i, cc] : Enumerate(processor.param_learned_ccs))
+        result.controls.param_learned_ccs[i] = cc.GetBlockwise();
+
+    result.controls.settings = processor.performance_settings.Load(LoadMemoryOrder::Relaxed);
 
     return result;
 }
@@ -787,9 +690,9 @@ static void ResetRandomState(AudioProcessor& processor, u8 seed_0_99) {
 
 // Returns true if the note was consumed as a keyswitch reset (and should not trigger voices).
 static bool HandleResetKeyswitch(AudioProcessor& processor, u7 note_key) {
-    auto const config = processor.instance_config.Load(LoadMemoryOrder::Acquire);
-    if (config.reset_keyswitch.HasValue() && note_key == config.reset_keyswitch.Value()) {
-        ResetRandomState(processor, config.seed);
+    auto const settings = processor.performance_settings.Load(LoadMemoryOrder::Acquire);
+    if (settings.reset_keyswitch.HasValue() && note_key == settings.reset_keyswitch.Value()) {
+        ResetRandomState(processor, settings.seed);
         return true;
     }
     return false;
@@ -1342,8 +1245,8 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     if (frame_index == 0 && process.transport) {
         bool const is_playing = process.transport->flags & CLAP_TRANSPORT_IS_PLAYING;
         if (is_playing && !processor.prev_transport_playing) {
-            auto const config = processor.instance_config.Load(LoadMemoryOrder::Acquire);
-            if (config.reset_on_transport) ResetRandomState(processor, config.seed);
+            auto const settings = processor.performance_settings.Load(LoadMemoryOrder::Acquire);
+            if (settings.reset_on_transport) ResetRandomState(processor, settings.seed);
         }
         processor.prev_transport_playing = is_playing;
     }
@@ -1680,9 +1583,9 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     if (process.frames_count == 0) return CLAP_PROCESS_CONTINUE;
 
     {
-        auto const instance_config = processor.instance_config.Load(LoadMemoryOrder::Acquire);
+        auto const performance_settings = processor.performance_settings.Load(LoadMemoryOrder::Acquire);
         auto& mpe = processor.audio_processing_context.mpe;
-        if (mpe.enabled != instance_config.mpe_enabled) {
+        if (mpe.enabled != performance_settings.mpe_enabled) {
             // Live voices must not keep frozen per-note bend/press/slide across a mode change.
             for (auto& v : processor.voice_pool.EnumerateActiveVoices()) {
                 if (!v.per_note_expression_active) continue;
@@ -1697,8 +1600,8 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
                 mpe.ResetChannelExpression((u4)channel);
             processor.audio_processing_context.pitchwheel_position = {};
         }
-        mpe.enabled = instance_config.mpe_enabled;
-        mpe.press_slide_smoothing_ms = (f32)instance_config.mpe_smoothing_ms;
+        mpe.enabled = performance_settings.mpe_enabled;
+        mpe.press_slide_smoothing_ms = (f32)performance_settings.mpe_smoothing_ms;
     }
 
     clap_process_status result = CLAP_PROCESS_CONTINUE;
@@ -1798,12 +1701,12 @@ AudioProcessor::AudioProcessor(clap_host const& host,
     for (auto const i : Range(k_num_parameters))
         main_params.values[i] = k_param_descriptors[i].default_linear_value;
 
-    for (u32 i = 0; i < k_num_parameters; ++i)
-        param_learned_ccs[i].AssignBlockwise(PinnedCcsForParam(prefs, ParamIndexToId((ParamIndex)i)));
-
-    if (prefs::GetBool(prefs, SettingDescriptor(ProcessorSetting::DefaultCcParamMappings)))
-        for (auto const mapping : k_default_cc_to_param_mapping)
-            param_learned_ccs[ToInt(mapping.param)].Set(mapping.cc);
+    {
+        auto const profile = perf_profile::DefaultOrFallback(prefs);
+        for (auto const i : Range(k_num_parameters))
+            param_learned_ccs[i].AssignBlockwise(profile.controls.param_learned_ccs[i]);
+        performance_settings.Store(profile.controls.settings, StoreMemoryOrder::Relaxed);
+    }
 }
 
 AudioProcessor::~AudioProcessor() {

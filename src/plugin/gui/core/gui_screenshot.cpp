@@ -189,11 +189,8 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
         return CaptureSpec {.rect = {.pos = tl, .size = br - tl}};
     }
 
-    // --- Instance config panel -------------------------------------------------------------------------
-    if (IsScreenshotRequest("instance-config"_s)) return simple("instance-config-panel.modal"_s);
-
-    // --- MIDI CC assignments panel ---------------------------------------------------------------------
-    if (IsScreenshotRequest("midi-cc-assignments"_s)) return simple("midi-cc-panel.modal"_s);
+    // --- Performance configuration panel ----------------------------------------------------------------
+    if (IsScreenshotRequest("performance-controls"_s)) return simple("performance-controls-panel.modal"_s);
 
     // --- Preferences panel -----------------------------------------------------------------------------
     if (IsScreenshotRequest("folders"_s)) return simple("prefs-panel.modal"_s);

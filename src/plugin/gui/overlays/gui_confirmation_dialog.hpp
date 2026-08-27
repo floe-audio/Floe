@@ -15,7 +15,7 @@ struct ConfirmationDialogState {
     static constexpr imgui::Id k_id = SourceLocationHash();
     DynamicArrayBounded<char, 256> title {};
     DynamicArrayBounded<char, 512> body_text {};
-    TrivialFixedSizeFunction<40, void(ConfirmationDialogResult)> callback {};
+    TrivialFixedSizeFunction<64, void(ConfirmationDialogResult)> callback {};
 };
 
 void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state);

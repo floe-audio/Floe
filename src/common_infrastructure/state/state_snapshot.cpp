@@ -52,14 +52,14 @@ void AssignDiffDescription(DynArrayT& diff_desc,
 
     for (auto cc : Range<usize>(1, 128)) {
         for (auto param_index : Range(k_num_parameters)) {
-            if (old_state.extras.param_learned_ccs[param_index].Get(cc) !=
-                new_state.extras.param_learned_ccs[param_index].Get(cc)) {
+            if (old_state.extras.performance_controls.param_learned_ccs[param_index].Get(cc) !=
+                new_state.extras.performance_controls.param_learned_ccs[param_index].Get(cc)) {
                 fmt::Append(diff_desc,
                             "CC {}: Param {}: {} vs {}\n"_s,
                             cc,
                             k_param_descriptors[param_index].id_string,
-                            old_state.extras.param_learned_ccs[param_index].Get(cc),
-                            new_state.extras.param_learned_ccs[param_index].Get(cc));
+                            old_state.extras.performance_controls.param_learned_ccs[param_index].Get(cc),
+                            new_state.extras.performance_controls.param_learned_ccs[param_index].Get(cc));
             }
         }
     }
@@ -142,8 +142,8 @@ void AssignDiffDescription(DynArrayT& diff_desc,
         if (old_state.macro_destinations[macro_index] != new_state.macro_destinations[macro_index])
             fmt::Append(diff_desc, "Macro {} destinations changed\n"_s, macro_index);
 
-    if (old_state.extras.instance_config != new_state.extras.instance_config)
-        dyn::AppendSpan(diff_desc, "Instance config changed\n"_s);
+    if (old_state.extras.performance_controls.settings != new_state.extras.performance_controls.settings)
+        dyn::AppendSpan(diff_desc, "Performance settings changed\n"_s);
 }
 
 template void AssignDiffDescription<DynamicArrayBounded<char, 0>>(DynamicArrayBounded<char, 0>&,

@@ -387,11 +387,12 @@ static StateSnapshot const& PinnedSnapshotForModificationCheck(Engine& engine) {
 StateSnapshot CurrentStateSnapshot(Engine& engine) {
     StateSnapshot snapshot = CaptureStateSnapshot(engine.processor);
 
-    // We always want to retain our learned CCs unless there's pending DAW state.
-    auto const ccs = snapshot.extras.param_learned_ccs;
+    // We always want to retain our performance controls (settings + learned CCs) unless there's pending
+    // DAW state.
+    auto const performance_controls = snapshot.extras.performance_controls;
     DEFER {
         if (!(engine.pending_state_change && engine.pending_state_change->source == StateSource::Daw))
-            snapshot.extras.param_learned_ccs = ccs;
+            snapshot.extras.performance_controls = performance_controls;
     };
 
     if (engine.pending_state_change) {

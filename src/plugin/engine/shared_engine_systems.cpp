@@ -7,6 +7,7 @@
 #include "os/misc.hpp"
 
 #include "common_infrastructure/error_reporting.hpp"
+#include "common_infrastructure/performance_profile.hpp"
 
 #include "plugin/plugin.hpp"
 
@@ -132,6 +133,8 @@ SharedEngineSystems::SharedEngineSystems(Span<sentry::Tag const> tags)
 
         AddMirageFoldersIfNeeded();
     }
+
+    perf_profile::MigrateIfNeeded(prefs);
 
     if constexpr (!PRODUCTION_BUILD) {
         ArenaAllocatorWithInlineStorage<1000> scratch {PageAllocator::Instance()};

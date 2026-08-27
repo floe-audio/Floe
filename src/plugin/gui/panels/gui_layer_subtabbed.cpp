@@ -1466,7 +1466,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
         auto const press_dest = params.DescribedValue(layer_index, LayerParamIndex::MpePressDestination);
         auto const slide_dest = params.DescribedValue(layer_index, LayerParamIndex::MpeSlideDestination);
         bool const mpe_enabled =
-            g.engine.processor.instance_config.Load(LoadMemoryOrder::Relaxed).mpe_enabled;
+            g.engine.processor.performance_settings.Load(LoadMemoryOrder::Relaxed).mpe_enabled;
         auto const row = DoBox(g.builder,
                                {
                                    .parent = page,
@@ -1489,7 +1489,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                     .size = {k_play_label_width, k_font_body_size},
                 },
                 .tooltip =
-                    "Route per-note MPE press and slide to destinations on this layer. MPE must be enabled in the Instance Config panel"_s,
+                    "Route per-note MPE press and slide to destinations on this layer. MPE must be enabled in the Performance Controls panel"_s,
             });
 
         // Like MenuOpenButton, but the summary mixes icon-font and body-font segments.
@@ -1638,7 +1638,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                         },
                                         .tooltip =
-                                            "Press and slide only have an effect when MPE is enabled for this instance. Click to open the Instance Config panel"_s,
+                                            "Press and slide only have an effect when MPE is enabled for this instance. Click to open the Performance Controls panel"_s,
                                         .button_behaviour = imgui::ButtonConfig {},
                                     });
 
@@ -1655,7 +1655,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                 DoBox(g.builder,
                                       {
                                           .parent = note,
-                                          .text = "MPE is off — open Instance Config"_s,
+                                          .text = "MPE is off — open Performance Controls"_s,
                                           .size_from_text = true,
                                           .text_colours =
                                               ColSet {
@@ -1668,7 +1668,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
 
                                 if (note.button_fired) {
                                     g.imgui.CloseTopPopupOnly();
-                                    g.imgui.OpenModalViewport(g.instance_config_panel_state.k_panel_id);
+                                    g.imgui.OpenModalViewport(g.performance_controls_panel_state.k_panel_id);
                                 }
                             }
 

@@ -27,16 +27,26 @@ struct StateMetadataRef {
     String description {};
 };
 
-struct InstanceConfig {
-    bool operator==(InstanceConfig const&) const = default;
-    bool operator!=(InstanceConfig const&) const = default;
+// Settings + MIDI CC mappings describing how a DAW instance performs: reset/keyswitch/seed behaviour and
+// which CCs control which parameters. Captured together in a named perf_profile::Profile.
+struct PerformanceControls {
+    struct Settings {
+        bool operator==(Settings const&) const = default;
+        bool operator!=(Settings const&) const = default;
 
-    // Bit-fields keep the struct small enough for a lock-free Atomic<InstanceConfig>.
-    bool reset_on_transport : 1 {true};
-    bool mpe_enabled : 1 {false}; // Interpret incoming MIDI as MPE (per-note bend, press and slide)
-    u16 mpe_smoothing_ms {100}; // 0-500, slew time for per-note press/slide
-    Optional<u7> reset_keyswitch {}; // MIDI note that triggers a reset, or nullopt for disabled
-    u8 seed {0}; // 0-99, determines what the master PRNG resets to
+        // Bit-fields keep the struct small enough for a lock-free Atomic<PerformanceControls::Settings>.
+        bool reset_on_transport : 1 {true};
+        bool mpe_enabled : 1 {false}; // Interpret incoming MIDI as MPE (per-note bend, press and slide)
+        u16 mpe_smoothing_ms {30}; // 0-500, slew time for per-note press/slide
+        Optional<u7> reset_keyswitch {}; // MIDI note that triggers a reset, or nullopt for disabled
+        u8 seed {0}; // 0-99, determines what the master PRNG resets to
+    };
+
+    bool operator==(PerformanceControls const&) const = default;
+    bool operator!=(PerformanceControls const&) const = default;
+
+    Settings settings {};
+    Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
 };
 
 // Fields that aren't part of the audible patch. Typically excluded from state equality checks.
@@ -45,8 +55,7 @@ struct StateExtras {
     bool operator!=(StateExtras const& other) const = default;
 
     DynamicArrayBounded<char, k_max_instance_id_size> instance_id;
-    Array<Bitset<128>, k_num_parameters> param_learned_ccs {};
-    InstanceConfig instance_config {};
+    PerformanceControls performance_controls {};
 
     // For DAW state only. Preset files always get their name from the filename.
     DynamicArrayBounded<char, k_max_preset_name_size> display_name {};

@@ -2171,100 +2171,15 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                        });
 
             // Filter search box - always visible
-            auto const filter_search_box =
-                DoBox(builder,
+            SearchBox(builder,
+                      lhs_top,
                       {
-                          .parent = lhs_top,
-                          .background_fill_colours =
-                              Col {
-                                  .c = Col::Surface0,
-                                  .dark_mode = true,
-                              },
-                          .round_background_corners = 0b1111,
-                          .layout {
-                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                              .contents_padding = {.lr = k_browser_spacing / 2},
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                      });
-
-            DoBox(builder,
-                  {
-                      .parent = filter_search_box,
-                      .text = ICON_FA_MAGNIFYING_GLASS,
-                      .size_from_text = true,
-                      .font = FontType::Icons,
-                      .font_size = k_browser_item_height * 0.8f,
-                      .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
-                  });
-
-            auto const filter_text_input =
-                DoBox(builder,
-                      {
-                          .parent = filter_search_box,
-                          .round_background_corners = 0b1111,
-                          .layout {
-                              .size = {layout::k_fill_parent, k_browser_item_height},
-                          },
+                          .text = context.state.filter_search,
                           .tooltip = "Search filters"_s,
+                          .placeholder = options.filter_search_placeholder_text,
+                          .size = {layout::k_fill_parent, k_browser_item_height},
+                          .style = GuiStyleSystem::TopBottomPanels,
                       });
-
-            Optional<imgui::TextInputResult> filter_text_input_result {};
-            if (auto const r = BoxRect(builder, filter_text_input)) {
-                auto const window_r = builder.imgui.RegisterAndConvertRect(*r);
-                filter_text_input_result = builder.imgui.TextInputBehaviour({
-                    .rect_in_window_coords = window_r,
-                    .id = filter_text_input.imgui_id,
-                    .text = (String)context.state.filter_search,
-                    .placeholder_text = options.filter_search_placeholder_text,
-                    .input_cfg =
-                        {
-                            .x_padding = WwToPixels(4.0f),
-                            .centre_align = false,
-                            .escape_unfocuses = true,
-                            .select_all_when_opening = true,
-                            .multiline = false,
-                        },
-                    .button_cfg =
-                        {
-                            .mouse_button = MouseButton::Left,
-                            .event = MouseButtonEvent::Down,
-                        },
-                });
-
-                DrawTextInput(builder.imgui,
-                              *filter_text_input_result,
-                              {
-                                  .text_col = {.c = Col::Text, .dark_mode = true},
-                                  .cursor_col = {.c = Col::Text, .dark_mode = true},
-                                  .selection_col = {.c = Col::Highlight, .alpha = 128},
-                              });
-            }
-
-            if (filter_text_input_result && filter_text_input_result->buffer_changed) {
-                dyn::AssignFitInCapacity(context.state.filter_search, filter_text_input_result->text);
-                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
-            }
-
-            if (context.state.filter_search.size) {
-                if (DoBox(builder,
-                          {
-                              .parent = filter_search_box,
-                              .text = ICON_FA_XMARK,
-                              .size_from_text = true,
-                              .font = FontType::Icons,
-                              .font_size = k_browser_item_height * 0.9f,
-                              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
-                              .background_fill_auto_hot_active_overlay = true,
-                              .tooltip = "Clear search"_s,
-                              .button_behaviour = imgui::ButtonConfig {},
-                          })
-                        .button_fired) {
-                    dyn::Clear(context.state.filter_search);
-                }
-            }
 
             {
                 auto const filter_mode_button =

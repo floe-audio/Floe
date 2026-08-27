@@ -245,7 +245,6 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
             LearnMidiCC(g.engine.processor, param_index);
         }
 
-        auto const pinned_ccs = PinnedCcsForParam(g.prefs, ParamIndexToId(param_index));
         auto const ccs_bitset = GetLearnedCCsBitsetForParam(g.engine.processor, param_index);
         bool const closes_popups = ccs_bitset.AnyValuesSet();
         for (auto const cc_num : Range(128uz)) {
@@ -258,31 +257,11 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
                          root,
                          {
                              .text = fmt::Format(g.scratch_arena, "Remove MIDI CC {}", cc_num),
-                             .tooltip = "Remove and unpin this MIDI CC mapping"_s,
+                             .tooltip = "Remove this MIDI CC mapping"_s,
                              .close_on_click = closes_popups,
                          })
                     .button_fired) {
-                UnlearnAndUnpinMidiCC(g.engine.processor, g.prefs, param_index, (u7)cc_num);
-            }
-
-            {
-                bool state = pinned_ccs.Get(cc_num);
-                if (MenuItem(
-                        g.builder,
-                        root,
-                        {
-                            .text = fmt::Format(g.scratch_arena, "Pin MIDI CC {}", cc_num),
-                            .tooltip = "When pinned, this mapping is applied to all new Floe instances"_s,
-                            .is_selected = state,
-                            .close_on_click = closes_popups,
-                        })
-                        .button_fired) {
-                    state = !state;
-                    if (state)
-                        PinCcToParam(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
-                    else
-                        UnpinCcFromParam(g.prefs, (u8)cc_num, ParamIndexToId(param_index));
-                }
+                UnlearnMidiCC(g.engine.processor, param_index, (u7)cc_num);
             }
         }
 

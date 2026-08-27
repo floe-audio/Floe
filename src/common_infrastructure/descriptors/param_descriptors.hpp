@@ -3917,7 +3917,7 @@ consteval auto CreateParams() {
             .name = "MPE Press Target"_s,
             .gui_label = "Press"_s,
             .tooltip =
-                "What MPE 'press' (per-note channel pressure) controls on this layer. Only active when MPE is enabled in the instance config"_s,
+                "What MPE 'press' (per-note channel pressure) controls on this layer. Only active when MPE is enabled in Performance Controls"_s,
         };
         lp(MpePressAmount) = Args {
             .id = id(region, 97), // never change
@@ -3944,7 +3944,7 @@ consteval auto CreateParams() {
             .name = "MPE Slide Target"_s,
             .gui_label = "Slide"_s,
             .tooltip =
-                "What MPE 'slide' (per-note CC74) controls on this layer. Slide is bipolar around its centre. Only active when MPE is enabled in the instance config"_s,
+                "What MPE 'slide' (per-note CC74) controls on this layer. Slide is bipolar around its centre. Only active when MPE is enabled in Performance Controls"_s,
         };
         lp(MpeSlideAmount) = Args {
             .id = id(region, 99), // never change
@@ -4063,6 +4063,58 @@ constexpr Optional<ParamIndex> ParamIdToIndex(u32 id) {
     return (ParamIndex)result;
 }
 constexpr u32 ParamIndexToId(ParamIndex index) { return k_param_descriptors[ToInt(index)].id; }
+
+constexpr Optional<ParamIndex> ParamIndexFromIdString(String id_string) {
+    struct IdStringLookup {
+        struct Element {
+            String key {};
+            ParamIndex value {};
+            u64 hash {};
+        };
+
+        constexpr IdStringLookup() {
+            for (auto const& p : k_param_descriptors)
+                Insert(p.id_string, p.index);
+        }
+
+        constexpr usize Lookup(String name, u64 hash) const {
+            auto const k_mask = elements.size - 1;
+
+            usize index = hash;
+            usize step = 1;
+
+            while (true) {
+                auto const array_index = index & k_mask;
+                auto& element = elements[array_index];
+                if (element.hash == 0) return array_index; // empty
+                if (element.hash == hash && element.key == name) return array_index; // found
+
+                // quadratic probing
+                index += step;
+                ++step;
+            }
+        }
+
+        constexpr void Insert(String name, ParamIndex index) {
+            auto const hash = HashFnv1a(name);
+            auto& element = elements[Lookup(name, hash)];
+            element.key = name;
+            element.value = index;
+            element.hash = hash;
+        }
+
+        constexpr Optional<ParamIndex> Find(String name) const {
+            auto& element = elements[Lookup(name, HashFnv1a(name))];
+            if (element.hash == 0) return k_nullopt;
+            return element.value;
+        }
+
+        Array<Element, NextPowerOf2((u32)k_num_parameters) * 2> elements;
+    };
+
+    constexpr IdStringLookup k_id_string_lookup;
+    return k_id_string_lookup.Find(id_string);
+}
 
 Span<String const> ParameterMenuItems(ParamIndex param_index);
 

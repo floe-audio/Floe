@@ -17,9 +17,17 @@ Floe is controllable via MIDI in the typical ways you'd expect from a software i
 
 ## MIDI CC
 
-### Default MIDI CC mappings
+All automatable parameters can be assigned to a MIDI CC, so you can control Floe from a MIDI controller.
 
-Floe applies some default MIDI CC mappings when it starts. These are the defaults out of the box, but you have full control to remove or change them — see the sections below. The default mappings are:
+### Creating a mapping
+
+Right-click a parameter and select **MIDI CC Learn**, then move the control on your MIDI controller you want to assign — this creates the mapping. To remove a mapping, right-click the parameter and select **Remove MIDI CC**.
+
+You can also add and remove mappings from the **Performance Controls** panel (the sliders icon in the top panel), which lists every mapping on the current instance in one place.
+
+### Default mappings
+
+Floe applies these MIDI CC mappings when it starts. You have full control to remove or change them on the current instance:
 
 <ul>
 {[...data["default-cc-mappings"]].sort((a, b) => a.cc - b.cc).map((mapping, index) => (
@@ -27,38 +35,28 @@ Floe applies some default MIDI CC mappings when it starts. These are the default
 ))}
 </ul>
 
-You can disable the whole set via the **Default CC mappings** option in the MIDI CC Assignments panel (or in Preferences). While that option is enabled, the defaults are reapplied every time Floe starts — so removing an individual default mapping only clears it from the current instance.
-
-### MIDI CC Assignments panel
-
-You can view and manage all MIDI CC assignments from the **MIDI CC Assignments** panel. Open it from the top-panel menu (the three-dots button).
-
-This panel shows every active CC-to-parameter mapping, including which module each parameter belongs to. From here you can pin or unpin mappings, remove them, and toggle the default CC mappings option.
-
-<GeneratedScreenshot name="midi-cc-assignments" alt="MIDI CC Assignments panel" />
-
-### Creating MIDI CC mappings
-
-All automatable parameters in Floe can be assigned to a MIDI CC. This allows you to control Floe from a MIDI controller for example.
-
-To create a mapping, right-click on the parameter you want to assign and select **MIDI CC Learn**. Then move the control on your MIDI controller that you want to assign to that parameter. This will create a mapping between the parameter and the MIDI CC.
-
-You can remove a mapping by right-clicking on the parameter and selecting **Remove MIDI CC**, or by using the trash icon in the MIDI CC Assignments panel.
-
 ### How mappings are saved
 
-MIDI CC mappings are saved with your DAW project. By default they only apply to the current instance of Floe in your DAW — they won't be applied if you load a new instance. If you want a mapping to apply to every new instance, **pin** it (see below).
+MIDI CC mappings are saved with your DAW project, and apply only to the instance you created them on — a new instance of Floe starts without them, unless you've made them the default (see [Settings for new instances](#settings-for-new-instances)).
 
-Preset files do not save MIDI CC mappings. So you can load presets and your MIDI CC mappings will remain.
+Preset files never save MIDI CC mappings, so loading a preset leaves your mappings untouched.
 
-### Pinning mappings
+### Settings for new instances
 
-You can **pin** a MIDI CC mapping so that it is automatically applied to all new Floe instances. There are two ways to pin a mapping:
+To make the current instance's MIDI CC mappings and settings the ones every new Floe instance starts with:
 
-- In the **MIDI CC Assignments** panel, click the pin icon next to a mapping.
-- Right-click a parameter that has a CC mapping and select **Pin MIDI CC**.
+1. Set up the current instance the way you want it.
+2. Open the **Performance Controls** panel and click **Use these settings for new instances** at the top.
 
-Pinned mappings are stored globally in your preferences, not in your DAW project.
+If the current settings already match what new instances start with, the panel shows a confirmation there instead of the button.
+
+### Performance Controls panel
+
+The **Performance Controls** panel (sliders icon, top panel) is where you manage MIDI CC mappings, MPE, and [Reproducibility](./reproducibility) settings for the current instance, and where you save, load, and switch between **Profiles**.
+
+<GeneratedScreenshot name="performance-controls" alt="Performance Controls panel" />
+
+A profile is a named, saved bundle of MIDI CC mappings and instance settings — like a save file for this panel. Profiles are useful when you switch between MIDI controllers regularly: save one profile per controller, then switch between them as you swap hardware. Selecting a profile applies it to the current instance immediately — it's a one-shot copy, not a persistent link, so further changes to the instance don't affect the saved profile unless you save over it.
 
 ## Sustain Pedal
 
@@ -72,7 +70,7 @@ Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configur
 
 Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers — such as a Seaboard, LinnStrument, Osmose, and other expressive hardware — control each note independently.
 
-Enable MPE from the Instance Config panel — open it from the top-panel menu (the three-dots button). The setting is saved with your DAW project and stays as-is when you load presets.
+Enable MPE from the Performance Controls panel — open it from the top panel (the sliders icon). The setting is saved with your DAW project and stays as-is when you load presets.
 
 When MPE is enabled, Floe responds to the standard MPE per-note messages:
 
@@ -82,7 +80,7 @@ When MPE is enabled, Floe responds to the standard MPE per-note messages:
 
 Choose what press and slide control for each layer on the [Config tab](./layers#config-tab). Each has a target — volume, filter cutoff, or timbre — and an amount; negative amounts invert the response. The timbre target offsets the master timbre control per note, which is particularly expressive on instruments that have timbre layers.
 
-The smoothing setting in the Instance Config panel controls how gradually press and slide changes are applied: lower values are more responsive, higher values are smoother.
+The smoothing setting in the Performance Controls panel controls how gradually press and slide changes are applied: lower values are more responsive, higher values are smoother.
 
 Floe also understands the MPE Configuration Message for zone setup, and a sustain pedal on a zone's master channel sustains the whole zone.
 

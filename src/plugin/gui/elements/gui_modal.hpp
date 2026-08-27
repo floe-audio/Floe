@@ -38,6 +38,9 @@ struct ModalHeaderConfig {
     Box parent;
     String title;
     bool* modeless {};
+    // Rendered between the title and the lock/close icons. For a compact, secondary control that should be
+    // reachable from the header without competing with the panel's main content.
+    FunctionRef<void(GuiBuilder&, Box parent)> trailing_content {};
 };
 
 // Creates a standard panel header with title and close button
@@ -111,7 +114,8 @@ Box IconButton(GuiBuilder& builder,
                String tooltip,
                f32 font_size,
                f32x2 size,
-               u64 id_extra = SourceLocationHash());
+               u64 id_extra = SourceLocationHash(),
+               bool closes_popup_or_modal = false);
 
 struct TextInputOptions {
     String text;
@@ -148,3 +152,18 @@ Optional<s64> IntField(GuiBuilder& builder,
                        Box parent,
                        IntFieldOptions const& options,
                        u64 id_extra = SourceLocationHash());
+
+struct SearchBoxOptions {
+    DynamicArrayBounded<char, 100>& text;
+    TooltipString tooltip = k_nullopt;
+    String placeholder = {};
+    f32x2 size;
+    GuiStyleSystem style = GuiStyleSystem::Overlay;
+};
+
+// A pill-shaped search box: magnifying-glass icon, text input with placeholder text, and a clear button
+// that appears once there's text.
+void SearchBox(GuiBuilder& builder,
+               Box parent,
+               SearchBoxOptions const& options,
+               u64 id_extra = SourceLocationHash());

@@ -64,6 +64,7 @@
     X(RegisterPathPoolTests)                                                                                 \
     X(RegisterPathTests)                                                                                     \
     X(RegisterPersistentStoreTests)                                                                          \
+    X(RegisterPerformanceProfileTests)                                                                       \
     X(RegisterPreferencesTests)                                                                              \
     X(RegisterPresetLuaCodecTests)                                                                           \
     X(RegisterPresetServerTests)                                                                             \

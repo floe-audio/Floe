@@ -125,7 +125,7 @@ struct MpeState {
         }
     }
 
-    // Synced from the instance config at the start of each process call.
+    // Synced from performance settings at the start of each process call.
     bool enabled {};
     f32 press_slide_smoothing_ms {100};
 

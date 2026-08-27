@@ -18,7 +18,6 @@
 #include "gui_framework/app_window_sizes.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "plugin/plugin.hpp"
-#include "processor/processor.hpp"
 
 static void
 PreferencesLhsTextWidget(GuiBuilder& builder, Box parent, String text, u64 id_extra = SourceLocationHash()) {
@@ -608,10 +607,6 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
         auto const options_rhs_column = PreferencesRhsColumn(builder, misc_row, k_small_gap);
 
         Setting(builder, context, options_rhs_column, IsOnlineReportingDisabledDescriptor());
-        Setting(builder,
-                context,
-                options_rhs_column,
-                SettingDescriptor(ProcessorSetting::DefaultCcParamMappings));
 
         for (auto const autosave_setting : EnumIterator<AutosaveSetting>())
             Setting(builder, context, options_rhs_column, SettingDescriptor(autosave_setting));
