@@ -57,9 +57,9 @@ struct VoiceProcessingController {
 
     struct {
         param_values::MpeDestination press_dest {};
-        f32 press_amount {}; // [-1, 1]
+        f32 press_amount {}; // [-2, 2]
         param_values::MpeDestination slide_dest {};
-        f32 slide_amount {}; // [-1, 1]
+        f32 slide_amount {}; // [-2, 2]
     } mpe {};
 
     f32 sv_filter_cutoff_linear = 0;

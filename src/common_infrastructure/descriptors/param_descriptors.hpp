@@ -1405,10 +1405,11 @@ constexpr ValConfig Percent(PercentOptions opts) {
 struct BidirectionalPercentOptions {
     f32 default_percent;
     ParamDisplayFormat display_format;
+    f32 max_percent = 100;
 };
 constexpr ValConfig BidirectionalPercent(BidirectionalPercentOptions opts) {
     return ValConfig {
-        .linear_range = {-1, 1},
+        .linear_range = {-opts.max_percent / 100, opts.max_percent / 100},
         .default_linear_value = opts.default_percent / 100,
         .display_format = opts.display_format,
     };
@@ -3926,11 +3927,13 @@ consteval auto CreateParams() {
             .value_config = val_config_helpers::BidirectionalPercent({
                 .default_percent = 50,
                 .display_format = ParamDisplayFormat::Percent,
+                .max_percent = 400,
             }),
             .modules = {layer_module, ParameterModule::Config},
             .name = "MPE Press Amount"_s,
             .gui_label = "Amount"_s,
-            .tooltip = "Intensity of the MPE press effect; negative values invert it"_s,
+            .tooltip =
+                "Intensity of the MPE press effect; negative values invert it. Beyond 100%, the full effect is reached with a smaller gesture"_s,
         };
         lp(MpeSlideDestination) = Args {
             .id = id(region, 98), // never change
@@ -3944,7 +3947,7 @@ consteval auto CreateParams() {
             .name = "MPE Slide Target"_s,
             .gui_label = "Slide"_s,
             .tooltip =
-                "What MPE 'slide' (per-note CC74) controls on this layer. Slide is bipolar around its centre. Only active when MPE is enabled in Performance Controls"_s,
+                "What MPE 'slide' (per-note CC74) controls on this layer. For Volume, the slide position acts as a fader up to the layer's volume level; other destinations are bipolar around slide's centre. Only active when MPE is enabled in Performance Controls"_s,
         };
         lp(MpeSlideAmount) = Args {
             .id = id(region, 99), // never change
@@ -3953,11 +3956,13 @@ consteval auto CreateParams() {
             .value_config = val_config_helpers::BidirectionalPercent({
                 .default_percent = 100,
                 .display_format = ParamDisplayFormat::Percent,
+                .max_percent = 400,
             }),
             .modules = {layer_module, ParameterModule::Config},
             .name = "MPE Slide Amount"_s,
             .gui_label = "Amount"_s,
-            .tooltip = "Intensity of the MPE slide effect; negative values invert it"_s,
+            .tooltip =
+                "Intensity of the MPE slide effect; negative values invert it. Beyond 100%, the full effect is reached with a smaller gesture"_s,
         };
     }
 #undef LAYER_ID

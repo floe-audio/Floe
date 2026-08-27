@@ -193,11 +193,14 @@ static f32 ExpressionVolumeGain(Voice const& v) {
     auto const& mpe = v.controller->mpe;
     f32 gain = 1;
     if (mpe.press_dest == param_values::MpeDestination::Volume)
-        gain *= mpe.press_amount >= 0 ? 1 - (mpe.press_amount * (1 - v.pressure_01))
-                                      : 1 + (mpe.press_amount * v.pressure_01);
+        gain *= Clamp01(mpe.press_amount >= 0 ? 1 - (mpe.press_amount * (1 - v.pressure_01))
+                                              : 1 + (mpe.press_amount * v.pressure_01));
     if (mpe.slide_dest == param_values::MpeDestination::Volume)
-        gain *= Clamp01(1 + (mpe.slide_amount * SlideBipolar(v)));
-    return gain;
+        gain *= Clamp01(mpe.slide_amount >= 0 ? 1 - (mpe.slide_amount * (1 - v.slide_pos_01))
+                                              : 1 + (mpe.slide_amount * v.slide_pos_01));
+    // Cubed to match the volume slider's cube-law projection: expression then scales the effective
+    // slider position linearly, inheriting its perceptual curve.
+    return gain * gain * gain;
 }
 
 static f32 EffectiveMpeDestinationValueForGui(Voice const& v, param_values::MpeDestination dest) {
