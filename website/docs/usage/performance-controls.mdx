@@ -1,0 +1,40 @@
+---
+id: performance-controls
+title: Performance Controls
+hide_table_of_contents: true
+description: The Performance Controls panel — MIDI CC mappings, MPE, Reproducibility, and Profiles
+---
+
+{/*
+SPDX-FileCopyrightText: 2026 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+*/}
+
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+
+The **Performance Controls** panel (sliders icon, top panel) is where you manage everything about how Floe responds to a live performance: [MIDI CC mappings](./midi#midi-cc), [MPE](./midi#mpe), and [Reproducibility](./reproducibility) settings.
+
+<GeneratedScreenshot name="performance-controls" alt="Performance Controls panel" />
+
+## Scope
+
+Everything in this panel belongs to the current instance rather than being a global preference. It's saved with your DAW project, and loading a preset leaves it untouched — so you can audition presets without disturbing your performance setup. Different instances in the same project can each have their own settings.
+
+## Settings for new instances
+
+By default, a new instance of Floe starts from a blank slate. To make the current instance's settings — MIDI CC mappings, MPE, and Reproducibility — the ones every new instance starts with:
+
+1. Set up the current instance the way you want it.
+2. Open the Performance Controls panel and click **Make default** at the top.
+
+If the current settings already match what new instances start with, the panel shows a confirmation there instead of the button.
+
+## Profiles
+
+A profile is a named, saved bundle of the panel's settings — like a save file for this panel. Profiles are useful when you switch between MIDI controllers regularly: save one profile per controller, then switch between them as you swap hardware.
+
+Open the **Profiles** menu at the top of the panel to:
+
+- Load a profile, applying it to the current instance immediately. This is a one-shot copy, not a persistent link — further changes to the instance don't affect the saved profile unless you save over it.
+- Save the current settings as a new profile.
+- Overwrite, rename, or delete an existing profile.

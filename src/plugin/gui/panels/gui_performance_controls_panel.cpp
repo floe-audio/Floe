@@ -10,13 +10,13 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 #include "common_infrastructure/performance_profile.hpp"
 
+#include "engine/engine.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_builder.hpp"
 #include "gui_framework/layout.hpp"
 #include "processing_utils/midi.hpp"
-#include "processor/processor.hpp"
 
 constexpr f32 k_cc_col_width = 60.0f;
 constexpr f32 k_icon_col_width = 25.0f;
@@ -169,12 +169,15 @@ static void TextEntryRow(GuiBuilder& builder,
             state.name_error = error;
         } else if (is_rename) {
             perf_profile::RenameProfile(context.prefs, state.rename_target, trimmed);
+            if ((String)context.engine.loaded_profile_name == (String)state.rename_target)
+                dyn::AssignFitInCapacity(context.engine.loaded_profile_name, trimmed);
             ClearTextEntry(state);
             builder.imgui.CloseTopPopupOnly();
         } else {
-            auto profile = CaptureCurrentPerformanceProfile(context.processor);
+            auto profile = CaptureCurrentPerformanceProfile(context.engine.processor);
             dyn::AssignFitInCapacity(profile.name, trimmed);
             perf_profile::SaveProfile(context.prefs, profile);
+            dyn::AssignFitInCapacity(context.engine.loaded_profile_name, trimmed);
             ClearTextEntry(state);
             builder.imgui.CloseTopPopupOnly();
         }
@@ -230,8 +233,10 @@ static void ProfileRow(GuiBuilder& builder,
                   .button_behaviour = imgui::ButtonConfig {.closes_popup_or_modal = true},
               })
             .button_fired) {
-        if (auto const profile = perf_profile::LookupProfile(context.prefs, name))
-            ApplyPerformanceProfile(context.processor, *profile);
+        if (auto const profile = perf_profile::LookupProfile(context.prefs, name)) {
+            ApplyPerformanceProfile(context.engine.processor, *profile);
+            dyn::AssignFitInCapacity(context.engine.loaded_profile_name, name);
+        }
     }
 
     if (IconButton(builder,
@@ -250,16 +255,16 @@ static void ProfileRow(GuiBuilder& builder,
             context.confirmation_dialog_state.body_text,
             "Are you sure you want to overwrite the profile '{}' with the current settings? This can't be undone.",
             name);
-        context.confirmation_dialog_state.callback = [&prefs = context.prefs,
-                                                      &processor = context.processor,
-                                                      cloned_name](ConfirmationDialogResult result) {
-            DEFER { Malloc::Instance().Free(cloned_name.ToByteSpan()); };
-            if (result == ConfirmationDialogResult::Ok) {
-                auto profile = CaptureCurrentPerformanceProfile(processor);
-                dyn::AssignFitInCapacity(profile.name, cloned_name);
-                perf_profile::SaveProfile(prefs, profile);
-            }
-        };
+        context.confirmation_dialog_state.callback =
+            [&prefs = context.prefs, &engine = context.engine, cloned_name](ConfirmationDialogResult result) {
+                DEFER { Malloc::Instance().Free(cloned_name.ToByteSpan()); };
+                if (result == ConfirmationDialogResult::Ok) {
+                    auto profile = CaptureCurrentPerformanceProfile(engine.processor);
+                    dyn::AssignFitInCapacity(profile.name, cloned_name);
+                    perf_profile::SaveProfile(prefs, profile);
+                    dyn::AssignFitInCapacity(engine.loaded_profile_name, cloned_name);
+                }
+            };
         builder.imgui.OpenModalViewport(context.confirmation_dialog_state.k_id);
     }
 
@@ -349,6 +354,50 @@ static void ProfileMenuContent(GuiBuilder& builder,
     }
 }
 
+// What to show in the header profile button: either the generic label, or the name of the profile the
+// current settings are following (with an asterisk if they've since diverged from it).
+struct LoadedProfileDisplay {
+    String name;
+    bool modified;
+};
+
+// Figures out which saved profile (if any) the current settings should be labelled with, caching the result
+// onto the engine so it survives closing and reopening the panel. If nothing is explicitly tracked yet
+// (e.g. straight after loading a DAW project), falls back to scanning saved profiles for an exact content
+// match, so the panel can label settings it never saw loaded via this menu. The scan only ever runs once per
+// instance (see loaded_profile_name_scan_attempted) so a permanent non-match doesn't rescan every frame.
+static Optional<LoadedProfileDisplay> DetermineLoadedProfile(PerformanceControlsPanelContext& context,
+                                                             ArenaAllocator& arena) {
+    auto& loaded_name = context.engine.loaded_profile_name;
+    auto const current = CaptureCurrentPerformanceProfile(context.engine.processor);
+
+    if (loaded_name.size == 0 && !context.engine.loaded_profile_name_scan_attempted) {
+        context.engine.loaded_profile_name_scan_attempted = true;
+        for (auto const name : perf_profile::ListProfileNames(context.prefs, arena)) {
+            auto const profile = perf_profile::LookupProfile(context.prefs, name);
+            if (profile && profile->controls == current.controls) {
+                dyn::AssignFitInCapacity(loaded_name, name);
+                break;
+            }
+        }
+    }
+
+    if (loaded_name.size == 0) return k_nullopt;
+
+    auto const profile = perf_profile::LookupProfile(context.prefs, loaded_name);
+    if (!profile) {
+        // The tracked profile was deleted (or renamed elsewhere without updating loaded_name).
+        dyn::Clear(loaded_name);
+        context.engine.loaded_profile_name_scan_attempted = false;
+        return k_nullopt;
+    }
+
+    return LoadedProfileDisplay {
+        .name = loaded_name,
+        .modified = profile->controls != current.controls,
+    };
+}
+
 // Compact profile picker shown in the panel header, next to the title.
 static void HeaderProfileControl(GuiBuilder& builder,
                                  Box parent,
@@ -356,12 +405,18 @@ static void HeaderProfileControl(GuiBuilder& builder,
                                  PerformanceControlsPanelState& state) {
     auto const popup_id = builder.imgui.MakeId("perf-profile-picker"_s);
 
+    auto const loaded = DetermineLoadedProfile(context, builder.arena);
+
     auto const btn = MenuOpenButton(builder,
                                     parent,
                                     {
-                                        .text = "Profiles"_s,
+                                        .text = loaded ? (String)fmt::Format(builder.arena,
+                                                                             "{}{}",
+                                                                             loaded->name,
+                                                                             loaded->modified ? " *"_s : ""_s)
+                                                       : "Profiles"_s,
                                         .tooltip = "Load, save, or manage performance profiles"_s,
-                                        .width = 100,
+                                        .width = 150,
                                     });
     if (btn.button_fired) builder.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
 
@@ -377,7 +432,7 @@ static void HeaderProfileControl(GuiBuilder& builder,
 }
 
 static void ReproducibilityTab(GuiBuilder& builder, PerformanceControlsPanelContext& context) {
-    auto settings = context.processor.performance_settings.Load(LoadMemoryOrder::Relaxed);
+    auto settings = context.engine.processor.performance_settings.Load(LoadMemoryOrder::Relaxed);
     auto const initial_settings = settings;
 
     auto const controls = DoBox(builder,
@@ -457,11 +512,12 @@ static void ReproducibilityTab(GuiBuilder& builder, PerformanceControlsPanelCont
         settings.seed = (u8)*v;
     }
 
-    if (settings != initial_settings) context.processor.performance_settings.Store(settings, StoreMemoryOrder::Release);
+    if (settings != initial_settings)
+        context.engine.processor.performance_settings.Store(settings, StoreMemoryOrder::Release);
 }
 
 static void MpeTab(GuiBuilder& builder, PerformanceControlsPanelContext& context) {
-    auto settings = context.processor.performance_settings.Load(LoadMemoryOrder::Relaxed);
+    auto settings = context.engine.processor.performance_settings.Load(LoadMemoryOrder::Relaxed);
     auto const initial_settings = settings;
 
     auto const controls = DoBox(builder,
@@ -509,7 +565,8 @@ static void MpeTab(GuiBuilder& builder, PerformanceControlsPanelContext& context
               .text_colours = Col {.c = Col::Subtext0},
           });
 
-    if (settings != initial_settings) context.processor.performance_settings.Store(settings, StoreMemoryOrder::Release);
+    if (settings != initial_settings)
+        context.engine.processor.performance_settings.Store(settings, StoreMemoryOrder::Release);
 }
 
 // Defined further below; forward-declared here so the table content can append the add-assignment row/button
@@ -544,7 +601,7 @@ static void MidiCcTableContent(GuiBuilder& builder,
 
         if (descriptor.flags.not_automatable) continue;
 
-        auto const ccs_bitset = GetLearnedCCsBitsetForParam(context.processor, param_index);
+        auto const ccs_bitset = GetLearnedCCsBitsetForParam(context.engine.processor, param_index);
         if (!ccs_bitset.AnyValuesSet()) continue;
 
         for (auto const cc_num : Range(128uz)) {
@@ -570,7 +627,7 @@ static void MidiCcTableContent(GuiBuilder& builder,
                 DoBox(builder,
                       {
                           .parent = cc_container,
-                          .text = fmt::Format(builder.arena, "CC {}", cc_num),
+                          .text = fmt::Format(builder.arena, "{}", cc_num),
                           .size_from_text = true,
                           .text_justification = TextJustification::CentredLeft,
                       });
@@ -607,7 +664,7 @@ static void MidiCcTableContent(GuiBuilder& builder,
                               .extra_margin_for_mouse_events = 2,
                           });
 
-                if (remove_btn.button_fired) UnlearnMidiCC(context.processor, param_index, (u7)cc_num);
+                if (remove_btn.button_fired) UnlearnMidiCC(context.engine.processor, param_index, (u7)cc_num);
             }
         }
     }
@@ -840,7 +897,7 @@ static void AddCcAssignmentRow(GuiBuilder& builder,
                        .is_default = true,
                    })) {
         if (state.add_cc_param) {
-            AddLearnedMidiCC(context.processor, *state.add_cc_param, (u7)state.add_cc_number);
+            AddLearnedMidiCC(context.engine.processor, *state.add_cc_param, (u7)state.add_cc_number);
             CloseAddCcAssignment(state);
         }
     }
@@ -848,8 +905,9 @@ static void AddCcAssignmentRow(GuiBuilder& builder,
     if (TextButton(builder, row, {.text = "Cancel"_s})) CloseAddCcAssignment(state);
 }
 
-static void
-MidiCcTab(GuiBuilder& builder, PerformanceControlsPanelContext& context, PerformanceControlsPanelState& state) {
+static void MidiCcTab(GuiBuilder& builder,
+                      PerformanceControlsPanelContext& context,
+                      PerformanceControlsPanelState& state) {
     auto const root = DoBox(builder,
                             {
                                 .layout {
@@ -900,8 +958,8 @@ MidiCcTab(GuiBuilder& builder, PerformanceControlsPanelContext& context, Perform
 }
 
 static void PerformanceControlsPanel(GuiBuilder& builder,
-                                   PerformanceControlsPanelContext& context,
-                                   PerformanceControlsPanelState& state) {
+                                     PerformanceControlsPanelContext& context,
+                                     PerformanceControlsPanelState& state) {
     auto const root = DoModalRootBox(builder);
 
     DoModalHeader(builder,
@@ -936,7 +994,7 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
         if (!state.new_instance_defaults_cache)
             state.new_instance_defaults_cache = perf_profile::DefaultOrFallback(context.prefs);
 
-        auto const current = CaptureCurrentPerformanceProfile(context.processor);
+        auto const current = CaptureCurrentPerformanceProfile(context.engine.processor);
         bool const matches_defaults = current == *state.new_instance_defaults_cache;
 
         DoBox(builder,
@@ -984,17 +1042,30 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
                       .font = FontType::Body,
                       .text_colours = Col {.c = Col::Subtext0},
                   });
-        } else if (
-            TextButton(
-                builder,
-                row,
-                {
-                    .text = "Make default"_s,
-                    .tooltip =
-                        "Make this page's current settings the ones new Floe instances start with"_s,
-                })) {
-            perf_profile::SaveDefault(context.prefs, current);
-            state.new_instance_defaults_cache = current;
+        } else {
+            if (TextButton(
+                    builder,
+                    row,
+                    {
+                        .text = "Make default"_s,
+                        .tooltip =
+                            "Make this page's current settings the ones new Floe instances start with"_s,
+                    })) {
+                perf_profile::SaveDefault(context.prefs, current);
+                state.new_instance_defaults_cache = current;
+            }
+
+            if (IconButton(builder,
+                           row,
+                           ICON_FA_ARROW_ROTATE_LEFT,
+                           "Reset this instance's settings to the default for new Floe instances"_s,
+                           k_font_icons_size * 0.8f,
+                           f32x2 {k_icon_col_width, k_table_row_height})
+                    .button_fired) {
+                ApplyPerformanceProfile(context.engine.processor, *state.new_instance_defaults_cache);
+                dyn::Clear(context.engine.loaded_profile_name);
+                context.engine.loaded_profile_name_scan_attempted = false;
+            }
         }
     }
 
@@ -1028,7 +1099,9 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
                                   case PerformanceControlsPanelState::Tab::Reproducibility:
                                       ReproducibilityTab(builder, context);
                                       break;
-                                  case PerformanceControlsPanelState::Tab::Mpe: MpeTab(builder, context); break;
+                                  case PerformanceControlsPanelState::Tab::Mpe:
+                                      MpeTab(builder, context);
+                                      break;
                                   case PerformanceControlsPanelState::Tab::MidiCc:
                                       MidiCcTab(builder, context, state);
                                       break;
@@ -1048,8 +1121,8 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
 }
 
 void DoPerformanceControlsPanel(GuiBuilder& builder,
-                              PerformanceControlsPanelContext& context,
-                              PerformanceControlsPanelState& state) {
+                                PerformanceControlsPanelContext& context,
+                                PerformanceControlsPanelState& state) {
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) {
         state.new_instance_defaults_cache = k_nullopt;
         return;
@@ -1059,11 +1132,12 @@ void DoPerformanceControlsPanel(GuiBuilder& builder,
     builder.imgui.RegisterNamedRect("performance-controls-panel.modal"_s,
                                     builder.imgui.ViewportRectToWindowRect(bounds));
 
-    DoBoxViewport(builder,
-                  {
-                      .run = [&context, &state](GuiBuilder& b) { PerformanceControlsPanel(b, context, state); },
-                      .bounds = bounds,
-                      .imgui_id = state.k_panel_id,
-                      .viewport_config = k_default_modal_viewport,
-                  });
+    DoBoxViewport(
+        builder,
+        {
+            .run = [&context, &state](GuiBuilder& b) { PerformanceControlsPanel(b, context, state); },
+            .bounds = bounds,
+            .imgui_id = state.k_panel_id,
+            .viewport_config = k_default_modal_viewport,
+        });
 }

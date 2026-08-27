@@ -11,7 +11,7 @@
 #include "gui/core/gui_fwd.hpp"
 #include "gui/overlays/gui_confirmation_dialog.hpp"
 
-struct AudioProcessor;
+struct Engine;
 
 struct PerformanceControlsPanelState {
     static constexpr u64 k_panel_id = HashFnv1a("performance-controls-panel");
@@ -40,7 +40,7 @@ struct PerformanceControlsPanelState {
 };
 
 struct PerformanceControlsPanelContext {
-    AudioProcessor& processor;
+    Engine& engine;
     prefs::Preferences& prefs;
     ConfirmationDialogState& confirmation_dialog_state;
 };

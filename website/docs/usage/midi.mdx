@@ -23,7 +23,7 @@ All automatable parameters can be assigned to a MIDI CC, so you can control Floe
 
 Right-click a parameter and select **MIDI CC Learn**, then move the control on your MIDI controller you want to assign — this creates the mapping. To remove a mapping, right-click the parameter and select **Remove MIDI CC**.
 
-You can also add and remove mappings from the **Performance Controls** panel (the sliders icon in the top panel), which lists every mapping on the current instance in one place.
+You can also add and remove mappings from the [Performance Controls](./performance-controls) panel, which lists every mapping on the current instance in one place.
 
 ### Default mappings
 
@@ -37,26 +37,9 @@ Floe applies these MIDI CC mappings when it starts. You have full control to rem
 
 ### How mappings are saved
 
-MIDI CC mappings are saved with your DAW project, and apply only to the instance you created them on — a new instance of Floe starts without them, unless you've made them the default (see [Settings for new instances](#settings-for-new-instances)).
+MIDI CC mappings are saved with your DAW project, and apply only to the instance you created them on — a new instance of Floe starts without them, unless you've made them the default (see [Performance Controls: Settings for new instances](./performance-controls#settings-for-new-instances)).
 
 Preset files never save MIDI CC mappings, so loading a preset leaves your mappings untouched.
-
-### Settings for new instances
-
-To make the current instance's MIDI CC mappings and settings the ones every new Floe instance starts with:
-
-1. Set up the current instance the way you want it.
-2. Open the **Performance Controls** panel and click **Use these settings for new instances** at the top.
-
-If the current settings already match what new instances start with, the panel shows a confirmation there instead of the button.
-
-### Performance Controls panel
-
-The **Performance Controls** panel (sliders icon, top panel) is where you manage MIDI CC mappings, MPE, and [Reproducibility](./reproducibility) settings for the current instance, and where you save, load, and switch between **Profiles**.
-
-<GeneratedScreenshot name="performance-controls" alt="Performance Controls panel" />
-
-A profile is a named, saved bundle of MIDI CC mappings and instance settings — like a save file for this panel. Profiles are useful when you switch between MIDI controllers regularly: save one profile per controller, then switch between them as you swap hardware. Selecting a profile applies it to the current instance immediately — it's a one-shot copy, not a persistent link, so further changes to the instance don't affect the saved profile unless you save over it.
 
 ## Sustain Pedal
 
@@ -70,17 +53,17 @@ Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configur
 
 Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers — Seaboard, LinnStrument, Osmose, and similar — control each note independently.
 
-Enable MPE from the **Performance Controls** panel (sliders icon, top panel). The setting is saved with your DAW project and unaffected by loading presets.
+Enable MPE from the [Performance Controls](./performance-controls) panel.
 
 When enabled, Floe responds to the standard MPE per-note messages:
 
 - **Glide**: pitch bend on a note's channel bends just that note, following the MPE ±48-semitone convention (or whatever range your controller negotiates). The master channel's pitch wheel still bends everything, using each layer's pitch bend range parameter.
 - **Press**: each note's channel pressure (aftertouch).
-- **Slide**: each note's CC74 — bipolar, with its centre position neutral.
+- **Slide**: each note's CC74.
 
-Choose what press and slide control per layer on the [Config tab](./layers#config-tab): a target (volume, filter cutoff, or timbre) and an amount, which can be negative to invert the response. The timbre target offsets the master timbre control per note.
+Choose what press and slide control per layer on the [Config tab](./layers#config-tab): a target (volume, filter cutoff, or timbre) and an amount, which can be negative to invert the response, or beyond 100% to reach the full effect with a smaller gesture. For the volume target, press restores volume up to the layer's slider level, and slide acts as a per-note fader — the top of its travel is the slider level. For the filter cutoff and timbre targets, press adds an offset and slide is bipolar with its centre position neutral. The timbre target offsets the master timbre control per note.
 
-The smoothing setting in the Performance Controls panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
+The smoothing setting in the [Performance Controls](./performance-controls) panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
 
 While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, or the master Timbre knob in the top panel — so you can see the expression reaching each voice.
 

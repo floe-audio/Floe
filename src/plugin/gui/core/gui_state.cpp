@@ -314,7 +314,7 @@ void GuiUpdate(GuiState& g) {
 
     {
         PerformanceControlsPanelContext context {
-            .processor = g.engine.processor,
+            .engine = g.engine,
             .prefs = g.prefs,
             .confirmation_dialog_state = g.confirmation_dialog_state,
         };

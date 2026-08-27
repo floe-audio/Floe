@@ -39,6 +39,7 @@ const sidebars = {
                 'usage/folders',
                 'usage/key-ranges',
                 'usage/randomisation',
+                'usage/performance-controls',
                 'usage/reproducibility',
                 'usage/midi',
                 'usage/looping',

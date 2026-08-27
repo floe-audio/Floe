@@ -6,6 +6,7 @@
 
 #include "common_infrastructure/autosave.hpp"
 #include "common_infrastructure/constants.hpp"
+#include "common_infrastructure/performance_profile.hpp"
 #include "common_infrastructure/preset_description.hpp"
 #include "common_infrastructure/sample_library/attribution_requirements.hpp"
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
@@ -89,6 +90,15 @@ struct Engine : ProcessorListener {
     Optional<StateSnapshot> stashed_modifications {};
 
     StateMetadata state_metadata {};
+
+    // Main-thread only, not persisted. Name of the saved performance profile that the current settings are
+    // considered to be following, if any: set when a profile is loaded/saved/overwritten from the
+    // performance controls panel, or discovered lazily by matching current settings against saved profiles.
+    // Empty if the current settings aren't following a named profile.
+    DynamicArrayBounded<char, perf_profile::k_max_name_size> loaded_profile_name {};
+    // Whether we've already attempted the lazy match-by-content scan, so we don't repeat it every frame the
+    // panel is open when nothing matches.
+    bool loaded_profile_name_scan_attempted {};
 
     Bitset<k_num_effect_types> fx_visible {};
     MacroNames macro_names = DefaultMacroNames();
