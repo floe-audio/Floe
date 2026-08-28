@@ -140,7 +140,10 @@ WriteProfileToSection(prefs::Preferences& prefs, String section, Profile const& 
                         prefs::SectionedKey {section, k_reset_keyswitch_key},
                         (s64)profile.controls.settings.reset_keyswitch.Value(),
                         k_opts);
-    prefs::SetValue(prefs, prefs::SectionedKey {section, k_seed_key}, (s64)profile.controls.settings.seed, k_opts);
+    prefs::SetValue(prefs,
+                    prefs::SectionedKey {section, k_seed_key},
+                    (s64)profile.controls.settings.seed,
+                    k_opts);
 
     for (auto const [param_index, param_ccs] : Enumerate(profile.controls.param_learned_ccs)) {
         if (!param_ccs.AnyValuesSet()) continue;
@@ -256,7 +259,8 @@ void MigrateIfNeeded(prefs::Preferences& prefs) {
                             for (auto value = value_list; value; value = value->next) {
                                 if (value->tag != prefs::ValueType::Int) continue;
                                 if (auto const param_index = ParamIdToIndex((u32)value->Get<s64>()))
-                                    migrated.controls.param_learned_ccs[ToInt(*param_index)].Set((usize)cc_num);
+                                    migrated.controls.param_learned_ccs[ToInt(*param_index)].Set(
+                                        (usize)cc_num);
                             }
                         });
 

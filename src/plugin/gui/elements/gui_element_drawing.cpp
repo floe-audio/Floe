@@ -79,10 +79,10 @@ void DrawParameterTextInput(imgui::Context const& imgui,
     Rect const background_r {.xywh {r.CentreX() - (w / 2), text_pos.y, w, font->font_size}};
     auto const rounding = WwToPixels(k_corner_rounding);
 
-    auto const back_col = options.dark_mode ? LiveCol(UiColMap::KnobTextInputBack)
-                                            : ToU32(Col {.c = Col::Background2});
-    auto const border_col = options.dark_mode ? LiveCol(UiColMap::KnobTextInputBorder)
-                                              : ToU32(Col {.c = Col::Overlay1});
+    auto const back_col =
+        options.dark_mode ? LiveCol(UiColMap::KnobTextInputBack) : ToU32(Col {.c = Col::Background2});
+    auto const border_col =
+        options.dark_mode ? LiveCol(UiColMap::KnobTextInputBorder) : ToU32(Col {.c = Col::Overlay1});
     auto const selection_col = options.dark_mode ? LiveCol(UiColMap::TextInputSelection)
                                                  : ToU32(Col {.c = Col::Highlight, .alpha = 128});
     auto const cursor_col =

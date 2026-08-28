@@ -1938,7 +1938,8 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         if (coder.IsWriting() && args.source == StateSource::Daw) {
             reset_on_transport = state.extras.performance_controls.settings.reset_on_transport ? 1 : 0;
-            has_reset_keyswitch = state.extras.performance_controls.settings.reset_keyswitch.HasValue() ? 1 : 0;
+            has_reset_keyswitch =
+                state.extras.performance_controls.settings.reset_keyswitch.HasValue() ? 1 : 0;
             reset_keyswitch_note = state.extras.performance_controls.settings.reset_keyswitch.ValueOr(0);
             seed = state.extras.performance_controls.settings.seed;
         }
@@ -1959,12 +1960,14 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
         {
             u8 mpe_enabled {};
-            if (coder.IsWriting()) mpe_enabled = state.extras.performance_controls.settings.mpe_enabled ? 1 : 0;
+            if (coder.IsWriting())
+                mpe_enabled = state.extras.performance_controls.settings.mpe_enabled ? 1 : 0;
             TRY(coder.CodeNumber(mpe_enabled, StateVersion::AddedMpe));
             if (coder.IsReading()) state.extras.performance_controls.settings.mpe_enabled = mpe_enabled != 0;
 
             u16 mpe_smoothing_ms {100};
-            if (coder.IsWriting()) mpe_smoothing_ms = state.extras.performance_controls.settings.mpe_smoothing_ms;
+            if (coder.IsWriting())
+                mpe_smoothing_ms = state.extras.performance_controls.settings.mpe_smoothing_ms;
             TRY(coder.CodeNumber(mpe_smoothing_ms, StateVersion::AddedMpe));
             if (coder.IsReading())
                 state.extras.performance_controls.settings.mpe_smoothing_ms = Min(mpe_smoothing_ms, (u16)500);
@@ -2448,7 +2451,8 @@ TEST_CASE(TestSerialisation) {
             }
             CHECK(state == out_state);
             if (source == StateSource::Daw)
-                CHECK(state.extras.performance_controls.param_learned_ccs == out_state.extras.performance_controls.param_learned_ccs);
+                CHECK(state.extras.performance_controls.param_learned_ccs ==
+                      out_state.extras.performance_controls.param_learned_ccs);
         }
     }
 

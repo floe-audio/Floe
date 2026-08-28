@@ -186,8 +186,8 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
 
     auto const performance_settings = g.engine.processor.performance_settings.Load(LoadMemoryOrder::Relaxed);
     auto const keyswitch_note = performance_settings.reset_keyswitch.HasValue()
-                                     ? (s32)performance_settings.reset_keyswitch.Value()
-                                     : -1;
+                                    ? (s32)performance_settings.reset_keyswitch.Value()
+                                    : -1;
     auto const col_keyswitch = ToU32(Col {.c = Col::Blue, .dark_mode = true, .alpha = 200});
 
     auto const draw_keyswitch_marker = [&](s32 key, Rect key_rect, bool) {
