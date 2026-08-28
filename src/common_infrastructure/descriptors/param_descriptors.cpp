@@ -455,6 +455,8 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::LegacyEqType2:
             case LayerParamIndex::LegacyEqFreq3:
             case LayerParamIndex::LegacyVelocityMapping:
+            case LayerParamIndex::LegacyLfoRateTempoSynced:
+            case LayerParamIndex::LegacyArpRate:
             case LayerParamIndex::LegacyMonophonicBool: return false;
 
             case LayerParamIndex::Count: PanicIfReached();
@@ -603,7 +605,9 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
         case ParamIndex::LegacyChorusDry:
         case ParamIndex::LegacyConvolutionReverbHighpass:
         case ParamIndex::LegacyConvolutionReverbWet:
-        case ParamIndex::LegacyConvolutionReverbDry: return false;
+        case ParamIndex::LegacyConvolutionReverbDry:
+        case ParamIndex::LegacyDelayTimeSyncedL:
+        case ParamIndex::LegacyDelayTimeSyncedR: return false;
 
         case ParamIndex::CountHelper:
         case ParamIndex::NonLayerParamsCount: PanicIfReached();

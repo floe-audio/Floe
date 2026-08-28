@@ -378,13 +378,16 @@ static void DoParamMenuItems(GuiState& g, ParamIndex param_index) {
                                  });
     auto const current = g.engine.processor.main_params.IntValue<int>(param_index);
 
-    for (auto const [index, item] : Enumerate(ParameterMenuItems(param_index))) {
+    // Drawn highest-value-first so that dragging the control fully up/right (which increases the value)
+    // lands on the item at the top of the list.
+    auto const items = ParameterMenuItems(param_index);
+    for (usize index = items.size; index-- != 0;) {
         g.builder.imgui.PushId(index);
         DEFER { g.builder.imgui.PopId(); };
         if (MenuItem(g.builder,
                      menu_root,
                      {
-                         .text = item,
+                         .text = items[index],
                          .is_selected = (int)index == current,
                      })
                 .button_fired) {

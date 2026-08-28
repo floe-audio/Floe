@@ -880,7 +880,8 @@ ArpOnBlockChanges(ArpeggiatorState& arp, ArpBlockChangesArgs const& args, ArpNot
                                                                        LayerParamIndex::ArpTriggerMode))
         arp.audio.trigger_mode = *p;
 
-    if (auto const p = args.changed_params.IntValue<param_values::ArpSyncedRate>(args.layer_index,
+    if (auto const p =
+            args.changed_params.IntValueLegacyAware<param_values::ArpSyncedRate>(args.layer_index,
                                                                                  LayerParamIndex::ArpRate)) {
         arp.audio.user_rate = SyncedTimesFromParam(*p);
         rate_changed = true;

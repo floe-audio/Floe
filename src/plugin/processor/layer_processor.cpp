@@ -731,7 +731,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
         bool update_voice_controller_times = false;
         if (changes.tempo_changed) update_voice_controller_times = true;
 
-        if (auto p = changes.changed_params.IntValue<param_values::LfoSyncedRate>(
+        if (auto p = changes.changed_params.IntValueLegacyAware<param_values::LfoSyncedRate>(
                 layer.index,
                 LayerParamIndex::LfoRateTempoSynced)) {
             layer.lfo_synced_time = *p;

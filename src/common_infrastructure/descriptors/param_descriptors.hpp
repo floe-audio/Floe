@@ -42,7 +42,7 @@ enum class LayerParamIndex : u8 {
     LfoRestart,
     LfoAmount,
     LegacyLfoDestination,
-    LfoRateTempoSynced,
+    LegacyLfoRateTempoSynced,
     LfoRateHz,
     LfoSyncSwitch,
     LegacyLfoShapeV2,
@@ -95,7 +95,7 @@ enum class LayerParamIndex : u8 {
     ArpMode,
     ArpNoteOrder,
     ArpTriggerMode,
-    ArpRate,
+    LegacyArpRate,
     ArpAutoRate,
     ArpLength,
     ArpHumanise,
@@ -106,6 +106,11 @@ enum class LayerParamIndex : u8 {
     MpePressAmount,
     MpeSlideDestination,
     MpeSlideAmount,
+
+    // Reverse-ordered successors of the tempo-synced rate params (higher value = faster). The legacy
+    // originals are kept for DAW automation backwards compatibility.
+    LfoRateTempoSynced,
+    ArpRate,
 
     Count,
 };
@@ -184,8 +189,8 @@ enum class ParamIndex : u16 {
     DelayTimeLMs,
     DelayTimeRMs,
     DelayTimeSyncSwitch,
-    DelayTimeSyncedL,
-    DelayTimeSyncedR,
+    LegacyDelayTimeSyncedL,
+    LegacyDelayTimeSyncedR,
     DelayOn,
 
     PhaserCenterSemitones,
@@ -233,6 +238,11 @@ enum class ParamIndex : u16 {
     ReverbChorusFrequency,
     ReverbChorusAmount,
     ReverbOn,
+
+    // Reverse-ordered successors of the tempo-synced delay time params (higher value = faster). The legacy
+    // originals are kept for DAW automation backwards compatibility.
+    DelayTimeSyncedL,
+    DelayTimeSyncedR,
 
     CountHelper,
     NonLayerParamsCount = CountHelper - FirstNonLayerParam,
@@ -442,7 +452,7 @@ constexpr auto k_loop_mode_strings = ArrayT<String>({
 });
 static_assert(k_loop_mode_strings.size == ToInt(LoopMode::Count));
 
-enum class LfoSyncedRate : u8 { // never reorder
+enum class LegacyLfoSyncedRate : u8 { // never reorder
     // NOLINTBEGIN(readability-identifier-naming)
     _1_64T,
     _1_64,
@@ -474,11 +484,53 @@ enum class LfoSyncedRate : u8 { // never reorder
     Count,
     // NOLINTEND(readability-identifier-naming)
 };
-constexpr auto k_lfo_synced_rate_strings = ArrayT<String>({
+constexpr auto k_legacy_lfo_synced_rate_strings = ArrayT<String>({
     "1/64T", "1/64", "1/64D", "1/32T", "1/32", "1/32D", "1/16T", "1/16", "1/16D",
     "1/8T",  "1/8",  "1/8D",  "1/4T",  "1/4",  "1/4D",  "1/2T",  "1/2",  "1/2D",
     "1/1T",  "1/1",  "1/1D",  "2/1T",  "2/1",  "2/1D",  "4/1T",  "4/1",  "4/1D",
 });
+static_assert(k_legacy_lfo_synced_rate_strings.size == ToInt(LegacyLfoSyncedRate::Count));
+
+// Reverse-ordered so that a higher parameter value is a faster rate: dragging the control up/right speeds
+// the LFO up, matching expectation. Same set of divisions as the legacy enum; only the numeric ordering
+// differs. DSP maps by member name (SyncedTimesFromParam), so the reversal is transparent to it.
+enum class LfoSyncedRate : u8 { // never reorder
+    // NOLINTBEGIN(readability-identifier-naming)
+    _4_1D,
+    _4_1,
+    _4_1T,
+    _2_1D,
+    _2_1,
+    _2_1T,
+    _1_1D,
+    _1_1,
+    _1_1T,
+    _1_2D,
+    _1_2,
+    _1_2T,
+    _1_4D,
+    _1_4,
+    _1_4T,
+    _1_8D,
+    _1_8,
+    _1_8T,
+    _1_16D,
+    _1_16,
+    _1_16T,
+    _1_32D,
+    _1_32,
+    _1_32T,
+    _1_64D,
+    _1_64,
+    _1_64T,
+    Count,
+    // NOLINTEND(readability-identifier-naming)
+};
+constexpr auto k_lfo_synced_rate_strings = []() {
+    auto strings = k_legacy_lfo_synced_rate_strings;
+    Reverse(strings);
+    return strings;
+}();
 static_assert(k_lfo_synced_rate_strings.size == ToInt(LfoSyncedRate::Count));
 
 enum class LfoRestartMode : u8 { // never reorder
@@ -734,7 +786,7 @@ constexpr auto k_compressor_type_strings = ArrayT<String>({
 });
 static_assert(k_compressor_type_strings.size == ToInt(CompressorType::Count));
 
-enum class DelaySyncedTime : u8 { // never reorder
+enum class LegacyDelaySyncedTime : u8 { // never reorder
     // NOLINTBEGIN(readability-identifier-naming)
     _1_64T,
     _1_64,
@@ -760,10 +812,44 @@ enum class DelaySyncedTime : u8 { // never reorder
     Count,
     // NOLINTEND(readability-identifier-naming)
 };
-constexpr auto k_delay_synced_time_strings = ArrayT<String>({
+constexpr auto k_legacy_delay_synced_time_strings = ArrayT<String>({
     "1/64T", "1/64", "1/64D", "1/32T", "1/32", "1/32D", "1/16T", "1/16", "1/16D", "1/8T", "1/8",
     "1/8D",  "1/4T", "1/4",   "1/4D",  "1/2T", "1/2",   "1/2D",  "1/1T", "1/1",   "1/1D",
 });
+static_assert(k_legacy_delay_synced_time_strings.size == ToInt(LegacyDelaySyncedTime::Count));
+
+// Reverse-ordered so a higher parameter value is a shorter (faster) delay time; see LfoSyncedRate.
+enum class DelaySyncedTime : u8 { // never reorder
+    // NOLINTBEGIN(readability-identifier-naming)
+    _1_1D,
+    _1_1,
+    _1_1T,
+    _1_2D,
+    _1_2,
+    _1_2T,
+    _1_4D,
+    _1_4,
+    _1_4T,
+    _1_8D,
+    _1_8,
+    _1_8T,
+    _1_16D,
+    _1_16,
+    _1_16T,
+    _1_32D,
+    _1_32,
+    _1_32T,
+    _1_64D,
+    _1_64,
+    _1_64T,
+    Count,
+    // NOLINTEND(readability-identifier-naming)
+};
+constexpr auto k_delay_synced_time_strings = []() {
+    auto strings = k_legacy_delay_synced_time_strings;
+    Reverse(strings);
+    return strings;
+}();
 static_assert(k_delay_synced_time_strings.size == ToInt(DelaySyncedTime::Count));
 
 enum class DelayMode : u8 { // never reorder
@@ -952,7 +1038,7 @@ constexpr auto k_arp_auto_rate_strings = ArrayT<String>({
 });
 static_assert(k_arp_auto_rate_strings.size == ToInt(ArpAutoRate::Count));
 
-enum class ArpSyncedRate : u8 { // never reorder
+enum class LegacyArpSyncedRate : u8 { // never reorder
     // NOLINTBEGIN(readability-identifier-naming)
     _1_64T,
     _1_64,
@@ -984,11 +1070,51 @@ enum class ArpSyncedRate : u8 { // never reorder
     Count,
     // NOLINTEND(readability-identifier-naming)
 };
-constexpr auto k_arp_synced_rate_strings = ArrayT<String>({
+constexpr auto k_legacy_arp_synced_rate_strings = ArrayT<String>({
     "1/64T", "1/64", "1/64D", "1/32T", "1/32", "1/32D", "1/16T", "1/16", "1/16D",
     "1/8T",  "1/8",  "1/8D",  "1/4T",  "1/4",  "1/4D",  "1/2T",  "1/2",  "1/2D",
     "1/1T",  "1/1",  "1/1D",  "2/1T",  "2/1",  "2/1D",  "4/1T",  "4/1",  "4/1D",
 });
+static_assert(k_legacy_arp_synced_rate_strings.size == ToInt(LegacyArpSyncedRate::Count));
+
+// Reverse-ordered so a higher parameter value is a faster arpeggiator rate; see LfoSyncedRate.
+enum class ArpSyncedRate : u8 { // never reorder
+    // NOLINTBEGIN(readability-identifier-naming)
+    _4_1D,
+    _4_1,
+    _4_1T,
+    _2_1D,
+    _2_1,
+    _2_1T,
+    _1_1D,
+    _1_1,
+    _1_1T,
+    _1_2D,
+    _1_2,
+    _1_2T,
+    _1_4D,
+    _1_4,
+    _1_4T,
+    _1_8D,
+    _1_8,
+    _1_8T,
+    _1_16D,
+    _1_16,
+    _1_16T,
+    _1_32D,
+    _1_32,
+    _1_32T,
+    _1_64D,
+    _1_64,
+    _1_64T,
+    Count,
+    // NOLINTEND(readability-identifier-naming)
+};
+constexpr auto k_arp_synced_rate_strings = []() {
+    auto strings = k_legacy_arp_synced_rate_strings;
+    Reverse(strings);
+    return strings;
+}();
 static_assert(k_arp_synced_rate_strings.size == ToInt(ArpSyncedRate::Count));
 
 } // namespace param_values
@@ -999,6 +1125,7 @@ struct ParamDescriptor {
         LoopMode,
         LegacyEqType,
         EqType,
+        LegacyLfoSyncedRate,
         LfoSyncedRate,
         LfoRestartMode,
         LegacyLfoDestination,
@@ -1012,6 +1139,7 @@ struct ParamDescriptor {
         EffectFilterType,
         DistortionType,
         CompressorType,
+        LegacyDelaySyncedTime,
         DelaySyncedTime,
         DelayMode,
         VelocityMappingMode,
@@ -1021,6 +1149,7 @@ struct ParamDescriptor {
         ArpMode,
         ArpNoteOrder,
         ArpTriggerMode,
+        LegacyArpSyncedRate,
         ArpSyncedRate,
         ArpOctavePolyrate,
         ArpAutoRate,
@@ -1348,6 +1477,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::LegacyEqType: return k_legacy_eq_type_strings;
         case ParamDescriptor::MenuType::EqType: return k_eq_type_strings;
         case ParamDescriptor::MenuType::LoopMode: return k_loop_mode_strings;
+        case ParamDescriptor::MenuType::LegacyLfoSyncedRate: return k_legacy_lfo_synced_rate_strings;
         case ParamDescriptor::MenuType::LfoSyncedRate: return k_lfo_synced_rate_strings;
         case ParamDescriptor::MenuType::LfoRestartMode: return k_lfo_restart_mode_strings;
         case ParamDescriptor::MenuType::LegacyLfoDestination: return k_legacy_lfo_destination_strings;
@@ -1361,6 +1491,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::EffectFilterType: return k_effect_filter_type_strings;
         case ParamDescriptor::MenuType::DistortionType: return k_distortion_type_strings;
         case ParamDescriptor::MenuType::CompressorType: return k_compressor_type_strings;
+        case ParamDescriptor::MenuType::LegacyDelaySyncedTime: return k_legacy_delay_synced_time_strings;
         case ParamDescriptor::MenuType::DelaySyncedTime: return k_delay_synced_time_strings;
         case ParamDescriptor::MenuType::DelayMode: return k_delay_mode_strings;
         case ParamDescriptor::MenuType::VelocityMappingMode: return k_velocity_mapping_mode_strings;
@@ -1370,6 +1501,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpMode: return k_arp_type_strings;
         case ParamDescriptor::MenuType::ArpNoteOrder: return k_arp_note_order_strings;
         case ParamDescriptor::MenuType::ArpTriggerMode: return k_arp_trigger_mode_strings;
+        case ParamDescriptor::MenuType::LegacyArpSyncedRate: return k_legacy_arp_synced_rate_strings;
         case ParamDescriptor::MenuType::ArpSyncedRate: return k_arp_synced_rate_strings;
         case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
         case ParamDescriptor::MenuType::ArpAutoRate: return k_arp_auto_rate_strings;
@@ -2300,9 +2432,36 @@ consteval auto CreateParams() {
         .gui_label = "Time R"_s,
         .tooltip = "Right delay time (in milliseconds)"_s,
     };
-    mp(DelayTimeSyncedL) = Args {
+    mp(LegacyDelayTimeSyncedL) = Args {
         .id = id(IdRegion::Master, 95), // never change
         .id_string = "fx.delay.time_synced_l"_s,
+        .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::LegacyDelaySyncedTime,
+            .default_val = (u32)LegacyDelaySyncedTime::_1_4,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Delay},
+        .name = "Time Left (Tempo Synced) (Legacy)"_s,
+        .gui_label = "Time L"_s,
+        .tooltip = "Legacy left delay time. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(LegacyDelayTimeSyncedR) = Args {
+        .id = id(IdRegion::Master, 96), // never change
+        .id_string = "fx.delay.time_synced_r"_s,
+        .value_config = val_config_helpers::Menu({
+            .type = ParamDescriptor::MenuType::LegacyDelaySyncedTime,
+            .default_val = (u32)LegacyDelaySyncedTime::_1_8,
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Delay},
+        .name = "Time Right (Tempo Synced) (Legacy)"_s,
+        .gui_label = "Time R"_s,
+        .tooltip = "Legacy right delay time. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(DelayTimeSyncedL) = Args {
+        .id = id(IdRegion::Master, 146), // never change
+        .id_string = "fx.delay.time_synced_l_v2"_s,
+        .added_in_generation = 5,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::DelaySyncedTime,
             .default_val = (u32)DelaySyncedTime::_1_4,
@@ -2313,8 +2472,9 @@ consteval auto CreateParams() {
         .tooltip = "Left delay time (synced to the host tempo)"_s,
     };
     mp(DelayTimeSyncedR) = Args {
-        .id = id(IdRegion::Master, 96), // never change
-        .id_string = "fx.delay.time_synced_r"_s,
+        .id = id(IdRegion::Master, 147), // never change
+        .id_string = "fx.delay.time_synced_r_v2"_s,
+        .added_in_generation = 5,
         .value_config = val_config_helpers::Menu({
             .type = ParamDescriptor::MenuType::DelaySyncedTime,
             .default_val = (u32)DelaySyncedTime::_1_8,
@@ -3239,9 +3399,23 @@ consteval auto CreateParams() {
             .tooltip = "Legacy LFO target parameter. Kept for backwards-compatibility with DAW automation"_s,
             .flags = {.legacy = true},
         };
-        lp(LfoRateTempoSynced) = Args {
+        lp(LegacyLfoRateTempoSynced) = Args {
             .id = id(region, 32), // never change
             .id_string = LAYER_ID("lfo.rate_synced"),
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyLfoSyncedRate,
+                .default_val = (u32)LegacyLfoSyncedRate::_1_4,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Time (Tempo Synced) (Legacy)"_s,
+            .gui_label = "Time"_s,
+            .tooltip = "Legacy LFO rate. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(LfoRateTempoSynced) = Args {
+            .id = id(region, 100), // never change
+            .id_string = LAYER_ID("lfo.rate_synced_v2"),
+            .added_in_generation = 3,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LfoSyncedRate,
                 .default_val = (u32)LfoSyncedRate::_1_4,
@@ -3831,10 +4005,24 @@ consteval auto CreateParams() {
             .tooltip =
                 "Free: arpeggiator keeps running when new notes are pressed. Retrigger: arpeggiator restarts from step 1"_s,
         };
-        lp(ArpRate) = Args {
+        lp(LegacyArpRate) = Args {
             .id = id(region, 72), // never change
             .id_string = LAYER_ID("arp.rate"),
             .added_in_generation = 1,
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LegacyArpSyncedRate,
+                .default_val = (u32)param_values::LegacyArpSyncedRate::_1_8,
+            }),
+            .modules = {layer_module, ParameterModule::Arp},
+            .name = "Rate (Legacy)"_s,
+            .gui_label = "Rate"_s,
+            .tooltip = "Legacy arpeggiator rate. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(ArpRate) = Args {
+            .id = id(region, 101), // never change
+            .id_string = LAYER_ID("arp.rate_v2"),
+            .added_in_generation = 3,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::ArpSyncedRate,
                 .default_val = (u32)param_values::ArpSyncedRate::_1_8,

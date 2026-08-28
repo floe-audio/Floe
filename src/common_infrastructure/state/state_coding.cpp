@@ -609,6 +609,11 @@ enum class StateVersion : u16 {
     // no effect until MPE is enabled.
     AddedMpe,
 
+    // Reversed the ordering of the tempo-synced LFO rate, arp rate, and delay time menus so that a higher
+    // parameter value is a faster rate. The old parameters are now hidden legacies kept for DAW automation
+    // backwards compatibility.
+    ReversedTempoSyncedRateOrdering,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -623,7 +628,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 394,
+    static_assert(k_num_non_experimental_parameters == 402,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -803,6 +808,13 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                                     ParamIndex::EqResonance3,
                                     ParamIndex::EqGain3})
             state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+    }
+
+    if (version < StateVersion::ReversedTempoSyncedRateOrdering) {
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyLfoRateTempoSynced, source);
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyArpRate, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyDelayTimeSyncedL, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyDelayTimeSyncedR, source);
     }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's

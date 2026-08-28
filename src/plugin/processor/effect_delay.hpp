@@ -39,13 +39,13 @@ class Delay final : public Effect {
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::DelayFeedback))
             args.params[ToInt(Params::Feedback)] = *p;
 
-        if (auto p = changes.changed_params.IntValue<param_values::DelaySyncedTime>(
+        if (auto p = changes.changed_params.IntValueLegacyAware<param_values::DelaySyncedTime>(
                 ParamIndex::DelayTimeSyncedL)) {
             synced_time_l = ToSyncedTime(*p);
             update_time_l = true;
         }
 
-        if (auto p = changes.changed_params.IntValue<param_values::DelaySyncedTime>(
+        if (auto p = changes.changed_params.IntValueLegacyAware<param_values::DelaySyncedTime>(
                 ParamIndex::DelayTimeSyncedR)) {
             synced_time_r = ToSyncedTime(*p);
             update_time_r = true;

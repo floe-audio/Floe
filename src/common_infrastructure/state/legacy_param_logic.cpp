@@ -70,12 +70,69 @@ constexpr auto k_legacy_effect_filter_type_to_current = ArrayT<param_values::Eff
 static_assert(k_legacy_effect_filter_type_to_current.size ==
               ToInt(param_values::LegacyEffectFilterType::Count));
 
+// The tempo-synced rate/time menus were reordered so a higher parameter value is a faster rate. The modern
+// enum is the legacy enum reversed; these tables map each legacy value to the modern value of the same note
+// (listed by member name in legacy order, so the modern enum's numeric ordering handles the reversal).
+constexpr auto k_legacy_lfo_synced_rate_to_current = ArrayT<param_values::LfoSyncedRate>({
+    param_values::LfoSyncedRate::_1_64T, param_values::LfoSyncedRate::_1_64,
+    param_values::LfoSyncedRate::_1_64D, param_values::LfoSyncedRate::_1_32T,
+    param_values::LfoSyncedRate::_1_32,  param_values::LfoSyncedRate::_1_32D,
+    param_values::LfoSyncedRate::_1_16T, param_values::LfoSyncedRate::_1_16,
+    param_values::LfoSyncedRate::_1_16D, param_values::LfoSyncedRate::_1_8T,
+    param_values::LfoSyncedRate::_1_8,   param_values::LfoSyncedRate::_1_8D,
+    param_values::LfoSyncedRate::_1_4T,  param_values::LfoSyncedRate::_1_4,
+    param_values::LfoSyncedRate::_1_4D,  param_values::LfoSyncedRate::_1_2T,
+    param_values::LfoSyncedRate::_1_2,   param_values::LfoSyncedRate::_1_2D,
+    param_values::LfoSyncedRate::_1_1T,  param_values::LfoSyncedRate::_1_1,
+    param_values::LfoSyncedRate::_1_1D,  param_values::LfoSyncedRate::_2_1T,
+    param_values::LfoSyncedRate::_2_1,   param_values::LfoSyncedRate::_2_1D,
+    param_values::LfoSyncedRate::_4_1T,  param_values::LfoSyncedRate::_4_1,
+    param_values::LfoSyncedRate::_4_1D,
+});
+static_assert(k_legacy_lfo_synced_rate_to_current.size == ToInt(param_values::LegacyLfoSyncedRate::Count));
+
+constexpr auto k_legacy_arp_synced_rate_to_current = ArrayT<param_values::ArpSyncedRate>({
+    param_values::ArpSyncedRate::_1_64T, param_values::ArpSyncedRate::_1_64,
+    param_values::ArpSyncedRate::_1_64D, param_values::ArpSyncedRate::_1_32T,
+    param_values::ArpSyncedRate::_1_32,  param_values::ArpSyncedRate::_1_32D,
+    param_values::ArpSyncedRate::_1_16T, param_values::ArpSyncedRate::_1_16,
+    param_values::ArpSyncedRate::_1_16D, param_values::ArpSyncedRate::_1_8T,
+    param_values::ArpSyncedRate::_1_8,   param_values::ArpSyncedRate::_1_8D,
+    param_values::ArpSyncedRate::_1_4T,  param_values::ArpSyncedRate::_1_4,
+    param_values::ArpSyncedRate::_1_4D,  param_values::ArpSyncedRate::_1_2T,
+    param_values::ArpSyncedRate::_1_2,   param_values::ArpSyncedRate::_1_2D,
+    param_values::ArpSyncedRate::_1_1T,  param_values::ArpSyncedRate::_1_1,
+    param_values::ArpSyncedRate::_1_1D,  param_values::ArpSyncedRate::_2_1T,
+    param_values::ArpSyncedRate::_2_1,   param_values::ArpSyncedRate::_2_1D,
+    param_values::ArpSyncedRate::_4_1T,  param_values::ArpSyncedRate::_4_1,
+    param_values::ArpSyncedRate::_4_1D,
+});
+static_assert(k_legacy_arp_synced_rate_to_current.size == ToInt(param_values::LegacyArpSyncedRate::Count));
+
+constexpr auto k_legacy_delay_synced_time_to_current = ArrayT<param_values::DelaySyncedTime>({
+    param_values::DelaySyncedTime::_1_64T, param_values::DelaySyncedTime::_1_64,
+    param_values::DelaySyncedTime::_1_64D, param_values::DelaySyncedTime::_1_32T,
+    param_values::DelaySyncedTime::_1_32,  param_values::DelaySyncedTime::_1_32D,
+    param_values::DelaySyncedTime::_1_16T, param_values::DelaySyncedTime::_1_16,
+    param_values::DelaySyncedTime::_1_16D, param_values::DelaySyncedTime::_1_8T,
+    param_values::DelaySyncedTime::_1_8,   param_values::DelaySyncedTime::_1_8D,
+    param_values::DelaySyncedTime::_1_4T,  param_values::DelaySyncedTime::_1_4,
+    param_values::DelaySyncedTime::_1_4D,  param_values::DelaySyncedTime::_1_2T,
+    param_values::DelaySyncedTime::_1_2,   param_values::DelaySyncedTime::_1_2D,
+    param_values::DelaySyncedTime::_1_1T,  param_values::DelaySyncedTime::_1_1,
+    param_values::DelaySyncedTime::_1_1D,
+});
+static_assert(k_legacy_delay_synced_time_to_current.size ==
+              ToInt(param_values::LegacyDelaySyncedTime::Count));
+
 constexpr Optional<LayerParamIndex> SuccessorOfLegacyLayerParamIndex(LayerParamIndex legacy) {
     switch (legacy) {
         case LayerParamIndex::LegacyMonophonicBool: return LayerParamIndex::MonophonicMode;
         case LayerParamIndex::LegacyLfoShape: return LayerParamIndex::LegacyLfoShapeV2;
         case LayerParamIndex::LegacyLfoShapeV2: return LayerParamIndex::LfoShape;
         case LayerParamIndex::LegacyLfoDestination: return LayerParamIndex::LfoDestination;
+        case LayerParamIndex::LegacyLfoRateTempoSynced: return LayerParamIndex::LfoRateTempoSynced;
+        case LayerParamIndex::LegacyArpRate: return LayerParamIndex::ArpRate;
         case LayerParamIndex::LegacyFilterType: return LayerParamIndex::FilterType;
         case LayerParamIndex::LegacyEqType1: return LayerParamIndex::EqType1;
         case LayerParamIndex::LegacyEqType2: return LayerParamIndex::EqType2;
@@ -101,6 +158,8 @@ constexpr Optional<ParamIndex> SuccessorOfLegacyParamIndex(ParamIndex legacy) {
         case ParamIndex::LegacyConvolutionReverbHighpass: return ParamIndex::ConvolutionReverbHighpass;
         case ParamIndex::LegacyCompressorThreshold: return ParamIndex::CompressorThreshold;
         case ParamIndex::LegacyCompressorRatio: return ParamIndex::CompressorRatio;
+        case ParamIndex::LegacyDelayTimeSyncedL: return ParamIndex::DelayTimeSyncedL;
+        case ParamIndex::LegacyDelayTimeSyncedR: return ParamIndex::DelayTimeSyncedR;
         default: return k_nullopt;
     }
 }
@@ -182,6 +241,10 @@ static f32 RemapLegacyLayerValue(LayerParamIndex legacy_layer, u32 layer_num, f3
             return EnumLookup(k_legacy_lfo_shape_v2_to_current, legacy_linear, successor_default);
         case LayerParamIndex::LegacyLfoDestination:
             return EnumLookup(k_legacy_lfo_destination_to_current, legacy_linear, successor_default);
+        case LayerParamIndex::LegacyLfoRateTempoSynced:
+            return EnumLookup(k_legacy_lfo_synced_rate_to_current, legacy_linear, successor_default);
+        case LayerParamIndex::LegacyArpRate:
+            return EnumLookup(k_legacy_arp_synced_rate_to_current, legacy_linear, successor_default);
         case LayerParamIndex::LegacyFilterType:
             return EnumLookup(k_legacy_layer_filter_type_to_current, legacy_linear, successor_default);
         case LayerParamIndex::LegacyEqType1:
@@ -220,6 +283,9 @@ static f32 RemapLegacyValue(ParamIndex legacy, f32 legacy_linear) {
             return FrequencyRemap(legacy, ParamIndex::ChorusHighpass, legacy_linear);
         case ParamIndex::LegacyConvolutionReverbHighpass:
             return FrequencyRemap(legacy, ParamIndex::ConvolutionReverbHighpass, legacy_linear);
+        case ParamIndex::LegacyDelayTimeSyncedL:
+        case ParamIndex::LegacyDelayTimeSyncedR:
+            return EnumLookup(k_legacy_delay_synced_time_to_current, legacy_linear, successor_default);
         case ParamIndex::LegacyCompressorThreshold: {
             auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
             auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::CompressorThreshold)];
@@ -827,9 +893,52 @@ TEST_CASE(TestModerniseLegacyFilterCutoffSingleMacroAudioMatch) {
     return k_success;
 }
 
+// The tempo-synced rate/time menus were reordered (higher value = faster). Migrating a legacy value onto its
+// modern successor must land on the same musical note, and the modern ordering must be the reverse of the
+// legacy one (fastest division at the top of the range).
+TEST_CASE(TestReversedTempoSyncedRateMigration) {
+    auto check_note_preserved = [&](ParamIndex legacy_pi) -> ErrorCodeOr<void> {
+        auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
+        REQUIRE(legacy_desc.flags.legacy);
+        for (auto const i : Range((u32)legacy_desc.linear_range.max + 1)) {
+            auto const legacy_str = legacy_desc.LinearValueToString((f32)i);
+            REQUIRE(legacy_str);
+
+            auto const succ = SuccessorOfLegacyValue(legacy_pi, (f32)i);
+            REQUIRE(succ);
+            auto const modern_str =
+                k_param_descriptors[ToInt(succ->successor_param)].LinearValueToString(succ->successor_linear);
+            REQUIRE(modern_str);
+
+            CHECK_EQ(String {legacy_str->Items()}, String {modern_str->Items()});
+        }
+        return k_success;
+    };
+
+    TRY(check_note_preserved(ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyLfoRateTempoSynced)));
+    TRY(check_note_preserved(ParamIndexFromLayerParamIndex(0, LayerParamIndex::LegacyArpRate)));
+    TRY(check_note_preserved(ParamIndex::LegacyDelayTimeSyncedL));
+    TRY(check_note_preserved(ParamIndex::LegacyDelayTimeSyncedR));
+
+    auto check_fastest_at_top =
+        [&](ParamIndex modern_pi, String fastest, String slowest) -> ErrorCodeOr<void> {
+        auto const& d = k_param_descriptors[ToInt(modern_pi)];
+        CHECK_EQ(String {d.LinearValueToString(d.linear_range.max)->Items()}, fastest);
+        CHECK_EQ(String {d.LinearValueToString(d.linear_range.min)->Items()}, slowest);
+        return k_success;
+    };
+    TRY(check_fastest_at_top(ParamIndexFromLayerParamIndex(0, LayerParamIndex::LfoRateTempoSynced),
+                             "1/64T"_s,
+                             "4/1D"_s));
+    TRY(check_fastest_at_top(ParamIndex::DelayTimeSyncedL, "1/64T"_s, "1/1D"_s));
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterLegacyParamLogicTests) {
     REGISTER_TEST(TestModerniseWetDryEffectLossless);
     REGISTER_TEST(TestModerniseWetDryWetOnlyMacroPreservesAudio);
     REGISTER_TEST(TestModerniseWetDryDryOnlyMacroPreservesAudio);
     REGISTER_TEST(TestModerniseLegacyFilterCutoffSingleMacroAudioMatch);
+    REGISTER_TEST(TestReversedTempoSyncedRateMigration);
 }
