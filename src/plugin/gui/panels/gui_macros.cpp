@@ -266,6 +266,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                              {
                                                  .text = "Copy Value"_s,
                                                  .tooltip = "Copy this destination's amount"_s,
+                                                 .no_icon_gap = true,
                                              })
                                         .button_fired) {
                                     g.snapshot_clipboard = GuiState::CopiedSection {
@@ -287,6 +288,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                                 "Overwrite this destination's amount with the copied amount"_s,
                                             .mode = can_paste ? MenuItemOptions::Mode::Active
                                                               : MenuItemOptions::Mode::Disabled,
+                                            .no_icon_gap = true,
                                         })
                                         .button_fired &&
                                     can_paste) {
@@ -303,6 +305,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                              {
                                                  .text = "Enter Value"_s,
                                                  .tooltip = "Type an amount for this destination"_s,
+                                                 .no_icon_gap = true,
                                              })
                                         .button_fired) {
                                     g.macros_gui_state.destination_text_editor_to_open =
@@ -316,6 +319,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                              {
                                                  .text = "Reset Value"_s,
                                                  .tooltip = "Reset this destination's amount to zero"_s,
+                                                 .no_icon_gap = true,
                                              })
                                         .button_fired)
                                     set_dest_value(0, "Reset macro destination amount"_s);
@@ -324,6 +328,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                              {
                                                  .text = "Invert"_s,
                                                  .tooltip = "Flip the sign of this destination's amount"_s,
+                                                 .no_icon_gap = true,
                                              })
                                         .button_fired)
                                     set_dest_value(-dest.value, "Invert macro destination amount"_s);
