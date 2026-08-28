@@ -631,6 +631,36 @@ void ApplySectionOfState(Engine& engine,
             set_param(srcs.gain, dsts.gain);
             break;
         }
+        case StateSnapshotSectionKind::Effect: {
+            auto const src_type = source_section.Get<EffectSection>().type;
+            auto const dst_type = target_section.Get<EffectSection>().type;
+            if (src_type != dst_type) break;
+
+            auto const subtab = EffectTypeToParameterModule(src_type);
+            for (auto const i : Range(k_num_parameters)) {
+                auto const& parts = k_param_descriptors[i].module_parts;
+                if (parts[0] != ParameterModule::Effect || parts[1] != subtab) continue;
+                set_param((ParamIndex)i, (ParamIndex)i);
+            }
+
+            engine.fx_visible.SetToValue(ToInt(dst_type), source.fx_visible.Get(ToInt(src_type)));
+            if (dst_type == EffectType::ConvolutionReverb) LoadConvolutionIr(engine, source.ir_id);
+            break;
+        }
+        case StateSnapshotSectionKind::FxRack: {
+            for (auto const i : Range(k_num_parameters)) {
+                if (k_param_descriptors[i].module_parts[0] != ParameterModule::Effect) continue;
+                set_param((ParamIndex)i, (ParamIndex)i);
+            }
+
+            engine.fx_visible = source.fx_visible;
+            engine.processor.desired_effects_order.Store(EncodeEffectsArray(source.fx_order),
+                                                         StoreMemoryOrder::Release);
+            engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);
+            engine.processor.host.request_process(&engine.processor.host);
+            LoadConvolutionIr(engine, source.ir_id);
+            break;
+        }
     }
 
     NotifyListener(engine);
@@ -698,7 +728,7 @@ void LoadConvolutionIr(Engine& engine, Optional<sample_lib::IrId> ir_id) {
         SetConvolutionIrAudioData(engine.processor, nullptr, {});
     }
 
-    RecordUndoableStep(engine, ir_id ? "Load IR"_s : "Clear IR"_s);
+    if (!engine.undoable_step_depth) RecordUndoableStep(engine, ir_id ? "Load IR"_s : "Clear IR"_s);
 }
 
 // one-off load

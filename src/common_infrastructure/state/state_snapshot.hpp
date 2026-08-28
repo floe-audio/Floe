@@ -170,6 +170,15 @@ struct EqBandSection {
     u8 band;
 };
 
+struct EffectSection {
+    bool operator==(EffectSection const&) const = default;
+    EffectType type;
+};
+
+struct FxRackSection {
+    bool operator==(FxRackSection const&) const = default;
+};
+
 enum class StateSnapshotSectionKind : u8 {
     Param,
     Macro,
@@ -180,6 +189,8 @@ enum class StateSnapshotSectionKind : u8 {
     Layer,
     ModuleTab,
     EqBand,
+    Effect,
+    FxRack,
 };
 
 using StateSnapshotSection =
@@ -192,6 +203,8 @@ using StateSnapshotSection =
                 TypeAndTag<EnvelopeSection, StateSnapshotSectionKind::Envelope>,
                 TypeAndTag<LayerSection, StateSnapshotSectionKind::Layer>,
                 TypeAndTag<ModuleTabSection, StateSnapshotSectionKind::ModuleTab>,
-                TypeAndTag<EqBandSection, StateSnapshotSectionKind::EqBand>>;
+                TypeAndTag<EqBandSection, StateSnapshotSectionKind::EqBand>,
+                TypeAndTag<EffectSection, StateSnapshotSectionKind::Effect>,
+                TypeAndTag<FxRackSection, StateSnapshotSectionKind::FxRack>>;
 
 StateSnapshot const& DefaultStateSnapshot();

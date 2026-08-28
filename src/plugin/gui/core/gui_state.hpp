@@ -130,6 +130,9 @@ struct GuiState : EngineListener {
     };
     Optional<CopiedSection> snapshot_clipboard {};
 
+    // Cursor-anchored position (window coords) for the FX-rack background context menu.
+    Rect fx_rack_context_menu_anchor {};
+
     TimePoint redraw_counter = {};
 
     bool timbre_slider_is_held {};

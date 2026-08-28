@@ -44,6 +44,82 @@ struct FXColours {
     UiColMap button;
 };
 
+// Copy/paste a single effect. `type` is the effect the menu belongs to.
+static void DoEffectCopyPasteMenuItems(GuiState& g, Box root, EffectType type) {
+    auto const name = k_effect_info[ToInt(type)].name;
+    StateSnapshotSection const effect_target {EffectSection {type}};
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = fmt::Format(g.scratch_arena, "Copy {}"_s, name),
+                     .tooltip = "Copy this effect's settings"_s,
+                     .no_icon_gap = true,
+                 })
+            .button_fired) {
+        g.snapshot_clipboard = GuiState::CopiedSection {
+            .snapshot = CurrentStateSnapshot(g.engine),
+            .section = effect_target,
+        };
+    }
+
+    auto const can_paste = g.snapshot_clipboard.HasValue() &&
+                           g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Effect &&
+                           g.snapshot_clipboard->section.Get<EffectSection>().type == type;
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = fmt::Format(g.scratch_arena, "Paste {}"_s, name),
+                     .tooltip = "Overwrite this effect with the previously copied one"_s,
+                     .mode = can_paste ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                     .no_icon_gap = true,
+                 })
+            .button_fired &&
+        can_paste) {
+        ApplySectionOfState(g.engine,
+                            g.snapshot_clipboard->snapshot,
+                            g.snapshot_clipboard->section,
+                            effect_target);
+    }
+}
+
+// Copy/paste the entire FX rack: all effects, their order and settings.
+static void DoFxRackCopyPasteMenuItems(GuiState& g, Box root) {
+    StateSnapshotSection const rack_target {FxRackSection {}};
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Copy Entire FX Rack"_s,
+                     .tooltip = "Copy all effects, their order and settings"_s,
+                     .no_icon_gap = true,
+                 })
+            .button_fired) {
+        g.snapshot_clipboard = GuiState::CopiedSection {
+            .snapshot = CurrentStateSnapshot(g.engine),
+            .section = rack_target,
+        };
+    }
+
+    auto const can_paste_rack = g.snapshot_clipboard.HasValue() &&
+                                g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::FxRack;
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Paste Entire FX Rack"_s,
+                     .tooltip = "Overwrite all effects with the previously copied FX rack"_s,
+                     .mode = can_paste_rack ? MenuItemOptions::Mode::Active : MenuItemOptions::Mode::Disabled,
+                     .no_icon_gap = true,
+                 })
+            .button_fired &&
+        can_paste_rack) {
+        ApplySectionOfState(g.engine,
+                            g.snapshot_clipboard->snapshot,
+                            g.snapshot_clipboard->section,
+                            rack_target);
+    }
+}
+
 static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window_r, EffectType type) {
     auto const right_click_id = g.imgui.MakeId(SourceLocationHash() + ToInt(type));
     auto const name = k_effect_info[ToInt(type)].name;
@@ -56,11 +132,83 @@ static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window
             .interaction_r = window_r,
             .do_menu_items =
                 [&](Box root) {
+                    DoEffectCopyPasteMenuItems(g, root, type);
+                    MenuDivider(g.builder, root);
+                    DoFxRackCopyPasteMenuItems(g, root);
+                    MenuDivider(g.builder, root);
+
                     StateSnapshotSection const target {
                         ModuleTabSection {ParameterModule::Effect, EffectTypeToParameterModule(type)}};
                     DoResetSectionMenuItems(g, root, target, name);
                 },
         });
+}
+
+constexpr auto k_fx_rack_context_menu_popup_id = (imgui::Id)SourceLocationHash();
+
+// Items for the context menu shown on the empty background of the switchboard or effects rack: copy/paste
+// the whole rack, plus pasting a previously copied single effect onto its matching effect.
+static void DoFxRackContextMenuItems(GuiState& g, Box root) {
+    DoFxRackCopyPasteMenuItems(g, root);
+
+    if (g.snapshot_clipboard.HasValue() &&
+        g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Effect) {
+        auto const type = g.snapshot_clipboard->section.Get<EffectSection>().type;
+        StateSnapshotSection const effect_target {EffectSection {type}};
+        if (MenuItem(g.builder,
+                     root,
+                     {
+                         .text = fmt::Format(g.scratch_arena, "Paste {}"_s, k_effect_info[ToInt(type)].name),
+                         .tooltip = "Paste the previously copied effect"_s,
+                         .no_icon_gap = true,
+                     })
+                .button_fired) {
+            ApplySectionOfState(g.engine,
+                                g.snapshot_clipboard->snapshot,
+                                g.snapshot_clipboard->section,
+                                effect_target);
+        }
+    }
+}
+
+// Detects a right-click on the empty background of the switchboard/rack and opens the context menu at the
+// cursor. Register this BEFORE the effects/toggles so their own menus take precedence. Uses the default
+// cursor so hovering the empty area doesn't show a button cursor. `id_seed` must be unique per call site.
+static void TryOpenFxRackContextMenu(GuiState& g, Rect background_window_r, u64 id_seed) {
+    if (g.imgui.ButtonBehaviour(background_window_r,
+                                g.imgui.MakeId(id_seed),
+                                {
+                                    .mouse_button = MouseButton::Right,
+                                    .event = MouseButtonEvent::Up,
+                                    .cursor_type = CursorType::Default,
+                                })) {
+        g.fx_rack_context_menu_anchor = {.pos = GuiIo().in.cursor_pos, .size = {1, 1}};
+        g.imgui.OpenPopupMenu(k_fx_rack_context_menu_popup_id, g.imgui.MakeId(id_seed));
+    }
+}
+
+// Renders the FX-rack context menu popup (anchored at the cursor) if it's open. Call once per frame.
+static void DoFxRackContextMenuPopup(GuiState& g) {
+    if (!g.imgui.IsPopupMenuOpen(k_fx_rack_context_menu_popup_id)) return;
+
+    DoBoxViewport(g.builder,
+                  {
+                      .run =
+                          [&](GuiBuilder&) {
+                              auto const root = DoBox(g.builder,
+                                                      {
+                                                          .layout {
+                                                              .size = layout::k_hug_contents,
+                                                              .contents_direction = layout::Direction::Column,
+                                                              .contents_align = layout::Alignment::Start,
+                                                          },
+                                                      });
+                              DoFxRackContextMenuItems(g, root);
+                          },
+                      .bounds = g.fx_rack_context_menu_anchor,
+                      .imgui_id = k_fx_rack_context_menu_popup_id,
+                      .viewport_config = k_default_popup_menu_viewport,
+                  });
 }
 
 static FXColours GetFxColMap(EffectType type) {
@@ -315,6 +463,11 @@ static void DoSwitchboard(GuiState& g, Box root) {
     if (g.builder.IsInputAndRenderPass()) {
         auto& draw_list = *g.imgui.draw_list;
         auto const corner_rounding = WwToPixels(k_corner_rounding);
+
+        // Registered before the slots so each slot's own menu takes precedence; this only fires on the
+        // empty space around the toggles.
+        if (auto const r = BoxRect(g.builder, root))
+            TryOpenFxRackContextMenu(g, g.imgui.ViewportRectToWindowRect(*r), SourceLocationHash());
 
         usize fx_index = 0;
         for (auto const slot : Range(k_num_effect_types)) {
@@ -1432,6 +1585,13 @@ static void DoEffects(GuiState& g, GuiFrameContext const& frame_context, Box str
                                             },
                                         });
 
+                              // Registered before the effect sections so each effect's own menu takes
+                              // precedence; this only fires on the empty space of the rack.
+                              if (g.builder.IsInputAndRenderPass())
+                                  TryOpenFxRackContextMenu(g,
+                                                           g.imgui.curr_viewport->visible_bounds,
+                                                           SourceLocationHash());
+
                               auto const effect_sections =
                                   DoEffectSections(g, frame_context, effects_col, ordered_effects);
                               DoEffectDragAndDrop(g, effect_sections, ordered_effects);
@@ -1591,4 +1751,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
 
         DoEffects(g, frame_context, rack);
     }
+
+    // Context menu opened by right-clicking the empty background of the switchboard or rack (above).
+    DoFxRackContextMenuPopup(g);
 }
