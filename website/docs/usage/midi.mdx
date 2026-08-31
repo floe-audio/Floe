@@ -27,7 +27,7 @@ You can also add and remove mappings from the [Performance Controls](./performan
 
 ### Default mappings
 
-Floe applies these MIDI CC mappings when it starts. You have full control to remove or change them on the current instance:
+Unless you have changed you default Performance Controls, these mappings will be assigned:
 
 <ul>
 {[...data["default-cc-mappings"]].sort((a, b) => a.cc - b.cc).map((mapping, index) => (
@@ -37,9 +37,7 @@ Floe applies these MIDI CC mappings when it starts. You have full control to rem
 
 ### How mappings are saved
 
-MIDI CC mappings are saved with your DAW project, and apply only to the instance you created them on — a new instance of Floe starts without them, unless you've made them the default (see [Performance Controls: Settings for new instances](./performance-controls#settings-for-new-instances)).
-
-Preset files never save MIDI CC mappings, so loading a preset leaves your mappings untouched.
+MIDI CC mappings are part of the [Performance Controls](./performance-controls) system. They apply only the current instance of Floe. However, you can easily set up a 'default' configuration that all new instances of Floe will start with. As with all performance controls, preset files never touch them so that you can browse presets without your settings changing each time.
 
 ## Sustain Pedal
 
@@ -51,7 +49,7 @@ Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configur
 
 ## MPE
 
-Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers — Seaboard, LinnStrument, Osmose, and similar — control each note independently.
+Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers (such as Seaboard, LinnStrument, Osmose, and others) control each note independently.
 
 Enable MPE from the [Performance Controls](./performance-controls) panel.
 
@@ -61,15 +59,17 @@ When enabled, Floe responds to the standard MPE per-note messages:
 - **Press**: each note's channel pressure (aftertouch).
 - **Slide**: each note's CC74.
 
-Choose what press and slide control per layer on the [Config tab](./layers#config-tab): a target (volume, filter cutoff, or timbre) and an amount, which can be negative to invert the response, or beyond 100% to reach the full effect with a smaller gesture. For the volume target, press restores volume up to the layer's slider level, and slide acts as a per-note fader — the top of its travel is the slider level. For the filter cutoff and timbre targets, press adds an offset and slide is bipolar with its centre position neutral. The timbre target offsets the master timbre control per note.
+Choose what press and slide control per layer on the [Config tab](./layers#config-tab). You can set a target (volume, filter cutoff, or timbre) and an amount (which can be negative to invert the response, and even have values beyond 100% to reach the full effect with a smaller gesture).
+
+For the volume target, press restores volume up to the layer's Volume slider, and slide acts as a per-note fader — the top of its travel is the layer's Volume level. For the filter cutoff and timbre targets, press adds an offset and slide is bipolar with its centre position neutral. The timbre target offsets the master timbre control per note.
 
 The smoothing setting in the [Performance Controls](./performance-controls) panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
 
-While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, or the master Timbre knob in the top panel — so you can see the expression reaching each voice.
+While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, or the master Timbre knob in the top panel — so you can see the expression from each voice.
 
 Floe also understands the MPE Configuration Message for zone setup, and a sustain pedal on a zone's master channel sustains the whole zone.
 
-CLAP note expressions (per-note pitch, pressure, and brightness) work the same way in supporting hosts, such as Bitwig Studio, regardless of the MPE setting.
+CLAP note expressions (per-note pitch, pressure, and brightness) work the same way in supporting hosts regardless of the MPE setting.
 
 ## Velocity
 

@@ -18,16 +18,11 @@ The **Performance Controls** panel (sliders icon, top panel) is where you manage
 
 ## Scope
 
-Everything in this panel belongs to the current instance rather than being a global preference. It's saved with your DAW project, and loading a preset leaves it untouched — so you can audition presets without disturbing your performance setup. Different instances in the same project can each have their own settings.
+Everything in this panel belongs to the current instance rather than being a global preference. It's saved with your DAW project. Loading a preset leaves it untouched, meaning you can audition presets without disturbing your performance setup. Different instances in the same project can each have their own settings.
 
 ## Settings for new instances
 
-By default, a new instance of Floe starts from a blank slate. To make the current instance's settings — MIDI CC mappings, MPE, and Reproducibility — the ones every new instance starts with:
-
-1. Set up the current instance the way you want it.
-2. Open the Performance Controls panel and click **Make default** at the top.
-
-If the current settings already match what new instances start with, the panel shows a confirmation there instead of the button.
+Each Floe instance has thier own performance controls, but you can configure what new instances of Floe start with - their MIDI CC mappings, MPE, and Reproducibility settings. Simply edit the current Performance Controls to your preference, then click **Make default**.
 
 ## Profiles
 
@@ -38,3 +33,7 @@ Open the **Profiles** menu at the top of the panel to:
 - Load a profile, applying it to the current instance immediately. This is a one-shot copy, not a persistent link — further changes to the instance don't affect the saved profile unless you save over it.
 - Save the current settings as a new profile.
 - Overwrite, rename, or delete an existing profile.
+
+## Notes
+- Prior to v2.0.3, these options were spread across the Instance Config panel, and MIDI CC Assignments panel.
+- Floe defaults with some common MIDI CC assignments, such as the mod wheel (CC1) to the first macro — [more info](./midi).

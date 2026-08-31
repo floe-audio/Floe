@@ -212,6 +212,7 @@ export default function Home() {
                         'A/B comparison for preset edits',
                         'Undo/redo',
                         'MIDI CC mappings',
+                        'MPE compatible',
                         'Velocity to volume curve',
                         'Settings for fully reproducible recordings',
                     ]}
