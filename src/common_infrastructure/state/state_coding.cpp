@@ -741,15 +741,20 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
     // During a brief in-development period, ArpMode was a 3-value menu: Off=0, Played=1, Fixed=2.
     // A handful of presets were made in this period. It is now a 2-value menu: Played=0, Fixed=1,
-    // with a separate ArpOn bool. Convert old values.
-    for (auto const layer_index : Range(k_num_layers)) {
-        auto& arp_on =
-            state.param_values[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpOn))];
-        auto& arp_mode =
-            state.param_values[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpMode))];
-        if (arp_on == 0.0f && arp_mode >= 1.0f) {
-            arp_on = 1.0f;
-            arp_mode -= 1.0f;
+    // with a separate ArpOn bool. Convert old values. Arp params were experimental until
+    // PromotedGranularAndArpParams, so any state from before then could still hold the old encoding;
+    // states from that version onwards are already in the new format and must not be touched, or a
+    // valid "off + Fixed mode" combination would be corrupted into "on + Played mode".
+    if (version < StateVersion::PromotedGranularAndArpParams) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            auto& arp_on =
+                state.param_values[ToInt(ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpOn))];
+            auto& arp_mode = state.param_values[ToInt(
+                ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::ArpMode))];
+            if (arp_on == 0.0f && arp_mode >= 1.0f) {
+                arp_on = 1.0f;
+                arp_mode -= 1.0f;
+            }
         }
     }
 
