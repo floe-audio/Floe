@@ -129,7 +129,9 @@ Value const* LookupValues(PreferencesTable const& table, Key const& key);
 // shared dotted section prefix, where the leaf is each record's id. The callback may be invoked more than
 // once for the same section (once per key in it); handle duplicates yourself if that matters.
 PUBLIC void ForEachSubsectionLeaf(PreferencesTable const& table, String prefix, auto&& callback) {
-    for (auto const [key, _, _] : table) {
+    for (auto const [key, unused_value, unused_hash] : table) {
+        (void)unused_value;
+        (void)unused_hash;
         auto const sectioned = key.template TryGet<SectionedKey>();
         if (!sectioned) continue;
         auto const section = sectioned->section;
