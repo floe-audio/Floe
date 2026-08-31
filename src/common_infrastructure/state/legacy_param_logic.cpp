@@ -923,8 +923,12 @@ TEST_CASE(TestReversedTempoSyncedRateMigration) {
     auto check_fastest_at_top =
         [&](ParamIndex modern_pi, String fastest, String slowest) -> ErrorCodeOr<void> {
         auto const& d = k_param_descriptors[ToInt(modern_pi)];
-        CHECK_EQ(String {d.LinearValueToString(d.linear_range.max)->Items()}, fastest);
-        CHECK_EQ(String {d.LinearValueToString(d.linear_range.min)->Items()}, slowest);
+        auto const fastest_str = d.LinearValueToString(d.linear_range.max);
+        REQUIRE(fastest_str);
+        auto const slowest_str = d.LinearValueToString(d.linear_range.min);
+        REQUIRE(slowest_str);
+        CHECK_EQ(String {fastest_str->Items()}, fastest);
+        CHECK_EQ(String {slowest_str->Items()}, slowest);
         return k_success;
     };
     TRY(check_fastest_at_top(ParamIndexFromLayerParamIndex(0, LayerParamIndex::LfoRateTempoSynced),
