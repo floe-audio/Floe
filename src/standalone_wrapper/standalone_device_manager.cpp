@@ -79,6 +79,8 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
 
     auto const push_clap_event = [&](u8 status, u8 d1, u8 d2) {
         if (num_events >= (int)k_max_events) return;
+        // We don't support SysEx; drop its non-status data bytes rather than decode them as messages.
+        if (status < 0x80) return;
         auto const force_zero = dm->midi.force_channel_zero && status < 0xf0;
         clap_events[num_events] = {
             .header =
