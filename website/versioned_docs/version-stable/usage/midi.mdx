@@ -17,9 +17,17 @@ Floe is controllable via MIDI in the typical ways you'd expect from a software i
 
 ## MIDI CC
 
-### Default MIDI CC mappings
+All automatable parameters can be assigned to a MIDI CC, so you can control Floe from a MIDI controller.
 
-Floe applies some default MIDI CC mappings when it starts. These are the defaults out of the box, but you have full control to remove or change them — see the sections below. The default mappings are:
+### Creating a mapping
+
+Right-click a parameter and select **MIDI CC Learn**, then move the control on your MIDI controller you want to assign — this creates the mapping. To remove a mapping, right-click the parameter and select **Remove MIDI CC**.
+
+You can also add and remove mappings from the [Performance Controls](./performance-controls) panel, which lists every mapping on the current instance in one place.
+
+### Default mappings
+
+Unless you have changed you default Performance Controls, these mappings will be assigned:
 
 <ul>
 {[...data["default-cc-mappings"]].sort((a, b) => a.cc - b.cc).map((mapping, index) => (
@@ -27,38 +35,9 @@ Floe applies some default MIDI CC mappings when it starts. These are the default
 ))}
 </ul>
 
-You can disable the whole set via the **Default CC mappings** option in the MIDI CC Assignments panel (or in Preferences). While that option is enabled, the defaults are reapplied every time Floe starts — so removing an individual default mapping only clears it from the current instance.
-
-### MIDI CC Assignments panel
-
-You can view and manage all MIDI CC assignments from the **MIDI CC Assignments** panel. Open it from the top-panel menu (the three-dots button).
-
-This panel shows every active CC-to-parameter mapping, including which module each parameter belongs to. From here you can pin or unpin mappings, remove them, and toggle the default CC mappings option.
-
-<GeneratedScreenshot name="midi-cc-assignments" alt="MIDI CC Assignments panel" />
-
-### Creating MIDI CC mappings
-
-All automatable parameters in Floe can be assigned to a MIDI CC. This allows you to control Floe from a MIDI controller for example.
-
-To create a mapping, right-click on the parameter you want to assign and select **MIDI CC Learn**. Then move the control on your MIDI controller that you want to assign to that parameter. This will create a mapping between the parameter and the MIDI CC.
-
-You can remove a mapping by right-clicking on the parameter and selecting **Remove MIDI CC**, or by using the trash icon in the MIDI CC Assignments panel.
-
 ### How mappings are saved
 
-MIDI CC mappings are saved with your DAW project. By default they only apply to the current instance of Floe in your DAW — they won't be applied if you load a new instance. If you want a mapping to apply to every new instance, **pin** it (see below).
-
-Preset files do not save MIDI CC mappings. So you can load presets and your MIDI CC mappings will remain.
-
-### Pinning mappings
-
-You can **pin** a MIDI CC mapping so that it is automatically applied to all new Floe instances. There are two ways to pin a mapping:
-
-- In the **MIDI CC Assignments** panel, click the pin icon next to a mapping.
-- Right-click a parameter that has a CC mapping and select **Pin MIDI CC**.
-
-Pinned mappings are stored globally in your preferences, not in your DAW project.
+MIDI CC mappings are part of the [Performance Controls](./performance-controls) system. They apply only the current instance of Floe. However, you can easily set up a 'default' configuration that all new instances of Floe will start with. As with all performance controls, preset files never touch them so that you can browse presets without your settings changing each time.
 
 ## Sustain Pedal
 
@@ -67,6 +46,30 @@ Floe supports sustain pedal control via MIDI CC-64. When the sustain pedal is pr
 ## Pitch Wheel
 
 Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configured individually for each layer by using the pitch bend range parameter on the [Config tab of each layer](./layers#config-tab). This per-layer configuration allows for interesting sound design possibilities. A pitch bend range of 0 will disable pitch bend for that layer.
+
+## MPE
+
+Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers (such as Seaboard, LinnStrument, Osmose, and others) control each note independently.
+
+Enable MPE from the [Performance Controls](./performance-controls) panel.
+
+When enabled, Floe responds to the standard MPE per-note messages:
+
+- **Glide**: pitch bend on a note's channel bends just that note, following the MPE ±48-semitone convention (or whatever range your controller negotiates). The master channel's pitch wheel still bends everything, using each layer's pitch bend range parameter.
+- **Press**: each note's channel pressure (aftertouch).
+- **Slide**: each note's CC74.
+
+Choose what press and slide control per layer on the [Config tab](./layers#config-tab). You can set a target (volume, filter cutoff, or timbre) and an amount (which can be negative to invert the response, and even have values beyond 100% to reach the full effect with a smaller gesture).
+
+For the volume target, press restores volume up to the layer's Volume slider, and slide acts as a per-note fader — the top of its travel is the layer's Volume level. For the filter cutoff and timbre targets, press adds an offset and slide is bipolar with its centre position neutral. The timbre target offsets the master timbre control per note.
+
+The smoothing setting in the [Performance Controls](./performance-controls) panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
+
+While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, or the master Timbre knob in the top panel — so you can see the expression from each voice.
+
+Floe also understands the MPE Configuration Message for zone setup, and a sustain pedal on a zone's master channel sustains the whole zone.
+
+CLAP note expressions (per-note pitch, pressure, and brightness) work the same way in supporting hosts regardless of the MPE setting.
 
 ## Velocity
 
@@ -77,6 +80,8 @@ Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configur
 ### How the curve works
 
 The horizontal axis is velocity — far left is the softest possible velocity (MIDI value 1), far right is the hardest (MIDI value 127), and higher-resolution velocity from DAWs that support it works too. The vertical axis is the resulting note volume. When you play a note, a red indicator appears at its velocity position on the curve so you can see where you're playing.
+
+While notes are sounding, each active voice also gets a red line on the layer's volume slider, showing the level that voice is currently playing at after the curve (and, in MPE mode, any per-note volume expression) has been applied.
 
 A straight line from bottom-left to top-right gives a 1:1 response — the harder you play, the louder the note, in equal proportion. By moving, adding, or removing control points (and reshaping the curve between them), you can change this relationship: make soft playing louder than it would be naturally, cap the volume of hard hits, or create a non-linear response that emphasises a particular dynamic range. Setting different curves across the 3 layers also opens up creative sound design — for example, fading one layer in as you play harder while another fades out.
 

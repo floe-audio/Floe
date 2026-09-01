@@ -14,6 +14,30 @@ For instance: 0.0.1. Don't change the headings.
 */}
 
 # Changelog
+## 2.0.3
+- Add MPE (MIDI Polyphonic Expression) support: enable it in the Performance Controls panel for per-note pitch bend, press (channel pressure) and slide (CC74), and choose what press and slide control on each layer's Config tab. CLAP per-note expressions (pitch, pressure, brightness) are also supported
+- Replace the Instance Config and MIDI CC Assignments panels with a unified Performance Controls panel (top panel, sliders icon): make the current instance settings and MIDI CC mappings the ones new instances start with, and optionally save named profiles bundling them for switching between setups
+- Add a dialog after installing a package offering to send the now-redundant package file to the trash
+- Show velocity markers on the layer volume slider
+- Highlight the recommended button in dialogs with an accent colour, and grey-out buttons that need text input first
+- Add right-click menu and double-click value entry to macro destination knobs, with options to enter, copy, paste, reset and invert the amount
+- Add copy and paste for effects: right-click an effect or the empty space of the FX rack to copy a single effect or the entire rack (all effects, their order and settings) and paste it, including from one preset to another
+- Add the ability to activate multiple encrypted packages at once by loading a single license file
+- Fix newly played notes ignoring the current pitch wheel position until the wheel next moved
+- Fix preferences file becoming blank or truncated: preferences are now written atomically
+- Fix window opening larger than the screen when the saved window size is invalid: window sizes are now always constrained to fit the current display
+- Fix possible crash when a host fires a timer callback without a timer being registered
+- Fix possible crash when loading a library background image with a very large window size
+- Fix possible crash when reading a corrupted or invalid package file: such files are now reported as errors
+- Fix possible crash and broken audio when a host or corrupted preset/DAW project provides invalid parameter values: values are now sanitised
+- Fix possible crash when a host sends an invalid pitch bend message
+- Fix note-off triggered samples playing forever when a loop mode is set: they now always play as one-shots
+- Fix note-off triggered samples not playing under the arpeggiator: each arp step now triggers release samples like a manually played note
+- Fix stuck notes and hanging voices in several cases: using the sustain pedal while notes play on other MIDI channels, releasing the sustain pedal after toggling MPE, and very large bursts of MIDI events
+- Fix instance config reverting to its previously-saved values when a DAW saved and reloaded a project
+- Fix the tempo-synced LFO rate, arpeggiator rate and delay time controls feeling inverted: dragging up or right now speeds them up
+- Fix unnecessary left side gap in macro destination right-click menu
+
 ## 2.0.2
 - Fix possible crash when opening the General tab of the preferences panel
 - Fix crash when installing packages requires more than one file-conflict decision
