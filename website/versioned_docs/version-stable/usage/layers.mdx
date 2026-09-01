@@ -32,7 +32,7 @@ A permanent fixture on each layer are the _top controls_, which provide quick ac
 - **1**: the _instrument_ selector: click this to open the [browser](./browsers) and select a new instrument for this layer - or unload the current one. You can also right-click and choose 'Unload' from the menu, or click the x-mark.
 - **2**: instrument navigation: left/right arrows to quickly switch between instruments, a randomise button to load a random instrument, and an unload button to clear this layer. The navigation and randomise buttons are based on the current filter settings in the browser. For example, if you have selected the 'Distant Signals' sample library on the browser's filters, the navigation buttons will only cycle through instruments from that library.
 - **3**: mute/solo buttons: buttons to mute or solo this layer. Soloing a layer automatically mutes the other two layers.
-- **Volume**: adjust the layer's output volume.
+- **Volume**: adjust the layer's output volume. While notes are sounding, a red line on the slider marks each active voice's current level. Visit the [MIDI](./midi#velocity) page for details.
 - **Pitch**: adjust the layer's pitch in semitones. Double click the number to type in a precise value. Or click and drag to change the value, or use the left/right buttons.
 - **Detune**: adjust the layer's pitch in cents (hundredths of a semitone).
 - **Pan**: adjust the layer's stereo position. Uses a constant power pan law (AKA -3dB centre).
@@ -70,7 +70,7 @@ Each voice belonging to this layer can be processed by a filter to shape its fre
 - **Filter on/off**: toggle to enable or disable the filter for this layer.
 - **Filter graph**: an interactable frequency-response graph.
 - **Filter type selector**: click to open a menu of available filter types such as low-pass, high-pass, band-pass.
-- **Cut**: adjust the filter's cutoff frequency.
+- **Cut**: adjust the filter's cutoff frequency. If MPE press or slide is routed to filter cutoff (see the [Config tab](#config-tab)), a red line marks each active voice's current cutoff.
 - **Res**: adjust the filter's resonance (emphasis around the cutoff frequency).
 - **Env**: this bi-directional control adjusts how much the filter's cutoff is modulated by the filter envelope to the right. At the middle position the envelope has no effect; positive values open the cutoff up as the envelope progresses, negative values close it down.
 - **Filter envelope ADSR**: in the same manner as the volume envelope, 3 draggable points representing Attack, Decay+Sustain, and Release shape how the filter cutoff moves over time, scaled by _Env_.
@@ -116,5 +116,6 @@ The Config tab contains MIDI and playback behaviour settings for this layer.
 - **Pitch Bend Range**: set the pitch range in semitones for the MIDI pitch wheel.
 - **Keytrack**: when enabled, tunes the sound to match the key played. When disabled, the sound always plays at its root pitch regardless of the MIDI note. This is not typically useful if the instrument is multi-sampled.
 - **Monophonic**: select the voice behaviour when notes overlap. _Off_ (polyphonic): multiple voices can play simultaneously. _Retrigger_ (monophonic): new notes stop previous notes, triggering their volume envelope Release section. _Latch_ (monophonic): the first note plays until all keys are released; new notes are ignored — useful for drones and textural elements.
+- **MPE**: opens a menu where you can choose what per-note press (channel pressure) and slide (CC74) control on this layer — volume, filter cutoff, or timbre — along with an amount; negative amounts invert the response. Visit the [MIDI](./midi#mpe) page for full details about MPE.
 - **Range** and **Key Fade**: visit the [key ranges](./key-ranges) page for full details about these settings.
 - **Velocity to volume curve**: graphical control showing how MIDI velocity affects the layer's volume. A straight line from bottom-left to top-right means there's a 1:1 relationship with velocity and volume. The curve can be adjusted to create different velocity response characteristics. Visit the [MIDI](./midi) page for full details about editing velocity curves.
