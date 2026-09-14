@@ -9,6 +9,7 @@
 
 #include "common_infrastructure/persistent_store.hpp"
 
+#include "engine/default_preset.hpp"
 #include "engine/package_installation.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/elements/gui_constants.hpp"
@@ -543,7 +544,8 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                           ThreadPool& thread_pool,
                                           PackageInstallPanelState& panel_state,
                                           FilePickerState& file_picker_state,
-                                          persistent_store::Store& persistent_store) {
+                                          persistent_store::Store& persistent_store,
+                                          prefs::Preferences& prefs) {
     constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
     bool user_input_needed = false;
     bool license_key_needed = false;
@@ -600,7 +602,15 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
 
                     DynamicArrayBounded<char, k_notification_buffer_size - 160> buffer {};
                     u8 num_truncated = 0;
+                    auto const user_has_own_default = ({
+                        auto const d = ResolveDefaultPreset(prefs);
+                        d && d->is_user_set;
+                    });
+                    String suggested_default_preset {};
                     for (auto [index, component] : Enumerate(job.job->components)) {
+                        // Latest install wins, so later components overwrite earlier ones.
+                        if (component.suggested_default_preset_path.size)
+                            suggested_default_preset = component.suggested_default_preset_path;
                         if (!num_truncated) {
                             if (!dyn::AppendSpan(
                                     buffer,
@@ -612,6 +622,18 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                 num_truncated = 1;
                         } else if (num_truncated != LargestRepresentableValue<decltype(num_truncated)>())
                             ++num_truncated;
+                    }
+
+                    if (suggested_default_preset.size) {
+                        SetSuggestedDefaultPreset(prefs, suggested_default_preset);
+                        if (!user_has_own_default && !num_truncated) {
+                            if (!dyn::AppendSpan(
+                                    buffer,
+                                    fmt::Format(builder.arena,
+                                                "Default preset set to {}\n",
+                                                path::FilenameWithoutExtension(suggested_default_preset))))
+                                num_truncated = 1;
+                        }
                     }
 
                     if (panel_state.successful_installs.size != panel_state.successful_installs.Capacity()) {

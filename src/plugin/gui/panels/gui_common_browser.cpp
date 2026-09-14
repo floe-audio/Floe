@@ -515,6 +515,22 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                         "Double-click to load and close; single-click to load only."_s);
     }
 
+    if (options.is_default) {
+        DoBox(builder,
+              {
+                  .parent = container,
+                  .text = ICON_FA_HOUSE,
+                  .font = FontType::Icons,
+                  .font_size = k_font_icons_size * 0.7f,
+                  .text_colours = Col {.c = Col::Subtext0},
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = {16, layout::k_fill_parent},
+                  },
+                  .tooltip = "Default preset"_s,
+              });
+    }
+
     auto const favourite_toggled =
         !!DoBox(builder,
                 {

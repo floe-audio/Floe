@@ -86,6 +86,7 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_GUITAR},
     String {ICON_FA_HAND},
     String {ICON_FA_HEADPHONES},
+    String {ICON_FA_HOUSE},
     String {ICON_FA_INFO},
     String {ICON_FA_LANDMARK},
     String {ICON_FA_LAYER_GROUP},
@@ -213,6 +214,8 @@ GuiState::GuiState(Engine& engine)
     // no use until the GUI is open.
     check_for_update::FetchLatestIfNeeded(shared_engine_systems.check_for_update_state);
     shared_engine_systems.StartPollingThreadIfNeeded();
+
+    LoadDefaultPresetIfNeeded(engine);
 }
 
 GuiState::~GuiState() {
@@ -440,6 +443,7 @@ void GuiUpdate(GuiState& g) {
             .file_picker_state = g.file_picker_state,
             .persistent_store = g.shared_engine_systems.persistent_store,
             .presets_server = g.shared_engine_systems.preset_server,
+            .current_preset_path = g.engine.pinned_snapshot.preset_path,
             .standalone_host =
                 (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id),
         };
@@ -544,7 +548,9 @@ void GuiUpdate(GuiState& g) {
         DoIrBrowserPopup(g.builder, context, g.ir_browser_state);
     }
 
-    DoLoadingOverlay(g.builder, g.engine.pending_state_change.HasValue());
+    DoLoadingOverlay(g.builder,
+                     g.engine.pending_state_change.HasValue(),
+                     g.engine.loading_default_preset ? "Loading Default Preset"_s : "Loading…"_s);
 
     {
         auto const& host = g.engine.host;
@@ -566,7 +572,8 @@ void GuiUpdate(GuiState& g) {
                                   g.shared_engine_systems.thread_pool,
                                   g.package_install_panel_state,
                                   g.file_picker_state,
-                                  g.shared_engine_systems.persistent_store);
+                                  g.shared_engine_systems.persistent_store,
+                                  g.prefs);
 
     DoDeveloperPanel(g.dev_gui);
 

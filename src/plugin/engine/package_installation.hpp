@@ -97,6 +97,13 @@ struct InstallJob {
         UserDecision user_decision {UserDecision::Unknown};
         ComponentInstallConfig install_config {};
         bool installed_to_fallback_folder {};
+
+        // Absolute path of the installed file or folder. Empty if nothing was installed.
+        String installed_path {};
+
+        // Absolute path of the preset that this component's bank suggests as the default preset. Empty if
+        // there's no suggestion, or if the suggestion doesn't resolve to a file.
+        String suggested_default_preset_path {};
     };
     ArenaList<Component> components;
 };

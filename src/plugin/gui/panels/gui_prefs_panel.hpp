@@ -36,6 +36,8 @@ struct PreferencesPanelContext {
     FilePickerState& file_picker_state;
     persistent_store::Store& persistent_store;
     PresetServer& presets_server;
+    // Absolute path of the preset the current state came from. Empty if the state isn't from a preset file.
+    String current_preset_path {};
     FloeClapExtensionHost const* standalone_host {}; // null outside the standalone host
     Optional<BeginReadFoldersResult> presets {};
 };

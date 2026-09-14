@@ -5,6 +5,7 @@
 
 #include "os/filesystem.hpp"
 
+#include "engine/default_preset.hpp"
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
 #include "gui/core/gui_state.hpp"
@@ -306,6 +307,24 @@ void PresetRightClickMenu(GuiBuilder& builder,
                 path::Join(builder.arena, Array {preset->folder.scan_folder, preset->folder.folder}));
         }
     }
+    {
+        auto const preset = find_preset(menu_state.item_hash);
+        auto const full_path =
+            preset ? preset->folder.FullPathForPreset(preset->preset, builder.arena) : String {};
+        auto const is_default = full_path.size && IsDefaultPreset(context.prefs, full_path);
+        if (MenuItem(builder,
+                     root,
+                     {
+                         .text = is_default ? "Clear Default Preset"_s : "Set as Default Preset"_s,
+                         .is_selected = false,
+                     })
+                .button_fired) {
+            if (is_default)
+                ClearDefaultPreset(context.prefs);
+            else if (full_path.size)
+                SetDefaultPreset(context.prefs, full_path);
+        }
+    }
     if (MenuItem(builder,
                  root,
                  {
@@ -436,6 +455,11 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
 
     auto const current_loaded_cursor = ResolveCurrentLoadedCursor(context);
 
+    auto const default_preset_path = ({
+        auto const d = ResolveDefaultPreset(context.prefs);
+        d ? d->path : String {};
+    });
+
     Optional<u64> previous_folder_hash = {};
 
     Optional<BrowserSection> folder_section;
@@ -539,6 +563,9 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                     .item_id = preset.full_path_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
+                    .is_default = default_preset_path.size &&
+                                  path::Equal(preset_folder->folder->FullPathForPreset(preset, builder.arena),
+                                              default_preset_path),
                     .is_tab_item = new_folder,
                     .icons = ({
                         // The items are normally ordered, but we want special handling for the

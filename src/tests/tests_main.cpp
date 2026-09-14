@@ -27,6 +27,7 @@
     X(RegisterCircularBufferTests)                                                                           \
     X(RegisterCliArgParseTests)                                                                              \
     X(RegisterDebugTests)                                                                                    \
+    X(RegisterDefaultPresetTests)                                                                            \
     X(RegisterDistortionTests)                                                                               \
     X(RegisterDynamicArrayTests)                                                                             \
     X(RegisterUndoHistoryTests)                                                                              \
@@ -71,6 +72,7 @@
     X(RegisterPersistentStoreTests)                                                                          \
     X(RegisterPerformanceProfileTests)                                                                       \
     X(RegisterPreferencesTests)                                                                              \
+    X(RegisterPresetBankInfoTests)                                                                           \
     X(RegisterPresetLuaCodecTests)                                                                           \
     X(RegisterPresetServerTests)                                                                             \
     X(RegisterRandomTests)                                                                                   \

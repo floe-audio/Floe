@@ -278,6 +278,7 @@ struct PackageInfo {
     struct Preset {
         String folder; // immediate folder, relative to the presets subdir
         String name; // filename without extension
+        String subpath; // filename with extension, relative to the presets subdir
         Preset* next;
     };
 
@@ -407,6 +408,7 @@ static void ProcessPresetFolderFile(PackageInfo& info,
         auto preset = arena.New<PackageInfo::Preset>(PackageInfo::Preset {
             .folder = arena.Clone(folder),
             .name = arena.Clone(path::FilenameWithoutExtension(path_in_zip)),
+            .subpath = arena.Clone(path_in_zip),
             .next = nullptr,
         });
 
@@ -923,6 +925,33 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                              error);
                    return error;
                });
+    }
+
+    // A bank's suggested default preset must actually be in the package, otherwise it'd silently do nothing
+    // when the user installs it.
+    for (auto const [bank_folder, bank, _] : package_info.preset_banks) {
+        if (!bank.default_preset.size) continue;
+
+        auto const expected_subpath =
+            bank_folder.size
+                ? (String)path::Join(scratch, Array {bank_folder, bank.default_preset}, path::Format::Posix)
+                : bank.default_preset;
+
+        bool found = false;
+        for (auto preset = package_info.presets_head; preset; preset = preset->next) {
+            if (path::Equal(preset->subpath, expected_subpath, path::Format::Posix)) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            StdPrintF(StdStream::Err,
+                      "Error: preset bank '{}' default_preset '{}' does not exist in the bank\n",
+                      bank_folder,
+                      bank.default_preset);
+            return ErrorCode {CommonError::NotFound};
+        }
     }
 
     {

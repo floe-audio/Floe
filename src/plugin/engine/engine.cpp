@@ -19,6 +19,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "clap/ext/timer-support.h"
+#include "engine/default_preset.hpp"
 #include "engine/engine_prefs.hpp"
 #include "engine/favourite_items.hpp"
 #include "engine/loop_modes.hpp"
@@ -116,6 +117,7 @@ static void AfterStateChanged(Engine& engine) {
     NotifyListener(engine);
     engine.host.request_callback(&engine.host);
     engine.pending_state_change.Clear();
+    engine.loading_default_preset = false;
 }
 
 void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts) {
@@ -843,6 +845,25 @@ void LoadPresetFromFile(Engine& engine, String path) {
     }
 }
 
+void LoadDefaultPresetIfNeeded(Engine& engine) {
+    ASSERT(g_is_logical_main_thread);
+    if (engine.default_preset_load_attempted) return;
+    if (engine.host_state_received) return;
+    engine.default_preset_load_attempted = true;
+
+    auto const default_preset = ResolveDefaultPreset(engine.shared_engine_systems.prefs);
+    if (!default_preset) return;
+
+    // The file might have been moved or be on an unmounted drive. That's not worth nagging about.
+    if (GetFileType(default_preset->path).ValueOr(FileType::Directory) != FileType::File) return;
+
+    // Clearing first means the preset's undo anchor replaces the initial blank state, so undo can't step
+    // back to blank.
+    engine.undo_history.Clear();
+    LoadPresetFromFile(engine, default_preset->path);
+    engine.loading_default_preset = engine.pending_state_change.HasValue();
+}
+
 void SaveCurrentStateToFile(Engine& engine, String path) {
     ASSERT(path.size);
     ASSERT(IsValidUtf8(path));
@@ -1144,6 +1165,7 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
     engine.error_notifications.RemoveError(error_id);
     // Fallback display name for legacy DAW state that doesn't carry one.
     if (state.extras.display_name.size == 0) dyn::Assign(state.extras.display_name, "DAW State"_s);
+    engine.host_state_received = true;
     LoadState(engine, state, {.source = StateSource::Daw});
     engine.undo_history.Clear();
     RecordUndoableStep(engine, state.extras.display_name, true);

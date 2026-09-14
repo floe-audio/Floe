@@ -3,7 +3,25 @@
 
 #include "preset_bank_info.hpp"
 
+#include "tests/framework.hpp"
+
 #include "sample_library/sample_library.hpp"
+#include "state/state_coding.hpp"
+
+// Bank-relative preset paths must be portable and stay inside the bank folder.
+static String ValidatedDefaultPreset(String value, ArenaAllocator& arena) {
+    auto const path = arena.AllocateExactSizeUninitialised<char>(value.size);
+    for (auto const index : Range(value.size))
+        path[index] = value[index] == '\\' ? '/' : value[index];
+
+    if (path::IsAbsolute(path, path::Format::Posix) || path::IsAbsolute(path, path::Format::Windows))
+        return {};
+    for (auto const part : SplitIterator {.whole = String(path), .token = '/', .skip_consecutive = true})
+        if (part == ".."_s) return {};
+    if (!PresetFormatFromPath(path)) return {};
+
+    return path;
+}
 
 PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
     PresetBank bank {};
@@ -32,6 +50,8 @@ PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
             }
         } else if (key == "id"_s) {
             bank.id = HashFnv1a(value_str);
+        } else if (key == "default_preset"_s) {
+            bank.default_preset = ValidatedDefaultPreset(value_str, arena);
         } else if (key == "library_for_visuals"_s) {
             bank.library_for_visuals_id = sample_lib::HashLibraryIdStringWithoutRegistration(value_str);
         }
@@ -39,3 +59,48 @@ PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
 
     return bank;
 }
+
+TEST_CASE(TestPresetBankInfoParsing) {
+    auto& arena = tester.scratch_arena;
+
+    SUBCASE("full file") {
+        auto const bank = ParsePresetBankFile("id = org.floe-audio.test\n"
+                                              "subtitle = A test bank\n"
+                                              "revision = 3\n"
+                                              "default_preset = Pads/Init.floe-preset\n"_s,
+                                              arena);
+        CHECK_EQ(bank.id, HashFnv1a("org.floe-audio.test"_s));
+        CHECK_EQ(bank.subtitle, "A test bank"_s);
+        CHECK_EQ(bank.revision, (u16)3);
+        CHECK_EQ(bank.default_preset, "Pads/Init.floe-preset"_s);
+    }
+
+    SUBCASE("backslashes are normalised") {
+        auto const bank = ParsePresetBankFile("default_preset = Pads\\Init.floe-preset\n"_s, arena);
+        CHECK_EQ(bank.default_preset, "Pads/Init.floe-preset"_s);
+    }
+
+    SUBCASE("invalid default_preset values are ignored") {
+        for (auto const value : Array {
+                 "/absolute/Init.floe-preset"_s,
+                 "C:\\absolute\\Init.floe-preset"_s,
+                 "../Init.floe-preset"_s,
+                 "Pads/../../Init.floe-preset"_s,
+                 "Init.txt"_s,
+                 "Init"_s,
+             }) {
+            CAPTURE(value);
+            auto const bank = ParsePresetBankFile(fmt::Format(arena, "default_preset = {}\n", value), arena);
+            CHECK_EQ(bank.default_preset.size, 0uz);
+        }
+    }
+
+    SUBCASE("missing default_preset") {
+        auto const bank = ParsePresetBankFile("subtitle = No default\n"_s, arena);
+        CHECK_EQ(bank.default_preset.size, 0uz);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterPresetBankInfoTests) { REGISTER_TEST(TestPresetBankInfoParsing); }

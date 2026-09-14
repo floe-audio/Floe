@@ -56,6 +56,10 @@ Redesign the effects switches, rather than a simple button, they have a few inte
 - Improve the responsiveness and feeling of dragging number/knob parameters
 - Make scrollbars clearer and show up/down buttons on them. Clicking the scrollbar channel scrolls a page at a time towards the click (hold to repeat); shift-click jumps straight to that spot
 
+### Default preset
+- Add a default preset: the preset a new instance of Floe opens with. Right-click any preset in the browser to set it, or use the Default Preset row in Preferences > General to set the currently loaded preset or clear the default
+- Preset banks can suggest a default preset with a new `default_preset` key in `floe-preset-bank.ini`. Installing a package containing such a bank applies the suggestion unless you've chosen your own default
+
 ### Misc
 - Change performance controls icon from 'sliders' to 'gauge'. The old icon didn't look very good and was a little confusing due to ambiguity with the Preferences button and that it didn't actually feature any sliders.
 - Standarise displaying Hz or semitones everywhere for filter cutoff parameters. There's a new preference checkbox to pick either which mode you want. When shown in semitones, the value is displayed as a note name (e.g. A3) instead of a plain number.

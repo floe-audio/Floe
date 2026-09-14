@@ -527,6 +527,7 @@ struct BrowserItemOptions {
     u64 item_id;
     bool is_current;
     bool is_favourite;
+    bool is_default; // Shown with a marker; only presets use this.
     bool is_tab_item; // Is a point where pressing Tab jumps to.
     DynamicArrayBounded<ItemIcon, k_num_layers + 2> icons;
     Notifications& notifications;
