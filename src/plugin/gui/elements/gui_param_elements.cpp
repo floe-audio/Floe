@@ -28,7 +28,8 @@ bool DoResetSectionMenuItems(GuiState& g,
                              Box menu_root,
                              StateSnapshotSection const& section,
                              String name,
-                             bool no_icon_gap) {
+                             bool no_icon_gap,
+                             ApplySectionOptions default_reset_options) {
     bool fired = false;
 
     if (MenuItem(g.builder,
@@ -38,7 +39,7 @@ bool DoResetSectionMenuItems(GuiState& g,
                      .no_icon_gap = no_icon_gap,
                  })
             .button_fired) {
-        ApplySectionOfState(g.engine, DefaultStateSnapshot(), section, section);
+        ApplySectionOfState(g.engine, DefaultStateSnapshot(), section, section, default_reset_options);
         fired = true;
     }
 

@@ -207,4 +207,9 @@ using StateSnapshotSection =
                 TypeAndTag<EffectSection, StateSnapshotSectionKind::Effect>,
                 TypeAndTag<FxRackSection, StateSnapshotSectionKind::FxRack>>;
 
+struct ApplySectionOptions {
+    // Leave the target's enablement alone: an effect's On parameter and whether it's in the rack.
+    bool preserve_enablement;
+};
+
 StateSnapshot const& DefaultStateSnapshot();

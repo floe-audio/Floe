@@ -485,7 +485,8 @@ static EqBandResolved ResolveEqBand(ParameterModule scope, u8 band) {
 void ApplySectionOfState(Engine& engine,
                          StateSnapshot const& source,
                          StateSnapshotSection const& source_section,
-                         StateSnapshotSection const& target_section) {
+                         StateSnapshotSection const& target_section,
+                         ApplySectionOptions options) {
     ASSERT(g_is_logical_main_thread);
     if (source_section.tag != target_section.tag) return;
 
@@ -493,6 +494,7 @@ void ApplySectionOfState(Engine& engine,
     DEFER { EndUndoableStep(engine); };
 
     auto const set_param = [&](ParamIndex src, ParamIndex dst) {
+        if (options.preserve_enablement && IsEffectOnParam(dst)) return;
         auto const& dst_range = k_param_descriptors[ToInt(dst)].linear_range;
         SetParameterValue(engine.processor,
                           dst,
@@ -643,7 +645,8 @@ void ApplySectionOfState(Engine& engine,
                 set_param((ParamIndex)i, (ParamIndex)i);
             }
 
-            engine.fx_visible.SetToValue(ToInt(dst_type), source.fx_visible.Get(ToInt(src_type)));
+            if (!options.preserve_enablement)
+                engine.fx_visible.SetToValue(ToInt(dst_type), source.fx_visible.Get(ToInt(src_type)));
             if (dst_type == EffectType::ConvolutionReverb) LoadConvolutionIr(engine, source.ir_id);
             break;
         }
@@ -653,7 +656,7 @@ void ApplySectionOfState(Engine& engine,
                 set_param((ParamIndex)i, (ParamIndex)i);
             }
 
-            engine.fx_visible = source.fx_visible;
+            if (!options.preserve_enablement) engine.fx_visible = source.fx_visible;
             engine.processor.desired_effects_order.Store(EncodeEffectsArray(source.fx_order),
                                                          StoreMemoryOrder::Release);
             engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);

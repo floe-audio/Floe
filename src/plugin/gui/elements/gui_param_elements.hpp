@@ -144,7 +144,8 @@ bool DoResetSectionMenuItems(GuiState& g,
                              Box menu_root,
                              StateSnapshotSection const& section,
                              String name,
-                             bool no_icon_gap = true);
+                             bool no_icon_gap = true,
+                             ApplySectionOptions default_reset_options = {});
 
 // Help text: the parameter's description.
 String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out = false);

@@ -123,7 +123,11 @@ struct GuiState : EngineListener {
     // Set by the effects switchboard, consumed by the rack once it has actually scrolled the effect into
     // view. It can take more than one frame: enabling an effect and jumping to it in the same click means
     // the rack has no section for it until the next frame.
-    Optional<EffectType> fx_scroll_to {};
+    struct FxScrollRequest {
+        EffectType type;
+        bool flash; // Adding an effect just jumps; clicking one already in the rack also flashes it.
+    };
+    Optional<FxScrollRequest> fx_scroll_to {};
 
     GuiEnvelopeCursor envelope_voice_cursors[ToInt(GuiEnvelopeType::Count)][k_num_voices] {};
 

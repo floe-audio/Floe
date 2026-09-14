@@ -156,7 +156,8 @@ String PinnedPresetFolderName(Engine const& engine);
 void ApplySectionOfState(Engine& engine,
                          StateSnapshot const& source,
                          StateSnapshotSection const& source_section,
-                         StateSnapshotSection const& target_section);
+                         StateSnapshotSection const& target_section,
+                         ApplySectionOptions options = {});
 
 bool StateModifiedFromPinned(Engine& engine);
 
