@@ -42,7 +42,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Distortion:
                 info = {
                     .description =
-                        "The distortion effect pushes the signal through a shaping curve, for anything from gentle tape warmth to outright destruction. Oversampled and anti-aliased for a clean sound.",
+                        "This effect pushes the signal through a shaping curve, for anything from gentle tape warmth to outright destruction. Oversampled and anti-aliased for a clean sound.",
                     .name = "Distortion",
                     .id = 1, // never change
                     .on_param_index = ParamIndex::DistortionOn,
@@ -52,7 +52,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::BitCrush:
                 info = {
                     .description =
-                        "The Bit Crush is a lo-fi effect that degrades the signal in two ways: dropping the sample rate for ringing, metallic aliasing, and reducing the bit depth for gritty quantisation noise. Both controls start at full quality, so lower them to hear the effect.",
+                        "This is a lo-fi effect that degrades the signal in two ways: dropping the sample rate for ringing, metallic aliasing, and reducing the bit depth for gritty quantisation noise. Both controls start at full quality, so lower them to hear the effect.",
                     .name = "Bit Crush",
                     .id = 2, // never change
                     .on_param_index = ParamIndex::BitCrushOn,
@@ -62,7 +62,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Compressor:
                 info = {
                     .description =
-                        "The compressor can be used to shape the dynamics: controlling dynamics and making quiet sections louder.",
+                        "This effect can be used to shape the dynamics: controlling dynamics and making quiet sections louder.",
                     .name = "Compressor",
                     .id = 3, // never change
                     .on_param_index = ParamIndex::CompressorOn,
@@ -92,7 +92,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Chorus:
                 info = {
                     .description =
-                        "The chorus effect thickens the sound by layering it with delayed copies that drift in pitch. Gentle settings add a subtle shimmer and movement, while deeper settings give an obvious, tape-like wobble.",
+                        "This effect thickens the sound by layering it with delayed copies that drift in pitch. Gentle settings add a subtle shimmer and movement, while deeper settings give an obvious, tape-like wobble.",
                     .name = "Chorus",
                     .id = 6, // never change
                     .on_param_index = ParamIndex::ChorusOn,
@@ -102,7 +102,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Reverb:
                 info = {
                     .description =
-                        "Reverb algorithmically simulates the reflections and reverberations of a real space, from a small, tight room to a vast hall that takes many seconds to fade. Features modulation options for creating shimmering tails.",
+                        "This effect algorithmically simulates the reflections and reverberations of a real space, from a small, tight room to a vast hall that takes many seconds to fade. Features modulation options for creating shimmering tails.",
                     .name = "Reverb",
                     .id = 7, // never change
                     .on_param_index = ParamIndex::ReverbOn,
@@ -122,7 +122,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::ConvolutionReverb:
                 info = {
                     .description =
-                        "This convolution reverb effect's character comes entirely from an impulse response (IR): a sample of how a space or object responds to sound. Most of the IRs on offer are strange and characterful, making this as much a sound-design tool as a reverb.",
+                        "This effect's character comes entirely from an impulse response (IR): a sample of how a space or object responds to sound. Most of the IRs on offer are strange and characterful, making this as much a sound-design tool as a reverb.",
                     .name = "Convol Reverb",
                     .id = 10, // never change
                     .on_param_index = ParamIndex::ConvolutionReverbOn,
@@ -132,7 +132,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Phaser:
                 info = {
                     .description =
-                        "The phaser can sweep a series of peaks and notches through the sound, giving it the classic swooshing, jet-like motion. Gentle settings add a subtle sense of movement to sustained sounds, while faster or more resonant ones become an unmistakable whoosh.",
+                        "This effect can sweep a series of peaks and notches through the sound, giving it the classic swooshing, jet-like motion. Gentle settings add a subtle sense of movement to sustained sounds, while faster or more resonant ones become an unmistakable whoosh.",
                     .name = "Phaser",
                     .id = 9, // never change
                     .on_param_index = ParamIndex::PhaserOn,
@@ -152,7 +152,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Limiter:
                 info = {
                     .description =
-                        "The limiter can hold the signal below a set ceiling, either to catch stray peaks or to push the overall level up without clipping. It's a true-peak brickwall limiter with a very short lookahead, and usually belongs at the end of the effects chain.",
+                        "This effect can hold the signal below a set ceiling, either to catch stray peaks or to push the overall level up without clipping. It's a true-peak brickwall limiter with a very short lookahead, and usually belongs at the end of the effects chain.",
                     .name = "Limiter",
                     .id = 12, // never change
                     .on_param_index = ParamIndex::LimiterOn,
@@ -170,6 +170,12 @@ constexpr auto k_effect_info = []() {
     }
     return result;
 }();
+
+constexpr bool IsEffectOnParam(ParamIndex param) {
+    for (auto const& info : k_effect_info)
+        if (info.on_param_index == param) return true;
+    return false;
+}
 
 constexpr ParameterModule EffectTypeToParameterModule(EffectType type) {
     switch (type) {

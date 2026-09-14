@@ -2250,7 +2250,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Distortion},
         .name = "On"_s,
         .gui_label = "Distortion"_s,
-        .tooltip = "Enable/disable the distortion effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
     mp(DistortionPunish) = Args {
         .id = id(IdRegion::Master, 149), // never change
@@ -2261,7 +2261,7 @@ consteval auto CreateParams() {
         .name = "Punish"_s,
         .gui_label = "Punish"_s,
         .tooltip =
-            "Punish stacks extra distortion stages after the first, each one driven harder and biased off-centre, for a denser and more compressed edge. Drive sets how hard the signal hits the first stage; Punish sets how much is piled on top."_s,
+            "Punish stacks extra distortion stages after the first, each one driven harder than the last, for a denser, grittier, more compressed edge. Drive sets how hard the signal hits the first stage; Punish sets how much is piled on top."_s,
     };
     mp(DistortionTilt) = Args {
         .id = id(IdRegion::Master, 150), // never change
@@ -2372,7 +2372,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
         .name = "On"_s,
         .gui_label = "Bit Crush"_s,
-        .tooltip = "Enable/disable the bitcrush effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
 
     // =====================================================================================================
@@ -2462,7 +2462,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Compressor},
         .name = "On"_s,
         .gui_label = "Compressor",
-        .tooltip = "Enable/disable the compression effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
     mp(CompressorType) = Args {
         .id = id(IdRegion::Master, 33), // never change
@@ -2523,7 +2523,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Filter},
         .name = "On"_s,
         .gui_label = "Filter"_s,
-        .tooltip = "Enable/disable the Filter effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
     mp(LegacyFilterCutoff) = Args {
         .id = id(IdRegion::Master, 17), // never change
@@ -2649,7 +2649,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::StereoWiden},
         .name = "On"_s,
         .gui_label = "Stereo Widen On"_s,
-        .tooltip = "Turn the stereo widen effect on or off"_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
     mp(StereoWidenMode) = Args {
         .id = id(IdRegion::Master, 31), // never change
@@ -2783,7 +2783,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Chorus},
         .name = "On"_s,
         .gui_label = "Chorus"_s,
-        .tooltip = "Enable/disable the chorus effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
 
     // =====================================================================================================
@@ -2924,7 +2924,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Delay},
         .name = "On"_s,
         .gui_label = "Delay"_s,
-        .tooltip = "Enable/disable the delay effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
     mp(DelayFeedback) = Args {
         .id = id(IdRegion::Master, 100), // never change
@@ -3029,7 +3029,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Phaser},
         .name = "On"_s,
         .gui_label = "Phaser"_s,
-        .tooltip = "Enable/disable the phaser effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
 
     // =====================================================================================================
@@ -3053,7 +3053,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Eq},
         .name = "On"_s,
         .gui_label = "EQ"_s,
-        .tooltip = "Enable/disable the EQ effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
     mp(EqMix) = Args {
         .id = id(IdRegion::Master, 121), // never change
@@ -3262,7 +3262,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::ConvolutionReverb},
         .name = "On"_s,
         .gui_label = "Convol Reverb"_s,
-        .tooltip = "Enable/disable the Convolution Reverb effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
 
     // =====================================================================================================
@@ -3436,7 +3436,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
         .name = "On"_s,
         .gui_label = "Reverb"_s,
-        .tooltip = "Enable/disable the reverb effect"_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
 
     mp(LimiterOn) = Args {
@@ -3447,7 +3447,7 @@ consteval auto CreateParams() {
         .modules = {ParameterModule::Effect, ParameterModule::Limiter},
         .name = "On"_s,
         .gui_label = "Limiter"_s,
-        .tooltip = "Enable/disable the limiter effect."_s,
+        .tooltip = "Enable/disable this effect."_s,
     };
     mp(LimiterMix) = Args {
         .id = id(IdRegion::Master, 141), // never change

@@ -15,40 +15,56 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 2.0.4-beta.1
-- Redesign the effects switchboard cards: each card now has a checkbox — tick it to add the effect to the rack, untick it to remove it. Clicking a card that's already in the rack scrolls and flashes to its place in the chain.
+### Distortion
+Huge improvements to the distortion effect:
+ - 10 new/upgraded distortion types: more musical and balanced with smooth gain compensation
+ - Cleaner sound with 4x oversampling, anti-aliasing and DC offset removal
+ - Punish parameter added to push the distortion even further
+ - Tilt EQ parameter added to musically shape the tone (deep through to bright)
+ - Auto-gain parameter added to legacy distortion types to opt in so the volume level stays steady as you turn the drive up
+ - Fully backwards compatible with existing presets and DAW projects - they will load as one of the 'legacy' distortion types. The new algorithms are not directly equivalent to the legacy types. Changing your preset from a legacy type to a newer type has to be done by ear. Some things to keep in mind if doing that: turn on the Auto Gain parameter for an easy win - the Drive knob will have a much more consistent volume level across the whole knob; consider these legacy to modern migration suggestions (but use your ears!): Atan -> Overdrive, Clip -> Hard Clip, Tube Log -> Tape, Tanh (Decimate) -> Tape, Tube Asym3 -> Overdrive (+15% Punish), Sine -> Sine Fold, Raph1 -> Warp, Foldback -> Wavefolder, Rectifier -> Octave, Ring Mod (44.1k) -> Ring Mod.
+
+### Limiter
 - Add a new Limiter effect: a lookahead true-peak brickwall limiter with Gain and Ceiling controls, plus input, gain-reduction and output meters, intended primarily for the end of the effects chain
-- Change performance controls icon from 'sliders' to 'gaugue'. The old icon didn't look very good and was a confusing (ambiguity with preferences and no sliders actually being used).
-- Standarise displaying Hz or semitones everywhere for filter cutoff parameters. There's a new preference checkbox to pick either which mode you want. When shown in semitones, the value is displayed as a note name (e.g. A3) instead of a plain number.
-- Change the Performance Controls MIDI CC tab icon to a MIDI DIN connector
+
+### Effects switches
+Redesign the effects switches, rather than a simple button, they have a few interactions:
+- See and toggle the 'bypass' state by clicking the little rectangle 'light' left of the FX name
+- Click on an active FX name to scroll and flash the FX in the rack, making it much quicker than lots of scrolling, paritcularly when the rack has lots of FX
+- Add/remove the FX using the checkbox on the left rather than clicking the name
+
+### Tooltips
+- Made all tooltips much more descriptive and helpful
+- Split tooltips into two boxes: a control's value appears straight away when hovered (and while dragging), while its description appears in italics after a short pause. Only the description is affected by the 'Show tooltips' preference. A new 'Instant value readouts' preference can be turned off to show the value only after the pause or while dragging
+- Increase how long it takes after hovering on a knob that the tooltip appears
+
+### Meters
 - Add a LUFS meter to top panel - useful for getting presets to a similar perceived loudness. Turn it on using the new checkbox on the Preferences panel.
 - Add a peak-hold line to all peak meters: it marks the highest level reached, holds there for a moment, then falls back
 - Change the peak meter ranges and add min/max markers. The top panel meter: -60dB to +10dB becomes -36dB to +6dB with markers every 6dB - allows for more visibility where you need it - closer to 0dB. The layer meters: -60dB to +10dB becomes -60dB to +12dB with markers every 12dB.
 - Make the layer peak meters always green. The yellow/red segments falsely suggest that there's a problem when actually any level is fine for layers.
+
+### UI Behaviour
+- Make the LFO waveform display draggable: drag left or right to change the Time, up or down to change the Amount
+- Add right-click on the effects switchboard to 'Tidy FX Order', which groups all the turned-on effects at the top without changing their order
+- Remove the drag-to-change behaviour from most menu controls. It was more annoying than useful: too easy to accidentally change values. Click to open the menu or use the arrow buttons instead. Some of the 'rate' menu still support draggins such as the LFO rate, arpeggiator rate and delay time, where dragging through the values is useful
+- Add ability to drag up/down on filter/EQ nodes to change resonance (for types that don't have a gain control)
+- Improve the responsiveness and feeling of dragging number/knob parameters
+- Make scrollbars clearer and show up/down buttons on them. Clicking the scrollbar channel scrolls a page at a time towards the click (hold to repeat); shift-click jumps straight to that spot
+
+### Misc
+- Change performance controls icon from 'sliders' to 'gauge'. The old icon didn't look very good and was a little confusing due to ambiguity with the Preferences button and that it didn't actually feature any sliders.
+- Standarise displaying Hz or semitones everywhere for filter cutoff parameters. There's a new preference checkbox to pick either which mode you want. When shown in semitones, the value is displayed as a note name (e.g. A3) instead of a plain number.
+- Change the Performance Controls MIDI CC tab icon to a MIDI DIN connector
 - Fix pops in audio when rapidly changing the Modern compressor threshold or ratio, or Vintage compressor Gain
 - Change button text from 'Copy to clipboard' to 'Copy message' or 'Copy error'
-- Make scrollbars clearer and show up/down buttons on them. Clicking the scrollbar channel scrolls a page at a time towards the click (hold to repeat); shift-click jumps straight to that spot
-- Make the LFO waveform display draggable: drag left or right to change the Time, up or down to change the Amount
-- Add ability to drag up/down on filter/EQ nodes to change resonance (for types that don't have a gain control)
 - Add a quick sliding-up animation for the key-range popup below the bottom panel
-- Add right-click on the effects switchboard to 'Move Unused FX to Bottom', which groups all the turned-on effects at the top without changing their order
-- Split tooltips into two boxes: a control's value appears straight away when hovered (and while dragging), while its description appears in italics after a short pause. Only the description is affected by the 'Show tooltips' preference. A new 'Instant value readouts' preference can be turned off to show the value only after the pause or while dragging
-- Made all tooltips much more descriptive and helpful
-- Increase how long it takes after hovering on a knob that the toolip appears
-- Remove the drag-to-change behaviour from most menu controls. It was more annoying than useful: too easy to accidentally change values. Click to open the menu or use the arrow buttons instead. Some of the 'rate' menu still support draggins such as the LFO rate, arpeggiator rate and delay time, where dragging through the values is useful
 - Add preferences and performance controls to the Main Menu as well as icons on the top panel.
 - Improve icons for Mute and Solo buttons
-- Improve the resonsiveness and feeling of dragging number/knob parameters
 - Fix the loop crossfade shrinking when quickly dragging the waveform loop region
 - Fix a crash when the host sends a malformed MIDI event
 - Fix buttons not being visible when the path is long on the Preferences window
 - Fix the layer filter getting stuck (sometimes almost silent) when its envelope moves slowly, until the cutoff was nudged
-- Huge improvements to the distortion effect:
-  - 10 new/upgraded distortion types: more musical and balanced with smooth gain compensation
-  - Cleaner sound with 4x oversampling, anti-aliasing and DC offset removal
-  - Punish parameter added to push the distortion even further
-  - Tilt EQ parameter added to musically shape the tone (deep through to bright)
-  - Auto-gain parameter added to legacy distortion types to opt in to better gain compensation as you turn the drive up
-  - Fully backwards compatible with existing presets and DAW projects
 
 ## 2.0.4
 - Add MPE (MIDI Polyphonic Expression) support: enable it in the Performance Controls panel for per-note pitch bend, press (channel pressure) and slide (CC74), and choose what press and slide control on each layer's Config tab. CLAP per-note expressions (pitch, pressure, brightness) are also supported
