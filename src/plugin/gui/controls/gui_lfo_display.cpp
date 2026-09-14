@@ -208,55 +208,68 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     }
 
     auto const shape = shape_param.IntValue<param_values::LfoShape>();
-    auto const amount_linear =
-        AdjustedLinearValue(params.values, macro_dests, amount_param.LinearValue(), amount_param.info.index);
-    auto const amount = Clamp(amount_linear, -1.0f, 1.0f);
-
-    auto const rate_adj_linear =
-        AdjustedLinearValue(params.values, macro_dests, rate_param.LinearValue(), rate_param.info.index);
-
-    // Convert rate to Hz at a reference tempo so the display speed scales with the actual rate
-    // value rather than its linear position in the param range.
-    auto const rate_hz = ({
-        f32 hz;
-        if (sync_on) {
-            // ParamToInt, not rounding: the value readout and the DSP both truncate, so anything else
-            // steps at a different point in the drag to what's shown and heard.
-            auto const synced = ParamToInt<param_values::LfoSyncedRate>(rate_adj_linear);
-            hz = SyncedTimeToHz(k_reference_bpm, SyncedTimesFromParam(synced));
-        } else {
-            hz = rate_param.info.ProjectValue(rate_adj_linear);
-        }
-        hz;
-    });
-
     // Random modes run at 2x rate in the DSP (see lfo.hpp's RecomputePhaseIncrement); mirror here.
     auto const is_random =
         shape == param_values::LfoShape::RandomSteps || shape == param_values::LfoShape::RandomGlide;
-    auto const rate_multiplier = is_random ? 2.0f : 1.0f;
-    auto const raw_cycles = rate_hz * k_viewport_seconds * rate_multiplier;
-
-    // Above this many cycles the polyline aliases against the pixel grid (moiré on dense
-    // near-vertical segments). Compress logarithmically so each higher rate still looks distinct
-    // without packing more crossings per pixel.
-    constexpr f32 k_cycle_soft_cap = 12.0f;
-    auto const cycles_to_draw = raw_cycles <= k_cycle_soft_cap
-                                    ? raw_cycles
-                                    : k_cycle_soft_cap + (Log2(raw_cycles / k_cycle_soft_cap) * 1.5f);
-
     auto const half_h = viewport_r.h * 0.5f;
 
-    DynamicArrayBounded<f32x2, k_lfo_curve_points> curve_points;
-    for (auto const i : Range(k_lfo_curve_points)) {
-        auto const t = (f32)i / (f32)(k_lfo_curve_points - 1);
-        auto const phase = t * cycles_to_draw;
-        // The DSP negates the raw LFO output before applying to parameters; mirror that here so
-        // the visual matches what's audible.
-        auto const value = -LfoShapeValue(shape, phase) * amount;
-        auto const x = viewport_r.x + (t * viewport_r.w);
-        auto const y = centre_y - (value * half_h);
-        dyn::Append(curve_points, imgui.ViewportPosToWindowPos({x, y}));
-    }
+    auto const curve_points_for = [&](f32 amount_linear, f32 rate_linear) {
+        auto const amount = Clamp(amount_linear, -1.0f, 1.0f);
+
+        // Convert rate to Hz at a reference tempo so the display speed scales with the actual rate
+        // value rather than its linear position in the param range.
+        auto const rate_hz = ({
+            f32 hz;
+            if (sync_on) {
+                // ParamToInt, not rounding: the value readout and the DSP both truncate, so anything else
+                // steps at a different point in the drag to what's shown and heard.
+                auto const synced = ParamToInt<param_values::LfoSyncedRate>(rate_linear);
+                hz = SyncedTimeToHz(k_reference_bpm, SyncedTimesFromParam(synced));
+            } else {
+                hz = rate_param.info.ProjectValue(rate_linear);
+            }
+            hz;
+        });
+
+        auto const rate_multiplier = is_random ? 2.0f : 1.0f;
+        auto const raw_cycles = rate_hz * k_viewport_seconds * rate_multiplier;
+
+        // Above this many cycles the polyline aliases against the pixel grid (moiré on dense
+        // near-vertical segments). Compress logarithmically so each higher rate still looks distinct
+        // without packing more crossings per pixel.
+        constexpr f32 k_cycle_soft_cap = 12.0f;
+        auto const cycles_to_draw = raw_cycles <= k_cycle_soft_cap
+                                        ? raw_cycles
+                                        : k_cycle_soft_cap + (Log2(raw_cycles / k_cycle_soft_cap) * 1.5f);
+
+        DynamicArrayBounded<f32x2, k_lfo_curve_points> curve_points;
+        for (auto const i : Range(k_lfo_curve_points)) {
+            auto const t = (f32)i / (f32)(k_lfo_curve_points - 1);
+            auto const phase = t * cycles_to_draw;
+            // The DSP negates the raw LFO output before applying to parameters; mirror that here so
+            // the visual matches what's audible.
+            auto const value = -LfoShapeValue(shape, phase) * amount;
+            auto const x = viewport_r.x + (t * viewport_r.w);
+            auto const y = centre_y - (value * half_h);
+            dyn::Append(curve_points, imgui.ViewportPosToWindowPos({x, y}));
+        }
+        return curve_points;
+    };
+
+    auto const curve_points = curve_points_for(
+        AdjustedLinearValue(params.values, macro_dests, amount_param.LinearValue(), amount_param.info.index),
+        AdjustedLinearValue(params.values, macro_dests, rate_param.LinearValue(), rate_param.info.index));
+    auto const base_curve_points = curve_points_for(amount_param.LinearValue(), rate_param.LinearValue());
+    auto const base_differs = ({
+        bool differs = false;
+        for (auto const i : Range(k_lfo_curve_points)) {
+            if (Abs(curve_points[i].y - base_curve_points[i].y) > 0.5f) {
+                differs = true;
+                break;
+            }
+        }
+        differs;
+    });
 
     auto const zero_y_window = imgui.ViewportPosToWindowPos({viewport_r.x, centre_y}).y;
     auto const area_col = LiveCol(UiColMap::EqArea);
@@ -282,5 +295,10 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
             c = LiveCol(UiColMap::EqLine);
         c;
     });
+    if (base_differs) {
+        auto base_line_col = FromU32(line_col);
+        base_line_col.a /= 3;
+        imgui.draw_list->AddPolyline(base_curve_points, ToU32(base_line_col), false, 1.0f, true);
+    }
     imgui.draw_list->AddPolyline(curve_points, line_col, false, 1.5f, true);
 }

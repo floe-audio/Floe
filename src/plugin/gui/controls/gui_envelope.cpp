@@ -17,6 +17,39 @@ constexpr usize k_decay_index = 1;
 constexpr usize k_sustain_index = 2;
 constexpr usize k_release_index = 3;
 
+constexpr auto k_max_attack_percent = 0.31f;
+constexpr auto k_max_decay_percent = 0.31f;
+constexpr auto k_max_release_percent = 0.31f;
+constexpr auto k_sustain_point_percent =
+    (k_max_attack_percent + k_max_decay_percent) +
+    (1 - (k_max_attack_percent + k_max_decay_percent + k_max_release_percent));
+
+static Array<f32x2, k_num_adsr_params> EnvelopePoints(Rect viewport_r,
+                                                      Array<f32, k_num_adsr_params> const& linear_values) {
+    Array<f32x2, k_num_adsr_params> points;
+    points[k_attack_index] = {
+        MapFrom01(linear_values[k_attack_index],
+                  viewport_r.x,
+                  viewport_r.x + (k_max_attack_percent * viewport_r.w)),
+        viewport_r.y,
+    };
+    points[k_decay_index] = {
+        MapFrom01(linear_values[k_decay_index],
+                  points[k_attack_index].x,
+                  points[k_attack_index].x + (k_max_decay_percent * viewport_r.w)),
+        MapFrom01(1 - linear_values[k_sustain_index], viewport_r.y, viewport_r.Bottom()),
+    };
+    points[k_sustain_index] = {viewport_r.x + (k_sustain_point_percent * viewport_r.w),
+                               points[k_decay_index].y};
+    points[k_release_index] = {
+        MapFrom01(linear_values[k_release_index],
+                  points[k_sustain_index].x,
+                  points[k_sustain_index].x + (k_max_release_percent * viewport_r.w)),
+        viewport_r.Bottom(),
+    };
+    return points;
+}
+
 struct EnvelopeXRange {
     f32 min;
     f32 max;
@@ -169,12 +202,6 @@ void DoEnvelopeGui(GuiState& g,
     auto const padded_height = viewport_r.h;
     auto const padded_width = viewport_r.w;
     auto const padded_bottom = viewport_r.Bottom();
-    constexpr auto k_max_attack_percent = 0.31f;
-    constexpr auto k_max_decay_percent = 0.31f;
-    constexpr auto k_max_release_percent = 0.31f;
-    constexpr auto k_sustain_point_percent =
-        (k_max_attack_percent + k_max_decay_percent) +
-        (1 - (k_max_attack_percent + k_max_decay_percent + k_max_release_percent));
     constexpr auto k_att_rel_slider_sensitivity = 170.0f;
 
     auto const indices = ({
@@ -250,7 +277,26 @@ void DoEnvelopeGui(GuiState& g,
     auto const dec_sus_imgui_id = imgui.MakeId("dec-sus");
     auto const release_imgui_id = imgui.MakeId("release");
 
-    Array<f32x2, k_num_adsr_params> adsr_points;
+    // Handles and grabbers sit at the parameter values; the curve follows the macro-adjusted values with a
+    // faint ghost of the unadjusted shape, matching the filter graphs.
+    auto const adsr_points = EnvelopePoints(viewport_r, ({
+                                                Array<f32, k_num_adsr_params> vals;
+                                                for (auto const i : ::Range(k_num_adsr_params))
+                                                    vals[i] =
+                                                        engine.processor.main_params.LinearValue(indices[i]);
+                                                vals;
+                                            }));
+    auto const adj_adsr_points =
+        EnvelopePoints(viewport_r, ({
+                           auto const& params = engine.processor.main_params;
+                           Array<f32, k_num_adsr_params> vals;
+                           for (auto const i : ::Range(k_num_adsr_params))
+                               vals[i] = AdjustedLinearValue(params.values,
+                                                             engine.processor.main_macro_destinations,
+                                                             params.LinearValue(indices[i]),
+                                                             indices[i]);
+                           vals;
+                       }));
 
     EnvelopeXRange attack_x_range;
     EnvelopeXRange decay_x_range;
@@ -267,7 +313,6 @@ void DoEnvelopeGui(GuiState& g,
             return MapFrom01(percent, min_x, max_x);
         };
 
-        adsr_points[k_attack_index] = {get_x_coord_at_percent(norm_attack_val), padded_y};
         attack_x_range.min = get_x_coord_at_percent(0);
         attack_x_range.max = get_x_coord_at_percent(1);
 
@@ -323,8 +368,6 @@ void DoEnvelopeGui(GuiState& g,
         auto const decay_param = engine.processor.main_params.DescribedValue(indices[k_decay_index]);
         auto const sustain_param = engine.processor.main_params.DescribedValue(indices[k_sustain_index]);
         DescribedParamValue const* param_ptrs[] = {&decay_param, &sustain_param};
-        auto const decay_norm_value = decay_param.LinearValue();
-        auto const sustain_norm_value = sustain_param.LinearValue();
 
         auto const get_x_coord_at_percent = [&](f32 percent) {
             auto const min_x = adsr_points[k_attack_index].x;
@@ -337,11 +380,6 @@ void DoEnvelopeGui(GuiState& g,
             auto const max_y = min_y + padded_height;
             return MapFrom01(percent, min_y, max_y);
         };
-
-        adsr_points[k_decay_index] = {get_x_coord_at_percent(decay_norm_value),
-                                      get_y_coord_at_percent(1 - sustain_norm_value)};
-        adsr_points[k_sustain_index] = {padded_x + (k_sustain_point_percent * padded_width),
-                                        adsr_points[k_decay_index].y};
 
         decay_x_range.min = get_x_coord_at_percent(0);
         decay_x_range.max = get_x_coord_at_percent(1);
@@ -457,8 +495,6 @@ void DoEnvelopeGui(GuiState& g,
             return MapFrom01(percent, min_x, max_x);
         };
 
-        adsr_points[k_release_index] = {get_x_coord_at_percent(release_norm_value), padded_bottom};
-
         release_x_range.min = get_x_coord_at_percent(0);
         release_x_range.max = get_x_coord_at_percent(1);
 
@@ -512,11 +548,24 @@ void DoEnvelopeGui(GuiState& g,
 
     // Drawing.
     {
-        auto const adsr_window_points = ({
+        auto const to_window = [&](Array<f32x2, k_num_adsr_params> const& points) {
             Array<f32x2, k_num_adsr_params> pts;
             for (auto const i : ::Range(k_num_adsr_params))
-                pts[i] = imgui.ViewportPosToWindowPos(adsr_points[i]);
-            pts;
+                pts[i] = imgui.ViewportPosToWindowPos(points[i]);
+            return pts;
+        };
+        auto const base_window_points = to_window(adsr_points);
+        auto const adsr_window_points = to_window(adj_adsr_points);
+        auto const base_differs = ({
+            bool differs = false;
+            for (auto const i : ::Range(k_num_adsr_params)) {
+                if (Abs(adsr_window_points[i].x - base_window_points[i].x) > 0.5f ||
+                    Abs(adsr_window_points[i].y - base_window_points[i].y) > 0.5f) {
+                    differs = true;
+                    break;
+                }
+            }
+            differs;
         });
         auto const bottom_left = imgui.ViewportPosToWindowPos({padded_x, padded_bottom});
 
@@ -546,30 +595,38 @@ void DoEnvelopeGui(GuiState& g,
         if (!greyed_out) DrawEnvelopeVoiceMarkers(g, type, layer.index, bottom_left, adsr_window_points);
 
         // Lines.
-        auto const line_points = Array {bottom_left,
-                                        adsr_window_points[k_attack_index],
-                                        adsr_window_points[k_decay_index],
-                                        adsr_window_points[k_sustain_index],
-                                        adsr_window_points[k_release_index]};
-        imgui.draw_list->AddPolyline(line_points,
-                                     greyed_out ? greyed_out_line_col : line_col,
-                                     false,
-                                     1,
-                                     true);
+        auto const line_points_for = [&](Array<f32x2, k_num_adsr_params> const& points) {
+            return Array {bottom_left,
+                          points[k_attack_index],
+                          points[k_decay_index],
+                          points[k_sustain_index],
+                          points[k_release_index]};
+        };
+        auto const active_line_col = greyed_out ? greyed_out_line_col : line_col;
+        if (base_differs) {
+            auto base_line_col = FromU32(active_line_col);
+            base_line_col.a /= 3;
+            imgui.draw_list->AddPolyline(line_points_for(base_window_points),
+                                         ToU32(base_line_col),
+                                         false,
+                                         1,
+                                         true);
+        }
+        imgui.draw_list->AddPolyline(line_points_for(adsr_window_points), active_line_col, false, 1, true);
 
         // Handles.
         DrawEnvelopeHandle(imgui,
-                           adsr_window_points[k_attack_index],
+                           base_window_points[k_attack_index],
                            attack_imgui_id,
                            handle_size,
                            greyed_out);
         DrawEnvelopeHandle(imgui,
-                           adsr_window_points[k_decay_index],
+                           base_window_points[k_decay_index],
                            dec_sus_imgui_id,
                            handle_size,
                            greyed_out);
         DrawEnvelopeHandle(imgui,
-                           adsr_window_points[k_release_index],
+                           base_window_points[k_release_index],
                            release_imgui_id,
                            handle_size,
                            greyed_out);

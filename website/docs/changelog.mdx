@@ -46,6 +46,9 @@ Redesign the effects switches, rather than a simple button, they have a few inte
 
 ### UI Behaviour
 - Make the LFO waveform display draggable: drag left or right to change the Time, up or down to change the Amount
+- Show macro modulation on the filters, EQ, LFO, envelopes and waveform. This is done by either showing a faint 'ghost line' or using the existing display elements that now move separately when needed.
+- Macro destination targets on the waveform sit on the handles themselves (loop start, loop end, crossfade) rather than in a column at the right edge
+- Add support controlling a layer's sample start offset with a macro
 - Add right-click on the effects switchboard to 'Tidy FX Order', which groups all the turned-on effects at the top without changing their order
 - Remove the drag-to-change behaviour from most menu controls. It was more annoying than useful: too easy to accidentally change values. Click to open the menu or use the arrow buttons instead. Some of the 'rate' menu still support draggins such as the LFO rate, arpeggiator rate and delay time, where dragging through the values is useful
 - Add ability to drag up/down on filter/EQ nodes to change resonance (for types that don't have a gain control)

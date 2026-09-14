@@ -59,6 +59,15 @@ static bool IsMultisampledInstrument(LayerProcessor const& layer) {
 
 enum class MultisampleDisplay : u8 { Representative, LastPlayed, Paused };
 
+static f32 AdjustedLayerParamLinear(GuiState& g, u8 layer_index, LayerParamIndex layer_param) {
+    auto const index = ParamIndexFromLayerParamIndex(layer_index, layer_param);
+    auto const& params = g.engine.processor.main_params;
+    return AdjustedLinearValue(params.values,
+                               g.engine.processor.main_macro_destinations,
+                               params.LinearValue(index),
+                               index);
+}
+
 static Optional<String> WaveformTooltipText(ArenaAllocator& arena,
                                             LayerProcessor const& layer,
                                             Optional<param_values::PlayMode> play_mode,
@@ -159,7 +168,6 @@ struct PlayModeFeatures {
     bool show_crossfade;
     bool show_grain_position_indicator;
     bool show_voice_cursors;
-    bool show_macro_destinations;
 };
 
 static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
@@ -172,7 +180,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_crossfade = true,
                 .show_grain_position_indicator = false,
                 .show_voice_cursors = true,
-                .show_macro_destinations = true,
             };
         case param_values::PlayMode::GranularPlayback:
             return {
@@ -182,7 +189,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_crossfade = true,
                 .show_grain_position_indicator = false,
                 .show_voice_cursors = true,
-                .show_macro_destinations = false,
             };
         case param_values::PlayMode::GranularFixed:
             return {
@@ -192,7 +198,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_crossfade = false,
                 .show_grain_position_indicator = true,
                 .show_voice_cursors = false,
-                .show_macro_destinations = false,
             };
         case param_values::PlayMode::Count: PanicIfReached();
     }
@@ -281,8 +286,16 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
     Rect xfade_handle;
     Rect loop_region_r;
 
-    Rect const& left_line = reverse ? end_line : start_line;
-    Rect const& right_line = reverse ? start_line : end_line;
+    // Macros move the audible loop while the handles stay at the parameter values. The region fill and
+    // crossfade lines use these; the handles use the lines above.
+    Rect adj_start_line;
+    Rect adj_end_line;
+    Rect adj_xfade_line;
+    Rect adj_loop_region_r;
+    f32 adj_loop_xfade_size {};
+
+    Rect const& adj_left_line = reverse ? adj_end_line : adj_start_line;
+    Rect const& adj_right_line = reverse ? adj_start_line : adj_end_line;
 
     bool draw_xfade = false;
     bool draw_xfade_as_inactive = false;
@@ -463,24 +476,41 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
         auto const raw_crossfade_size = !single_builtin_loop
                                             ? params.LinearValue(layer.index, LayerParamIndex::LoopCrossfade)
                                             : single_builtin_loop->crossfade;
-        loop_xfade_size =
-            ClampCrossfadeSize<f32>(raw_crossfade_size, loop_start, loop_end, 1.0f, *mode.value.mode) * r.w;
-        auto loop_start_pos = loop_start * r.w;
-        auto loop_end_pos = loop_end * r.w;
-        auto loop_xfade_line_pos = loop_end_pos - loop_xfade_size;
-        if (mode.value.mode == sample_lib::LoopMode::Standard) {
-            if (reverse) {
-                loop_start_pos = r.w - loop_start_pos;
-                loop_end_pos = r.w - loop_end_pos;
-                loop_xfade_line_pos = loop_end_pos + loop_xfade_size;
+        struct LoopGeometry {
+            f32 start_pos;
+            f32 end_pos;
+            f32 xfade_line_pos;
+            f32 xfade_size;
+        };
+        auto const geometry_for = [&](f32 start, f32 end, f32 raw_crossfade) {
+            LoopGeometry geo {
+                .start_pos = start * r.w,
+                .end_pos = end * r.w,
+                .xfade_size =
+                    ClampCrossfadeSize<f32>(raw_crossfade, start, end, 1.0f, *mode.value.mode) * r.w,
+            };
+            geo.xfade_line_pos = geo.end_pos - geo.xfade_size;
+            if (mode.value.mode == sample_lib::LoopMode::Standard) {
+                if (reverse) {
+                    geo.start_pos = r.w - geo.start_pos;
+                    geo.end_pos = r.w - geo.end_pos;
+                    geo.xfade_line_pos = geo.end_pos + geo.xfade_size;
+                }
+            } else if (!reverse) {
+                geo.xfade_line_pos = geo.end_pos + geo.xfade_size;
+            } else {
+                geo.start_pos = r.w - geo.start_pos;
+                geo.end_pos = r.w - geo.end_pos;
+                geo.xfade_line_pos = geo.start_pos + geo.xfade_size;
             }
-        } else if (!reverse) {
-            loop_xfade_line_pos = loop_end_pos + loop_xfade_size;
-        } else {
-            loop_start_pos = r.w - loop_start_pos;
-            loop_end_pos = r.w - loop_end_pos;
-            loop_xfade_line_pos = loop_start_pos + loop_xfade_size;
-        }
+            return geo;
+        };
+
+        auto const geometry = geometry_for(loop_start, loop_end, raw_crossfade_size);
+        loop_xfade_size = geometry.xfade_size;
+        auto const loop_start_pos = geometry.start_pos;
+        auto const loop_end_pos = geometry.end_pos;
+        auto const loop_xfade_line_pos = geometry.xfade_line_pos;
 
         auto const xfade_active = loop_start != 0 && (loop_end - loop_start) != 0;
         draw_xfade_as_inactive = !xfade_active;
@@ -489,6 +519,30 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
             ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopCrossfade);
         auto const start_param_id = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopStart);
         auto const end_param_id = ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd);
+
+        {
+            auto const adj_geometry = ({
+                auto geo = geometry;
+                if (!single_builtin_loop) {
+                    auto const adj_start =
+                        AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::LoopStart);
+                    auto const adj_end =
+                        Max(AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::LoopEnd), adj_start);
+                    geo = geometry_for(
+                        adj_start,
+                        adj_end,
+                        AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::LoopCrossfade));
+                }
+                geo;
+            });
+            adj_loop_xfade_size = adj_geometry.xfade_size;
+            adj_start_line = g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.start_pos, 1));
+            adj_end_line = g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.end_pos, 1));
+            adj_xfade_line = g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.xfade_line_pos, 1));
+            adj_loop_region_r = g.imgui.ViewportRectToWindowRect(
+                Rect::FromMinMax({r.x + Min(adj_geometry.start_pos, adj_geometry.end_pos), r.y},
+                                 {r.x + Max(adj_geometry.start_pos, adj_geometry.end_pos), r.Bottom()}));
+        }
 
         auto const fixed_loop_hint = ({
             String h {};
@@ -564,6 +618,9 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
 
             start_line = g.imgui.RegisterAndConvertRect(start_line);
             start_handle = g.imgui.RegisterAndConvertRect(start_handle);
+
+            if (!single_builtin_loop)
+                OverlayMacroDestinationRegion(g, g.imgui.ViewportRectToWindowRect(grabber), start_param_id);
         };
 
         // End.
@@ -610,6 +667,9 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
 
             end_line = g.imgui.RegisterAndConvertRect(end_line);
             end_handle = g.imgui.RegisterAndConvertRect(end_handle);
+
+            if (!single_builtin_loop)
+                OverlayMacroDestinationRegion(g, g.imgui.ViewportRectToWindowRect(grabber), end_param_id);
         };
 
         // Region.
@@ -734,6 +794,9 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
             xfade_line = g.imgui.RegisterAndConvertRect(xfade_line);
             xfade_handle = g.imgui.RegisterAndConvertRect(xfade_handle);
             draw_xfade = true;
+
+            if (!single_builtin_loop)
+                OverlayMacroDestinationRegion(g, g.imgui.ViewportRectToWindowRect(grabber), xfade_param_id);
         }
     }
 
@@ -769,61 +832,67 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
         offs_handle = g.imgui.RegisterAndConvertRect(offs_handle);
         sample_offset_r = g.imgui.RegisterAndConvertRect(sample_offset_r);
 
-        g.imgui.draw_list->AddRectFilled(sample_offset_r, LiveCol(UiColMap::WaveformSampleOffset));
+        auto const adj_sample_offset =
+            AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::SampleOffset);
+        g.imgui.draw_list->AddRectFilled(g.imgui.ViewportRectToWindowRect(r.WithW(r.w * adj_sample_offset)),
+                                         LiveCol(UiColMap::WaveformSampleOffset));
         g.imgui.draw_list->AddRectFilled(f32x2 {sample_offset_r.Right() - 1, sample_offset_r.y},
                                          sample_offset_r.Max(),
                                          g.imgui.IsHotOrActive(offs_imgui_id, MouseButton::Left)
                                              ? LiveCol(UiColMap::WaveformOffsetHandleHover)
                                              : LiveCol(UiColMap::WaveformOffsetHandle));
+
+        OverlayMacroDestinationRegion(g, g.imgui.ViewportRectToWindowRect(grabber), param_id);
     }
 
     // Drawing.
     if (mode.value.editable || single_builtin_loop) {
-        auto other_xfade_line = start_line.WithPos(start_line.TopRight() +
-                                                   f32x2 {reverse ? loop_xfade_size : -loop_xfade_size, 0});
+        auto other_xfade_line = adj_start_line.WithPos(
+            adj_start_line.TopRight() + f32x2 {reverse ? adj_loop_xfade_size : -adj_loop_xfade_size, 0});
         if (mode.value.mode == sample_lib::LoopMode::PingPong)
-            other_xfade_line = left_line.WithPos(left_line.TopRight() - f32x2 {loop_xfade_size, 0});
+            other_xfade_line =
+                adj_left_line.WithPos(adj_left_line.TopRight() - f32x2 {adj_loop_xfade_size, 0});
 
-        if (draw_xfade && loop_xfade_size > 0.01f) {
+        if (draw_xfade && adj_loop_xfade_size > 0.01f) {
             if (mode.value.mode == sample_lib::LoopMode::Standard) {
-                g.imgui.draw_list->AddLine(xfade_line.Min(),
-                                           end_line.BottomLeft(),
+                g.imgui.draw_list->AddLine(adj_xfade_line.Min(),
+                                           adj_end_line.BottomLeft(),
                                            LiveCol(UiColMap::WaveformXFade));
                 g.imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
-                                           start_line.TopLeft(),
+                                           adj_start_line.TopLeft(),
                                            LiveCol(UiColMap::WaveformXFade));
             } else {
                 g.imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
-                                           left_line.TopLeft(),
+                                           adj_left_line.TopLeft(),
                                            LiveCol(UiColMap::WaveformXFade));
-                g.imgui.draw_list->AddLine(right_line.TopRight(),
-                                           xfade_line.BottomLeft(),
+                g.imgui.draw_list->AddLine(adj_right_line.TopRight(),
+                                           adj_xfade_line.BottomLeft(),
                                            LiveCol(UiColMap::WaveformXFade));
             }
         }
 
         auto const region_active =
             g.imgui.IsHot(loop_region_id) || g.imgui.IsActive(loop_region_id, MouseButton::Left);
-        if (!region_active && loop_xfade_size > 0.01f && draw_xfade) {
+        if (!region_active && adj_loop_xfade_size > 0.01f && draw_xfade) {
             if (mode.value.mode == sample_lib::LoopMode::Standard) {
-                auto const points = Array {start_line.TopLeft(),
-                                           xfade_line.TopLeft(),
-                                           end_line.BottomRight(),
-                                           start_line.BottomLeft()};
+                auto const points = Array {adj_start_line.TopLeft(),
+                                           adj_xfade_line.TopLeft(),
+                                           adj_end_line.BottomRight(),
+                                           adj_start_line.BottomLeft()};
                 g.imgui.draw_list->AddConvexPolyFilled(points,
                                                        LiveCol(UiColMap::WaveformRegionOverlay),
                                                        true);
             } else {
                 auto const points = Array {other_xfade_line.BottomLeft(),
-                                           left_line.TopLeft(),
-                                           right_line.TopLeft(),
-                                           xfade_line.BottomRight()};
+                                           adj_left_line.TopLeft(),
+                                           adj_right_line.TopLeft(),
+                                           adj_xfade_line.BottomRight()};
                 g.imgui.draw_list->AddConvexPolyFilled(points,
                                                        LiveCol(UiColMap::WaveformRegionOverlay),
                                                        true);
             }
         } else {
-            g.imgui.draw_list->AddRectFilled(loop_region_r,
+            g.imgui.draw_list->AddRectFilled(adj_loop_region_r,
                                              region_active ? LiveCol(UiColMap::WaveformRegionOverlayHover)
                                                            : LiveCol(UiColMap::WaveformRegionOverlay));
         }
@@ -912,9 +981,11 @@ void DoWaveformElement(GuiState& g,
 
         // Waveform image.
         if (layer.instrument_id.tag != InstrumentType::None) {
+            // The image cuts follow the macro-adjusted values so the shading matches what's audible; the
+            // handles in DoWaveformControls stay at the parameter values.
             auto const offset =
                 (features.show_sample_offset && layer.instrument_id.tag == InstrumentType::Sampler)
-                    ? params.LinearValue(layer.index, LayerParamIndex::SampleOffset)
+                    ? AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::SampleOffset)
                     : 0;
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
 
@@ -945,9 +1016,10 @@ void DoWaveformElement(GuiState& g,
                                      g.engine.instance_index,
                                      last_activated_hash))) {
                 if (features.has_play_mode && features.show_loop_controls) {
-                    auto const loop_start = params.LinearValue(layer.index, LayerParamIndex::LoopStart);
+                    auto const loop_start =
+                        AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::LoopStart);
                     auto const loop_end =
-                        Max(params.LinearValue(layer.index, LayerParamIndex::LoopEnd), loop_start);
+                        Max(AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::LoopEnd), loop_start);
                     auto const loop_mode =
                         params.IntValue<param_values::LoopMode>(layer.index, LayerParamIndex::LoopMode);
                     bool const loop_points_editable =
@@ -1148,9 +1220,14 @@ void DoWaveformElement(GuiState& g,
 
         // GranularFixed spread indicator from params (visible even with no notes playing).
         if (features.show_grain_position_indicator) {
-            auto const grain_pos = params.LinearValue(layer.index, LayerParamIndex::GranularPosition);
+            auto const adj_projected = [&](LayerParamIndex layer_param) {
+                auto const index = ParamIndexFromLayerParamIndex(layer.index, layer_param);
+                return k_param_descriptors[ToInt(index)].ProjectValue(
+                    AdjustedLayerParamLinear(g, layer.index, layer_param));
+            };
+            auto const grain_pos = adj_projected(LayerParamIndex::GranularPosition);
             auto const reverse = params.BoolValue(layer.index, LayerParamIndex::Reverse);
-            auto const grain_spread = params.ProjectedValue(layer.index, LayerParamIndex::GranularSpread);
+            auto const grain_spread = adj_projected(LayerParamIndex::GranularSpread);
             auto const col = LiveCol(UiColMap::WaveformRegionOverlay);
 
             f32 const fp_start = grain_pos;
@@ -1186,22 +1263,6 @@ void DoWaveformElement(GuiState& g,
                                     {},
                                     {.opacity = intensity * muted_opacity});
                 GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
-            }
-        }
-
-        // Macro destination regions: standard only (loop param drag targets).
-        if (features.show_macro_destinations) {
-            auto const cell_size = Min(window_r.w, window_r.h) / 3;
-            auto const base_x = window_r.Right() - cell_size;
-
-            auto const macro_params = Array {
-                ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopStart),
-                ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopEnd),
-                ParamIndexFromLayerParamIndex(layer.index, LayerParamIndex::LoopCrossfade),
-            };
-            for (auto const [i, param] : Enumerate(macro_params)) {
-                auto const r = Rect {.xywh {base_x, window_r.y + (cell_size * (f32)i), cell_size, cell_size}};
-                OverlayMacroDestinationRegion(g, r, param);
             }
         }
     }

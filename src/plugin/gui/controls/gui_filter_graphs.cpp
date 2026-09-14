@@ -486,22 +486,20 @@ void DoFilterGraph(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out
 
     auto const sv_type = MapLayerFilterType(type_param.IntValue<param_values::LayerFilterType>());
 
-    auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
+    auto const magnitude_db = [&](f32 cutoff_linear, f32 reso_linear, f32 hz) {
+        auto const cutoff_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_linear),
                                      15.0f,
                                      filter_graph_draw::k_sample_rate * 0.49f);
-    // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
-    auto const res_adj = Clamp(reso_adj_linear, 0.0f, 0.9999f);
+        // Clamp to just below 1 to avoid a divide-by-zero in ResonanceToQ at exactly 1.
+        auto const res = Clamp(reso_linear, 0.0f, 0.9999f);
+        return sv_filter::MagnitudeDb(sv_type, cutoff_hz, filter_graph_draw::k_sample_rate, res, hz);
+    };
 
     filter_graph_draw::DrawResponseCurve(
         imgui,
         viewport_r,
-        [&](f32 hz) {
-            return sv_filter::MagnitudeDb(sv_type,
-                                          cutoff_adj_hz,
-                                          filter_graph_draw::k_sample_rate,
-                                          res_adj,
-                                          hz);
-        },
+        [&](f32 hz) { return magnitude_db(cutoff_adj_linear, reso_adj_linear, hz); },
+        [&](f32 hz) { return magnitude_db(cutoff_param.LinearValue(), reso_param.LinearValue(), hz); },
         cutoff_param.info,
         greyed_out);
 
@@ -695,24 +693,31 @@ void DoEffectFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const gain_adj_linear =
         AdjustedLinearValue(params.values, macro_dests, gain_param.LinearValue(), gain_param.info.index);
 
-    auto const cutoff_adj_hz = cutoff_param.info.ProjectValue(cutoff_adj_linear);
-    auto const q_adj = rbj_filter::EffectFilterResonanceToQ(Clamp01(reso_adj_linear));
-    // FilterGain stores the audible gain; DSP uses half per pass so two passes → audible = FilterGain.
-    auto const gain_adj_db = uses_gain ? gain_param.info.ProjectValue(gain_adj_linear) / 2 : 0.0f;
-
-    auto const coeffs = rbj_filter::Coefficients({
-        .type = EffectFilterTypeToRbjType(type_param.IntValue<param_values::EffectFilterType>()),
-        .fs = filter_graph_draw::k_sample_rate,
-        .fc = Clamp(cutoff_adj_hz, 15.0f, filter_graph_draw::k_sample_rate * 0.49f),
-        .q = q_adj,
-        .peak_gain = gain_adj_db,
-    });
+    auto const coeffs_for = [&](f32 cutoff_linear, f32 reso_linear, f32 gain_linear) {
+        return rbj_filter::Coefficients({
+            .type = EffectFilterTypeToRbjType(type_param.IntValue<param_values::EffectFilterType>()),
+            .fs = filter_graph_draw::k_sample_rate,
+            .fc = Clamp(cutoff_param.info.ProjectValue(cutoff_linear),
+                        15.0f,
+                        filter_graph_draw::k_sample_rate * 0.49f),
+            .q = rbj_filter::EffectFilterResonanceToQ(Clamp01(reso_linear)),
+            // FilterGain stores the audible gain; DSP uses half per pass so two passes → audible =
+            // FilterGain.
+            .peak_gain = uses_gain ? gain_param.info.ProjectValue(gain_linear) / 2 : 0.0f,
+        });
+    };
+    auto const coeffs = coeffs_for(cutoff_adj_linear, reso_adj_linear, gain_adj_linear);
+    auto const base_coeffs =
+        coeffs_for(cutoff_param.LinearValue(), reso_param.LinearValue(), gain_param.LinearValue());
 
     filter_graph_draw::DrawResponseCurve(
         imgui,
         viewport_r,
         [&](f32 hz) {
             return (f32)stages * rbj_filter::MagnitudeDb(coeffs, hz, filter_graph_draw::k_sample_rate);
+        },
+        [&](f32 hz) {
+            return (f32)stages * rbj_filter::MagnitudeDb(base_coeffs, hz, filter_graph_draw::k_sample_rate);
         },
         cutoff_param.info,
         greyed_out);
@@ -851,11 +856,14 @@ void DoReverbPreFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
         AdjustedLinearValue(params.values, macro_dests, lp_param.LinearValue(), lp_param.info.index)));
     auto const hp_fc_hz = SemitonesToHz(hp_param.info.ProjectValue(
         AdjustedLinearValue(params.values, macro_dests, hp_param.LinearValue(), hp_param.info.index)));
+    auto const lp_base_fc_hz = SemitonesToHz(lp_param.ProjectedValue());
+    auto const hp_base_fc_hz = SemitonesToHz(hp_param.ProjectedValue());
 
     filter_graph_draw::DrawResponseCurve(
         imgui,
         viewport_r,
         [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
+        [&](f32 hz) { return LpMagDb(hz, lp_base_fc_hz) + HpMagDb(hz, hp_base_fc_hz); },
         freq_info,
         greyed_out);
 
@@ -980,12 +988,20 @@ void DoReverbPostShelfGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const hi_fc_hz = SemitonesToHz(projected_adj(hi_cut_param));
     auto const lo_gain_db = projected_adj(lo_gain_param);
     auto const hi_gain_db = projected_adj(hi_gain_param);
+    auto const lo_base_fc_hz = SemitonesToHz(lo_cut_param.ProjectedValue());
+    auto const hi_base_fc_hz = SemitonesToHz(hi_cut_param.ProjectedValue());
+    auto const lo_base_gain_db = lo_gain_param.ProjectedValue();
+    auto const hi_base_gain_db = hi_gain_param.ProjectedValue();
 
     filter_graph_draw::DrawResponseCurve(
         imgui,
         viewport_r,
         [&](f32 hz) {
             return LowShelfMagDb(hz, lo_fc_hz, lo_gain_db) + HighShelfMagDb(hz, hi_fc_hz, hi_gain_db);
+        },
+        [&](f32 hz) {
+            return LowShelfMagDb(hz, lo_base_fc_hz, lo_base_gain_db) +
+                   HighShelfMagDb(hz, hi_base_fc_hz, hi_base_gain_db);
         },
         freq_info,
         greyed_out);
@@ -1065,22 +1081,25 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
 
     auto const cutoff_adj_linear =
         AdjustedLinearValue(params.values, macro_dests, cutoff_param.LinearValue(), cutoff_param.info.index);
-    auto const cutoff_adj_hz = Clamp(cutoff_param.info.ProjectValue(cutoff_adj_linear),
-                                     15.0f,
-                                     filter_graph_draw::k_sample_rate * 0.49f);
-
-    auto const coeffs = rbj_filter::Coefficients({
-        .type = rbj_filter::Type::HighPass,
-        .fs = filter_graph_draw::k_sample_rate,
-        .fc = cutoff_adj_hz,
-        .q = 1.0f,
-        .peak_gain = 0.0f,
-    });
+    auto const coeffs_for = [&](f32 cutoff_linear) {
+        return rbj_filter::Coefficients({
+            .type = rbj_filter::Type::HighPass,
+            .fs = filter_graph_draw::k_sample_rate,
+            .fc = Clamp(cutoff_param.info.ProjectValue(cutoff_linear),
+                        15.0f,
+                        filter_graph_draw::k_sample_rate * 0.49f),
+            .q = 1.0f,
+            .peak_gain = 0.0f,
+        });
+    };
+    auto const coeffs = coeffs_for(cutoff_adj_linear);
+    auto const base_coeffs = coeffs_for(cutoff_param.LinearValue());
 
     filter_graph_draw::DrawResponseCurve(
         imgui,
         viewport_r,
         [&](f32 hz) { return rbj_filter::MagnitudeDb(coeffs, hz, filter_graph_draw::k_sample_rate); },
+        [&](f32 hz) { return rbj_filter::MagnitudeDb(base_coeffs, hz, filter_graph_draw::k_sample_rate); },
         cutoff_param.info,
         greyed_out);
 
@@ -1172,15 +1191,20 @@ void DoDelayFilterGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
     auto const spread_adj = spread_param.info.ProjectValue(
         AdjustedLinearValue(params.values, macro_dests, spread_param.LinearValue(), spread_param.info.index));
 
-    constexpr f32 k_spread_octaves = 8;
-    auto const radius_sem = spread_adj * k_spread_octaves * 12.0f;
-    auto const lp_fc_hz = SemitonesToHz(cutoff_adj_sem + radius_sem);
-    auto const hp_fc_hz = SemitonesToHz(cutoff_adj_sem - radius_sem);
+    auto const magnitude_db = [&](f32 cutoff_sem, f32 spread, f32 hz) {
+        constexpr f32 k_spread_octaves = 8;
+        auto const radius_sem = spread * k_spread_octaves * 12.0f;
+        return LpMagDb(hz, SemitonesToHz(cutoff_sem + radius_sem)) +
+               HpMagDb(hz, SemitonesToHz(cutoff_sem - radius_sem));
+    };
 
     filter_graph_draw::DrawResponseCurve(
         imgui,
         viewport_r,
-        [&](f32 hz) { return LpMagDb(hz, lp_fc_hz) + HpMagDb(hz, hp_fc_hz); },
+        [&](f32 hz) { return magnitude_db(cutoff_adj_sem, spread_adj, hz); },
+        [&](f32 hz) {
+            return magnitude_db(cutoff_param.ProjectedValue(), spread_param.ProjectedValue(), hz);
+        },
         freq_info,
         greyed_out);
 
@@ -1393,6 +1417,7 @@ static void DoEqGraphImpl(GuiState& g,
     struct Band {
         EqBandParams params;
         rbj_filter::Coeffs coeffs;
+        rbj_filter::Coeffs base_coeffs;
         u32 num_stages;
         bool uses_gain;
         imgui::Id interaction_id;
@@ -1424,20 +1449,23 @@ static void DoEqGraphImpl(GuiState& g,
         b.uses_gain = param_values::EqTypeUsesGain(eq_type);
         b.num_stages = EqTypeStageCount(eq_type);
 
-        auto const freq_adj_hz = freq_param.info.ProjectValue(
-            AdjustedLinearValue(params.values, macro_dests, freq_param.LinearValue(), freq_param.info.index));
-        auto const gain_adj_db = gain_param.info.ProjectValue(
+        auto const coeffs_for = [&](f32 freq_linear, f32 reso_linear, f32 gain_linear) {
+            return rbj_filter::Coefficients({
+                .type = EqTypeToRbjType(eq_type),
+                .fs = filter_graph_draw::k_sample_rate,
+                .fc = Clamp(freq_param.info.ProjectValue(freq_linear),
+                            15.0f,
+                            filter_graph_draw::k_sample_rate * 0.49f),
+                .q = rbj_filter::EqResonanceToQ(reso_linear),
+                .peak_gain = gain_param.info.ProjectValue(gain_linear),
+            });
+        };
+        b.coeffs = coeffs_for(
+            AdjustedLinearValue(params.values, macro_dests, freq_param.LinearValue(), freq_param.info.index),
+            AdjustedLinearValue(params.values, macro_dests, reso_param.LinearValue(), reso_param.info.index),
             AdjustedLinearValue(params.values, macro_dests, gain_param.LinearValue(), gain_param.info.index));
-        auto const q_adj = rbj_filter::EqResonanceToQ(
-            AdjustedLinearValue(params.values, macro_dests, reso_param.LinearValue(), reso_param.info.index));
-
-        b.coeffs = rbj_filter::Coefficients({
-            .type = EqTypeToRbjType(eq_type),
-            .fs = filter_graph_draw::k_sample_rate,
-            .fc = Clamp(freq_adj_hz, 15.0f, filter_graph_draw::k_sample_rate * 0.49f),
-            .q = q_adj,
-            .peak_gain = gain_adj_db,
-        });
+        b.base_coeffs =
+            coeffs_for(freq_param.LinearValue(), reso_param.LinearValue(), gain_param.LinearValue());
 
         b.interaction_id = imgui.MakeId(SourceLocationHash() + band_idx);
         b.window_r = MakeGrabberWindowRect(imgui, node_pos_for(b), grabber_radius);
@@ -1483,16 +1511,20 @@ static void DoEqGraphImpl(GuiState& g,
         DoEqBandRightClickMenu(g, b.window_r, b.interaction_id, b.params);
     }
 
+    auto const summed_magnitude_db = [&](f32 hz, bool use_base_values) {
+        f32 db = 0;
+        for (auto const& b : bands)
+            db += (f32)b.num_stages * rbj_filter::MagnitudeDb(use_base_values ? b.base_coeffs : b.coeffs,
+                                                              hz,
+                                                              filter_graph_draw::k_sample_rate);
+        return db;
+    };
+
     filter_graph_draw::DrawResponseCurve(
         imgui,
         viewport_r,
-        [&](f32 hz) {
-            f32 db = 0;
-            for (auto const& b : bands)
-                db += (f32)b.num_stages *
-                      rbj_filter::MagnitudeDb(b.coeffs, hz, filter_graph_draw::k_sample_rate);
-            return db;
-        },
+        [&](f32 hz) { return summed_magnitude_db(hz, false); },
+        [&](f32 hz) { return summed_magnitude_db(hz, true); },
         freq_info,
         greyed_out);
 
