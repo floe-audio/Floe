@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2024-2026 Sam Windell
+# SPDX-License-Identifier: CC0-1.0
+
+*.DS_Store
+nvim-project.ini
+.zig-cache/
+.zig-cache-global/
+.floe-cache/
+.workshop/
+zig-out/
+build_resources/external/
+.env
+.claude
+.harper-dictionary.txt
+opencode.jsonc
+website/node_modules/
+website/.docusaurus/
+website/build/
+website/static/generated-data.json
