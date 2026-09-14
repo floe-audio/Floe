@@ -144,6 +144,8 @@ struct GuiState : EngineListener {
 
     // Cursor-anchored position (window coords) for the FX-rack background context menu.
     Rect fx_rack_context_menu_anchor {};
+    // Whether the background context menu was opened from the switchboard (vs. the effects rack).
+    bool fx_rack_context_menu_in_switchboard {};
 
     TimePoint redraw_counter = {};
 

@@ -123,8 +123,8 @@ static void DoFxRackCopyPasteMenuItems(GuiState& g, Box root) {
 
 // Keeps the relative order within both groups, but moves every effect that isn't in the rack below every
 // effect that is.
-static EffectsArray TidiedEffectsOrder(EffectsArray const& effects,
-                                       Bitset<k_num_effect_types> const& in_rack) {
+static EffectsArray EffectsOrderWithUnusedLast(EffectsArray const& effects,
+                                               Bitset<k_num_effect_types> const& in_rack) {
     EffectsArray result {};
     usize index = 0;
     for (auto const fx : effects)
@@ -135,25 +135,26 @@ static EffectsArray TidiedEffectsOrder(EffectsArray const& effects,
     return result;
 }
 
-static void DoTidyOrderMenuItem(GuiState& g, Box root) {
+static void DoMoveUnusedFxToBottomMenuItem(GuiState& g, Box root) {
     auto& processor = g.engine.processor;
     auto const current_order = processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed);
-    auto const tidy_order = EncodeEffectsArray(
-        TidiedEffectsOrder(DecodeEffectsArray(current_order, processor.effects_ordered_by_type),
-                           g.engine.fx_visible));
-    auto const already_tidy = tidy_order == current_order;
+    auto const new_order = EncodeEffectsArray(
+        EffectsOrderWithUnusedLast(DecodeEffectsArray(current_order, processor.effects_ordered_by_type),
+                                   g.engine.fx_visible));
+    auto const already_ordered = new_order == current_order;
 
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Tidy Switchboard Order"_s,
-                     .tooltip = "Move the effects that aren't in the rack below the ones that are"_s,
-                     .mode = already_tidy ? MenuItemOptions::Mode::Disabled : MenuItemOptions::Mode::Active,
-                     .no_icon_gap = true,
-                 })
+    if (MenuItem(
+            g.builder,
+            root,
+            {
+                .text = "Move Unused FX to Bottom"_s,
+                .tooltip = "Group all the turned-on effects at the top without changing their order"_s,
+                .mode = already_ordered ? MenuItemOptions::Mode::Disabled : MenuItemOptions::Mode::Active,
+                .no_icon_gap = true,
+            })
             .button_fired &&
-        !already_tidy) {
-        processor.desired_effects_order.Store(tidy_order, StoreMemoryOrder::Release);
+        !already_ordered) {
+        processor.desired_effects_order.Store(new_order, StoreMemoryOrder::Release);
         processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);
         processor.host.request_process(&processor.host);
         RecordUndoableStep(g.engine, "FX order");
@@ -179,7 +180,7 @@ static void DoEffectRightClickMenu(GuiState& g,
                     DoEffectCopyPasteMenuItems(g, root, type);
                     MenuDivider(g.builder, root);
                     DoFxRackCopyPasteMenuItems(g, root);
-                    if (in_switchboard) DoTidyOrderMenuItem(g, root);
+                    if (in_switchboard) DoMoveUnusedFxToBottomMenuItem(g, root);
                     MenuDivider(g.builder, root);
 
                     StateSnapshotSection const target {
@@ -195,6 +196,8 @@ constexpr auto k_fx_rack_context_menu_popup_id = (imgui::Id)SourceLocationHash()
 // the whole rack, plus pasting a previously copied single effect onto its matching effect.
 static void DoFxRackContextMenuItems(GuiState& g, Box root) {
     DoFxRackCopyPasteMenuItems(g, root);
+
+    if (g.fx_rack_context_menu_in_switchboard) DoMoveUnusedFxToBottomMenuItem(g, root);
 
     if (g.snapshot_clipboard.HasValue() &&
         g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Effect) {
@@ -219,7 +222,8 @@ static void DoFxRackContextMenuItems(GuiState& g, Box root) {
 // Detects a right-click on the empty background of the switchboard/rack and opens the context menu at the
 // cursor. Register this BEFORE the effects/toggles so their own menus take precedence. Uses the default
 // cursor so hovering the empty area doesn't show a button cursor. `id_seed` must be unique per call site.
-static void TryOpenFxRackContextMenu(GuiState& g, Rect background_window_r, u64 id_seed) {
+static void
+TryOpenFxRackContextMenu(GuiState& g, Rect background_window_r, u64 id_seed, bool in_switchboard) {
     if (g.imgui.ButtonBehaviour(background_window_r,
                                 g.imgui.MakeId(id_seed),
                                 {
@@ -228,6 +232,7 @@ static void TryOpenFxRackContextMenu(GuiState& g, Rect background_window_r, u64 
                                     .cursor_type = CursorType::Default,
                                 })) {
         g.fx_rack_context_menu_anchor = {.pos = GuiIo().in.cursor_pos, .size = {1, 1}};
+        g.fx_rack_context_menu_in_switchboard = in_switchboard;
         g.imgui.OpenPopupMenu(k_fx_rack_context_menu_popup_id, g.imgui.MakeId(id_seed));
     }
 }
@@ -1968,7 +1973,8 @@ static void DoEffects(GuiState& g, GuiFrameContext const& frame_context, Box str
                               if (g.builder.IsInputAndRenderPass())
                                   TryOpenFxRackContextMenu(g,
                                                            g.imgui.curr_viewport->visible_bounds,
-                                                           SourceLocationHash());
+                                                           SourceLocationHash(),
+                                                           false);
 
                               auto const effect_sections =
                                   DoEffectSections(g, frame_context, effects_col, ordered_effects);
