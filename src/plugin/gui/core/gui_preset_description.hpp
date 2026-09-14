@@ -15,17 +15,26 @@ struct PresetDescriptionDisplay {
     LongDescriptionKind kind = LongDescriptionKind::Auto;
 };
 
+struct AutoDescriptionTexts {
+    String headline {};
+    String full_block {};
+    String detail {};
+};
+
 // Computes how to split user_text / auto-description between the single-line top panel and the
 // wrapping perform-panel column. If user_text is non-empty it takes the top slot (whole if it fits,
-// otherwise split at '\n', sentence boundary, or word boundary) and auto_full_block fills the bottom;
-// if user_text is empty, auto_headline takes the top and the bottom is left blank.
+// otherwise split at '\n', sentence boundary, or word boundary) and the auto full block fills the
+// bottom; if user_text is empty, the auto headline takes the top and the auto detail fills the bottom.
 PUBLIC PresetDescriptionDisplay SplitPresetDescriptionForDisplay(String user_text,
-                                                                 String auto_headline,
-                                                                 String auto_full_block,
+                                                                 AutoDescriptionTexts const& auto_texts,
                                                                  Font const& font,
                                                                  f32 max_top_width) {
+    auto const auto_full_block = auto_texts.full_block;
+
     if (!user_text.size)
-        return {.top_text = auto_headline, .bottom_text = {}, .kind = LongDescriptionKind::Auto};
+        return {.top_text = auto_texts.headline,
+                .bottom_text = auto_texts.detail,
+                .kind = LongDescriptionKind::Auto};
 
     if (max_top_width <= 0)
         return {.top_text = user_text, .bottom_text = auto_full_block, .kind = LongDescriptionKind::Auto};

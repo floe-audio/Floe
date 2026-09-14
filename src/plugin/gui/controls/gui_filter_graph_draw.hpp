@@ -21,11 +21,14 @@ f32 DbToY(f32 db, Rect viewport_r);
 // to Hz. All freq params share the same range so any one of them works as the reference.
 void DrawBackground(imgui::Context& imgui, Rect viewport_r, ParamDescriptor const& freq_param_info);
 
-// Draws the area fill and polyline for a frequency response. The caller supplies a function
-// that returns the response magnitude in dB at a given frequency in Hz.
+// Draws the area fill and polyline for a frequency response. The caller supplies functions that
+// return the response magnitude in dB at a given frequency in Hz: one for the macro-adjusted
+// values that are audible, and one for the base parameter values. When the two differ, the base
+// response is drawn as a faint stroke so the handles (which sit at base values) visibly rest on it.
 void DrawResponseCurve(imgui::Context& imgui,
                        Rect viewport_r,
                        TrivialFunctionRef<f32(f32 freq_hz)> magnitude_db,
+                       TrivialFunctionRef<f32(f32 freq_hz)> base_magnitude_db,
                        ParamDescriptor const& freq_param_info,
                        bool greyed_out);
 

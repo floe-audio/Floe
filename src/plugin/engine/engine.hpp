@@ -86,6 +86,13 @@ struct Engine : ProcessorListener {
     Optional<PendingStateChange> pending_state_change {};
     PinnedSnapshot pinned_snapshot {};
 
+    // A fresh instance opens on the default preset, if there is one. The DAW sending us state takes
+    // precedence. The attempt-latch lives here rather than on the GUI because the GUI is recreated every time
+    // the window is reopened.
+    bool host_state_received {};
+    bool default_preset_load_attempted {};
+    bool loading_default_preset {};
+
     // Holds the modified state set aside while auditioning the pinned snapshot.
     Optional<StateSnapshot> stashed_modifications {};
 
@@ -156,9 +163,14 @@ String PinnedPresetFolderName(Engine const& engine);
 void ApplySectionOfState(Engine& engine,
                          StateSnapshot const& source,
                          StateSnapshotSection const& source_section,
-                         StateSnapshotSection const& target_section);
+                         StateSnapshotSection const& target_section,
+                         ApplySectionOptions options = {});
 
 bool StateModifiedFromPinned(Engine& engine);
+
+// True when the current state matches the blank default, ignoring extras. Doesn't consider how the state got
+// there: a DAW project that saved an untouched instance counts as blank, as does one reset back to blank.
+bool IsBlankState(Engine& engine);
 
 // Returns the pinned snapshot if it originated from a preset, or nullptr if the pinned snapshot is just the
 // default initial state.
@@ -170,6 +182,9 @@ bool ViewingPinnedSnapshot(Engine const& engine);
 void TogglePinnedView(Engine& engine);
 
 void LoadPresetFromFile(Engine& engine, String path);
+
+// [main thread] Call when the GUI opens. Does nothing unless this is a fresh instance with a default preset.
+void LoadDefaultPresetIfNeeded(Engine& engine);
 
 void SaveCurrentStateToFile(Engine& engine, String path);
 

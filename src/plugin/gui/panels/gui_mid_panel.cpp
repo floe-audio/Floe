@@ -142,6 +142,18 @@ static String MidPanelTabLabel(MidPanelTab tab) {
     }
 }
 
+static String MidPanelTabTooltip(MidPanelTab tab) {
+    switch (tab) {
+        case MidPanelTab::Perform:
+            return "The Perform page: a distraction-free place for playing and exploring sounds.\n\nBrowse presets, shape the sound with macros, and try random variations without wading through every sound-design control. When you're ready to go deeper, head to the Layers and Effects pages."_s;
+        case MidPanelTab::Layers:
+            return "The Layers page: Floe's three independent layers, shown side by side.\n\nEach layer is identical and plays at the same time as the others. Load an Instrument into a layer to give it a sound source, then shape it with the layer's own playback, envelope, LFO and EQ controls. Blending layers is how rich, complex sounds are built."_s;
+        case MidPanelTab::Effects:
+            return "The Effects page: a reorderable rack of effects that processes the mix of all three layers.\n\nThe layers are mixed into a single signal which then flows through the rack from top to bottom. Drag effects to reorder them, and use the switchboard on the left to add or remove them, or to jump to one in the rack."_s;
+        case MidPanelTab::Count: PanicIfReached();
+    }
+}
+
 static Optional<sample_lib::LibraryId> LibIdForCurrentTab(GuiState& g) {
     switch (g.mid_panel_state.tab) {
         case MidPanelTab::Perform: return LibraryForOverallBackground(g.engine);
@@ -225,7 +237,10 @@ DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_
         auto const btn = DoTabButton(builder,
                                      tab_bar,
                                      MidPanelTabLabel(tab),
-                                     {.is_selected = tab == g.mid_panel_state.tab},
+                                     {
+                                         .is_selected = tab == g.mid_panel_state.tab,
+                                         .tooltip = MidPanelTabTooltip(tab),
+                                     },
                                      (u64)tab);
 
         if (btn.button_fired) new_tab = tab;

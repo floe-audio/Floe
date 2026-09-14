@@ -41,11 +41,11 @@ void DrawBackground(imgui::Context& imgui, Rect viewport_r, ParamDescriptor cons
     }
 }
 
-void DrawResponseCurve(imgui::Context& imgui,
-                       Rect viewport_r,
-                       TrivialFunctionRef<f32(f32 freq_hz)> magnitude_db,
-                       ParamDescriptor const& freq_param_info,
-                       bool greyed_out) {
+static DynamicArrayBounded<f32x2, k_curve_points>
+CurvePointsInWindow(imgui::Context& imgui,
+                    Rect viewport_r,
+                    TrivialFunctionRef<f32(f32 freq_hz)> magnitude_db,
+                    ParamDescriptor const& freq_param_info) {
     DynamicArrayBounded<f32x2, k_curve_points> curve_points;
     for (auto const i : Range(k_curve_points)) {
         auto const t = (f32)i / (f32)(k_curve_points - 1);
@@ -54,6 +54,27 @@ void DrawResponseCurve(imgui::Context& imgui,
         auto const y = DbToY(magnitude_db(freq_hz), viewport_r);
         dyn::Append(curve_points, imgui.ViewportPosToWindowPos({x, y}));
     }
+    return curve_points;
+}
+
+void DrawResponseCurve(imgui::Context& imgui,
+                       Rect viewport_r,
+                       TrivialFunctionRef<f32(f32 freq_hz)> magnitude_db,
+                       TrivialFunctionRef<f32(f32 freq_hz)> base_magnitude_db,
+                       ParamDescriptor const& freq_param_info,
+                       bool greyed_out) {
+    auto const curve_points = CurvePointsInWindow(imgui, viewport_r, magnitude_db, freq_param_info);
+    auto const base_curve_points = CurvePointsInWindow(imgui, viewport_r, base_magnitude_db, freq_param_info);
+    auto const base_differs = ({
+        bool differs = false;
+        for (auto const i : Range(k_curve_points)) {
+            if (Abs(curve_points[i].y - base_curve_points[i].y) > 0.5f) {
+                differs = true;
+                break;
+            }
+        }
+        differs;
+    });
 
     auto const window_rect = imgui.ViewportRectToWindowRect(viewport_r);
     imgui.draw_list->PushClipRect(window_rect.Min(), window_rect.Max(), true);
@@ -74,6 +95,11 @@ void DrawResponseCurve(imgui::Context& imgui,
     }
 
     auto const line_col = greyed_out ? LiveCol(UiColMap::EqLineGreyedOut) : LiveCol(UiColMap::EqLine);
+    if (base_differs) {
+        auto base_line_col = FromU32(line_col);
+        base_line_col.a /= 3;
+        imgui.draw_list->AddPolyline(base_curve_points, ToU32(base_line_col), false, 1.0f, true);
+    }
     imgui.draw_list->AddPolyline(curve_points, line_col, false, 1.5f, true);
 }
 

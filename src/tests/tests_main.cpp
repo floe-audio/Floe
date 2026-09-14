@@ -27,6 +27,8 @@
     X(RegisterCircularBufferTests)                                                                           \
     X(RegisterCliArgParseTests)                                                                              \
     X(RegisterDebugTests)                                                                                    \
+    X(RegisterDefaultPresetTests)                                                                            \
+    X(RegisterDistortionTests)                                                                               \
     X(RegisterDynamicArrayTests)                                                                             \
     X(RegisterUndoHistoryTests)                                                                              \
     X(RegisterEncryptedPackageTests)                                                                         \
@@ -50,8 +52,10 @@
     X(RegisterLicenseTests)                                                                                  \
     X(RegisterLibraryLuaTests)                                                                               \
     X(RegisterLibraryMdataTests)                                                                             \
+    X(RegisterLimiterTests)                                                                                  \
     X(RegisterLinkedListTests)                                                                               \
     X(RegisterLogRingBufferTests)                                                                            \
+    X(RegisterLoudnessMeterTests)                                                                            \
     X(RegisterMathsTests)                                                                                    \
     X(RegisterMemoryTests)                                                                                   \
     X(RegisterMidiNoteStateTests)                                                                            \
@@ -64,9 +68,11 @@
     X(RegisterParamTests)                                                                                    \
     X(RegisterPathPoolTests)                                                                                 \
     X(RegisterPathTests)                                                                                     \
+    X(RegisterPeakMeterTests)                                                                                \
     X(RegisterPersistentStoreTests)                                                                          \
     X(RegisterPerformanceProfileTests)                                                                       \
     X(RegisterPreferencesTests)                                                                              \
+    X(RegisterPresetBankInfoTests)                                                                           \
     X(RegisterPresetLuaCodecTests)                                                                           \
     X(RegisterPresetServerTests)                                                                             \
     X(RegisterRandomTests)                                                                                   \
@@ -80,6 +86,7 @@
     X(RegisterTaggedUnionTests)                                                                              \
     X(RegisterThreadPoolTests)                                                                               \
     X(RegisterThreadingTests)                                                                                \
+    X(RegisterTruePeakDetectorTests)                                                                         \
     X(RegisterVersionTests)                                                                                  \
     X(RegisterVoiceTests)                                                                                    \
     X(RegisterVolumeFadeTests)                                                                               \

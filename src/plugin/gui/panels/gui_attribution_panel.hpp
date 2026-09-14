@@ -65,7 +65,7 @@ static void AttributionPanel(GuiBuilder& builder, AttributionPanelContext& conte
                                             },
                                         });
 
-    if (TextButton(builder, button_container, {.text = "Copy to clipboard", .is_default = true}))
+    if (TextButton(builder, button_container, {.text = "Copy text", .is_default = true}))
         dyn::Assign(GuiIo().out.set_clipboard_text, context.attribution_text);
 
     DoBox(builder,

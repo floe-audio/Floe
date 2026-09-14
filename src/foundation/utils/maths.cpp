@@ -100,9 +100,55 @@ TEST_CASE(TestExp2Fast) {
     return k_success;
 }
 
+TEST_CASE(TestFastSimdExpLog) {
+    // Exp2Fast / ExpFast cover the argument range the distortion shapers hit; LogFast only sees x >= 1.
+    for (int i = -4000; i <= 4000; ++i) {
+        auto const x = (f32)i / 100.0f;
+        CAPTURE(x);
+
+        auto const exp2_expected = Exp2(x);
+        REQUIRE(ApproxEqual(Exp2Fast(f32x2(x)).x, exp2_expected, exp2_expected * 1e-6f));
+
+        // ExpFast folds in a f32 x*log2(e) multiply, so it's a touch looser than Exp2Fast at large |x|.
+        auto const exp_expected = Exp(x);
+        REQUIRE(ApproxEqual(ExpFast(f32x2(x)).x, exp_expected, exp_expected * 1e-5f));
+
+        if (x >= 1) {
+            auto const log_expected = Log(x);
+            REQUIRE(ApproxEqual(LogFast(f32x2(x)).x, log_expected, Max(Abs(log_expected), 1.0f) * 2e-5f));
+        }
+    }
+
+    // Both lanes are computed independently.
+    auto const two_lanes = ExpFast(f32x2 {1.0f, -2.0f});
+    REQUIRE(ApproxEqual(two_lanes.x, Exp(1.0f), Exp(1.0f) * 1e-6f));
+    REQUIRE(ApproxEqual(two_lanes.y, Exp(-2.0f), Exp(-2.0f) * 1e-6f));
+
+    // Out-of-range arguments stay finite rather than producing NaN/Inf.
+    REQUIRE(__builtin_isfinite(Exp2Fast(f32x2(1000.0f)).x));
+    REQUIRE(Exp2Fast(f32x2(-1000.0f)).x >= 0);
+    return k_success;
+}
+
+TEST_CASE(TestSinFast) {
+    REQUIRE(SinFast(f32x2(0)).x == 0.0f); // exact at zero
+
+    // Well past the few-radian range the distortion shapers hit, both lanes independent.
+    for (int i = -20000; i <= 20000; ++i) {
+        auto const x = (f32)i / 400.0f; // covers ~[-50, 50]
+        CAPTURE(x);
+        auto const v = SinFast(f32x2 {x, -x});
+        REQUIRE(ApproxEqual(v.x, Sin(x), 2e-6f));
+        REQUIRE(ApproxEqual(v.y, Sin(-x), 2e-6f));
+    }
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterMathsTests) {
     REGISTER_TEST(TestTrigLookupTable);
     REGISTER_TEST(TestMathsTrigTurns);
     REGISTER_TEST(TestQuarterSineFade);
     REGISTER_TEST(TestExp2Fast);
+    REGISTER_TEST(TestFastSimdExpLog);
+    REGISTER_TEST(TestSinFast);
 }

@@ -6,5 +6,6 @@
 
 #include "gui/core/gui_fwd.hpp"
 
-// Non-interactive visualisation of a layer's LFO shape scaled by its amount.
+// Visualisation of a layer's LFO shape scaled by its amount. Draggable in two dimensions: left/right
+// edits the rate parameter selected by the sync switch, up/down edits the amount.
 void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out);

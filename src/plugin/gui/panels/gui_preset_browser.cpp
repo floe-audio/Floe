@@ -5,6 +5,7 @@
 
 #include "os/filesystem.hpp"
 
+#include "engine/default_preset.hpp"
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
 #include "gui/core/gui_state.hpp"
@@ -306,6 +307,24 @@ void PresetRightClickMenu(GuiBuilder& builder,
                 path::Join(builder.arena, Array {preset->folder.scan_folder, preset->folder.folder}));
         }
     }
+    {
+        auto const preset = find_preset(menu_state.item_hash);
+        auto const full_path =
+            preset ? preset->folder.FullPathForPreset(preset->preset, builder.arena) : String {};
+        auto const is_default = full_path.size && IsDefaultPreset(context.prefs, full_path);
+        if (MenuItem(builder,
+                     root,
+                     {
+                         .text = is_default ? "Clear Default Preset"_s : "Set as Default Preset"_s,
+                         .is_selected = false,
+                     })
+                .button_fired) {
+            if (is_default)
+                ClearDefaultPreset(context.prefs);
+            else if (full_path.size)
+                SetDefaultPreset(context.prefs, full_path);
+        }
+    }
     if (MenuItem(builder,
                  root,
                  {
@@ -436,6 +455,11 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
 
     auto const current_loaded_cursor = ResolveCurrentLoadedCursor(context);
 
+    auto const default_preset_path = ({
+        auto const d = ResolveDefaultPreset(context.prefs);
+        d ? d->path : String {};
+    });
+
     Optional<u64> previous_folder_hash = {};
 
     Optional<BrowserSection> folder_section;
@@ -470,6 +494,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                 .folder = &preset_folder->node,
                 .skip_root_folder = true,
                 .skip_heading = IsSingleFolderFilterSelected(state.common_state, folder_hash),
+                .tooltip_placement = TooltipPlacement::RightThenLeft,
                 .right_click_menu = PresetFolderRightClickMenu,
             };
         }
@@ -486,56 +511,61 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                     .parent = folder_section->Do(builder).Get<Box>(),
                     .id_extra = preset.full_path_hash,
                     .text = preset.name,
-                    .tooltip = FunctionRef<String()>([&preset,
-                                                      &scratch = builder.arena,
-                                                      &frame_context = context.frame_context]() -> String {
-                        DynamicArray<char> buffer {scratch};
+                    .value_popup =
+                        FunctionRef<String()>([&preset,
+                                               &scratch = builder.arena,
+                                               &frame_context = context.frame_context]() -> String {
+                            DynamicArray<char> buffer {scratch};
 
-                        fmt::Append(buffer, "{}", preset.name);
-                        if (preset.metadata.author.size)
-                            fmt::Append(buffer, " by {}.", preset.metadata.author);
-                        if (preset.metadata.description.size)
-                            fmt::Append(buffer, "\n\n{}", preset.metadata.description);
+                            if (preset.metadata.description.size)
+                                fmt::Append(buffer, "{}\n\n", preset.metadata.description);
 
-                        dyn::AppendSpan(buffer, "\n\nTags: ");
-                        if (preset.metadata.tags.AnyValuesSet()) {
-                            bool first = true;
-                            preset.metadata.tags.ForEachSetBit([&](usize bit) {
-                                if (!first) dyn::AppendSpan(buffer, ", ");
-                                first = false;
-                                dyn::AppendSpan(buffer, GetTagInfo((TagType)bit).name);
-                            });
-                        } else {
-                            dyn::AppendSpan(buffer, "none");
-                        }
-
-                        if (preset.used_libraries.size) {
-                            dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
-                            for (auto const [library, _] : preset.used_libraries) {
-                                auto const maybe_lib = frame_context.lib_table.Find(library);
-                                if (!maybe_lib || !*maybe_lib) {
-                                    auto const lib_name =
-                                        sample_lib::LookupLibraryIdString(library).ValueOr("Unknown"_s);
-                                    fmt::Append(buffer, "{} (not installed)", lib_name);
-                                } else
-                                    dyn::AppendSpan(buffer, (*maybe_lib)->name);
-                                if (preset.used_libraries.size == 2)
-                                    dyn::AppendSpan(buffer, " and ");
-                                else
-                                    dyn::AppendSpan(buffer, ", ");
+                            dyn::AppendSpan(buffer, "Tags: ");
+                            if (preset.metadata.tags.AnyValuesSet()) {
+                                bool first = true;
+                                preset.metadata.tags.ForEachSetBit([&](usize bit) {
+                                    if (!first) dyn::AppendSpan(buffer, ", ");
+                                    first = false;
+                                    dyn::AppendSpan(buffer, GetTagInfo((TagType)bit).name);
+                                });
+                            } else {
+                                dyn::AppendSpan(buffer, "none");
                             }
-                            if (preset.used_libraries.size == 2)
-                                dyn::Pop(buffer, 5);
-                            else
-                                dyn::Pop(buffer, 2);
-                            dyn::AppendSpan(buffer, ".");
-                        }
 
-                        return buffer.ToOwnedSpan();
-                    }),
+                            if (preset.used_libraries.size) {
+                                dyn::AppendSpan(buffer, "\n\nRequires libraries: ");
+                                for (auto const [library, _] : preset.used_libraries) {
+                                    auto const maybe_lib = frame_context.lib_table.Find(library);
+                                    if (!maybe_lib || !*maybe_lib) {
+                                        auto const lib_name =
+                                            sample_lib::LookupLibraryIdString(library).ValueOr("Unknown"_s);
+                                        fmt::Append(buffer, "{} (not installed)", lib_name);
+                                    } else
+                                        dyn::AppendSpan(buffer, (*maybe_lib)->name);
+                                    if (preset.used_libraries.size == 2)
+                                        dyn::AppendSpan(buffer, " and ");
+                                    else
+                                        dyn::AppendSpan(buffer, ", ");
+                                }
+                                if (preset.used_libraries.size == 2)
+                                    dyn::Pop(buffer, 5);
+                                else
+                                    dyn::Pop(buffer, 2);
+                                dyn::AppendSpan(buffer, ".");
+                            }
+
+                            if (preset.metadata.author.size)
+                                fmt::Append(buffer, "\n\nAuthor: {}.", preset.metadata.author);
+
+                            return buffer.ToOwnedSpan();
+                        }),
+                    .tooltip = "Click to load the preset."_s,
                     .item_id = preset.full_path_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
+                    .is_default = default_preset_path.size &&
+                                  path::Equal(preset_folder->folder->FullPathForPreset(preset, builder.arena),
+                                              default_preset_path),
                     .is_tab_item = new_folder,
                     .icons = ({
                         // The items are normally ordered, but we want special handling for the
@@ -906,8 +936,10 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                         .is_selected = state.common_state.Filter(BrowserFilter::Folder)
                                                            .Contains(folder_hash),
                                         .text = folder_name,
-                                        .tooltip = folder->display_name.size ? TooltipString {folder->name}
-                                                                             : k_nullopt,
+                                        .value_popup = folder->name != folder_name
+                                                           ? TooltipString {folder->name}
+                                                           : TooltipString {k_nullopt},
+                                        .tooltip = "Click to expand/collapse the preset bank."_s,
                                         .filter = state.common_state.Filter(BrowserFilter::Folder),
                                         .clicked_key = folder_hash,
                                         .filter_mode = state.common_state.filter_mode,

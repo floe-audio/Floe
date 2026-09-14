@@ -278,6 +278,7 @@ fn applyUniversalSettings(
     step.addIncludePath(ctx.dep_clap.path("include"));
     step.addIncludePath(ctx.dep_icon_font_cpp_headers.path(""));
     step.addIncludePath(ctx.dep_dr_libs.path(""));
+    step.addIncludePath(ctx.dep_ebur128.path("ebur128"));
     step.addIncludePath(ctx.dep_flac.path("include"));
     step.addIncludePath(ctx.dep_lua.path(""));
     step.addIncludePath(ctx.dep_pugl.path("include"));
@@ -506,6 +507,7 @@ pub fn build(b: *std.Build) void {
         .dep_clap = b.dependency("clap", .{}),
         .dep_clap_wrapper = b.dependency("clap_wrapper", .{}),
         .dep_dr_libs = b.dependency("dr_libs", .{}),
+        .dep_ebur128 = b.dependency("ebur128", .{}),
         .dep_flac = b.dependency("flac", .{}),
         .dep_icon_font_cpp_headers = b.dependency("icon_font_cpp_headers", .{}),
         .dep_miniz = b.dependency("miniz", .{}),
@@ -558,6 +560,7 @@ pub fn build(b: *std.Build) void {
         .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
         .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe-standalone for each known GUI area"),
         .zon2nix = b.step("script:zon2nix", "Regenerate build.zig.zon.nix from build.zig.zon"),
+        .gen_distortion_table = b.step("script:gen-distortion-table", "Regenerate distortion_norm_table.hpp"),
     };
 
     top_level_steps.install_all.dependOn(top_level_steps.install_bin);
@@ -699,6 +702,7 @@ pub fn build(b: *std.Build) void {
             break :blk buildDocsGenerator(&ctx, &native_target_cfg, .{
                 .common_infrastructure = buildCommonInfrastructure(&ctx, &native_target_cfg, .{
                     .dr_wav = buildDrWav(&ctx, &native_target_cfg),
+                    .ebur128 = buildEbur128(&ctx, &native_target_cfg),
                     .flac = buildFlac(&ctx, &native_target_cfg),
                     .xxhash = buildXxhash(&ctx, &native_target_cfg),
                     .library = buildFloeLibrary(&ctx, &native_target_cfg, .{
@@ -720,6 +724,34 @@ pub fn build(b: *std.Build) void {
             const copy = b.addUpdateSourceFiles();
             copy.addCopyFileToSource(run.captureStdOut(), "website/static/generated-data.json");
             top_level_steps.website_gen.dependOn(&copy.step);
+        }
+
+        // Distortion norm table generator
+        {
+            const native_target_cfg = TargetConfig.create(&ctx, b.graph.host, &options);
+            const distortion_table_generator = buildDistortionTableGenerator(&ctx, &native_target_cfg, .{
+                .common_infrastructure = buildCommonInfrastructure(&ctx, &native_target_cfg, .{
+                    .dr_wav = buildDrWav(&ctx, &native_target_cfg),
+                    .ebur128 = buildEbur128(&ctx, &native_target_cfg),
+                    .flac = buildFlac(&ctx, &native_target_cfg),
+                    .xxhash = buildXxhash(&ctx, &native_target_cfg),
+                    .library = buildFloeLibrary(&ctx, &native_target_cfg, .{
+                        .stb_sprintf = buildStbSprintf(&ctx, &native_target_cfg),
+                        .debug_info_lib = buildDebugInfo(&ctx, &native_target_cfg),
+                        .zig_std = buildZigStd(&ctx, &native_target_cfg),
+                        .tracy = buildTracy(&ctx, &native_target_cfg),
+                    }),
+                    .miniz = buildMiniz(&ctx, &native_target_cfg),
+                }),
+            });
+
+            // Run the generator. It takes no args but outputs the header source to stdout.
+            const run = std.Build.Step.Run.create(b, b.fmt("run {s}", .{distortion_table_generator.name}));
+            run.addFileArg(distortion_table_generator.getEmittedBin());
+
+            const copy = b.addUpdateSourceFiles();
+            copy.addCopyFileToSource(run.captureStdOut(), "src/plugin/processing_utils/distortion_norm_table.hpp");
+            top_level_steps.gen_distortion_table.dependOn(&copy.step);
         }
 
         // Build the site for production
@@ -790,6 +822,23 @@ fn buildXxhash(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.St
             .gen_cdb_fragments = true,
         }).flags.items,
     });
+    obj.linkLibC();
+    return obj;
+}
+
+fn buildEbur128(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Build.Step.Compile {
+    const obj = ctx.b.addObject(.{
+        .name = "ebur128",
+        .root_module = ctx.b.createModule(cfg.module_options),
+    });
+    obj.addCSourceFile(.{
+        .file = ctx.dep_ebur128.path("ebur128/ebur128.c"),
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    obj.addIncludePath(ctx.dep_ebur128.path("ebur128"));
+    obj.addIncludePath(ctx.dep_ebur128.path("ebur128/queue"));
     obj.linkLibC();
     return obj;
 }
@@ -1464,6 +1513,7 @@ fn buildFftConvolver(ctx: *const BuildContext, cfg: *const TargetConfig) *std.Bu
 
 fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
     dr_wav: *std.Build.Step.Compile,
+    ebur128: *std.Build.Step.Compile,
     flac: *std.Build.Step.Compile,
     xxhash: *std.Build.Step.Compile,
     library: *std.Build.Step.Compile,
@@ -1546,6 +1596,7 @@ fn buildCommonInfrastructure(ctx: *const BuildContext, cfg: *const TargetConfig,
 
     lib.linkLibrary(lua);
     lib.addObject(deps.dr_wav);
+    lib.addObject(deps.ebur128);
     lib.linkLibrary(deps.flac);
     lib.addObject(deps.xxhash);
     lib.addConfigHeader(cfg.floe_config_h);
@@ -1622,6 +1673,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
         .files = &(.{
             "engine/check_for_update.cpp",
             "engine/engine.cpp",
+            "engine/default_preset.cpp",
             "engine/favourite_items.cpp",
             "engine/package_installation.cpp",
             "engine/random_variation.cpp",
@@ -1688,9 +1740,14 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "preset_server/preset_server.cpp",
             "processing_utils/arpeggiator.cpp",
             "processing_utils/audio_processing_context.cpp",
+            "processing_utils/distortion.cpp",
             "processing_utils/lfo.cpp",
+            "processing_utils/limiter.cpp",
+            "processing_utils/loudness_meter.cpp",
             "processing_utils/midi.cpp",
             "processing_utils/mpe.cpp",
+            "processing_utils/peak_meter.cpp",
+            "processing_utils/true_peak_detector.cpp",
             "processing_utils/volume_fade.cpp",
             "processor/layer_processor.cpp",
             "processor/param.cpp",
@@ -1837,6 +1894,40 @@ fn buildDocsGenerator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: 
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "DocsGenerator");
     exe.linkLibrary(deps.common_infrastructure);
     exe.addIncludePath(ctx.b.path("src"));
+    exe.addConfigHeader(cfg.floe_config_h);
+    applyUniversalSettings(ctx, exe);
+
+    return exe;
+}
+
+fn buildDistortionTableGenerator(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
+    common_infrastructure: *std.Build.Step.Compile,
+}) *std.Build.Step.Compile {
+    // This tool is a batch of offline DSP measurements, not shipped code, so it always compiles optimised
+    // regardless of the top-level build mode: unoptimised it takes minutes to run.
+    var fast_module_options = cfg.module_options;
+    fast_module_options.optimize = .ReleaseFast;
+
+    const exe = ctx.b.addExecutable(.{
+        .name = "distortion_table_generator",
+        .root_module = ctx.b.createModule(fast_module_options),
+    });
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "src/plugin/processing_utils/distortion_table_generator.cpp",
+            "src/common_infrastructure/final_binary_type.cpp",
+        },
+        .flags = FlagsBuilder.init(ctx, cfg, .{
+            .all_warnings = true,
+            .ubsan = false,
+            .cpp = true,
+            .gen_cdb_fragments = true,
+        }).flags.items,
+    });
+    exe.root_module.addCMacro("FINAL_BINARY_TYPE", "DistortionTableGenerator");
+    exe.linkLibrary(deps.common_infrastructure);
+    exe.addIncludePath(ctx.b.path("src"));
+    exe.addIncludePath(ctx.b.path("src/plugin"));
     exe.addConfigHeader(cfg.floe_config_h);
     applyUniversalSettings(ctx, exe);
 
@@ -2904,6 +2995,7 @@ fn doTarget(
     const debug_info_lib = buildDebugInfo(ctx, cfg);
     const stb_image = buildStbImage(ctx, cfg);
     const dr_wav = buildDrWav(ctx, cfg);
+    const ebur128 = buildEbur128(ctx, cfg);
     const miniz = buildMiniz(ctx, cfg);
     const flac = buildFlac(ctx, cfg);
     const fft_convolver = buildFftConvolver(ctx, cfg);
@@ -2929,6 +3021,7 @@ fn doTarget(
 
     const common_infrastructure = buildCommonInfrastructure(ctx, cfg, .{
         .dr_wav = dr_wav,
+        .ebur128 = ebur128,
         .flac = flac,
         .library = library,
         .miniz = miniz,

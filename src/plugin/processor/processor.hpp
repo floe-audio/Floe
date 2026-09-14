@@ -24,6 +24,7 @@
 #include "effect_distortion.hpp"
 #include "effect_eq.hpp"
 #include "effect_filter_iir.hpp"
+#include "effect_limiter.hpp"
 #include "effect_phaser.hpp"
 #include "effect_reverb.hpp"
 #include "effect_stereo_widen.hpp"
@@ -31,6 +32,7 @@
 #include "param.hpp"
 #include "plugin/plugin.hpp"
 #include "processing_utils/audio_processing_context.hpp"
+#include "processing_utils/loudness_meter.hpp"
 #include "processing_utils/volume_fade.hpp"
 #include "voices.hpp"
 
@@ -154,6 +156,7 @@ enum : u8 {
     ReloadAllAudioState = 1 << (k_num_layers + 1),
     ConvolutionIRChanged = 1 << (k_num_layers + 2),
     ResetAudioProcessing = 1 << (k_num_layers + 3),
+    ResetLufsMeter = 1 << (k_num_layers + 4),
 };
 
 } // namespace audio_thread_inbox
@@ -222,6 +225,10 @@ struct AudioProcessor {
     u32 previous_block_size = 0;
 
     StereoPeakMeter peak_meter = {};
+    LufsMeter lufs_meter = {};
+    // Written by main-thread when the "show LUFS meter" preference changes. Read by audio-thread to skip
+    // LUFS computation when nothing displays it.
+    Atomic<bool> show_lufs_meter {false};
 
     SharedLayerParams shared_layer_params {};
     Bitset<k_num_layers> solo {};
@@ -286,6 +293,7 @@ struct AudioProcessor {
     Phaser phaser;
     Eq eq;
     ConvolutionReverb convo;
+    Limiter limiter;
 
     // The effects indexable by EffectType
     EffectsArray const effects_ordered_by_type;
@@ -334,6 +342,7 @@ bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, P
 bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index);
 
 void ResetAudioProcessing(AudioProcessor&);
+void ResetLufsMeter(AudioProcessor&);
 
 bool IsMidiCCLearnActive(AudioProcessor const& processor);
 void LearnMidiCC(AudioProcessor& processor, ParamIndex param);

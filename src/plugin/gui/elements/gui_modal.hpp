@@ -15,6 +15,7 @@ constexpr imgui::ViewportConfig k_default_modal_viewport {
     .draw_scrollbars = DrawModalScrollbars,
     .scrollbar_padding = k_scrollbar_rhs_space,
     .scrollbar_width = k_scrollbar_width,
+    .scroll_button_size = k_scroll_button_size,
     .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                              imgui::ViewportScrollbarVisibility::Auto},
     .exclusive_focus = true,
@@ -26,6 +27,7 @@ constexpr imgui::ViewportConfig k_default_modal_subviewport {
     .draw_scrollbars = DrawModalScrollbars,
     .scrollbar_padding = k_scrollbar_rhs_space,
     .scrollbar_width = k_scrollbar_width,
+    .scroll_button_size = k_scroll_button_size,
     .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                              imgui::ViewportScrollbarVisibility::Auto},
 };

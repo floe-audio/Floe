@@ -111,18 +111,35 @@ enum class GuiBuilderPass : u8 {
     HandleInputAndRender,
 };
 
-enum class TooltipJustification : u8 { AboveOrBelow, LeftOrRight };
+// Sides are tried in the order named. The first side is strongly preferred: text is wrapped narrower to fit
+// there, and only when even the minimum width doesn't fit is the next side tried. The remaining sides are
+// tried after the named ones.
+enum class TooltipPlacement : u8 {
+    BelowThenAbove,
+    AboveThenBelow,
+    RightThenLeft,
+    LeftThenRight,
+    RightThenBelow,
+};
 
+// Two boxes: the value popup (regular font, nearest the element) and the tooltip (italic, stacked beside
+// the value popup). Either is skipped when its opacity is 0.
 struct DrawTooltipArgs {
     Rect r; // The rect that opened the tooltip.
     Rect avoid_r; // The rect to avoid when placing the tooltip;
-    TooltipJustification justification;
+    TooltipPlacement placement;
+    String value_popup {};
+    f32 value_popup_opacity = 0;
+    // WW units. See TooltipArgs::value_popup_fixed_width.
+    Optional<f32> value_popup_fixed_width {};
+    String tooltip {};
+    String tooltip_footer {}; // Drawn dimmer beneath the tooltip text, inside the same box.
+    f32 tooltip_opacity = 0;
 };
 using DrawOverlayTooltipForRectFunc = void(imgui::Context const& imgui,
                                            Fonts& fonts,
-                                           String str,
                                            DrawTooltipArgs const& args);
-using DrawDropShadowFunc = void(imgui::Context const& imgui, Rect r, Optional<f32> rounding);
+using DrawDropShadowFunc = void(imgui::Context const& imgui, Rect r, Optional<f32> rounding, f32 opacity);
 
 struct GuiBuilder {
     struct WordWrappedText {
@@ -160,6 +177,7 @@ struct GuiBuilder {
 
     struct Config {
         bool show_tooltips;
+        bool instant_value_popups;
         DrawOverlayTooltipForRectFunc* draw_tooltip;
         DrawDropShadowFunc* draw_drop_shadow;
     };
@@ -255,6 +273,9 @@ struct BoxConfig {
 
     bool parent_dictates_hot_and_active = false;
 
+    // Draw in the hot style regardless of the cursor, e.g. a menu item whose submenu is open.
+    bool show_as_hot = false;
+
     // Corners and rounding effect both fill and border.
     Corners round_background_corners = 0b0000;
     f32 corner_rounding = 3.0f;
@@ -264,9 +285,18 @@ struct BoxConfig {
 
     layout::ItemOptions layout {}; // Don't set parent here, use BoxConfig::parent instead.
 
+    // Shown immediately while hovered or dragged, regardless of preferences. For information the UI doesn't
+    // otherwise show: a knob's value, a meter's level, a preset's description.
+    TooltipString value_popup = k_nullopt;
+    // Help text. Shown in italics after the mouse rests on the element, only if the show-tooltips
+    // preference is on. Placed beside the value popup when both are present.
     TooltipString tooltip = k_nullopt;
+    // Interaction hints (e.g. "double-click to type"). Shown dimmer beneath the tooltip text.
+    String tooltip_footer {};
+    // Placement options below apply to both boxes.
     imgui::Id tooltip_avoid_viewport_id = 0; // 0 = avoid nothing.
-    TooltipJustification tooltip_justification = TooltipJustification::AboveOrBelow;
+    Box const* tooltip_avoid_box = nullptr; // Tooltip is placed outside the visible part of this box.
+    TooltipPlacement tooltip_placement = TooltipPlacement::BelowThenAbove;
 
     Optional<imgui::ButtonConfig> button_behaviour = k_nullopt;
     u8 extra_margin_for_mouse_events = 0;
@@ -281,3 +311,18 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash = 
 // isn't provided by BoxConfig, such as: drag behaviour, text input, adding multiple click-modes (right click,
 // middle-click).
 Optional<Rect> BoxRect(GuiBuilder& builder, Box const& box);
+
+// For custom IMGUI elements that aren't boxes. Same semantics as BoxConfig::value_popup and
+// BoxConfig::tooltip. Returns true if anything was drawn.
+struct TooltipArgs {
+    TooltipString value_popup = k_nullopt;
+    // WW units. When set, the value popup box always uses this width instead of sizing to fit the text.
+    // Use this when the text length varies between frames (e.g. a cutoff frequency shown as a note name,
+    // where sharps change the string length) so the popup doesn't resize/jump as the value changes.
+    Optional<f32> value_popup_fixed_width {};
+    TooltipString tooltip = k_nullopt;
+    String tooltip_footer {};
+    Optional<Rect> avoid_r {}; // Window coords. If nullopt, uses the element's rect.
+    TooltipPlacement placement = TooltipPlacement::BelowThenAbove;
+};
+bool Tooltip(GuiBuilder& builder, imgui::Id id, Rect rect_in_window_coords, TooltipArgs const& args);

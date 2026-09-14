@@ -19,6 +19,8 @@ enum class AutoDescriptionForm : u8 {
     Headline,
     // Headline plus supplementary detail joined into a single line with no embedded '\n'.
     FullBlock,
+    // Just the supplementary detail. May be empty for simple presets.
+    Detail,
 };
 
 struct AutoDescriptionWriteOptions {

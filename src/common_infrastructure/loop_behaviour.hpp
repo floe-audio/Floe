@@ -22,7 +22,7 @@ struct LoopBehaviour {
         Optional<sample_lib::LoopMode> mode;
         String name;
         String short_name;
-        String description;
+        String description; // Lowercase clause with no full stop, so callers can lead into it.
         bool editable;
     };
     Value value;

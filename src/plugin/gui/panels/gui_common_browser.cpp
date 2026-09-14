@@ -165,19 +165,6 @@ bool ItemMatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_
     return false;
 }
 
-auto ScopedEnableTooltips(GuiBuilder& builder, bool enable) {
-    struct ScopeGuard {
-        GuiBuilder& builder;
-        bool old_value;
-
-        ScopeGuard(GuiBuilder& b, bool old) : builder(b), old_value(old) {}
-        ~ScopeGuard() { builder.config.show_tooltips = old_value; }
-    };
-    auto old_value = builder.config.show_tooltips;
-    builder.config.show_tooltips = enable;
-    return ScopeGuard {builder, old_value};
-}
-
 bool RootNodeLessThan(FolderNode const* const& a,
                       DummyValueType const&,
                       FolderNode const* const& b,
@@ -429,7 +416,6 @@ static bool DoItem(GuiBuilder& builder, BrowserKeyboardNavigation& nav, ItemArgs
 
 BrowserItemResult
 DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions const& options) {
-    auto const scoped_tooltips = ScopedEnableTooltips(builder, true);
 
     auto const container = DoBox(builder,
                                  {
@@ -452,9 +438,10 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                       .size = {layout::k_fill_parent, layout::k_hug_contents},
                       .contents_direction = layout::Direction::Row,
                   },
+                  .value_popup = options.value_popup,
                   .tooltip = options.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_justification = TooltipJustification::LeftOrRight,
+                  .tooltip_placement = TooltipPlacement::RightThenLeft,
                   .button_behaviour = imgui::ButtonConfig {.dont_fire_on_double_click = true},
               });
 
@@ -526,6 +513,22 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                         options.store,
                         0xe9bdfea0aae12dce,
                         "Double-click to load and close; single-click to load only."_s);
+    }
+
+    if (options.is_default) {
+        DoBox(builder,
+              {
+                  .parent = container,
+                  .text = ICON_FA_HOUSE,
+                  .font = FontType::Icons,
+                  .font_size = k_font_icons_size * 0.7f,
+                  .text_colours = Col {.c = Col::Subtext0},
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {
+                      .size = {16, layout::k_fill_parent},
+                  },
+                  .tooltip = "Default preset"_s,
+              });
     }
 
     auto const favourite_toggled =
@@ -635,7 +638,7 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
                     .id_extra = folder_hash,
                     .is_selected = is_selected,
                     .text = folder->display_name.size ? folder->display_name : folder->name,
-                    .tooltip = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
+                    .value_popup = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
                     .filter = state.Filter(BrowserFilter::Folder),
                     .clicked_key = folder_hash,
                     .filter_mode = state.filter_mode,
@@ -720,7 +723,6 @@ Box DoFilterButton(GuiBuilder& builder,
                    CommonBrowserState& state,
                    FilterItemInfo const& info,
                    FilterButtonOptions const& options) {
-    auto const scoped_tooltips = ScopedEnableTooltips(builder, true);
 
     auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
 
@@ -755,9 +757,10 @@ Box DoFilterButton(GuiBuilder& builder,
                       .contents_align = layout::Alignment::Start,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
+                  .value_popup = options.common.value_popup,
                   .tooltip = options.common.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_justification = TooltipJustification::LeftOrRight,
+                  .tooltip_placement = TooltipPlacement::LeftThenRight,
                   .button_behaviour = imgui::ButtonConfig {},
                   .name = options.name,
               });
@@ -857,7 +860,6 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                        FilterItemInfo const& info,
                        FilterTreeButtonOptions const& options) {
     using namespace filter_card_box;
-    auto const scoped_tooltips = ScopedEnableTooltips(builder, true);
 
     auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
 
@@ -919,9 +921,10 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                       .contents_align = layout::Alignment::Start,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
+                  .value_popup = options.common.value_popup,
                   .tooltip = options.common.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_justification = TooltipJustification::LeftOrRight,
+                  .tooltip_placement = TooltipPlacement::LeftThenRight,
                   .button_behaviour = imgui::ButtonConfig {},
               });
 
@@ -977,7 +980,6 @@ Box DoFilterCard(GuiBuilder& builder,
                  FilterItemInfo const& info,
                  FilterCardOptions const& options) {
     using namespace filter_card_box;
-    auto const scoped_tooltips = ScopedEnableTooltips(builder, true);
     bool const is_selected = options.common.is_selected;
 
     auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
@@ -1101,9 +1103,10 @@ Box DoFilterCard(GuiBuilder& builder,
                       .contents_align = layout::Alignment::Start,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                   },
+                  .value_popup = options.common.value_popup,
                   .tooltip = options.common.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_justification = TooltipJustification::LeftOrRight,
+                  .tooltip_placement = TooltipPlacement::LeftThenRight,
                   .button_behaviour = imgui::ButtonConfig {},
                   .name = options.name.size ? (String)fmt::Format(builder.arena, "{}.header", options.name)
                                             : String {},
@@ -1397,9 +1400,9 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                           .contents_align = layout::Alignment::Start,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                       },
-                      .tooltip = folder ? TooltipString {"Folder"_s} : k_nullopt,
+                      .tooltip = folder ? TooltipString {"Expand/collapse folder"_s} : k_nullopt,
                       .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                      .tooltip_justification = TooltipJustification::LeftOrRight,
+                      .tooltip_placement = tooltip_placement,
                       .button_behaviour = imgui::ButtonConfig {},
                   });
 
@@ -1640,60 +1643,63 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
 
                 if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
-                button = DoFilterCard(builder,
-                                      context.state,
-                                      lib_info,
-                                      FilterCardOptions {
-                                          .common =
-                                              {
-                                                  .parent = section.Do(builder).Get<Box>(),
-                                                  .id_extra = lib_hash,
-                                                  .is_selected = is_selected,
-                                                  .text = lib->name,
-                                                  .tooltip = FunctionRef<String()>([&]() -> String {
-                                                      auto lib = sample_lib_server::FindLibraryRetained(
-                                                          context.sample_library_server,
-                                                          lib_id);
-                                                      DEFER { lib.Release(); };
+                button = DoFilterCard(
+                    builder,
+                    context.state,
+                    lib_info,
+                    FilterCardOptions {
+                        .common =
+                            {
+                                .parent = section.Do(builder).Get<Box>(),
+                                .id_extra = lib_hash,
+                                .is_selected = is_selected,
+                                .text = lib->name,
+                                .value_popup = FunctionRef<String()>([&]() -> String {
+                                    auto lib =
+                                        sample_lib_server::FindLibraryRetained(context.sample_library_server,
+                                                                               lib_id);
+                                    DEFER { lib.Release(); };
 
-                                                      DynamicArray<char> buf {builder.arena};
-                                                      fmt::Append(buf, "{} by {}.", lib->name, lib->author);
-                                                      if (lib) {
-                                                          if (lib->description)
-                                                              fmt::Append(buf, "\n\n{}", lib->description);
-                                                      }
-                                                      return buf.ToOwnedSpan();
-                                                  }),
-                                                  .filter = context.state.Filter(BrowserFilter::Library),
-                                                  .clicked_key = lib_hash,
-                                                  .filter_mode = context.state.filter_mode,
-                                              },
-                                          .library_id = lib_id,
-                                          .library_images = library_filters.library_images,
-                                          .sample_library_server = context.sample_library_server,
-                                          .instance_index = library_filters.instance_index,
-                                          .subtext = ({
-                                              String s;
-                                              if (lib) s = builder.arena.Clone(lib->tagline);
-                                              s;
-                                          }),
-                                          .version = lib->revision,
-                                          .folder_infos = library_filters.folders,
-                                          .folder = folder,
-                                          .all_items_suffix = library_filters.resource_type ==
-                                                                      sample_lib::ResourceType::Instrument
-                                                                  ? " Instruments"_s
-                                                                  : " IRs"_s,
-                                          .default_collapsed = true,
-                                          .right_click_menu = lib_right_click_menu,
-                                          .store = &context.store,
-                                          .name = library_filters.card_name_prefix.size
-                                                      ? (String)fmt::Format(builder.arena,
-                                                                            "{}{}",
-                                                                            library_filters.card_name_prefix,
-                                                                            lib->name)
-                                                      : String {},
-                                      });
+                                    if (!lib) return ""_s;
+
+                                    DynamicArray<char> buf {builder.arena};
+                                    if (lib->description) fmt::Append(buf, "{}\n\n", lib->description);
+
+                                    fmt::Append(buf, "{} is a library by {}.", lib->name, lib->author);
+
+                                    return buf.ToOwnedSpan();
+                                }),
+                                .tooltip = "Click to expand/collapse the library."_s,
+                                .filter = context.state.Filter(BrowserFilter::Library),
+                                .clicked_key = lib_hash,
+                                .filter_mode = context.state.filter_mode,
+                            },
+                        .library_id = lib_id,
+                        .library_images = library_filters.library_images,
+                        .sample_library_server = context.sample_library_server,
+                        .instance_index = library_filters.instance_index,
+                        .subtext = ({
+                            String s;
+                            if (lib) s = builder.arena.Clone(lib->tagline);
+                            s;
+                        }),
+                        .version = lib->revision,
+                        .folder_infos = library_filters.folders,
+                        .folder = folder,
+                        .all_items_suffix =
+                            library_filters.resource_type == sample_lib::ResourceType::Instrument
+                                ? " Instruments"_s
+                                : " IRs"_s,
+                        .default_collapsed = true,
+                        .right_click_menu = lib_right_click_menu,
+                        .store = &context.store,
+                        .name = library_filters.card_name_prefix.size
+                                    ? (String)fmt::Format(builder.arena,
+                                                          "{}{}",
+                                                          library_filters.card_name_prefix,
+                                                          lib->name)
+                                    : String {},
+                    });
             } else {
                 if (section.Do(builder) == BrowserSection::State::Collapsed) break;
 
@@ -1716,7 +1722,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                 .is_selected =
                                     context.state.Filter(BrowserFilter::Library).Contains(lib_hash),
                                 .text = lib->name,
-                                .tooltip = FunctionRef<String()>([&]() -> String {
+                                .value_popup = FunctionRef<String()>([&]() -> String {
                                     auto lib =
                                         sample_lib_server::FindLibraryRetained(context.sample_library_server,
                                                                                lib_id);
@@ -2271,7 +2277,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     cfg.draw_scrollbars = DrawModalScrollbarsDarkMode, cfg.scrollbar_inside_padding = true;
                     cfg.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                                                 imgui::ViewportScrollbarVisibility::Auto};
-                    cfg.padding = {.lr = k_browser_spacing};
+                    cfg.padding = {.lr = k_scrollbar_width};
                     cfg.scroll_line_size = k_browser_item_height;
                     cfg;
                 }),
@@ -2600,7 +2606,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                               cfg.scrollbar_inside_padding = true;
                               cfg.scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                                                           imgui::ViewportScrollbarVisibility::Auto};
-                              cfg.padding = {.lr = k_browser_spacing};
+                              cfg.padding = {.lr = k_scrollbar_width};
                               cfg.scroll_line_size = k_browser_item_height;
                               cfg;
                           }),

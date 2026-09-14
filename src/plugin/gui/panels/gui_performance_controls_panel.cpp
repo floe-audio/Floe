@@ -11,6 +11,7 @@
 #include "common_infrastructure/performance_profile.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/core/custom_icons.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
@@ -1078,7 +1079,7 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
                 break;
             case PerformanceControlsPanelState::Tab::Mpe: cfg = {.icon = ICON_FA_HAND, .text = "MPE"}; break;
             case PerformanceControlsPanelState::Tab::MidiCc:
-                cfg = {.icon = ICON_FA_SLIDERS, .text = "MIDI CC"};
+                cfg = {.icon = ICON_CUSTOM_MIDI, .text = "MIDI CC"};
                 break;
             case PerformanceControlsPanelState::Tab::Count: continue;
         }

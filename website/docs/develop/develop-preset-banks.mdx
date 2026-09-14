@@ -46,6 +46,13 @@ revision = 1
 ; library isn't installed, Floe falls back to deriving the icon from
 ; the libraries used by the bank's presets.
 library_for_visuals = FrozenPlain - Slow
+
+; A preset within this bank, given as a path relative to the bank
+; folder including the file extension. When the bank is installed
+; from a package, Floe uses this preset as the default preset - the
+; one a new instance of Floe opens with. It's only a suggestion:
+; Floe ignores it if the user has chosen their own default preset.
+default_preset = Pads/Warm Welcome.floe-preset
 ```
 
 You can create this INI file with any text editor such as Notepad or TextEdit. You just need to type in the various `field = value` with new lines between them.

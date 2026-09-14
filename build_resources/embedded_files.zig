@@ -25,6 +25,9 @@ fn embeddedFile(comptime filename: []const u8) c.BinaryData {
 export fn EmbeddedFontAwesome() c.BinaryData {
     return embeddedFile("fonts/fa-solid-900.ttf");
 }
+export fn EmbeddedCustomIcons() c.BinaryData {
+    return embeddedFile("fonts/custom_icons/custom_icons.ttf");
+}
 export fn EmbeddedRoboto() c.BinaryData {
     return embeddedFile("fonts/Roboto-Regular.ttf");
 }

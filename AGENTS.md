@@ -1,77 +1,39 @@
-<!--
-SPDX-FileCopyrightText: 2025 Sam Windell
-SPDX-License-Identifier: CC0-1.0
--->
+This is the Floe repo, a open source sample library platform (audio plugin) written in C++, using Zig as the build system.
+- Linux, Windows, macOS
+- CLAP plugin at its core - using clap-wrapper third-party lib for VST3/AU versions
+- We manage a nix flake devshell as our build/dev environment
 
-This is the Floe repository, an audio plugin written in C++ and built using the Zig build system. Floe is a sample library platform for performing, finding and transforming sounds from sample libraries - more like a ROMpler or sample-based synth than a traditional sampler. It's available on Linux, Windows, and macOS.
+Commands - run via `nix develop --command`:
+- Quick compile check: `zb`. (friendly wrapper around zig build)
+- Build + run tests: `zig build test`. (add `--filter=` with a `*` wildcard or full test name. mulitple `--filter` is allowed)
+- Compile for hot-reload: `zig build install:clap`. (when developing, Floe runs as a standalone that hot-reloads the CLAP plugin for instant user testing)
+- Format: `zig build script:format`
+- Add `-Dtargets=linux` for cross-compilation. (or `windows`, `mac_arm`, `mac_x86` - omit for native OS)
 
-Floe, at its core, is a CLAP plugin, a modern alternative to APIs such as VST3. CLAP is documented in the C header files that make up its interface. See the dependencies section below for where to find the CLAP source code.
+Repo knowledge base:
+- Refer to relevant markdown primers in `knowledge/` before doing complex tasks.
 
-Additionally, this repository contains Floe's website in the subdirectory `website/`, built using Docusaurus. We have 2 release channels: **stable** and **beta**. We use Docusaurus' versioning feature to maintain separate documentation for each channel. `website/docs` contains the beta documentation, and `website/versioned_docs/version-stable` contains the stable documentation. We use the command `zig build script:github-publish-release` to promote the beta website to stable.
-
-# Commands
-Building is done inside a Nix flake shell. You can use `nix develop` to enter the shell. Or to run a command inside a shell (normally recommended), use `nix develop --command <command>`. All these commands should be prefixed with `nix develop --command` if you're not already in the shell:
-- **Check for compilation errors**: `zb <step>`. This is a wrapper around `zig build` that provides clean output - just "Build succeeded" or a clear summary of errors. Run it without any output filtering (no grep/tail/head). If you changed something GUI related - use the step `install:clap` - this will cause a hot-reload of the plugin for the user. For a full-check of all source files omit the step. Default arguments are usually fine, but you can pass extra args: `zb -Dtargets=native -Dbuild-mode=development`. Cross-compiling is supported with `-Dtargets=linux`, `windows`, `mac_arm`, or `mac_x86`. Add `-Dsanitize-thread` to enable Clang's thread sanitizer. Note: `zb` is only for compilation - use `zig build` directly for other build commands like scripts.
-- `zig build install:all`: builds and installs all binaries to `zig-out` folder.
-- Use `--log-level=warning` for all `zig-out/bin` binaries unless debug logs are needed.
-- Compile and run unit tests: `zig build test -- --filter=*`. `--filter` should match the whole name, or use wildcards. You can use `--filter` multiple times to match multiple cases.
-- **Benchmarks**: Build with `zb install:all -Dbuild-mode=performance_profiling`, then time with `hyperfine './zig-out/bin/floe-benchmarks --filter=Name'`. Use `./zig-out/bin/floe-benchmarks --list` to see available benchmarks. Define benchmarks with `BENCHMARK_REGISTRATION`/`REGISTER_BENCHMARK` in the same cpp file as the code, then add the registration function to `src/benchmarks/benchmarks_main.cpp`. See `src/benchmarks/framework.hpp` for the API.
-- Format all code using clang-tidy: `zig build script:format`
-- Check license comment headers: `zig build check:reuse`
-
-# Source code overview
-Here are some notable subdirectories, though there are plenty more.
-- `src/foundation/`: our 'standard library' with data structures and core utilities. All code depends on this. A single `#include "foundation/foundation.hpp"` includes ALL headers from the foundation.
-- `src/os/`: OS abstraction layer.
-- `src/utils/`: more specific utilities that are not necessary Floe-specific, building on OS and foundation.
-- `src/plugin/gui_framework/gui_builder.hpp`, `src/plugin/gui_framework/layout.hpp` and `src/plugin/gui_framework/gui_imgui.hpp` are the most important for understanding how to write GUI code featuring extensive documentation in the headers.
-- `src/common_infrastructure/`: Floe-specific code that's used by the plugin and also installers and other tools.
-- `src/plugin/`: the actual plugin code, including audio processing and GUI.
-- `website/`: Docusaurus website source code.
-- `src/tests/`: unit test framework and test for foundation, OS, and utils modules.
-
-# Dependencies
-Floe uses a few third-party libraries. These are typically managed by the Zig package manager. See `build.zig.zon` for the full list. Once the project has been built once, you can get the source code for these libraries by searching the `.zig-cache-global/` directory using `fd` or `find`. This is the directory we've configured Zig to put downloaded packages.
-
-# Workflow
-- **NEVER ask permission before compiling**. Just run `zb` automatically when needed to verify changes. It will output "Build succeeded" or a clear summary of any compilation errors.
-- Where possible, add tests. We have our own test framework that is similar to Catch2: src/tests/framework.hpp. We tend to put tests in the same cpp file as the implementation. Write a test case with TEST_CASE(TestName). Then use TEST_REGISTRATION(RegisterMyTests) to create a registration function, inside that use REGISTER_TEST(TestName) to register the test, finally add this registration function to src/tests/tests_main.cpp. If you want an example of a test, look at src/common_infrastructure/autosave.cpp. The API for the test framework is in src/tests/framework.hpp.
-
-# Style
+C++ style:
 - No C++ STL/standard library.
-- We write in a Zig-like style: closer to modern C than C++.
+- Minimal comments. Use them for section markers or notes not-evident from reading code. Prefer renaming variables/functions to be clearer/longer over comments.
+- Write in a Zig-like style: closer to modern C than C++.
 - Liberally use ASSERT macros (or ASSERT_HOT if the codepath is known to be hot).
-- See `.clang-tidy`'s readability-identifier-naming section for naming conventions.
-- When working with enums use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed. When defining enums, specify the size type (typically ` : u8`).
-- **Keep comments to a bare minimum**. Use them more as section markers and notes. Never explain what is evident from reading the code. Prefer renaming variables/functions to be clearer/longer rather than augmenting them with comments.
+- Naming convention: `.clang-tidy` readability-identifier-naming.
+- Enums: use switch statements rather than ifs for compile-time exhaustiveness checking. Avoid 'default' case unless really needed. Specify enum size types (typically ` : u8`).
 - Where needed, use Clang/GCC 'statement expressions' to initialise a variable to a const to avoid function-wide mutability and unclear encapsulation.
-- Always use `auto` type where possible.
+- Always use `auto` type if possible.
 - Prefer `Range` over C-style for loops: `for (auto index : Range(10))`.
 - Prefer names such as `step_index` over `i` or `j`. `mix_01` over `r`.
 - Don't use anonymous namespaces, prefer static functions
-- Look for natural places to utilise pure functions, reducing the number of functions that mutate state.
+- Utilise pure functions. Reduce the number of state-mutating functions.
 - Consider using the 'options/args/context struct' pattern along with designated initialiser syntax instead of lots of function arguments.
 
-# Github Issues
-We extensively use Github issues to track work. Use `gh` to query and manage issues. Our issues often include lots of details and design.
+Repo overview:
+- `src/`: complete Floe code with subfolders for the plugin, tools, standalone, libs
+- `website/`: Docusaurus website. 2 channels: stable (`versioned_docs` subdir) and beta (regular docs subdir). We run `zig build script:website-promote-beta-to-stable` to transfer everything from beta to stable.
 
-- **Priority labels**: `priority/urgent` (blocking users or critical bug - ship ASAP), `priority/high` (significant impact - next release), `priority/medium` (valuable improvement - plan soon), `priority/low` (nice-to-have - when capacity allows)
-- **Effort labels**: `effort/small` (~1-4 hours), `effort/medium` (~0.5-1 day), `effort/large` (~2-3 days), `effort/extra-large` (~1 week or needs breakdown)
-- `awaiting-release` - for issues fixed but not yet released, they're tagged with this then closed when the release occurs
-- `needs-repro` - needs investigation work to reproduce the issue
-- `needs-design` - needs thinking and design before beginning writing code
+Tests:
+Write tests. We use our own test framework (similar to Catch2): src/tests/framework.hpp. Tests live in the same cpp file as the implementation. Write a test case with TEST_CASE(TestName). Then use TEST_REGISTRATION(RegisterMyTests), inside that use REGISTER_TEST(TestName), finally add this registration function to src/tests/tests_main.cpp.
 
-**Never** try to write code for a `needs-design` issue. First, discuss, and design the solution - working out a full plan. Update the issue description with the design and remove the label when ready.
-
-# Github Project
-Additionally, we use an organisation-level kanban board GitHub Project (floe-audio/1) with a "Status" field to track issue progress (Up Next, In Progress, Done). All issues are automatically added to the board.
-
-### Commands
-```bash
-just project-items-json                                # Get raw JSON of all project items
-just project-item-id <issue_number>                    # Get project item ID
-just project-status <issue_number>                     # Get current status
-just project-set-status <issue_number> "<status>"      # Set status (Up Next, In Progress, Done)
-just project-issues-by-status "<status>"               # Get issues by status (number + title)
-
-```
+Benchmarks:
+`zb install:all -Dbuild-mode=performance_profiling`, then use `hyperfine './zig-out/bin/floe-benchmarks --filter=Name'`. Use `./zig-out/bin/floe-benchmarks --list` to see available benchmarks. Define benchmarks with `BENCHMARK_REGISTRATION`/`REGISTER_BENCHMARK` in the same cpp file as the code, then add the registration function to `src/benchmarks/benchmarks_main.cpp`. API: `src/benchmarks/framework.hpp`.

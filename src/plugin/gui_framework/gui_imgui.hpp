@@ -133,6 +133,10 @@ struct SliderConfig {
 
     // Set the slider's value to its default when its clicked while holding the modifier key.
     bool32 default_on_modifer : 1 = true;
+
+    // Distance in ww that the cursor must travel before the drag takes effect, so that a click which drifts
+    // by a pixel or two doesn't edit the value.
+    f32 dead_zone_ww = 3;
 };
 
 struct TextInputConfig {
@@ -157,10 +161,19 @@ struct TextInputConfig {
 // Draw the background of the imgui.curr_viewport. Typically using the viewport's unpadded bounded.
 using DrawViewportBackgroundFunction = TrivialFunctionRef<void(Context const& imgui)>;
 
+struct ViewportScrollbarButton {
+    Rect rect;
+    imgui::Id id; // Use with IsHot(), etc.
+};
+
 struct ViewportScrollbar {
-    Rect strip; // Long strip that the handle sits in.
+    Rect strip; // Long strip that the handle sits in. Excludes the buttons, if there are any.
     Rect handle; // The bit that you can grab.
     imgui::Id id; // ID for the handle - use with IsHot(), etc.
+
+    // Arrow buttons at either end of the strip. Only present when ViewportConfig::scroll_button_size is
+    // non-zero. [0] scrolls towards the start (up/left), [1] scrolls towards the end (down/right).
+    Optional<Array<ViewportScrollbarButton, 2>> buttons;
 };
 
 using ViewportScrollbars = Array<Optional<ViewportScrollbar>, 2>; // x, y
@@ -245,7 +258,12 @@ struct ViewportConfig {
     // usable space in the axis that the scrollbar would appear.
     f32 scrollbar_padding {};
     f32 scrollbar_width {4}; // Ignored if scrollbar_inside_padding.
-    f32 scroll_line_size {}; // Mouse scroll step amount. 0 means use default.
+    f32 scroll_line_size {}; // Mouse scroll and scroll button step amount. 0 means use default.
+
+    // Length, along the scroll axis, of the arrow buttons at each end of the scrollbar. Clicking (or holding)
+    // a button scrolls by scroll_line_size. 0 means no buttons. The draw_scrollbars function is
+    // responsible for drawing them.
+    f32 scroll_button_size {};
 
     // Automatically set the size of the viewport based on what rectangles are registered into it.
     b8x2 auto_size = false;
@@ -299,6 +317,10 @@ struct Viewport {
     Viewport* parent_viewport = nullptr;
 
     Id creator_of_this_popup_menu = k_null_id;
+
+    // [PopupMenu]. Opened from an item in a parent popup menu via PopupMenuButtonBehaviour. The parent menu
+    // stays interactable while this is open, and the two close together when an item is chosen.
+    bool is_submenu = false;
 
     u16 nested_level = k_null_id;
     u16 child_nesting_counter = k_null_id;
@@ -514,6 +536,11 @@ struct Context {
     // If clicked, opens a popup menu which appears in an appropriate place relative to the rectangle passed
     // here. Remember, opening a popup does not mean the popup is actually run: you must check IsPopupOpen and
     // call BeginViewport on the popup_id after calling this.
+    //
+    // When called from inside a popup menu, the popup is a submenu: it also opens after hovering the button
+    // for a moment, sibling items in the parent menu remain interactable while it's open (hovering one for a
+    // moment closes/replaces the submenu, unless the cursor is heading towards the submenu), and choosing an
+    // item with CloseTopMenu closes the whole chain.
     PopupMenuButtonBehaviourResult
     PopupMenuButtonBehaviour(Rect rect_in_window_coords, Id button_id, Id popup_id, ButtonConfig cfg);
 
@@ -624,9 +651,14 @@ struct Context {
     // Tooltip behaviour
     //
 
-    // Returns true if you should draw a tooltip for the given ID. Probably use overlay draw-list for drawing
-    // tooltips.
-    bool TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id);
+    // Opacities that tooltips for the given ID should be drawn with; 0 means don't draw one. Probably use
+    // overlay draw-list for drawing tooltips.
+    struct TooltipOpacities {
+        // Both quickly fade out once their show condition ends.
+        f32 immediate; // Quickly fades in once hot for a brief settle time, or instantly when active.
+        f32 delayed; // Fades in after the mouse has rested on the element for a moment. Hidden while active.
+    };
+    TooltipOpacities TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id);
 
     //
     // Viewports
@@ -693,6 +725,8 @@ struct Context {
     void ClosePopupToLevel(usize level);
     void CloseAllPopups();
     void CloseTopPopupOnly();
+    // Closes the top popup menu and, if it's a submenu, the parent menus it was opened from too.
+    void CloseTopMenu();
     bool DidPopupMenuJustOpen(Id id);
 
     // Tell the framework that if the cursor is in this rect next frame, it should not apply the
@@ -775,6 +809,7 @@ struct Context {
 
     // Internal.
     void UpdateExclusiveFocusViewport();
+    bool IsBlockedByExclusiveFocus(Viewport const* v) const;
     Viewport* FindOrCreateViewport(Id id);
     void OnScissorChanged() const;
 
@@ -838,6 +873,11 @@ struct Context {
     DynamicArray<Viewport*> current_popup_stack {Malloc::Instance()};
     Id popup_menu_just_opened = k_null_id;
 
+    // Where the cursor was just before it last moved, and when. Frames can run without the cursor moving
+    // (animations, timed wakeups), so the per-frame cursor delta alone can't tell us the direction of travel.
+    f32x2 cursor_pos_before_last_move = {};
+    TimePoint time_of_last_cursor_move = {};
+
     DynamicArray<Viewport*> open_modals {Malloc::Instance()};
     Id modal_just_opened = k_null_id;
 
@@ -878,6 +918,30 @@ struct Context {
     Id temp_hot_item = k_null_id;
     CursorType temp_hot_item_cursor {};
     TimePoint time_when_turned_hot = {};
+
+    // Fade in/out of the popup for one item. Persists across hot -> active -> released so the fade doesn't
+    // restart when a drag ends.
+    struct TooltipFadeState {
+        Id item = k_null_id;
+        TimePoint time_shown = {};
+        TimePoint time_hidden = {}; // Non-zero while fading out.
+        f32 opacity_when_hidden = 0;
+    };
+    TooltipFadeState immediate_tooltip = {};
+    TooltipFadeState delayed_tooltip = {};
+
+    // The slider that is currently being dragged, if any. 'fraction' is the exact drag position; widgets
+    // that commit stepped values keep their position within a step here rather than in the value itself.
+    struct SliderDragState {
+        Id id = k_null_id;
+        f32x2 origin = {};
+        f32 fraction_at_origin = 0;
+        f32 fraction = 0;
+        f32 dead_zone_offset = 0;
+        bool engaged = false;
+        bool shift_held = false;
+    };
+    SliderDragState slider_drag = {};
 
     Id hovered_item = k_null_id;
     Id temp_hovered_item = k_null_id;

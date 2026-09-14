@@ -12,6 +12,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/controls/gui_filter_graphs.hpp"
+#include "gui/core/custom_icons.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -25,12 +26,12 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/effect.hpp"
+#include "processor/effect_limiter.hpp"
 
 constexpr f32 k_fx_controls_gap_x = 28;
 constexpr f32 k_fx_controls_gap_y = 8;
 constexpr f32 k_fx_heading_h = 18;
 constexpr f32 k_fx_heading_text_pad_lr = 8;
-constexpr f32 k_fx_icon_width = 20.5f;
 
 constexpr auto k_phaser_params = ComptimeParamSearch<ComptimeParamSearchOptions {
     .modules = {ParameterModule::Effect, ParameterModule::Phaser},
@@ -120,7 +121,51 @@ static void DoFxRackCopyPasteMenuItems(GuiState& g, Box root) {
     }
 }
 
-static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window_r, EffectType type) {
+// Keeps the relative order within both groups, but moves every effect that is in the rack above every
+// effect that isn't.
+static EffectsArray EffectsOrderWithActiveFirst(EffectsArray const& effects,
+                                                Bitset<k_num_effect_types> const& in_rack) {
+    EffectsArray result {};
+    usize index = 0;
+    for (auto const fx : effects)
+        if (in_rack.Get(ToInt(fx->type))) result[index++] = fx;
+    for (auto const fx : effects)
+        if (!in_rack.Get(ToInt(fx->type))) result[index++] = fx;
+    ASSERT(index == effects.size);
+    return result;
+}
+
+static void DoTidyFxOrderMenuItem(GuiState& g, Box root) {
+    auto& processor = g.engine.processor;
+    auto const current_order = processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed);
+    auto const new_order = EncodeEffectsArray(
+        EffectsOrderWithActiveFirst(DecodeEffectsArray(current_order, processor.effects_ordered_by_type),
+                                    g.engine.fx_visible));
+    auto const already_ordered = new_order == current_order;
+
+    if (MenuItem(
+            g.builder,
+            root,
+            {
+                .text = "Tidy FX Order"_s,
+                .tooltip = "Group all the turned-on effects at the top without changing their order"_s,
+                .mode = already_ordered ? MenuItemOptions::Mode::Disabled : MenuItemOptions::Mode::Active,
+                .no_icon_gap = true,
+            })
+            .button_fired &&
+        !already_ordered) {
+        processor.desired_effects_order.Store(new_order, StoreMemoryOrder::Release);
+        processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);
+        processor.host.request_process(&processor.host);
+        RecordUndoableStep(g.engine, "FX order");
+    }
+}
+
+static void DoEffectRightClickMenu(GuiState& g,
+                                   imgui::Id button_id,
+                                   Rect window_r,
+                                   EffectType type,
+                                   bool in_switchboard) {
     auto const right_click_id = g.imgui.MakeId(SourceLocationHash() + ToInt(type));
     auto const name = k_effect_info[ToInt(type)].name;
 
@@ -135,11 +180,12 @@ static void DoEffectRightClickMenu(GuiState& g, imgui::Id button_id, Rect window
                     DoEffectCopyPasteMenuItems(g, root, type);
                     MenuDivider(g.builder, root);
                     DoFxRackCopyPasteMenuItems(g, root);
+                    if (in_switchboard) DoTidyFxOrderMenuItem(g, root);
                     MenuDivider(g.builder, root);
 
                     StateSnapshotSection const target {
                         ModuleTabSection {ParameterModule::Effect, EffectTypeToParameterModule(type)}};
-                    DoResetSectionMenuItems(g, root, target, name);
+                    DoResetSectionMenuItems(g, root, target, name, true, {.preserve_enablement = true});
                 },
         });
 }
@@ -150,6 +196,8 @@ constexpr auto k_fx_rack_context_menu_popup_id = (imgui::Id)SourceLocationHash()
 // the whole rack, plus pasting a previously copied single effect onto its matching effect.
 static void DoFxRackContextMenuItems(GuiState& g, Box root) {
     DoFxRackCopyPasteMenuItems(g, root);
+
+    if (g.fx_rack_context_menu_in_switchboard) DoTidyFxOrderMenuItem(g, root);
 
     if (g.snapshot_clipboard.HasValue() &&
         g.snapshot_clipboard->section.tag == StateSnapshotSectionKind::Effect) {
@@ -174,7 +222,8 @@ static void DoFxRackContextMenuItems(GuiState& g, Box root) {
 // Detects a right-click on the empty background of the switchboard/rack and opens the context menu at the
 // cursor. Register this BEFORE the effects/toggles so their own menus take precedence. Uses the default
 // cursor so hovering the empty area doesn't show a button cursor. `id_seed` must be unique per call site.
-static void TryOpenFxRackContextMenu(GuiState& g, Rect background_window_r, u64 id_seed) {
+static void
+TryOpenFxRackContextMenu(GuiState& g, Rect background_window_r, u64 id_seed, bool in_switchboard) {
     if (g.imgui.ButtonBehaviour(background_window_r,
                                 g.imgui.MakeId(id_seed),
                                 {
@@ -183,6 +232,7 @@ static void TryOpenFxRackContextMenu(GuiState& g, Rect background_window_r, u64 
                                     .cursor_type = CursorType::Default,
                                 })) {
         g.fx_rack_context_menu_anchor = {.pos = GuiIo().in.cursor_pos, .size = {1, 1}};
+        g.fx_rack_context_menu_in_switchboard = in_switchboard;
         g.imgui.OpenPopupMenu(k_fx_rack_context_menu_popup_id, g.imgui.MakeId(id_seed));
     }
 }
@@ -225,6 +275,7 @@ static FXColours GetFxColMap(EffectType type) {
         case EffectType::ConvolutionReverb: return {ConvolutionBack, ConvolutionHighlight, ConvolutionButton};
         case EffectType::Phaser: return {PhaserBack, PhaserHighlight, PhaserButton};
         case EffectType::Eq: return {FxEqBack, FxEqHighlight, FxEqButton};
+        case EffectType::Limiter: return {LimiterBack, LimiterHighlight, LimiterButton};
         case EffectType::Count: PanicIfReached();
     }
     return {};
@@ -246,22 +297,37 @@ static void DoKnobJoiningLine(GuiState& g, Box knob1, Box knob2) {
     }
 }
 
-static Box DoEffectHeading(GuiState& g, Effect& fx, Box parent) {
-    auto const cols = GetFxColMap(fx.type);
-    auto const name = k_effect_info[ToInt(fx.type)].name;
+// Switchboard cards are narrow so they use the abbreviated names; the rack heading has room for the
+// unabbreviated name.
+static String EffectRackHeadingName(EffectType type) {
+    if (type == EffectType::ConvolutionReverb) return "Convolution Reverb"_s;
+    return k_effect_info[ToInt(type)].name;
+}
 
-    auto const heading_btn = DoBox(g.builder,
-                                   {
-                                       .parent = parent,
-                                       .id_extra = ToInt(fx.type),
-                                       .background_fill_colours = LiveColStruct(cols.back),
-                                       .round_background_corners = 0b0010,
-                                       .layout {
-                                           .size = layout::k_hug_contents,
-                                           .contents_padding {.lr = k_fx_heading_text_pad_lr},
-                                       },
-                                       .button_behaviour = imgui::ButtonConfig {},
-                                   });
+static Box DoEffectHeading(GuiState& g, Effect& fx, Box parent, bool at_rack_top_left, bool bypassed) {
+    auto const cols = GetFxColMap(fx.type);
+    auto const name = EffectRackHeadingName(fx.type);
+
+    auto const back_col = ({
+        auto col = LiveColStruct(cols.back);
+        if (bypassed) col.alpha = (u8)((f32)col.alpha * 0.4f);
+        col;
+    });
+
+    auto const heading_btn =
+        DoBox(g.builder,
+              {
+                  .parent = parent,
+                  .id_extra = ToInt(fx.type),
+                  .background_fill_colours = back_col,
+                  .round_background_corners = at_rack_top_left ? Corners {0b1010} : Corners {0b0010},
+                  .corner_rounding = k_panel_rounding,
+                  .layout {
+                      .size = layout::k_hug_contents,
+                      .contents_padding {.lr = k_fx_heading_text_pad_lr},
+                  },
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
 
     DoBox(g.builder,
           {
@@ -281,8 +347,11 @@ static Box DoEffectHeading(GuiState& g, Effect& fx, Box parent) {
                   .size = {1, k_fx_heading_h},
               },
               .tooltip = FunctionRef<String()> {[&]() -> String {
-                  return fmt::Format(g.scratch_arena, "{}", k_effect_info[ToInt(fx.type)].description);
+                  return fmt::Format(g.scratch_arena,
+                                     "Drag to move this effect up or down the chain.\n\n{}"_s,
+                                     k_effect_info[ToInt(fx.type)].description);
               }},
+              .tooltip_footer = k_right_click_tooltip_footer,
           });
 
     return heading_btn;
@@ -342,34 +411,36 @@ static void DoImpulseResponseSelector(GuiState& g,
     auto const btn_row = DoMidPanelPrevNextRow(g.builder, selector_row, layout::k_fill_parent);
 
     // IR name button
-    auto const ir_btn =
-        DoBox(g.builder,
-              {
-                  .parent = btn_row,
-                  .text = ir_name,
-                  .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                             : Colours {ColSet {
-                                                   .base = LiveColStruct(UiColMap::MidText),
-                                                   .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                   .active = LiveColStruct(UiColMap::MidTextOn),
-                                               }},
-                  .text_justification = TextJustification::CentredLeft,
-                  .text_overflow = TextOverflowType::ShowDotsOnRight,
-                  .layout {
-                      .size = {layout::k_fill_parent, k_mid_button_height},
-                  },
-                  .tooltip = FunctionRef<String()> {[&]() -> String {
-                      DynamicArray<char> buffer {g.scratch_arena};
-                      fmt::Append(buffer, "Impulse: {}", ir_name);
-                      if (auto const ir = CurrentIr(g.engine); ir && ir->description)
-                          fmt::Append(buffer, "\n{}", *ir->description);
-                      dyn::Append(buffer, '\n');
-                      if (greyed_out) dyn::AppendSpan(buffer, "Not active. ");
-                      dyn::AppendSpan(buffer, "The impulse response to use");
-                      return buffer.ToOwnedSpan();
-                  }},
-                  .button_behaviour = imgui::ButtonConfig {},
-              });
+    auto const ir_btn = DoBox(
+        g.builder,
+        {
+            .parent = btn_row,
+            .text = ir_name,
+            .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                       : Colours {ColSet {
+                                             .base = LiveColStruct(UiColMap::MidText),
+                                             .hot = LiveColStruct(UiColMap::MidTextHot),
+                                             .active = LiveColStruct(UiColMap::MidTextOn),
+                                         }},
+            .text_justification = TextJustification::CentredLeft,
+            .text_overflow = TextOverflowType::ShowDotsOnRight,
+            .layout {
+                .size = {layout::k_fill_parent, k_mid_button_height},
+            },
+            .tooltip = FunctionRef<String()> {[&]() -> String {
+                DynamicArray<char> buffer {g.scratch_arena};
+                if (greyed_out) dyn::AppendSpan(buffer, "Not active. ");
+                dyn::AppendSpan(
+                    buffer,
+                    "Open the IR Browser to choose an impulse response: the sample that gives this reverb its character."_s);
+                if (!g.engine.processor.convo.ir_id)
+                    dyn::AppendSpan(buffer, " There's no reverb until one is loaded."_s);
+                if (auto const ir = CurrentIr(g.engine); ir && ir->description)
+                    fmt::Append(buffer, "\n\n{}: {}", ir_name, *ir->description);
+                return buffer.ToOwnedSpan();
+            }},
+            .button_behaviour = imgui::ButtonConfig {},
+        });
 
     if (ir_btn.button_fired) {
         g.imgui.OpenModalViewport(g.ir_browser_state.k_panel_id);
@@ -396,8 +467,12 @@ static void DoImpulseResponseSelector(GuiState& g,
         btn_row,
         {
             .greyed_out = greyed_out,
-            .prev_tooltip = "Previous IR.\n\nThis is based on the currently selected filters."_s,
-            .next_tooltip = "Next IR.\n\nThis is based on the currently selected filters."_s,
+            .prev_tooltip =
+                "Step to the previous IR. A quick way to audition reverb spaces without opening the browser.\n\n" IR_BROWSER_FILTERS_TOOLTIP_NOTE
+                ""_s,
+            .next_tooltip =
+                "Step to the next IR. A quick way to audition reverb spaces without opening the browser.\n\n" IR_BROWSER_FILTERS_TOOLTIP_NOTE
+                ""_s,
         });
     if (prev_next.prev_fired) LoadAdjacentIr(context, g.ir_browser_state, SearchDirection::Backward);
     if (prev_next.next_fired) LoadAdjacentIr(context, g.ir_browser_state, SearchDirection::Forward);
@@ -407,7 +482,9 @@ static void DoImpulseResponseSelector(GuiState& g,
         g.builder,
         btn_row,
         {.icon = MidPanelIcon::Shuffle,
-         .tooltip = "Load a random IR.\n\nThis is based on the currently selected filters."_s,
+         .tooltip =
+             "Jump to a random IR. A quick way to stumble upon reverb spaces you might not have picked yourself.\n\n" IR_BROWSER_FILTERS_TOOLTIP_NOTE
+             ""_s,
          .greyed_out = greyed_out});
     if (shuffle_btn.button_fired) LoadRandomIr(context, g.ir_browser_state);
 
@@ -436,38 +513,149 @@ static void DoImpulseResponseSelector(GuiState& g,
           });
 }
 
+// The right portion of a switchboard card shows a checkbox: ticked when the effect is in the rack, empty
+// when it isn't. This icon is the zone that adds/removes the effect. For an effect in the rack, clicking
+// anywhere else on the card scrolls the rack to it; for an effect not in the rack, the rest of the card only
+// responds to dragging.
+static Rect SwitchboardCardIconRect(Rect card_r) {
+    auto const w = WwToPixels(26.0f);
+    return {.xywh = {card_r.Right() - w, card_r.y, w, card_r.h}};
+}
+
+// The left portion holds the light, which for an effect in the rack is the zone that bypasses it.
+static Rect SwitchboardCardLightRect(Rect card_r) {
+    return {.xywh = {card_r.x, card_r.y, WwToPixels(15.0f), card_r.h}};
+}
+
+static Rect SwitchboardCardGripRect(Rect card_r) {
+    auto const w = WwToPixels(18.0f);
+    return {.xywh = {SwitchboardCardIconRect(card_r).x - w, card_r.y, w, card_r.h}};
+}
+
+struct SwitchboardCardOptions {
+    EffectType type;
+    bool in_rack; // Whether the effect is in the rack at all, not whether it's bypassed.
+    bool bypassed; // Only meaningful when in_rack.
+    // The body, the light and the add/remove icon light up separately so it's clear which one the cursor
+    // will act on.
+    bool body_hot;
+    bool light_hot;
+    bool icon_hot;
+    bool show_grip;
+};
+
+static void DrawSwitchboardCard(GuiState& g, Rect card_r, SwitchboardCardOptions const& options) {
+    auto& draw_list = *g.imgui.draw_list;
+    auto const cols = GetFxColMap(options.type);
+    auto const rounding = WwToPixels(k_corner_rounding);
+
+    draw_list.AddRectFilled(card_r,
+                            ToU32(Col {.c = Col::White,
+                                       .alpha = options.body_hot  ? (u8)20
+                                                : options.in_rack ? (u8)5
+                                                                  : (u8)0}),
+                            rounding);
+    draw_list.AddRect(card_r,
+                      ToU32(Col {.c = Col::White, .alpha = options.in_rack ? (u8)10 : (u8)0}),
+                      rounding,
+                      0b1111,
+                      WwToPixels(1.0f));
+
+    auto const inactive_col = ToU32(Col {.c = Col::White, .alpha = options.body_hot ? (u8)80 : (u8)35});
+
+    bool const lit = options.in_rack && !options.bypassed;
+
+    // Light: the effect's colour only when it's actually processing. A bypassed effect loses the colour
+    // entirely, but stays brighter than one that isn't in the rack.
+    {
+        if (options.light_hot)
+            draw_list.AddRectFilled(SwitchboardCardLightRect(card_r),
+                                    ToU32(Col {.c = Col::White, .alpha = 30}),
+                                    rounding);
+
+        auto const light_w = WwToPixels(3.0f);
+        auto const light_r = Rect {
+            .xywh = {card_r.x + WwToPixels(6.0f), card_r.y + (card_r.h * 0.25f), light_w, card_r.h * 0.5f}};
+        draw_list.AddRectFilled(
+            light_r,
+            lit ? LiveCol(cols.button)
+            : options.in_rack
+                ? ToU32(Col {.c = Col::White,
+                             .alpha = (options.body_hot || options.light_hot) ? (u8)130 : (u8)75})
+                : inactive_col,
+            light_w / 2);
+    }
+
+    // Bypassed sits between the two: dimmer than a working effect, but still clearly brighter than one
+    // that isn't in the rack.
+    auto const text_r =
+        card_r.CutLeft(SwitchboardCardLightRect(card_r).w).CutRight(SwitchboardCardIconRect(card_r).w);
+    draw_list.AddTextInRect(text_r,
+                            lit               ? LiveCol(UiColMap::MidText)
+                            : options.in_rack ? ToU32(Col {.c = Col::White, .alpha = 170})
+                                              : ToU32(Col {.c = Col::White, .alpha = 100}),
+                            k_effect_info[ToInt(options.type)].name,
+                            {.justification = TextJustification::CentredLeft});
+
+    g.fonts.Push(ToInt(FontType::Icons));
+    DEFER { g.fonts.Pop(); };
+
+    {
+        auto const icon_r = SwitchboardCardIconRect(card_r);
+        if (options.icon_hot)
+            draw_list.AddRectFilled(icon_r, ToU32(Col {.c = Col::White, .alpha = 30}), rounding);
+        draw_list.AddTextInRect(icon_r,
+                                options.icon_hot  ? LiveCol(UiColMap::MidTextHot)
+                                : options.in_rack ? LiveCol(UiColMap::MidIcon)
+                                                  : inactive_col,
+                                options.in_rack ? ICON_CUSTOM_SQUARE_CHECK ""_s : ICON_CUSTOM_SQUARE ""_s,
+                                {
+                                    .justification = TextJustification::Centred,
+                                    .font_scaling = 0.8f,
+                                });
+    }
+
+    if (options.show_grip)
+        draw_list.AddTextInRect(SwitchboardCardGripRect(card_r),
+                                LiveCol(UiColMap::FXButtonGripIcon),
+                                ICON_FA_ARROWS_UP_DOWN ""_s,
+                                {.justification = TextJustification::Centred, .font_scaling = 0.7f});
+}
+
 struct EffectSectionInfo {
     Effect* fx;
     Box container;
 };
 
-// Switchboard: effect toggle buttons arranged in a single column.
+// Switchboard: a full-height column of cards, one per effect type, in chain order.
 static void DoSwitchboard(GuiState& g, Box root) {
     auto ordered_effects =
         DecodeEffectsArray(g.engine.processor.desired_effects_order.Load(LoadMemoryOrder::Relaxed),
                            g.engine.processor.effects_ordered_by_type);
+    auto const& params = g.engine.processor.main_params;
 
     Array<Box, k_num_effect_types> slots {};
 
+    // Filling the parent divides the column evenly, so the cards stay the same size as each other and as a
+    // whole fill the panel, whatever the effect is doing.
     for (auto const slot : Range(k_num_effect_types)) {
         slots[slot] = DoBox(g.builder,
                             {
                                 .parent = root,
                                 .id_extra = (u64)slot,
                                 .layout {
-                                    .size = {120.0f, 18.0f},
+                                    .size = {150.0f, 30},
                                 },
                             });
     }
 
     if (g.builder.IsInputAndRenderPass()) {
         auto& draw_list = *g.imgui.draw_list;
-        auto const corner_rounding = WwToPixels(k_corner_rounding);
 
         // Registered before the slots so each slot's own menu takes precedence; this only fires on the
-        // empty space around the toggles.
+        // empty space around the cards.
         if (auto const r = BoxRect(g.builder, root))
-            TryOpenFxRackContextMenu(g, g.imgui.ViewportRectToWindowRect(*r), SourceLocationHash());
+            TryOpenFxRackContextMenu(g, g.imgui.ViewportRectToWindowRect(*r), SourceLocationHash(), true);
 
         usize fx_index = 0;
         for (auto const slot : Range(k_num_effect_types)) {
@@ -480,81 +668,113 @@ static void DoSwitchboard(GuiState& g, Box root) {
                 if (g.dragging_fx_switch->drop_slot != slot)
                     GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
                 g.dragging_fx_switch->drop_slot = slot;
-                draw_list.AddRectFilled(window_slot_r, LiveCol(UiColMap::FXButtonDropZone), corner_rounding);
+                draw_list.AddRectFilled(window_slot_r,
+                                        LiveCol(UiColMap::FXButtonDropZone),
+                                        WwToPixels(k_corner_rounding));
             } else {
                 // Normal slot
                 auto fx = ordered_effects[fx_index++];
                 if (g.dragging_fx_switch && fx == g.dragging_fx_switch->fx) fx = ordered_effects[fx_index++];
 
-                auto const fx_cols = GetFxColMap(fx->type);
-                bool const is_visible = g.engine.fx_visible.Get(ToInt(fx->type));
+                bool const in_rack = g.engine.fx_visible.Get(ToInt(fx->type));
+                bool const bypassed = !EffectIsOn(params, fx);
 
-                // Toggle button: register behaviour
                 auto const btn_id = g.imgui.MakeId(SourceLocationHash() + ToInt(fx->type));
                 bool const fired = g.imgui.ButtonBehaviour(window_slot_r, btn_id, {});
                 bool const is_hot = g.imgui.IsHot(btn_id);
                 bool const is_active = g.imgui.IsActive(btn_id, MouseButton::Left);
 
-                // Toggle icon (coloured when on, grey when off)
-                auto const icon_text = is_visible ? ICON_FA_TOGGLE_ON ""_s : ICON_FA_TOGGLE_OFF ""_s;
-                auto const icon_col = is_visible ? LiveCol(fx_cols.button)
-                                                 : ((is_hot || is_active) ? LiveCol(UiColMap::MidIcon)
-                                                                          : LiveCol(UiColMap::MidIcon));
-                auto const icon_width = WwToPixels(k_fx_icon_width);
-                auto const icon_r = window_slot_r.WithW(icon_width);
+                auto const grip_r = SwitchboardCardGripRect(window_slot_r);
+                g.imgui.RegisterRectForMouseTracking(grip_r);
+                bool const cursor_over_grip = grip_r.Contains(GuiIo().in.cursor_pos);
+                bool const cursor_over_icon =
+                    SwitchboardCardIconRect(window_slot_r).Contains(GuiIo().in.cursor_pos);
 
-                {
-                    g.fonts.Push(ToInt(FontType::Icons));
-                    DEFER { g.fonts.Pop(); };
-                    draw_list.AddTextInRect(
-                        icon_r,
-                        icon_col,
-                        icon_text,
-                        {.justification = TextJustification::CentredLeft, .font_scaling = 0.75f});
-                }
+                // The light only acts as the bypass button for an effect that's in the rack; otherwise it's
+                // part of the body.
+                auto const light_r = SwitchboardCardLightRect(window_slot_r);
+                g.imgui.RegisterRectForMouseTracking(light_r);
+                bool const cursor_over_light = in_rack && light_r.Contains(GuiIo().in.cursor_pos);
 
-                // Text label
-                auto const text_r = window_slot_r.CutLeft(icon_width);
-                auto const text_col = LiveCol(UiColMap::MidText);
-                draw_list.AddTextInRect(text_r,
-                                        text_col,
-                                        k_effect_info[ToInt(fx->type)].name,
-                                        {.justification = TextJustification::CentredLeft});
+                DrawSwitchboardCard(
+                    g,
+                    window_slot_r,
+                    {
+                        .type = fx->type,
+                        .in_rack = in_rack,
+                        .bypassed = bypassed,
+                        .body_hot =
+                            in_rack && (is_hot || is_active) && !cursor_over_icon && !cursor_over_light,
+                        .light_hot = is_hot && cursor_over_light,
+                        .icon_hot = is_hot && cursor_over_icon,
+                        .show_grip = (is_hot || cursor_over_grip) && !cursor_over_icon && !cursor_over_light,
+                    });
 
-                DoEffectRightClickMenu(g, btn_id, window_slot_r, fx->type);
-
-                if (fired) {
-                    bool const new_state = !is_visible;
-                    BeginUndoableStep(g.engine, new_state ? "Add FX"_s : "Remove FX"_s);
-                    DEFER { EndUndoableStep(g.engine); };
-                    SetParameterValue(g.engine.processor,
-                                      k_effect_info[ToInt(fx->type)].on_param_index,
-                                      new_state ? 1.0f : 0.0f,
-                                      {});
-                    g.engine.fx_visible.SetToValue(ToInt(fx->type), new_state);
-                }
-
-                auto const window_grab_r = ({
-                    auto w = 18.0f;
-                    auto r = window_slot_r;
-                    r.x += r.w - w;
-                    r.w = w;
-                    r;
+                auto const action_and_state = ({
+                    String s;
+                    if (cursor_over_icon)
+                        s = in_rack ? "Click to take this effect out of the rack."_s
+                                    : "Click to add this effect to the rack."_s;
+                    else if (cursor_over_light)
+                        s = bypassed
+                                ? "Click to un-bypass this effect so it processes the mix again."_s
+                                : "Click to bypass this effect, letting the mix pass straight through it."_s;
+                    else if (!in_rack)
+                        s = "This effect isn't in the rack. Tick the checkbox to add it."_s;
+                    else
+                        s = bypassed
+                                ? "Click to jump to this effect in the rack. It's bypassed, so the mix passes straight through it."_s
+                                : "Click to jump to this effect in the rack."_s;
+                    s;
                 });
 
-                // Grab handle icon (show only on hover)
-                g.imgui.RegisterRectForMouseTracking(window_grab_r);
-                if (is_hot || window_grab_r.Contains(GuiIo().in.cursor_pos)) {
-                    g.fonts.Push(ToInt(FontType::Icons));
-                    DEFER { g.fonts.Pop(); };
-                    draw_list.AddTextInRect(
-                        window_grab_r,
-                        LiveCol(UiColMap::FXButtonGripIcon),
-                        ICON_FA_ARROWS_UP_DOWN ""_s,
-                        {.justification = TextJustification::CentredRight, .font_scaling = 0.7f});
+                String const tooltip =
+                    fmt::Format(g.scratch_arena,
+                                "{}\n\n{}\n\nFloe's effect rack is processed in order, from top to bottom."_s,
+                                action_and_state,
+                                k_effect_info[ToInt(fx->type)].description);
+
+                Tooltip(g,
+                        btn_id,
+                        window_slot_r,
+                        {
+                            .tooltip = tooltip,
+                            .tooltip_footer = "Drag to reorder the chain. Right-click for more options."_s,
+                            .placement = TooltipPlacement::RightThenBelow,
+                        });
+
+                DoEffectRightClickMenu(g, btn_id, window_slot_r, fx->type, true);
+
+                if (fired) {
+                    auto const press_pos = GuiIo().in.mouse_buttons[0].last_press.point;
+                    bool const pressed_icon = SwitchboardCardIconRect(window_slot_r).Contains(press_pos);
+                    if (pressed_icon) {
+                        BeginUndoableStep(g.engine, in_rack ? "Remove FX"_s : "Add FX"_s);
+                        DEFER { EndUndoableStep(g.engine); };
+                        SetParameterValue(g.engine.processor,
+                                          k_effect_info[ToInt(fx->type)].on_param_index,
+                                          in_rack ? 0.0f : 1.0f,
+                                          {});
+                        g.engine.fx_visible.SetToValue(ToInt(fx->type), !in_rack);
+                        if (!in_rack)
+                            g.fx_scroll_to = GuiState::FxScrollRequest {.type = fx->type, .flash = false};
+                    } else if (in_rack && light_r.Contains(press_pos)) {
+                        SetParameterValue(g.engine.processor,
+                                          k_effect_info[ToInt(fx->type)].on_param_index,
+                                          bypassed ? 1.0f : 0.0f,
+                                          {});
+                    } else if (in_rack) {
+                        g.fx_scroll_to = GuiState::FxScrollRequest {.type = fx->type, .flash = true};
+                    }
                 }
-                if (window_grab_r.Contains(GuiIo().in.cursor_pos))
-                    GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+
+                // Decided after the right-click menu because that registers its own button behaviour on
+                // the same id, which would otherwise reinstate the hand cursor.
+                if (is_hot || is_active) {
+                    GuiIo().out.wants.cursor_type = cursor_over_grip                ? CursorType::AllArrows
+                                                    : (in_rack || cursor_over_icon) ? CursorType::Hand
+                                                                                    : CursorType::Default;
+                }
 
                 // Drag start detection
                 if (is_active && !g.dragging_fx_switch) {
@@ -570,37 +790,22 @@ static void DoSwitchboard(GuiState& g, Box root) {
             }
         }
 
-        // Floating switch during drag
+        // Floating card during drag
         if (g.dragging_fx_switch) {
-            auto const fx_cols = GetFxColMap(g.dragging_fx_switch->fx->type);
-            bool const is_visible_drag = g.engine.fx_visible.Get(ToInt(g.dragging_fx_switch->fx->type));
+            Rect card_r = g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0]).Value());
+            card_r.pos = GuiIo().in.cursor_pos - g.dragging_fx_switch->relative_grab_point;
 
-            Rect btn_r = g.imgui.ViewportRectToWindowRect(BoxRect(g.builder, slots[0]).Value());
-            btn_r.pos = GuiIo().in.cursor_pos - g.dragging_fx_switch->relative_grab_point;
-
-            // Toggle icon
-            auto const icon_text = is_visible_drag ? String {ICON_FA_TOGGLE_ON} : String {ICON_FA_TOGGLE_OFF};
-            auto const icon_col = is_visible_drag ? LiveCol(fx_cols.button) : LiveCol(UiColMap::MidIcon);
-            auto const icon_width = WwToPixels(k_fx_icon_width);
-            auto const icon_r = btn_r.WithW(icon_width);
-
-            {
-                g.fonts.Push(ToInt(FontType::Icons));
-                DEFER { g.fonts.Pop(); };
-                draw_list.AddTextInRect(
-                    icon_r,
-                    icon_col,
-                    icon_text,
-                    {.justification = TextJustification::CentredLeft, .font_scaling = 0.75f});
-            }
-
-            // Text label
-            auto const text_r = btn_r.CutLeft(icon_width);
-            auto const text_col = LiveCol(UiColMap::MidText);
-            draw_list.AddTextInRect(text_r,
-                                    text_col,
-                                    k_effect_info[ToInt(g.dragging_fx_switch->fx->type)].name,
-                                    {.justification = TextJustification::CentredLeft});
+            DrawSwitchboardCard(
+                g,
+                card_r,
+                {
+                    .type = g.dragging_fx_switch->fx->type,
+                    .in_rack = (bool)g.engine.fx_visible.Get(ToInt(g.dragging_fx_switch->fx->type)),
+                    .bypassed = !EffectIsOn(params, g.dragging_fx_switch->fx),
+                    .body_hot = true,
+                    .icon_hot = false,
+                    .show_grip = true,
+                });
 
             GuiIo().out.wants.cursor_type = CursorType::AllArrows;
         }
@@ -633,7 +838,15 @@ static void DoEffectParams(GuiState& g,
 
     switch (fx.type) {
         case EffectType::StereoWiden: {
-            auto const mode = params.IntValue<param_values::StereoWidenMode>(ParamIndex::StereoWidenMode);
+            bool const has_bass_mono =
+                params.IntValue<param_values::StereoWidenMode>(ParamIndex::StereoWidenMode) ==
+                param_values::StereoWidenMode::BassMono;
+
+            // Bass Mono mode shows an extra knob. Flank the main controls with equal-fill spacers so they
+            // stay centred at the same point, and the knob appears in the right spacer without shifting
+            // the rest of the layout.
+            if (has_bass_mono)
+                DoBox(g.builder, {.parent = param_container, .layout {.size = {layout::k_fill_parent, 0}}});
 
             DoMenuParameter(g,
                             param_container,
@@ -650,9 +863,20 @@ static void DoEffectParams(GuiState& g,
                                 .bidirectional = true,
                             });
 
-            if (mode == param_values::StereoWidenMode::BassMono) {
+            if (has_bass_mono) {
+                auto const right_spacer =
+                    DoBox(g.builder,
+                          {
+                              .parent = param_container,
+                              .layout {
+                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Start,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                          });
                 DoKnobParameter(g,
-                                param_container,
+                                right_spacer,
                                 params.DescribedValue(ParamIndex::StereoWidenBassMono),
                                 {
                                     .width = k_knob_w,
@@ -664,6 +888,15 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::Distortion: {
+            auto const is_legacy = param_values::IsLegacyDistortionType(
+                params.IntValue<param_values::DistortionType>(ParamIndex::DistortionType));
+
+            // Legacy types show an extra Auto Gain button. Flank the main controls with equal-fill
+            // spacers so they stay centred at the same point, and the button appears in the right spacer
+            // without shifting the rest of the layout.
+            if (is_legacy)
+                DoBox(g.builder, {.parent = param_container, .layout {.size = {layout::k_fill_parent, 0}}});
+
             DoMenuParameter(g,
                             param_container,
                             params.DescribedValue(ParamIndex::DistortionType),
@@ -673,6 +906,49 @@ static void DoEffectParams(GuiState& g,
                 param_container,
                 params.DescribedValue(ParamIndex::DistortionDrive),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::DistortionPunish),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::DistortionTilt),
+                            {
+                                .width = k_knob_w,
+                                .knob_highlight_col = highlight_col,
+                                .greyed_out = greyed_out,
+                                .bidirectional = true,
+                            });
+            DoKnobParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::DistortionGain),
+                            {
+                                .width = k_knob_w,
+                                .knob_highlight_col = highlight_col,
+                                .greyed_out = greyed_out,
+                                .bidirectional = true,
+                            });
+            if (is_legacy) {
+                auto const right_spacer =
+                    DoBox(g.builder,
+                          {
+                              .parent = param_container,
+                              .layout {
+                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Start,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                          });
+                DoButtonParameter(g,
+                                  right_spacer,
+                                  params.DescribedValue(ParamIndex::DistortionAutoGain),
+                                  {.width = layout::k_hug_contents,
+                                   .height = k_fx_heading_h,
+                                   .greyed_out = greyed_out,
+                                   .on_colour = highlight_col});
+            }
             break;
         }
 
@@ -754,7 +1030,6 @@ static void DoEffectParams(GuiState& g,
         case EffectType::FilterEffect: {
             bool const using_gain = engine.processor.filter_effect.IsUsingGainParam(params);
 
-            // Visualiser takes up its own row (full width of the param container).
             auto const vis_box = DoBox(g.builder,
                                        {
                                            .parent = param_container,
@@ -1250,8 +1525,157 @@ static void DoEffectParams(GuiState& g,
             break;
         }
 
+        case EffectType::Limiter: {
+            DoKnobParameter(g,
+                            param_container,
+                            params.DescribedValue(ParamIndex::LimiterGain),
+                            {
+                                .width = k_knob_w,
+                                .knob_highlight_col = highlight_col,
+                                .greyed_out = greyed_out,
+                                .bidirectional = true,
+                            });
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::LimiterCeiling),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+
+            auto& limiter = static_cast<Limiter&>(fx);
+            auto const ceiling_db = params.DescribedValue(ParamIndex::LimiterCeiling).ProjectedValue();
+            auto const gain_db = params.DescribedValue(ParamIndex::LimiterGain).ProjectedValue();
+
+            auto const meters_row = DoBox(g.builder,
+                                          {
+                                              .parent = param_container,
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_gap = 16,
+                                                  .contents_direction = layout::Direction::Row,
+                                              },
+                                          });
+
+            auto const do_meter_column = [&](u64 index,
+                                             String label,
+                                             auto draw,
+                                             FunctionRef<MeterTooltipText()> text,
+                                             bool gr = false) {
+                auto const column =
+                    DoBox(g.builder,
+                          {
+                              .parent = meters_row,
+                              .id_extra = index,
+                              .layout {
+                                  .size = {!gr ? k_peak_meter_standard_width : 9, layout::k_hug_contents},
+                                  .contents_gap = 3,
+                                  .contents_direction = layout::Direction::Column,
+                              },
+                          });
+                auto const meter_box = DoBox(
+                    g.builder,
+                    {
+                        .parent = column,
+                        .layout {
+                            .size = {layout::k_fill_parent, 40},
+                        },
+                        .value_popup = FunctionRef<String()> {[&]() -> String { return text().value_popup; }},
+                        .tooltip = FunctionRef<String()> {[&]() -> String { return text().tooltip; }},
+                    });
+                if (auto const r = BoxRect(g.builder, meter_box)) draw(g.imgui.ViewportRectToWindowRect(*r));
+                DoBox(g.builder,
+                      {
+                          .parent = column,
+                          .text = label,
+                          .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                     : Colours {LiveColStruct(UiColMap::MidText)},
+                          .text_justification = TextJustification::Centred,
+                          .layout {
+                              .size = {layout::k_fill_parent, k_font_body_size},
+                          },
+                      });
+            };
+
+            // The input level at which limiting starts: whatever the Gain param pushes up to the ceiling.
+            auto const in_options = DrawPeakMeterOptions {
+                .flash_when_clipping = false,
+                .show_min_max_markers = true,
+                .min_db = -42,
+                .max_db = 6,
+                .marker_interval_db = 6,
+                .marker_db = ceiling_db - gain_db,
+                .marker_col = ToU32(highlight_col),
+                .marker_description = "Limiting starts at"_s,
+                .low_signal_threshold_db = -60.0f,
+            };
+            do_meter_column(
+                0,
+                "In"_s,
+                [&](Rect r) { DrawPeakMeter(g.imgui, r, &limiter.limiter_dsp.input_peak_meter, in_options); },
+                [&]() -> MeterTooltipText {
+                    return PeakMeterTooltipText(g.builder.arena,
+                                                limiter.limiter_dsp.input_peak_meter,
+                                                in_options);
+                });
+
+            auto const gr_options = DrawGainReductionMeterOptions {
+                .gain_reduction_db = limiter.limiter_dsp.GainReductionDb(),
+                .col = ToU32(highlight_col),
+            };
+            do_meter_column(
+                1,
+                "GR"_s,
+                [&](Rect r) { DrawGainReductionMeter(g.imgui, r, gr_options); },
+                [&]() -> MeterTooltipText {
+                    return GainReductionMeterTooltipText(g.builder.arena, gr_options);
+                },
+                true);
+
+            auto const out_options = DrawPeakMeterOptions {
+                .flash_when_clipping = true,
+                .show_min_max_markers = true,
+                .min_db = -42,
+                .max_db = 6,
+                .marker_interval_db = 6,
+                .marker_db = ceiling_db,
+                .marker_col = ToU32(highlight_col),
+                .marker_description = "Ceiling"_s,
+                .low_signal_threshold_db = -50.0f,
+            };
+            do_meter_column(
+                2,
+                "Out"_s,
+                [&](Rect r) {
+                    DrawPeakMeter(g.imgui, r, &limiter.limiter_dsp.output_peak_meter, out_options);
+                },
+                [&]() -> MeterTooltipText {
+                    return PeakMeterTooltipText(g.builder.arena,
+                                                limiter.limiter_dsp.output_peak_meter,
+                                                out_options);
+                });
+
+            break;
+        }
+
         case EffectType::Count: PanicIfReached(); break;
     }
+}
+
+// The rack viewport reserves right-hand padding for the scrollbar, so box rects stop short of the panel's
+// right edge. Divider lines are drawn manually so they can span that padding when no scrollbar is using it.
+static void DrawFxDividerLine(GuiState& g, Rect window_r, u32 colour, Edges edge) {
+    auto const& viewport = *g.imgui.curr_viewport;
+
+    auto clip = viewport.clipping_rect;
+    clip.w = viewport.unpadded_bounds.Right() - clip.x;
+    g.imgui.draw_list->PushClipRect(clip);
+    DEFER { g.imgui.draw_list->PopClipRect(); };
+
+    // Scrollbars are drawn before the viewport contents, so a line spanning a visible one would paint over
+    // its track.
+    window_r.w =
+        (viewport.has_scrollbar.y ? viewport.bounds.Right() : viewport.unpadded_bounds.Right()) - window_r.x;
+
+    g.imgui.draw_list->AddBorderEdges(window_r, colour, edge);
 }
 
 // Effect sections: heading + params + divider for each active effect.
@@ -1275,8 +1699,6 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
         auto const section = DoBox(g.builder,
                                    {
                                        .parent = root,
-                                       .border_colours = LiveColStruct(UiColMap::MidViewportDivider),
-                                       .border_edges = 0b0001,
                                        .layout {
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
                                            .contents_direction = layout::Direction::Row,
@@ -1297,10 +1719,19 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                                          },
                                      });
 
-        auto const heading_btn = DoEffectHeading(g, *fx, left_pane);
-        if (auto const r = BoxRect(g.builder, heading_btn))
-            DoEffectRightClickMenu(g, heading_btn.imgui_id, g.imgui.ViewportRectToWindowRect(*r), fx->type);
+        // The first heading sits in the rack panel's rounded corner when unscrolled.
+        bool const at_rack_top_left =
+            effect_sections.size == 0 && g.imgui.curr_viewport->scroll_offset.y == 0;
+
         bool const bypassed = !EffectIsOn(params, fx);
+
+        auto const heading_btn = DoEffectHeading(g, *fx, left_pane, at_rack_top_left, bypassed);
+        if (auto const r = BoxRect(g.builder, heading_btn))
+            DoEffectRightClickMenu(g,
+                                   heading_btn.imgui_id,
+                                   g.imgui.ViewportRectToWindowRect(*r),
+                                   fx->type,
+                                   false);
 
         if (!is_being_dragged) {
             // Drag start on heading
@@ -1377,9 +1808,8 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                     .layout {
                         .size = {19, 17},
                     },
-                    .tooltip = FunctionRef<String()> {[&]() -> String {
-                        return fmt::Format(g.scratch_arena, "Remove {}", k_effect_info[ToInt(fx->type)].name);
-                    }},
+                    .tooltip =
+                        "Remove this effect from the rack. You can add it back from the switchboard on the left whenever you want it again."_s,
                     .button_behaviour = imgui::ButtonConfig {},
                 });
             if (close_btn.button_fired) {
@@ -1408,12 +1838,10 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                     .layout {
                         .size = {19, 17},
                     },
-                    .tooltip = FunctionRef<String()> {[&]() -> String {
-                        return fmt::Format(g.scratch_arena,
-                                           "{} {}",
-                                           is_on ? "Bypass" : "Activate",
-                                           k_effect_info[ToInt(fx->type)].name);
-                    }},
+                    .tooltip =
+                        is_on
+                            ? "Bypass this effect, letting the sound pass straight through while it stays in the rack. Useful for hearing exactly what it's contributing.\n\nA bypassed effect is skipped by the audio engine entirely, so it costs no CPU."_s
+                            : "Un-bypass this effect so it processes the sound again."_s,
                     .button_behaviour = imgui::ButtonConfig {},
                 });
             if (bypass_btn.button_fired)
@@ -1421,6 +1849,48 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                                   k_effect_info[ToInt(fx->type)].on_param_index,
                                   is_on ? 0.0f : 1.0f,
                                   {});
+        }
+
+        if (auto const r = BoxRect(g.builder, section)) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+
+            DrawFxDividerLine(g, window_r, LiveCol(UiColMap::MidViewportDivider), 0b0001);
+
+            // Jump requested from the switchboard. The request is only cleared once we've actually
+            // scrolled, because on the frame an effect is added to the rack it has no section yet.
+            if (g.fx_scroll_to && g.fx_scroll_to->type == fx->type) {
+                auto& viewport = *g.imgui.curr_viewport;
+
+                // Move as little as possible: nothing if the section already fits on screen, otherwise
+                // just enough to bring the nearest edge into view.
+                auto const scroll_delta = ({
+                    f32 d = 0;
+                    if (window_r.y < viewport.visible_bounds.y || window_r.h > viewport.visible_bounds.h)
+                        d = window_r.y - viewport.visible_bounds.y;
+                    else if (window_r.Bottom() > viewport.visible_bounds.Bottom())
+                        d = window_r.Bottom() - viewport.visible_bounds.Bottom();
+                    d;
+                });
+
+                // No upper clamp: scroll_max is derived from the previous frame's content height, which
+                // doesn't yet include a just-added section, so it'd cap the jump short. The viewport clamps
+                // the offset itself next frame, when it knows the real height.
+                if (scroll_delta != 0)
+                    imgui::Context::SetYScroll(&viewport, Max(0.0f, viewport.scroll_offset.y + scroll_delta));
+                if (g.fx_scroll_to->flash) g.imgui.StartAnimation(heading_btn.imgui_id, 1.0f, 0.6f, true);
+                g.fx_scroll_to.Clear();
+            }
+
+            // Brief flash so you can see where the jump landed.
+            // The animation system's ease-out decays as (1-t)^2, which is nearly invisible for the second
+            // half of its duration. Sqrt undoes that to a linear fade, and the clamped scale holds it at
+            // full for the first ~150ms so the eye can land on it before it starts fading.
+            auto const flash = Min(1.0f, Sqrt(g.imgui.GetAnimatedValue(heading_btn.imgui_id, 0.0f)) * 1.3f);
+            if (flash > 0.001f) {
+                auto const flash_col = Col {.c = Col::White, .alpha = (u8)(flash * 30.0f)};
+                g.imgui.draw_list->AddRectFilled(window_r, ToU32(flash_col));
+                GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+            }
         }
 
         dyn::Append(effect_sections, EffectSectionInfo {fx, section});
@@ -1485,7 +1955,7 @@ static void DoEffectDragAndDrop(GuiState& g,
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
             // Zeroth section: highlight top edge (above first section); others: highlight bottom edge
             Edges const edge = (closest_section == &zeroth_section) ? Edges {0b0100} : Edges {0b0001};
-            g.imgui.draw_list->AddBorderEdges(window_r, LiveCol(UiColMap::FXDividerLineDropZone), edge);
+            DrawFxDividerLine(g, window_r, LiveCol(UiColMap::FXDividerLineDropZone), edge);
         }
 
         if (g.dragging_fx_unit->drop_slot != closest_slot)
@@ -1498,7 +1968,7 @@ static void DoEffectDragAndDrop(GuiState& g,
         GuiIo().out.wants.cursor_type = CursorType::AllArrows;
 
         auto const drag_cols = GetFxColMap(g.dragging_fx_unit->fx->type);
-        auto const text = k_effect_info[ToInt(g.dragging_fx_unit->fx->type)].name;
+        auto const text = EffectRackHeadingName(g.dragging_fx_unit->fx->type);
 
         auto const cursor_pos = GuiIo().in.cursor_pos;
         auto const heading_h = WwToPixels(k_fx_heading_h);
@@ -1590,7 +2060,8 @@ static void DoEffects(GuiState& g, GuiFrameContext const& frame_context, Box str
                               if (g.builder.IsInputAndRenderPass())
                                   TryOpenFxRackContextMenu(g,
                                                            g.imgui.curr_viewport->visible_bounds,
-                                                           SourceLocationHash());
+                                                           SourceLocationHash(),
+                                                           false);
 
                               auto const effect_sections =
                                   DoEffectSections(g, frame_context, effects_col, ordered_effects);
@@ -1606,6 +2077,7 @@ static void DoEffects(GuiState& g, GuiFrameContext const& frame_context, Box str
                               .draw_scrollbars = DrawMidPanelScrollbars,
                               .padding = {.r = k_scrollbar_width},
                               .scrollbar_padding = k_scrollbar_rhs_space,
+                              .scroll_button_size = k_scroll_button_size,
                               .scrollbar_visibility = {imgui::ViewportScrollbarVisibility::Never,
                                                        imgui::ViewportScrollbarVisibility::Auto},
                               .scrollbar_inside_padding = true,
@@ -1621,11 +2093,12 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             Box tab_extra_buttons_box) {
     // Add randomise button to heading.
     {
-        auto const rand_btn =
-            DoMidPanelIconButton(builder,
-                                 tab_extra_buttons_box,
-                                 {.icon = MidPanelIcon::Shuffle,
-                                  .tooltip = "Randomise which effects are on and shuffle their order"_s});
+        auto const rand_btn = DoMidPanelIconButton(
+            builder,
+            tab_extra_buttons_box,
+            {.icon = MidPanelIcon::Shuffle,
+             .tooltip =
+                 "Roll the dice on the rack: each effect is randomly put in or taken out, and the chain is shuffled into a new order. A quick way to land on combinations you'd never have reached for, and you can undo if a roll doesn't work out."_s});
 
         if (rand_btn.button_fired) {
             BeginUndoableStep(g.engine, "Randomise effects"_s);
@@ -1662,13 +2135,23 @@ void MidPanelEffectsContent(GuiBuilder& builder,
             }
         }
 
-        auto const power_btn =
-            DoMidPanelIconButton(builder,
-                                 tab_extra_buttons_box,
-                                 {.icon = MidPanelIcon::Power,
-                                  .tooltip = any_on ? "Bypass all effects"_s : "Activate all effects"_s,
-                                  .greyed_out = !any_visible,
-                                  .is_on = any_on});
+        auto const power_tooltip = ({
+            String t;
+            if (!any_visible)
+                t = "Bypass every effect in the rack at once. The rack is empty at the moment, so there's nothing to bypass."_s;
+            else if (any_on)
+                t = "Bypass every effect in the rack at once, for a quick A/B against the dry sound of your layers. Click again to bring them all back."_s;
+            else
+                t = "Switch every effect in the rack back on, so the whole chain processes the sound again."_s;
+            t;
+        });
+
+        auto const power_btn = DoMidPanelIconButton(builder,
+                                                    tab_extra_buttons_box,
+                                                    {.icon = MidPanelIcon::Power,
+                                                     .tooltip = power_tooltip,
+                                                     .greyed_out = !any_visible,
+                                                     .is_on = any_on});
 
         if (power_btn.button_fired && any_visible) {
             BeginUndoableStep(g.engine, "Bypass all effects"_s);
@@ -1683,10 +2166,11 @@ void MidPanelEffectsContent(GuiBuilder& builder,
             }
         }
 
-        auto const remove_btn = DoMidPanelIconButton(
-            builder,
-            tab_extra_buttons_box,
-            {.icon = MidPanelIcon::Unload, .tooltip = "Remove all effects"_s, .greyed_out = !any_visible});
+        auto const remove_btn = DoMidPanelIconButton(builder,
+                                                     tab_extra_buttons_box,
+                                                     {.icon = MidPanelIcon::Unload,
+                                                      .tooltip = "Remove all effects from the rack.",
+                                                      .greyed_out = !any_visible});
 
         if (remove_btn.button_fired && any_visible) {
             BeginUndoableStep(g.engine, "Remove all effects"_s);
@@ -1718,8 +2202,8 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                                            .parent = root,
                                            .layout {
                                                .size = {layout::k_hug_contents, layout::k_fill_parent},
-                                               .contents_padding = {.l = 8, .t = 4, .r = 8, .b = 6},
-                                               .contents_gap = 2,
+                                               .contents_padding = {.lr = 8, .tb = 8},
+                                               .contents_gap = 4,
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                            },

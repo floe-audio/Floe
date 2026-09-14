@@ -15,6 +15,10 @@ struct PresetBank {
     String subtitle {};
     u16 revision {};
     Optional<u64> library_for_visuals_id {};
+
+    // Relative path (posix separators) of a preset within the bank folder, including the extension. Empty if
+    // the bank doesn't suggest one.
+    String default_preset {};
 };
 
 PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena);

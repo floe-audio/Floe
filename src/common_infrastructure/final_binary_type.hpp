@@ -18,6 +18,7 @@ enum class FinalBinaryType : u8 {
     Tests,
     Benchmarks,
     DocsGenerator,
+    DistortionTableGenerator,
 };
 
 constexpr String ToString(FinalBinaryType type) {
@@ -35,6 +36,7 @@ constexpr String ToString(FinalBinaryType type) {
         case FinalBinaryType::Tests: return "tests"_s;
         case FinalBinaryType::Benchmarks: return "benchmarks"_s;
         case FinalBinaryType::DocsGenerator: return "docs_generator"_s;
+        case FinalBinaryType::DistortionTableGenerator: return "distortion_table_generator"_s;
     }
     PanicIfReached();
 }

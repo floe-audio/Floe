@@ -85,18 +85,20 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
         }
 
         if (library_name.size) {
-            auto const lib_name_row =
-                DoBox(builder,
-                      {
-                          .parent = container,
-                          .layout {
-                              .size = {layout::k_hug_contents, layout::k_hug_contents},
-                              .contents_gap = 6,
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Middle,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                      });
+            auto const lib_name_row = DoBox(
+                builder,
+                {
+                    .parent = container,
+                    .layout {
+                        .size = {layout::k_hug_contents, layout::k_hug_contents},
+                        .contents_gap = 6,
+                        .contents_direction = layout::Direction::Row,
+                        .contents_align = layout::Alignment::Middle,
+                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                    },
+                    .tooltip = mixed ? "This preset uses Instruments from more than one sample library."_s
+                                     : "The sample library that this preset's Instruments come from."_s,
+                });
 
             if (!mixed && first_lib_id) {
                 auto const imgs = GetLibraryImages(g.library_images,
@@ -135,19 +137,25 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
     {
         auto name = snapshot.state.extras.display_name;
         if (name.size) {
-            if (StateModifiedFromPinned(g.engine)) dyn::AppendSpan(name, " (modified)");
-            DoBox(builder,
-                  {
-                      .parent = container,
-                      .text = name,
-                      .wrap_width = k_wrap_to_parent,
-                      .size_from_text = true,
-                      .font = library_name.size && library_name.data != k_mixed_libraries.data
-                                  ? FontType::Heading1
-                                  : FontType::LargeTitle,
-                      .text_colours = Col {.c = Col::White},
-                      .text_justification = TextJustification::Centred,
-                  });
+            auto const modified = StateModifiedFromPinned(g.engine);
+            if (modified) dyn::AppendSpan(name, " (modified)");
+            DoBox(
+                builder,
+                {
+                    .parent = container,
+                    .text = name,
+                    .wrap_width = k_wrap_to_parent,
+                    .size_from_text = true,
+                    .font = library_name.size && library_name.data != k_mixed_libraries.data
+                                ? FontType::Heading1
+                                : FontType::LargeTitle,
+                    .text_colours = Col {.c = Col::White},
+                    .text_justification = TextJustification::Centred,
+                    .tooltip =
+                        modified
+                            ? "The name of the current preset. You've changed something since loading it, so it's marked as '(modified)'. Tip: the COMPARE toggle below lets you flick between the original preset and your modified version."_s
+                            : "The name of the current preset. If you change anything, it'll be marked as '(modified)'."_s,
+                });
         }
     }
 }
@@ -302,7 +310,10 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                         .contents_align = layout::Alignment::Start,
                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                     },
-                    .tooltip = active ? "Open instrument browser"_s : "Choose an instrument"_s,
+                    .tooltip =
+                        active
+                            ? "Open the Instrument Browser to choose a different Instrument for this layer. The Instrument is the sound source that this layer plays.\n\nAlso shown, in italics, is the library or folder it comes from."_s
+                            : "Open the Instrument Browser to choose an Instrument for this layer. The Instrument is the sound source that this layer plays.\n\nThis layer is silent until it has an Instrument."_s,
                     .button_behaviour = imgui::ButtonConfig {},
                 });
 
@@ -410,23 +421,34 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                   });
 
         {
-            auto const meter_box = DoBox(builder,
-                                         {
-                                             .parent = meter_and_level_box,
-                                             .layout {
-                                                 .size = {6, layout::k_fill_parent},
-                                             },
-                                         });
+            auto const options = DrawPeakMeterOptions {
+                .flash_when_clipping = false,
+                .show_db_markers = false,
+                .gap_px = 1,
+                .show_warning_zones = false,
+            };
+            auto const meter_box = DoBox(
+                builder,
+                {
+                    .parent = meter_and_level_box,
+                    .layout {
+                        .size = {6, layout::k_fill_parent},
+                    },
+                    .value_popup = active ? TooltipString {FunctionRef<String()> {[&]() -> String {
+                        return PeakMeterTooltipText(builder.arena, layer.peak_meter, options).value_popup;
+                    }}}
+                                          : TooltipString {k_nullopt},
+                    .tooltip = active ? TooltipString {FunctionRef<String()> {[&]() -> String {
+                        return fmt::Format(
+                            builder.arena,
+                            "Level of this layer's output.\n\n{}",
+                            PeakMeterTooltipText(builder.arena, layer.peak_meter, options).tooltip);
+                    }}}
+                                      : TooltipString {k_nullopt},
+                });
             if (active) {
                 if (auto const r = BoxRect(builder, meter_box))
-                    DrawPeakMeter(g.imgui,
-                                  g.imgui.ViewportRectToWindowRect(*r),
-                                  layer.peak_meter,
-                                  {
-                                      .flash_when_clipping = false,
-                                      .show_db_markers = false,
-                                      .gap_px = 1,
-                                  });
+                    DrawPeakMeter(g.imgui, g.imgui.ViewportRectToWindowRect(*r), &layer.peak_meter, options);
             }
         }
 
@@ -531,23 +553,29 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
             {
                 .icon = MidPanelIcon::Shuffle,
                 .tooltip =
-                    "Click to load a new random variation using the same randomness as last time.\n\n"
-                    "Or, click anywhere on the strip to load a variation: further right means a more varied result, further left stays closer to the current preset."_s,
+                    any_active
+                        ? "Load another Random Variation of the loaded preset, using the same amount of variation as last time. Handy for rolling through a few takes at an intensity you like, without having to click the strip in exactly the same spot again.\n\nHover to see the amount it'll use."_s
+                        : "Load a random sound. Nothing is loaded at the moment, so Floe will pick an Instrument at random and build a sound around it."_s,
                 .greyed_out = !any_active,
             });
 
-        auto const strip = DoBox(builder,
-                                 {
-                                     .parent = pill,
-                                     .id_extra = 1,
-                                     .background_fill_colours = Col {.c = Col::White, .alpha = 12},
-                                     .round_background_corners = 0b1111,
-                                     .corner_rounding = k_corner_rounding,
-                                     .layout {
-                                         .size = {layout::k_fill_parent, layout::k_fill_parent},
-                                     },
-                                     .button_behaviour = imgui::ButtonConfig {},
-                                 });
+        auto const strip = DoBox(
+            builder,
+            {
+                .parent = pill,
+                .id_extra = 1,
+                .background_fill_colours = Col {.c = Col::White, .alpha = 12},
+                .round_background_corners = 0b1111,
+                .corner_rounding = k_corner_rounding,
+                .layout {
+                    .size = {layout::k_fill_parent, layout::k_fill_parent},
+                },
+                .tooltip =
+                    any_active
+                        ? "Click anywhere on this strip to load a Random Variation: a fresh take on the loaded preset, built from its Instruments, effects and macros.\n\nWhere you click sets how far it strays from that preset. Towards the left keeps things close with small, related tweaks. Towards the right gets wilder: Instruments swapped, layers added, effects toggled and bigger parameter moves.\n\nEvery variation starts from the preset as it was loaded, not from the previous variation, so you can roll as many as you like without drifting ever further away. Each one is a single undo step, and the undo button in the top bar steps back through them. If you want to create a new basis on which to explore variations, you'll need to save the current state as a preset."_s
+                        : "Click anywhere on this strip to load a random sound. Nothing is loaded at the moment, so Floe will pick an Instrument at random and build a sound around it."_s,
+                .button_behaviour = imgui::ButtonConfig {},
+            });
 
         String hover_label = {};
 
@@ -763,6 +791,7 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                 .width = k_macro_knob_width,
                                 .style_system = GuiStyleSystem::MidPanel,
                                 .greyed_out = !has_destinations,
+                                .inactive_reason = "nothing assigned"_s,
                                 .override_label = g.engine.macro_names[macro_index],
                             });
         }
@@ -773,34 +802,61 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     constexpr f32 k_desc_column_width = 160;
 
     auto const& display = g.preset_description_display;
+    bool const has_user_description = g.engine.pinned_snapshot.state.metadata.description.size != 0;
 
-    auto const column = DoBox(builder,
-                              {
-                                  .parent = parent,
-                                  .border_colours = Col {.c = Col::White, .alpha = 20},
-                                  .border_edges = 0b1000, // left
-                                  .layout {
-                                      .size = {k_desc_column_width, layout::k_fill_parent},
-                                      .contents_padding = {.lr = 10, .tb = 10},
-                                      .contents_gap = 6,
-                                      .contents_direction = layout::Direction::Column,
-                                      .contents_align = layout::Alignment::Start,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                  },
-                              });
+#define WRITE_DESCRIPTION_TOOLTIP_NOTE                                                                       \
+    "When saving a preset, you can write a description of your own. Everything before the first line "       \
+    "break goes next to the preset name at the top of Floe, and the rest appears here."
+
+    auto const column = DoBox(
+        builder,
+        {
+            .parent = parent,
+            .border_colours = Col {.c = Col::White, .alpha = 20},
+            .border_edges = 0b1000, // left
+            .layout {
+                .size = {k_desc_column_width, layout::k_fill_parent},
+                .contents_padding = {.lr = 10, .tb = 10},
+                .contents_gap = 6,
+                .contents_direction = layout::Direction::Column,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+            },
+            .tooltip = [&]() -> String {
+                switch (display.kind) {
+                    case LongDescriptionKind::User:
+                    case LongDescriptionKind::UserContinued:
+                        return "The rest of this preset's description, written by whoever made it. The first part is shown next to the preset name at the top of Floe.\n\n" WRITE_DESCRIPTION_TOOLTIP_NOTE
+                               ""_s;
+                    case LongDescriptionKind::Auto:
+                        if (has_user_description)
+                            return "An automatic summary of what's in this preset: its Instruments, how they loop, the character of the sound and so on. The preset's own description is short enough to fit next to the preset name at the top of Floe, so Floe fills this space with a summary instead.\n\n" WRITE_DESCRIPTION_TOOLTIP_NOTE
+                                   ""_s;
+                        if (display.bottom_text.size)
+                            return "This preset has no description of its own, so Floe has written one automatically from what's in it: its Instruments, how they loop, the character of the sound and so on. The opening line is next to the preset name at the top of Floe, and the rest is here.\n\n" WRITE_DESCRIPTION_TOOLTIP_NOTE
+                                   ""_s;
+                        return "This preset has no description of its own, so Floe has written a short one automatically next to the preset name at the top of Floe. It's a simple enough preset that there's nothing more to add here.\n\n" WRITE_DESCRIPTION_TOOLTIP_NOTE
+                               ""_s;
+                }
+                return ""_s;
+            }(),
+        });
+
+#undef WRITE_DESCRIPTION_TOOLTIP_NOTE
+
+    bool const empty = !display.bottom_text.size;
 
     DoSectionLabel(builder, column, [&]() {
         switch (display.kind) {
             case LongDescriptionKind::UserContinued: return "DESCRIPTION (CONTINUED)"_s;
             case LongDescriptionKind::User: return "DESCRIPTION"_s;
-            case LongDescriptionKind::Auto: return "AUTO DESCRIPTION"_s;
+            case LongDescriptionKind::Auto: return empty ? "DESCRIPTION"_s : "DESCRIPTION (AUTO)"_s;
         }
         return ""_s;
     }());
 
-    if (!display.bottom_text.size) return;
-
-    auto const bottom_text = display.kind == LongDescriptionKind::UserContinued
+    auto const bottom_text = empty ? "–"_s
+                             : display.kind == LongDescriptionKind::UserContinued
                                  ? (String)fmt::Format(g.scratch_arena, "…{}", display.bottom_text)
                                  : display.bottom_text;
 
@@ -811,7 +867,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
               .wrap_width = k_wrap_to_parent,
               .size_from_text = true,
               .font = FontType::BodyItalic,
-              .text_colours = Col {.c = Col::White, .alpha = 170},
+              .text_colours = Col {.c = Col::White, .alpha = (u8)(empty ? 90 : 170)},
           });
 }
 
@@ -904,12 +960,22 @@ void MidPanelPerformContent(GuiBuilder& builder,
             LoadAdjacentPreset(context, g.preset_browser_state, direction);
         };
 
-        auto const prev_btn = do_nav_button(info_row, ICON_FA_CARET_LEFT ""_s, "Previous preset"_s, 0);
+        auto const prev_btn = do_nav_button(
+            info_row,
+            ICON_FA_CARET_LEFT ""_s,
+            "Step to the previous preset. This is a quick way to audition sounds without opening the browser, and works identically to the arrows next to the preset name at the top of Floe.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
+            ""_s,
+            0);
         if (prev_btn.button_fired) load_adjacent(SearchDirection::Backward);
 
         DoPresetInfo(builder, g, frame_context, info_row);
 
-        auto const next_btn = do_nav_button(info_row, ICON_FA_CARET_RIGHT ""_s, "Next preset"_s, 1);
+        auto const next_btn = do_nav_button(
+            info_row,
+            ICON_FA_CARET_RIGHT ""_s,
+            "Step to the next preset. This is a quick way to audition sounds without opening the browser, and works identically to the arrows next to the preset name at the top of Floe.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
+            ""_s,
+            1);
         if (next_btn.button_fired) load_adjacent(SearchDirection::Forward);
 
         if (prev_btn.is_hot || next_btn.is_hot)
@@ -928,6 +994,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                          .margins = {.t = 8},
                                          .contents_padding = {.lr = 8, .tb = 4},
                                      },
+                                     .tooltip = "The folder that this preset lives in."_s,
                                  });
         if (auto const r = BoxRect(builder, badge))
             DrawMidBlurredPanelSurface(g,
@@ -959,18 +1026,21 @@ void MidPanelPerformContent(GuiBuilder& builder,
     // Collapse/expand toggle - generous click target with chevron icon at the bottom-centre.
     // The icon is hover-only when expanded, always visible when collapsed.
     {
-        auto const toggle_bar =
-            DoBox(builder,
-                  {
-                      .parent = root,
-                      .layout {
-                          .size = {300, 100},
-                          .contents_align = layout::Alignment::Middle,
-                          .contents_cross_axis_align = layout::CrossAxisAlign::End,
-                      },
-                      .tooltip = collapsed ? "Show bottom panel"_s : "Hide bottom panel"_s,
-                      .button_behaviour = imgui::ButtonConfig {},
-                  });
+        auto const toggle_bar = DoBox(
+            builder,
+            {
+                .parent = root,
+                .layout {
+                    .size = {300, 100},
+                    .contents_align = layout::Alignment::Middle,
+                    .contents_cross_axis_align = layout::CrossAxisAlign::End,
+                },
+                .tooltip =
+                    collapsed
+                        ? "Show the bottom panel again, with the macros, layers and preset description."_s
+                        : "Hide the bottom panel so you can see the library's artwork in full. Click again to bring it back."_s,
+                .button_behaviour = imgui::ButtonConfig {},
+            });
 
         DoBox(builder,
               {

@@ -38,10 +38,7 @@ DrawCurvedSegment(DrawList& graphics, f32x2 p0, f32x2 p1, float curve_value, int
 }
 
 // x is velocity 0-1, y is the curve's 0-1 output which gets squared before being used as an amplitude.
-static void
-CurvePointValuePopup(GuiState& g, imgui::Id id, MouseButton mouse_button, Rect window_r, f32x2 point) {
-    if (!g.imgui.IsActive(id, mouse_button)) return;
-
+static String CurvePointValueText(GuiState& g, f32x2 point) {
     auto const uses_fractional_velocity =
         g.engine.processor.uses_fractional_velocity_values.Load(LoadMemoryOrder::Relaxed);
     auto const velocity_str = uses_fractional_velocity
@@ -52,15 +49,7 @@ CurvePointValuePopup(GuiState& g, imgui::Id id, MouseButton mouse_button, Rect w
     auto const volume_str = amp > k_silence_amp_80 ? fmt::Format(g.scratch_arena, "{.1} dB", AmpToDb(amp))
                                                    : g.scratch_arena.Clone("-∞ dB"_s);
 
-    DrawOverlayTooltipForRect(
-        g.imgui,
-        g.fonts,
-        fmt::Format(g.scratch_arena, "Velocity: {}\nVolume: {}", velocity_str, volume_str),
-        {
-            .r = window_r,
-            .avoid_r = window_r,
-            .justification = TooltipJustification::AboveOrBelow,
-        });
+    return fmt::Format(g.scratch_arena, "Velocity: {}\nVolume: {}", velocity_str, volume_str);
 }
 
 void DoCurveMap(GuiState& g,
@@ -68,11 +57,12 @@ void DoCurveMap(GuiState& g,
                 u8 layer_index,
                 Rect rect,
                 Optional<f32> velocity_marker,
-                String additional_tooltip) {
+                String description) {
     auto& imgui = g.imgui;
     auto const point_radius = WwToPixels(3.65f);
     constexpr f32 k_extra_grabber_scale = 3.0f;
     auto const grabber_radius = point_radius * k_extra_grabber_scale;
+    auto const popup_avoid_r = rect.Expanded(grabber_radius);
 
     auto& draw_list = *imgui.draw_list;
     draw_list.AddRectFilled(rect, LiveCol(UiColMap::EnvelopeBack), WwToPixels(k_corner_rounding));
@@ -179,8 +169,14 @@ void DoCurveMap(GuiState& g,
             Tooltip(g,
                     imgui_id,
                     region_rect,
-                    fmt::Format(g.scratch_arena, "Double-click to add point.\n\n{}", additional_tooltip),
-                    {.avoid_r = region_rect.Expanded(grabber_radius)});
+                    {
+                        .tooltip = (String)fmt::Format(
+                            g.scratch_arena,
+                            "{}\n\nThis stretch of the line has no point to bend it, so it runs straight.",
+                            description),
+                        .tooltip_footer = "Double-click to add a point. Right-click for more options."_s,
+                        .avoid_r = popup_avoid_r,
+                    });
 
             // Double-click to add point
             if (imgui.ButtonBehaviour(region_rect,
@@ -289,13 +285,17 @@ void DoCurveMap(GuiState& g,
                     changed_values = true;
                 }
 
-                Tooltip(g,
-                        imgui_id,
-                        curve_shaper_rect,
-                        fmt::Format(g.scratch_arena,
-                                    "Drag to change curve. Double-click to add point.\n\n{}",
-                                    additional_tooltip),
-                        {.avoid_r = curve_shaper_rect.Expanded(grabber_radius)});
+                Tooltip(
+                    g,
+                    imgui_id,
+                    curve_shaper_rect,
+                    {
+                        .tooltip = description,
+                        .tooltip_footer =
+                            "Drag to change this segment's curve. Shift-drag for fine control. " MODIFIER_KEY_NAME
+                            "-click to reset. Double-click to add a point. Right-click for more options."_s,
+                        .avoid_r = popup_avoid_r,
+                    });
 
                 // Double-click to add point
                 if (imgui.ButtonBehaviour(curve_shaper_rect,
@@ -414,44 +414,68 @@ void DoCurveMap(GuiState& g,
             });
             imgui.ButtonBehaviour(grabber_rect, imgui_id, drag_activation_cfg);
 
-            if (imgui.WasJustActivated(imgui_id, drag_activation_cfg.mouse_button))
+            auto& point = curve_map.points[(usize)working_point.real_index];
+            auto const& frame_input = GuiIo().in;
+
+            static f32x2 drag_start_cursor_pos;
+            static f32x2 point_at_drag_start;
+
+            auto const anchor_drag = [&]() {
+                drag_start_cursor_pos = frame_input.cursor_pos;
+                point_at_drag_start = {point.x, point.y};
+            };
+
+            if (imgui.WasJustActivated(imgui_id, drag_activation_cfg.mouse_button)) {
                 BeginUndoableStep(g.engine, "Move curve point"_s);
+
+                // Move the point vertically onto the straight line from bottom-left to top-right.
+                if (frame_input.modifiers.Get(ModifierKey::Modifier)) {
+                    point.y = point.x;
+                    changed_values = true;
+                }
+
+                anchor_drag();
+            }
             if (imgui.WasJustDeactivated(imgui_id, drag_activation_cfg.mouse_button))
                 EndUndoableStep(g.engine);
 
             if (imgui.IsActive(imgui_id, drag_activation_cfg.mouse_button)) {
-                // Dragging point
-                auto const mouse_pos = GuiIo().in.cursor_pos;
-                auto new_pos = f32x2 {
-                    (mouse_pos.x - rect.x) / rect.w,
-                    1.0f - ((mouse_pos.y - rect.y) / rect.h),
-                };
+                // Re-anchor when fine control is engaged or released so the point doesn't jump.
+                if (frame_input.Key(KeyCode::ShiftL).presses.size ||
+                    frame_input.Key(KeyCode::ShiftR).presses.size ||
+                    frame_input.Key(KeyCode::ShiftL).releases.size ||
+                    frame_input.Key(KeyCode::ShiftR).releases.size)
+                    anchor_drag();
 
-                // Don't allow going past the next point.
-                if (working_index + 1 < working.size) {
-                    auto const& next_point = working[working_index + 1];
-                    if (new_pos.x > next_point.x) new_pos.x = next_point.x;
+                if (All(frame_input.cursor_pos != -1)) {
+                    auto const slower = frame_input.modifiers.Get(ModifierKey::Shift) ? 4.0f : 1.0f;
+                    auto const delta = frame_input.cursor_pos - drag_start_cursor_pos;
+                    auto new_pos = f32x2 {
+                        point_at_drag_start.x + (delta.x / (rect.w * slower)),
+                        point_at_drag_start.y - (delta.y / (rect.h * slower)),
+                    };
+
+                    // Don't allow going past the next point.
+                    if (working_index + 1 < working.size) {
+                        auto const& next_point = working[working_index + 1];
+                        if (new_pos.x > next_point.x) new_pos.x = next_point.x;
+                    }
+
+                    // Don't allow going past the previous point.
+                    if (working_index > 0) {
+                        auto const& prev_point = working[working_index - 1];
+                        if (new_pos.x < prev_point.x) new_pos.x = prev_point.x;
+                    }
+
+                    new_pos = Clamp<f32x2>(new_pos, 0.0f, 1.0f);
+
+                    if (new_pos.x != point.x || new_pos.y != point.y) {
+                        point.x = new_pos.x;
+                        point.y = new_pos.y;
+                        changed_values = true;
+                    }
                 }
-
-                // Don't allow going past the previous point.
-                if (working_index > 0) {
-                    auto const& prev_point = working[working_index - 1];
-                    if (new_pos.x < prev_point.x) new_pos.x = prev_point.x;
-                }
-
-                new_pos = Clamp<f32x2>(new_pos, 0.0f, 1.0f);
-
-                curve_map.points[(usize)working_point.real_index].x = new_pos.x;
-                curve_map.points[(usize)working_point.real_index].y = new_pos.y;
-                changed_values = true;
             }
-
-            CurvePointValuePopup(g,
-                                 imgui_id,
-                                 drag_activation_cfg.mouse_button,
-                                 grabber_rect,
-                                 f32x2 {curve_map.points[(usize)working_point.real_index].x,
-                                        curve_map.points[(usize)working_point.real_index].y});
 
             draw_list.AddCircleFilled(pos,
                                       point_radius,
@@ -463,10 +487,17 @@ void DoCurveMap(GuiState& g,
             Tooltip(g,
                     imgui_id,
                     grabber_rect,
-                    fmt::Format(g.scratch_arena,
-                                "Drag to move point. Double-click to remove point.\n\n{}",
-                                additional_tooltip),
-                    {.avoid_r = grabber_rect.Expanded(grabber_radius)});
+                    {
+                        .value_popup = FunctionRef<String()> {[&]() -> String {
+                            return CurvePointValueText(g, f32x2 {point.x, point.y});
+                        }},
+                        .tooltip = description,
+                        .tooltip_footer =
+                            "Drag to move the point. Shift-drag for fine control. " MODIFIER_KEY_NAME
+                            "-click to reset its height. Double-click to remove it. Right-click for more "
+                            "options."_s,
+                        .avoid_r = popup_avoid_r,
+                    });
         }
     }
 

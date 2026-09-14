@@ -6,7 +6,7 @@
 #include "gui/elements/gui_modal.hpp"
 #include "gui_framework/gui_builder.hpp"
 
-static void LoadingOverlayPanel(GuiBuilder& builder) {
+static void LoadingOverlayPanel(GuiBuilder& builder, String text) {
     auto const root = DoBox(builder,
                             {
                                 .layout {
@@ -17,13 +17,13 @@ static void LoadingOverlayPanel(GuiBuilder& builder) {
     DoBox(builder,
           {
               .parent = root,
-              .text = "Loading…",
+              .text = text,
               .size_from_text = true,
               .font = FontType::Heading1,
           });
 }
 
-PUBLIC void DoLoadingOverlay(GuiBuilder& builder, bool is_loading) {
+PUBLIC void DoLoadingOverlay(GuiBuilder& builder, bool is_loading, String text) {
     if (!is_loading) return;
 
     auto viewport_config = k_default_modal_viewport;
@@ -40,7 +40,7 @@ PUBLIC void DoLoadingOverlay(GuiBuilder& builder, bool is_loading) {
 
     DoBoxViewport(builder,
                   {
-                      .run = [](GuiBuilder& b) { LoadingOverlayPanel(b); },
+                      .run = [text](GuiBuilder& b) { LoadingOverlayPanel(b, text); },
                       .bounds = Rect {},
                       .imgui_id = k_loading_overlay_id,
                       .viewport_config = viewport_config,

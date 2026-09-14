@@ -19,6 +19,13 @@ struct OnePoleLowPassFilter {
         return 1 - Exp(ElementType(-1) / (milliseconds * sample_rate * ElementType(0.001)));
     }
 
+    static ElementType HzToCutoff(ElementType hz, ElementType sample_rate) {
+        ASSERT_HOT(hz > 0 && sample_rate > 0);
+        return 1 - Exp(-k_tau<ElementType> * hz / sample_rate);
+    }
+
+    T HighPass(T const input, ElementType const cutoff01) { return input - LowPass(input, cutoff01); }
+
     T LowPass(T const input, ElementType const cutoff01) {
         if (PrevIsInvalid()) [[unlikely]] {
             prev_output = input;

@@ -578,7 +578,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
 
     {
         bool set_tune = false;
-        if (auto p = changes.changed_params.IntValue<int>(layer.index, LayerParamIndex::TuneSemitone)) {
+        if (auto p =
+                changes.changed_params.IntValueLegacyAware<int>(layer.index, LayerParamIndex::TuneSemitone)) {
             layer.tune_semitone = (f32)*p;
             set_tune = true;
         }

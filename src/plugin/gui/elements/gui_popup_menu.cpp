@@ -6,6 +6,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
+#include "gui_framework/font_type.hpp"
 
 Box MenuOpenButton(GuiBuilder& builder, Box parent, MenuOpenButtonOptions const& options, u64 id_extra) {
     auto const background_colours = [&]() -> Colours {
@@ -89,11 +90,13 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
                       .contents_direction = layout::Direction::Row,
                   },
                   .tooltip = options.tooltip,
+                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->id,
+                  .tooltip_placement = TooltipPlacement::RightThenBelow,
                   .button_behaviour = disabled ? Optional<imgui::ButtonConfig> {}
                                                : Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}},
               });
 
-    if (item.button_fired && options.close_on_click) builder.imgui.CloseTopPopupOnly();
+    if (item.button_fired && options.close_on_click) builder.imgui.CloseTopMenu();
 
     if (!options.no_icon_gap)
         DoBox(builder,
@@ -137,6 +140,104 @@ Box MenuItem(GuiBuilder& builder, Box parent, MenuItemOptions const& options, u6
                   .size_from_text = true,
                   .text_colours = Col {.c = Col::Subtext0},
               });
+    }
+
+    return item;
+}
+
+Box MenuSubmenuItem(GuiBuilder& builder, Box parent, MenuSubmenuItemOptions const& options, u64 id_extra) {
+    auto const submenu_popup_id = builder.imgui.MakeId(id_extra ^ SourceLocationHash());
+    auto const submenu_is_open = builder.imgui.IsPopupMenuOpen(submenu_popup_id);
+
+    auto const item = DoBox(builder,
+                            {
+                                .parent = parent,
+                                .id_extra = id_extra,
+                                .background_fill_auto_hot_active_overlay = true,
+                                .show_as_hot = submenu_is_open,
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .contents_direction = layout::Direction::Row,
+                                },
+                                .button_behaviour = imgui::ButtonConfig {},
+                            });
+
+    // The submenu is 'selected' when it contains the currently-active item. This is a different meaning to a
+    // MenuItem's checkmark, so we mark the category with a subtle dot rather than a tick.
+    DoBox(builder,
+          {
+              .parent = item,
+              .text = options.is_selected ? String(ICON_FA_CIRCLE) : "",
+              .font = FontType::Icons,
+              .font_size = k_font_body_size * 0.3f,
+              .text_colours = Col {.c = Col::Subtext0},
+              .text_justification = TextJustification::Centred,
+              .layout {
+                  .size = k_icon_button_size,
+                  .margins {.l = k_menu_item_padding_x},
+              },
+          });
+
+    auto const label_row =
+        DoBox(builder,
+              {
+                  .parent = item,
+                  .layout {
+                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                      .contents_padding = {.lr = k_menu_item_padding_x, .tb = k_menu_item_padding_y},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Justify,
+                  },
+              });
+
+    DoBox(builder,
+          {
+              .parent = label_row,
+              .text = options.text,
+              .size_from_text = true,
+              .font = FontType::Body,
+          });
+
+    DoBox(builder,
+          {
+              .parent = label_row,
+              .text = ICON_FA_CARET_RIGHT,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .font_size = k_font_body_size * 0.7f,
+              .text_colours = Col {.c = Col::Subtext0},
+              .layout {.margins = {.l = 20}},
+          });
+
+    if (auto const item_r = BoxRect(builder, item)) {
+        auto const window_r = builder.imgui.RegisterAndConvertRect(*item_r);
+        builder.imgui.PopupMenuButtonBehaviour(window_r,
+                                               item.imgui_id,
+                                               submenu_popup_id,
+                                               imgui::ButtonConfig {.dont_set_hot = true});
+    }
+
+    if (submenu_is_open) {
+        DoBoxViewport(builder,
+                      {
+                          .run =
+                              [do_submenu_items = options.do_submenu_items.CloneObject(builder.arena)](
+                                  GuiBuilder& viewport_builder) {
+                                  auto const submenu_root =
+                                      DoBox(viewport_builder,
+                                            {
+                                                .layout {
+                                                    .size = layout::k_hug_contents,
+                                                    .contents_direction = layout::Direction::Column,
+                                                    .contents_align = layout::Alignment::Start,
+                                                },
+                                            });
+                                  do_submenu_items(submenu_root);
+                              },
+                          .bounds = item,
+                          .imgui_id = submenu_popup_id,
+                          .viewport_config = k_default_popup_menu_viewport,
+                      });
     }
 
     return item;

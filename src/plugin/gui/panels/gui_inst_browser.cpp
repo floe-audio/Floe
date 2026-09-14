@@ -3,6 +3,8 @@
 
 #include "gui/panels/gui_inst_browser.hpp"
 
+#include "foundation/container/dynamic_array.hpp"
+
 #include "engine/favourite_items.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/panels/gui_common_browser.hpp"
@@ -346,6 +348,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
                 .parent = root,
                 .folder = folder,
                 .skip_heading = IsSingleFolderFilterSelected(common_state, folder->Hash()),
+                .tooltip_placement = TooltipPlacement::RightThenLeft,
             };
         }
 
@@ -355,62 +358,60 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
             auto const is_current = context.layer.instrument_id == inst_id;
             auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
 
-            auto const item =
-                DoBrowserItem(builder,
-                              common_state,
-                              {
-                                  .parent = folder_section->Do(builder).Get<Box>(),
-                                  .id_extra = inst_hash,
-                                  .text = inst.name,
-                                  .tooltip = FunctionRef<String()>([&]() -> String {
-                                      DynamicArray<char> buf {builder.arena};
-                                      fmt::Append(buf,
-                                                  "{} from {} by {}.\n\n",
-                                                  inst.name,
-                                                  inst.library.name,
-                                                  inst.library.author);
+            auto const item = DoBrowserItem(
+                builder,
+                common_state,
+                {
+                    .parent = folder_section->Do(builder).Get<Box>(),
+                    .id_extra = inst_hash,
+                    .text = inst.name,
+                    .value_popup = FunctionRef<String()>([&]() -> String {
+                        DynamicArray<char> buf {builder.arena};
 
-                                      if (inst.description) fmt::Append(buf, "{}", inst.description);
+                        if (inst.description) fmt::Append(buf, "{}\n\n", inst.description);
 
-                                      fmt::Append(buf, "\n\nTags: ");
-                                      if (!inst.tags.AnyValuesSet())
-                                          fmt::Append(buf, "None");
-                                      else {
-                                          bool first = true;
-                                          inst.tags.ForEachSetBit([&](usize bit) {
-                                              if (!first) fmt::Append(buf, ", ");
-                                              first = false;
-                                              fmt::Append(buf, "{}", GetTagInfo((TagType)bit).name);
-                                          });
-                                      }
+                        fmt::Append(buf, "Tags: ");
+                        if (!inst.tags.AnyValuesSet())
+                            fmt::Append(buf, "None");
+                        else {
+                            bool first = true;
+                            inst.tags.ForEachSetBit([&](usize bit) {
+                                if (!first) fmt::Append(buf, ", ");
+                                first = false;
+                                fmt::Append(buf, "{}", GetTagInfo((TagType)bit).name);
+                            });
+                        }
 
-                                      return buf.ToOwnedSpan();
-                                  }),
-                                  .item_id = inst_hash,
-                                  .is_current = is_current,
-                                  .is_favourite = is_favourite,
-                                  .is_tab_item = new_folder,
-                                  .icons = ({
-                                      if (&lib != previous_library) {
-                                          previous_library = &lib;
-                                          auto const imgs = GetLibraryImages(context.library_images,
-                                                                             builder.imgui,
-                                                                             lib.id,
-                                                                             context.sample_library_server,
-                                                                             context.engine.instance_index,
-                                                                             LibraryImagesTypes::Icon);
-                                          if (imgs.icon)
-                                              lib_icon = *imgs.icon;
-                                          else
-                                              lib_icon = ItemIconType::None;
-                                      }
-                                      decltype(BrowserItemOptions::icons) result {};
-                                      dyn::Emplace(result, lib_icon);
-                                      result;
-                                  }),
-                                  .notifications = context.notifications,
-                                  .store = context.persistent_store,
-                              });
+                        fmt::Append(buf, "\n\nLibrary: {} by {}.", inst.library.name, inst.library.author);
+
+                        return buf.ToOwnedSpan();
+                    }),
+                    .tooltip = "Click to load the instrument."_s,
+                    .item_id = inst_hash,
+                    .is_current = is_current,
+                    .is_favourite = is_favourite,
+                    .is_tab_item = new_folder,
+                    .icons = ({
+                        if (&lib != previous_library) {
+                            previous_library = &lib;
+                            auto const imgs = GetLibraryImages(context.library_images,
+                                                               builder.imgui,
+                                                               lib.id,
+                                                               context.sample_library_server,
+                                                               context.engine.instance_index,
+                                                               LibraryImagesTypes::Icon);
+                            if (imgs.icon)
+                                lib_icon = *imgs.icon;
+                            else
+                                lib_icon = ItemIconType::None;
+                        }
+                        decltype(BrowserItemOptions::icons) result {};
+                        dyn::Emplace(result, lib_icon);
+                        result;
+                    }),
+                    .notifications = context.notifications,
+                    .store = context.persistent_store,
+                });
 
             if (is_current) {
                 if (auto const r = BoxRect(builder, item.box)) {

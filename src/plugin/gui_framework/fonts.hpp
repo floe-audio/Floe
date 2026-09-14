@@ -21,7 +21,6 @@ struct GlyphRange {
     Char16 start;
     Char16 end; // inclusive
 };
-using GlyphRanges = DynamicArrayBounded<GlyphRange, 10>;
 
 struct FontConfig {
     bool font_data_reference_only = false;
@@ -39,7 +38,7 @@ struct FontConfig {
     // font. If enabled, you can set oversample_h/v to 1.
     bool pixel_snap_h = false;
     f32x2 glyph_extra_spacing = {}; // Extra spacing (in pixels) between glyphs.
-    GlyphRanges glyph_ranges = {};
+    Span<GlyphRange const> glyph_ranges = {}; // Must remain valid until Build(). Usually static data.
 
     // Merge into previous Font, so you can combine multiple inputs font into one Font (e.g. ASCII font +
     // icons + Japanese glyphs).
@@ -89,8 +88,8 @@ struct FontAtlas {
                             int* out_height,
                             int* out_bytes_per_pixel = nullptr); // 4 bytes-per-pixel
 
-    static GlyphRanges GetGlyphRangesDefault(); // Basic Latin, Extended Latin
-    static GlyphRanges GetGlyphRangesDefaultAudioPlugin();
+    static Span<GlyphRange const> GetGlyphRangesDefault(); // Basic Latin, Extended Latin
+    static Span<GlyphRange const> GetGlyphRangesDefaultAudioPlugin();
 
     ALWAYS_INLINE Font* operator[](u32 i) { return fonts[i]; }
     ALWAYS_INLINE Font const* operator[](u32 i) const { return fonts[i]; }

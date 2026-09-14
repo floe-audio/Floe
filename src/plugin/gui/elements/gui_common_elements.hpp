@@ -4,18 +4,35 @@
 #pragma once
 
 #include "gui/core/gui_fwd.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_builder.hpp"
+
+#define BROWSER_FILTERS_TOOLTIP_NOTE(browser_name)                                                           \
+    "This follows the filters you've set in the " browser_name                                               \
+    ", such as the selected library, tags or search text."
+#define PRESET_BROWSER_FILTERS_TOOLTIP_NOTE     BROWSER_FILTERS_TOOLTIP_NOTE("Preset Browser")
+#define INSTRUMENT_BROWSER_FILTERS_TOOLTIP_NOTE BROWSER_FILTERS_TOOLTIP_NOTE("Instrument Browser")
+#define IR_BROWSER_FILTERS_TOOLTIP_NOTE         BROWSER_FILTERS_TOOLTIP_NOTE("IR Browser")
 
 namespace prefs {
 struct Preferences;
 }
 
-struct TooltipOptions {
-    Optional<Rect> avoid_r {}; // If nullopt, uses the window_r.
-    bool ignore_show_tooltips_preference = false;
-    TooltipJustification justification = TooltipJustification::AboveOrBelow;
+bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, TooltipArgs const& args);
+
+// Text builders for meter tooltips. Callers construct the same DrawXOptions struct they pass to the
+// corresponding Draw* function and pass it here too, so the drawn ranges and the tooltip text can never
+// disagree.
+struct MeterTooltipText {
+    String value_popup; // Current reading.
+    String tooltip; // What the drawn ranges mean.
 };
-bool Tooltip(GuiState& g, imgui::Id id, Rect window_r, String str, TooltipOptions const& options);
+MeterTooltipText PeakMeterTooltipText(ArenaAllocator& arena,
+                                      StereoPeakMeter const& level,
+                                      DrawPeakMeterOptions const& options);
+MeterTooltipText GainReductionMeterTooltipText(ArenaAllocator& arena,
+                                               DrawGainReductionMeterOptions const& options);
+MeterTooltipText LoudnessMeterTooltipText(ArenaAllocator& arena, DrawLoudnessMeterOptions const& options);
 
 constexpr f32 k_mid_button_height = 22.4f;
 

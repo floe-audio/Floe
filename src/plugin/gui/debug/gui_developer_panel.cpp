@@ -191,7 +191,7 @@ static void DrawDevGuiViewportBackground(imgui::Context const& imgui) {
 }
 
 static void DrawDevGuiScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
-    for (auto const b : bars) {
+    for (auto const& b : bars) {
         if (!b) continue;
         imgui.draw_list->AddRectFilled(b->strip, 0xff404040);
         u32 col = 0xffe5e5e5;

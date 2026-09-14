@@ -7,6 +7,7 @@
 
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui_framework/font_type.hpp"
 
 Box DoModalRootBox(GuiBuilder& builder, String name) {
     return DoBox(builder,
@@ -165,6 +166,7 @@ Box DoModalTabBar(GuiBuilder& builder, ModalTabBarConfig const& config) {
                       .text = *tab.icon,
                       .size_from_text = true,
                       .font = FontType::Icons,
+                      .font_size = k_font_icons_size * 0.8f,
                       .text_colours = Col {.c = is_current ? Col::Subtext0 : Col::Surface2},
                   });
         }

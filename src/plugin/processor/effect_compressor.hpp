@@ -25,17 +25,17 @@ class Compressor final : public Effect {
 
         if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::CompressorThreshold)) {
             m_major_tom.slider_threshold = *p;
-            m_vital_args.params[ToInt(vitfx::compressor::Params::UpperThresholdDb)] = *p;
+            m_target_threshold_db = *p;
             major_tom_changed = true;
         }
         if (auto p = changes.changed_params.ProjectedValueLegacyAware(ParamIndex::CompressorRatio)) {
             m_major_tom.slider_ratio = *p;
             // Map traditional ratio (1..20) to Vital's 0..1 normalised ratio: 1 - 1/r.
-            m_vital_args.params[ToInt(vitfx::compressor::Params::UpperRatio)] = 1.0f - (1.0f / *p);
+            m_target_ratio = 1.0f - (1.0f / *p);
             major_tom_changed = true;
         }
         if (auto p = changes.changed_params.ProjectedValue(ParamIndex::CompressorGain)) {
-            m_major_tom.slider_gain = *p;
+            m_target_gain_db = *p;
             m_vital_args.params[ToInt(vitfx::compressor::Params::OutputGainDb)] = *p;
             major_tom_changed = true;
         }
@@ -62,6 +62,9 @@ class Compressor final : public Effect {
                     io_frames,
                     [&](f32x2 in) {
                         alignas(f32x2) f32 out[2];
+                        m_major_tom.slider_gain =
+                            m_gain_smoother.LowPass(m_target_gain_db, context.one_pole_smoothing_cutoff_10ms);
+                        m_major_tom.UpdateMakeupGain();
                         m_major_tom.Process(context.sample_rate, in.x, in.y, out[0], out[1]);
                         return LoadAlignedToType<f32x2>(out);
                     },
@@ -75,6 +78,18 @@ class Compressor final : public Effect {
                 u32 pos = 0;
                 while (num_frames) {
                     u32 const chunk_size = Min(num_frames, 64u);
+
+                    // vitfx::compressor::Process holds threshold/ratio fixed for the whole chunk
+                    // (no internal ramping), so smooth them here to avoid stepping the gain
+                    // multiplier abruptly when the params change quickly (e.g. dragging a knob).
+                    // The cutoff is compensated for being applied once per chunk rather than once
+                    // per sample.
+                    auto const chunk_cutoff =
+                        1 - Pow(1 - context.one_pole_smoothing_cutoff_10ms, (f32)chunk_size);
+                    m_vital_args.params[ToInt(vitfx::compressor::Params::UpperThresholdDb)] =
+                        m_threshold_smoother.LowPass(m_target_threshold_db, chunk_cutoff);
+                    m_vital_args.params[ToInt(vitfx::compressor::Params::UpperRatio)] =
+                        m_ratio_smoother.LowPass(m_target_ratio, chunk_cutoff);
 
                     m_vital_args.num_frames = (int)chunk_size;
                     m_vital_args.in_interleaved = (f32*)(io_frames.data + pos);
@@ -108,6 +123,9 @@ class Compressor final : public Effect {
     void ResetInternal() override {
         m_major_tom.Reset();
         vitfx::compressor::HardReset(*m_vital);
+        m_threshold_smoother.Reset();
+        m_ratio_smoother.Reset();
+        m_gain_smoother.Reset();
     }
 
     void PrepareToPlay(AudioProcessingContext const& context) override {
@@ -119,4 +137,10 @@ class Compressor final : public Effect {
     StillwellMajorTom m_major_tom;
     vitfx::compressor::Compressor* m_vital {};
     vitfx::compressor::ProcessCompressorArgs m_vital_args {};
+    f32 m_target_threshold_db {};
+    f32 m_target_ratio {};
+    f32 m_target_gain_db {};
+    OnePoleLowPassFilter<f32> m_threshold_smoother {};
+    OnePoleLowPassFilter<f32> m_ratio_smoother {};
+    OnePoleLowPassFilter<f32> m_gain_smoother {};
 };

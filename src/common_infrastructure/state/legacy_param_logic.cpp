@@ -70,6 +70,28 @@ constexpr auto k_legacy_effect_filter_type_to_current = ArrayT<param_values::Eff
 static_assert(k_legacy_effect_filter_type_to_current.size ==
               ToInt(param_values::LegacyEffectFilterType::Count));
 
+// Every legacy option maps to its Legacy twin in the modern enum: the same algorithm (bugs and all) with no
+// level compensation, so old presets and automation sound as they did. The modern enum's non-legacy options
+// are all level-compensated and some are fixed-up or replacement algorithms, so none of them is a match.
+constexpr auto k_legacy_distortion_type_to_current = ArrayT<param_values::DistortionType>({
+    param_values::DistortionType::LegacyTubeLog,
+    param_values::DistortionType::LegacyTubeAsym3,
+    param_values::DistortionType::LegacySine,
+    param_values::DistortionType::LegacyRaph1,
+    param_values::DistortionType::LegacyDecimate,
+    param_values::DistortionType::LegacyAtan,
+    param_values::DistortionType::LegacyClip,
+    param_values::DistortionType::LegacyFoldback,
+    param_values::DistortionType::LegacyRectifier,
+    param_values::DistortionType::LegacyRingMod,
+});
+static_assert(k_legacy_distortion_type_to_current.size == ToInt(param_values::LegacyDistortionType::Count));
+static_assert([] {
+    for (auto const type : k_legacy_distortion_type_to_current)
+        if (!param_values::IsLegacyDistortionType(type)) return false;
+    return true;
+}());
+
 // The tempo-synced rate/time menus were reordered so a higher parameter value is a faster rate. The modern
 // enum is the legacy enum reversed; these tables map each legacy value to the modern value of the same note
 // (listed by member name in legacy order, so the modern enum's numeric ordering handles the reversal).
@@ -143,6 +165,7 @@ constexpr Optional<LayerParamIndex> SuccessorOfLegacyLayerParamIndex(LayerParamI
         case LayerParamIndex::LegacyEqFreq1: return LayerParamIndex::EqFreq1;
         case LayerParamIndex::LegacyEqFreq2: return LayerParamIndex::EqFreq2;
         case LayerParamIndex::LegacyEqFreq3: return LayerParamIndex::EqFreq3;
+        case LayerParamIndex::LegacyTuneSemitone: return LayerParamIndex::TuneSemitone;
         default: return k_nullopt;
     }
 }
@@ -154,6 +177,7 @@ constexpr Optional<ParamIndex> SuccessorOfLegacyParamIndex(ParamIndex legacy) {
         case ParamIndex::LegacyFilterResonance: return ParamIndex::FilterResonance;
         case ParamIndex::LegacyFilterGain: return ParamIndex::FilterGain;
         case ParamIndex::LegacyFilterType: return ParamIndex::FilterType;
+        case ParamIndex::LegacyDistortionType: return ParamIndex::DistortionType;
         case ParamIndex::LegacyChorusHighpass: return ParamIndex::ChorusHighpass;
         case ParamIndex::LegacyConvolutionReverbHighpass: return ParamIndex::ConvolutionReverbHighpass;
         case ParamIndex::LegacyCompressorThreshold: return ParamIndex::CompressorThreshold;
@@ -260,6 +284,7 @@ static f32 RemapLegacyLayerValue(LayerParamIndex legacy_layer, u32 layer_num, f3
             return FrequencyRemap(ParamIndexFromLayerParamIndex(layer_num, legacy_layer),
                                   successor_pi,
                                   legacy_linear);
+        case LayerParamIndex::LegacyTuneSemitone: return legacy_linear; // Same unit, wider range.
         default: PanicIfReached();
     }
     return 0;
@@ -279,6 +304,8 @@ static f32 RemapLegacyValue(ParamIndex legacy, f32 legacy_linear) {
             return FilterGainRemap(legacy, ParamIndex::FilterGain, legacy_linear);
         case ParamIndex::LegacyFilterType:
             return EnumLookup(k_legacy_effect_filter_type_to_current, legacy_linear, successor_default);
+        case ParamIndex::LegacyDistortionType:
+            return EnumLookup(k_legacy_distortion_type_to_current, legacy_linear, successor_default);
         case ParamIndex::LegacyChorusHighpass:
             return FrequencyRemap(legacy, ParamIndex::ChorusHighpass, legacy_linear);
         case ParamIndex::LegacyConvolutionReverbHighpass:
@@ -939,10 +966,32 @@ TEST_CASE(TestReversedTempoSyncedRateMigration) {
     return k_success;
 }
 
+TEST_CASE(TestLayerPitchSemitoneMigration) {
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto const legacy_pi =
+            ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyTuneSemitone);
+        auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
+        REQUIRE(legacy_desc.flags.legacy);
+
+        for (auto semitone = (int)legacy_desc.linear_range.min; semitone <= (int)legacy_desc.linear_range.max;
+             ++semitone) {
+            auto const succ = SuccessorOfLegacyValue(legacy_pi, (f32)semitone);
+            REQUIRE(succ);
+            CHECK_EQ(succ->successor_param,
+                     ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::TuneSemitone));
+            CHECK_EQ(succ->successor_linear, (f32)semitone);
+            CHECK(k_param_descriptors[ToInt(succ->successor_param)].linear_range.Contains(
+                succ->successor_linear));
+        }
+    }
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterLegacyParamLogicTests) {
     REGISTER_TEST(TestModerniseWetDryEffectLossless);
     REGISTER_TEST(TestModerniseWetDryWetOnlyMacroPreservesAudio);
     REGISTER_TEST(TestModerniseWetDryDryOnlyMacroPreservesAudio);
     REGISTER_TEST(TestModerniseLegacyFilterCutoffSingleMacroAudioMatch);
     REGISTER_TEST(TestReversedTempoSyncedRateMigration);
+    REGISTER_TEST(TestLayerPitchSemitoneMigration);
 }

@@ -120,9 +120,25 @@ struct GuiState : EngineListener {
     Optional<DraggingFX> dragging_fx_unit {};
     Optional<DraggingFX> dragging_fx_switch {};
 
+    // Set by the effects switchboard, consumed by the rack once it has actually scrolled the effect into
+    // view. It can take more than one frame: enabling an effect and jumping to it in the same click means
+    // the rack has no section for it until the next frame.
+    struct FxScrollRequest {
+        EffectType type;
+        bool flash; // Adding an effect just jumps; clicking one already in the rack also flashes it.
+    };
+    Optional<FxScrollRequest> fx_scroll_to {};
+
     GuiEnvelopeCursor envelope_voice_cursors[ToInt(GuiEnvelopeType::Count)][k_num_voices] {};
 
-    Optional<ParamIndex> param_text_editor_to_open {};
+    // Several elements can show a text input for the same parameter. widget_id names the one that should,
+    // so that whichever is drawn first doesn't claim a request meant for another. k_null_id means any of
+    // them will do.
+    struct ParamTextEditorRequest {
+        ParamIndex param;
+        imgui::Id widget_id = imgui::k_null_id;
+    };
+    Optional<ParamTextEditorRequest> param_text_editor_to_open {};
 
     struct CopiedSection {
         StateSnapshot snapshot;
@@ -132,6 +148,8 @@ struct GuiState : EngineListener {
 
     // Cursor-anchored position (window coords) for the FX-rack background context menu.
     Rect fx_rack_context_menu_anchor {};
+    // Whether the background context menu was opened from the switchboard (vs. the effects rack).
+    bool fx_rack_context_menu_in_switchboard {};
 
     TimePoint redraw_counter = {};
 

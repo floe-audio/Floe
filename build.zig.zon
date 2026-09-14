@@ -45,6 +45,10 @@
             .url = "git+https://github.com/mackron/dr_libs#da35f9d6c7374a95353fd1df1d394d44ab66cf01",
             .hash = "N-V-__8AAJpbLQAEwHIs7OLypQPQ7n5ICizvwIEb98KtT_9_",
         },
+        .ebur128 = .{
+            .url = "https://github.com/jiixyj/libebur128/archive/refs/tags/v1.2.6.tar.gz",
+            .hash = "N-V-__8AAGvoAQDmyU1FAg-fls7y6rWfjIUpUR25wnGzrQTD",
+        },
         .flac = .{
             .url = "https://github.com/xiph/flac/releases/download/1.5.0/flac-1.5.0.tar.xz",
             .hash = "N-V-__8AAHSrwgDkuwylGkEyZxj-_xKsppp8z8563UYjXs2B",

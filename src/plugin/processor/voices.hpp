@@ -89,6 +89,9 @@ struct Voice {
     u32x4 random_seed = {};
 
     sv_filter::CachedHelpers filter_coeffs = {};
+    // The values filter_coeffs were last computed from; negative when they've not been computed yet.
+    f32 filter_coeffs_cutoff_linear = -1;
+    f32 filter_coeffs_resonance = -1;
     sv_filter::Data<f32x2> filters = {};
     OnePoleLowPassFilter<f32> filter_mix_smoother = {};
     OnePoleLowPassFilter<f32> filter_linear_cutoff_smoother = {};

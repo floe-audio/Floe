@@ -29,6 +29,7 @@ static imgui::ViewportConfig ConvertViewportConfigWwToPixels(imgui::ViewportConf
     c.scrollbar_width = WwToPixels(c.scrollbar_width);
     c.scrollbar_padding = Max(2.0f, WwToPixels(c.scrollbar_padding));
     c.scroll_line_size = WwToPixels(c.scroll_line_size);
+    c.scroll_button_size = WwToPixels(c.scroll_button_size);
     return c;
 }
 
@@ -169,52 +170,50 @@ static f32x2 AlignWithin(Rect container, f32x2 size, TextJustification justifica
     return result;
 }
 
-static bool Tooltip(GuiBuilder& builder,
-                    imgui::Id id,
-                    Rect r,
-                    Optional<Rect> additional_avoid_r,
-                    TooltipString tooltip_str,
-                    TooltipJustification justification) {
-    ZoneScoped;
-    if (!builder.config.show_tooltips) return false;
-    if (tooltip_str.tag == TooltipStringType::None) return false;
-
-    if (builder.imgui.TooltipBehaviour(r, id)) {
-        auto const str = ({
-            String s;
-            switch (tooltip_str.tag) {
-                case TooltipStringType::None: PanicIfReached();
-                case TooltipStringType::Function: {
-                    s = tooltip_str.Get<FunctionRef<String()>>()();
-                    break;
-                }
-                case TooltipStringType::String: {
-                    s = tooltip_str.Get<String>();
-                    break;
-                }
-            }
-            s;
-        });
-
-        auto const avoid_r = ({
-            auto a_r = r;
-            if (additional_avoid_r) a_r = Rect::MakeRectThatEnclosesRects(a_r, *additional_avoid_r);
-            a_r;
-        });
-
-        builder.config.draw_tooltip(builder.imgui,
-                                    builder.fonts,
-                                    str,
-                                    {
-                                        .r = r,
-                                        .avoid_r = avoid_r,
-                                        .justification = justification,
-                                    });
-
-        return true;
+static String ResolveTooltipString(TooltipString const& tooltip_str) {
+    switch (tooltip_str.tag) {
+        case TooltipStringType::None: PanicIfReached();
+        case TooltipStringType::Function: return tooltip_str.Get<FunctionRef<String()>>()();
+        case TooltipStringType::String: return tooltip_str.Get<String>();
     }
+    return {};
+}
 
-    return false;
+bool Tooltip(GuiBuilder& builder, imgui::Id id, Rect rect_in_window_coords, TooltipArgs const& args) {
+    ZoneScoped;
+    auto const has_value_popup = args.value_popup.tag != TooltipStringType::None;
+    auto const has_tooltip = builder.config.show_tooltips && args.tooltip.tag != TooltipStringType::None;
+    if (!has_value_popup && !has_tooltip) return false;
+
+    auto const opacities = builder.imgui.TooltipBehaviour(rect_in_window_coords, id);
+    auto const value_popup_opacity = ({
+        f32 o = opacities.immediate;
+        if (!builder.config.instant_value_popups && !builder.imgui.IsActive(id) &&
+            !builder.imgui.WasJustDeactivated(id))
+            o = opacities.delayed;
+        o;
+    });
+    auto const value_popup =
+        has_value_popup && value_popup_opacity > 0 ? ResolveTooltipString(args.value_popup) : String {};
+    auto const tooltip =
+        has_tooltip && opacities.delayed > 0 ? ResolveTooltipString(args.tooltip) : String {};
+    if (!value_popup.size && !tooltip.size) return false;
+
+    builder.config.draw_tooltip(builder.imgui,
+                                builder.fonts,
+                                {
+                                    .r = rect_in_window_coords,
+                                    .avoid_r = args.avoid_r.ValueOr(rect_in_window_coords),
+                                    .placement = args.placement,
+                                    .value_popup = value_popup,
+                                    .value_popup_opacity = value_popup.size ? value_popup_opacity : 0,
+                                    .value_popup_fixed_width = args.value_popup_fixed_width,
+                                    .tooltip = tooltip,
+                                    .tooltip_footer = tooltip.size ? args.tooltip_footer : String {},
+                                    .tooltip_opacity = tooltip.size ? opacities.delayed : 0,
+                                });
+
+    return true;
 }
 
 Optional<Rect> BoxRect(GuiBuilder& builder, Box const& box) {
@@ -367,7 +366,9 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
 
             bool32 const is_active =
                 config.parent_dictates_hot_and_active ? config.parent->is_active : box.is_active;
-            bool32 const is_hot = config.parent_dictates_hot_and_active ? config.parent->is_hot : box.is_hot;
+            bool32 const is_hot =
+                config.show_as_hot ||
+                (config.parent_dictates_hot_and_active ? config.parent->is_hot : box.is_hot);
 
             if (auto const background_fill = ({
                     Col c {};
@@ -400,7 +401,7 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                           : k_auto_active_white_overlay;
                 }
 
-                if (config.drop_shadow) builder.config.draw_drop_shadow(builder.imgui, r, rounding);
+                if (config.drop_shadow) builder.config.draw_drop_shadow(builder.imgui, r, rounding, 1);
 
                 switch (config.background_shape) {
                     case BackgroundShape::Rectangle:
@@ -540,18 +541,31 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                          });
             }
 
-            if (config.tooltip.tag != TooltipStringType::None) {
-                Optional<Rect> additional_avoid_r = {};
+            if (config.tooltip.tag != TooltipStringType::None ||
+                config.value_popup.tag != TooltipStringType::None) {
+                auto avoid_r = rect;
                 if (config.tooltip_avoid_viewport_id != 0) {
                     if (auto w = builder.imgui.FindViewport(config.tooltip_avoid_viewport_id))
-                        additional_avoid_r = w->visible_bounds;
+                        avoid_r = Rect::MakeRectThatEnclosesRects(avoid_r, w->visible_bounds);
+                }
+                if (config.tooltip_avoid_box) {
+                    if (auto const avoid_box_r = BoxRect(builder, *config.tooltip_avoid_box)) {
+                        auto visible_avoid_box_r = builder.imgui.ViewportRectToWindowRect(*avoid_box_r);
+                        if (Rect::Intersection(visible_avoid_box_r,
+                                               builder.imgui.curr_viewport->visible_bounds))
+                            avoid_r = Rect::MakeRectThatEnclosesRects(avoid_r, visible_avoid_box_r);
+                    }
                 }
                 Tooltip(builder,
                         config.parent_dictates_hot_and_active ? config.parent->imgui_id : box.imgui_id,
                         rect,
-                        additional_avoid_r,
-                        config.tooltip,
-                        config.tooltip_justification);
+                        {
+                            .value_popup = config.value_popup,
+                            .tooltip = config.tooltip,
+                            .tooltip_footer = config.tooltip_footer,
+                            .avoid_r = avoid_r,
+                            .placement = config.tooltip_placement,
+                        });
             }
 
             return box;

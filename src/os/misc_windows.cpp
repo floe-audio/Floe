@@ -342,50 +342,48 @@ bool IsValidMemoryAddressWindows(void* addr) {
     return true;
 }
 
+// Walks the stack using the unwind data that the x64 ABI requires every non-leaf function to carry, so it
+// works through host and system code that was built without frame pointers.
 StacktraceStack GetInterruptedStackTraceWindows(PEXCEPTION_POINTERS exception_info) {
     StacktraceStack result;
 
-    PCONTEXT context = exception_info->ContextRecord;
-    uintptr crash_pc = 0;
-    uintptr fp = 0;
-    uintptr sp = 0;
-    uintptr req_alignment = 0;
+    // Unwinding mutates the context, and we hand the OS's one back untouched when we continue the search.
+    CONTEXT context = *exception_info->ContextRecord;
 
 #if defined(_M_X64) || defined(__x86_64__)
-    // x86_64 Windows
-    crash_pc = context->Rip;
-    fp = context->Rbp;
-    sp = context->Rsp;
-    req_alignment = 8;
-#elif defined(_M_ARM64) || defined(__aarch64__)
-    // ARM64 Windows
-    crash_pc = context->Pc;
-    fp = context->Fp; // x29
-    sp = context->Sp;
-    req_alignment = 16;
+    dyn::Append(result, (uintptr)context.Rip);
+
+    while (result.size < result.Capacity()) {
+        auto const prev_sp = context.Rsp;
+
+        DWORD64 image_base = 0;
+        if (auto* function_entry = RtlLookupFunctionEntry(context.Rip, &image_base, nullptr)) {
+            PVOID handler_data = nullptr;
+            DWORD64 establisher_frame = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+                             image_base,
+                             context.Rip,
+                             function_entry,
+                             &context,
+                             &handler_data,
+                             &establisher_frame,
+                             nullptr);
+        } else {
+            // No unwind data means a leaf function; its return address is sitting at the top of the stack.
+            if (!IsValidMemoryAddressWindows((void*)context.Rsp)) break;
+            context.Rip = *(DWORD64*)context.Rsp;
+            context.Rsp += sizeof(DWORD64);
+        }
+
+        if (context.Rip == 0) break;
+        if (context.Rsp <= prev_sp) break; // Prevent infinite loops.
+
+        // -1 so that the address lands on the call instruction rather than the one after it.
+        dyn::Append(result, (uintptr)context.Rip - 1);
+    }
+#else
 #error "Unsupported architecture on Windows"
 #endif
-
-    // Start with the crash PC
-    dyn::Append(result, crash_pc);
-
-    while (fp != 0 && result.size < result.Capacity()) {
-        if (fp < sp || fp > sp + 0x100000) break;
-        if (!IsAligned((void const*)fp, req_alignment)) break;
-
-        auto* frame = (uintptr*)fp;
-
-        if (!IsValidMemoryAddressWindows(frame)) break;
-
-        auto return_addr = frame[1];
-        if (return_addr == 0) break;
-
-        dyn::Append(result, return_addr - 1);
-
-        auto prev_fp = frame[0];
-        if (prev_fp <= fp) break; // Prevent infinite loops
-        fp = prev_fp;
-    }
 
     return result;
 }
@@ -708,4 +706,38 @@ TEST_CASE(TestWindowsErrors) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterWindowsSpecificTests) { REGISTER_TEST(TestWindowsErrors); }
+__attribute__((noinline)) static StacktraceStack UnwindCurrentContextForTest(uintptr& call_site) {
+    call_site = CALL_SITE_PROGRAM_COUNTER;
+
+    CONTEXT context;
+    RtlCaptureContext(&context);
+
+    EXCEPTION_POINTERS exception_info {.ExceptionRecord = nullptr, .ContextRecord = &context};
+    return GetInterruptedStackTraceWindows(&exception_info);
+}
+
+__attribute__((noinline)) static StacktraceStack
+UnwindCurrentContextViaNestedFrameForTest(uintptr& inner_call_site, uintptr& outer_call_site) {
+    auto result = UnwindCurrentContextForTest(inner_call_site);
+    outer_call_site = CALL_SITE_PROGRAM_COUNTER; // Also stops the call above becoming a tail-call.
+    return result;
+}
+
+TEST_CASE(TestInterruptedStacktrace) {
+    uintptr inner_call_site = 0;
+    uintptr outer_call_site = 0;
+    auto const stack = UnwindCurrentContextViaNestedFrameForTest(inner_call_site, outer_call_site);
+
+    // A frame-pointer walk gives up at the first frame it can't follow, leaving just the interrupted PC.
+    REQUIRE_GT(stack.size, (usize)2);
+
+    REQUIRE(Contains(stack, inner_call_site));
+    REQUIRE(Contains(stack, outer_call_site));
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterWindowsSpecificTests) {
+    REGISTER_TEST(TestWindowsErrors);
+    REGISTER_TEST(TestInterruptedStacktrace);
+}

@@ -11,7 +11,8 @@
 
 // X-macro list of benchmark registration functions.
 #define BENCHMARK_REGISTER_FUNCTIONS                                                                         \
-    X(RegisterAllocatorBenchmarks) X(RegisterSampleProcessingBenchmarks) X(RegisterLayoutBenchmarks)
+    X(RegisterAllocatorBenchmarks)                                                                           \
+    X(RegisterSampleProcessingBenchmarks) X(RegisterLayoutBenchmarks) X(RegisterDistortionBenchmarks)
 
 // Declare the registration functions.
 #define X(fn) void fn(benchmarks::Benchmarker&);

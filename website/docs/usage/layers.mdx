@@ -82,10 +82,10 @@ The Low Frequency Oscillator (LFO) can modulate various parameters to add moveme
 <GeneratedScreenshot name="layer-lfo" alt="Layer LFO Tab" />
 
 - **LFO on/off**: enable/disable the Low Frequency Oscillator.
-- **Waveform display**: a live representative preview of the current LFO shape and rate.
+- **Waveform display**: a live representative preview of the current LFO shape and rate. Drag it left or right to change the _Time_, and up or down to change the _Amount_.
 - **Target**: select the parameter that the LFO will modulate: Volume, Filter, Pan, Pitch, or Grain Position. Some targets require their associated feature to be active (e.g. the filter must be enabled, or the play mode must be Granular Fixed).
 - **Shape**: choose the LFO waveform shape.
-- **Mode**: switch between _Retrigger_ — new notes always start with the LFO at the beginning of its cycle — and _Free_ — the LFO runs continuously regardless of note events, so all notes share the same LFO phase.
+- **Mode**: switch between _Retrigger_ — new notes always start with the LFO at the beginning of its cycle — and _Free_ — a new note joins in wherever the layer's sounding notes have reached in the cycle, so all notes share the same LFO phase.
 - **Amount**: control the intensity of the LFO effect on the target parameter.
 - **Time**: adjust the LFO rate. When Sync is enabled, this is synced to the host tempo (e.g., 1/4 note); when disabled, it operates in Hz.
 - **Sync**: toggle to sync the LFO speed to the host tempo.
@@ -97,7 +97,7 @@ Each layer includes a simple 3-band equaliser to sculpt the frequency content of
 <GeneratedScreenshot name="layer-eq" alt="Layer EQ Tab" />
 
 - **EQ on/off**: toggle to enable or disable the equaliser for this layer.
-- **EQ graph**: a frequency-response display showing the combined effect of all 3 bands. Each band has a draggable point you can move directly on the graph. Use the mouse scroll wheel to change the resonance of the node.
+- **EQ graph**: a frequency-response display showing the combined effect of all 3 bands. Each band has a draggable point you can move directly on the graph. Use the mouse scroll wheel to change the resonance of the node. For band types without a gain control, dragging the point up/down also changes its resonance.
 
 The 3 bands have identical controls:
 

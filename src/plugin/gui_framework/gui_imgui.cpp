@@ -19,13 +19,54 @@ constexpr Id k_no_op_id = 1;
 // Viewport ID of the full size root viewport created when the IMGUI system begins.
 constexpr Id k_root_viewport_id = 4;
 
-constexpr f64 k_popup_open_and_close_delay_sec {0.2};
-static constexpr f64 k_text_cursor_blink_rate {0.5};
-static constexpr f64 k_button_repeat_rate {0.5};
+// Viewports scissor to their bounds grown by this much, so that edge pixels of content aren't shaved off by
+// rounding. It's a drawing tolerance only - hit testing must use the un-grown rect.
+constexpr f32 k_clipping_expansion = 1.0f;
 
-static bool IsBlockedByExclusiveFocus(Viewport const* exclusive_focus_viewport, Viewport const* v) {
-    return exclusive_focus_viewport && v->root_viewport != exclusive_focus_viewport &&
-           !v->root_viewport->cfg.ignore_exclusive_focus;
+constexpr f64 k_popup_open_and_close_delay_sec {0.1};
+static constexpr f64 k_text_cursor_blink_rate {0.5};
+static constexpr f64 k_button_repeat_initial_delay {0.4};
+static constexpr f64 k_button_repeat_rate {0.05};
+
+bool Context::IsBlockedByExclusiveFocus(Viewport const* v) const {
+    if (!exclusive_focus_viewport) return false;
+    auto const root = v->root_viewport;
+    if (root == exclusive_focus_viewport || root->cfg.ignore_exclusive_focus) return false;
+
+    // A submenu and the menus it was opened from form one menu: the parents stay interactable so the cursor
+    // can move back and pick a different item.
+    if (exclusive_focus_viewport->cfg.mode == ViewportMode::PopupMenu)
+        for (auto level = open_popups.size; level-- > 1 && open_popups[level]->is_submenu;)
+            if (open_popups[level - 1] == root) return false;
+
+    return true;
+}
+
+static bool TriangleContainsPoint(f32x2 a, f32x2 b, f32x2 c, f32x2 p) {
+    auto const cross = [](f32x2 u, f32x2 v) { return (u.x * v.y) - (u.y * v.x); };
+    auto const s1 = cross(b - a, p - a);
+    auto const s2 = cross(c - b, p - b);
+    auto const s3 = cross(a - c, p - c);
+    return (s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0);
+}
+
+// True if the cursor is heading from the parent menu towards the given submenu. While this holds, hovering
+// sibling items on the way shouldn't close the submenu. Uses the triangle between the cursor's position
+// before its last move and the submenu's near edge (with some slack), as popularised by Amazon's mega
+// dropdown. Once the cursor has been still for the open/close delay it's no longer considered moving.
+static bool
+CursorIsMovingTowardsSubmenu(Context const& imgui, Viewport const* parent, Viewport const* submenu) {
+    auto const& in = GuiIo().in;
+    if (in.current_time - imgui.time_of_last_cursor_move >= k_popup_open_and_close_delay_sec) return false;
+
+    auto const submenu_r = submenu->unpadded_bounds;
+    auto const slack = WwToPixels(8.0f);
+    bool const submenu_is_to_the_right = submenu_r.CentreX() > parent->unpadded_bounds.CentreX();
+    auto const near_edge_x = submenu_is_to_the_right ? submenu_r.x + slack : submenu_r.Right() - slack;
+    f32x2 const top_corner {near_edge_x, submenu_r.y - slack};
+    f32x2 const bottom_corner {near_edge_x, submenu_r.Bottom() + slack};
+
+    return TriangleContainsPoint(imgui.cursor_pos_before_last_move, top_corner, bottom_corner, in.cursor_pos);
 }
 
 static bool WantsCloseOnEscape(ViewportConfig const& cfg) {
@@ -344,6 +385,12 @@ struct ScrollbarResult {
     ViewportScrollbar bar;
 };
 
+static f32 ScrollLineSize(Viewport const& viewport) {
+    return viewport.cfg.scroll_line_size > 0 ? viewport.cfg.scroll_line_size : WwToPixels(20.0f);
+}
+
+// Everything is calculated as if the scrollbar is vertical: 'y' is the scroll axis. Rects are transposed for
+// horizontal scrollbars.
 static ScrollbarResult Scrollbar(Context& im,
                                  Viewport* viewport,
                                  bool is_vertical,
@@ -352,67 +399,12 @@ static ScrollbarResult Scrollbar(Context& im,
                                  f32 viewport_right,
                                  f32 content_size_y,
                                  f32 y_scroll_value,
-                                 f32 y_scroll_max,
                                  f32 cursor_y) {
-    auto id = im.MakeId(is_vertical ? "Vert" : "Horz");
+    auto const id = im.MakeId(is_vertical ? "Vert" : "Horz");
 
-    y_scroll_max = ::Max(0.0f, content_size_y - viewport_h);
-
-    if (content_size_y > viewport_h && ((y_scroll_value + viewport_h) > content_size_y))
-        y_scroll_value = (f32)(int)(content_size_y - viewport_h);
-
-    auto height_ratio = viewport_h / content_size_y;
-    if (height_ratio > 1) height_ratio = 1;
-    auto const scrollbar_h = viewport_h * height_ratio;
-    f32 const scrollbar_range = viewport_h - scrollbar_h;
-    f32 scrollbar_rel_y = (y_scroll_value / y_scroll_max) * scrollbar_range;
-    if (scrollbar_range == 0) scrollbar_rel_y = 0;
-
-    Rect scroll_r;
-    scroll_r.x = viewport_right + viewport->cfg.scrollbar_padding;
-    scroll_r.y = viewport_y + scrollbar_rel_y;
-    scroll_r.w = viewport->cfg.scrollbar_width;
-    scroll_r.h = scrollbar_h;
-    auto scrollbar_bb = Rect {.xywh = {scroll_r.x, viewport_y, viewport->cfg.scrollbar_width, viewport_h}};
-    f32* scroll_y = &scroll_r.y;
-
-    if (!is_vertical) {
-        f32 w;
-        f32 x;
-
-        x = scrollbar_bb.x;
-        scrollbar_bb.x = scrollbar_bb.y;
-        scrollbar_bb.y = x;
-        w = scrollbar_bb.w;
-        scrollbar_bb.w = scrollbar_bb.h;
-        scrollbar_bb.h = w;
-
-        x = scroll_r.x;
-        scroll_r.x = scroll_r.y;
-        scroll_r.y = x;
-        w = scroll_r.w;
-        scroll_r.w = scroll_r.h;
-        scroll_r.h = w;
-
-        scroll_y = &scroll_r.x;
-    }
-
-    if (scrollbar_range != 0) {
-        ButtonConfig const button_cfg {.mouse_button = MouseButton::Left,
-                                       .event = MouseButtonEvent::Down,
-                                       .is_non_viewport_content = true};
-        static f32x2 cached_pos {};
-        if (im.ButtonBehaviour(scroll_r, id, button_cfg)) cached_pos.y = cursor_y - *scroll_y;
-
-        if (im.IsActive(id, MouseButton::Left)) {
-            auto const new_ypos = (cursor_y - cached_pos.y) - viewport_y;
-            scrollbar_rel_y = Clamp(new_ypos, 0.0f, viewport_h - scrollbar_h);
-            *scroll_y = viewport_y + scrollbar_rel_y;
-
-            f32 const y_scroll_percent = Map(scrollbar_rel_y, 0, scrollbar_range, 0, 1);
-            y_scroll_value = Round(y_scroll_percent * y_scroll_max);
-        }
-    }
+    auto const oriented = [is_vertical](Rect r) {
+        return is_vertical ? r : Rect {.xywh = {r.y, r.x, r.h, r.w}};
+    };
 
     // Cuts all dimensions to integer bounds, but always shrinks the rectangle, never expands it.
     auto const integer_bounds = [](Rect r) {
@@ -421,14 +413,112 @@ static ScrollbarResult Scrollbar(Context& im,
         return Rect::FromMinMax(min, max);
     };
 
+    auto const y_scroll_max = ::Max(0.0f, content_size_y - viewport_h);
+    if (y_scroll_value > y_scroll_max) y_scroll_value = (f32)(int)y_scroll_max;
+
+    auto const x = viewport_right + viewport->cfg.scrollbar_padding;
+    auto const w = viewport->cfg.scrollbar_width;
+
+    auto const button_size = viewport->cfg.scroll_button_size;
+    auto const has_buttons = button_size > 0 && viewport_h > (button_size * 3);
+
+    Optional<Array<ViewportScrollbarButton, 2>> buttons {};
+    if (has_buttons) {
+        buttons = Array<ViewportScrollbarButton, 2> {{
+            {
+                .rect = integer_bounds(oriented({.xywh = {x, viewport_y, w, button_size}})),
+                .id = im.MakeId(is_vertical ? "VertDec" : "HorzDec"),
+            },
+            {
+                .rect = integer_bounds(
+                    oriented({.xywh = {x, viewport_y + viewport_h - button_size, w, button_size}})),
+                .id = im.MakeId(is_vertical ? "VertInc" : "HorzInc"),
+            },
+        }};
+
+        ButtonConfig const button_cfg {.mouse_button = MouseButton::Left,
+                                       .event = MouseButtonEvent::Down,
+                                       .hold_to_repeat = true,
+                                       .is_non_viewport_content = true};
+        auto const step = ScrollLineSize(*viewport);
+        for (auto const button_index : Range(2uz)) {
+            auto const& button = (*buttons)[button_index];
+            if (im.ButtonBehaviour(button.rect, button.id, button_cfg)) {
+                auto const direction = button_index == 0 ? -1.0f : 1.0f;
+                y_scroll_value = Round(Clamp(y_scroll_value + (direction * step), 0.0f, y_scroll_max));
+            }
+        }
+    }
+
+    auto const track_y = viewport_y + (has_buttons ? button_size : 0);
+    auto const track_h = viewport_h - (has_buttons ? button_size * 2 : 0);
+    auto const handle_h = track_h * Min(1.0f, viewport_h / content_size_y);
+    auto const handle_range = track_h - handle_h;
+    f32 handle_rel_y = handle_range == 0 ? 0 : (y_scroll_value / y_scroll_max) * handle_range;
+
+    if (handle_range != 0) {
+        static f32 cached_grab_offset {};
+
+        auto const scroll_value_for_handle = [&](f32 rel_y) {
+            return Round(Map(Clamp(rel_y, 0.0f, handle_range), 0, handle_range, 0, 1) * y_scroll_max);
+        };
+
+        // Track: clicking pages towards the cursor, repeating while held until the handle reaches the
+        // cursor. Shift-click (or Option-click) jumps straight to the cursor and grabs the handle.
+        {
+            ButtonConfig const track_cfg {.mouse_button = MouseButton::Left,
+                                          .event = MouseButtonEvent::Down,
+                                          .cursor_type = CursorType::Default,
+                                          .hold_to_repeat = true,
+                                          .is_non_viewport_content = true};
+            auto const track_id = im.MakeId(is_vertical ? "VertTrack" : "HorzTrack");
+            if (im.ButtonBehaviour(oriented({.xywh = {x, track_y, w, track_h}}), track_id, track_cfg)) {
+                auto const& press = GuiIo().in.Mouse(MouseButton::Left).is_down;
+                auto const jump_to_cursor = press && (press->modifiers.Get(ModifierKey::Shift) ||
+                                                      press->modifiers.Get(ModifierKey::Alt));
+
+                if (jump_to_cursor) {
+                    cached_grab_offset = handle_h / 2;
+                    handle_rel_y = Clamp((cursor_y - cached_grab_offset) - track_y, 0.0f, handle_range);
+                    y_scroll_value = scroll_value_for_handle(handle_rel_y);
+                    im.SetActive(id, MouseButton::Left);
+                } else {
+                    auto const handle_top = track_y + handle_rel_y;
+                    auto const page = viewport_h;
+                    if (cursor_y < handle_top)
+                        y_scroll_value = Round(Max(0.0f, y_scroll_value - page));
+                    else if (cursor_y > handle_top + handle_h)
+                        y_scroll_value = Round(Min(y_scroll_max, y_scroll_value + page));
+                    handle_rel_y = (y_scroll_value / y_scroll_max) * handle_range;
+                }
+            }
+        }
+
+        // Handle: runs after the track so that it wins the hot state when the cursor is over it.
+        {
+            ButtonConfig const handle_cfg {.mouse_button = MouseButton::Left,
+                                           .event = MouseButtonEvent::Down,
+                                           .is_non_viewport_content = true};
+            auto const handle_rect = oriented({.xywh = {x, track_y + handle_rel_y, w, handle_h}});
+            if (im.ButtonBehaviour(handle_rect, id, handle_cfg))
+                cached_grab_offset = cursor_y - (track_y + handle_rel_y);
+
+            if (im.IsActive(id, MouseButton::Left)) {
+                handle_rel_y = Clamp((cursor_y - cached_grab_offset) - track_y, 0.0f, handle_range);
+                y_scroll_value = scroll_value_for_handle(handle_rel_y);
+            }
+        }
+    }
+
     return {
         .new_scroll_value = y_scroll_value,
         .new_scroll_max = y_scroll_max,
         .bar =
             {
-                .strip = integer_bounds(scrollbar_bb),
-                .handle = integer_bounds(scroll_r),
+                .strip = integer_bounds(oriented({.xywh = {x, track_y, w, track_h}})),
+                .handle = integer_bounds(oriented({.xywh = {x, track_y + handle_rel_y, w, handle_h}})),
                 .id = id,
+                .buttons = buttons,
             },
     };
 }
@@ -665,10 +755,16 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
 
     auto const& frame_input = GuiIo().in;
 
+    if (Any(frame_input.cursor_delta != 0)) {
+        cursor_pos_before_last_move = frame_input.cursor_pos_prev;
+        time_of_last_cursor_move = frame_input.current_time;
+    }
+
     for (usize i = sorted_viewports.size; i-- > 0;) {
         auto viewport = sorted_viewports[i];
         if (viewport->visible_bounds.Contains(frame_input.cursor_pos)) {
-            if (viewport->clipping_rect.Contains(frame_input.cursor_pos)) hovered_viewport_content = viewport;
+            if (viewport->clipping_rect.Reduced(k_clipping_expansion).Contains(frame_input.cursor_pos))
+                hovered_viewport_content = viewport;
             hovered_viewport = viewport;
             break;
         }
@@ -694,9 +790,7 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
             viewport = viewport->parent_viewport;
         }
         if (final_viewport) {
-            f32 const pixels_per_line = final_viewport->cfg.scroll_line_size > 0
-                                            ? final_viewport->cfg.scroll_line_size
-                                            : WwToPixels(20.0f);
+            f32 const pixels_per_line = ScrollLineSize(*final_viewport);
             f32 const lines = -frame_input.mouse_scroll_delta_in_lines;
             f32 const new_scroll = (lines * pixels_per_line) + final_viewport->scroll_offset.y;
             final_viewport->scroll_offset.y = Round(Clamp(new_scroll, 0.0f, final_viewport->scroll_max.y));
@@ -898,7 +992,10 @@ void Context::EndFrame() {
             if (popup_clicked != nullptr) {
                 for (auto const i : Range(open_popups.size)) {
                     if (popup_clicked == open_popups[i]) {
-                        if (i != open_popups.size - 1) ClosePopupToLevel(i + 1);
+                        // Close the children, unless the click was on the item that opened the child.
+                        if (i != open_popups.size - 1 &&
+                            open_popups[i + 1]->creator_of_this_popup_menu != active_item.id)
+                            ClosePopupToLevel(i + 1);
                         break;
                     }
                 }
@@ -908,8 +1005,7 @@ void Context::EndFrame() {
         } else if (open_modals.size && modal_just_opened == k_null_id) {
             if (exclusive_focus_viewport && exclusive_focus_viewport->cfg.mode == ViewportMode::Modal &&
                 exclusive_focus_viewport->cfg.close_on_click_outside &&
-                (!hovered_viewport ||
-                 IsBlockedByExclusiveFocus(exclusive_focus_viewport, hovered_viewport))) {
+                (!hovered_viewport || IsBlockedByExclusiveFocus(hovered_viewport))) {
                 CloseTopModal();
             }
         }
@@ -978,37 +1074,57 @@ bool Context::SliderBehaviourFraction(SliderBehaviourFractionArgs const& args) {
     ASSERT(args.default_fraction >= 0 && args.default_fraction <= 1);
     f32 const start = args.fraction;
 
-    static f32 val_at_click = 0;
-    static f32x2 start_location = {};
-
     auto const& frame_input = GuiIo().in;
 
     if (ButtonBehaviour(args.rect_in_window_coords, args.id, SliderConfig::k_activation_cfg)) {
         if ((args.cfg.default_on_modifer) && frame_input.modifiers.Get(ModifierKey::Modifier))
             args.fraction = args.default_fraction;
-        val_at_click = args.fraction;
-        start_location = frame_input.cursor_pos;
+        slider_drag = {
+            .id = args.id,
+            .origin = frame_input.cursor_pos,
+            .fraction_at_origin = args.fraction,
+            .fraction = args.fraction,
+            .shift_held = frame_input.modifiers.Get(ModifierKey::Shift),
+        };
     }
 
-    if (IsActive(args.id, SliderConfig::k_activation_cfg.mouse_button)) {
+    if (slider_drag.id == args.id && IsActive(args.id, SliderConfig::k_activation_cfg.mouse_button)) {
         f32 sensitivity = args.cfg.sensitivity;
         if (args.cfg.slower_with_shift) {
-            if (frame_input.Key(KeyCode::ShiftL).presses.size ||
-                frame_input.Key(KeyCode::ShiftR).presses.size) {
-                val_at_click = args.fraction;
-                start_location = frame_input.cursor_pos;
+            auto const shift_held = frame_input.modifiers.Get(ModifierKey::Shift);
+            if (shift_held != slider_drag.shift_held) {
+                // Restart the drag from where it currently is so that entering or leaving the finer
+                // sensitivity doesn't move the value.
+                slider_drag.shift_held = shift_held;
+                slider_drag.origin = frame_input.cursor_pos;
+                slider_drag.fraction_at_origin = slider_drag.fraction;
+                slider_drag.dead_zone_offset = 0;
             }
-            if (frame_input.modifiers.Get(ModifierKey::Shift))
-                sensitivity *= args.cfg.shift_sensitivity_multiplier;
+            if (shift_held) sensitivity *= args.cfg.shift_sensitivity_multiplier;
         }
         if (All(frame_input.cursor_pos != -1)) {
-            auto d = frame_input.cursor_pos - start_location;
+            auto d = frame_input.cursor_pos - slider_drag.origin;
             d.x = -d.x;
             // Change value regardless of if dragged horizontally or vertically.
             auto distance_from_drag_start = d.x + d.y;
             if (d.x > 0 && d.y > 0) distance_from_drag_start = Sqrt(Pow(d.x, 2.0f) + Pow(d.y, 2.0f));
             if (d.x < 0 && d.y < 0) distance_from_drag_start = -Sqrt(Pow(-d.x, 2.0f) + Pow(-d.y, 2.0f));
-            args.fraction = val_at_click - distance_from_drag_start / sensitivity;
+
+            if (!slider_drag.engaged) {
+                auto const dead_zone = WwToPixels(args.cfg.dead_zone_ww);
+                if (Abs(distance_from_drag_start) <= dead_zone) {
+                    distance_from_drag_start = 0;
+                } else {
+                    slider_drag.engaged = true;
+                    // Subtracted from here on so that the value doesn't jump as the drag engages.
+                    slider_drag.dead_zone_offset = distance_from_drag_start > 0 ? dead_zone : -dead_zone;
+                }
+            }
+            distance_from_drag_start -= slider_drag.dead_zone_offset;
+
+            slider_drag.fraction =
+                Clamp(slider_drag.fraction_at_origin - distance_from_drag_start / sensitivity, 0.0f, 1.0f);
+            args.fraction = slider_drag.fraction;
         }
     }
 
@@ -1066,7 +1182,7 @@ Rect Context::RegisterAndConvertRect(Rect r) {
 }
 
 bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_intersection) {
-    if (IsBlockedByExclusiveFocus(exclusive_focus_viewport, curr_viewport)) return false;
+    if (IsBlockedByExclusiveFocus(curr_viewport)) return false;
     if (check_intersection && !Rect::DoRectsIntersect(r_in_window_coords, GetCurrentClipRect())) return false;
 
     dyn::Append(GuiIo().out.mouse_tracked_rects,
@@ -1081,8 +1197,7 @@ bool Context::RegisterRectForMouseTracking(Rect r_in_window_coords, bool check_i
 }
 
 bool Context::RequestKeyboardFocus(Id id) {
-    auto const inside_exclusive_focus_viewport =
-        !IsBlockedByExclusiveFocus(exclusive_focus_viewport, curr_viewport);
+    auto const inside_exclusive_focus_viewport = !IsBlockedByExclusiveFocus(curr_viewport);
 
     if (!inside_exclusive_focus_viewport && temp_keyboard_focus_item_is_popup) {
         // We can never have focus because there's a popup open and that always has priority.
@@ -1095,8 +1210,9 @@ bool Context::RequestKeyboardFocus(Id id) {
     return IsKeyboardFocus(id);
 }
 
-// When we're in a popup viewport, we want to close children viewports when we hover for a while on an
-// item in a parent viewport. This is common GUI behaviour for something like a menu with sub-menus.
+// When we're in a popup menu that has a submenu open, hovering for a while on an item other than the one that
+// opened the submenu closes it. This is common GUI behaviour for a menu with submenus. Passing over items on
+// the way to the submenu is tolerated.
 static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
     ASSERT(imgui.exclusive_focus_viewport != nullptr);
     auto const curr = imgui.curr_viewport;
@@ -1104,23 +1220,29 @@ static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
 
     if (imgui.IsHot(id) && curr_is_popup && imgui.exclusive_focus_viewport != imgui.hovered_viewport &&
         imgui.current_popup_stack.size < imgui.open_popups.size) {
-        auto const next_viewport = imgui.open_popups[imgui.current_popup_stack.size];
-        auto const creator_of_next = next_viewport->creator_of_this_popup_menu;
+        auto const submenu = imgui.open_popups[imgui.current_popup_stack.size];
+        if (!submenu->is_submenu || id == submenu->creator_of_this_popup_menu) return;
 
-        if (id != creator_of_next) {
-            if (imgui.WasJustMadeHot(id))
-                GuiIo().out.SetTimedWakeup(SourceLocationHash(),
-                                           GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
-            if (imgui.SecondsSpentHot() >= k_popup_open_and_close_delay_sec)
-                imgui.ClosePopupToLevel(imgui.current_popup_stack.size);
+        if (imgui.WasJustMadeHot(id))
+            GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                       GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
+        if (imgui.SecondsSpentHot() < k_popup_open_and_close_delay_sec) return;
+
+        if (CursorIsMovingTowardsSubmenu(imgui, curr->root_viewport, submenu)) {
+            // Re-check once the cursor has been still for a while.
+            GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                       imgui.time_of_last_cursor_move + k_popup_open_and_close_delay_sec);
+            return;
         }
+
+        imgui.ClosePopupToLevel(imgui.current_popup_stack.size);
     }
 }
 
 void Context::SetHot(Rect r, Id id, bool32 is_not_viewport_content) {
     if (temp_hovered_item == id) return; // Already called SetHot this frame for this ID.
 
-    if (IsBlockedByExclusiveFocus(exclusive_focus_viewport, curr_viewport)) return;
+    if (IsBlockedByExclusiveFocus(curr_viewport)) return;
 
     if (curr_viewport != (is_not_viewport_content ? hovered_viewport : hovered_viewport_content)) return;
 
@@ -1664,10 +1786,17 @@ Context::PopupMenuButtonBehaviour(Rect r, Id button_id, Id popup_id, ButtonConfi
         if (WasJustMadeHot(button_id))
             GuiIo().out.SetTimedWakeup(SourceLocationHash(),
                                        GuiIo().in.current_time + k_popup_open_and_close_delay_sec);
-        if ((button_fired || (IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec)) &&
-            !IsPopupMenuOpen(popup_id)) {
+
+        // A sibling's submenu that is still open after ButtonBehaviour's hover handling is one the cursor is
+        // heading towards - don't replace it by hovering.
+        bool const a_child_is_open = current_popup_stack.size < open_popups.size;
+        bool const open_by_hover =
+            IsHot(button_id) && SecondsSpentHot() >= k_popup_open_and_close_delay_sec && !a_child_is_open;
+
+        if ((button_fired || open_by_hover) && !IsPopupMenuOpen(popup_id)) {
             ClosePopupToLevel(current_popup_stack.size);
             OpenPopupMenu(popup_id, button_id);
+            Last(open_popups)->is_submenu = true;
         }
     }
 
@@ -1732,12 +1861,12 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
     });
 
     if (cfg.hold_to_repeat) {
-        if (WasJustActivated(id, cfg.mouse_button))
-            button_repeat_counter = GuiIo().in.current_time + k_button_repeat_rate;
-        else if (is_active) {
-            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter,
-                                              k_button_repeat_rate,
-                                              SourceLocationHash()))
+        auto const wakeup_id = SourceLocationHash();
+        if (WasJustActivated(id, cfg.mouse_button)) {
+            button_repeat_counter = GuiIo().in.current_time + k_button_repeat_initial_delay;
+            GuiIo().out.SetTimedWakeup(wakeup_id, button_repeat_counter);
+        } else if (is_active) {
+            if (GuiIo().WakeupAtTimedInterval(button_repeat_counter, k_button_repeat_rate, wakeup_id))
                 button_fired = true;
         }
     }
@@ -1877,8 +2006,9 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
                 rect_to_avoid = curr_viewport->bounds;
                 rect_to_avoid.y = 0;
                 rect_to_avoid.h = FLT_MAX;
-                rect_to_avoid.x += 5;
-                rect_to_avoid.w -= 10;
+                auto const overlap = WwToPixels(1.5f);
+                rect_to_avoid.x += overlap;
+                rect_to_avoid.w -= overlap * 2;
 
                 base_r.y -= viewport->cfg.padding.t;
             }
@@ -1923,7 +2053,6 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
         viewport->bounds.pos += f32x2 {viewport->cfg.padding.l, viewport->cfg.padding.t};
         viewport->bounds.size -= viewport->cfg.TotalPadSize();
     }
-    auto constexpr k_clipping_expansion = 1.0f;
     viewport->clipping_rect = viewport->bounds.Expanded(k_clipping_expansion);
 
     //
@@ -2046,7 +2175,6 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
                                           bounds_for_scrollbar.Right(),
                                           viewport->prev_content_size.y,
                                           viewport->scroll_offset.y,
-                                          viewport->scroll_max.y,
                                           GuiIo().in.cursor_pos.y);
             scrollbar_bounds[1] = result.bar;
             viewport->scroll_offset.y = result.new_scroll_value;
@@ -2073,7 +2201,6 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
                                           bounds_for_scrollbar.Bottom(),
                                           viewport->prev_content_size.x,
                                           viewport->scroll_offset.x,
-                                          viewport->scroll_max.x,
                                           GuiIo().in.cursor_pos.x);
             scrollbar_bounds[0] = result.bar;
             viewport->scroll_offset.x = result.new_scroll_value;
@@ -2313,6 +2440,7 @@ void Context::OpenPopupMenu(Id id, Id creator_of_this_popup) {
     popup->prev_content_size = f32x2 {0, 0};
     popup->size_resolution = Viewport::SizeResolutionState::PendingSizeResolution;
     popup->creator_of_this_popup_menu = is_first_popup ? k_null_id : creator_of_this_popup;
+    popup->is_submenu = false;
 
     popup_menu_just_opened = id;
     dyn::Append(open_popups, popup);
@@ -2339,19 +2467,15 @@ void Context::CloseTopPopupOnly() {
     ClosePopupToLevel(open_popups.size - 1);
 }
 
-// Close the popup we have begin-ed into.
-void Context::CloseAllPopups() {
-    // int popup_index = (int)current_popup_stack.size - 1;
-    // if (popup_index < 0 || popup_index > (int)open_popups.size ||
-    //     current_popup_stack[(usize)popup_index]->id != open_popups[(usize)popup_index]->id) {
-    //     return;
-    // }
-    // while (popup_index > 0 && open_popups[(usize)popup_index] &&
-    //        open_popups[(usize)popup_index]->cfg.child_popup) {
-    //     popup_index--;
-    // }
-    ClosePopupToLevel(0);
+void Context::CloseTopMenu() {
+    ASSERT(open_popups.size != 0);
+    auto level = open_popups.size - 1;
+    while (level > 0 && open_popups[level]->is_submenu)
+        --level;
+    ClosePopupToLevel(level);
 }
+
+void Context::CloseAllPopups() { ClosePopupToLevel(0); }
 
 void Context::OpenModalViewport(Id id) {
     if (IsModalOpen(id)) return;
@@ -2444,16 +2568,71 @@ Context::DraggerResult Context::DraggerBehaviour(DraggerBehaviourArgs const& arg
     return result;
 }
 
-bool Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
+// Fades in when show becomes true, fades out from the current opacity when it becomes false. Returns 0 for
+// any id other than the one the state is tracking.
+static f32 TooltipFadeOpacity(Context::TooltipFadeState& state, Id id, bool show) {
+    constexpr auto k_fade_in_secs = 0.2;
+    constexpr auto k_fade_out_secs = 0.1;
+    auto const now = GuiIo().in.current_time;
+
+    auto const fade_in_opacity = [&]() {
+        auto const fade = (f32)Clamp((now - state.time_shown) / k_fade_in_secs, 0.0, 1.0);
+        return 1 - ((1 - fade) * (1 - fade));
+    };
+    auto const fade_out_opacity = [&]() {
+        auto const fade = (f32)Clamp((now - state.time_hidden) / k_fade_out_secs, 0.0, 1.0);
+        return state.opacity_when_hidden * (1 - fade);
+    };
+
+    if (state.item == id && state.time_hidden && now - state.time_hidden >= k_fade_out_secs) state = {};
+
+    if (show) {
+        if (state.item != id) {
+            state = {.item = id, .time_shown = now};
+        } else if (state.time_hidden) {
+            // Re-shown mid fade-out: resume the fade-in from the current opacity rather than from 0.
+            auto const seconds_into_fade_in = k_fade_in_secs * (1 - (f64)Sqrt(1 - fade_out_opacity()));
+            state.time_shown = now + -seconds_into_fade_in;
+            state.time_hidden = {};
+        }
+        auto const opacity = fade_in_opacity();
+        if (opacity < 1) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+        return opacity;
+    }
+
+    if (state.item != id) return 0;
+
+    if (!state.time_hidden) {
+        state.time_hidden = now;
+        state.opacity_when_hidden = fade_in_opacity();
+    }
+    GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+    return fade_out_opacity();
+}
+
+Context::TooltipOpacities Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
     SetHot(rect_in_window_coords, id);
     RegisterRectForMouseTracking(rect_in_window_coords);
 
-    constexpr auto k_delay_secs = 0.5;
+    constexpr auto k_delay_secs = 1.5;
+    constexpr auto k_settle_secs = 0.08; // Stops rapid flicker when sweeping the cursor across many items.
 
-    if (WasJustMadeHot(id))
+    if (WasJustMadeHot(id)) {
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_settle_secs);
         GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_delay_secs);
+    }
 
-    return IsHot(id) && SecondsSpentHot() >= k_delay_secs;
+    // WasJustDeactivated bridges the frame between releasing a drag and becoming hot again. An item can't
+    // be hot while it's active, so a released drag restarts the hot timer: skip the settle delay if the
+    // popup is already showing for this item, else it'd blink off for the settle duration.
+    auto const settled_hot =
+        IsHot(id) && (SecondsSpentHot() >= k_settle_secs || immediate_tooltip.item == id);
+
+    return {
+        .immediate =
+            TooltipFadeOpacity(immediate_tooltip, id, settled_hot || IsActive(id) || WasJustDeactivated(id)),
+        .delayed = TooltipFadeOpacity(delayed_tooltip, id, IsHot(id) && SecondsSpentHot() >= k_delay_secs),
+    };
 }
 
 } // namespace imgui

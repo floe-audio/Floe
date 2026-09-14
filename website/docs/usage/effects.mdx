@@ -24,16 +24,20 @@ Floe has a selection of {data["effects-count"]} reorderable effects that are app
   Your browser does not support the video tag.
 </video>
 
-You can change the ordering of the effects by dragging and dropping the effect names — either the name in the rack or the name next to the on/off switch.
+You can change the ordering of the effects by dragging and dropping them — either the effect's name in the rack or its card in the switchboard.
 
 ## Enabling and bypassing
 
 Each effect has two controls for its active state:
 
-- **Switchboard toggle** (left sidebar): Toggles the effect on or off. When toggled off, the effect is both deactivated and hidden from the rack.
+- **Switchboard card** (left sidebar): Each card has a checkbox — tick it to add the effect to the rack, untick it to remove it again. A card's light shows the effect's colour when it's in the rack and is dim when it isn't. A removed effect is both deactivated and hidden from the rack.
 - **Bypass button** (power icon in the effect heading): Deactivates the effect's audio processing but keeps it visible in the rack. This is useful for quickly A/B comparing with and without an effect, or for keeping your effect chain layout while temporarily disabling an effect.
 
-A bypassed effect appears greyed out in the rack. Click the bypass button again to reactivate it. The close button (✕) on an effect removes it from the rack entirely, same as toggling it off in the switchboard.
+A bypassed effect appears greyed out in the rack. Click the bypass button again to reactivate it. The close button (✕) on an effect removes it from the rack entirely, same as unticking its switchboard card's checkbox.
+
+## Jumping to an effect
+
+Clicking a switchboard card anywhere other than its checkbox scrolls the rack to that effect, so you can reach it without hunting through a long chain. If the effect isn't in the rack yet, ticking its checkbox adds it and scrolls to it.
 
 ## Panel buttons
 
@@ -45,7 +49,7 @@ The buttons in the panel heading act on all effects at once:
 
 Right-clicking an effect — either its heading or its switchboard entry — opens a menu for copying and pasting effects, and for resetting that effect's parameters to their defaults. You can copy a single effect and paste it onto the same effect elsewhere, or copy the entire FX rack — every effect, its order and its settings — and paste it as a whole. This works within a preset or between presets: copy from one, load another, and paste.
 
-Right-clicking the empty space of the switchboard or the rack opens the same copy and paste options for the whole rack, plus an option to paste a single copied effect.
+Right-clicking the empty space of the switchboard or the rack opens the same copy and paste options for the whole rack, plus an option to paste a single copied effect. From the switchboard, this menu also offers **Move Unused FX to Bottom**, which groups all the turned-on effects at the top of the chain without changing their order.
 
 ## Mix
 
@@ -57,10 +61,52 @@ Every effect has a _Mix_ knob in its heading area. Mix blends the original incom
 
 This lets you dial in the strength of an effect without changing any of its other settings — useful for subtle reverb tails, parallel compression, gentle distortion, and so on.
 
+## Distortion
+Distortion adds harmonics to a sound — anything from gentle warmth to aggressive grit. Choose a character from the Type menu, then set how hard you push it with the Drive knob. That's the whole workflow; everything else is there to shape the result.
+
+It runs with 4× oversampling and is anti-aliased to stay clean and musical. It also has built-in gain compensation to keep the level steady as you crank the drive up; for the Legacy types you have to opt in to this using the Auto Gain switch, for the other types it's always on.
+
+- **Drive**: how hard the sound is pushed into the distortion, from nearly clean at the bottom to fully driven at the top. Its range is scaled so each step of the knob adds a similar amount.
+- **Punish**: stacks extra saturation stages after the first, like an amp cascading its gain stages. Turn it up for a denser, more compressed drive that holds its character as notes decay.
+- **Tilt EQ**: shifts the tone going into the distortion. Turn it up to saturate the highs for a brighter result, or down to push the lows for a warmer, fatter drive.
+- **Gain**: trims the level of the distorted signal before the Mix knob blends it back with the dry sound.
+
+The types are grouped into two families in the menu. _Bite_ types are musical saturation, from clean warmth to hard clipping:
+
+- **Tape**: warm and smooth. Rounds off the loud peaks while quieter passages and tails stay clean.
+- **Valve**: rich, even harmonics that stay musical however hard you push, instead of collapsing into a harsh square.
+- **Overdrive**: pedal-style grit with a threshold — a note cleans up as it decays, and playing harder brings the bite in.
+- **Hard Clip**: clean, aggressive brickwall clipping.
+- **Octave**: adds a hard octave-up edge, then saturates — squares up on hot notes and follows their dynamics.
+
+_Mangle_ types are more extreme, adding new tones rather than just thickening the sound:
+
+- **Bitcrush**: lo-fi digital crunch, made by lowering the effective sample rate. Higher Drive means coarser and grittier.
+- **Ring Mod**: multiplies the sound against a low oscillator for clangorous, metallic, bell-like tones. Drive raises the pitch and depth of the effect.
+- **Sine Fold**: folds the wave through a sine curve for interesting, chaotic harmonics.
+- **Warp**: an asymmetric shaper that bends the wave lopsidedly into a gritty, off-kilter drive.
+- **Wavefolder**: folds the peaks back on themselves for bright, metallic harmonics.
+
+_Legacy types are the original distortion algorithms, kept so older presets and projects sound unchanged. They load with their Auto Gain switch off to preserve their original level; turn it on to give them the same steady loudness as the other types._
+
 ## Convolution Reverb
 The convolution unit adds a reverb-like effect to the sound by utilising an impulse response (IR) selected using a dedicated [browser](./browsers). Floe offers some realistic reverb room IRs, but also IRs that produce unusual sound effects.
 
 The set of available IRs depend on what sample libraries you have installed and their features. Floe always has a built-in set of impulse responses available. But additionally, some sample libraries expand this collection, such as the community [Antique IRs](/packages/antique-irs) library.
+
+## Limiter
+
+The limiter is a brickwall limiter: it catches loud peaks and holds your output firmly below a maximum level, letting you push a sound louder without it clipping. It's usually placed last in the rack so it can catch everything above it.
+
+- **Gain**: drives the signal harder into the limiter before it's limited. Turn this up to make the sound louder overall; the limiter will hold the peaks in check.
+- **Ceiling**: the maximum output level. A small safety margin below 0dB is recommended rather than setting this to exactly 0dB.
+- **Mix**: as with other effects, blends between the dry and limited signal.
+
+Three meters show what the limiter is doing: _In_ (the incoming level), _GR_ (how much gain reduction is currently being applied), and _Out_ (the final level).
+
+The limiter measures true peak rather than just the level of individual samples, which means it also catches peaks that occur in between samples — the kind that can appear once audio is played back or converted to a lossy format like MP3. This makes the Ceiling a more reliable guarantee of the loudest the signal will actually get. To do this, it looks a tiny fraction of a millisecond ahead in the audio so it can react before a peak arrives. This delay is small enough (0.5 ms) that Floe absorbs it internally rather than asking your DAW to compensate for it, so you won't notice it or need to do anything about it.
+
+Thanks to that same short lookahead, the limiter is fast and transparent for moderate amounts of limiting. Push it hard — asking for a large amount of gain reduction — and there's less room for the gain change to ramp smoothly, so you may start to hear it colour or slightly distort the sound. If that happens, try backing off the Gain or raising the Ceiling a little.
 
 ## All available effects
 

@@ -190,6 +190,15 @@ linkFarm name [
     };
   }
   {
+    name = "N-V-__8AAGvoAQDmyU1FAg-fls7y6rWfjIUpUR25wnGzrQTD";
+    path = fetchZigArtifact {
+      name = "ebur128";
+      url = "https://github.com/jiixyj/libebur128/archive/refs/tags/v1.2.6.tar.gz";
+      hash = "sha256-uqf8KTo9RlHiRNgCKtA6t5fKPCrYRCxDGZr+gFn6phM=";
+      unpack = false;
+    };
+  }
+  {
     name = "N-V-__8AAHSrwgDkuwylGkEyZxj-_xKsppp8z8563UYjXs2B";
     path = fetchZigArtifact {
       name = "flac";

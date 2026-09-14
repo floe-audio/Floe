@@ -476,6 +476,11 @@ static void LegalInfoPanel(GuiBuilder& builder, InfoPanelContext&, InfoPanelStat
             .copyright = "Copyright (c) Meta Platforms, Inc. and affiliates.",
             .licence = {apache_2_0_license, apache_2_0_license_size},
         },
+        {
+            .name = "libebur128",
+            .copyright = "Copyright (c) 2011 Jan Kokemüller",
+            .licence = {mit_license, mit_license_size},
+        },
     };
 
     static bool open[ArraySize(k_third_party_licence_texts)];

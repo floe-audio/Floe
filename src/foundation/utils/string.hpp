@@ -170,11 +170,12 @@ PUBLIC constexpr usize Utf8CharacterToUtf32(u32* out_char,
 
     // Copy at most 'len' bytes, stop copying at 0 or past in_text_end. Branch predictor does a good job here,
     // so it is fast even with excessive branching.
+    auto const available = (usize)(in_text_end - in_text);
     u8 s[4];
-    s[0] = in_text + 0 < in_text_end ? (u8)in_text[0] : 0;
-    s[1] = in_text + 1 < in_text_end ? (u8)in_text[1] : 0;
-    s[2] = in_text + 2 < in_text_end ? (u8)in_text[2] : 0;
-    s[3] = in_text + 3 < in_text_end ? (u8)in_text[3] : 0;
+    s[0] = 0 < available ? (u8)in_text[0] : 0;
+    s[1] = 1 < available ? (u8)in_text[1] : 0;
+    s[2] = 2 < available ? (u8)in_text[2] : 0;
+    s[3] = 3 < available ? (u8)in_text[3] : 0;
 
     // Assume a four-byte character and load four bytes. Unused bits are shifted out.
     *out_char = (u32)(s[0] & k_masks[len]) << 18;

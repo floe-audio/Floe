@@ -507,7 +507,9 @@ String WriteAutoDescription(Allocator& allocator,
         {ParamIndex::ConvolutionReverbOn, PhraseKind::FxConvolutionReverb, false},
     };
     // clang-format on
-    static_assert(ArraySize(fx_entries) == ToInt(EffectType::Count));
+    // Limiter is excluded: it's typically used as a safety/mastering tool rather than a defining sonic
+    // character, so it shouldn't be mentioned in auto-generated descriptions.
+    static_assert(ArraySize(fx_entries) == ToInt(EffectType::Count) - 1);
 
     u32 num_fx = 0;
     for (auto& e : fx_entries)
@@ -574,25 +576,46 @@ String WriteAutoDescription(Allocator& allocator,
     auto const unmentioned_fx = num_fx - mentioned_fx;
     bool const show_trailing_fx_line = unmentioned_fx > 0;
 
-    DynamicArrayBounded<char, k_max_preset_description_size> text {};
-
     // Headline: instrument name plus the most salient phrase descriptor.
+    DynamicArrayBounded<char, k_max_preset_description_size> headline {};
     if (is_stacked)
-        fmt::Append(text, "layered {}", first_inst_name);
+        fmt::Append(headline, "layered {}", first_inst_name);
     else if (num_layers == 1 && first_inst_name.size)
-        dyn::AppendSpan(text, first_inst_name);
+        dyn::AppendSpan(headline, first_inst_name);
 
     if (phrases.size) {
-        if (text.size) dyn::AppendSpan(text, ", ");
-        dyn::AppendSpan(text, ResolvePhraseText(phrases[0].kind, options.random_seed).descriptor);
+        if (headline.size) dyn::AppendSpan(headline, ", ");
+        dyn::AppendSpan(headline, ResolvePhraseText(phrases[0].kind, options.random_seed).descriptor);
     }
 
-    if (!text.size) return out.ToOwnedSpan();
+    if (!headline.size) return out.ToOwnedSpan();
 
-    dyn::AppendSpan(text, "."_s);
+    dyn::AppendSpan(headline, "."_s);
 
+    // Detail: the remaining phrase modifiers, then a count of any effects not already mentioned.
+    DynamicArrayBounded<char, k_max_preset_description_size> detail {};
+    if (phrases.size > 1) {
+        for (usize i = 1; i < phrases.size; i++) {
+            if (i > 1) {
+                if (i == phrases.size - 1)
+                    dyn::AppendSpan(detail, " and "_s);
+                else
+                    dyn::AppendSpan(detail, ", "_s);
+            }
+            dyn::AppendSpan(detail, ResolvePhraseText(phrases[i].kind, options.random_seed).modifier);
+        }
+        dyn::AppendSpan(detail, "."_s);
+    }
+
+    if (show_trailing_fx_line && num_fx) {
+        if (detail.size) dyn::AppendSpan(detail, " "_s);
+        fmt::Append(detail, "Uses {} effects.", num_fx);
+    }
+
+    DynamicArrayBounded<char, k_max_preset_description_size> text {};
     switch (options.form) {
         case AutoDescriptionForm::Headline: {
+            dyn::AppendSpan(text, (String)headline);
             if (options.folder_name.size) {
                 auto const start = text.size;
                 fmt::Append(text, " [{}]", options.folder_name);
@@ -602,36 +625,21 @@ String WriteAutoDescription(Allocator& allocator,
             break;
         }
         case AutoDescriptionForm::FullBlock: {
-            usize detail_letter = 0;
-            if (phrases.size > 1) {
+            dyn::AppendSpan(text, (String)headline);
+            if (detail.size) {
                 dyn::AppendSpan(text, " "_s);
-                detail_letter = text.size;
-                for (usize i = 1; i < phrases.size; i++) {
-                    if (i > 1) {
-                        if (i == phrases.size - 1)
-                            dyn::AppendSpan(text, " and "_s);
-                        else
-                            dyn::AppendSpan(text, ", "_s);
-                    }
-                    dyn::AppendSpan(text, ResolvePhraseText(phrases[i].kind, options.random_seed).modifier);
-                }
-                dyn::AppendSpan(text, "."_s);
+                if (detail[0] >= 'a' && detail[0] <= 'z') detail[0] -= 32;
+                dyn::AppendSpan(text, (String)detail);
             }
-
-            if (show_trailing_fx_line && num_fx) {
-                dyn::AppendSpan(text, " "_s);
-                if (!detail_letter) detail_letter = text.size;
-                fmt::Append(text, "Uses {} effects.", num_fx);
-            }
-
-            if (detail_letter && detail_letter < text.size && text[detail_letter] >= 'a' &&
-                text[detail_letter] <= 'z') {
-                text[detail_letter] -= 32;
-            }
+            break;
+        }
+        case AutoDescriptionForm::Detail: {
+            dyn::AppendSpan(text, (String)detail);
             break;
         }
     }
 
+    if (!text.size) return out.ToOwnedSpan();
     if (text[0] >= 'a' && text[0] <= 'z') text[0] -= 32;
 
     dyn::AppendSpan(out, (String)text);

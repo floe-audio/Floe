@@ -23,32 +23,33 @@ void DoPinnedViewToggle(GuiState& g, Box parent) {
     constexpr f32 k_track_padding = 2;
     auto const scale = [&](u32 a) { return (u8)((a * (has_comparison ? 255u : 95u)) / 255u); };
 
-    auto const track =
-        DoBox(g.builder,
-              {
-                  .parent = parent,
-                  .background_fill_colours = has_comparison
-                                                 ? Colours {ColSet {
-                                                       .base = Col {.c = Col::White, .alpha = scale(18)},
-                                                       .hot = Col {.c = Col::White, .alpha = scale(26)},
-                                                       .active = Col {.c = Col::White, .alpha = scale(34)},
-                                                   }}
-                                                 : Colours {Col {.c = Col::White, .alpha = scale(18)}},
-                  .round_background_corners = 0b1111,
-                  .corner_rounding = k_corner_rounding,
-                  .layout {
-                      .size = {(segment_width * 2) + (k_track_padding * 2), height},
-                      .contents_padding = {.lr = k_track_padding, .tb = k_track_padding},
-                      .contents_direction = layout::Direction::Row,
-                  },
-                  .tooltip = has_comparison
-                                 ? TooltipString {"Switch between the original state and your modifications. "
-                                                  "Editing while viewing the original discards your "
-                                                  "modifications."_s}
-                                 : TooltipString {k_nullopt},
-                  .button_behaviour =
-                      has_comparison ? Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}} : k_nullopt,
-              });
+    auto const track = DoBox(
+        g.builder,
+        {
+            .parent = parent,
+            .background_fill_colours = has_comparison
+                                           ? Colours {ColSet {
+                                                 .base = Col {.c = Col::White, .alpha = scale(18)},
+                                                 .hot = Col {.c = Col::White, .alpha = scale(26)},
+                                                 .active = Col {.c = Col::White, .alpha = scale(34)},
+                                             }}
+                                           : Colours {Col {.c = Col::White, .alpha = scale(18)}},
+            .round_background_corners = 0b1111,
+            .corner_rounding = k_corner_rounding,
+            .layout {
+                .size = {(segment_width * 2) + (k_track_padding * 2), height},
+                .contents_padding = {.lr = k_track_padding, .tb = k_track_padding},
+                .contents_direction = layout::Direction::Row,
+            },
+            .tooltip =
+                viewing_pinned
+                    ? "You're hearing the original: the preset as it was last loaded or saved. Switch back to Modified to return to your changes.\n\nCareful: editing anything while viewing the original discards your modifications, but you can always use the Undo button in the top panel."_s
+                : modified
+                    ? "Flick between your modified version and the original: the preset as it was last loaded or saved. It's an easy way to check whether your changes are actually an improvement.\n\nCareful: editing anything while viewing the original discards your modifications, but you can always use the Undo button in the top panel."_s
+                    : "Compare your changes against the preset. Once you've modified something, this lets you flick between the preset as it was last loaded or saved and your modified version, so you can hear exactly what your changes have done."_s,
+            .button_behaviour =
+                has_comparison ? Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}} : k_nullopt,
+        });
 
     auto const do_segment = [&](String label, bool selected, u64 segment_id) {
         auto const cell = DoBox(

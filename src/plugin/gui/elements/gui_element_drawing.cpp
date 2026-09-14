@@ -3,6 +3,8 @@
 
 #include "gui/elements/gui_element_drawing.hpp"
 
+#include <IconsFontAwesome6.h>
+
 #include "foundation/foundation.hpp"
 
 #include "gui/elements/gui_constants.hpp"
@@ -12,10 +14,14 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt) {
+void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt, f32 opacity) {
     auto const rounding = rounding_opt ? *rounding_opt : WwToPixels(k_corner_rounding);
     auto const blur = WwToPixels(7.84f);
-    imgui.draw_list->AddDropShadow(r.Min(), r.Max(), LiveCol(UiColMap::ViewportDropShadow), blur, rounding);
+    imgui.draw_list->AddDropShadow(r.Min(),
+                                   r.Max(),
+                                   ChangeAlpha(LiveCol(UiColMap::ViewportDropShadow), opacity),
+                                   blur,
+                                   rounding);
 }
 
 void DrawVoiceMarkerLine(imgui::Context const& imgui,
@@ -391,21 +397,18 @@ void DrawVerticalSlider(imgui::Context& imgui,
 
 void DrawPeakMeter(imgui::Context& imgui,
                    Rect r,
-                   StereoPeakMeter const& level,
+                   StereoPeakMeter const* level,
                    DrawPeakMeterOptions const& options) {
+    ASSERT(level);
+
     // Snap origin to pixel boundary. All positions below are origin + integer offset.
     auto const origin_x = Round(r.x);
     auto const origin_y = Round(r.y);
     auto const total_w = (s32)Round(r.w);
     auto const total_h = (s32)Round(r.h);
 
-    auto const snapshot = level.GetSnapshot();
-    auto const v = snapshot.levels;
-    auto const did_clip = options.flash_when_clipping && level.DidClipRecently();
-
-    constexpr f32 k_max_db = 10;
-    constexpr f32 k_min_db = -60;
-    constexpr f32 k_min_amp = constexpr_math::Powf(10, k_min_db / 20);
+    auto const k_max_db = options.max_db;
+    auto const k_min_db = options.min_db;
 
     // All layout values as integer pixel offsets.
     auto const marker_w = (s32)WwToPixels(5.7f);
@@ -414,9 +417,10 @@ void DrawPeakMeter(imgui::Context& imgui,
     auto const pad_right = options.show_db_markers ? marker_w : 0;
     auto const meter_w = total_w - pad_left - pad_right;
     auto const gap = options.gap_px;
+    constexpr auto k_num_channels = 2;
+
     auto const chan_w = (meter_w - gap) / 2;
-    auto const l_chan_x = pad_left;
-    auto const r_chan_x = pad_left + chan_w + gap;
+    s32 const chan_xs[2] = {pad_left, pad_left + chan_w + gap};
 
     auto const rounding_full = WwToPixels(k_corner_rounding);
     auto const small = chan_w < (s32)(rounding_full * 2);
@@ -425,15 +429,52 @@ void DrawPeakMeter(imgui::Context& imgui,
     if (small) imgui.draw_list->renderer.anti_aliased_shapes = false;
     DEFER { imgui.draw_list->renderer.anti_aliased_shapes = saved_aa; };
 
-    // Background channels.
-    imgui.draw_list->AddRectFilled(f32x2 {origin_x + (f32)l_chan_x, origin_y},
-                                   f32x2 {origin_x + (f32)(l_chan_x + chan_w), origin_y + (f32)total_h},
-                                   LiveCol(UiColMap::PeakMeterBack),
-                                   rounding);
-    imgui.draw_list->AddRectFilled(f32x2 {origin_x + (f32)r_chan_x, origin_y},
-                                   f32x2 {origin_x + (f32)(r_chan_x + chan_w), origin_y + (f32)total_h},
-                                   LiveCol(UiColMap::PeakMeterBack),
-                                   rounding);
+    // Segment boundaries as integer y-offsets from origin.
+    auto const top_seg_y = (s32)((1 - MapTo01(0.0f, k_min_db, k_max_db)) * (f32)total_h);
+    auto const mid_seg_y =
+        (s32)((1 - MapTo01(options.yellow_zone_min_db, k_min_db, k_max_db)) * (f32)total_h);
+
+    // Background channels. The region above 0dB gets a subtly brighter background to hint at the overload
+    // range. The two regions are drawn adjacent (not overlaid) so the translucent background isn't
+    // double-blended.
+    auto const back_col = LiveCol(UiColMap::PeakMeterBack);
+    if (options.show_warning_zones) {
+        // The region above 0dB gets a subtly brighter background to hint at the overload range. The two
+        // regions are drawn adjacent (not overlaid) so the translucent background isn't double-blended.
+        auto const top_back_col = ToU32({.c = Col::Black, .alpha = 44});
+        auto const split_y = Clamp(top_seg_y, 0, total_h);
+        for (auto const chan_index : Range(k_num_channels)) {
+            auto const cx = chan_xs[chan_index];
+            auto const x0 = origin_x + (f32)cx;
+            auto const x1 = origin_x + (f32)(cx + chan_w);
+
+            // Above 0dB (rounded top corners).
+            if (split_y > 0)
+                imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y},
+                                               f32x2 {x1, origin_y + (f32)split_y},
+                                               top_back_col,
+                                               rounding,
+                                               0b1100);
+            // Below 0dB (rounded bottom corners).
+            if (split_y < total_h)
+                imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y + (f32)split_y},
+                                               f32x2 {x1, origin_y + (f32)total_h},
+                                               back_col,
+                                               rounding,
+                                               0b0011);
+        }
+    } else {
+        for (auto const chan_index : Range(k_num_channels)) {
+            auto const cx = chan_xs[chan_index];
+            auto const x0 = origin_x + (f32)cx;
+            auto const x1 = origin_x + (f32)(cx + chan_w);
+            imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y},
+                                           f32x2 {x1, origin_y + (f32)total_h},
+                                           back_col,
+                                           rounding,
+                                           0b1111);
+        }
+    }
 
     // dB markers.
     if (options.show_db_markers) {
@@ -449,26 +490,42 @@ void DrawPeakMeter(imgui::Context& imgui,
                                      col);
         };
 
-        draw_marker(0, true);
-        draw_marker(-12, false);
-        draw_marker(-24, false);
-        draw_marker(-36, false);
-        draw_marker(-48, false);
+        for (f32 db = 0; db > k_min_db; db -= options.marker_interval_db)
+            draw_marker(db, db == 0);
+
+        if (options.show_min_max_markers) {
+            draw_marker(k_max_db, false);
+            draw_marker(k_min_db, false);
+        }
     }
+
+    auto const snapshot = level->GetSnapshot();
+    auto const v = snapshot.levels;
+    auto const did_clip = options.flash_when_clipping && level->DidClipRecently();
+
+    constexpr f32 k_peak_min_db = -60;
+    constexpr f32 k_min_amp = constexpr_math::Powf(10, k_peak_min_db / 20);
+
+    // The processor stops notifying us when it goes silent, so keep animating while there's anything to
+    // show; that way we pick up the meter being zeroed instead of leaving a stale level on screen.
+    if (Any(v > k_min_amp) || Any(snapshot.hold_levels > k_min_amp))
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
 
     // Level positions as integer y-offsets from origin.
     auto const clamped_v = Max(v, f32x2(k_min_amp));
     auto const v_db = 20 * Log10(clamped_v);
     auto const v_perceived = Clamp<f32x2>(MapTo01Unchecked<f32x2>(v_db, k_min_db, k_max_db), 0, 1);
-    auto const level_y_l = total_h - (s32)(v_perceived[0] * (f32)total_h);
-    auto const level_y_r = total_h - (s32)(v_perceived[1] * (f32)total_h);
+    auto level_y_l = total_h - (s32)(v_perceived[0] * (f32)total_h);
+    auto level_y_r = total_h - (s32)(v_perceived[1] * (f32)total_h);
 
-    // Segment boundaries as integer y-offsets from origin.
-    auto const top_seg_y = (s32)((1 - MapTo01(0.0f, k_min_db, k_max_db)) * (f32)total_h);
-    auto const mid_seg_y = (s32)((1 - MapTo01(-12.0f, k_min_db, k_max_db)) * (f32)total_h);
+    if (options.low_signal_threshold_db) {
+        auto const threshold = *options.low_signal_threshold_db;
+        auto const sliver_y = Max(0, total_h - 1);
+        if (v_db[0] > threshold) level_y_l = Min(level_y_l, sliver_y);
+        if (v_db[1] > threshold) level_y_r = Min(level_y_r, sliver_y);
+    }
 
     // Draw level segments for each channel.
-    s32 const chan_xs[] = {l_chan_x, r_chan_x};
     s32 const level_ys[] = {level_y_l, level_y_r};
     for (s32 i = 0; i < 2; i++) {
         s32 const cx = chan_xs[i];
@@ -477,6 +534,17 @@ void DrawPeakMeter(imgui::Context& imgui,
 
         auto const x0 = origin_x + (f32)cx;
         auto const x1 = origin_x + (f32)(cx + chan_w);
+
+        if (!options.show_warning_zones) {
+            auto col = LiveCol(UiColMap::PeakMeterHighlightBottom);
+            if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
+            imgui.draw_list->AddRectFilled(f32x2 {x0, origin_y + ly},
+                                           f32x2 {x1, origin_y + (f32)total_h},
+                                           col,
+                                           rounding,
+                                           0b0011);
+            continue;
+        }
 
         // Top segment (above 0dB line).
         if (ly < top_seg_y) {
@@ -507,55 +575,248 @@ void DrawPeakMeter(imgui::Context& imgui,
                                            0b0011);
         }
     }
+
+    // Peak-hold lines. Positioned with the same rounding as the level bars so a line sits exactly at the
+    // top edge of where the level actually reached, never above it, and coloured to match the segment it
+    // falls in.
+    auto const hold_line_h = Max(1.0f, Round(WwToPixels(1.0f)));
+    if ((f32)total_h > hold_line_h) {
+        auto const hold_db = 20 * Log10(Max(snapshot.hold_levels, f32x2(k_min_amp)));
+        for (auto const chan_index : Range(k_num_channels)) {
+            if (hold_db[chan_index] <= k_min_db) continue;
+            auto const hold_01 = Clamp01(MapTo01(hold_db[chan_index], k_min_db, k_max_db));
+            auto const hold_y = total_h - (s32)(hold_01 * (f32)total_h);
+            auto const y = Clamp((f32)hold_y, 0.0f, (f32)total_h - hold_line_h);
+
+            auto col = LiveCol(UiColMap::PeakMeterHighlightBottom);
+            if (options.show_warning_zones) {
+                if (hold_y < top_seg_y)
+                    col = LiveCol(UiColMap::PeakMeterHighlightTop);
+                else if (hold_y < mid_seg_y)
+                    col = LiveCol(UiColMap::PeakMeterHighlightMiddle);
+            }
+            if (did_clip) col = LiveCol(UiColMap::PeakMeterClipping);
+
+            auto const cx = chan_xs[chan_index];
+            imgui.draw_list->AddRectFilled(f32x2 {origin_x + (f32)cx, origin_y + y},
+                                           f32x2 {origin_x + (f32)(cx + chan_w), origin_y + y + hold_line_h},
+                                           col);
+        }
+    }
+
+    if (options.marker_db) {
+        auto const marker_y =
+            (s32)((1 - MapTo01(Clamp(*options.marker_db, k_min_db, k_max_db), k_min_db, k_max_db)) *
+                  (f32)total_h);
+        auto const col =
+            options.marker_col ? options.marker_col : LiveCol(UiColMap::PeakMeterHighlightMiddle);
+        imgui.draw_list->AddLine(f32x2 {origin_x + (f32)chan_xs[0], origin_y + (f32)marker_y},
+                                 f32x2 {origin_x + (f32)(chan_xs[1] + chan_w), origin_y + (f32)marker_y},
+                                 col,
+                                 WwToPixels(1.0f));
+    }
+}
+
+void DrawGainReductionMeter(imgui::Context& imgui, Rect r, DrawGainReductionMeterOptions const& options) {
+    auto const origin_x = Round(r.x);
+    auto const origin_y = Round(r.y);
+    auto const total_w = (s32)Round(r.w);
+    auto const total_h = (s32)Round(r.h);
+
+    auto const meter_w = total_w;
+    constexpr auto k_channel_gap = 2; // matches DrawPeakMeterOptions::gap_px default
+    auto const chan_w = (meter_w - k_channel_gap) / 2;
+    auto const bar_x0 = origin_x + (f32)((meter_w - chan_w) / 2);
+    auto const bar_x1 = bar_x0 + (f32)chan_w;
+
+    auto const rounding_full = WwToPixels(k_corner_rounding);
+    auto const small = chan_w < (s32)(rounding_full * 2);
+    auto const rounding = small ? 0.0f : rounding_full;
+    auto const saved_aa = imgui.draw_list->renderer.anti_aliased_shapes;
+    if (small) imgui.draw_list->renderer.anti_aliased_shapes = false;
+    DEFER { imgui.draw_list->renderer.anti_aliased_shapes = saved_aa; };
+
+    imgui.draw_list->AddRectFilled(f32x2 {bar_x0, origin_y},
+                                   f32x2 {bar_x1, origin_y + (f32)total_h},
+                                   LiveCol(UiColMap::PeakMeterBack),
+                                   rounding);
+
+    auto const reduction_y =
+        (s32)(Clamp(options.gain_reduction_db / options.max_reduction_db, 0.0f, 1.0f) * (f32)total_h);
+    if (reduction_y > 0)
+        imgui.draw_list->AddRectFilled(f32x2 {bar_x0, origin_y},
+                                       f32x2 {bar_x1, origin_y + (f32)reduction_y},
+                                       options.col,
+                                       rounding,
+                                       0b1100);
+}
+
+void DrawLoudnessMeter(imgui::Context& imgui, Rect r, DrawLoudnessMeterOptions const& options) {
+    auto const origin_x = Round(r.x);
+    auto const origin_y = Round(r.y);
+    auto const total_w = (s32)Round(r.w);
+    auto const total_h = (s32)Round(r.h);
+
+    constexpr auto k_channel_gap = 2; // matches DrawPeakMeterOptions::gap_px default
+    auto const bar_w = (total_w - k_channel_gap) / 2;
+    auto const bar_x0 = origin_x + (f32)((total_w - bar_w) / 2);
+    auto const bar_x1 = bar_x0 + (f32)bar_w;
+
+    auto const rounding_full = WwToPixels(k_corner_rounding);
+    auto const small = bar_w < (s32)(rounding_full * 2);
+    auto const rounding = small ? 0.0f : rounding_full;
+    auto const saved_aa = imgui.draw_list->renderer.anti_aliased_shapes;
+    if (small) imgui.draw_list->renderer.anti_aliased_shapes = false;
+    DEFER { imgui.draw_list->renderer.anti_aliased_shapes = saved_aa; };
+
+    auto const clamp_lufs = [&](f32 lufs) { return Clamp(lufs, options.min_lufs, options.max_lufs); };
+    auto const y_for_lufs = [&](f32 lufs) {
+        return origin_y +
+               (f32)(s32)((1 - MapTo01(clamp_lufs(lufs), options.min_lufs, options.max_lufs)) * (f32)total_h);
+    };
+    auto const good_col = LiveCol(UiColMap::LoudnessMeterGood);
+    auto const col_for_lufs = [&](f32 lufs) {
+        if (lufs < options.target_min_lufs)
+            return LerpColours(good_col,
+                               LiveCol(UiColMap::LoudnessMeterQuiet),
+                               Clamp01((options.target_min_lufs - lufs) / options.fade_lu));
+        if (lufs > options.target_max_lufs)
+            return LerpColours(good_col,
+                               LiveCol(UiColMap::LoudnessMeterHot),
+                               Clamp01((lufs - options.target_max_lufs) / options.fade_lu));
+        return good_col;
+    };
+
+    imgui.draw_list->AddRectFilled(f32x2 {bar_x0, origin_y},
+                                   f32x2 {bar_x1, origin_y + (f32)total_h},
+                                   LiveCol(UiColMap::PeakMeterBack),
+                                   rounding);
+
+    // The fill colour is piecewise-linear in LUFS, so a vertical gradient between each pair of breakpoints
+    // reproduces it exactly.
+    auto const fill_top_lufs = clamp_lufs(options.short_term_lufs);
+    f32 const breakpoints_lufs[] = {
+        options.min_lufs,
+        clamp_lufs(options.target_min_lufs - options.fade_lu),
+        clamp_lufs(options.target_min_lufs),
+        clamp_lufs(options.target_max_lufs),
+        clamp_lufs(options.target_max_lufs + options.fade_lu),
+        options.max_lufs,
+    };
+    for (auto const segment_index : Range(ArraySize(breakpoints_lufs) - 1)) {
+        auto const lo_lufs = breakpoints_lufs[segment_index];
+        auto const hi_lufs = Min(breakpoints_lufs[segment_index + 1], fill_top_lufs);
+        if (hi_lufs <= lo_lufs) break;
+        auto const lo_y = y_for_lufs(lo_lufs);
+        auto const hi_y = y_for_lufs(hi_lufs);
+        if (hi_y >= lo_y) continue;
+        auto const lo_col = col_for_lufs(lo_lufs);
+        auto const hi_col = col_for_lufs(hi_lufs);
+        imgui.draw_list->AddRectFilledMultiColor(f32x2 {bar_x0, hi_y},
+                                                 f32x2 {bar_x1, lo_y},
+                                                 hi_col,
+                                                 hi_col,
+                                                 lo_col,
+                                                 lo_col);
+    }
+
+    if (options.momentary_lufs > options.min_lufs) {
+        auto const marker_y = y_for_lufs(options.momentary_lufs);
+        imgui.draw_list->AddLine(f32x2 {bar_x0, marker_y},
+                                 f32x2 {bar_x1, marker_y},
+                                 LiveCol(UiColMap::LoudnessMeterMomentaryMarker),
+                                 WwToPixels(1.0f));
+    }
+}
+
+struct ScrollbarColours {
+    u32 channel;
+    u32 handle;
+    u32 handle_viewport_hovered;
+    u32 handle_hot;
+    u32 arrow;
+    u32 arrow_hot;
+    u32 button_back_hot;
+};
+
+static void DrawScrollbar(imgui::Context const& imgui,
+                          imgui::ViewportScrollbar const& bar,
+                          usize bar_index,
+                          ScrollbarColours const& colours) {
+    auto const rounding = WwToPixels(1.5f);
+    auto const inset = Max(1.0f, Round(WwToPixels(1.0f)));
+
+    // Channel.
+    {
+        auto channel = bar.strip;
+        if (bar.buttons)
+            channel = Rect::FromMinMax(Min(channel.Min(), (*bar.buttons)[0].rect.Min()),
+                                       Max(channel.Max(), (*bar.buttons)[1].rect.Max()));
+        imgui.draw_list->AddRectFilled(channel, colours.channel, rounding);
+    }
+
+    // Buttons.
+    if (bar.buttons) {
+        auto const is_vertical = bar_index == 1;
+        auto const* font = imgui.draw_list->fonts.atlas[ToInt(FontType::Icons)];
+        for (auto const button_index : Range(2uz)) {
+            auto const& button = (*bar.buttons)[button_index];
+            auto const hot = imgui.IsHotOrActive(button.id, MouseButton::Left);
+            if (hot)
+                imgui.draw_list->AddRectFilled(button.rect.Reduced(inset), colours.button_back_hot, rounding);
+
+            String const icon = is_vertical ? (button_index == 0 ? ICON_FA_CARET_UP : ICON_FA_CARET_DOWN)
+                                            : (button_index == 0 ? ICON_FA_CARET_LEFT : ICON_FA_CARET_RIGHT);
+            auto const font_size = Min(button.rect.w, button.rect.h) * 0.8f;
+            auto const text_size = font->CalcTextSize(icon, {.font_size = font_size});
+            font->RenderText(imgui.draw_list,
+                             font_size,
+                             button.rect.Centre() - (text_size / 2),
+                             hot ? colours.arrow_hot : colours.arrow,
+                             imgui.draw_list->clip_rect_stack.Back(),
+                             icon);
+        }
+    }
+
+    // Handle.
+    {
+        auto handle_col = colours.handle;
+        if (imgui.IsHotOrActive(bar.id, MouseButton::Left))
+            handle_col = colours.handle_hot;
+        else if (imgui.IsViewportHovered(imgui.curr_viewport))
+            handle_col = colours.handle_viewport_hovered;
+        imgui.draw_list->AddRectFilled(bar.handle.Reduced(inset), handle_col, rounding);
+    }
 }
 
 void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
-    for (auto const b : bars) {
-        if (!b) continue;
-        auto const rounding = WwToPixels(k_corner_rounding);
-        imgui.draw_list->AddRectFilled(b->strip, LiveCol(UiColMap::ScrollbarBack), rounding);
-        u32 handle_col = LiveCol(UiColMap::ScrollbarHandle);
-        if (imgui.IsHot(b->id))
-            handle_col = LiveCol(UiColMap::ScrollbarHandleHover);
-        else if (imgui.IsActive(b->id, MouseButton::Left))
-            handle_col = LiveCol(UiColMap::ScrollbarHandleActive);
-        imgui.draw_list->AddRectFilled(b->handle, handle_col, rounding);
-    }
+    ScrollbarColours const colours {
+        .channel = LiveCol(UiColMap::ScrollbarBack),
+        .handle = LiveCol(UiColMap::ScrollbarHandle),
+        .handle_viewport_hovered = LiveCol(UiColMap::ScrollbarHandleViewportHover),
+        .handle_hot = LiveCol(UiColMap::ScrollbarHandleHover),
+        .arrow = LiveCol(UiColMap::ScrollbarHandle),
+        .arrow_hot = LiveCol(UiColMap::ScrollbarHandleHover),
+        .button_back_hot = LiveCol(UiColMap::ScrollbarButtonHover),
+    };
+    for (auto const bar_index : Range(bars.size))
+        if (auto const& b = bars[bar_index]) DrawScrollbar(imgui, *b, bar_index, colours);
 }
 
 static void DrawModalScrollbarsWithMode(imgui::Context const& imgui,
                                         imgui::ViewportScrollbars const& bars,
                                         bool dark_mode) {
-    for (auto const b : bars) {
-        if (!b) continue;
-        if (imgui.IsViewportHovered(imgui.curr_viewport) || imgui.IsActive(b->id, MouseButton::Left)) {
-            auto const hot_or_active = imgui.IsHotOrActive(b->id, MouseButton::Left);
-            auto const rounding = WwToPixels(k_panel_rounding);
-
-            // Channel.
-            if (hot_or_active) {
-                u32 col = ToU32({.c = Col::Background2, .dark_mode = dark_mode});
-                imgui.draw_list->AddRectFilled(b->strip, col, rounding);
-            }
-
-            // Handle.
-            {
-                auto handle_rect = b->handle;
-                u32 handle_col = ToU32({.c = Col::Surface1, .dark_mode = dark_mode});
-                if (hot_or_active) handle_col = ToU32({.c = Col::Overlay0, .dark_mode = dark_mode});
-                if (imgui.curr_viewport->cfg.scrollbar_inside_padding) {
-                    auto const pad_l = WwToPixels(hot_or_active ? 1 : 3.0f);
-                    auto const pad_r = 0;
-                    auto const total_pad = pad_l + pad_r;
-                    if (handle_rect.w > total_pad) {
-                        handle_rect.x += pad_l;
-                        handle_rect.w -= total_pad;
-                    }
-                }
-                imgui.draw_list->AddRectFilled(handle_rect, handle_col, rounding);
-            }
-        }
-    }
+    ScrollbarColours const colours {
+        .channel = ToU32({.c = Col::Surface0, .dark_mode = dark_mode}),
+        .handle = ToU32({.c = Col::Overlay0, .dark_mode = dark_mode}),
+        .handle_viewport_hovered = ToU32({.c = Col::Overlay1, .dark_mode = dark_mode}),
+        .handle_hot = ToU32({.c = Col::Overlay2, .dark_mode = dark_mode}),
+        .arrow = ToU32({.c = Col::Overlay1, .dark_mode = dark_mode}),
+        .arrow_hot = ToU32({.c = Col::Text, .dark_mode = dark_mode}),
+        .button_back_hot = ToU32({.c = Col::Surface2, .dark_mode = dark_mode}),
+    };
+    for (auto const bar_index : Range(bars.size))
+        if (auto const& b = bars[bar_index]) DrawScrollbar(imgui, *b, bar_index, colours);
 }
 
 void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars) {
@@ -584,47 +845,228 @@ void DrawOverlayViewportBackground(imgui::Context const& imgui) {
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0}), rounding);
 }
 
-void DrawOverlayTooltipForRect(imgui::Context const& imgui,
-                               Fonts& fonts,
-                               String str,
-                               DrawTooltipArgs const& args) {
-    fonts.Push(ToInt(FontType::Body));
+struct TooltipText {
+    String text;
+    String footer {}; // Dimmer, as a separate paragraph beneath the text.
+};
+
+static f32 TooltipFooterGap(Fonts& fonts) { return fonts.Current()->font_size; }
+
+static f32x2 TooltipBoxSize(Fonts& fonts,
+                            FontType font,
+                            TooltipText const& str,
+                            f32 max_text_width,
+                            f32x2 text_margin,
+                            Optional<f32> fixed_text_width = k_nullopt) {
+    fonts.Push(ToInt(font));
+    DEFER { fonts.Pop(); };
+    auto const wrap_width = fixed_text_width.ValueOr(max_text_width);
+    auto size = fonts.CalcTextSize(str.text, {.wrap_width = wrap_width});
+    if (str.footer.size) {
+        auto const footer_size = fonts.CalcTextSize(str.footer, {.wrap_width = wrap_width});
+        size = {Max(size.x, footer_size.x), size.y + TooltipFooterGap(fonts) + footer_size.y};
+    }
+    auto const text_width = fixed_text_width.ValueOr(Min(max_text_width, size.x));
+    return f32x2 {text_width, size.y} + (text_margin * 2);
+}
+
+static void DrawTooltipBox(imgui::Context const& imgui,
+                           Fonts& fonts,
+                           FontType font,
+                           TooltipText const& str,
+                           Rect r,
+                           f32x2 text_margin,
+                           f32 opacity) {
+    fonts.Push(ToInt(font));
     DEFER { fonts.Pop(); };
 
-    auto const max_width = WwToPixels(244.f);
-    auto const text_margin = WwToPixels(k_tooltip_pad);
+    DrawDropShadow(imgui, r, k_nullopt, opacity);
+    imgui.overlay_draw_list->AddRectFilled(r,
+                                           ChangeAlpha(ToU32(Col {.c = Col::Background0}), opacity),
+                                           WwToPixels(k_corner_rounding));
+    auto const wrap_width = r.w - (text_margin.x * 2) + 1;
+    imgui.overlay_draw_list->AddText(r.pos + text_margin,
+                                     ChangeAlpha(ToU32(Col {.c = Col::Text}), opacity),
+                                     str.text,
+                                     {.wrap_width = wrap_width});
+    if (str.footer.size) {
+        auto const text_height = fonts.CalcTextSize(str.text, {.wrap_width = wrap_width}).y;
+        imgui.overlay_draw_list->AddText(r.pos + text_margin +
+                                             f32x2 {0, text_height + TooltipFooterGap(fonts)},
+                                         ChangeAlpha(ToU32(Col {.c = Col::Subtext0}), opacity),
+                                         str.footer,
+                                         {.wrap_width = wrap_width});
+    }
+}
 
-    auto const wrapped_size = fonts.CalcTextSize(str, {.wrap_width = max_width});
+enum class TooltipSide : u8 { Below, Above, Right, Left };
 
-    auto const size = Min(max_width, wrapped_size.x);
+static Array<TooltipSide, 4> TooltipSideOrder(TooltipPlacement placement) {
+    switch (placement) {
+        case TooltipPlacement::BelowThenAbove:
+            return {TooltipSide::Below, TooltipSide::Above, TooltipSide::Right, TooltipSide::Left};
+        case TooltipPlacement::AboveThenBelow:
+            return {TooltipSide::Above, TooltipSide::Below, TooltipSide::Right, TooltipSide::Left};
+        case TooltipPlacement::RightThenLeft:
+            return {TooltipSide::Right, TooltipSide::Left, TooltipSide::Below, TooltipSide::Above};
+        case TooltipPlacement::LeftThenRight:
+            return {TooltipSide::Left, TooltipSide::Right, TooltipSide::Below, TooltipSide::Above};
+        case TooltipPlacement::RightThenBelow:
+            return {TooltipSide::Right, TooltipSide::Below, TooltipSide::Left, TooltipSide::Above};
+    }
+    PanicIfReached();
+}
 
-    Rect popup_r {
-        .pos = args.r.pos,
-        .size = f32x2 {size, wrapped_size.y} + (text_margin * 2),
+struct TooltipPlacementContext {
+    Rect element_r;
+    Rect avoid_r;
+    f32x2 window_size;
+    f32x2 text_margin;
+};
+
+// Text width available beside avoid_r on the given side, capped at the max tooltip width.
+static f32 TooltipTextWidthOnSide(TooltipPlacementContext const& ctx, TooltipSide side) {
+    auto const max_text_width = WwToPixels(k_tooltip_max_width);
+    switch (side) {
+        case TooltipSide::Below:
+        case TooltipSide::Above: return max_text_width;
+        case TooltipSide::Right:
+            return Min(max_text_width, ctx.window_size.x - ctx.avoid_r.Right() - (ctx.text_margin.x * 2));
+        case TooltipSide::Left: return Min(max_text_width, ctx.avoid_r.x - (ctx.text_margin.x * 2));
+    }
+    PanicIfReached();
+}
+
+static Rect PlaceTooltipBesideElement(TooltipPlacementContext const& ctx,
+                                      Fonts& fonts,
+                                      FontType font,
+                                      TooltipText const& str,
+                                      TooltipPlacement placement,
+                                      Optional<f32> fixed_text_width = k_nullopt) {
+    auto const min_text_width = fixed_text_width.ValueOr(WwToPixels(k_tooltip_min_width));
+    auto const clamp_x = [&](Rect r) {
+        r.x = Clamp(r.x, 0.0f, Max(0.0f, ctx.window_size.x - r.w));
+        return r;
+    };
+    auto const clamp_y = [&](Rect r) {
+        r.y = Clamp(r.y, 0.0f, Max(0.0f, ctx.window_size.y - r.h));
+        return r;
     };
 
-    if (args.justification == TooltipJustification::AboveOrBelow) {
-        popup_r.y += args.r.h;
-        popup_r.x = popup_r.x + ((args.r.w / 2) - (popup_r.w / 2));
-    } else {
-        popup_r.y = popup_r.y + ((args.r.h / 2) - (popup_r.h / 2));
+    for (auto const side : TooltipSideOrder(placement)) {
+        auto const available_width = TooltipTextWidthOnSide(ctx, side);
+        if (available_width < min_text_width) continue;
+        auto const text_width = fixed_text_width.ValueOr(available_width);
+
+        Rect r {.size = TooltipBoxSize(fonts, font, str, text_width, ctx.text_margin, fixed_text_width)};
+        switch (side) {
+            case TooltipSide::Below:
+                r.pos = {ctx.element_r.CentreX() - (r.w / 2), ctx.avoid_r.Bottom()};
+                if (r.Bottom() > ctx.window_size.y) continue;
+                return clamp_x(r);
+            case TooltipSide::Above:
+                r.pos = {ctx.element_r.CentreX() - (r.w / 2), ctx.avoid_r.y - r.h};
+                if (r.y < 0) continue;
+                return clamp_x(r);
+            case TooltipSide::Right:
+                r.pos = {ctx.avoid_r.Right(), ctx.element_r.CentreY() - (r.h / 2)};
+                if (r.Right() > ctx.window_size.x) continue;
+                return clamp_y(r);
+            case TooltipSide::Left:
+                r.pos = {ctx.avoid_r.x - r.w, ctx.element_r.CentreY() - (r.h / 2)};
+                if (r.x < 0) continue;
+                return clamp_y(r);
+        }
     }
 
-    popup_r.pos = imgui::BestPopupPos(popup_r,
-                                      args.avoid_r,
-                                      GuiIo().in.window_size.ToFloat2(),
-                                      args.justification == TooltipJustification::LeftOrRight
-                                          ? imgui::PopupJustification::LeftOrRight
-                                          : imgui::PopupJustification::AboveOrBelow);
+    Rect r {.pos = ctx.element_r.pos,
+            .size = TooltipBoxSize(fonts,
+                                   font,
+                                   str,
+                                   WwToPixels(k_tooltip_max_width),
+                                   ctx.text_margin,
+                                   fixed_text_width)};
+    return clamp_y(clamp_x(r));
+}
 
-    DrawDropShadow(imgui, popup_r);
+void DrawOverlayTooltipForRect(imgui::Context const& imgui, Fonts& fonts, DrawTooltipArgs const& args) {
+    TooltipPlacementContext const ctx {
+        .element_r = args.r,
+        .avoid_r = args.avoid_r.Expanded(WwToPixels(k_tooltip_avoid_gap)),
+        .window_size = GuiIo().in.window_size.ToFloat2(),
+        .text_margin = WwToPixels(k_tooltip_pad),
+    };
+    auto const& text_margin = ctx.text_margin;
+    auto const& window_size = ctx.window_size;
+    auto const& avoid_r = ctx.avoid_r;
 
-    imgui.overlay_draw_list->AddRectFilled(popup_r,
-                                           ToU32(Col {.c = Col::Background0}),
-                                           WwToPixels(k_corner_rounding));
+    Optional<Rect> value_popup_r {};
+    if (args.value_popup_opacity > 0) {
+        TooltipText const value_popup {.text = args.value_popup};
+        auto const fixed_text_width_px =
+            args.value_popup_fixed_width.Transform([&](f32 w) { return WwToPixels(w); });
+        value_popup_r = PlaceTooltipBesideElement(ctx,
+                                                  fonts,
+                                                  FontType::Body,
+                                                  value_popup,
+                                                  args.placement,
+                                                  fixed_text_width_px);
+        DrawTooltipBox(imgui,
+                       fonts,
+                       FontType::Body,
+                       value_popup,
+                       *value_popup_r,
+                       text_margin,
+                       args.value_popup_opacity);
+    }
 
-    imgui.overlay_draw_list->AddText(popup_r.pos + text_margin,
-                                     ToU32(Col {.c = Col::Text}),
-                                     str,
-                                     {.wrap_width = size + 1});
+    if (args.tooltip_opacity > 0) {
+        auto const font = FontType::BodyItalic;
+        auto const gap = WwToPixels(k_small_gap);
+        TooltipText const tooltip {.text = args.tooltip, .footer = args.tooltip_footer};
+
+        // Stacked against the element and value popup, so the value popup never moves when the tooltip
+        // appears and the tooltip never covers the element.
+        auto const tooltip_r = ({
+            Rect r;
+            if (!value_popup_r) {
+                r = PlaceTooltipBesideElement(ctx, fonts, font, tooltip, args.placement);
+            } else if (auto const& v = *value_popup_r; v.x >= avoid_r.Right() || v.Right() <= avoid_r.x) {
+                // Value popup sits in the gap beside the element: continue the stack downwards within
+                // that same gap, wrapped to the same width.
+                auto const side = v.x >= avoid_r.Right() ? TooltipSide::Right : TooltipSide::Left;
+                r.size = TooltipBoxSize(fonts, font, tooltip, TooltipTextWidthOnSide(ctx, side), text_margin);
+                r.x = side == TooltipSide::Right ? v.x : v.Right() - r.w;
+                r.y = v.Bottom() + gap;
+                if (r.Bottom() > window_size.y) r.y = v.y - gap - r.h;
+                r.y = Clamp(r.y, 0.0f, Max(0.0f, window_size.y - r.h));
+            } else {
+                auto const block_r =
+                    Rect::FromMinMax(Min(v.Min(), avoid_r.Min()), Max(v.Max(), avoid_r.Max())).Expanded(gap);
+                r.size = TooltipBoxSize(fonts,
+                                        font,
+                                        tooltip,
+                                        TooltipTextWidthOnSide(ctx, TooltipSide::Below),
+                                        text_margin);
+                auto const x = v.CentreX() - (r.w / 2);
+                r.pos = {x, block_r.Bottom()};
+                auto const pos =
+                    imgui::BestPopupPos(r, block_r, window_size, imgui::PopupJustification::AboveOrBelow);
+                if (pos.x >= 0)
+                    r.pos = pos;
+                else
+                    r.pos = {Clamp(x, 0.0f, Max(0.0f, window_size.x - r.w)),
+                             Clamp(block_r.Bottom(), 0.0f, Max(0.0f, window_size.y - r.h))};
+            }
+            r;
+        });
+
+        DrawTooltipBox(imgui,
+                       fonts,
+                       FontType::BodyItalic,
+                       tooltip,
+                       tooltip_r,
+                       text_margin,
+                       args.tooltip_opacity);
+    }
 }

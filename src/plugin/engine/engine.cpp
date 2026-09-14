@@ -19,6 +19,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "clap/ext/timer-support.h"
+#include "engine/default_preset.hpp"
 #include "engine/engine_prefs.hpp"
 #include "engine/favourite_items.hpp"
 #include "engine/loop_modes.hpp"
@@ -116,6 +117,7 @@ static void AfterStateChanged(Engine& engine) {
     NotifyListener(engine);
     engine.host.request_callback(&engine.host);
     engine.pending_state_change.Clear();
+    engine.loading_default_preset = false;
 }
 
 void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts) {
@@ -485,7 +487,8 @@ static EqBandResolved ResolveEqBand(ParameterModule scope, u8 band) {
 void ApplySectionOfState(Engine& engine,
                          StateSnapshot const& source,
                          StateSnapshotSection const& source_section,
-                         StateSnapshotSection const& target_section) {
+                         StateSnapshotSection const& target_section,
+                         ApplySectionOptions options) {
     ASSERT(g_is_logical_main_thread);
     if (source_section.tag != target_section.tag) return;
 
@@ -493,6 +496,7 @@ void ApplySectionOfState(Engine& engine,
     DEFER { EndUndoableStep(engine); };
 
     auto const set_param = [&](ParamIndex src, ParamIndex dst) {
+        if (options.preserve_enablement && IsEffectOnParam(dst)) return;
         auto const& dst_range = k_param_descriptors[ToInt(dst)].linear_range;
         SetParameterValue(engine.processor,
                           dst,
@@ -643,7 +647,8 @@ void ApplySectionOfState(Engine& engine,
                 set_param((ParamIndex)i, (ParamIndex)i);
             }
 
-            engine.fx_visible.SetToValue(ToInt(dst_type), source.fx_visible.Get(ToInt(src_type)));
+            if (!options.preserve_enablement)
+                engine.fx_visible.SetToValue(ToInt(dst_type), source.fx_visible.Get(ToInt(src_type)));
             if (dst_type == EffectType::ConvolutionReverb) LoadConvolutionIr(engine, source.ir_id);
             break;
         }
@@ -653,7 +658,7 @@ void ApplySectionOfState(Engine& engine,
                 set_param((ParamIndex)i, (ParamIndex)i);
             }
 
-            engine.fx_visible = source.fx_visible;
+            if (!options.preserve_enablement) engine.fx_visible = source.fx_visible;
             engine.processor.desired_effects_order.Store(EncodeEffectsArray(source.fx_order),
                                                          StoreMemoryOrder::Release);
             engine.processor.inbox_flags.FetchOr(audio_thread_inbox::FxOrderChanged, RmwMemoryOrder::Release);
@@ -685,6 +690,13 @@ bool StateModifiedFromPinned(Engine& engine) {
     }
 
     return changed;
+}
+
+bool IsBlankState(Engine& engine) {
+    auto const& blank = DefaultStateSnapshot();
+    auto current = CurrentStateSnapshot(engine);
+    current.extras = blank.extras;
+    return current == blank;
 }
 
 sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine) {
@@ -838,6 +850,25 @@ void LoadPresetFromFile(Engine& engine, String path) {
         dyn::AssignFitInCapacity(err->message, path);
         err->error_code = state_outcome.Error();
     }
+}
+
+void LoadDefaultPresetIfNeeded(Engine& engine) {
+    ASSERT(g_is_logical_main_thread);
+    if (engine.default_preset_load_attempted) return;
+    if (engine.host_state_received) return;
+    engine.default_preset_load_attempted = true;
+
+    auto const default_preset = ResolveDefaultPreset(engine.shared_engine_systems.prefs);
+    if (!default_preset) return;
+
+    // The file might have been moved or be on an unmounted drive. That's not worth nagging about.
+    if (GetFileType(default_preset->path).ValueOr(FileType::Directory) != FileType::File) return;
+
+    // Clearing first means the preset's undo anchor replaces the initial blank state, so undo can't step
+    // back to blank.
+    engine.undo_history.Clear();
+    LoadPresetFromFile(engine, default_preset->path);
+    engine.loading_default_preset = engine.pending_state_change.HasValue();
 }
 
 void SaveCurrentStateToFile(Engine& engine, String path) {
@@ -1039,6 +1070,17 @@ static void PluginOnPreferenceChanged(Engine& engine, prefs::Key key, prefs::Val
             }
         }
     }
+
+    if (auto const show_lufs_meter = prefs::MatchBool(key,
+                                                      value,
+                                                      {.key = prefs::key::k_show_lufs_meter,
+                                                       .value_requirements = prefs::ValueType::Bool,
+                                                       .default_value = false})) {
+        engine.processor.show_lufs_meter.Store(*show_lufs_meter, StoreMemoryOrder::Relaxed);
+        // Discard the stale reading from before metering was paused, so re-enabling doesn't briefly show
+        // a snapshot from whenever it was last on.
+        if (*show_lufs_meter) ResetLufsMeter(engine.processor);
+    }
 }
 
 usize MegabytesUsedBySamples(Engine const& engine) {
@@ -1130,6 +1172,7 @@ static bool PluginLoadState(Engine& engine, clap_istream const& stream) {
     engine.error_notifications.RemoveError(error_id);
     // Fallback display name for legacy DAW state that doesn't carry one.
     if (state.extras.display_name.size == 0) dyn::Assign(state.extras.display_name, "DAW State"_s);
+    engine.host_state_received = true;
     LoadState(engine, state, {.source = StateSource::Daw});
     engine.undo_history.Clear();
     RecordUndoableStep(engine, state.extras.display_name, true);

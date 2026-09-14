@@ -307,10 +307,11 @@ static ErrorCodeOr<void> ExtractFolder(PackageReader& package,
     return k_success;
 }
 
-static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
-                                                package::Component const& component,
-                                                ComponentInstallConfig const& config,
-                                                ArenaAllocator& scratch_arena) {
+// Returns the absolute path of the installed file or folder, allocated in scratch_arena.
+static ErrorCodeOr<String> ReaderInstallComponent(PackageReader& package,
+                                                  package::Component const& component,
+                                                  ComponentInstallConfig const& config,
+                                                  ArenaAllocator& scratch_arena) {
     TRY(CreateDirectory(config.folder, {.create_intermediate_directories = true}));
 
     // Try to get a folder on the same filesystem so that we can atomic-rename.
@@ -476,7 +477,7 @@ static ErrorCodeOr<void> ReaderInstallComponent(PackageReader& package,
     // remove hidden
     TRY(WindowsSetFileAttributes(full_dest, k_nullopt));
 
-    return k_success;
+    return full_dest.ToOwnedSpan();
 }
 
 #define TRY_J(expression)                                                                                    \
@@ -850,7 +851,7 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
                                                          job.arena);
             }
 
-            TRY_J(install_outcome);
+            component.installed_path = TRY_J(install_outcome);
         }
 
         switch (component.component.type) {
@@ -864,6 +865,14 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
             }
             case ComponentType::Presets: {
                 RescanFolder(job.preset_server, component.install_config.folder);
+
+                if (component.component.preset_bank && component.component.preset_bank->default_preset.size) {
+                    auto const path = path::Join(
+                        job.arena,
+                        Array {component.installed_path, component.component.preset_bank->default_preset});
+                    if (GetFileType(path).ValueOr(FileType::Directory) == FileType::File)
+                        component.suggested_default_preset_path = path;
+                }
                 break;
             }
             case ComponentType::Count: PanicIfReached();
@@ -1400,7 +1409,8 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
 
     constexpr String k_presets_folder_name = "my-presets";
 
-    auto const create_zip_file = [&](String filename, u32 version) -> ErrorCodeOr<String> {
+    auto const create_zip_file =
+        [&](String filename, u32 version, String default_preset = {}) -> ErrorCodeOr<String> {
         DynamicArray<u8> data {tester.scratch_arena};
         auto writer = dyn::WriterFor(data);
         auto package = WriterCreate(writer);
@@ -1418,8 +1428,13 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
         TRY(WriteFile(path::Join(tester.scratch_arena, Array {folder, k_preset_bank_filename}),
                       fmt::Format(tester.scratch_arena,
                                   "revision = {}\n"_s
-                                  "id = org.floe-audio.test\n",
-                                  version)));
+                                  "id = org.floe-audio.test\n"
+                                  "{}",
+                                  version,
+                                  default_preset.size ? (String)fmt::Format(tester.scratch_arena,
+                                                                            "default_preset = {}\n",
+                                                                            default_preset)
+                                                      : ""_s)));
         TRY(WriterAddPresetsFolder(package, folder, tester.scratch_arena, "tester"));
 
         WriterFinalise(package);
@@ -1565,6 +1580,93 @@ TEST_CASE(TestPackageInstallationUpdatePresets) {
                 break;
             }
         }
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestPackageInstallationDefaultPresetSuggestion) {
+    auto const destination_folder = tests::TempFolderUnique(tester);
+
+    ThreadPool thread_pool;
+    thread_pool.Init("pkg-install", {});
+    ThreadsafeErrorNotifications error_notif;
+    sample_lib_server::Server server {thread_pool, destination_folder, error_notif};
+    PresetServer preset_server {
+        .error_notifications = error_notif,
+    };
+
+    InitPresetServer(preset_server, destination_folder);
+    DEFER { ShutdownPresetServer(preset_server); };
+
+    constexpr String k_presets_folder_name = "suggesting-presets";
+    constexpr String k_preset_filename = "sine.floe-preset";
+
+    auto const create_zip_file = [&](String default_preset) -> ErrorCodeOr<String> {
+        DynamicArray<u8> data {tester.scratch_arena};
+        auto writer = dyn::WriterFor(data);
+        auto package = WriterCreate(writer);
+        DEFER { WriterDestroy(package); };
+
+        auto const folder =
+            (String)path::Join(tester.scratch_arena,
+                               Array {tests::TempFolderUnique(tester), k_presets_folder_name});
+        TRY(CreateDirectory(folder, {.create_intermediate_directories = false}));
+        TRY(CopyFile(
+            path::Join(
+                tester.scratch_arena,
+                Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir, k_preset_filename}),
+            path::Join(tester.scratch_arena, Array {folder, k_preset_filename}),
+            ExistingDestinationHandling::Fail));
+        TRY(WriteFile(path::Join(tester.scratch_arena, Array {folder, k_preset_bank_filename}),
+                      fmt::Format(tester.scratch_arena,
+                                  "revision = 1\n"_s
+                                  "id = org.floe-audio.test-default-preset\n"
+                                  "default_preset = {}\n",
+                                  default_preset)));
+        TRY(WriterAddPresetsFolder(package, folder, tester.scratch_arena, "tester"));
+
+        WriterFinalise(package);
+
+        auto const zip = tests::TempFilename(tester);
+        TRY(WriteFile(zip, data));
+        return zip;
+    };
+
+    SUBCASE("the suggestion resolves to the installed file") {
+        CreateJobOptions job_opts {
+            .package_path = TRY(create_zip_file(k_preset_filename)),
+            .install_folders = {destination_folder, destination_folder},
+            .sample_lib_server = server,
+            .preset_server = preset_server,
+        };
+
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job); // Should do both phases.
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+
+        auto const& comp = job->components.first->data;
+        REQUIRE(comp.suggested_default_preset_path.size);
+        CHECK_EQ(TRY(GetFileType(comp.suggested_default_preset_path)), FileType::File);
+        CHECK(path::IsWithinDirectory(comp.suggested_default_preset_path, destination_folder));
+    }
+
+    SUBCASE("a suggestion naming a missing file is ignored") {
+        CreateJobOptions job_opts {
+            .package_path = TRY(create_zip_file("does-not-exist.floe-preset"_s)),
+            .install_folders = {destination_folder, destination_folder},
+            .sample_lib_server = server,
+            .preset_server = preset_server,
+        };
+
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+
+        auto const& comp = job->components.first->data;
+        CHECK_EQ(comp.suggested_default_preset_path.size, 0uz);
     }
 
     return k_success;
@@ -2302,6 +2404,7 @@ TEST_REGISTRATION(RegisterPackageInstallationTests) {
     REGISTER_TEST(package::TestWriteFilenameWithSuffix);
     REGISTER_TEST(package::TestFindNextNonExistentFilename);
     REGISTER_TEST(package::TestPackageInstallationUpdatePresets);
+    REGISTER_TEST(package::TestPackageInstallationDefaultPresetSuggestion);
     REGISTER_TEST(package::TestPackageInstallationMdataToLua);
     REGISTER_TEST(package::TestEncryptedPackageInstallation);
 }

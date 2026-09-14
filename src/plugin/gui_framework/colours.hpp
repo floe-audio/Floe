@@ -89,6 +89,18 @@ constexpr u32 BlendColours(u32 bg_abgr, u32 fg_abgr) {
     return ToU32(ColChannels {.a = a, .b = b, .g = g, .r = r});
 }
 
+constexpr u32 LerpColours(u32 from_abgr, u32 to_abgr, f32 mix_01) {
+    auto const from = FromU32(from_abgr);
+    auto const to = FromU32(to_abgr);
+    auto const lerp_channel = [mix_01](u8 a, u8 b) { return (u8)((f32)a + (((f32)b - (f32)a) * mix_01)); };
+    return ToU32(ColChannels {
+        .a = lerp_channel(from.a, to.a),
+        .b = lerp_channel(from.b, to.b),
+        .g = lerp_channel(from.g, to.g),
+        .r = lerp_channel(from.r, to.r),
+    });
+}
+
 constexpr f32 RelativeLuminance(u32 abgr) {
     auto const col = FromU32(abgr);
     f32 rgb[3] {};
@@ -265,6 +277,7 @@ struct Col {
         SkyBlue,
         Mint,
         Violet,
+        Crimson,
 
         Count,
 
@@ -342,6 +355,7 @@ constexpr u32 ToU32(Col colour) {
                     case Col::SkyBlue: result[idx] = WebHex(0x89B7FF); break;
                     case Col::Mint: result[idx] = WebHex(0x67FFA5); break;
                     case Col::Violet: result[idx] = WebHex(0xB78BFF); break;
+                    case Col::Crimson: result[idx] = WebHex(0xFF2E63); break;
 
                     case Col::Highlight50: result[idx] = WebHex(0xfffbeb); break;
                     case Col::Highlight100: result[idx] = WebHex(0xfdf1c8); break;

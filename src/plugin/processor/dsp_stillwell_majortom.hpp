@@ -65,25 +65,28 @@ struct StillwellMajorTom {
     f32 cthreshv {};
     f32 makeupv {};
     f32 rmscoef {};
+    f32 autogain_db {};
 
     void Update(f32 srate) {
         auto thresh = slider_threshold;
         auto cthresh = (k_slider_knee_type ? (thresh - 3) : thresh);
         cthreshv = Exp(cthresh * k_db2log);
 
-        f32 autogain;
         if (slider_auto_gain)
-            autogain = (Fabs(thresh) - (Fabs(thresh) / Max(1.0f, slider_ratio - 1))) / 2;
+            autogain_db = (Fabs(thresh) - (Fabs(thresh) / Max(1.0f, slider_ratio - 1))) / 2;
         else
-            autogain = 0;
-        auto makeup = slider_gain;
-        makeupv = Exp((makeup + autogain) * k_db2log);
+            autogain_db = 0;
+        UpdateMakeupGain();
 
         if constexpr (k_slider_detection_mode)
             rmscoef = Exp(-1000 / (10 * srate)); // 10 ms RMS window
         else
             rmscoef = Exp(-1000 / (0.0025f * srate)); // 2.5 us Peak detector
     }
+
+    // Cheap enough to call every sample so slider_gain can be smoothed without re-deriving
+    // cthreshv/autogain_db/rmscoef via the full Update().
+    void UpdateMakeupGain() { makeupv = Exp((slider_gain + autogain_db) * k_db2log); }
 
     f32 ospl0 {};
     f32 ospl1 {};

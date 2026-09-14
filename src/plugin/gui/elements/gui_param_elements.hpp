@@ -24,7 +24,9 @@ struct ParameterComponentOptions {
     bool bidirectional = false;
     bool is_fake = false;
     bool label = true;
+    String inactive_reason {}; // If greyed_out, shown in the value popup rather than the tooltip.
     String override_tooltip {};
+    String override_value_popup {};
     String override_label {};
     StereoPeakMeter const* peak_meter = nullptr; // If set, draws a peak meter inside the knob.
     Span<f32 const> voice_blips_01 {}; // Per-voice value markers drawn on the highlight arc.
@@ -43,6 +45,9 @@ struct MenuParameterComponentOptions {
     String override_tooltip {};
     String override_label {};
     String override_button_text {}; // If non-empty, shown on the button instead of the menu item text.
+    Box const* tooltip_avoid_box = nullptr; // Defaults to this widget's own container. Set it to a box that
+                                            // also encloses a caller-drawn label so the tooltip clears that
+                                            // too.
 };
 
 Box DoMenuParameter(GuiState& g,
@@ -73,6 +78,7 @@ struct IntParameterComponentOptions {
     bool label = true;
     String override_tooltip {};
     String override_label {};
+    Box const* tooltip_avoid_box = nullptr; // See MenuParameterComponentOptions::tooltip_avoid_box.
 };
 
 Box DoIntParameter(GuiState& g,
@@ -85,6 +91,7 @@ struct PercentDraggerOptions {
     bool greyed_out = false;
     bool label = true;
     String override_label {};
+    Box const* tooltip_avoid_box = nullptr; // See MenuParameterComponentOptions::tooltip_avoid_box.
 };
 
 Box DoPercentDraggerParameter(GuiState& g,
@@ -137,9 +144,31 @@ bool DoResetSectionMenuItems(GuiState& g,
                              Box menu_root,
                              StateSnapshotSection const& section,
                              String name,
-                             bool no_icon_gap = true);
+                             bool no_icon_gap = true,
+                             ApplySectionOptions default_reset_options = {});
 
+// Help text: the parameter's description.
 String ParamTooltipText(DescribedParamValue const& param, ArenaAllocator& arena, bool greyed_out = false);
+
+// Interaction hints shown dimmed beneath a parameter's tooltip. These belong to the widget rather than the
+// parameter, so the descriptor text shouldn't repeat them.
+constexpr String k_dragger_tooltip_footer =
+    "Shift-drag for fine control. " MODIFIER_KEY_NAME
+    "-click to reset. Double-click to type. Right-click for more options."_s;
+constexpr String k_right_click_tooltip_footer = "Right-click for more options."_s;
+// For buttons, which only have a right-click menu when automatable.
+constexpr String ParamClickableTooltipFooter(DescribedParamValue const& param) {
+    return param.info.flags.not_automatable ? String {} : k_right_click_tooltip_footer;
+}
+// For menus, which additionally reset to their default value on modifier-click.
+constexpr String ParamMenuTooltipFooter(DescribedParamValue const& param) {
+    if (param.info.flags.not_automatable) return MODIFIER_KEY_NAME "-click to reset."_s;
+    return MODIFIER_KEY_NAME "-click to reset. Right-click for more options."_s;
+}
+
+// Value readout: just the value for a single parameter, "Label: value" lines for several.
+String ParamValuePopupText(GuiState const& g, Span<DescribedParamValue const*> params, ArenaAllocator& arena);
+String ParamValuePopupText(GuiState const& g, DescribedParamValue const& param, ArenaAllocator& arena);
 
 void AddParamContextMenuBehaviour(GuiState& g, Rect window_r, imgui::Id id, DescribedParamValue const& param);
 void AddParamContextMenuBehaviour(GuiState& g,
@@ -151,13 +180,30 @@ void AddParamContextMenuBehaviour(GuiState& g, Box const& box, DescribedParamVal
 
 void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const> params);
 
-void DoParameterTooltipIfNeeded(GuiState& g,
-                                DescribedParamValue const& param,
-                                imgui::Id imgui_id,
-                                Rect window_r);
-void DoParameterTooltipIfNeeded(GuiState& g,
-                                Span<DescribedParamValue const*> param,
-                                imgui::Id imgui_id,
-                                Rect window_r);
-void ParameterValuePopup(GuiState& g, DescribedParamValue const& param, imgui::Id id, Rect window_r);
-void ParameterValuePopup(GuiState& g, Span<DescribedParamValue const*> params, imgui::Id id, Rect window_r);
+// Id of the text input that HandleShowingTextEditorForParams opens. Elements that request one for
+// themselves pass this as the request's widget_id.
+imgui::Id ParamTextEditorOverlayId(imgui::Context& imgui);
+
+// Whether this element should open a text input for the parameter, clearing the request if so.
+bool ConsumeParamTextEditorRequest(GuiState& g, ParamIndex param, imgui::Id widget_id);
+
+// Value popup and tooltip for custom IMGUI parameter controls (envelope grabbers, waveform handles, etc.).
+// avoid_r: region the popups are placed outside of. If nullopt, uses window_r.
+// tooltip_note: extra paragraph appended after the parameter descriptions, for things the widget knows
+// about but the parameters don't.
+// value_popup_fixed_width: see TooltipArgs::value_popup_fixed_width. Use when a param's displayed value
+// can change width between frames (e.g. a note name), to stop the popup resizing/jumping.
+void ParameterTooltip(GuiState& g,
+                      DescribedParamValue const& param,
+                      imgui::Id imgui_id,
+                      Rect window_r,
+                      Optional<Rect> avoid_r,
+                      String tooltip_footer);
+void ParameterTooltip(GuiState& g,
+                      Span<DescribedParamValue const*> params,
+                      imgui::Id imgui_id,
+                      Rect window_r,
+                      Optional<Rect> avoid_r,
+                      String tooltip_footer,
+                      String tooltip_note = {},
+                      Optional<f32> value_popup_fixed_width = k_nullopt);

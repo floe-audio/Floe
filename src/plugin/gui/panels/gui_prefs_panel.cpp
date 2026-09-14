@@ -9,6 +9,7 @@
 #include "common_infrastructure/error_reporting.hpp"
 
 #include "engine/check_for_update.hpp"
+#include "engine/default_preset.hpp"
 #include "engine/engine_prefs.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_screenshot.hpp"
@@ -16,7 +17,10 @@
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/app_window_sizes.hpp"
+#include "gui_framework/font_type.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_framework/gui_frame.hpp"
+#include "gui_framework/layout.hpp"
 #include "plugin/plugin.hpp"
 
 static void
@@ -117,9 +121,12 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
           {
               .parent = path_container,
               .text = display_path,
-              .size_from_text = true,
               .font = FontType::Body,
-              .tooltip = display_path.data == path.data ? TooltipString(k_nullopt) : path,
+              .text_overflow = TextOverflowType::ShowDotsOnRight,
+              .layout {
+                  .size = {layout::k_fill_parent, k_font_body_size},
+              },
+              .value_popup = display_path.data == path.data ? TooltipString(k_nullopt) : path,
           });
     auto const icon_button_container = DoBox(builder,
                                              {
@@ -139,6 +146,7 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
                                           .text = ICON_FA_TRASH,
                                           .size_from_text = true,
                                           .font = FontType::Icons,
+                                          .font_size = k_font_icons_size * 0.8f,
                                           .text_colours = Col {.c = Col::Subtext0},
                                           .background_fill_auto_hot_active_overlay = true,
                                           .round_background_corners = 0b1111,
@@ -155,6 +163,7 @@ static FolderSelectorResult PreferencesFolderSelector(GuiBuilder& builder,
                   .text = ICON_FA_UP_RIGHT_FROM_SQUARE,
                   .size_from_text = true,
                   .font = FontType::Icons,
+                  .font_size = k_font_icons_size * 0.8f,
                   .text_colours = Col {.c = Col::Subtext0},
                   .background_fill_auto_hot_active_overlay = true,
                   .round_background_corners = 0b1111,
@@ -597,6 +606,90 @@ static void GeneralPreferencesPanel(GuiBuilder& builder, PreferencesPanelContext
                 continue;
             }
             Setting(builder, context, options_rhs_column, desc);
+        }
+    }
+
+    {
+        auto const default_preset_row = PreferencesRow(builder, root);
+
+        PreferencesLhsTextWidget(builder, default_preset_row, "Default Preset");
+
+        auto const rhs = DoBox(builder,
+                               {
+                                   .parent = default_preset_row,
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_gap = k_small_gap,
+                                       .contents_direction = layout::Direction::Column,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                   },
+                               });
+
+        auto const default_preset = ResolveDefaultPreset(context.prefs);
+
+        auto const name_row = DoBox(builder,
+                                    {
+                                        .parent = rhs,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_gap = k_small_gap,
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                        },
+                                    });
+
+        DoBox(builder,
+              {
+                  .parent = name_row,
+                  .text = default_preset ? path::FilenameWithoutExtension(default_preset->path) : "None"_s,
+                  .font = FontType::Body,
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                  },
+                  .value_popup =
+                      default_preset ? TooltipString(default_preset->path) : TooltipString(k_nullopt),
+                  .tooltip = DefaultPresetDescriptor().long_description,
+              });
+
+        if (default_preset) {
+            if (DoBox(builder,
+                      {
+                          .parent = name_row,
+                          .text = ICON_FA_TRASH,
+                          .size_from_text = true,
+                          .font = FontType::Icons,
+                          .font_size = k_font_icons_size * 0.8f,
+                          .text_colours = Col {.c = Col::Subtext0},
+                          .background_fill_auto_hot_active_overlay = true,
+                          .round_background_corners = 0b1111,
+                          .tooltip = "Clear the default preset"_s,
+                          .button_behaviour = imgui::ButtonConfig {},
+                          .extra_margin_for_mouse_events = 2,
+                      })
+                    .button_fired) {
+                ClearDefaultPreset(context.prefs);
+            }
+
+            if (!default_preset->is_user_set)
+                PreferencesRhsText(builder, rhs, "Suggested by an installed preset bank"_s);
+        }
+
+        // Setting the default to a preset you're not currently playing is done from the preset browser's
+        // right-click menu; this covers the other case.
+        auto const current_is_default = default_preset && default_preset->is_user_set &&
+                                        path::Equal(default_preset->path, context.current_preset_path);
+        if (TextButton(builder,
+                       rhs,
+                       {
+                           .text = "Use Current Preset",
+                           .tooltip = !context.current_preset_path.size
+                                          ? "Load a preset to be able to make it the default"_s
+                                      : current_is_default ? "The current preset is already the default"_s
+                                                           : "Make the currently loaded preset the default"_s,
+                           .disabled = !context.current_preset_path.size || current_is_default,
+                       })) {
+            SetDefaultPreset(context.prefs, context.current_preset_path);
         }
     }
 

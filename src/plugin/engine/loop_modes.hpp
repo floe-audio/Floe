@@ -17,7 +17,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .mode = k_nullopt,
                 .name = "No Loop",
                 .short_name = "None",
-                .description = "No looping will be applied to this instrument.",
+                .description = "each sound plays straight through without looping",
                 .editable = false,
             };
         case LoopBehaviourId::BuiltinLoopStandard:
@@ -27,7 +27,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .name = "Loop - Built-in Standard",
                 .short_name = "Built-in Standard",
                 .description =
-                    "Every region in this instrument will use built-in loops in standard wrap-around mode.",
+                    "each sound repeats between loop points that come built into this Instrument, using 'standard' looping that wraps around from the end back to the start",
                 .editable = false,
             };
         case LoopBehaviourId::BuiltinLoopPingPong:
@@ -36,7 +36,8 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .mode = sample_lib::LoopMode::PingPong,
                 .name = "Loop - Built-in Ping-Pong",
                 .short_name = "Built-in Ping-Pong",
-                .description = "Every region in this instrument will use built-in loops in ping-pong mode.",
+                .description =
+                    "each sound repeats between loop points that come built into this Instrument, using 'ping-pong' looping that bounces back and forth",
                 .editable = false,
             };
         case LoopBehaviourId::CustomLoopStandard:
@@ -46,7 +47,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .name = "Loop - Custom Standard",
                 .short_name = "Standard",
                 .description =
-                    "Custom loop points will be applied to this instrument and use standard wrap-around mode.",
+                    "each sound repeats between the loop points you've set on the waveform, using 'standard' looping that wraps around from the end back to the start",
                 .editable = true,
             };
         case LoopBehaviourId::CustomLoopPingPong:
@@ -56,7 +57,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .name = "Loop - Custom Ping-Pong",
                 .short_name = "Ping-pong",
                 .description =
-                    "Custom loop points will be applied to this instrument and use ping-pong mode.",
+                    "each sound repeats between the loop points you've set on the waveform, using 'ping-pong' looping that bounces back and forth",
                 .editable = true,
             };
         case LoopBehaviourId::MixedLoops:
@@ -66,7 +67,7 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .name = "Mixed Loops",
                 .short_name = "Mixed Loops",
                 .description =
-                    "All regions use built-in loops, but some are standard and some are ping-pong.",
+                    "each sound repeats between loop points that come built into this Instrument, some using 'standard' wrap-around looping and some 'ping-pong'",
                 .editable = false,
             };
         case LoopBehaviourId::MixedNonLoopsAndLoops:
@@ -75,7 +76,8 @@ static LoopBehaviour::Value Behaviour(LoopBehaviourId id) {
                 .mode = k_nullopt,
                 .name = "Mixed Loops and Non-Loops",
                 .short_name = "Mixed Loops and Non-Loops",
-                .description = "Some regions have built-in loops, some don't.",
+                .description =
+                    "some sounds repeat between loop points that come built into this Instrument, while the rest play straight through",
                 .editable = false,
             };
     }
@@ -87,9 +89,10 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
                                          bool volume_envelope_on) {
     using namespace param_values;
 
-    static constexpr String k_mixed_loop_non_loop = "Some regions have built-in loops, some don't.";
-    static constexpr String k_no_builtin_loops = "It does not contain built-in loops.";
-    static constexpr String k_all_non_customisable = "Its built-in loops cannot be customised.";
+    static constexpr String k_mixed_loop_non_loop =
+        "Some of this Instrument's sounds have built-in loops and some don't.";
+    static constexpr String k_no_builtin_loops = "This Instrument doesn't have any built-in loops.";
+    static constexpr String k_all_non_customisable = "This Instrument doesn't allow custom loop points.";
 
     switch (inst.tag) {
         case InstrumentType::None:
@@ -104,7 +107,7 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
             // functionality.
             return {
                 detail::Behaviour(LoopBehaviourId::BuiltinLoopStandard),
-                "Waveform instruments always use built-in loops.",
+                "Waveform Instruments always use their built-in loop.",
                 false,
             };
 
@@ -112,7 +115,7 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
             if (!volume_envelope_on) {
                 return {
                     detail::Behaviour(LoopBehaviourId::NoLoop),
-                    "The volume envelope is off.",
+                    "The volume envelope is off, which disables looping.",
                     false,
                 };
             }
@@ -149,22 +152,19 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
 
                     ASSERT(!loop_overview.has_non_loops);
 
-                    static constexpr String k_default_behaviour =
-                        "This is the default behaviour for this instrument.";
-
                     if (loop_overview.all_loops_mode) {
                         switch (*loop_overview.all_loops_mode) {
                             case sample_lib::LoopMode::Standard:
                                 return {
                                     detail::Behaviour(LoopBehaviourId::BuiltinLoopStandard),
-                                    k_default_behaviour,
+                                    {},
                                     true,
                                 };
 
                             case sample_lib::LoopMode::PingPong:
                                 return {
                                     detail::Behaviour(LoopBehaviourId::BuiltinLoopPingPong),
-                                    k_default_behaviour,
+                                    {},
                                     true,
                                 };
 
@@ -174,7 +174,7 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
 
                     return {
                         detail::Behaviour(LoopBehaviourId::MixedLoops),
-                        k_default_behaviour,
+                        {},
                         true,
                     };
                 }
@@ -199,7 +199,7 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
                     if (!loop_overview.all_loops_convertible_to_mode[ToInt(sample_lib::LoopMode::Standard)])
                         return {
                             detail::Behaviour(LoopBehaviourId::MixedLoops),
-                            "Some regions cannot use standard wrap-around loops.",
+                            "Some of this Instrument's sounds can't use 'standard' wrap-around loops.",
                             false,
                         };
 
@@ -230,7 +230,7 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
                     if (!loop_overview.all_loops_convertible_to_mode[ToInt(sample_lib::LoopMode::PingPong)])
                         return {
                             detail::Behaviour(LoopBehaviourId::MixedLoops),
-                            "Some regions cannot use ping-pong loops.",
+                            "Some of this Instrument's sounds can't use 'ping-pong' loops.",
                             false,
                         };
 
@@ -242,7 +242,8 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
                 }
 
                 case LoopMode::None: {
-                    static constexpr String k_all_require_loops = "It contains regions that require looping.";
+                    static constexpr String k_all_require_loops =
+                        "This Instrument's sounds are set to always loop.";
 
                     if (loop_overview.all_regions_require_looping) {
                         if (loop_overview.all_loops_mode) {
@@ -394,16 +395,16 @@ PUBLIC LoopBehaviour ActualLoopBehaviour(Instrument const& inst,
 PUBLIC String LoopModeDescription(param_values::LoopMode mode) {
     switch (mode) {
         case param_values::LoopMode::InstrumentDefault:
-            return "Let the instrument decide which regions loop and whether they ping pong or not";
+            return "Let the Instrument decide: each sound loops (or doesn't) however the library author set it up.";
         case param_values::LoopMode::BuiltInLoopStandard:
-            return "Let the instrument decide which regions loop, but request standard wrap-around looping mode where possible";
+            return "Use the Instrument's built-in loop points with 'standard' looping, which wraps around from the loop end back to the loop start, wherever possible.";
         case param_values::LoopMode::BuiltInLoopPingPong:
-            return "Let the instrument decide which regions loop, but request ping-pong looping mode where possible";
-        case param_values::LoopMode::None: return "No looping will be applied to this instrument";
+            return "Use the Instrument's built-in loop points with 'ping-pong' looping, which bounces back and forth between them, wherever possible.";
+        case param_values::LoopMode::None: return "Don't loop. Each sound plays straight through.";
         case param_values::LoopMode::Standard:
-            return "Set custom loop points for the instrument, using standard wrap-around mode";
+            return "Set your own loop points on the waveform, with 'standard' looping that wraps around from the loop end back to the loop start.";
         case param_values::LoopMode::PingPong:
-            return "Set custom loop points for the instrument, using ping-pong mode";
+            return "Set your own loop points on the waveform, with 'ping-pong' looping that bounces back and forth between them.";
         case param_values::LoopMode::Count: break;
     }
     PanicIfReached();

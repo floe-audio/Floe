@@ -361,6 +361,7 @@ struct FilterButtonCommonOptions {
     u64 id_extra;
     bool is_selected;
     String text;
+    TooltipString value_popup = k_nullopt;
     TooltipString tooltip = k_nullopt;
     FilterSelection& filter;
     u64 clicked_key;
@@ -501,6 +502,7 @@ struct BrowserSection {
     bool skip_heading {};
     bool dark_mode {};
     bool keyboard_focusable {};
+    TooltipPlacement tooltip_placement {TooltipPlacement::LeftThenRight};
     RightClickMenuState::Function right_click_menu {};
     persistent_store::Store* store {};
 
@@ -520,10 +522,12 @@ struct BrowserItemOptions {
     Box parent;
     u64 id_extra {};
     String text;
+    TooltipString value_popup = k_nullopt;
     TooltipString tooltip = k_nullopt;
     u64 item_id;
     bool is_current;
     bool is_favourite;
+    bool is_default; // Shown with a marker; only presets use this.
     bool is_tab_item; // Is a point where pressing Tab jumps to.
     DynamicArrayBounded<ItemIcon, k_num_layers + 2> icons;
     Notifications& notifications;

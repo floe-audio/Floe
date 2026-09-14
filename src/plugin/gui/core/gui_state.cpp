@@ -15,6 +15,7 @@
 
 #include "build_resources/embedded_files.h"
 #include "engine/engine.hpp"
+#include "gui/core/custom_icons.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/core/gui_frame_context.hpp"
 #include "gui/core/gui_library_images.hpp"
@@ -46,18 +47,112 @@ static void SampleLibraryChanged(GuiState& g, sample_lib::LibraryId library_id) 
     InvalidateLibraryImages(g.library_images, library_id, *GuiIo().in.renderer);
 }
 
+// Keep in sync with the icons used across the GUI. Any icon not listed here will render as a missing glyph.
+static constexpr auto k_used_icons = Array {
+    String {ICON_FA_ARROWS_UP_DOWN},
+    String {ICON_FA_ARROW_RIGHT},
+    String {ICON_FA_ARROW_ROTATE_LEFT},
+    String {ICON_FA_ARROW_ROTATE_RIGHT},
+    String {ICON_FA_BOOK_OPEN},
+    String {ICON_FA_BOX_OPEN},
+    String {ICON_FA_BULLSEYE},
+    String {ICON_FA_CARET_DOWN},
+    String {ICON_FA_CARET_LEFT},
+    String {ICON_FA_CARET_RIGHT},
+    String {ICON_FA_CARET_UP},
+    String {ICON_FA_CHECK},
+    String {ICON_FA_CHEVRON_DOWN},
+    String {ICON_FA_CHEVRON_UP},
+    String {ICON_FA_CIRCLE_INFO},
+    String {ICON_FA_CIRCLE_MINUS},
+    String {ICON_FA_CIRCLE_PLUS},
+    String {ICON_FA_CIRCLE_QUESTION},
+    String {ICON_FA_DRUM_STEELPAN},
+    String {ICON_FA_ELLIPSIS_VERTICAL},
+    String {ICON_FA_EYE},
+    String {ICON_FA_FACE_FROWN},
+    String {ICON_FA_FACE_MEH},
+    String {ICON_FA_FACE_SMILE},
+    String {ICON_FA_FILE_IMPORT},
+    String {ICON_FA_FILE_SIGNATURE},
+    String {ICON_FA_FIRE},
+    String {ICON_FA_FLASK},
+    String {ICON_FA_FLOPPY_DISK},
+    String {ICON_FA_FOLDER_OPEN},
+    String {ICON_FA_GAUGE},
+    String {ICON_FA_GAVEL},
+    String {ICON_FA_GEAR},
+    String {ICON_FA_GEM},
+    String {ICON_FA_GUITAR},
+    String {ICON_FA_HAND},
+    String {ICON_FA_HEADPHONES},
+    String {ICON_FA_HOUSE},
+    String {ICON_FA_INFO},
+    String {ICON_FA_LANDMARK},
+    String {ICON_FA_LAYER_GROUP},
+    String {ICON_FA_LINK},
+    String {ICON_FA_LOCATION_ARROW},
+    String {ICON_FA_LOCK},
+    String {ICON_FA_M},
+    String {ICON_FA_MAGNIFYING_GLASS},
+    String {ICON_FA_MASKS_THEATER},
+    String {ICON_FA_MICROCHIP},
+    String {ICON_FA_MUSIC},
+    String {ICON_FA_PEN},
+    String {ICON_FA_PLUS},
+    String {ICON_FA_POWER_OFF},
+    String {ICON_FA_REPEAT},
+    String {ICON_FA_RIGHT_LONG},
+    String {ICON_FA_ROTATE_LEFT},
+    String {ICON_FA_ROTATE_RIGHT},
+    String {ICON_FA_S},
+    String {ICON_FA_SHUFFLE},
+    String {ICON_FA_SLIDERS},
+    String {ICON_FA_STAR},
+    String {ICON_FA_TAG},
+    String {ICON_FA_TOGGLE_OFF},
+    String {ICON_FA_TOGGLE_ON},
+    String {ICON_FA_TOOLBOX},
+    String {ICON_FA_TRASH},
+    String {ICON_FA_TREE},
+    String {ICON_FA_TRIANGLE_EXCLAMATION},
+    String {ICON_FA_UNLOCK},
+    String {ICON_FA_UP_DOWN},
+    String {ICON_FA_UP_RIGHT_FROM_SQUARE},
+    String {ICON_FA_USERS},
+    String {ICON_FA_VOLUME_HIGH},
+    String {ICON_FA_WAND_MAGIC_SPARKLES},
+    String {ICON_FA_WAVE_SQUARE},
+    String {ICON_FA_XMARK},
+};
+
+static constexpr auto k_icon_glyph_ranges = []() {
+    Array<GlyphRange, k_used_icons.size> ranges {};
+    for (auto const index : Range(k_used_icons.size)) {
+        auto const codepoint = (Char16)Utf8CharacterToUtf32(k_used_icons[index]);
+        ranges[index] = {codepoint, codepoint};
+    }
+    return ranges;
+}();
+
+static constexpr auto k_custom_icon_glyph_ranges = Array {
+    GlyphRange {ICON_CUSTOM_MIN, ICON_CUSTOM_MAX},
+};
+
 static void CreateFontsIfNeeded(FontAtlas& fonts) {
     auto& renderer = *GuiIo().in.renderer;
 
     if (renderer.font_texture == renderer.invalid_texture) {
         fonts.Clear();
 
-        auto const load_font = [&](BinaryData ttf, f32 font_size, GlyphRanges ranges) {
-            font_size *= GuiIo().in.pixels_per_ww;
-            FontConfig config {};
-            config.font_data_reference_only = true;
-            fonts.AddFontFromMemoryTTF((void*)ttf.data, ttf.size, font_size, config, ranges);
-        };
+        auto const load_font =
+            [&](BinaryData ttf, f32 font_size, Span<GlyphRange const> ranges, bool merge_into_previous) {
+                font_size *= GuiIo().in.pixels_per_ww;
+                FontConfig config {};
+                config.font_data_reference_only = true;
+                config.merge_mode = merge_into_previous;
+                fonts.AddFontFromMemoryTTF((void*)ttf.data, ttf.size, font_size, config, ranges);
+            };
 
         auto const def_ranges = fonts.GetGlyphRangesDefaultAudioPlugin();
         auto const roboto_ttf = EmbeddedRoboto();
@@ -65,22 +160,26 @@ static void CreateFontsIfNeeded(FontAtlas& fonts) {
 
         for (auto const font_type : EnumIterator<FontType>()) {
             switch (font_type) {
-                case FontType::Body: load_font(roboto_ttf, k_font_body_size, def_ranges); break;
+                case FontType::Body: load_font(roboto_ttf, k_font_body_size, def_ranges, false); break;
                 case FontType::BodyItalic:
-                    load_font(roboto_italic_ttf, k_font_body_italic_size, def_ranges);
+                    load_font(roboto_italic_ttf, k_font_body_italic_size, def_ranges, false);
                     break;
-                case FontType::Heading1: load_font(roboto_ttf, k_font_heading1_size, def_ranges); break;
-                case FontType::Heading2: load_font(roboto_ttf, k_font_heading2_size, def_ranges); break;
-                case FontType::Heading3: load_font(roboto_ttf, k_font_heading3_size, def_ranges); break;
+                case FontType::Heading1:
+                    load_font(roboto_ttf, k_font_heading1_size, def_ranges, false);
+                    break;
+                case FontType::Heading2:
+                    load_font(roboto_ttf, k_font_heading2_size, def_ranges, false);
+                    break;
+                case FontType::Heading3:
+                    load_font(roboto_ttf, k_font_heading3_size, def_ranges, false);
+                    break;
                 case FontType::LargeTitle:
-                    load_font(EmbeddedOutfitSemiBold(), k_font_large_title_size, def_ranges);
+                    load_font(EmbeddedOutfitSemiBold(), k_font_large_title_size, def_ranges, false);
                     break;
-                case FontType::Icons: {
-                    auto const icons_ttf = EmbeddedFontAwesome();
-                    auto constexpr k_icon_ranges = Array {GlyphRange {ICON_MIN_FA, ICON_MAX_FA}};
-                    load_font(icons_ttf, k_font_icons_size, k_icon_ranges);
+                case FontType::Icons:
+                    load_font(EmbeddedFontAwesome(), k_font_icons_size, k_icon_glyph_ranges, false);
+                    load_font(EmbeddedCustomIcons(), k_font_icons_size, k_custom_icon_glyph_ranges, true);
                     break;
-                }
                 case FontType::Count: PanicIfReached();
             }
         }
@@ -115,6 +214,8 @@ GuiState::GuiState(Engine& engine)
     // no use until the GUI is open.
     check_for_update::FetchLatestIfNeeded(shared_engine_systems.check_for_update_state);
     shared_engine_systems.StartPollingThreadIfNeeded();
+
+    LoadDefaultPresetIfNeeded(engine);
 }
 
 GuiState::~GuiState() {
@@ -136,8 +237,6 @@ void GuiState::OnEngineChange() {
     RequestGuiUpdate(engine.instance_index);
     OnEngineStateChange(save_preset_panel_state, engine);
 }
-
-bool Tooltip(GuiState& g, imgui::Id id, Rect r, char const* fmt, ...);
 
 static void DoResizeCorner(GuiState& g) {
     auto& imgui = g.imgui;
@@ -200,6 +299,16 @@ static void DoResizeCorner(GuiState& g) {
                              r.BottomLeft() + f32x2 {line_gap * 2, 0},
                              line_col);
 
+    Tooltip(g.builder,
+            id,
+            r,
+            {
+                .tooltip = "Resize Floe's window. Floe has a fixed aspect ratio, so the whole interface "
+                           "scales up and down together. You can also change the size in the Preferences."_s,
+                .tooltip_footer = "Drag to resize."_s,
+                .placement = TooltipPlacement::AboveThenBelow,
+            });
+
     imgui.RegisterNamedRect("resize-corner"_s, r);
 }
 
@@ -213,6 +322,8 @@ void GuiUpdate(GuiState& g) {
     BeginFrame(g.builder,
                {
                    .show_tooltips = prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::ShowTooltips)),
+                   .instant_value_popups =
+                       prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::InstantValueReadouts)),
                    .draw_tooltip = DrawOverlayTooltipForRect,
                    .draw_drop_shadow = DrawDropShadow,
                });
@@ -332,6 +443,7 @@ void GuiUpdate(GuiState& g) {
             .file_picker_state = g.file_picker_state,
             .persistent_store = g.shared_engine_systems.persistent_store,
             .presets_server = g.shared_engine_systems.preset_server,
+            .current_preset_path = g.engine.pinned_snapshot.preset_path,
             .standalone_host =
                 (FloeClapExtensionHost const*)host.get_extension(&host, k_floe_clap_extension_id),
         };
@@ -436,7 +548,9 @@ void GuiUpdate(GuiState& g) {
         DoIrBrowserPopup(g.builder, context, g.ir_browser_state);
     }
 
-    DoLoadingOverlay(g.builder, g.engine.pending_state_change.HasValue());
+    DoLoadingOverlay(g.builder,
+                     g.engine.pending_state_change.HasValue(),
+                     g.engine.loading_default_preset ? "Loading Default Preset"_s : "Loading…"_s);
 
     {
         auto const& host = g.engine.host;
@@ -452,13 +566,13 @@ void GuiUpdate(GuiState& g) {
     DoNotifications(g.builder, g.notifications);
 
     DoPackageInstallNotifications(g.builder,
-                                  g.engine.package_install_jobs,
+                                  g.engine,
                                   g.notifications,
-                                  g.engine.error_notifications,
                                   g.shared_engine_systems.thread_pool,
                                   g.package_install_panel_state,
                                   g.file_picker_state,
-                                  g.shared_engine_systems.persistent_store);
+                                  g.shared_engine_systems.persistent_store,
+                                  g.prefs);
 
     DoDeveloperPanel(g.dev_gui);
 

@@ -57,18 +57,22 @@ static Optional<s64> OctaveDragger(GuiBuilder& builder,
                                    s64 oct_highest,
                                    u64 id_extra = SourceLocationHash()) {
     auto percent = MapTo01((f32)value, (f32)oct_lowest, (f32)oct_highest);
-    auto const box = DoBox(builder,
-                           {
-                               .parent = parent,
-                               .id_extra = id_extra,
-                               .layout {
-                                   .size = {28, k_font_body_size},
-                                   .contents_direction = layout::Direction::Row,
-                                   .contents_align = layout::Alignment::Middle,
-                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                               },
-                               .tooltip = "Keyboard octave offset"_s,
-                           });
+    auto const box =
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .id_extra = id_extra,
+                  .layout {
+                      .size = {28, k_font_body_size},
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Middle,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = "The octave offset of the on-screen keyboard. It only changes which "
+                             "notes the keyboard shows; it doesn't transpose anything you play from "
+                             "a MIDI keyboard or your DAW."_s,
+                  .tooltip_footer = "Drag up and down to set. Double-click to type."_s,
+              });
 
     Optional<s64> new_value {};
 
@@ -277,6 +281,7 @@ static void DoBotPanel(GuiState& g) {
                     {
                         .width = k_small_knob_width,
                         .greyed_out = g.engine.processor.main_macro_destinations[macro_index].Size() == 0,
+                        .inactive_reason = "nothing assigned"_s,
                         .override_label = g.engine.macro_names[macro_index],
                     });
         }
@@ -324,14 +329,22 @@ static void DoBotPanel(GuiState& g) {
 
             Optional<s64> new_octave {};
 
-            if (IconButton(builder, octave_box, ICON_FA_CARET_UP, "GUI Keyboard Octave Up"_s))
+            if (IconButton(builder,
+                           octave_box,
+                           ICON_FA_CARET_UP,
+                           "Move the on-screen keyboard up one octave. It only changes which notes the "
+                           "keyboard shows, not what your MIDI keyboard or DAW plays."_s))
                 new_octave = Min<s64>(keyboard_octave + 1, k_octave_highest);
 
             if (auto const v =
                     OctaveDragger(builder, octave_box, keyboard_octave, k_octave_lowest, k_octave_highest))
                 new_octave = *v;
 
-            if (IconButton(builder, octave_box, ICON_FA_CARET_DOWN, "GUI Keyboard Octave Down"_s))
+            if (IconButton(builder,
+                           octave_box,
+                           ICON_FA_CARET_DOWN,
+                           "Move the on-screen keyboard down one octave. It only changes which notes the "
+                           "keyboard shows, not what your MIDI keyboard or DAW plays."_s))
                 new_octave = Max<s64>(keyboard_octave - 1, k_octave_lowest);
 
             if (new_octave) prefs::SetValue(g.prefs, prefs::key::k_gui_keyboard_octave, *new_octave);

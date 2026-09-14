@@ -23,6 +23,7 @@
 #include "gui/panels/gui_ir_browser.hpp"
 #include "gui/panels/gui_legacy_params_panel.hpp"
 #include "gui_framework/gui_builder.hpp"
+#include "gui_framework/layout.hpp"
 
 static Optional<ImageID> LogoImage(GuiState& g) {
     if (!g.imgui.draw_list->renderer.ImageIdIsValid(g.floe_logo_image)) {
@@ -52,7 +53,7 @@ static void DoDotsMenu(GuiState& g) {
                  root,
                  {
                      .text = "Load Blank Preset",
-                     .tooltip = "Set all parameters to their default values, clear all instruments and IRs"_s,
+                     .tooltip = "Set all parameters to their default values, clear all Instruments and IRs"_s,
                  })
             .button_fired) {
         SetToDefaultState(g.engine);
@@ -84,6 +85,26 @@ static void DoDotsMenu(GuiState& g) {
     MenuDivider(g.builder, root);
 
     // Windows
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Preferences",
+                     .tooltip = "Open the Preferences window"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.preferences_panel_state.k_panel_id);
+    }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
+                     .text = "Performance Controls",
+                     .tooltip = "Open the Performance Controls window"_s,
+                 })
+            .button_fired) {
+        g.imgui.OpenModalViewport(g.performance_controls_panel_state.k_panel_id);
+    }
+
     {
         auto const info_item = MenuItem(g.builder,
                                         root,
@@ -216,7 +237,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                     f32 padding_x,
                                     Col colour = {.c = Col::Subtext1, .dark_mode = true},
                                     u64 id_extra = SourceLocationHash(),
-                                    bool disabled = false) {
+                                    bool disabled = false,
+                                    TooltipString value_popup = k_nullopt) {
         // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
         auto const button = DoBox(builder,
                                   {
@@ -226,6 +248,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                           .size = layout::k_hug_contents,
                                           .contents_padding = {.lr = padding_x, .tb = 3},
                                       },
+                                      .value_popup = value_popup,
                                       .tooltip = tooltip,
                                       .button_behaviour = imgui::ButtonConfig {},
                                   });
@@ -280,18 +303,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     .size = {layout::k_fill_parent, k_font_body_size + k_font_body_italic_size},
                     .contents_direction = layout::Direction::Column,
                 },
-                .tooltip = FunctionRef<String()> {[&arena = builder.arena, &engine = g.engine]() -> String {
-                    DynamicArray<char> buffer {arena};
-                    dyn::Assign(buffer, "Open presets window"_s);
-                    fmt::Append(buffer,
-                                "\nCurrent preset: {}",
-                                engine.pinned_snapshot.state.extras.display_name);
-                    if (engine.pinned_snapshot.state.metadata.description.size) {
-                        dyn::AppendSpan(buffer, "\n\n"_s);
-                        dyn::AppendSpan(buffer, engine.pinned_snapshot.state.metadata.description);
-                    }
-                    return buffer.ToOwnedSpan();
-                }},
+                .tooltip =
+                    "Open the Preset Browser, where you can choose from all the presets installed.\n\nThis area shows the name of the current preset, with a short description underneath. If you've changed anything since loading it, the name is marked as '(modified)'. Tip: the COMPARE toggle on the PERFORM page lets you flick between the original preset and your modified version."_s,
                 .button_behaviour = imgui::ButtonConfig {},
             });
 
@@ -309,7 +322,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                     {
                         .text = "Load Blank Preset",
                         .tooltip =
-                            "Set all parameters to their default values, clear all instruments and IRs"_s,
+                            "Set all parameters to their default values, clear all Instruments and IRs"_s,
                         .no_icon_gap = true,
                     })
                     .button_fired) {
@@ -370,20 +383,20 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                         layer.VolumeEnvelopeIsOn(g.engine.processor.main_params));
             }
 
-            auto const auto_headline = WriteAutoDescription(
-                builder.arena,
-                snapshot.state,
-                layer_info,
-                {.form = AutoDescriptionForm::Headline, .random_seed = seed, .folder_name = folder});
-            auto const auto_full_block =
-                WriteAutoDescription(builder.arena,
-                                     snapshot.state,
-                                     layer_info,
-                                     {.form = AutoDescriptionForm::FullBlock, .random_seed = seed});
+            auto const write_auto = [&](AutoDescriptionForm form) {
+                return WriteAutoDescription(builder.arena,
+                                            snapshot.state,
+                                            layer_info,
+                                            {.form = form, .random_seed = seed, .folder_name = folder});
+            };
+            AutoDescriptionTexts const auto_texts {
+                .headline = write_auto(AutoDescriptionForm::Headline),
+                .full_block = write_auto(AutoDescriptionForm::FullBlock),
+                .detail = write_auto(AutoDescriptionForm::Detail),
+            };
             auto const* italic_font = builder.fonts.atlas[ToInt(FontType::BodyItalic)];
             auto const display = SplitPresetDescriptionForDisplay(snapshot.state.metadata.description,
-                                                                  auto_headline,
-                                                                  auto_full_block,
+                                                                  auto_texts,
                                                                   *italic_font,
                                                                   g.top_panel_description_width);
             g.preset_description_display = display;
@@ -411,12 +424,13 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_next =
-                do_icon_button(preset_box,
-                               ICON_FA_CARET_LEFT,
-                               "Load previous preset\n\nThis is based on the currently selected filters."_s,
-                               1.0f,
-                               3);
+            auto const preset_next = do_icon_button(
+                preset_box,
+                ICON_FA_CARET_LEFT,
+                "Step to the previous preset. A quick way to audition sounds without opening the browser.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
+                ""_s,
+                1.0f,
+                3);
             if (preset_next.button_fired) {
                 PresetBrowserContext context {
                     .sample_library_server = g.shared_engine_systems.sample_library_server,
@@ -438,12 +452,13 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_prev =
-                do_icon_button(preset_box,
-                               ICON_FA_CARET_RIGHT,
-                               "Load next preset\n\nThis is based on the currently selected filters."_s,
-                               1.0f,
-                               3);
+            auto const preset_prev = do_icon_button(
+                preset_box,
+                ICON_FA_CARET_RIGHT,
+                "Step to the next preset. A quick way to audition sounds without opening the browser.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
+                ""_s,
+                1.0f,
+                3);
             if (preset_prev.button_fired) {
                 PresetBrowserContext context {
                     .sample_library_server = g.shared_engine_systems.sample_library_server,
@@ -465,12 +480,13 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_random =
-                do_icon_button(preset_box,
-                               ICON_FA_SHUFFLE,
-                               "Load a random preset\n\nThis is based on the currently selected filters."_s,
-                               0.9f,
-                               3);
+            auto const preset_random = do_icon_button(
+                preset_box,
+                ICON_FA_SHUFFLE,
+                "Jump to a random preset. A quick way to stumble upon sounds you might not have picked yourself.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
+                ""_s,
+                0.9f,
+                3);
             if (preset_random.button_fired) {
                 PresetBrowserContext context {
                     .sample_library_server = g.shared_engine_systems.sample_library_server,
@@ -492,17 +508,22 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_save = do_icon_button(preset_box,
-                                                    ICON_FA_FLOPPY_DISK,
-                                                    "Save the current state as a preset"_s,
-                                                    0.8f,
-                                                    3);
+            auto const preset_save = do_icon_button(
+                preset_box,
+                ICON_FA_FLOPPY_DISK,
+                "Open the save panel.\n\nFrom there you can set the preset's name, tags, description and other details, then either overwrite the existing preset or save it as a new file."_s,
+                0.8f,
+                3);
             if (preset_save.button_fired) g.imgui.OpenModalViewport(g.save_preset_panel_state.k_panel_id);
         }
 
         {
-            auto const preset_load =
-                do_icon_button(preset_box, ICON_FA_FILE_IMPORT, "Load a preset from a file"_s, 0.8f, 3);
+            auto const preset_load = do_icon_button(
+                preset_box,
+                ICON_FA_FILE_IMPORT,
+                "Open a file browser to load a preset file from anywhere on your computer. The file doesn't need to be in one of Floe's preset folders."_s,
+                0.8f,
+                3);
             if (preset_load.button_fired)
                 OpenFilePickerLoadPreset(g.file_picker_state,
                                          g.shared_engine_systems.paths,
@@ -521,18 +542,23 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
     // preferences
     {
-        auto const prefs_button =
-            do_icon_button(right_icon_buttons_container, ICON_FA_GEAR, "Open preferences window"_s, 0.9f, 5);
+        auto const prefs_button = do_icon_button(
+            right_icon_buttons_container,
+            ICON_FA_GEAR,
+            "Open the Preferences window.\n\nPreferences are settings for Floe itself rather than for your sound: how the interface looks, which folders Floe scans for libraries and presets, and where you install packages of sample libraries and presets. They're saved on your computer and apply to every instance of Floe."_s,
+            0.9f,
+            5);
         if (prefs_button.button_fired) g.imgui.OpenModalViewport(g.preferences_panel_state.k_panel_id);
     }
 
-    // performance configuration
+    // performance controls
     {
-        auto const perf_config_button = do_icon_button(right_icon_buttons_container,
-                                                       ICON_FA_SLIDERS,
-                                                       "Open performance configuration window"_s,
-                                                       0.9f,
-                                                       5);
+        auto const perf_config_button = do_icon_button(
+            right_icon_buttons_container,
+            ICON_FA_GAUGE,
+            "Open the Performance Controls window.\n\nPerformance Controls shape how you play Floe: mostly MIDI settings, plus options for making performances exactly reproducible. They're saved with this instance of Floe in your DAW project. Loading a preset never changes them, so you can set up your MIDI controls once and flick through presets freely."_s,
+            0.9f,
+            5);
         if (perf_config_button.button_fired)
             g.imgui.OpenModalViewport(g.performance_controls_panel_state.k_panel_id);
     }
@@ -540,34 +566,39 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
     {
         auto const can_undo = g.engine.undo_history.CanUndo();
         auto const next = g.engine.undo_history.NextUndoName();
-        auto const tooltip =
+        auto const value_popup =
             next ? (String)fmt::Format(builder.arena, "Undo: {}", *next) : "Nothing to undo"_s;
-        auto const undo_button =
-            do_icon_button(right_icon_buttons_container,
-                           ICON_FA_ARROW_ROTATE_LEFT,
-                           tooltip,
-                           0.9f,
-                           5,
-                           Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_undo ? (u8)255 : (u8)60},
-                           SourceLocationHash(),
-                           !can_undo);
+        auto const undo_button = do_icon_button(
+            right_icon_buttons_container,
+            ICON_FA_ARROW_ROTATE_LEFT,
+            fmt::Format(
+                builder.arena,
+                "Undo your most recent change.\n\nFloe keeps a history of changes to its sound, including parameter tweaks and loading Instruments or effects, going back up to {} steps. That means you can experiment freely and step back at any point..",
+                k_undo_max_entries),
+            0.9f,
+            5,
+            Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_undo ? (u8)255 : (u8)60},
+            SourceLocationHash(),
+            !can_undo,
+            value_popup);
         if (undo_button.button_fired && can_undo) Undo(g.engine);
     }
 
     {
         auto const can_redo = g.engine.undo_history.CanRedo();
         auto const next = g.engine.undo_history.NextRedoName();
-        auto const tooltip =
+        auto const value_popup =
             next ? (String)fmt::Format(builder.arena, "Redo: {}", *next) : "Nothing to redo"_s;
-        auto const redo_button =
-            do_icon_button(right_icon_buttons_container,
-                           ICON_FA_ARROW_ROTATE_RIGHT,
-                           tooltip,
-                           0.9f,
-                           5,
-                           Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_redo ? (u8)255 : (u8)60},
-                           SourceLocationHash(),
-                           !can_redo);
+        auto const redo_button = do_icon_button(
+            right_icon_buttons_container,
+            ICON_FA_ARROW_ROTATE_RIGHT,
+            "Redo the change you just undid.\n\nRedo is only available after using undo. If you make a new change instead, the redo history is cleared."_s,
+            0.9f,
+            5,
+            Col {.c = Col::Subtext1, .dark_mode = true, .alpha = can_redo ? (u8)255 : (u8)60},
+            SourceLocationHash(),
+            !can_redo,
+            value_popup);
         if (redo_button.button_fired && can_redo) Redo(g.engine);
     }
 
@@ -596,7 +627,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
         auto const dots_button = do_icon_button(right_icon_buttons_container,
                                                 ICON_FA_ELLIPSIS_VERTICAL,
-                                                "Additional functions and information"_s,
+                                                "Open the Main Menu, with more options and information."_s,
                                                 1.0f,
                                                 6);
         if (g.show_new_version_indicator) {
@@ -662,7 +693,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                 .override_tooltip =
                     has_insts_with_timbre_layers
                         ? ""_s
-                        : "Timbre: no currently loaded instruments have timbre information; this knob is inactive"_s,
+                        : "Timbre is inactive because none of the loaded instruments have crossfade layers.\n\nSome instruments are made from several layers of samples, such as soft-to-hard or dark-to-bright variations of the same sound. When one of those is loaded, this knob sweeps between its layers so you can shape the tone. Instruments that respond to it are highlighted while you drag the knob."_s,
+                .override_value_popup = has_insts_with_timbre_layers ? ""_s : "Inactive"_s,
                 .voice_blips_01 =
                     VoiceBlips01(g, k_nullopt, param_values::MpeDestination::Timbre, timbre_param),
             });
@@ -680,19 +712,177 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                         .width = k_small_knob_width,
                     });
 
+    auto const meter_box = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = {layout::k_hug_contents, 37},
+                                         .contents_gap = 8,
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Start,
+                                     },
+                                 });
+
     // peak meter
-    if (auto const viewport_r = BoxRect(builder,
-                                        DoBox(builder,
-                                              {
-                                                  .parent = root,
-                                                  .layout {
-                                                      .size = {k_peak_meter_standard_width, 37.06f},
-                                                  },
-                                              })))
-        DrawPeakMeter(g.imgui,
-                      builder.imgui.RegisterAndConvertRect(*viewport_r),
-                      g.engine.processor.peak_meter,
-                      {.flash_when_clipping = true});
+    {
+        auto const options = DrawPeakMeterOptions {
+            .flash_when_clipping = true,
+            .show_min_max_markers = true,
+            .min_db = -36,
+            .max_db = 6,
+            .marker_interval_db = 6,
+            .low_signal_threshold_db = -60.0f,
+        };
+        auto const peak_meter_box = DoBox(
+            builder,
+            {
+                .parent = meter_box,
+                .layout {
+                    .size = {k_peak_meter_standard_width, layout::k_fill_parent},
+                },
+                .value_popup = FunctionRef<String()> {[&]() -> String {
+                    return PeakMeterTooltipText(builder.arena, g.engine.processor.peak_meter, options)
+                        .value_popup;
+                }},
+                .tooltip = FunctionRef<String()> {[&]() -> String {
+                    return fmt::Format(
+                        builder.arena,
+                        "Level of the audio leaving Floe, measured after the Master Volume. The meter flashes red if the signal clips above 0 dB.\n\n{}",
+                        PeakMeterTooltipText(builder.arena, g.engine.processor.peak_meter, options).tooltip);
+                }},
+            });
+        if (auto const viewport_r = BoxRect(builder, peak_meter_box))
+            DrawPeakMeter(g.imgui,
+                          builder.imgui.RegisterAndConvertRect(*viewport_r),
+                          &g.engine.processor.peak_meter,
+                          options);
+    }
+
+    // loudness meter
+    if (prefs::GetBool(g.engine.shared_engine_systems.prefs,
+                       SettingDescriptor(GuiPreference::ShowLufsMeter))) {
+        constexpr f32 k_loudness_target_lufs = -22.0f;
+        constexpr f32 k_loudness_target_tolerance_lu = 1.0f;
+        constexpr f32 k_loudness_readout_width = 40;
+
+        auto const snapshot = g.engine.processor.lufs_meter.GetSnapshot();
+        auto const loudness_options = DrawLoudnessMeterOptions {
+            .short_term_lufs = snapshot.short_term_lufs,
+            .momentary_lufs = snapshot.momentary_lufs,
+            .target_min_lufs = k_loudness_target_lufs - k_loudness_target_tolerance_lu,
+            .target_max_lufs = k_loudness_target_lufs + k_loudness_target_tolerance_lu,
+        };
+
+        auto const container = DoBox(
+            builder,
+            {
+                .parent = meter_box,
+                .layout {
+                    .size = {layout::k_hug_contents, layout::k_fill_parent},
+                    .contents_gap = 4,
+                    .contents_direction = layout::Direction::Row,
+                },
+                .value_popup = FunctionRef<String()> {[&]() -> String {
+                    return LoudnessMeterTooltipText(builder.arena, loudness_options).value_popup;
+                }},
+                .tooltip = FunctionRef<String()> {[&]() -> String {
+                    return fmt::Format(
+                        builder.arena,
+                        "Perceived loudness of the audio leaving Floe, measured in LUFS after the Master Volume. This reflects how loud the sound actually feels rather than its highest sample values.\n\nThe coloured bar shows short-term loudness (S, the last 3 seconds) and the white marker line shows momentary loudness (M, the last 400 ms).\n\nThe green region is a rough guide of a sensible level for Floe to be sending into your mix.\n\n{}",
+                        LoudnessMeterTooltipText(builder.arena, loudness_options).tooltip);
+                }},
+            });
+
+        if (auto const viewport_r = BoxRect(builder,
+                                            DoBox(builder,
+                                                  {
+                                                      .parent = container,
+                                                      .layout {
+                                                          .size = {11, layout::k_fill_parent},
+                                                      },
+                                                  })))
+            DrawLoudnessMeter(g.imgui, builder.imgui.RegisterAndConvertRect(*viewport_r), loudness_options);
+
+        constexpr f32 k_readout_font_size = k_font_body_size * 0.81f;
+
+        // Fixed width: the readouts change every frame while playing and a hugging column would jitter the
+        // whole row.
+        auto const readout_box = DoBox(builder,
+                                       {
+                                           .parent = container,
+                                           .layout {
+                                               .size = {k_loudness_readout_width, layout::k_fill_parent},
+                                               .contents_direction = layout::Direction::Column,
+                                               .contents_align = layout::Alignment::Middle,
+                                           },
+                                       });
+
+        DoBox(builder,
+              {
+                  .parent = readout_box,
+                  .text = "LUFS"_s,
+                  .font_size = k_readout_font_size,
+                  .text_colours = Col {.c = Col::Overlay2, .dark_mode = true},
+                  .text_justification = TextJustification::CentredLeft,
+                  .layout {.size = {layout::k_fill_parent, k_readout_font_size}},
+              });
+
+        auto const readout_row = DoBox(builder,
+                                       {
+                                           .parent = readout_box,
+                                           .layout {
+                                               .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                               .contents_direction = layout::Direction::Row,
+                                               .contents_align = layout::Alignment::Middle,
+                                           },
+                                       });
+
+        auto const prefix_column = DoBox(builder,
+                                         {
+                                             .parent = readout_row,
+                                             .layout {
+                                                 .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                                 .contents_direction = layout::Direction::Column,
+                                                 .contents_align = layout::Alignment::Middle,
+                                             },
+                                         });
+
+        auto const value_column = DoBox(builder,
+                                        {
+                                            .parent = readout_row,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Middle,
+                                            },
+                                        });
+
+        auto const do_readout = [&](u64 index, String prefix, f32 lufs) {
+            DoBox(builder,
+                  {
+                      .parent = prefix_column,
+                      .id_extra = index,
+                      .text = prefix,
+                      .font_size = k_readout_font_size,
+                      .text_colours = Col {.c = Col::Overlay2, .dark_mode = true},
+                      .layout {.size = {k_readout_font_size, k_readout_font_size}},
+                  });
+            DoBox(builder,
+                  {
+                      .parent = value_column,
+                      .id_extra = index,
+                      .text = lufs <= LufsMeter::k_silence_floor_lufs
+                                  ? String {"-∞"}
+                                  : String {fmt::Format(builder.arena, "{.1}", lufs)},
+                      .font_size = k_readout_font_size,
+                      .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+                      .text_justification = TextJustification::CentredLeft,
+                      .layout {.size = {layout::k_fill_parent, k_readout_font_size}},
+                  });
+        };
+        do_readout(0, "M"_s, snapshot.momentary_lufs);
+        do_readout(1, "S"_s, snapshot.short_term_lufs);
+    }
 }
 
 void TopPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {

@@ -23,6 +23,9 @@ struct TopDisplayOptions {
     f32 strip_height;
     f32 strip_gap;
     f32 text_gap = 0.0f;
+
+    // Moves the drawing without affecting the layout, so a viewport's auto-size is unchanged.
+    f32 draw_y_offset = 0.0f;
 };
 
 constexpr bool IsNaturalNote(s32 key_in_octave) {
@@ -190,6 +193,23 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
                                     : -1;
     auto const col_keyswitch = ToU32(Col {.c = Col::Blue, .dark_mode = true, .alpha = 200});
 
+    auto const do_key_tooltip = [&](imgui::Id id, Rect key_rect, s32 key) {
+        Tooltip(
+            g,
+            id,
+            key_rect,
+            {
+                .tooltip =
+                    key == keyswitch_note
+                        ? "Reset keyswitch"_s
+                        : "Floe's keyboard shows playing notes and voices - but you can also click on it to trigger notes. It doesn't change colour or change based on what's loaded. It labels middle C as C3.\n\nWhen playing, the red marks along the top of a key "
+                          "show the voices currently sounding on that note. They can linger after you let go because each "
+                          "voice may play on through the release stage of its volume "
+                          "envelope."_s,
+                .tooltip_footer = "Click to play a note. Click lower down a key for a harder velocity."_s,
+            });
+    };
+
     auto const draw_keyswitch_marker = [&](s32 key, Rect key_rect, bool) {
         if (key != keyswitch_note) return;
         f32 const marker_h = Max(3.0f, key_rect.h * 0.08f);
@@ -278,7 +298,7 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardNaturalVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, false);
 
-        if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
+        do_key_tooltip(id, key_r, this_abs_key);
 
         // Show the octave number if it's middle-C.
         if (this_abs_key == 60) {
@@ -379,7 +399,7 @@ InternalKeyboardGui(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves) {
         overlay_key(this_abs_key, key_r, UiColMap::KeyboardSharpVoiceOverlay);
         draw_keyswitch_marker(this_abs_key, key_r, true);
 
-        if (this_abs_key == keyswitch_note && imgui.IsHot(id)) Tooltip(g, id, key_r, "Reset keyswitch"_s, {});
+        do_key_tooltip(id, key_r, this_abs_key);
     }
     imgui.PopId();
 
@@ -428,9 +448,10 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
         // Title
         g.fonts.Push(ToInt(FontType::Heading2));
         DEFER { g.fonts.Pop(); };
-        imgui.draw_list->AddText(imgui.ViewportPosToWindowPos({options.start_pos.x + text_pad_x, y_pos}),
-                                 ToU32(Col {.c = Col::Text, .dark_mode = true}),
-                                 "Key Ranges");
+        imgui.draw_list->AddText(
+            imgui.ViewportPosToWindowPos({options.start_pos.x + text_pad_x, y_pos + options.draw_y_offset}),
+            ToU32(Col {.c = Col::Text, .dark_mode = true}),
+            "Key Ranges");
         y_pos += g.fonts.Current()->font_size + text_gap;
     }
 
@@ -455,15 +476,17 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                 auto const circle_x = x_pos + circle_radius;
                 auto const circle_y = y_pos + (text_height * 0.5f);
 
-                imgui.draw_list->AddCircleFilled(imgui.ViewportPosToWindowPos({circle_x, circle_y}),
-                                                 circle_radius,
-                                                 capsule_cols[layer_idx]);
+                imgui.draw_list->AddCircleFilled(
+                    imgui.ViewportPosToWindowPos({circle_x, circle_y + options.draw_y_offset}),
+                    circle_radius,
+                    capsule_cols[layer_idx]);
                 x_pos += circle_radius * 2 + WwToPixels(6.0f);
             }
 
             {
                 auto text_r = Rect {.x = x_pos, .y = y_pos, .w = options.width - x_pos, .h = text_height};
                 text_r = imgui.RegisterAndConvertRect(text_r);
+                text_r.y += options.draw_y_offset;
 
                 auto layer_text = fmt::Format(g.scratch_arena,
                                               "Layer {}  |  {}",
@@ -487,6 +510,7 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
         y_pos += k_strip_gap;
 
         strip_r = imgui.RegisterAndConvertRect(strip_r);
+        strip_r.y += options.draw_y_offset;
 
         if (options.display_type == DisplayType::Full) {
             auto const strip_id = imgui.MakeId(layer_idx);
@@ -496,12 +520,13 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
             Tooltip(g,
                     strip_id,
                     strip_r,
-                    fmt::Format(g.scratch_arena,
-                                "Layer {}'s playable range: {} to {}",
-                                layer_idx + 1,
-                                NoteName(range_start),
-                                NoteName(range_finish)),
-                    {.ignore_show_tooltips_preference = true});
+                    {
+                        .value_popup = (String)fmt::Format(g.scratch_arena,
+                                                           "Layer {}'s playable range: {} to {}",
+                                                           layer_idx + 1,
+                                                           NoteName(range_start),
+                                                           NoteName(range_finish)),
+                    });
         }
 
         auto const container_left = strip_r.x;
@@ -664,14 +689,16 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
                         Tooltip(g,
                                 capsule_id,
                                 capsule_rect,
-                                fmt::Format(g.scratch_arena,
-                                            "{}: {} to {}. From {} on Layer {}.",
-                                            named_range.name,
-                                            NoteName(CheckedCast<u7>(named_range.key_range.start)),
-                                            NoteName(CheckedCast<u7>(named_range.key_range.end - 1)),
-                                            g.engine.Layer(layer_idx).InstName(),
-                                            layer_idx + 1),
-                                {.ignore_show_tooltips_preference = true});
+                                {
+                                    .value_popup = (String)fmt::Format(
+                                        g.scratch_arena,
+                                        "{}: {} to {}. From {} on Layer {}.",
+                                        named_range.name,
+                                        NoteName(CheckedCast<u7>(named_range.key_range.start)),
+                                        NoteName(CheckedCast<u7>(named_range.key_range.end - 1)),
+                                        g.engine.Layer(layer_idx).InstName(),
+                                        layer_idx + 1),
+                                });
                     }
 
                     if (!fade_in && !fade_out) {
@@ -750,6 +777,13 @@ static void RenderTopDisplayContent(GuiState& g, TopDisplayOptions const& option
 constexpr auto k_minimal_strip_height_ww = 6.0f; // Ww units
 constexpr auto k_minimal_strip_gap_px = 1.0f; // pixels
 
+// The portion of the panel that has slid up out of its bottom edge.
+static Rect RevealedRect(Rect r, f32 slide_progress) {
+    r.y = r.Bottom() - (r.h * slide_progress);
+    r.h *= slide_progress;
+    return r;
+}
+
 static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves, Rect keyboard_rect) {
     auto& imgui = g.imgui;
 
@@ -761,6 +795,9 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
     imgui.SetHot(abs_r, id);
 
     constexpr auto k_seconds_delay_before_enlarge = 0.1;
+    constexpr auto k_seconds_slide_up = 0.15f;
+
+    auto const is_screenshot = IsScreenshotRequest("key-range-enlarged"_s);
 
     if (imgui.WasJustMadeHot(id))
         GuiIo().out.SetTimedWakeup(SourceLocationHash(), TimePoint::Now() + k_seconds_delay_before_enlarge);
@@ -769,23 +806,35 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
         imgui.OpenPopupMenu(popup_id, id);
 
-    if (IsScreenshotRequest("key-range-enlarged"_s) && !imgui.IsPopupMenuOpen(popup_id))
-        imgui.OpenPopupMenu(popup_id, id);
+    if (is_screenshot && !imgui.IsPopupMenuOpen(popup_id)) imgui.OpenPopupMenu(popup_id, id);
 
     auto const enlarged_viewport_padding = WwToPixels(4.0f);
 
     keyboard_rect = imgui.RegisterAndConvertRect(keyboard_rect);
-    if (imgui.IsPopupMenuOpen(popup_id)) {
+
+    bool const popup_open = imgui.IsPopupMenuOpen(popup_id);
+
+    // 0 when the panel is fully tucked away behind its bottom edge, 1 when it's fully in place.
+    f32 slide_progress = 1.0f;
+
+    if (popup_open) {
+        auto const draw_background = [&](imgui::Context const&) {
+            // The panel's height isn't known until it's had a frame to measure its contents, so we can only
+            // begin the slide on the first frame it's actually visible.
+            if (imgui.IsViewportFirstSizedFrame())
+                imgui.StartAnimation(popup_id, 0, k_seconds_slide_up, true);
+            if (!is_screenshot) slide_progress = imgui.GetAnimatedValue(popup_id, 1.0f);
+
+            imgui.draw_list->AddRectFilled(RevealedRect(imgui.curr_viewport->unpadded_bounds, slide_progress),
+                                           ToU32(Col {.c = Col::Background1, .dark_mode = true}),
+                                           WwToPixels(k_corner_rounding));
+        };
+
         imgui.BeginViewport(
             {
                 .mode = imgui::ViewportMode::PopupMenu,
                 .positioning = imgui::ViewportPositioning::AutoPosition,
-                .draw_background =
-                    [](imgui::Context const& imgui) {
-                        imgui.draw_list->AddRectFilled(imgui.curr_viewport->unpadded_bounds,
-                                                       ToU32(Col {.c = Col::Background1, .dark_mode = true}),
-                                                       WwToPixels(k_corner_rounding));
-                    },
+                .draw_background = draw_background,
                 .padding = {.lr = 0, .tb = enlarged_viewport_padding},
                 .auto_size = true,
                 .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
@@ -794,6 +843,15 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
             keyboard_rect,
             "Enlarged keyboard display");
         DEFER { imgui.EndViewport(); };
+
+        auto const bounds = imgui.curr_viewport->unpadded_bounds;
+
+        bool const sliding = slide_progress < 1.0f;
+        if (sliding) imgui.PushRectToCurrentScissorStack(RevealedRect(bounds, slide_progress));
+        DEFER {
+            if (sliding) imgui.PopRectFromCurrentScissorStack();
+        };
+
         RenderTopDisplayContent(g,
                                 {
                                     .start_pos = 0,
@@ -804,18 +862,19 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
                                     .strip_height = 18, // Ww units
                                     .strip_gap = 8, // Ww units
                                     .text_gap = 4, // Ww units
+                                    .draw_y_offset = (1.0f - slide_progress) * bounds.h,
                                 });
 
-        if (auto const bounds = g.imgui.curr_viewport->unpadded_bounds; All(bounds.size > 0.0f))
-            imgui.RegisterNamedRect("key-range-enlarged-popup"_s, bounds);
+        if (All(bounds.size > 0.0f)) imgui.RegisterNamedRect("key-range-enlarged-popup"_s, bounds);
 
-        if (auto const bounds = g.imgui.curr_viewport->unpadded_bounds;
-            !IsScreenshotRequest("key-range-enlarged"_s) && All(bounds.size > 0.0f) &&
-            !bounds.Contains(GuiIo().in.cursor_pos)) {
+        if (!is_screenshot && All(bounds.size > 0.0f) && !bounds.Contains(GuiIo().in.cursor_pos)) {
             imgui.ClosePopupToLevel(0);
             GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
         }
-    } else {
+    }
+
+    // While the panel is still sliding up it doesn't yet cover the minimal strips, so keep drawing them.
+    if (!popup_open || slide_progress < 1.0f) {
         RenderTopDisplayContent(g,
                                 {
                                     .start_pos = r.pos,

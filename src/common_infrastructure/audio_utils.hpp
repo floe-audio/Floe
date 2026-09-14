@@ -37,9 +37,10 @@ static constexpr String k_note_names[] = {"C", "C#", "D", "D#", "E", "F", "F#", 
 constexpr u8 k_middle_c_octave = 3;
 constexpr s8 k_octave_offset = k_middle_c_octave - (60 / 12);
 
-PUBLIC DynamicArrayBounded<char, 4> NoteName(u7 midi_note) {
-    u8 const note_in_octave = midi_note % 12;
-    u8 const octave = midi_note / 12;
+PUBLIC DynamicArrayBounded<char, 4> NoteName(s32 note_number) {
+    ASSERT(note_number >= 0);
+    auto const note_in_octave = (u8)(note_number % 12);
+    auto const octave = note_number / 12;
     return fmt::FormatInline<4>("{}{}", k_note_names[note_in_octave], octave + k_octave_offset);
 }
 

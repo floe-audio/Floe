@@ -17,6 +17,7 @@ constexpr imgui::ViewportConfig k_default_popup_menu_viewport {
     .padding = {.lr = 1, .tb = k_panel_rounding},
     .scrollbar_padding = k_scrollbar_rhs_space,
     .scrollbar_width = k_scrollbar_width,
+    .scroll_button_size = k_scroll_button_size,
     .auto_size = true,
 };
 
@@ -47,6 +48,20 @@ Box MenuItem(GuiBuilder& builder,
              Box parent,
              MenuItemOptions const& options,
              u64 id_extra = SourceLocationHash());
+
+struct MenuSubmenuItemOptions {
+    String text;
+    bool is_selected; // Marks the category with a dot, e.g. when the current value lives inside this submenu.
+    TrivialFunctionRef<void(Box submenu_root)> do_submenu_items;
+};
+
+// A menu item that opens a nested flyout menu. The item shows as hot while its submenu is open.
+// do_submenu_items is cloned into the frame arena: the submenu viewport runs after the current viewport's
+// run function completes, so it must not capture by reference anything local to that function.
+Box MenuSubmenuItem(GuiBuilder& builder,
+                    Box parent,
+                    MenuSubmenuItemOptions const& options,
+                    u64 id_extra = SourceLocationHash());
 
 // Horizontal divider sized for popup menus (with a small gap above and below).
 Box MenuDivider(GuiBuilder& builder, Box parent, u64 id_extra = SourceLocationHash());
