@@ -46,6 +46,18 @@ jobs:
           if-no-files-found: ignore
           path: ~/Library/Logs/Floe/*
 
+      # macOS writes a .ips report naming the signal, faulting thread and backtrace. It's the only
+      # account of a crash that happens before or outside our own crash handler.
+      - name: Upload macOS crash reports
+        if: "!cancelled()"
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-reports-macos
+          if-no-files-found: ignore
+          path: |
+            ~/Library/Logs/DiagnosticReports/*
+            /Library/Logs/DiagnosticReports/*
+
       - if: "!cancelled()"
         name: Upload test results
         uses: codecov/codecov-action@v5
