@@ -165,6 +165,7 @@ constexpr Optional<LayerParamIndex> SuccessorOfLegacyLayerParamIndex(LayerParamI
         case LayerParamIndex::LegacyEqFreq1: return LayerParamIndex::EqFreq1;
         case LayerParamIndex::LegacyEqFreq2: return LayerParamIndex::EqFreq2;
         case LayerParamIndex::LegacyEqFreq3: return LayerParamIndex::EqFreq3;
+        case LayerParamIndex::LegacyTuneSemitone: return LayerParamIndex::TuneSemitone;
         default: return k_nullopt;
     }
 }
@@ -283,6 +284,7 @@ static f32 RemapLegacyLayerValue(LayerParamIndex legacy_layer, u32 layer_num, f3
             return FrequencyRemap(ParamIndexFromLayerParamIndex(layer_num, legacy_layer),
                                   successor_pi,
                                   legacy_linear);
+        case LayerParamIndex::LegacyTuneSemitone: return legacy_linear; // Same unit, wider range.
         default: PanicIfReached();
     }
     return 0;
@@ -964,10 +966,32 @@ TEST_CASE(TestReversedTempoSyncedRateMigration) {
     return k_success;
 }
 
+TEST_CASE(TestLayerPitchSemitoneMigration) {
+    for (auto const layer_index : Range(k_num_layers)) {
+        auto const legacy_pi =
+            ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::LegacyTuneSemitone);
+        auto const& legacy_desc = k_param_descriptors[ToInt(legacy_pi)];
+        REQUIRE(legacy_desc.flags.legacy);
+
+        for (auto semitone = (int)legacy_desc.linear_range.min; semitone <= (int)legacy_desc.linear_range.max;
+             ++semitone) {
+            auto const succ = SuccessorOfLegacyValue(legacy_pi, (f32)semitone);
+            REQUIRE(succ);
+            CHECK_EQ(succ->successor_param,
+                     ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::TuneSemitone));
+            CHECK_EQ(succ->successor_linear, (f32)semitone);
+            CHECK(k_param_descriptors[ToInt(succ->successor_param)].linear_range.Contains(
+                succ->successor_linear));
+        }
+    }
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterLegacyParamLogicTests) {
     REGISTER_TEST(TestModerniseWetDryEffectLossless);
     REGISTER_TEST(TestModerniseWetDryWetOnlyMacroPreservesAudio);
     REGISTER_TEST(TestModerniseWetDryDryOnlyMacroPreservesAudio);
     REGISTER_TEST(TestModerniseLegacyFilterCutoffSingleMacroAudioMatch);
     REGISTER_TEST(TestReversedTempoSyncedRateMigration);
+    REGISTER_TEST(TestLayerPitchSemitoneMigration);
 }

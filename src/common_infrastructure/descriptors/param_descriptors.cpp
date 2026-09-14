@@ -524,6 +524,7 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
                            layer_linear(ln, LayerParamIndex::MpeSlideDestination)) !=
                        param_values::MpeDestination::Off;
 
+            case LayerParamIndex::LegacyTuneSemitone:
             case LayerParamIndex::LegacyFilterCutoff:
             case LayerParamIndex::LegacyFilterResonance:
             case LayerParamIndex::LegacyFilterType:
@@ -734,7 +735,7 @@ constexpr auto k_layer_params = ArrayT<LayerParamId>({
     {"Solo", LayerParamIndex::Solo},
     {"Pan", LayerParamIndex::Pan},
     {"Detune", LayerParamIndex::TuneCents},
-    {"Pitch", LayerParamIndex::TuneSemitone},
+    {"Pitch", LayerParamIndex::LegacyTuneSemitone},
     {"LpStrt", LayerParamIndex::LoopStart},
     {"LpEnd", LayerParamIndex::LoopEnd},
     {"LpXf", LayerParamIndex::LoopCrossfade},

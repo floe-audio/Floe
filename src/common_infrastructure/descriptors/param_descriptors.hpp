@@ -13,7 +13,7 @@ enum class LayerParamIndex : u8 {
     Pan,
     StereoWidth,
     TuneCents,
-    TuneSemitone,
+    LegacyTuneSemitone,
     LoopMode,
     LoopStart,
     LoopEnd,
@@ -111,6 +111,9 @@ enum class LayerParamIndex : u8 {
     // originals are kept for DAW automation backwards compatibility.
     LfoRateTempoSynced,
     ArpRate,
+
+    // Wider-range successor of the layer semitone pitch param.
+    TuneSemitone,
 
     Count,
 };
@@ -3611,10 +3614,22 @@ consteval auto CreateParams() {
             .tooltip =
                 "Detune fine-tunes this layer's pitch in cents (100 cents is one semitone). This works by speeding up or slowing down the audio."_s,
         };
-        lp(TuneSemitone) = Args {
+        lp(LegacyTuneSemitone) = Args {
             .id = id(region, 5), // never change
             .id_string = LAYER_ID("tune_semitones"),
             .value_config = val_config_helpers::Int({.range = {-36, 36}, .default_val = 0}),
+            .modules = {layer_module},
+            .name = "Pitch Semitones (Legacy)"_s,
+            .gui_label = "Pitch"_s,
+            .tooltip =
+                "Legacy layer pitch in semitones. Kept for backwards-compatibility with DAW automation"_s,
+            .flags = {.legacy = true},
+        };
+        lp(TuneSemitone) = Args {
+            .id = id(region, 102), // never change
+            .id_string = LAYER_ID("tune_semitones_v2"),
+            .added_in_generation = 6,
+            .value_config = val_config_helpers::Int({.range = {-88, 88}, .default_val = 0}),
             .modules = {layer_module},
             .name = "Pitch Semitones"_s,
             .gui_label = "Pitch"_s,

@@ -621,6 +621,10 @@ enum class StateVersion : u16 {
     // unchanged.
     AddedLimiterEffect,
 
+    // Widened the layer Pitch semitone range from ±36 to ±88. The previous parameter is now hidden as
+    // LegacyTuneSemitone and kept only for DAW automation backwards compatibility.
+    WidenedLayerPitchRange,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -635,7 +639,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 411,
+    static_assert(k_num_non_experimental_parameters == 414,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -849,6 +853,9 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
              })
             state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
     }
+
+    if (version < StateVersion::WidenedLayerPitchRange)
+        ModerniseLegacyParam(state, LayerParamIndex::LegacyTuneSemitone, source);
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so
@@ -1248,7 +1255,7 @@ ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
                 auto const keytracking_off = layer_param_value(layer_index, LayerParamIndex::Keytrack) < 0.5f;
                 if (keytracking_off) {
                     layer_param_value(layer_index, LayerParamIndex::TuneCents) = 0;
-                    layer_param_value(layer_index, LayerParamIndex::TuneSemitone) = 0;
+                    layer_param_value(layer_index, LayerParamIndex::LegacyTuneSemitone) = 0;
                 }
             }
         }

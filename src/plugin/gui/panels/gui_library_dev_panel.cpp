@@ -512,7 +512,7 @@ DoTuningBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& context, Libra
     auto const target_is_lua =
         target_inst_def && target_inst_def->library.file_format_specifics.tag == sample_lib::FileFormat::Lua;
     auto const target_cents = params.ProjectedValue(0, LayerParamIndex::TuneCents);
-    auto const target_semis = params.ProjectedValue(0, LayerParamIndex::TuneSemitone);
+    auto const target_semis = params.ProjectedValueLegacyAware(0, LayerParamIndex::TuneSemitone);
     auto const target_tuning_zero = target_cents == 0 && target_semis == 0;
 
     auto const ref_is_sine =
@@ -537,7 +537,7 @@ DoTuningBuilderPanel(GuiBuilder& builder, LibraryDevPanelContext& context, Libra
     if (!all_ok) return;
 
     auto const ref_cents = params.ProjectedValue(1, LayerParamIndex::TuneCents);
-    auto const ref_semis = (int)Round(params.ProjectedValue(1, LayerParamIndex::TuneSemitone));
+    auto const ref_semis = (int)Round(params.ProjectedValueLegacyAware(1, LayerParamIndex::TuneSemitone));
     auto const total_cents = -(((f32)ref_semis * 100.0f) + ref_cents);
     auto const out_semitones = (int)Round(total_cents / 100.0f);
     auto const out_cents = total_cents - ((f32)out_semitones * 100.0f);
