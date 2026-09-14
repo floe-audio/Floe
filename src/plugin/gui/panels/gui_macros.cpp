@@ -5,6 +5,7 @@
 
 #include <IconsFontAwesome6.h>
 
+#include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -365,12 +366,34 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                     knob_r,
                     {
                         .value_popup = FunctionRef<String()> {[&]() -> String {
-                            auto const& descriptor = k_param_descriptors[ToInt(*dest.param_index)];
+                            auto const dest_param_index = *dest.param_index;
+                            auto const& descriptor = k_param_descriptors[ToInt(dest_param_index)];
+                            auto const& params = g.engine.processor.main_params;
+                            auto const& macro_dests = g.engine.processor.main_macro_destinations;
+                            auto const show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs);
+                            auto const base_value = params.values[ToInt(dest_param_index)];
+
+                            auto const adjusted_with_macro_at = [&](f32 macro_value) {
+                                auto values = params.values;
+                                values[ToInt(k_macro_params[macro_index])] = macro_value;
+                                return AdjustedLinearValue(values, macro_dests, base_value, dest_param_index);
+                            };
+                            auto const to_string = [&](f32 linear_value) {
+                                return *descriptor.LinearValueToString(linear_value,
+                                                                       show_cutoff_in_semitones);
+                            };
+
                             return fmt::Format(builder.arena,
-                                               "{}\n{}\n{.0}%{}",
+                                               "{} ({})\n{.0}%\n{} to {} (now {}){}",
                                                descriptor.gui_label,
                                                descriptor.ModuleString(" › "_s),
                                                dest.ProjectedValue() * 100,
+                                               to_string(adjusted_with_macro_at(0)),
+                                               to_string(adjusted_with_macro_at(1)),
+                                               to_string(AdjustedLinearValue(params.values,
+                                                                             macro_dests,
+                                                                             base_value,
+                                                                             dest_param_index)),
                                                descriptor.flags.legacy ? "\n(legacy parameter)"_s : ""_s);
                         }},
                         .tooltip =
