@@ -42,7 +42,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Distortion:
                 info = {
                     .description =
-                        "Push the signal through a shaping curve, for anything from gentle tape warmth to outright destruction. It's oversampled and anti-aliased, so even the hardest settings stay free of the grating tones that aliasing adds.",
+                        "The distortion effect pushes the signal through a shaping curve, for anything from gentle tape warmth to outright destruction. Oversampled and anti-aliased for a clean sound.",
                     .name = "Distortion",
                     .id = 1, // never change
                     .on_param_index = ParamIndex::DistortionOn,
@@ -52,7 +52,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::BitCrush:
                 info = {
                     .description =
-                        "A lo-fi effect that degrades the signal in two ways: dropping the sample rate for ringing, metallic aliasing, and reducing the bit depth for gritty quantisation noise. Both controls start at full quality, so lower them to hear the effect.",
+                        "The Bit Crush is a lo-fi effect that degrades the signal in two ways: dropping the sample rate for ringing, metallic aliasing, and reducing the bit depth for gritty quantisation noise. Both controls start at full quality, so lower them to hear the effect.",
                     .name = "Bit Crush",
                     .id = 2, // never change
                     .on_param_index = ParamIndex::BitCrushOn,
@@ -61,7 +61,8 @@ constexpr auto k_effect_info = []() {
                 break;
             case EffectType::Compressor:
                 info = {
-                    .description = "Compress the signal to make the quiet sections louder.",
+                    .description =
+                        "The compressor can be used to shape the dynamics: controlling dynamics and making quiet sections louder.",
                     .name = "Compressor",
                     .id = 3, // never change
                     .on_param_index = ParamIndex::CompressorOn,
@@ -71,7 +72,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::FilterEffect:
                 info = {
                     .description =
-                        "Filter the signal, either cutting away a region of the frequency range or boosting and dipping it.",
+                        "This effect filters the signal, either cutting away a region of the frequency range or boosting and dipping it.",
                     .name = "Filter",
                     .id = 4, // never change
                     .on_param_index = ParamIndex::FilterOn,
@@ -81,7 +82,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::StereoWiden:
                 info = {
                     .description =
-                        "Narrow the signal towards mono, or spread it out wider than the speakers. There's also a Bass Mono mode that holds the low end in the centre while everything above it widens.",
+                        "This effect allows for both narrowing the signal towards mono, or spreading it out wider. There's also a Bass Mono mode that holds the low end in the centre while everything above it widens.",
                     .name = "Stereo Widen",
                     .id = 5, // never change
                     .on_param_index = ParamIndex::StereoWidenOn,
@@ -91,7 +92,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Chorus:
                 info = {
                     .description =
-                        "Thicken the sound by layering it with delayed copies that drift in pitch. Gentle settings add a subtle shimmer and movement, while deeper settings give an obvious, tape-like wobble.",
+                        "The chorus effect thickens the sound by layering it with delayed copies that drift in pitch. Gentle settings add a subtle shimmer and movement, while deeper settings give an obvious, tape-like wobble.",
                     .name = "Chorus",
                     .id = 6, // never change
                     .on_param_index = ParamIndex::ChorusOn,
@@ -101,7 +102,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Reverb:
                 info = {
                     .description =
-                        "Algorithmically simulate the reflections and reverberations of a real space, from a small, tight room to a vast hall that takes many seconds to fade. Features modulation options for creating shimmering tails.",
+                        "Reverb algorithmically simulates the reflections and reverberations of a real space, from a small, tight room to a vast hall that takes many seconds to fade. Features modulation options for creating shimmering tails.",
                     .name = "Reverb",
                     .id = 7, // never change
                     .on_param_index = ParamIndex::ReverbOn,
@@ -121,7 +122,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::ConvolutionReverb:
                 info = {
                     .description =
-                        "Reverb whose character comes entirely from an impulse response (IR): a sample of how a space or object responds to sound. Most of the IRs on offer are strange and characterful, making this as much a sound-design tool as a reverb.",
+                        "This convolution reverb effect's character comes entirely from an impulse response (IR): a sample of how a space or object responds to sound. Most of the IRs on offer are strange and characterful, making this as much a sound-design tool as a reverb.",
                     .name = "Convol Reverb",
                     .id = 10, // never change
                     .on_param_index = ParamIndex::ConvolutionReverbOn,
@@ -131,7 +132,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Phaser:
                 info = {
                     .description =
-                        "Sweep a series of peaks and notches through the sound, giving it the classic swooshing, jet-like motion. Gentle settings add a subtle sense of movement to sustained sounds, while faster or more resonant ones become an unmistakable whoosh.",
+                        "The phaser can sweep a series of peaks and notches through the sound, giving it the classic swooshing, jet-like motion. Gentle settings add a subtle sense of movement to sustained sounds, while faster or more resonant ones become an unmistakable whoosh.",
                     .name = "Phaser",
                     .id = 9, // never change
                     .on_param_index = ParamIndex::PhaserOn,
@@ -141,7 +142,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Eq:
                 info = {
                     .description =
-                        "A three-band equaliser for lifting or taming particular parts of the frequency range, from broad tonal shaping to surgical cuts.",
+                        "This is a three-band equaliser for lifting or taming particular parts of the frequency range, from broad tonal shaping to surgical cuts.",
                     .name = "EQ",
                     .id = 8, // never change
                     .on_param_index = ParamIndex::EqOn,
@@ -151,7 +152,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::Limiter:
                 info = {
                     .description =
-                        "Hold the signal below a set ceiling, either to catch stray peaks or to push the overall level up without clipping. It's a true-peak brickwall limiter with a very short lookahead, and usually belongs at the end of the effects chain.",
+                        "The limiter can hold the signal below a set ceiling, either to catch stray peaks or to push the overall level up without clipping. It's a true-peak brickwall limiter with a very short lookahead, and usually belongs at the end of the effects chain.",
                     .name = "Limiter",
                     .id = 12, // never change
                     .on_param_index = ParamIndex::LimiterOn,

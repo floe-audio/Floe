@@ -48,7 +48,7 @@ prefs::Descriptor SettingDescriptor(GuiPreference setting) {
                 .key = prefs::key::k_show_lufs_meter,
                 .value_requirements = prefs::ValueType::Bool,
                 .default_value = false,
-                .gui_label = "Show LUFS meter",
+                .gui_label = "Show Loudness (LUFS) meter",
                 .long_description = "Show the loudness (LUFS) meter and readouts in the top panel GUI.",
             };
         case GuiPreference::ShowCutoffInSemitones:

@@ -3286,10 +3286,10 @@ consteval auto CreateParams() {
         .id_string = "fx.reverb.pre_lowpass_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 128}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
-        .name = "Pre Low Cutoff"_s,
+        .name = "Pre Low-pass Cutoff"_s,
         .gui_label = "Pre LP"_s,
         .tooltip =
-            "The Pre LP rolls the highs off the signal on its way into the reverb, for a darker, more distant space. The dry signal keeps its full range."_s,
+            "The Pre LP is a low-pass filter cutoff for rolling the highs off the signal on its way into the reverb, for a darker, more distant space. The dry signal keeps its full range."_s,
         .related_params_group = 2,
         .flags = {.cutoff_frequency = true},
     };
@@ -3299,10 +3299,10 @@ consteval auto CreateParams() {
         .id_string = "fx.reverb.pre_highpass_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 0}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
-        .name = "Pre High Cutoff"_s,
+        .name = "Pre High-pass Cutoff"_s,
         .gui_label = "Pre HP"_s,
         .tooltip =
-            "The Pre HP rolls the lows off the signal on its way into the reverb, keeping the tail clear so the bass stays tight and centred. The dry signal keeps its full range."_s,
+            "The Pre HP is a high-pass filter cutoff for rolling the lows off the signal on its way into the reverb, keeping the tail clear so the bass stays tight and centred. The dry signal keeps its full range."_s,
         .related_params_group = 2,
         .flags = {.cutoff_frequency = true},
     };
@@ -3312,7 +3312,7 @@ consteval auto CreateParams() {
         .id_string = "fx.reverb.low_shelf_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 40}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
-        .name = "Low Cutoff"_s,
+        .name = "Low-shelf Cutoff"_s,
         .gui_label = "Lo-Shelf"_s,
         .tooltip =
             "The Lo-Shelf sets the frequency below which the reverb tail is cut by the Lo-Gain amount. Turn Lo-Gain down to hear it work."_s,
@@ -3344,7 +3344,7 @@ consteval auto CreateParams() {
         .id_string = "fx.reverb.high_shelf_cutoff"_s,
         .value_config = val_config_helpers::Semitones({.default_val = 128}),
         .modules = {ParameterModule::Effect, ParameterModule::Reverb},
-        .name = "High Cutoff"_s,
+        .name = "High-shelf Cutoff"_s,
         .gui_label = "Hi-Shelf"_s,
         .tooltip =
             "The Hi-Shelf sets the frequency above which the reverb tail is cut by the Hi-Gain amount. Turn Hi-Gain down to hear it work."_s,
