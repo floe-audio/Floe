@@ -12,6 +12,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/controls/gui_filter_graphs.hpp"
+#include "gui/core/custom_icons.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -498,9 +499,10 @@ static void DoImpulseResponseSelector(GuiState& g,
           });
 }
 
-// The right portion of a switchboard card shows a cross when the effect is in the rack and a plus when it
-// isn't. Only the cross is a zone of its own: it removes the effect, whereas clicking anywhere else on the
-// card scrolls the rack to it, adding it first if needed.
+// The right portion of a switchboard card shows a checkbox: ticked when the effect is in the rack, empty
+// when it isn't. This icon is the zone that adds/removes the effect. For an effect in the rack, clicking
+// anywhere else on the card scrolls the rack to it; for an effect not in the rack, the rest of the card only
+// responds to dragging.
 static Rect SwitchboardCardIconRect(Rect card_r) {
     auto const w = WwToPixels(26.0f);
     return {.xywh = {card_r.Right() - w, card_r.y, w, card_r.h}};
@@ -514,9 +516,9 @@ static Rect SwitchboardCardGripRect(Rect card_r) {
 struct SwitchboardCardOptions {
     EffectType type;
     bool in_rack; // Whether the effect is in the rack at all, not whether it's bypassed.
-    // The body and the remove button light up separately so it's clear which one the cursor will act on.
+    // The body and the add/remove icon light up separately so it's clear which one the cursor will act on.
     bool body_hot;
-    bool remove_hot;
+    bool icon_hot;
     bool show_grip;
 };
 
@@ -527,12 +529,12 @@ static void DrawSwitchboardCard(GuiState& g, Rect card_r, SwitchboardCardOptions
 
     draw_list.AddRectFilled(card_r,
                             ToU32(Col {.c = Col::White,
-                                       .alpha = options.body_hot  ? (u8)22
-                                                : options.in_rack ? (u8)10
+                                       .alpha = options.body_hot  ? (u8)20
+                                                : options.in_rack ? (u8)5
                                                                   : (u8)0}),
                             rounding);
     draw_list.AddRect(card_r,
-                      ToU32(Col {.c = Col::White, .alpha = options.in_rack ? (u8)40 : (u8)30}),
+                      ToU32(Col {.c = Col::White, .alpha = options.in_rack ? (u8)10 : (u8)0}),
                       rounding,
                       0b1111,
                       WwToPixels(1.0f));
@@ -559,16 +561,13 @@ static void DrawSwitchboardCard(GuiState& g, Rect card_r, SwitchboardCardOptions
 
     {
         auto const icon_r = SwitchboardCardIconRect(card_r);
-        if (options.in_rack && options.remove_hot) {
-            draw_list.AddRectFilled(icon_r.ReducedVertically(WwToPixels(4.0f)),
-                                    ToU32(Col {.c = Col::White, .alpha = 30}),
-                                    rounding);
-        }
+        if (options.icon_hot)
+            draw_list.AddRectFilled(icon_r, ToU32(Col {.c = Col::White, .alpha = 30}), rounding);
         draw_list.AddTextInRect(icon_r,
-                                options.in_rack
-                                    ? LiveCol(options.remove_hot ? UiColMap::MidTextHot : UiColMap::MidIcon)
-                                    : inactive_col,
-                                options.in_rack ? ICON_FA_XMARK ""_s : ICON_FA_PLUS ""_s,
+                                options.icon_hot  ? LiveCol(UiColMap::MidTextHot)
+                                : options.in_rack ? LiveCol(UiColMap::MidIcon)
+                                                  : inactive_col,
+                                options.in_rack ? ICON_CUSTOM_SQUARE_CHECK ""_s : ICON_CUSTOM_SQUARE ""_s,
                                 {
                                     .justification = TextJustification::Centred,
                                     .font_scaling = 0.8f,
@@ -603,7 +602,7 @@ static void DoSwitchboard(GuiState& g, Box root) {
                                 .parent = root,
                                 .id_extra = (u64)slot,
                                 .layout {
-                                    .size = {150.0f, layout::k_fill_parent},
+                                    .size = {150.0f, 30},
                                 },
                             });
     }
@@ -614,7 +613,7 @@ static void DoSwitchboard(GuiState& g, Box root) {
         // Registered before the slots so each slot's own menu takes precedence; this only fires on the
         // empty space around the cards.
         if (auto const r = BoxRect(g.builder, root))
-            TryOpenFxRackContextMenu(g, g.imgui.ViewportRectToWindowRect(*r), SourceLocationHash());
+            TryOpenFxRackContextMenu(g, g.imgui.ViewportRectToWindowRect(*r), SourceLocationHash(), true);
 
         usize fx_index = 0;
         for (auto const slot : Range(k_num_effect_types)) {
@@ -646,29 +645,32 @@ static void DoSwitchboard(GuiState& g, Box root) {
                 auto const grip_r = SwitchboardCardGripRect(window_slot_r);
                 g.imgui.RegisterRectForMouseTracking(grip_r);
                 bool const cursor_over_grip = grip_r.Contains(GuiIo().in.cursor_pos);
-                bool const cursor_over_remove =
-                    in_rack && SwitchboardCardIconRect(window_slot_r).Contains(GuiIo().in.cursor_pos);
+                bool const cursor_over_icon =
+                    SwitchboardCardIconRect(window_slot_r).Contains(GuiIo().in.cursor_pos);
 
                 DrawSwitchboardCard(g,
                                     window_slot_r,
                                     {
                                         .type = fx->type,
                                         .in_rack = in_rack,
-                                        .body_hot = (is_hot || is_active) && !cursor_over_remove,
-                                        .remove_hot = is_hot && cursor_over_remove,
-                                        .show_grip = (is_hot || cursor_over_grip) && !cursor_over_remove,
+                                        .body_hot = in_rack && (is_hot || is_active) && !cursor_over_icon,
+                                        .icon_hot = is_hot && cursor_over_icon,
+                                        .show_grip = (is_hot || cursor_over_grip) && !cursor_over_icon,
                                     });
 
                 auto const action = ({
                     String s;
                     if (!in_rack)
-                        s = fmt::Format(g.scratch_arena, "Click to add {} to the rack."_s, name);
-                    else if (cursor_over_remove)
-                        s = fmt::Format(g.scratch_arena, "Click to remove {} from the rack."_s, name);
-                    else
+                        s = fmt::Format(g.scratch_arena, "Tick the checkbox to add {} to the rack."_s, name);
+                    else if (cursor_over_icon)
                         s = fmt::Format(g.scratch_arena,
-                                        "Click to scroll the rack to {}, or click the cross to remove it."_s,
+                                        "Untick the checkbox to remove {} from the rack."_s,
                                         name);
+                    else
+                        s = fmt::Format(
+                            g.scratch_arena,
+                            "Click to jump to {} in the rack, or untick the checkbox to remove it."_s,
+                            name);
                     s;
                 });
                 String const tooltip = fmt::Format(
@@ -693,29 +695,28 @@ static void DoSwitchboard(GuiState& g, Box root) {
 
                 if (fired) {
                     auto const press_pos = GuiIo().in.mouse_buttons[0].last_press.point;
-                    if (in_rack && SwitchboardCardIconRect(window_slot_r).Contains(press_pos)) {
-                        BeginUndoableStep(g.engine, "Remove FX"_s);
+                    bool const pressed_icon = SwitchboardCardIconRect(window_slot_r).Contains(press_pos);
+                    if (pressed_icon) {
+                        BeginUndoableStep(g.engine, in_rack ? "Remove FX"_s : "Add FX"_s);
                         DEFER { EndUndoableStep(g.engine); };
                         SetParameterValue(g.engine.processor,
                                           k_effect_info[ToInt(fx->type)].on_param_index,
-                                          0.0f,
+                                          in_rack ? 0.0f : 1.0f,
                                           {});
-                        g.engine.fx_visible.SetToValue(ToInt(fx->type), false);
-                    } else {
-                        if (!in_rack) {
-                            BeginUndoableStep(g.engine, "Add FX"_s);
-                            DEFER { EndUndoableStep(g.engine); };
-                            SetParameterValue(g.engine.processor,
-                                              k_effect_info[ToInt(fx->type)].on_param_index,
-                                              1.0f,
-                                              {});
-                            g.engine.fx_visible.SetToValue(ToInt(fx->type), true);
-                        }
+                        g.engine.fx_visible.SetToValue(ToInt(fx->type), !in_rack);
+                        if (!in_rack) g.fx_scroll_to = fx->type;
+                    } else if (in_rack) {
                         g.fx_scroll_to = fx->type;
                     }
                 }
 
-                if (cursor_over_grip) GuiIo().out.wants.cursor_type = CursorType::AllArrows;
+                // Decided after the right-click menu because that registers its own button behaviour on
+                // the same id, which would otherwise reinstate the hand cursor.
+                if (is_hot || is_active) {
+                    GuiIo().out.wants.cursor_type = cursor_over_grip                ? CursorType::AllArrows
+                                                    : (in_rack || cursor_over_icon) ? CursorType::Hand
+                                                                                    : CursorType::Default;
+                }
 
                 // Drag start detection
                 if (is_active && !g.dragging_fx_switch) {
@@ -743,7 +744,7 @@ static void DoSwitchboard(GuiState& g, Box root) {
                     .type = g.dragging_fx_switch->fx->type,
                     .in_rack = (bool)g.engine.fx_visible.Get(ToInt(g.dragging_fx_switch->fx->type)),
                     .body_hot = true,
-                    .remove_hot = false,
+                    .icon_hot = false,
                     .show_grip = true,
                 });
 

@@ -11,8 +11,12 @@ import os
 
 import fontforge
 
+# name -> (codepoint, advance width). The Font Awesome square SVGs are 448 wide, so their advance is set to
+# match for accurate centring; midi is a full 512-wide glyph.
 icons = {
-    "midi": 0xE000,
+    "midi": (0xE000, 512),
+    "square": (0xE001, 448),
+    "square-check": (0xE002, 448),
 }
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -21,7 +25,7 @@ font = fontforge.font()
 font.familyname = "Floe Custom Icons"
 font.fontname = "FloeCustomIcons"
 font.fullname = "Floe Custom Icons"
-font.copyright = "Copyright 2026 Sam Windell, CC-BY-SA-4.0"
+font.copyright = "Copyright 2026 Sam Windell (CC-BY-SA-4.0); square icons Copyright 2026 Fonticons, Inc. (CC-BY-4.0)"
 # Match fa-solid-900.ttf so merged glyphs share its scale and baseline.
 font.em = 512
 font.ascent = 448
@@ -39,10 +43,10 @@ font.os2_typodescent = -75
 font.os2_winascent = 459
 font.os2_windescent = 75
 
-for name, codepoint in icons.items():
+for name, (codepoint, width) in icons.items():
     glyph = font.createChar(codepoint, name)
     glyph.importOutlines(os.path.join(here, name + ".svg"), scale=False)
-    glyph.width = 512
+    glyph.width = width
     glyph.removeOverlap()
     glyph.correctDirection()
 
