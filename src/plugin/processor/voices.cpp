@@ -451,6 +451,8 @@ void StartVoice(VoicePool& pool,
     voice.note_num = params.note_num;
     voice.frames_before_starting = params.num_frames_before_starting;
     voice.filters = {};
+    voice.filter_coeffs_cutoff_linear = -1;
+    voice.filter_coeffs_resonance = -1;
     voice.gain_smoother.prev_output = 0.0f;
     voice.filter_linear_cutoff_smoother.Reset();
     voice.filter_mix_smoother.Reset();
@@ -1576,18 +1578,20 @@ struct VoiceProcessor {
 
                 cut += expression_cutoff_offset;
 
-                f32 res_change {};
-                res = voice.filter_resonance_smoother.LowPass(res,
-                                                              context.one_pole_smoothing_cutoff_1ms,
-                                                              &res_change);
-                f32 cut_change {};
-                cut = voice.filter_linear_cutoff_smoother.LowPass(cut,
-                                                                  context.one_pole_smoothing_cutoff_1ms,
-                                                                  &cut_change);
+                res = voice.filter_resonance_smoother.LowPass(res, context.one_pole_smoothing_cutoff_1ms);
+                cut = Clamp(
+                    voice.filter_linear_cutoff_smoother.LowPass(cut, context.one_pole_smoothing_cutoff_1ms),
+                    0.0f,
+                    1.0f);
 
-                if (has_filter_lfo || cut_change > 0.00001f || res_change > 0.00001f) {
-                    cut = sv_filter::LinearToHz(Clamp(cut, 0.0f, 1.0f));
-                    voice.filter_coeffs.Update(context.sample_rate, cut, res);
+                // Compare against the values the coefficients were last computed from rather than the
+                // per-sample delta: a slow envelope moves the cutoff by less than any per-sample threshold
+                // and would otherwise never be applied.
+                if (has_filter_lfo || Abs(cut - voice.filter_coeffs_cutoff_linear) > 0.0005f ||
+                    Abs(res - voice.filter_coeffs_resonance) > 0.0005f) {
+                    voice.filter_coeffs_cutoff_linear = cut;
+                    voice.filter_coeffs_resonance = res;
+                    voice.filter_coeffs.Update(context.sample_rate, sv_filter::LinearToHz(cut), res);
                 }
 
                 f32x2 wet_buf;
@@ -1601,6 +1605,8 @@ struct VoiceProcessor {
                 voice.filters = {};
                 voice.filter_resonance_smoother.Reset();
                 voice.filter_linear_cutoff_smoother.Reset();
+                voice.filter_coeffs_cutoff_linear = -1;
+                voice.filter_coeffs_resonance = -1;
             }
         }
     }
