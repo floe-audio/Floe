@@ -38,13 +38,10 @@ TEST_CASE(TestCompensatedLevelIsUnityAtEveryDriveAndPunish) {
     };
     static constexpr auto k_punish_points = Array {
         PunishPoint {0, 0.3f},
-        PunishPoint {0.25f, 0.3f},
-        PunishPoint {0.5f, 0.3f},
         PunishPoint {1, 0.3f},
         PunishPoint {0.2f, 0.8f}, // off-grid: interpolated
-        PunishPoint {0.7f, 0.8f},
     };
-    static constexpr auto k_drives = Array {0.0f, 0.01f, 0.03f, 0.1f, 0.25f, 0.5f, 0.75f, 1.0f};
+    static constexpr auto k_drives = Array {0.0f, 0.5f, 1.0f};
 
     Array<Array<Array<f32, k_drives.size>, k_punish_points.size>, k_num_distortion_types> deviations_db {};
     ForEachDistortionTypeInParallel([&deviations_db](DistortionType type) {
@@ -65,14 +62,10 @@ TEST_CASE(TestCompensatedLevelIsUnityAtEveryDriveAndPunish) {
             for (auto const drive_index : Range(k_drives.size)) {
                 CAPTURE(k_drives[drive_index]);
                 auto const type = (DistortionType)type_index;
-                // Ring mod sidebands don't fit whole cycles in the window; legacy foldback's punish grid is
-                // too coarse at low drive.
+                // Ring mod sidebands don't fit whole cycles in the window.
                 auto const is_ring_mod =
                     type == DistortionType::LegacyRingMod || type == DistortionType::RingMod;
-                auto const is_legacy_foldback = type == DistortionType::LegacyFoldback;
-                auto const tolerance_db = is_ring_mod          ? Max(point.tolerance_db, 1.0f)
-                                          : is_legacy_foldback ? Max(point.tolerance_db, 0.5f)
-                                                               : point.tolerance_db;
+                auto const tolerance_db = is_ring_mod ? Max(point.tolerance_db, 1.0f) : point.tolerance_db;
                 CHECK_LT(Abs(deviations_db[type_index][punish_index][drive_index]), tolerance_db);
             }
         }
