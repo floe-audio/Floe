@@ -692,6 +692,13 @@ bool StateModifiedFromPinned(Engine& engine) {
     return changed;
 }
 
+bool IsBlankState(Engine& engine) {
+    auto const& blank = DefaultStateSnapshot();
+    auto current = CurrentStateSnapshot(engine);
+    current.extras = blank.extras;
+    return current == blank;
+}
+
 sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine) {
     ASSERT(g_is_logical_main_thread);
     if (!engine.processor.convo.ir_id) return nullptr;

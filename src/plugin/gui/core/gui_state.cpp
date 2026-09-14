@@ -566,9 +566,8 @@ void GuiUpdate(GuiState& g) {
     DoNotifications(g.builder, g.notifications);
 
     DoPackageInstallNotifications(g.builder,
-                                  g.engine.package_install_jobs,
+                                  g.engine,
                                   g.notifications,
-                                  g.engine.error_notifications,
                                   g.shared_engine_systems.thread_pool,
                                   g.package_install_panel_state,
                                   g.file_picker_state,

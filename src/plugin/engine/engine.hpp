@@ -168,6 +168,10 @@ void ApplySectionOfState(Engine& engine,
 
 bool StateModifiedFromPinned(Engine& engine);
 
+// True when the current state matches the blank default, ignoring extras. Doesn't consider how the state got
+// there: a DAW project that saved an untouched instance counts as blank, as does one reset back to blank.
+bool IsBlankState(Engine& engine);
+
 // Returns the pinned snapshot if it originated from a preset, or nullptr if the pinned snapshot is just the
 // default initial state.
 StateSnapshot const* PinnedPresetState(Engine const& engine);

@@ -10,6 +10,7 @@
 #include "common_infrastructure/persistent_store.hpp"
 
 #include "engine/default_preset.hpp"
+#include "engine/engine.hpp"
 #include "engine/package_installation.hpp"
 #include "gui/core/gui_file_picker.hpp"
 #include "gui/elements/gui_constants.hpp"
@@ -26,6 +27,12 @@ struct PackageInstallPanelState {
         DynamicArrayBounded<char, k_notification_buffer_size - 160> components_text {};
         u8 num_truncated {};
         DynamicArrayBounded<char, 128> license_email {};
+
+        // Empty if the package's preset bank doesn't name a usable default preset.
+        DynamicArray<char> default_preset_path {Malloc::Instance()};
+        bool default_preset_auto_loaded {};
+        bool default_preset_loaded {};
+        bool package_file_trashed {};
     };
     DynamicArrayBounded<SuccessfulInstall, 16> successful_installs {};
 };
@@ -422,7 +429,77 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
     }
 }
 
+// A row in the completion dialogue's 'Optional' group: wrapping description on the left, a button on the
+// right that becomes a done marker once the action has been taken. Returns true when clicked.
+static bool ActionRow(GuiBuilder& builder,
+                      Box parent,
+                      String text,
+                      String button_text,
+                      String done_text,
+                      bool done,
+                      u64 id_extra) {
+    auto const row = DoBox(builder,
+                           {
+                               .parent = parent,
+                               .id_extra = id_extra,
+                               .layout {
+                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                   .contents_gap = k_medium_gap,
+                                   .contents_direction = layout::Direction::Row,
+                                   .contents_align = layout::Alignment::Start,
+                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                               },
+                           });
+
+    // Fills the row's leftover width so the button keeps its hugged size on the right.
+    DoBox(builder,
+          {
+              .parent = row,
+              .text = text,
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+              .font = FontType::Body,
+          });
+
+    if (!done) return TextButton(builder, row, {.text = button_text}, id_extra);
+
+    // Same padding and text height as TextButton so the row doesn't change size when it flips to done.
+    auto const marker =
+        DoBox(builder,
+              {
+                  .parent = row,
+                  .layout {
+                      .size = {layout::k_hug_contents, layout::k_hug_contents},
+                      .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
+                      .contents_gap = k_small_gap,
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+              });
+    DoBox(builder,
+          {
+              .parent = marker,
+              .text = ICON_FA_CHECK,
+              .size_from_text = true,
+              .font = FontType::Icons,
+              .text_colours = Col {.c = Col::Green},
+          });
+    DoBox(builder,
+          {
+              .parent = marker,
+              .text = done_text,
+              .size_from_text = true,
+              .font = FontType::Body,
+              .text_colours = Col {.c = Col::Subtext0},
+              .layout {.size = {layout::k_hug_contents, k_font_body_size}},
+          });
+
+    return false;
+}
+
 PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
+                                       Engine& engine,
                                        PackageInstallPanelState& panel_state,
                                        Notifications& notifications,
                                        ThreadsafeErrorNotifications& error_notifs) {
@@ -482,41 +559,55 @@ PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
               .font = FontType::Body,
           });
 
+    if (record.default_preset_auto_loaded) {
+        DoBox(builder,
+              {
+                  .parent = root,
+                  .text = fmt::Format(builder.arena,
+                                      "Loaded the default preset, {}.",
+                                      path::FilenameWithoutExtension(record.default_preset_path)),
+                  .wrap_width = k_wrap_to_parent,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+              });
+    }
+
+    auto const optional_group = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_gap = k_medium_gap,
+                                              .contents_direction = layout::Direction::Column,
+                                              .contents_align = layout::Alignment::Start,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                          },
+                                      });
     DoBox(builder,
           {
-              .parent = root,
-              .text = fmt::Format(
-                  builder.arena,
-                  "The package file \"{}\" is no longer needed. Would you like to send it to the " TRASH_NAME
-                  "?",
-                  path::Filename(record.package_path)),
-              .wrap_width = -1,
+              .parent = optional_group,
+              .text = "Optional",
               .size_from_text = true,
               .font = FontType::Body,
+              .text_colours = Col {.c = Col::Subtext0},
           });
 
-    auto const button_row = DoBox(builder,
-                                  {
-                                      .parent = root,
-                                      .layout {
-                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                          .contents_gap = k_medium_gap,
-                                          .contents_direction = layout::Direction::Row,
-                                          .contents_align = layout::Alignment::End,
-                                      },
-                                  });
-
-    auto const keep_clicked = TextButton(builder, button_row, {.text = "Keep File"});
-    auto const trash_clicked =
-        TextButton(builder, button_row, {.text = "Send to " TRASH_NAME, .is_default = true});
-
-    if (trash_clicked) {
+    if (ActionRow(builder,
+                  optional_group,
+                  fmt::Format(builder.arena,
+                              "The package file \"{}\" is no longer needed.",
+                              path::Filename(record.package_path)),
+                  "Send to " TRASH_NAME,
+                  "Sent to " TRASH_NAME,
+                  record.package_file_trashed,
+                  0)) {
         ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
         auto const outcome = TrashFileOrDirectory(record.package_path, scratch_arena);
         auto const id = HashMultiple(Array {"package-file-trash"_s, String(record.package_path)});
 
         if (outcome.HasValue()) {
             error_notifs.RemoveError(id);
+            record.package_file_trashed = true;
             notifications.AddOrUpdate(
                 id,
                 [f = DynamicArrayBounded<char, 200>(path::Filename(record.package_path))](ArenaAllocator&) {
@@ -534,18 +625,48 @@ PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
         }
     }
 
-    if (keep_clicked || trash_clicked) dyn::Remove(panel_state.successful_installs, 0);
+    if (record.default_preset_path.size && !record.default_preset_auto_loaded) {
+        if (ActionRow(builder,
+                      optional_group,
+                      fmt::Format(builder.arena,
+                                  "Load {}, the preset bank's default preset. Replaces your current sound "
+                                  "(undoable).",
+                                  path::FilenameWithoutExtension(record.default_preset_path)),
+                      "Load Preset",
+                      "Loaded",
+                      record.default_preset_loaded,
+                      1)) {
+            LoadPresetFromFile(engine, record.default_preset_path);
+            record.default_preset_loaded = true;
+        }
+    }
+
+    auto const button_row = DoBox(builder,
+                                  {
+                                      .parent = root,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_gap = k_medium_gap,
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::End,
+                                      },
+                                  });
+
+    if (TextButton(builder, button_row, {.text = "Done", .is_default = true}))
+        dyn::Remove(panel_state.successful_installs, 0);
 }
 
 PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
-                                          package::InstallJobs& package_install_jobs,
+                                          Engine& engine,
                                           Notifications& notifications,
-                                          ThreadsafeErrorNotifications& error_notifs,
                                           ThreadPool& thread_pool,
                                           PackageInstallPanelState& panel_state,
                                           FilePickerState& file_picker_state,
                                           persistent_store::Store& persistent_store,
                                           prefs::Preferences& prefs) {
+    auto& package_install_jobs = engine.package_install_jobs;
+    auto& error_notifs = engine.error_notifications;
+
     constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
     bool user_input_needed = false;
     bool license_key_needed = false;
@@ -636,12 +757,22 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                         }
                     }
 
+                    // A blank instance is effectively still fresh, so open it on the bank's default preset
+                    // right away rather than only affecting the next new instance.
+                    bool auto_loaded = false;
+                    if (suggested_default_preset.size && !user_has_own_default && IsBlankState(engine)) {
+                        LoadPresetFromFile(engine, suggested_default_preset);
+                        auto_loaded = true;
+                    }
+
                     if (panel_state.successful_installs.size != panel_state.successful_installs.Capacity()) {
                         PackageInstallPanelState::SuccessfulInstall record {};
                         dyn::Assign(record.package_path, job.job->path);
                         record.components_text = buffer;
                         record.num_truncated = num_truncated;
                         dyn::AssignFitInCapacity(record.license_email, job.job->license_email);
+                        dyn::Assign(record.default_preset_path, suggested_default_preset);
+                        record.default_preset_auto_loaded = auto_loaded;
                         dyn::Append(panel_state.successful_installs, Move(record));
                     } else {
                         DynamicArrayBounded<char, 128> license_email {};
@@ -756,24 +887,25 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
     // exclusive-focus viewports at the same z-order, so two at once fight over focus and can
     // deadlock the whole GUI.
     if (panel_state.successful_installs.size && !license_key_needed && !user_input_needed) {
-        DoBoxViewport(builder,
-                      {
-                          .run =
-                              [&panel_state, &notifications, &error_notifs](GuiBuilder& b) {
-                                  PackageInstallSuccessPanel(b, panel_state, notifications, error_notifs);
-                              },
-                          .bounds = Rect {},
-                          .imgui_id = builder.imgui.MakeId("install success"),
-                          .viewport_config = ({
-                              auto cfg = k_default_modal_viewport;
-                              cfg.mode = imgui::ViewportMode::Floating;
-                              cfg.positioning = imgui::ViewportPositioning::WindowCentred;
-                              cfg.auto_size = true;
-                              cfg.exclusive_focus = true;
-                              cfg.z_order = 200;
-                              cfg;
-                          }),
-                          .debug_name = "pkg-install-success-dialog",
-                      });
+        DoBoxViewport(
+            builder,
+            {
+                .run =
+                    [&engine, &panel_state, &notifications, &error_notifs](GuiBuilder& b) {
+                        PackageInstallSuccessPanel(b, engine, panel_state, notifications, error_notifs);
+                    },
+                .bounds = Rect {},
+                .imgui_id = builder.imgui.MakeId("install success"),
+                .viewport_config = ({
+                    auto cfg = k_default_modal_viewport;
+                    cfg.mode = imgui::ViewportMode::Floating;
+                    cfg.positioning = imgui::ViewportPositioning::WindowCentred;
+                    cfg.auto_size = true;
+                    cfg.exclusive_focus = true;
+                    cfg.z_order = 200;
+                    cfg;
+                }),
+                .debug_name = "pkg-install-success-dialog",
+            });
     }
 }
