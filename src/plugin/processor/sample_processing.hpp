@@ -187,7 +187,7 @@ inline bool PlaybackEnded(PlayHead const& playhead, u32 num_frames) {
     return playhead.frame_pos >= num_frames;
 }
 
-NO_UBSAN inline void IncrementPlaybackPos(PlayHead& playhead, f64 increment, u32 num_frames) {
+ALWAYS_INLINE NO_UBSAN inline void IncrementPlaybackPos(PlayHead& playhead, f64 increment, u32 num_frames) {
     ASSERT_HOT(!PlaybackEnded(playhead, num_frames));
     ASSERT_HOT(playhead.frame_pos < num_frames);
     ASSERT_HOT(increment >= 0);
@@ -401,7 +401,8 @@ ALWAYS_INLINE NO_UBSAN constexpr u32 DataIndexAtOffset(signed _BitInt(3) steps,
     return (u32)v;
 }
 
-NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
+// 4-point interpolation at the playhead position. Doesn't apply the loop crossfade.
+ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateSampleFrame(AudioData const& s, PlayHead const& playhead) {
     auto const loop = playhead.loop.NullableValue();
 
     ASSERT_HOT(s.num_frames != 0);
@@ -443,8 +444,8 @@ NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhea
         // If we're reversed, invert the indices.
         if (playhead.inverse_data_lookup) indices.vec = u32x4(last_frame) - indices.vec;
 
-        // Convert from frame indices to sample indices.
-        indices.vec *= s.channels;
+        // Convert from frame indices to sample indices (channels is 1 or 2).
+        indices.vec <<= s.channels - 1;
 
         InterpolationPoints<f32 const*> p {
             .xm1 = s.interleaved_samples.data + indices.xm1,
@@ -475,6 +476,13 @@ NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhea
                                   }),
                                   x);
 
+    return result;
+}
+
+ALWAYS_INLINE NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
+    auto result = InterpolateSampleFrame(s, playhead);
+
+    auto const loop = playhead.loop.NullableValue();
     if (loop && loop->crossfade) {
         f32 crossfade_pos = 0;
         bool is_crossfading = false;
@@ -488,11 +496,12 @@ NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhea
                 if (playhead.frame_pos >= xfade_fade_out_start && playhead.frame_pos < loop->end) {
                     auto const frames_info_fade = playhead.frame_pos - xfade_fade_out_start;
 
-                    xfade_result = GetSampleFrame(s,
-                                                  {
-                                                      .frame_pos = xfade_fade_in_start + frames_info_fade,
-                                                      .inverse_data_lookup = playhead.inverse_data_lookup,
-                                                  });
+                    xfade_result =
+                        InterpolateSampleFrame(s,
+                                               {
+                                                   .frame_pos = xfade_fade_in_start + frames_info_fade,
+                                                   .inverse_data_lookup = playhead.inverse_data_lookup,
+                                               });
                     crossfade_pos = (f32)(frames_info_fade / loop->crossfade);
                     is_crossfading = true;
                 }
@@ -502,11 +511,12 @@ NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhea
                 if (playhead.frame_pos >= (loop->end - loop->crossfade) && playhead.frame_pos < loop->end) {
                     auto const frames_into_fade = loop->end - playhead.frame_pos;
                     auto const fade_pos = loop->end + frames_into_fade;
-                    xfade_result = GetSampleFrame(s,
-                                                  {
-                                                      .frame_pos = s.num_frames - fade_pos,
-                                                      .inverse_data_lookup = !playhead.inverse_data_lookup,
-                                                  });
+                    xfade_result =
+                        InterpolateSampleFrame(s,
+                                               {
+                                                   .frame_pos = s.num_frames - fade_pos,
+                                                   .inverse_data_lookup = !playhead.inverse_data_lookup,
+                                               });
                     crossfade_pos = (f32)(1.0 - (frames_into_fade / loop->crossfade));
                     is_crossfading = true;
                 }
