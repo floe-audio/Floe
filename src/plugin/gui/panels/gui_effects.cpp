@@ -11,6 +11,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/controls/gui_distortion_display.hpp"
 #include "gui/controls/gui_filter_graphs.hpp"
 #include "gui/core/custom_icons.hpp"
 #include "gui/core/gui_state.hpp"
@@ -891,11 +892,14 @@ static void DoEffectParams(GuiState& g,
             auto const is_legacy = param_values::IsLegacyDistortionType(
                 params.IntValue<param_values::DistortionType>(ParamIndex::DistortionType));
 
-            // Legacy types show an extra Auto Gain button. Flank the main controls with equal-fill
-            // spacers so they stay centred at the same point, and the button appears in the right spacer
-            // without shifting the rest of the layout.
-            if (is_legacy)
-                DoBox(g.builder, {.parent = param_container, .layout {.size = {layout::k_fill_parent, 0}}});
+            auto const vis_box = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = {120, 50},
+                                           },
+                                       });
+            if (auto const r = BoxRect(g.builder, vis_box)) DoDistortionDisplay(g, *r, greyed_out);
 
             DoMenuParameter(g,
                             param_container,
@@ -929,20 +933,22 @@ static void DoEffectParams(GuiState& g,
                                 .greyed_out = greyed_out,
                                 .bidirectional = true,
                             });
+            // Legacy types show an extra Auto Gain button. A fixed-width slot follows the knobs in both
+            // modes so the centred group sits at the same point whether or not the slot holds the button.
+            auto const trailing_slot =
+                DoBox(g.builder,
+                      {
+                          .parent = param_container,
+                          .layout {
+                              .size = {80, layout::k_hug_contents},
+                              .contents_direction = layout::Direction::Row,
+                              .contents_align = layout::Alignment::Start,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                      });
             if (is_legacy) {
-                auto const right_spacer =
-                    DoBox(g.builder,
-                          {
-                              .parent = param_container,
-                              .layout {
-                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                  .contents_direction = layout::Direction::Row,
-                                  .contents_align = layout::Alignment::Start,
-                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                              },
-                          });
                 DoButtonParameter(g,
-                                  right_spacer,
+                                  trailing_slot,
                                   params.DescribedValue(ParamIndex::DistortionAutoGain),
                                   {.width = layout::k_hug_contents,
                                    .height = k_fx_heading_h,
