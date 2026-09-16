@@ -1072,16 +1072,27 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::Chorus: {
-            DoKnobParameter(
+            auto const rate_knob = DoKnobParameter(
                 g,
                 param_container,
                 params.DescribedValue(ParamIndex::ChorusRate),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            DoKnobParameter(
+            auto const depth_knob = DoKnobParameter(
                 g,
                 param_container,
                 params.DescribedValue(ParamIndex::ChorusDepth),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobJoiningLine(g, rate_knob, depth_knob);
+
+            auto const hp_vis = DoBox(g.builder,
+                                      {
+                                          .parent = param_container,
+                                          .layout {
+                                              .size = {200, 70},
+                                          },
+                                      });
+            if (auto const r = BoxRect(g.builder, hp_vis)) DoChorusHighpassGraph(g, *r, greyed_out);
+
             DoKnobParameter(
                 g,
                 param_container,

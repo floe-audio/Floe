@@ -25,6 +25,9 @@ void DoReverbPostShelfGraph(GuiState& g, Rect viewport_r, bool greyed_out);
 // Drag X = cutoff.
 void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_out);
 
+// Chorus high-pass graph: single cutoff handle for `ChorusHighpass`. Drag X = cutoff.
+void DoChorusHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_out);
+
 // Delay filter graph: bandpass centred on `DelayFilterCutoffSemitones`, width controlled by
 // `DelayFilterSpread` (radius in octaves = spread * 8). Single grabber: drag X = cutoff; drag
 // Y = spread (handle Y position tracks spread, top of viewport = max spread).

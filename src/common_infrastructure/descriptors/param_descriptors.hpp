@@ -2726,7 +2726,7 @@ consteval auto CreateParams() {
         .name = "High-pass"_s,
         .gui_label = "High-pass"_s,
         .tooltip =
-            "Remove low frequencies from the chorused copies. The dry signal keeps its full low end, so raise this to hold the bass tight and centred while the higher frequencies shimmer."_s,
+            "Remove low frequencies from the chorused copies. The dry signal is unaffected. Raise this to keep the bass tight and free from movement."_s,
         .flags = {.cutoff_frequency = true},
     };
     mp(ChorusDepth) = Args {
