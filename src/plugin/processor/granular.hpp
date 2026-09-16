@@ -140,7 +140,6 @@ struct Grain {
     f32 pan_pos {}; // -1 (left) to +1 (right), assigned randomly at grain spawn
     f32 amp {1.0f}; // subtle random amplitude jitter per grain
     u8 source_index {};
-    bool active {};
 
     // Steal fade: starts at 1.0 and decreases towards 0 when the grain is being stolen.
     // steal_fade_dec is 0 for non-stealing grains, making the subtraction a branchless no-op.
@@ -153,8 +152,7 @@ struct Grain {
 
 struct GrainPool {
     void DeactivateAllGrains() {
-        for (auto& g : grains)
-            g.active = false;
+        active_grains.ClearAll();
         for (auto& c : spawn_counters)
             c = 0;
         num_active_non_stealing = 0;
@@ -167,6 +165,11 @@ struct GrainPool {
     }
 
     Array<Grain, k_max_grains_per_voice> grains {};
+
+    // Which slots of 'grains' are in use. Kept separate from the grains so that finding the active ones
+    // doesn't touch every slot.
+    Bitset<k_max_grains_per_voice> active_grains {};
+
     Array<u32, k_max_num_voice_sound_sources> spawn_counters {};
 
     // Per-sample decrement applied to Grain::steal_fade when a grain is being stolen.

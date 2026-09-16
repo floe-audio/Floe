@@ -797,8 +797,8 @@ struct VoiceProcessor {
                 }
 
                 if (ref_num_frames) {
-                    for (auto const& grain : voice.grain_pool.grains) {
-                        if (!grain.active || grain_markers.num_active >= k_max_grains_per_voice) continue;
+                    voice.grain_pool.active_grains.ForEachSetBit([&](usize grain_index) {
+                        auto const& grain = voice.grain_pool.grains[grain_index];
                         auto const pos = grain.playhead.RealFramePos(ref_num_frames);
                         if (pos) {
                             grain_markers.grains[grain_markers.num_active++] = {
@@ -806,7 +806,7 @@ struct VoiceProcessor {
                                                   (f64)LargestRepresentableValue<u16>()),
                             };
                         }
-                    }
+                    });
                 }
             }
         }
@@ -999,9 +999,7 @@ struct VoiceProcessor {
 
 #ifdef TRACY_ENABLE
         {
-            u32 num_active = 0;
-            for (auto const& g : pool.grains)
-                if (g.active) num_active++;
+            auto const num_active = (u32)pool.active_grains.NumSet();
             ZoneTextVF(granular_zone,
                        "%u active grains, %u frames, %u ch",
                        num_active,
@@ -1088,21 +1086,12 @@ struct VoiceProcessor {
                 }
 
                 if (pool.spawn_counters[source_index] == 0) {
-                    // Find first inactive grain slot.
-                    Grain* new_grain = nullptr;
-                    usize new_grain_index = 0;
-                    for (auto [gi, g] : Enumerate(pool.grains)) {
-                        if (!g.active) {
-                            new_grain = &g;
-                            new_grain_index = gi;
-                            break;
-                        }
-                    }
+                    auto const new_grain_index = pool.active_grains.FirstUnsetBit();
 
                     // It's unlikely we couldn't find an inactive grain since we have a stealing process that
                     // should have already run. However, if it got to this state then we just don't spawn and
                     // try again next block.
-                    if (!new_grain) {
+                    if (new_grain_index == k_max_grains_per_voice) {
                         // Push the spawn counter to the next block since it's wasteful to keep checking for
                         // inactive grains every frame - activeness only changes at the end of this block.
                         pool.spawn_counters[source_index] = (u32)(buffer.size - frame_index);
@@ -1122,6 +1111,7 @@ struct VoiceProcessor {
                     auto const amp_jitter_rand = r2[3];
 
                     auto const spread_offset = (f64)(spread_rand * ctrl.granular.spread) * (f64)num_frames;
+                    auto const new_grain = &pool.grains[new_grain_index];
 
                     if (auto const grain_playhead = [&]() -> Optional<PlayHead> {
                             auto p = sampler.playhead;
@@ -1156,7 +1146,7 @@ struct VoiceProcessor {
                                 1.0f / (f32)effective_length;
                             });
                             new_grain->env_phase = 0;
-                            new_grain->active = true;
+                            pool.active_grains.Set(new_grain_index);
                             new_grain->steal_fade = 1.0f;
                             new_grain->steal_fade_dec = 0;
 
@@ -1214,8 +1204,9 @@ struct VoiceProcessor {
                             // to pick from. We pick one randomly to avoid any unpleasant-sounding regularity.
                             auto const pick = Rand(voice.random_seed).x % pool.num_active_non_stealing;
                             u32 index = 0;
-                            for (auto& g : pool.grains) {
-                                if (!g.active || g.IsStealing() || &g == new_grain) continue;
+                            for (auto [gi, g] : Enumerate(pool.grains)) {
+                                if (!pool.active_grains.Get(gi) || g.IsStealing() || &g == new_grain)
+                                    continue;
                                 if (index == pick) {
                                     g.steal_fade_dec = pool.steal_fade_dec_value;
                                     pool.num_active_non_stealing--;
@@ -1254,8 +1245,9 @@ struct VoiceProcessor {
         {
             ZoneNamedN(granular_pass2, "Granular: Process Grains", true);
 
-            for (auto [grain_index, grain] : Enumerate(pool.grains)) {
-                if (!grain.active || grain.source_index != source_index) continue;
+            pool.active_grains.ForEachSetBit([&](usize grain_index) ALWAYS_INLINE NO_UBSAN {
+                auto& grain = pool.grains[grain_index];
+                if (grain.source_index != source_index) return;
 
                 // IMPORTANT: this is a very hot code path:
                 // num-active-voices * num-active-grains * num-frames.
@@ -1265,7 +1257,7 @@ struct VoiceProcessor {
                 ASSERT_HOT(start < end);
 
                 // --- Fetch samples and advance playhead ---
-                alignas(alignof(f32x4)) f32x2 grain_samples[k_block_size_max] {};
+                alignas(alignof(f32x4)) f32x2 grain_samples[k_block_size_max];
                 {
                     ZoneNamedN(fetch_zone, "Grain: GetSampleFrame", true);
 
@@ -1283,60 +1275,61 @@ struct VoiceProcessor {
                     end = start + num_fetched;
                 }
 
-                alignas(alignof(f32x4)) f32x2 grain_gains[k_block_size_max] {};
+                // Frames outside [start, end) contribute nothing. The loop below works in groups of 4 frames,
+                // so zero the unfetched frames within the groups it touches.
+                for (auto i = start & ~3u; i < start; ++i)
+                    grain_samples[i] = 0;
+                for (auto i = end; i < buffer.size; ++i)
+                    grain_samples[i] = 0;
 
-                // --- Calculate gains ---
+                // --- Envelope, gain and mix in one pass ---
                 {
-                    ZoneNamedN(mix_zone, "Grain: Gain calc", true);
+                    ZoneNamedN(mix_zone, "Grain: Mix", true);
 
                     auto const amp = s.amp * grain.amp;
                     auto const grain_pan_gains = EqualPanGains2(f32x2(grain.pan_pos)).xy;
-
-                    // Constants.
                     auto const amp4 =
                         __builtin_shufflevector(grain_pan_gains, grain_pan_gains, 0, 1, 0, 1) * amp;
-                    for (u32 i = 0; i < k_block_size_max; i += 2)
-                        *(f32x4*)(void*)(&grain_gains[i]) = amp4;
 
-                    // Xfade.
-                    for (u32 i = 0; i < k_block_size_max; i += 2)
-                        *(f32x4*)(void*)(&grain_gains[i]) *= *(f32x4*)(void*)(&xfade_vols[i]);
+                    auto const phase_inc = grain.env_phase_inc;
+                    auto const steal_dec = grain.steal_fade_dec;
+                    f32x4 phases = grain.env_phase + (phase_inc * f32x4 {0, 1, 2, 3});
+                    f32x4 steals = grain.steal_fade - (steal_dec * f32x4 {0, 1, 2, 3});
+                    auto const phase_inc4 = phase_inc * 4;
+                    auto const steal_dec4 = steal_dec * 4;
 
-                    // Envelopes.
-                    {
-                        static_assert(k_block_size_max % 4 == 0);
-                        alignas(alignof(f32x4)) f32 env_scalars[k_block_size_max];
-                        {
-                            auto const phase_inc = grain.env_phase_inc;
-                            auto const steal_dec = grain.steal_fade_dec;
-                            f32x4 phases = grain.env_phase + (phase_inc * f32x4 {0, 1, 2, 3});
-                            f32x4 steals = grain.steal_fade - (steal_dec * f32x4 {0, 1, 2, 3});
-                            auto const phase_inc4 = phase_inc * 4;
-                            auto const steal_dec4 = steal_dec * 4;
-
-                            for (u32 i = 0; i < k_block_size_max; i += 4) {
-                                auto const inv_fade = *(f32x4 const*)(void const*)(&env_inv_fades[i]);
-                                auto const rise = Clamp01(phases * inv_fade);
-                                auto const fall = Clamp01((f32x4(1) - phases) * inv_fade);
-                                auto const env = HannRise(rise) * HannRise(fall);
-                                auto const fade = Max(steals, f32x4(0));
-                                *(f32x4*)(void*)(&env_scalars[i]) = env * fade;
-                                phases += phase_inc4;
-                                steals -= steal_dec4;
-                            }
+                    // Mixes the frame pair (frame, frame + 1); env_pair is {env0, env0, env1, env1}.
+                    auto const mix_pair = [&](u32 frame, f32x4 env_pair) ALWAYS_INLINE NO_UBSAN {
+                        auto const gains =
+                            (amp4 * *(f32x4 const*)(void const*)(&xfade_vols[frame])) * env_pair;
+                        if (frame + 1 < buffer.size) {
+                            auto const samples = *(f32x4 const*)(void const*)(&grain_samples[frame]);
+                            // The buffer might not be aligned, so we need memcpy.
+                            f32x4 buf;
+                            __builtin_memcpy_inline(&buf, &buffer.data[frame], sizeof(f32x4));
+                            buf += samples * gains;
+                            __builtin_memcpy_inline(&buffer.data[frame], &buf, sizeof(f32x4));
+                        } else {
+                            buffer.data[frame] += grain_samples[frame] * gains.xy;
                         }
+                    };
 
-                        // Zero out-of-range entries (before start and after end).
-                        for (u32 i = 0; i < start; ++i)
-                            env_scalars[i] = 0;
-                        for (auto i = end; i < k_block_size_max; ++i)
-                            env_scalars[i] = 0;
+                    static_assert(k_block_size_max % 4 == 0);
+                    for (u32 i = 0; i < buffer.size; i += 4) {
+                        auto const inv_fade = *(f32x4 const*)(void const*)(&env_inv_fades[i]);
+                        auto const rise = Clamp01(phases * inv_fade);
+                        auto const fall = Clamp01((f32x4(1) - phases) * inv_fade);
+                        auto const env = HannRise(rise) * HannRise(fall);
+                        auto const fade = Max(steals, f32x4(0));
+                        auto const env_scalars = env * fade;
+                        phases += phase_inc4;
+                        steals -= steal_dec4;
 
-                        for (u32 i = 0; i < k_block_size_max; i += 2) {
-                            auto const env_pair = *(f32x2*)(void*)(&env_scalars[i]);
-                            auto const expanded = __builtin_shufflevector(env_pair, env_pair, 0, 0, 1, 1);
-                            *(f32x4*)(void*)(&grain_gains[i]) *= expanded;
-                        }
+                        if (i + 4 <= start || i >= end) continue;
+
+                        mix_pair(i, __builtin_shufflevector(env_scalars, env_scalars, 0, 0, 1, 1));
+                        if (i + 2 < buffer.size)
+                            mix_pair(i + 2, __builtin_shufflevector(env_scalars, env_scalars, 2, 2, 3, 3));
                     }
 
                     // Advance phases.
@@ -1351,41 +1344,20 @@ struct VoiceProcessor {
                         auto const out_of_data = end < buffer.size;
 
                         if (grain.env_phase >= 1.0f || grain.steal_fade <= 0.0f || out_of_data) {
-                            grain.active = false;
+                            pool.active_grains.Clear(grain_index);
                             if (!grain.IsStealing()) pool.num_active_non_stealing--;
                         }
                     }
                 }
-
-                // --- Mix into buffer ---
-                {
-                    ZoneNamedN(mix_zone, "Grain: Mix", true);
-
-                    auto const even_size = buffer.size & ~usize(1);
-                    for (usize i = 0; i < even_size; i += 2) {
-                        auto const samples = *(f32x4*)(void*)(&grain_samples[i]);
-                        auto const gains = *(f32x4*)(void*)(&grain_gains[i]);
-                        // The buffer might not be aligned, so we need memcpy.
-                        f32x4 buf;
-                        __builtin_memcpy_inline(&buf, &buffer.data[i], sizeof(f32x4));
-                        buf += samples * gains;
-                        __builtin_memcpy_inline(&buffer.data[i], &buf, sizeof(f32x4));
-                    }
-                    if (buffer.size & 1)
-                        buffer.data[even_size] += grain_samples[even_size] * grain_gains[even_size];
-                }
-            }
+            });
         }
 
         // --- Pass 3: check if the source should end. ---
         if (source_dead_frame < buffer.size) {
             bool any_grain_active = false;
-            for (auto const& g : pool.grains) {
-                if (g.active && g.source_index == source_index) {
-                    any_grain_active = true;
-                    break;
-                }
-            }
+            pool.active_grains.ForEachSetBit([&](usize grain_index) {
+                if (pool.grains[grain_index].source_index == source_index) any_grain_active = true;
+            });
             if (!any_grain_active) return false;
         }
 
