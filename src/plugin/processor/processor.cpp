@@ -1569,7 +1569,10 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     // Voices and layers
     // ======================================================================================================
     // IMPROVE: support sending the host CLAP_EVENT_NOTE_END events when voices end
-    ProcessVoices(processor.voice_pool, sub_block_size, processor.audio_processing_context);
+    ProcessVoices(processor.voice_pool,
+                  sub_block_size,
+                  processor.audio_processing_context,
+                  frame_index + sub_block_size == process.frames_count);
 
     Array<f32x2, k_block_size_max> output_buffer;
     auto const output = Span<f32x2>(output_buffer.data, sub_block_size);

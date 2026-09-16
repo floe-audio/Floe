@@ -681,7 +681,10 @@ struct VoiceProcessor {
         End,
     };
 
-    static void Process(Voice& voice, AudioProcessingContext const& audio_context, u32 num_frames) {
+    static void Process(Voice& voice,
+                        AudioProcessingContext const& audio_context,
+                        u32 num_frames,
+                        bool publish_gui_markers) {
         ZoneNamedN(process, "Voice Process", true);
         ZoneTextVF(process, "Voice %u", voice.index);
         ASSERT_HOT(voice.is_active);
@@ -719,7 +722,7 @@ struct VoiceProcessor {
         auto const block_result = ApplyGain(voice, output, lfo_amounts, audio_context);
         ApplyFilter(voice, output, lfo_amounts, audio_context);
 
-        {
+        if (publish_gui_markers) {
             // Sampler voices report their playhead; a waveform voice has none, so it reports its pitch
             // across the MIDI note range instead.
             f64 position_for_gui = {};
@@ -1652,7 +1655,8 @@ void OnThreadPoolExec(VoicePool& pool, u32 task_index) {
     auto& voice = pool.voices[pool.multithread_processing.task_index_to_voice_index[task_index]];
     VoiceProcessor::Process(voice,
                             *pool.multithread_processing.audio_processing_context,
-                            pool.multithread_processing.num_frames);
+                            pool.multithread_processing.num_frames,
+                            pool.multithread_processing.publish_gui_markers);
 }
 
 void Reset(VoicePool& pool) {
@@ -1675,7 +1679,10 @@ void Reset(VoicePool& pool) {
     pool.voice_blip_markers_for_gui.Publish();
 }
 
-void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context) {
+void ProcessVoices(VoicePool& pool,
+                   u32 num_frames,
+                   AudioProcessingContext const& context,
+                   bool publish_gui_markers) {
     ZoneScoped;
     for (auto& v : pool.voices) {
         v.processed_this_block = false;
@@ -1698,6 +1705,7 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
             (clap_host_thread_pool const*)context.host.get_extension(&context.host, CLAP_EXT_THREAD_POOL);
         thread_pool && thread_pool->request_exec) {
         pool.multithread_processing.num_frames = num_frames;
+        pool.multithread_processing.publish_gui_markers = publish_gui_markers;
         pool.multithread_processing.audio_processing_context = &context;
         pool.multithread_processing.num_tasks = 0;
         for (auto const& v : pool.voices)
@@ -1713,30 +1721,35 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
 
     // Process all voices that haven't already been processed (possibly by the thread pool).
     for (auto& v : pool.voices)
-        if (v.is_active && !v.processed_this_block) VoiceProcessor::Process(v, context, num_frames);
+        if (v.is_active && !v.processed_this_block)
+            VoiceProcessor::Process(v, context, num_frames, publish_gui_markers);
 
-    for (auto& v : pool.voices) {
-        if (v.produced_audio_this_block) {
-            if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
-                for (auto const frame : Range(num_frames)) {
-                    auto const& val = v.buffer[frame];
-                    ASSERT(All(val >= -k_erroneous_sample_value && val <= k_erroneous_sample_value));
-                }
+    if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
+        for (auto& v : pool.voices) {
+            if (!v.produced_audio_this_block) continue;
+            for (auto const frame : Range(num_frames)) {
+                auto const& val = v.buffer[frame];
+                ASSERT(All(val >= -k_erroneous_sample_value && val <= k_erroneous_sample_value));
             }
-        } else {
+        }
+    }
+
+    if (publish_gui_markers) {
+        for (auto& v : pool.voices) {
+            if (v.produced_audio_this_block) continue;
             pool.voice_waveform_markers_for_gui.Write()[v.index] = {};
             pool.voice_vol_env_markers_for_gui.Write()[v.index] = {};
             pool.voice_fil_env_markers_for_gui.Write()[v.index] = {};
             pool.grain_markers_for_gui.Write()[v.index] = {};
             pool.voice_blip_markers_for_gui.Write()[v.index] = {};
         }
-    }
 
-    pool.voice_waveform_markers_for_gui.Publish();
-    pool.voice_vol_env_markers_for_gui.Publish();
-    pool.voice_fil_env_markers_for_gui.Publish();
-    pool.grain_markers_for_gui.Publish();
-    pool.voice_blip_markers_for_gui.Publish();
+        pool.voice_waveform_markers_for_gui.Publish();
+        pool.voice_vol_env_markers_for_gui.Publish();
+        pool.voice_fil_env_markers_for_gui.Publish();
+        pool.grain_markers_for_gui.Publish();
+        pool.voice_blip_markers_for_gui.Publish();
+    }
 }
 
 TEST_CASE(TestEqualPanGains) {
@@ -1898,7 +1911,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 1u);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
 
@@ -1914,7 +1927,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         StartTestSamplerVoice(fix, region, short_data);
 
         for (int i = 0; i < 10; ++i)
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
@@ -1940,7 +1953,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         StartTestSamplerVoice(fix, note_off_region, short_data);
 
         for (int i = 0; i < 10; ++i)
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
@@ -1950,7 +1963,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         fix.controller.vol_env_on = false;
         StartTestSamplerVoice(fix, region, audio_data);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
 
@@ -1965,7 +1978,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         fix.controller.vol_env_on = false;
         StartTestSamplerVoice(fix, region, stereo_data);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
 
@@ -1978,7 +1991,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         fix.controller.reverse = true;
         StartTestSamplerVoice(fix, region, audio_data);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
         REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
@@ -1997,7 +2010,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 3u);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
 
@@ -2015,7 +2028,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
 
         // Process enough blocks for the envelope release to complete.
         for (int i = 0; i < 500; ++i)
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
@@ -2065,7 +2078,7 @@ TEST_CASE(TestVoiceProcessingGranular) {
         StartVoice(*fix.pool, fix.controller, start_params, fix.context);
 
         // First block: buffer is entirely consumed by frames_before_starting, giving size 0.
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         // Voice should still be active (it hasn't started producing audio yet).
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 1u);
@@ -2073,7 +2086,7 @@ TEST_CASE(TestVoiceProcessingGranular) {
         // Subsequent blocks should produce audio normally.
         bool found_nonzero = false;
         for (int block = 0; block < 100 && !found_nonzero; ++block) {
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
             found_nonzero = VoiceBufferHasNonZero(*fix.pool, k_block_size_max);
         }
         REQUIRE(found_nonzero);
@@ -2098,7 +2111,7 @@ TEST_CASE(TestVoiceProcessingGranular) {
         StartTestSamplerVoice(fix, region, short_data);
 
         for (int i = 0; i < 200; ++i)
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, false);
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
@@ -2158,7 +2171,7 @@ TEST_CASE(TestVoiceProcessingNonTypicalBufferSizes) {
 
                 // Process several blocks to exercise grain spawning and mixing.
                 for (int block = 0; block < 20; ++block)
-                    ProcessVoices(*fix.pool, block_size, fix.context);
+                    ProcessVoices(*fix.pool, block_size, fix.context, true);
 
                 REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, block_size));
 

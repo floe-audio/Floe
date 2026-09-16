@@ -262,6 +262,7 @@ struct VoicePool {
     struct {
         AudioProcessingContext const* audio_processing_context = nullptr;
         u32 num_frames = 0;
+        bool publish_gui_markers = false;
         Array<u16, k_num_voices> task_index_to_voice_index;
         u16 num_tasks {};
         Atomic<u8> fence;
@@ -335,7 +336,12 @@ void StartVoice(VoicePool& pool,
 
 void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannelNote note);
 
-void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context);
+// The GUI only ever sees the most recent publish, so publish_gui_markers need only be set for the last
+// sub-block of a host block.
+void ProcessVoices(VoicePool& pool,
+                   u32 num_frames,
+                   AudioProcessingContext const& context,
+                   bool publish_gui_markers);
 
 void OnThreadPoolExec(VoicePool& pool, u32 task_index);
 
