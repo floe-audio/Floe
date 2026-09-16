@@ -61,6 +61,8 @@ struct ButtonParameterComponentOptions {
     Margins margins {};
     bool greyed_out = false;
     Optional<Col> on_colour {}; // Custom colour for the toggle icon "on" state.
+    Optional<bool> locked_state {}; // If set, shows this state instead of the param's and the button becomes
+                                    // greyed out and non-interactive.
     String override_tooltip {};
     String override_label {};
 };

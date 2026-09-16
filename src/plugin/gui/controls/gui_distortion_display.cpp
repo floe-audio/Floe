@@ -10,7 +10,6 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
-#include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/distortion.hpp"
 #include "processor/processor.hpp"
@@ -89,7 +88,7 @@ void DoDistortionDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
             window_r,
             {
                 .tooltip =
-                    "A preview of the distortion's shaping: a sine wave rendered through the current settings."_s,
+                    "A preview of the distortion's shaping: a 200hz sine wave rendered through the current settings."_s,
             });
     }
 
@@ -115,13 +114,7 @@ void DoDistortionDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
         return points;
     };
 
-    auto const line_col = ({
-        auto c = FromU32(LiveCol(greyed_out ? UiColMap::EqLineGreyedOut : UiColMap::EqLine));
-        // Tilt tints the trace: amber when the lows are pushed into the shaper, cool when the highs are.
-        auto tint = FromU32(inputs.tilt < 0 ? Hsl(28, 85, 62) : Hsl(205, 80, 72));
-        tint.a = c.a;
-        FromU32(LerpColours(ToU32(c), ToU32(tint), Abs(inputs.tilt) * 0.6f));
-    });
+    auto const line_col = LiveCol(greyed_out ? UiColMap::EqLineGreyedOut : UiColMap::EqLine);
 
     auto const wet_points = trace_points([&](u32 sample_index) { return wet[sample_index] * output_gain; });
 
@@ -138,5 +131,5 @@ void DoDistortionDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
         };
         imgui.draw_list->AddConvexPolyFilled(verts, area_col, false);
     }
-    imgui.draw_list->AddPolyline(wet_points, ToU32(line_col), false, 1.5f, true);
+    imgui.draw_list->AddPolyline(wet_points, line_col, false, 1.5f, true);
 }

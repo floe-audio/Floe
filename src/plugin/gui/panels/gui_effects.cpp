@@ -933,28 +933,23 @@ static void DoEffectParams(GuiState& g,
                                 .greyed_out = greyed_out,
                                 .bidirectional = true,
                             });
-            // Legacy types show an extra Auto Gain button. A fixed-width slot follows the knobs in both
-            // modes so the centred group sits at the same point whether or not the slot holds the button.
-            auto const trailing_slot =
-                DoBox(g.builder,
-                      {
-                          .parent = param_container,
-                          .layout {
-                              .size = {80, layout::k_hug_contents},
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                      });
-            if (is_legacy) {
-                DoButtonParameter(g,
-                                  trailing_slot,
-                                  params.DescribedValue(ParamIndex::DistortionAutoGain),
-                                  {.width = layout::k_hug_contents,
-                                   .height = k_fx_heading_h,
-                                   .greyed_out = greyed_out,
-                                   .on_colour = highlight_col});
-            }
+            // Only Legacy types can switch Auto Gain off; the other types always compensate, so the button
+            // stays in place but is shown locked on.
+            DoButtonParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::DistortionAutoGain),
+                {
+                    .width = layout::k_hug_contents,
+                    .height = k_fx_heading_h,
+                    .greyed_out = greyed_out,
+                    .on_colour = highlight_col,
+                    .locked_state = is_legacy ? Optional<bool> {} : Optional<bool> {true},
+                    .override_tooltip =
+                        is_legacy
+                            ? String {}
+                            : "Auto Gain is always on for this type, holding its loudness steady as Drive is increased. It can only be switched off for Legacy types."_s,
+                });
             break;
         }
 

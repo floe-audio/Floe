@@ -1110,67 +1110,73 @@ Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
                       ButtonParameterComponentOptions options) {
-    bool const state = param.BoolValue();
+    bool const state = options.locked_state ? *options.locked_state : param.BoolValue();
 
     bool const legacy_override =
         IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
-    if (legacy_override) options.greyed_out = true;
+    bool const interactive = !legacy_override && !options.locked_state;
+    if (!interactive) options.greyed_out = true;
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
 
-    auto const container = DoBox(g.builder,
-                                 {
-                                     .parent = parent,
-                                     .id_extra = (u64)param.info.id,
-                                     .layout {
-                                         .size = {options.width, options.height},
-                                         .margins = options.margins,
-                                         .contents_direction = layout::Direction::Row,
-                                         .contents_align = layout::Alignment::Start,
-                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                     },
-                                     .tooltip = FunctionRef<String()> {[&]() -> String {
-                                         if (options.override_tooltip.size) return options.override_tooltip;
-                                         return ParamTooltipText(param, g.builder.arena);
-                                     }},
-                                     .tooltip_footer = ParamClickableTooltipFooter(param),
-                                     .button_behaviour = imgui::ButtonConfig {},
-                                 });
+    auto const container =
+        DoBox(g.builder,
+              {
+                  .parent = parent,
+                  .id_extra = (u64)param.info.id,
+                  .layout {
+                      .size = {options.width, options.height},
+                      .margins = options.margins,
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      if (options.override_tooltip.size) return options.override_tooltip;
+                      return ParamTooltipText(param, g.builder.arena);
+                  }},
+                  .tooltip_footer = interactive ? ParamClickableTooltipFooter(param) : String {},
+                  .button_behaviour =
+                      imgui::ButtonConfig {
+                          .cursor_type = interactive ? CursorType::Hand : CursorType::Default,
+                      },
+              });
 
     // Toggle icon.
     DoToggleIcon(g.builder,
                  container,
-                 {.state = state, .greyed_out = options.greyed_out, .on_colour = options.on_colour});
+                 {
+                     .state = state,
+                     .greyed_out = options.greyed_out,
+                     .parent_dictates_hot_and_active = interactive,
+                     .on_colour = options.on_colour,
+                 });
 
     // Text label.
+    auto const label_colours = ({
+        auto const base = LiveColStruct(options.greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText);
+        auto const hot = interactive ? LiveColStruct(UiColMap::MidTextHot) : base;
+        Colours {ColSet {.base = base, .hot = hot, .active = hot}};
+    });
     DoBox(g.builder,
           {
               .parent = container,
               .text = label_text,
               .size_from_text = options.width == layout::k_hug_contents,
               .size_from_text_preserve_height = true,
-              .text_colours = options.greyed_out ? Colours {ColSet {
-                                                       .base = LiveColStruct(UiColMap::MidTextDimmed),
-                                                       .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                       .active = LiveColStruct(UiColMap::MidTextHot),
-                                                   }}
-                                                 : Colours {ColSet {
-                                                       .base = LiveColStruct(UiColMap::MidText),
-                                                       .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                       .active = LiveColStruct(UiColMap::MidTextHot),
-                                                   }},
+              .text_colours = label_colours,
               .text_justification = TextJustification::CentredLeft,
-              .parent_dictates_hot_and_active = true,
+              .parent_dictates_hot_and_active = interactive,
               .layout {
                   .size = {layout::k_fill_parent, options.height},
               },
           });
 
     // Toggle behaviour.
-    if (!legacy_override && container.button_fired)
+    if (interactive && container.button_fired)
         SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
 
-    if (!legacy_override) AddParamContextMenuBehaviour(g, container, param);
+    if (interactive) AddParamContextMenuBehaviour(g, container, param);
 
     if (auto const viewport_r = BoxRect(g.builder, container)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);

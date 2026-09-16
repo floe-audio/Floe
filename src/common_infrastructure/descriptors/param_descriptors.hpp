@@ -2289,7 +2289,7 @@ consteval auto CreateParams() {
         .name = "Gain"_s,
         .gui_label = "Gain"_s,
         .tooltip =
-            "If needed, you can adjust the level of the distorted signal, applied after all the shaping and before the Mix blend."_s,
+            "If needed, you can adjust the level of the distorted signal, applied after all the shaping and before the Mix blend. This is a flat adjustment separate from 'Auto Gain' — which smartly counteracts any change in perceived loudness as you turn up the Drive or Punish."_s,
     };
     mp(DistortionAutoGain) = Args {
         .id = id(IdRegion::Master, 148), // never change
