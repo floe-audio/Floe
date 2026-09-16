@@ -12,7 +12,8 @@
 // X-macro list of benchmark registration functions.
 #define BENCHMARK_REGISTER_FUNCTIONS                                                                         \
     X(RegisterAllocatorBenchmarks)                                                                           \
-    X(RegisterSampleProcessingBenchmarks) X(RegisterLayoutBenchmarks) X(RegisterDistortionBenchmarks)
+    X(RegisterSampleProcessingBenchmarks)                                                                    \
+    X(RegisterLayoutBenchmarks) X(RegisterDistortionBenchmarks) X(RegisterPluginProcessingBenchmarks)
 
 // Declare the registration functions.
 #define X(fn) void fn(benchmarks::Benchmarker&);
@@ -32,6 +33,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
     enum class CommandLineArgId : u8 {
         Filter,
         List,
+        Arg,
         Count,
     };
 
@@ -52,6 +54,15 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
             .required = false,
             .num_values = 0,
         },
+        {
+            .id = (u32)CommandLineArgId::Arg,
+            .key = "arg",
+            .description =
+                "Values passed to the benchmark; their meaning depends on the benchmark. Takes every value that follows it, so give it last",
+            .value_type = "value",
+            .required = false,
+            .num_values = -1,
+        },
     });
 
     ArenaAllocatorWithInlineStorage<1000> arena {PageAllocator::Instance()};
@@ -71,6 +82,7 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
     return benchmarks::RunBenchmarks(benchmarker,
                                      {
                                          .filter_patterns = cli_args[ToInt(CommandLineArgId::Filter)].values,
+                                         .args = cli_args[ToInt(CommandLineArgId::Arg)].values,
                                          .list_only = cli_args[ToInt(CommandLineArgId::List)].was_provided,
                                      });
 }

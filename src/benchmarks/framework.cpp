@@ -6,7 +6,11 @@
 namespace benchmarks {
 
 void RegisterBenchmark(Benchmarker& benchmarker, BenchmarkFunction f, String name) {
-    dyn::Append(benchmarker.benchmark_cases, BenchmarkCase {f, name});
+    dyn::Append(benchmarker.benchmark_cases, BenchmarkCase {.f = f, .name = name});
+}
+
+void RegisterBenchmark(Benchmarker& benchmarker, ContextualBenchmarkFunction f, String name) {
+    dyn::Append(benchmarker.benchmark_cases, BenchmarkCase {.contextual_f = f, .name = name});
 }
 
 static bool MatchesFilter(Span<String> filter_patterns, String name) {
@@ -18,9 +22,11 @@ static bool MatchesFilter(Span<String> filter_patterns, String name) {
 
 int RunBenchmarks(Benchmarker& benchmarker, RunConfig const& config) {
     if (config.list_only) {
+        // Benchmarks that need --arg are marked with a tab-separated suffix so that unattended runners can
+        // skip them.
         for (auto const& bench : benchmarker.benchmark_cases)
             if (MatchesFilter(config.filter_patterns, bench.name))
-                StdPrintF(StdStream::Out, "{}\n", bench.name);
+                StdPrintF(StdStream::Out, "{}{}\n", bench.name, bench.f ? ""_s : "\t(needs --arg)"_s);
         return 0;
     }
 
@@ -33,8 +39,13 @@ int RunBenchmarks(Benchmarker& benchmarker, RunConfig const& config) {
         return 1;
     }
 
+    BenchmarkContext const context {.arena = benchmarker.arena, .args = config.args};
+
     for (auto* bench : matched)
-        bench->f();
+        if (bench->f)
+            bench->f();
+        else
+            bench->contextual_f(context);
 
     return 0;
 }

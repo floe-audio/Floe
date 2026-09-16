@@ -1738,6 +1738,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "gui_framework/renderer_bgfx.cpp",
             "plugin/hosting_tests.cpp",
             "plugin/plugin.cpp",
+            "plugin/plugin_benchmarks.cpp",
             "preset_server/preset_server.cpp",
             "processing_utils/arpeggiator.cpp",
             "processing_utils/audio_processing_context.cpp",
@@ -2966,6 +2967,7 @@ fn buildBenchmarks(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
             "src/common_infrastructure/final_binary_type.cpp",
             "src/benchmarks/benchmarks_main.cpp",
             "src/foundation/memory/allocators.cpp",
+            "src/plugin/plugin/plugin_entry.cpp",
         },
         .flags = FlagsBuilder.init(ctx, cfg, .{
             .all_warnings = true,

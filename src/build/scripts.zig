@@ -1289,7 +1289,10 @@ fn runBenchmarkCi(context: *Context) !u8 {
 
         var lines = std.mem.splitScalar(u8, std.mem.trim(u8, result.stdout, " \n\r\t"), '\n');
         while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, " \r\t");
+            // Benchmarks needing a command-line argument are marked with a tab-separated suffix; they can't
+            // run unattended.
+            if (std.mem.indexOfScalar(u8, line, '\t') != null) continue;
+            const trimmed = std.mem.trim(u8, line, " \r");
             if (trimmed.len > 0) {
                 try benchmark_names.append(trimmed);
             }
