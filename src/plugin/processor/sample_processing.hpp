@@ -406,6 +406,27 @@ ALWAYS_INLINE inline InterpolationPoints<u32> ContiguousTapIndices(u32 frame_ind
     return {.vec = u32x4(frame_index) + u32x4 {(u32)-1, 0, 1, 2}};
 }
 
+ALWAYS_INLINE NO_UBSAN inline InterpolationPoints<f32x2>
+LoadInterpolationPoints(InterpolationPoints<f32 const*> const& p, u8 channels) {
+    ASSERT_HOT(channels > 0);
+    ASSERT_HOT(channels <= 2);
+    InterpolationPoints<f32x2> result;
+    if (channels == 1) {
+        result = {
+            .xm1 = {p.xm1[0], p.xm1[0]},
+            .x0 = {p.x0[0], p.x0[0]},
+            .x1 = {p.x1[0], p.x1[0]},
+            .x2 = {p.x2[0], p.x2[0]},
+        };
+    } else {
+        __builtin_memcpy_inline(&result.xm1, p.xm1, sizeof(f32x2));
+        __builtin_memcpy_inline(&result.x0, p.x0, sizeof(f32x2));
+        __builtin_memcpy_inline(&result.x1, p.x1, sizeof(f32x2));
+        __builtin_memcpy_inline(&result.x2, p.x2, sizeof(f32x2));
+    }
+    return result;
+}
+
 // 4-point Hermite interpolation using the audio data at the given frame indices.
 ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateAtFrameIndices(AudioData const& s,
                                                               InterpolationPoints<u32> frame_indices,
@@ -435,25 +456,7 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateAtFrameIndices(AudioData const& s
         p;
     });
 
-    return DoHermiteInterp(({
-                               InterpolationPoints<f32x2> l;
-                               if (s.channels == 1)
-                                   l = {
-                                       .xm1 = {data_vals.xm1[0], data_vals.xm1[0]},
-                                       .x0 = {data_vals.x0[0], data_vals.x0[0]},
-                                       .x1 = {data_vals.x1[0], data_vals.x1[0]},
-                                       .x2 = {data_vals.x2[0], data_vals.x2[0]},
-                                   };
-                               else
-                                   l = {
-                                       .xm1 = {data_vals.xm1[0], data_vals.xm1[1]},
-                                       .x0 = {data_vals.x0[0], data_vals.x0[1]},
-                                       .x1 = {data_vals.x1[0], data_vals.x1[1]},
-                                       .x2 = {data_vals.x2[0], data_vals.x2[1]},
-                                   };
-                               l;
-                           }),
-                           x);
+    return DoHermiteInterp(LoadInterpolationPoints(data_vals, s.channels), x);
 }
 
 // 4-point interpolation at the playhead position. Doesn't apply the loop crossfade.
@@ -534,10 +537,23 @@ InterpolateContiguousFrame(AudioData const& s, f64 frame_pos, bool inverse_data_
     auto const frame_index = (u32)frame_pos;
     ASSERT_HOT(frame_index >= 1);
     ASSERT_HOT(frame_index + 2 < s.num_frames);
-    return InterpolateAtFrameIndices(s,
-                                     ContiguousTapIndices(frame_index),
-                                     (f32)(frame_pos - frame_index),
-                                     inverse_data_lookup);
+
+    // The taps are consecutive frames, so a single pointer and a stride suffice. Reversed lookup means frame
+    // 0 is the last frame of the data and the stride is negative.
+    auto const tap_stride = inverse_data_lookup ? -(s64)s.channels : (s64)s.channels;
+    auto const origin =
+        s.interleaved_samples.data + (inverse_data_lookup ? (usize)(s.num_frames - 1) * s.channels : 0);
+    auto const x0 = origin + ((s64)frame_index * tap_stride);
+
+    return DoHermiteInterp(LoadInterpolationPoints(
+                               {
+                                   .xm1 = x0 - tap_stride,
+                                   .x0 = x0,
+                                   .x1 = x0 + tap_stride,
+                                   .x2 = x0 + (2 * tap_stride),
+                               },
+                               s.channels),
+                           (f32)(frame_pos - frame_index));
 }
 
 ALWAYS_INLINE NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
