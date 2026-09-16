@@ -220,16 +220,20 @@ TEST_CASE(TestBitcrushHoldsUnlikeLegacyDecimate) {
 }
 
 TEST_CASE(TestRingModTracksSampleRateUnlikeLegacy) {
-    auto phase_after_one_step = [](DistortionType type, f32 sample_rate) -> f32 {
+    auto phase_after_steps = [](DistortionType type, f32 sample_rate, u32 num_steps) -> f32 {
         DistortionShaper shaper;
         shaper.SetSampleRate(sample_rate);
-        shaper.Shape(f32x2(0), type, 1.0f, DistortionInputGain(type, 1.0f), 0);
+        for (auto _ : Range(num_steps))
+            shaper.Shape(f32x2(0), type, 1.0f, DistortionInputGain(type, 1.0f), 0);
         return shaper.ring_phase;
     };
 
     constexpr f32 k_freq_hz = 250; // modulator frequency at full drive
-    auto const legacy_phase = phase_after_one_step(DistortionType::LegacyRingMod, 48000);
-    auto const synced_phase = phase_after_one_step(DistortionType::RingMod, 48000);
+    // The legacy modulator is pinned to 44.1k and advances per base-rate sample, so covering one of its
+    // steps takes a whole oversampled group.
+    auto const legacy_phase =
+        phase_after_steps(DistortionType::LegacyRingMod, 48000, Oversampler4x::k_factor);
+    auto const synced_phase = phase_after_steps(DistortionType::RingMod, 48000, 1);
     auto const legacy_expected = k_freq_hz * k_tau<> / 44100.0f;
     auto const synced_expected = k_freq_hz * k_tau<> / 48000.0f;
     tester.log.Debug("legacy phase step {}, synced phase step {}", legacy_phase, synced_phase);

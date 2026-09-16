@@ -371,9 +371,10 @@ struct DistortionShaper {
                 break;
             }
             case DistortionType::LegacyRingMod: {
-                // Buggy legacy version - assumes a 44.1k sample rate.
+                // Buggy legacy version - assumes a 44.1k sample rate. It also ran at the base rate, so the
+                // increment is divided by the oversampling factor to keep the modulator where it was.
                 auto const freq = 50 + (drive01 * 200);
-                ring_phase += freq * k_tau<> / 44100.0f;
+                ring_phase += freq * k_tau<> / (44100.0f * (f32)Oversampler4x::k_factor);
                 if (ring_phase > k_tau<>) ring_phase -= k_tau<>;
 
                 auto const modulator = Sin(ring_phase);
