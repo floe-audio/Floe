@@ -720,15 +720,28 @@ struct VoiceProcessor {
         ApplyFilter(voice, output, lfo_amounts, audio_context);
 
         {
+            // Sampler voices report their playhead; a waveform voice has none, so it reports its pitch
+            // across the MIDI note range instead.
             f64 position_for_gui = {};
             for (auto const& s : voice.sound_sources) {
                 if (!s.is_active) continue;
-                if (s.source_data.tag != InstrumentType::Sampler) continue;
-                auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-                if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
-                position_for_gui = sampler.playhead.RealFramePos(sampler.data->num_frames)
-                                       .ValueOr(sampler.data->num_frames) /
-                                   (f64)sampler.data->num_frames;
+                switch (s.source_data.tag) {
+                    case InstrumentType::None: break;
+                    case InstrumentType::Sampler: {
+                        auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
+                        if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff)
+                            continue;
+                        position_for_gui = sampler.playhead.RealFramePos(sampler.data->num_frames)
+                                               .ValueOr(sampler.data->num_frames) /
+                                           (f64)sampler.data->num_frames;
+                        break;
+                    }
+                    case InstrumentType::WaveformSynth: {
+                        auto const frequency = (f32)(s.pitch_ratio * (f64)audio_context.sample_rate);
+                        position_for_gui = (f64)FrequencyToMidiNote(frequency) / 127.0;
+                        break;
+                    }
+                }
             }
 
             constexpr f32 k_max_u16 = LargestRepresentableValue<u16>();

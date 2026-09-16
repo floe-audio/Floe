@@ -2301,7 +2301,11 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                                  .size = {layout::k_fill_parent, 78},
                                              },
                                          })))
-            DoWaveformElement(g, layer, *r, {.play_mode = play_mode});
+            DoWaveformElement(
+                g,
+                layer,
+                *r,
+                {.play_mode = is_waveform_synth ? k_nullopt : Optional<param_values::PlayMode> {play_mode}});
 
         DoInstrumentInfoStrip(g, layer_index, waveform_group);
     }

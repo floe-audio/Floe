@@ -101,7 +101,7 @@ static Optional<String> WaveformTooltipText(ArenaAllocator& arena,
         case InstrumentType::None: return k_nullopt;
         case InstrumentType::WaveformSynth:
             return WAVEFORM_INTRO
-                "This layer's Instrument is a built-in waveform rather than a sampled sound, so this shows its shape."_s;
+                "This layer's Instrument is a built-in waveform rather than a sampled sound, so this shows its shape. When playing, the red lines are individual voices, placed left to right by pitch."_s;
         case InstrumentType::Sampler: {
             auto const& inst = *layer.instrument.GetFromTag<InstrumentType::Sampler>();
             switch (inst.instrument.category) {
@@ -1252,7 +1252,9 @@ void DoWaveformElement(GuiState& g,
 
                 f32 position = (f32)marker.position / (f32)UINT16_MAX;
                 f32 const intensity = (f32)marker.intensity / (f32)UINT16_MAX;
-                if (params.BoolValue(layer.index, LayerParamIndex::Reverse)) position = 1 - position;
+                if (layer.instrument_id.tag == InstrumentType::Sampler &&
+                    params.BoolValue(layer.index, LayerParamIndex::Reverse))
+                    position = 1 - position;
 
                 f32x2 cursor_pos {Round(viewport_r.x + (position * viewport_r.w)), viewport_r.y};
                 cursor_pos = g.imgui.ViewportPosToWindowPos(cursor_pos);
