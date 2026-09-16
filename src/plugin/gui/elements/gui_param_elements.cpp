@@ -305,6 +305,60 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
                                     target_section);
             }
 
+            auto const swap_with_macro = [&](u8 other) {
+                BeginUndoableStep(g.engine, "Swap macros"_s);
+                DEFER { EndUndoableStep(g.engine); };
+
+                auto snapshot = CurrentStateSnapshot(g.engine);
+
+                // A default name belongs to the position rather than the macro that's leaving it.
+                auto const default_names = DefaultMacroNames();
+                if (snapshot.macro_names[*macro_index] == default_names[*macro_index])
+                    snapshot.macro_names[*macro_index] = default_names[other];
+                if (snapshot.macro_names[other] == default_names[other])
+                    snapshot.macro_names[other] = default_names[*macro_index];
+
+                StateSnapshotSection const other_section {MacroSection {other}};
+                ApplySectionOfState(g.engine, snapshot, target_section, other_section);
+                ApplySectionOfState(g.engine, snapshot, other_section, target_section);
+            };
+
+            struct SwapItem {
+                String text;
+                String tooltip;
+                Optional<u8> other;
+            };
+            auto const swap_items = ArrayT<SwapItem>({
+                {
+                    "Swap with Left"_s,
+                    "Exchange this macro with the one to its left: its value, name and destinations move with it. MIDI CC and DAW automation stay with the position, not the macro."_s,
+                    *macro_index > 0 ? Optional<u8> {(u8)(*macro_index - 1)} : Optional<u8> {},
+                },
+                {
+                    "Swap with Right"_s,
+                    "Exchange this macro with the one to its right: its value, name and destinations move with it. MIDI CC and DAW automation stay with the position, not the macro."_s,
+                    *macro_index + 1 < k_num_macros ? Optional<u8> {(u8)(*macro_index + 1)} : Optional<u8> {},
+                },
+            });
+
+            for (auto const [index, item] : Enumerate(swap_items)) {
+                g.imgui.PushId(index);
+                DEFER { g.imgui.PopId(); };
+
+                if (MenuItem(g.builder,
+                             root,
+                             {
+                                 .text = item.text,
+                                 .tooltip = item.tooltip,
+                                 .mode = item.other ? MenuItemOptions::Mode::Active
+                                                    : MenuItemOptions::Mode::Disabled,
+                             })
+                        .button_fired &&
+                    item.other) {
+                    swap_with_macro(*item.other);
+                }
+            }
+
             DoResetSectionMenuItems(g, root, target_section, "Macro"_s, false);
         }
 
