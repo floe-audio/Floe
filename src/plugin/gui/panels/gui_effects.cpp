@@ -1034,7 +1034,7 @@ static void DoEffectParams(GuiState& g,
                                        {
                                            .parent = param_container,
                                            .layout {
-                                               .size = {250, 90},
+                                               .size = {200, 70},
                                            },
                                        });
             if (auto const r = BoxRect(g.builder, vis_box)) DoEffectFilterGraph(g, *r, greyed_out);
@@ -1314,17 +1314,17 @@ static void DoEffectParams(GuiState& g,
                                               },
                                           });
 
-            constexpr f32 k_time_row_h = (k_knob_w * 0.96f) + 2 + k_font_body_size;
-            auto const time_row = DoBox(g.builder,
-                                        {
-                                            .parent = time_group,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, k_time_row_h},
-                                                .contents_gap = synced ? 4 : k_fx_controls_gap_x,
-                                                .contents_align = layout::Alignment::Middle,
-                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                            },
-                                        });
+            auto const time_row =
+                DoBox(g.builder,
+                      {
+                          .parent = time_group,
+                          .layout {
+                              .size = {layout::k_fill_parent, (k_knob_w * 0.96f) + 2 + k_font_body_size},
+                              .contents_gap = synced ? 4 : k_fx_controls_gap_x,
+                              .contents_align = layout::Alignment::Middle,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                      });
             // Time params (conditional)
             if (synced) {
                 DoMenuParameter(g,
@@ -1378,11 +1378,13 @@ static void DoEffectParams(GuiState& g,
                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                  },
                              });
-            constexpr f32 k_delay_vis_w = 200;
-            constexpr f32 k_delay_vis_h = 70;
-            auto const filter_vis =
-                DoBox(g.builder, {.parent = sub, .layout {.size = {k_delay_vis_w, k_delay_vis_h}}});
-            if (auto const r = BoxRect(g.builder, filter_vis)) DoDelayFilterGraph(g, *r, greyed_out);
+            if (auto const r = BoxRect(g.builder,
+                                       DoBox(g.builder,
+                                             {
+                                                 .parent = sub,
+                                                 .layout {.size = {190, 70}},
+                                             })))
+                DoDelayFilterGraph(g, *r, greyed_out);
             auto const cutoff_knob = DoKnobParameter(
                 g,
                 sub,

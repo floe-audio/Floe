@@ -3215,7 +3215,7 @@ consteval auto CreateParams() {
         .name = "High-pass"_s,
         .gui_label = "High-pass"_s,
         .tooltip =
-            "Roll off the low end of the reverb, keeping its rumble and boom clear of the dry sound. It applies to the reverb signal alone, before the Mix blend."_s,
+            "Use the high-pass to roll off the low end of the reverb to avoid muddy bass. It applies to the reverbed signal alone, before the Mix blend."_s,
         .flags = {.cutoff_frequency = true},
     };
     mp(LegacyConvolutionReverbWet) = Args {
