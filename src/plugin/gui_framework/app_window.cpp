@@ -280,6 +280,29 @@ static bool EventMotion(AppWindow& window, PuglMotionEvent const& motion_event) 
     return result;
 }
 
+static bool EventPointerIn(AppWindow& window, PuglCrossingEvent const& crossing_event) {
+    window.frame_state.modifiers = CreateModifierFlags(crossing_event.state);
+
+    auto const new_cursor_pos = f32x2 {(f32)crossing_event.x, (f32)crossing_event.y};
+    if (All(new_cursor_pos == window.frame_state.cursor_pos)) return false;
+    window.frame_state.cursor_pos = new_cursor_pos;
+    return true;
+}
+
+static bool EventPointerOut(AppWindow& window) {
+    // A held button means the interaction continues outside the window: the pointer is grabbed and the
+    // active widget must keep tracking it.
+    for (auto const& btn : window.frame_state.mouse_buttons)
+        if (btn.is_down) return false;
+
+    if (window.frame_state.cursor_pos.x < 0) return false;
+
+    // A negative position is our 'cursor isn't in the window' value; no widget rect contains it so nothing
+    // is hovered and tooltips fade away.
+    window.frame_state.cursor_pos = {-1, -1};
+    return true;
+}
+
 static Optional<MouseButton> RemapMouseButton(u32 button) {
     switch (button) {
         case 0: return MouseButton::Left;
@@ -825,9 +848,13 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
             }
 
             case PUGL_POINTER_IN: {
+                post_redisplay = EventPointerIn(window, event->crossing);
                 break;
             }
-            case PUGL_POINTER_OUT: break;
+            case PUGL_POINTER_OUT: {
+                post_redisplay = EventPointerOut(window);
+                break;
+            }
 
             case PUGL_BUTTON_PRESS:
             case PUGL_BUTTON_RELEASE: {
