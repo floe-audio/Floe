@@ -25,13 +25,15 @@ union InterpolationPoints<T> {
     };
 };
 
-// 4-point, 3rd-order Hermite interpolation (Laurent de Soras' form).
-inline f32x2 DoHermiteInterp(InterpolationPoints<f32x2> const& p, f32 const x) {
-    f32x2 const c = (p.x1 - p.xm1) * 0.5f;
-    f32x2 const v = p.x0 - p.x1;
-    f32x2 const w = c + v;
-    f32x2 const a = w + v + ((p.x2 - p.x0) * 0.5f);
-    f32x2 const b_neg = w + a;
+// 4-point, 3rd-order Hermite interpolation (Laurent de Soras' form). Lanes are independent, so a vector can
+// pack any mix of channels and frames as long as x is the fractional position of each lane.
+template <typename Vec, typename X>
+ALWAYS_INLINE inline Vec DoHermiteInterp(InterpolationPoints<Vec> const& p, X const x) {
+    Vec const c = (p.x1 - p.xm1) * 0.5f;
+    Vec const v = p.x0 - p.x1;
+    Vec const w = c + v;
+    Vec const a = w + v + ((p.x2 - p.x0) * 0.5f);
+    Vec const b_neg = w + a;
 
     return (((((a * x) - b_neg) * x) + c) * x) + p.x0;
 }
@@ -531,29 +533,106 @@ ALWAYS_INLINE inline u32 ContiguousFramesAvailable(PlayHead const& playhead,
     return (u32)Min((f64)max_frames, headroom / max_increment);
 }
 
-// Interpolation for a position that ContiguousFramesAvailable() has already validated.
+// Addressing for frames that ContiguousFramesAvailable() has already validated: tap k of frame i is at
+// origin + (i + k) * tap_stride. Reversed lookup means frame 0 is the last frame of the data and the stride
+// is negative.
+struct ContiguousTapLayout {
+    f32 const* origin;
+    s64 tap_stride;
+    u8 channels;
+};
+
+ALWAYS_INLINE inline ContiguousTapLayout ContiguousTapLayoutFor(AudioData const& s,
+                                                                bool inverse_data_lookup) {
+    return {
+        .origin =
+            s.interleaved_samples.data + (inverse_data_lookup ? (usize)(s.num_frames - 1) * s.channels : 0),
+        .tap_stride = inverse_data_lookup ? -(s64)s.channels : (s64)s.channels,
+        .channels = s.channels,
+    };
+}
+
+ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateContiguousFrame(ContiguousTapLayout layout, f64 frame_pos) {
+    auto const frame_index = (u32)frame_pos;
+    auto const x0 = layout.origin + ((s64)frame_index * layout.tap_stride);
+
+    return DoHermiteInterp(LoadInterpolationPoints(
+                               {
+                                   .xm1 = x0 - layout.tap_stride,
+                                   .x0 = x0,
+                                   .x1 = x0 + layout.tap_stride,
+                                   .x2 = x0 + (2 * layout.tap_stride),
+                               },
+                               layout.channels),
+                           (f32)(frame_pos - frame_index));
+}
+
 ALWAYS_INLINE NO_UBSAN inline f32x2
 InterpolateContiguousFrame(AudioData const& s, f64 frame_pos, bool inverse_data_lookup) {
     auto const frame_index = (u32)frame_pos;
     ASSERT_HOT(frame_index >= 1);
     ASSERT_HOT(frame_index + 2 < s.num_frames);
+    return InterpolateContiguousFrame(ContiguousTapLayoutFor(s, inverse_data_lookup), frame_pos);
+}
 
-    // The taps are consecutive frames, so a single pointer and a stride suffice. Reversed lookup means frame
-    // 0 is the last frame of the data and the stride is negative.
-    auto const tap_stride = inverse_data_lookup ? -(s64)s.channels : (s64)s.channels;
-    auto const origin =
-        s.interleaved_samples.data + (inverse_data_lookup ? (usize)(s.num_frames - 1) * s.channels : 0);
-    auto const x0 = origin + ((s64)frame_index * tap_stride);
+ALWAYS_INLINE NO_UBSAN inline f32x4 LoadStereoFramePair(f32 const* frame_0, f32 const* frame_1) {
+    f32x2 a;
+    f32x2 b;
+    __builtin_memcpy_inline(&a, frame_0, sizeof(f32x2));
+    __builtin_memcpy_inline(&b, frame_1, sizeof(f32x2));
+    return __builtin_shufflevector(a, b, 0, 1, 2, 3);
+}
 
-    return DoHermiteInterp(LoadInterpolationPoints(
-                               {
-                                   .xm1 = x0 - tap_stride,
-                                   .x0 = x0,
-                                   .x1 = x0 + tap_stride,
-                                   .x2 = x0 + (2 * tap_stride),
-                               },
-                               s.channels),
-                           (f32)(frame_pos - frame_index));
+// Two stereo frames interpolated in one go, packed as {L0, R0, L1, R1}. Lane for lane it's the same
+// arithmetic as the single-frame version, so the output is identical.
+ALWAYS_INLINE NO_UBSAN inline f32x4
+InterpolateContiguousStereoFramePair(ContiguousTapLayout layout, f64 frame_pos_0, f64 frame_pos_1) {
+    ASSERT_HOT(layout.channels == 2);
+    auto const stride = layout.tap_stride;
+    auto const frame_index_0 = (u32)frame_pos_0;
+    auto const frame_index_1 = (u32)frame_pos_1;
+    auto const x0_0 = layout.origin + ((s64)frame_index_0 * stride);
+    auto const x0_1 = layout.origin + ((s64)frame_index_1 * stride);
+
+    InterpolationPoints<f32x4> const points {
+        .xm1 = LoadStereoFramePair(x0_0 - stride, x0_1 - stride),
+        .x0 = LoadStereoFramePair(x0_0, x0_1),
+        .x1 = LoadStereoFramePair(x0_0 + stride, x0_1 + stride),
+        .x2 = LoadStereoFramePair(x0_0 + (2 * stride), x0_1 + (2 * stride)),
+    };
+    f32x2 const fractions {(f32)(frame_pos_0 - frame_index_0), (f32)(frame_pos_1 - frame_index_1)};
+    return DoHermiteInterp(points, __builtin_shufflevector(fractions, fractions, 0, 0, 1, 1));
+}
+
+// Four mono frames interpolated in one go, packed as {F0, F1, F2, F3}. As above, identical output to the
+// single-frame version.
+ALWAYS_INLINE NO_UBSAN inline f32x4 InterpolateContiguousMonoFrameQuad(ContiguousTapLayout layout,
+                                                                       f64 frame_pos_0,
+                                                                       f64 frame_pos_1,
+                                                                       f64 frame_pos_2,
+                                                                       f64 frame_pos_3) {
+    ASSERT_HOT(layout.channels == 1);
+    auto const stride = layout.tap_stride;
+    auto const frame_index_0 = (u32)frame_pos_0;
+    auto const frame_index_1 = (u32)frame_pos_1;
+    auto const frame_index_2 = (u32)frame_pos_2;
+    auto const frame_index_3 = (u32)frame_pos_3;
+    auto const x0_0 = layout.origin + ((s64)frame_index_0 * stride);
+    auto const x0_1 = layout.origin + ((s64)frame_index_1 * stride);
+    auto const x0_2 = layout.origin + ((s64)frame_index_2 * stride);
+    auto const x0_3 = layout.origin + ((s64)frame_index_3 * stride);
+
+    InterpolationPoints<f32x4> const points {
+        .xm1 = {x0_0[-stride], x0_1[-stride], x0_2[-stride], x0_3[-stride]},
+        .x0 = {x0_0[0], x0_1[0], x0_2[0], x0_3[0]},
+        .x1 = {x0_0[stride], x0_1[stride], x0_2[stride], x0_3[stride]},
+        .x2 = {x0_0[2 * stride], x0_1[2 * stride], x0_2[2 * stride], x0_3[2 * stride]},
+    };
+    f32x4 const x {(f32)(frame_pos_0 - frame_index_0),
+                   (f32)(frame_pos_1 - frame_index_1),
+                   (f32)(frame_pos_2 - frame_index_2),
+                   (f32)(frame_pos_3 - frame_index_3)};
+    return DoHermiteInterp(points, x);
 }
 
 ALWAYS_INLINE NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
@@ -653,12 +732,44 @@ ALWAYS_INLINE NO_UBSAN inline u32 FetchSampleFrames(AudioData const& s,
             frame_index +
             ContiguousFramesAvailable(playhead, max_increment, bounds, (u32)out.size - frame_index);
         if (contiguous_end != frame_index) {
-            auto const inverse_data_lookup = playhead.inverse_data_lookup;
+            auto const layout = ContiguousTapLayoutFor(audio_data, playhead.inverse_data_lookup);
+            auto const increments = options.increments.data;
+            auto const increment_scale = options.increment_scale;
             auto frame_pos = playhead.frame_pos;
+
+            // Several frames per iteration so that one vector holds a few frames' worth of Hermite
+            // arithmetic. The positions are accumulated in the same order as the single-frame loop below.
+            if (layout.channels == 2) {
+                for (; frame_index + 2 <= contiguous_end; frame_index += 2) {
+                    auto const frame_pos_0 = frame_pos;
+                    auto const frame_pos_1 = frame_pos_0 + (increments[frame_index] * increment_scale);
+                    frame_pos = frame_pos_1 + (increments[frame_index + 1] * increment_scale);
+                    auto const frames =
+                        InterpolateContiguousStereoFramePair(layout, frame_pos_0, frame_pos_1);
+                    __builtin_memcpy_inline(out.data + frame_index, &frames, sizeof(frames));
+                }
+            } else {
+                for (; frame_index + 4 <= contiguous_end; frame_index += 4) {
+                    auto const frame_pos_0 = frame_pos;
+                    auto const frame_pos_1 = frame_pos_0 + (increments[frame_index] * increment_scale);
+                    auto const frame_pos_2 = frame_pos_1 + (increments[frame_index + 1] * increment_scale);
+                    auto const frame_pos_3 = frame_pos_2 + (increments[frame_index + 2] * increment_scale);
+                    frame_pos = frame_pos_3 + (increments[frame_index + 3] * increment_scale);
+                    auto const frames = InterpolateContiguousMonoFrameQuad(layout,
+                                                                           frame_pos_0,
+                                                                           frame_pos_1,
+                                                                           frame_pos_2,
+                                                                           frame_pos_3);
+                    f32x4 const frames_01 = __builtin_shufflevector(frames, frames, 0, 0, 1, 1);
+                    f32x4 const frames_23 = __builtin_shufflevector(frames, frames, 2, 2, 3, 3);
+                    __builtin_memcpy_inline(out.data + frame_index, &frames_01, sizeof(frames_01));
+                    __builtin_memcpy_inline(out.data + frame_index + 2, &frames_23, sizeof(frames_23));
+                }
+            }
+
             for (; frame_index < contiguous_end; ++frame_index) {
-                out.data[frame_index] =
-                    InterpolateContiguousFrame(audio_data, frame_pos, inverse_data_lookup);
-                frame_pos += options.increments.data[frame_index] * options.increment_scale;
+                out.data[frame_index] = InterpolateContiguousFrame(layout, frame_pos);
+                frame_pos += increments[frame_index] * increment_scale;
             }
             playhead.frame_pos = frame_pos;
         } else {

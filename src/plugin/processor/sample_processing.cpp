@@ -589,15 +589,17 @@ TEST_CASE(TestFetchSampleFrames) {
     for (auto& v : data)
         v = RandomFloatInRange<f32>(seed, -1, 1);
 
-    AudioData const audio {
-        .hash = SourceLocationHash(),
-        .channels = 2,
-        .sample_rate = 44100,
-        .num_frames = data.size / 2,
-        .interleaved_samples = data,
-    };
+    for (auto const iteration : Range(4000)) {
+        u8 const channels = (iteration % 2) ? 2 : 1;
+        AudioData const audio {
+            .hash = SourceLocationHash(),
+            .channels = channels,
+            .sample_rate = 44100,
+            .num_frames = (u32)data.size / channels,
+            .interleaved_samples = data,
+        };
+        CAPTURE(channels);
 
-    for (auto const _ : Range(2000)) {
         auto playhead = RandomTestPlayhead(seed, audio.num_frames);
         auto reference_playhead = playhead;
 
