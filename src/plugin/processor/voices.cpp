@@ -1344,7 +1344,13 @@ struct VoiceProcessor {
                         auto const frames_processed = (f32)(end - start);
                         grain.env_phase += grain.env_phase_inc * frames_processed;
                         grain.steal_fade -= grain.steal_fade_dec * frames_processed;
-                        if (grain.env_phase >= 1.0f || grain.steal_fade <= 0.0f) {
+
+                        // A short fetch means the grain's playhead ran past the end of the sample. It has
+                        // no data left, so it must end here regardless of its envelope - otherwise it would
+                        // fetch zero frames forever, never advancing its phase, and keep the voice alive.
+                        auto const out_of_data = end < buffer.size;
+
+                        if (grain.env_phase >= 1.0f || grain.steal_fade <= 0.0f || out_of_data) {
                             grain.active = false;
                             if (!grain.IsStealing()) pool.num_active_non_stealing--;
                         }
@@ -2101,6 +2107,28 @@ TEST_CASE(TestVoiceProcessingGranular) {
         REQUIRE(found_nonzero);
 
         fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("granular voice ends after sample exhausted") {
+        Array<f32, 512> short_buf {};
+        auto short_data = CreateTestAudioData(short_buf, 512);
+
+        fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
+        fix.controller.vol_env_on = false;
+        fix.controller.granular = {
+            .speed = 1.0f,
+            .density = 0.5f,
+            .length_ms = 20.0f,
+            .spread = 0.1f,
+            .smoothing = 0.5f,
+        };
+
+        StartTestSamplerVoice(fix, region, short_data);
+
+        for (int i = 0; i < 200; ++i)
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
 
     return k_success;
