@@ -1147,6 +1147,8 @@ Box DoButtonParameter(GuiState& g,
           {
               .parent = container,
               .text = label_text,
+              .size_from_text = options.width == layout::k_hug_contents,
+              .size_from_text_preserve_height = true,
               .text_colours = options.greyed_out ? Colours {ColSet {
                                                        .base = LiveColStruct(UiColMap::MidTextDimmed),
                                                        .hot = LiveColStruct(UiColMap::MidTextHot),
@@ -1160,10 +1162,7 @@ Box DoButtonParameter(GuiState& g,
               .text_justification = TextJustification::CentredLeft,
               .parent_dictates_hot_and_active = true,
               .layout {
-                  .size = {options.width == layout::k_hug_contents
-                               ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x
-                               : layout::k_fill_parent,
-                           options.height},
+                  .size = {layout::k_fill_parent, options.height},
               },
           });
 
