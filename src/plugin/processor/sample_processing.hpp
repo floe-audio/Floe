@@ -420,12 +420,20 @@ NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhea
     auto const frame_index = (u32)playhead.frame_pos;
     auto const x = (f32)(playhead.frame_pos - frame_index);
 
-    InterpolationPoints<u32> const frame_indices = {
-        .xm1 = DataIndexAtOffset(-1, frame_index, loop, s.num_frames, last_frame),
-        .x0 = frame_index,
-        .x1 = DataIndexAtOffset(1, frame_index, loop, s.num_frames, last_frame),
-        .x2 = DataIndexAtOffset(2, frame_index, loop, s.num_frames, last_frame),
-    };
+    InterpolationPoints<u32> const frame_indices = ({
+        InterpolationPoints<u32> indices;
+        if (!loop && frame_index >= 1 && frame_index + 2 < s.num_frames) [[likely]] {
+            indices.vec = u32x4(frame_index) + u32x4 {(u32)-1, 0, 1, 2};
+        } else {
+            indices = {
+                .xm1 = DataIndexAtOffset(-1, frame_index, loop, s.num_frames, last_frame),
+                .x0 = frame_index,
+                .x1 = DataIndexAtOffset(1, frame_index, loop, s.num_frames, last_frame),
+                .x2 = DataIndexAtOffset(2, frame_index, loop, s.num_frames, last_frame),
+            };
+        }
+        indices;
+    });
 
     ASSERT_HOT(frame_indices.x0 >= 0 && frame_indices.x0 < s.num_frames);
 
