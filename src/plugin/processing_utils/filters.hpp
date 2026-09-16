@@ -662,7 +662,7 @@ PUBLIC f32 HzToLinear(f32 hz) {
 
 PUBLIC f32 LinearToHz(f32 linear) {
     ASSERT(linear >= 0 && linear <= 1);
-    constexpr auto k_table = CreateLinearSpaceLookupTable();
+    static constexpr auto k_table = CreateLinearSpaceLookupTable();
     constexpr auto k_max_index = (u32)k_table.size - 1;
 
     auto scaled = linear * k_max_index;
