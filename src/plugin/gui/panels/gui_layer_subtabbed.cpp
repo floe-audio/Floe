@@ -466,6 +466,7 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
     switch (layer_processor.instrument.tag) {
         case InstrumentType::WaveformSynth: {
             dyn::Append(segments, "Oscillator waveform"_s);
+            dyn::Append(segments, "Play mode, reverse and loop don't apply"_s);
             break;
         }
         case InstrumentType::Sampler: {
@@ -2269,8 +2270,11 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
+    // Waveform Instruments ignore play mode, reverse and loop mode, so those controls are hidden.
+    bool const is_waveform_synth = layer.instrument_id.tag == InstrumentType::WaveformSynth;
+
     // Engine type menu
-    {
+    if (!is_waveform_synth) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
         DoMenuParameter(g, page, param, {.width = layout::k_fill_parent, .label = false});
@@ -2303,22 +2307,16 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     }
 
     // Reverse toggle
-    {
+    if (!is_waveform_synth) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::Reverse);
-        bool const is_waveform_synth = layer.instrument_id.tag == InstrumentType::WaveformSynth;
 
-        DoButtonParameter(g,
-                          page,
-                          param,
-                          {
-                              .width = layout::k_fill_parent,
-                              .greyed_out = is_waveform_synth,
-                          });
+        DoButtonParameter(g, page, param, {.width = layout::k_fill_parent});
     }
 
-    if (play_mode != param_values::PlayMode::GranularFixed) DoLoopModeSelector(g, page, layer);
+    if (!is_waveform_synth && play_mode != param_values::PlayMode::GranularFixed)
+        DoLoopModeSelector(g, page, layer);
 
-    if (IsGranular(play_mode)) {
+    if (!is_waveform_synth && IsGranular(play_mode)) {
         auto const granular_container = DoBox(g.builder,
                                               {
                                                   .parent = page,
