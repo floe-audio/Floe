@@ -103,6 +103,33 @@ void DoInstSelectorRightClickMenu(GuiState& g, Box selector_button, u8 layer_ind
                                 layer_target);
         }
 
+        MenuDivider(g.builder, root);
+
+        auto const do_swap_menu_item = [&](String text, bool disabled, u8 other_layer_index) {
+            if (MenuItem(
+                    g.builder,
+                    root,
+                    {
+                        .text = text,
+                        .mode = disabled ? MenuItemOptions::Mode::Disabled : MenuItemOptions::Mode::Active,
+                        .no_icon_gap = true,
+                    },
+                    SourceLocationHash() + other_layer_index)
+                    .button_fired &&
+                !disabled) {
+                SwapLayers(g.engine, layer_index, other_layer_index);
+
+                // Keep each panel's view with the layer it was showing.
+                auto& this_panel = g.layer_panel_states[layer_index];
+                auto& other_panel = g.layer_panel_states[other_layer_index];
+                Swap(this_panel.selected_page, other_panel.selected_page);
+                Swap(this_panel.arp_step_sequencer_show_all, other_panel.arp_step_sequencer_show_all);
+            }
+        };
+
+        do_swap_menu_item("Swap with Left Layer"_s, layer_index == 0, (u8)(layer_index - 1));
+        do_swap_menu_item("Swap with Right Layer"_s, layer_index + 1 == k_num_layers, (u8)(layer_index + 1));
+
         DoResetSectionMenuItems(g, root, layer_target, "Layer"_s);
     });
 }

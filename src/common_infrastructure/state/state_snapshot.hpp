@@ -120,6 +120,11 @@ void AssignDiffDescription(DynArrayT& diff_desc,
                            StateSnapshot const& old_state,
                            StateSnapshot const& new_state);
 
+// Trades everything belonging to the 2 layers: instrument, parameters, velocity curve, harmony, arp steps
+// and slice arp config. Macro destinations are remapped so the layers keep sounding the same. Fields that
+// belong to the slot rather than the layer - such as learned MIDI CCs - stay where they are.
+void SwapLayers(StateSnapshot& snapshot, u8 layer_a, u8 layer_b);
+
 struct MacroSection {
     bool operator==(MacroSection const&) const = default;
     u8 macro_index;
