@@ -401,15 +401,67 @@ ALWAYS_INLINE NO_UBSAN constexpr u32 DataIndexAtOffset(signed _BitInt(3) steps,
     return (u32)v;
 }
 
+ALWAYS_INLINE inline InterpolationPoints<u32> ContiguousTapIndices(u32 frame_index) {
+    ASSERT_HOT(frame_index >= 1);
+    return {.vec = u32x4(frame_index) + u32x4 {(u32)-1, 0, 1, 2}};
+}
+
+// 4-point Hermite interpolation using the audio data at the given frame indices.
+ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateAtFrameIndices(AudioData const& s,
+                                                              InterpolationPoints<u32> frame_indices,
+                                                              f32 x,
+                                                              bool inverse_data_lookup) {
+    ASSERT_HOT(s.num_frames != 0);
+    ASSERT_HOT(s.channels > 0);
+    ASSERT_HOT(s.channels <= 2);
+    ASSERT_HOT(frame_indices.x0 < s.num_frames);
+
+    auto const data_vals = ({
+        auto indices = frame_indices;
+
+        // If we're reversed, invert the indices.
+        if (inverse_data_lookup) indices.vec = u32x4(s.num_frames - 1) - indices.vec;
+
+        // Convert from frame indices to sample indices (channels is 1 or 2 so we can use a bit shift for
+        // speed).
+        indices.vec <<= s.channels - 1;
+
+        InterpolationPoints<f32 const*> p {
+            .xm1 = s.interleaved_samples.data + indices.xm1,
+            .x0 = s.interleaved_samples.data + indices.x0,
+            .x1 = s.interleaved_samples.data + indices.x1,
+            .x2 = s.interleaved_samples.data + indices.x2,
+        };
+        p;
+    });
+
+    return DoHermiteInterp(({
+                               InterpolationPoints<f32x2> l;
+                               if (s.channels == 1)
+                                   l = {
+                                       .xm1 = {data_vals.xm1[0], data_vals.xm1[0]},
+                                       .x0 = {data_vals.x0[0], data_vals.x0[0]},
+                                       .x1 = {data_vals.x1[0], data_vals.x1[0]},
+                                       .x2 = {data_vals.x2[0], data_vals.x2[0]},
+                                   };
+                               else
+                                   l = {
+                                       .xm1 = {data_vals.xm1[0], data_vals.xm1[1]},
+                                       .x0 = {data_vals.x0[0], data_vals.x0[1]},
+                                       .x1 = {data_vals.x1[0], data_vals.x1[1]},
+                                       .x2 = {data_vals.x2[0], data_vals.x2[1]},
+                                   };
+                               l;
+                           }),
+                           x);
+}
+
 // 4-point interpolation at the playhead position. Doesn't apply the loop crossfade.
 ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateSampleFrame(AudioData const& s, PlayHead const& playhead) {
     auto const loop = playhead.loop.NullableValue();
 
-    ASSERT_HOT(s.num_frames != 0);
     ASSERT_HOT(playhead.frame_pos >= 0);
     ASSERT_HOT(playhead.frame_pos < s.num_frames);
-    ASSERT_HOT(s.channels > 0);
-    ASSERT_HOT(s.channels <= 2);
 
     if (loop) {
         ASSERT_HOT(loop->end <= s.num_frames);
@@ -424,7 +476,7 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateSampleFrame(AudioData const& s, P
     InterpolationPoints<u32> const frame_indices = ({
         InterpolationPoints<u32> indices;
         if (!loop && frame_index >= 1 && frame_index + 2 < s.num_frames) [[likely]] {
-            indices.vec = u32x4(frame_index) + u32x4 {(u32)-1, 0, 1, 2};
+            indices = ContiguousTapIndices(frame_index);
         } else {
             indices = {
                 .xm1 = DataIndexAtOffset(-1, frame_index, loop, s.num_frames, last_frame),
@@ -436,47 +488,56 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateSampleFrame(AudioData const& s, P
         indices;
     });
 
-    ASSERT_HOT(frame_indices.x0 >= 0 && frame_indices.x0 < s.num_frames);
+    return InterpolateAtFrameIndices(s, frame_indices, x, playhead.inverse_data_lookup);
+}
 
-    auto const data_vals = ({
-        auto indices = frame_indices;
+struct ContiguousFrameBounds {
+    u32 lower = 0; // Inclusive.
+    u32 upper = LargestRepresentableValue<u32>(); // Exclusive.
+};
 
-        // If we're reversed, invert the indices.
-        if (playhead.inverse_data_lookup) indices.vec = u32x4(last_frame) - indices.vec;
+// How many frames the playhead can be advanced (by at most max_increment each time) such that every fetch at
+// those positions has all 4 interpolation taps contiguous and within the bounds, and no loop wrap, loop
+// crossfade or end-of-data handling is needed.
+ALWAYS_INLINE inline u32 ContiguousFramesAvailable(PlayHead const& playhead,
+                                                   f64 max_increment,
+                                                   ContiguousFrameBounds bounds,
+                                                   u32 max_frames) {
+    ASSERT_HOT(max_increment >= 0);
 
-        // Convert from frame indices to sample indices (channels is 1 or 2).
-        indices.vec <<= s.channels - 1;
+    // The taps are frame_index - 1 to frame_index + 2.
+    auto lower_bound = Max(bounds.lower, 1u);
+    auto upper_bound = bounds.upper;
+    if (auto const loop = playhead.loop.NullableValue()) {
+        if (loop->only_use_frames_within_loop) {
+            lower_bound = Max(lower_bound, loop->start + 1);
+            upper_bound = Min(upper_bound, loop->end);
+        }
+        // Crossing the loop end must go through the wrap/bounce logic, and positions within the crossfade
+        // region need the crossfade applied.
+        upper_bound = Min(upper_bound, loop->end - loop->crossfade);
+    }
 
-        InterpolationPoints<f32 const*> p {
-            .xm1 = s.interleaved_samples.data + indices.xm1,
-            .x0 = s.interleaved_samples.data + indices.x0,
-            .x1 = s.interleaved_samples.data + indices.x1,
-            .x2 = s.interleaved_samples.data + indices.x2,
-        };
-        p;
-    });
+    if (playhead.frame_pos < lower_bound) return 0;
 
-    auto result = DoHermiteInterp(({
-                                      InterpolationPoints<f32x2> l;
-                                      if (s.channels == 1)
-                                          l = {
-                                              .xm1 = {data_vals.xm1[0], data_vals.xm1[0]},
-                                              .x0 = {data_vals.x0[0], data_vals.x0[0]},
-                                              .x1 = {data_vals.x1[0], data_vals.x1[0]},
-                                              .x2 = {data_vals.x2[0], data_vals.x2[0]},
-                                          };
-                                      else
-                                          l = {
-                                              .xm1 = {data_vals.xm1[0], data_vals.xm1[1]},
-                                              .x0 = {data_vals.x0[0], data_vals.x0[1]},
-                                              .x1 = {data_vals.x1[0], data_vals.x1[1]},
-                                              .x2 = {data_vals.x2[0], data_vals.x2[1]},
-                                          };
-                                      l;
-                                  }),
-                                  x);
+    // Positions are frame_pos + k * max_increment for k in [0, count]; the final one is where the playhead
+    // ends up. All must be < upper_bound - 2.
+    auto const headroom = ((f64)upper_bound - 3) - playhead.frame_pos;
+    if (headroom <= 0) return 0;
+    if (max_increment == 0) return max_frames;
+    return (u32)Min((f64)max_frames, headroom / max_increment);
+}
 
-    return result;
+// Interpolation for a position that ContiguousFramesAvailable() has already validated.
+ALWAYS_INLINE NO_UBSAN inline f32x2
+InterpolateContiguousFrame(AudioData const& s, f64 frame_pos, bool inverse_data_lookup) {
+    auto const frame_index = (u32)frame_pos;
+    ASSERT_HOT(frame_index >= 1);
+    ASSERT_HOT(frame_index + 2 < s.num_frames);
+    return InterpolateAtFrameIndices(s,
+                                     ContiguousTapIndices(frame_index),
+                                     (f32)(frame_pos - frame_index),
+                                     inverse_data_lookup);
 }
 
 ALWAYS_INLINE NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
@@ -538,6 +599,62 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead 
     }
 
     return result;
+}
+
+struct SampleFetchOptions {
+    Span<f64 const> increments; // Per output frame. Multiplied by increment_scale.
+    f64 max_increment; // The largest value in increments (unscaled).
+    f64 increment_scale = 1;
+    u32 end_frame; // Playback has ended when the playhead reaches this.
+    ContiguousFrameBounds contiguous_bounds {};
+};
+
+// Fetches interpolated frames at successive playhead positions, advancing the playhead after each. Returns
+// the number of frames written; fewer than out.size means playback ended. Frames within contiguous_bounds are
+// fetched via a fast path. All others go through the general path, where general_frame_hook(frame_index,
+// playhead) is called after the fetch and before the playhead is advanced.
+template <typename GeneralFrameHook>
+ALWAYS_INLINE NO_UBSAN inline u32 FetchSampleFrames(AudioData const& s,
+                                                    PlayHead& playhead,
+                                                    Span<f32x2> out,
+                                                    SampleFetchOptions const& options,
+                                                    GeneralFrameHook&& general_frame_hook) {
+    ASSERT_HOT(options.increments.size >= out.size);
+    ASSERT_HOT(options.end_frame <= s.num_frames);
+
+    auto const audio_data = s; // A local copy so that the fields aren't re-read from memory every frame.
+    auto const bounds = ContiguousFrameBounds {
+        .lower = options.contiguous_bounds.lower,
+        .upper = Min(options.contiguous_bounds.upper, options.end_frame),
+    };
+    auto const max_increment = options.max_increment * options.increment_scale;
+
+    u32 frame_index = 0;
+    while (frame_index < out.size) {
+        if (PlaybackEnded(playhead, options.end_frame)) break;
+
+        auto const contiguous_end =
+            frame_index +
+            ContiguousFramesAvailable(playhead, max_increment, bounds, (u32)out.size - frame_index);
+        if (contiguous_end != frame_index) {
+            auto const inverse_data_lookup = playhead.inverse_data_lookup;
+            auto frame_pos = playhead.frame_pos;
+            for (; frame_index < contiguous_end; ++frame_index) {
+                out.data[frame_index] =
+                    InterpolateContiguousFrame(audio_data, frame_pos, inverse_data_lookup);
+                frame_pos += options.increments.data[frame_index] * options.increment_scale;
+            }
+            playhead.frame_pos = frame_pos;
+        } else {
+            out.data[frame_index] = GetSampleFrame(audio_data, playhead);
+            general_frame_hook(frame_index, (PlayHead const&)playhead);
+            IncrementPlaybackPos(playhead,
+                                 options.increments.data[frame_index] * options.increment_scale,
+                                 s.num_frames);
+            ++frame_index;
+        }
+    }
+    return frame_index;
 }
 
 enum class WaveformAudioSourceType : u8 { AudioData, Sine, WhiteNoise };

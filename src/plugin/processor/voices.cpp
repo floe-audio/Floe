@@ -847,48 +847,77 @@ struct VoiceProcessor {
         return s.pitch_ratio_smoother.LowPass(pitch_ratio, (f64)context.one_pole_smoothing_cutoff_0_2ms);
     }
 
-    static f32x2 NextSampleFrame(Voice const& voice,
-                                 VoiceSoundSource& s,
-                                 f32 current_lfo_value,
-                                 AudioProcessingContext const& context) {
-        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-
-        auto out = GetSampleFrame(*sampler.data, sampler.playhead);
-
-        // Do the sample fade-in/out if it's the first time the sample is played.
-        if (auto const fade_in_frames = sampler.region->audio_props.fade_in_frames,
-            fade_out_frames = sampler.region->audio_props.fade_out_frames;
-            (fade_in_frames || fade_out_frames) &&
-            (!sampler.playhead.loop ||
-             (sampler.playhead.loop && !sampler.playhead.loop->only_use_frames_within_loop))) {
-            auto const real_pos = sampler.playhead.RealFramePos(sampler.data->num_frames);
-            if (real_pos) {
-                auto const fade_in_origin =
-                    sampler.slice ? sampler.slice->start : sampler.region->audio_props.start_offset_frames;
-                if (auto const pos = *real_pos - fade_in_origin; pos >= 0 && pos < fade_in_frames) {
-                    auto const percent = pos / (f64)fade_in_frames;
-                    auto const amount = QuarterSineFade((f32)percent);
-                    out *= amount;
-                }
-
-                auto const fade_out_end = EffectiveEndFrame(sampler);
-                if (auto const dist_to_end = (s64)fade_out_end - (s64)*real_pos;
-                    dist_to_end > 0 && dist_to_end <= fade_out_frames) {
-                    auto const percent = (f64)dist_to_end / (f64)fade_out_frames;
-                    auto const amount = QuarterSineFade((f32)percent);
-                    out *= amount;
-                }
-            }
-        }
-
-        IncrementPlaybackPos(sampler.playhead,
-                             PitchRatio(voice, s, current_lfo_value, context),
-                             sampler.data->num_frames);
-        return out;
-    }
-
     static u32 EffectiveEndFrame(VoiceSoundSource::SampleSource const& sampler) {
         return sampler.slice ? sampler.slice->end : sampler.data->num_frames;
+    }
+
+    struct FadeRegions {
+        u32 fade_in_start, fade_in_end, fade_out_start, fade_out_end; // Real frame positions.
+    };
+
+    static FadeRegions RegionFadeRegions(VoiceSoundSource::SampleSource const& sampler) {
+        auto const& props = sampler.region->audio_props;
+        auto const fade_in_start = sampler.slice ? sampler.slice->start : props.start_offset_frames;
+        auto const fade_out_end = EffectiveEndFrame(sampler);
+        return {
+            .fade_in_start = fade_in_start,
+            .fade_in_end = fade_in_start + props.fade_in_frames,
+            .fade_out_start = fade_out_end - Min(fade_out_end, props.fade_out_frames),
+            .fade_out_end = fade_out_end,
+        };
+    }
+
+    // The sample fade-in/out for the first time the sample is played.
+    static void
+    ApplyRegionFades(f32x2& frame, VoiceSoundSource::SampleSource const& sampler, PlayHead const& playhead) {
+        if (playhead.loop && playhead.loop->only_use_frames_within_loop) return;
+        auto const real_pos = playhead.RealFramePos(sampler.data->num_frames);
+        if (!real_pos) return;
+
+        auto const regions = RegionFadeRegions(sampler);
+        if (auto const pos = *real_pos - regions.fade_in_start;
+            pos >= 0 && pos < regions.fade_in_end - regions.fade_in_start) {
+            auto const percent = pos / (f64)(regions.fade_in_end - regions.fade_in_start);
+            frame *= QuarterSineFade((f32)percent);
+        }
+        if (auto const dist_to_end = (s64)regions.fade_out_end - (s64)*real_pos;
+            dist_to_end > 0 && dist_to_end <= (s64)(regions.fade_out_end - regions.fade_out_start)) {
+            auto const percent = (f64)dist_to_end / (f64)(regions.fade_out_end - regions.fade_out_start);
+            frame *= QuarterSineFade((f32)percent);
+        }
+    }
+
+    // Frames within the fade regions need per-frame handling; this returns the bounds of the fade-free
+    // stretch that the playhead is currently in.
+    static ContiguousFrameBounds FadeFreeBounds(VoiceSoundSource::SampleSource const& sampler) {
+        auto const& props = sampler.region->audio_props;
+        if (!props.fade_in_frames && !props.fade_out_frames) return {};
+
+        auto const regions = RegionFadeRegions(sampler);
+        auto const num_frames = sampler.data->num_frames;
+
+        // In playhead coordinates, ordered by position.
+        struct Region {
+            u32 start, end;
+        };
+        struct OrderedRegions {
+            Region low, high;
+        };
+        auto const [low, high] = ({
+            OrderedRegions r;
+            if (!sampler.playhead.inverse_data_lookup)
+                r = {{regions.fade_in_start, regions.fade_in_end},
+                     {regions.fade_out_start, regions.fade_out_end}};
+            else
+                r = {{num_frames - regions.fade_out_end, num_frames - regions.fade_out_start},
+                     {num_frames - regions.fade_in_end, num_frames - regions.fade_in_start}};
+            r;
+        });
+
+        auto const pos = sampler.playhead.frame_pos;
+        if (pos < low.start) return {.lower = 0, .upper = low.start};
+        if (pos < high.start) return {.lower = low.end, .upper = high.start};
+        return {.lower = high.end};
     }
 
     static bool AddSampleDataOntoBuffer(Voice const& voice,
@@ -896,44 +925,43 @@ struct VoiceProcessor {
                                         Span<f32x2> buffer,
                                         Span<f32 const> lfo_amounts,
                                         AudioProcessingContext const& context) {
-        if (auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-            sampler.region->timbre_layering.layer_range) {
-            auto const end_frame = EffectiveEndFrame(sampler);
-            for (auto [frame_index, val] : Enumerate(buffer)) {
-                if (PlaybackEnded(sampler.playhead, end_frame)) return false;
+        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
 
-                auto const sample_frame = ({
-                    f32x2 f;
-                    if (auto const v =
-                            sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
-                                                               context.one_pole_smoothing_cutoff_10ms);
-                        v > 0.0001f) {
-                        f = NextSampleFrame(voice, s, lfo_amounts.data[frame_index], context);
-                        f *= v;
-                    } else {
-                        auto const pitch_ratio1 =
-                            PitchRatio(voice, s, lfo_amounts.data[frame_index], context);
-                        f = 0.0f;
-                        IncrementPlaybackPos(sampler.playhead, pitch_ratio1, sampler.data->num_frames);
-                    }
-                    f;
-                });
-
-                val += sample_frame * s.amp;
-            }
-        } else {
-            auto const end_frame = EffectiveEndFrame(s.source_data.Get<VoiceSoundSource::SampleSource>());
-            for (auto [frame_index, val] : Enumerate(buffer)) {
-                if (PlaybackEnded(s.source_data.Get<VoiceSoundSource::SampleSource>().playhead, end_frame))
-                    return false;
-
-                auto const sample_frame = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
-
-                val += sample_frame * s.amp;
-            }
+        f64 increments[k_block_size_max];
+        f64 max_increment = 0;
+        for (auto const frame_index : Range(buffer.size)) {
+            increments[frame_index] = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+            max_increment = Max(max_increment, increments[frame_index]);
         }
 
-        return true;
+        alignas(alignof(f32x4)) f32x2 frames[k_block_size_max];
+        auto const num_fetched =
+            FetchSampleFrames(*sampler.data,
+                              sampler.playhead,
+                              Span<f32x2> {frames, buffer.size},
+                              {
+                                  .increments = {increments, buffer.size},
+                                  .max_increment = max_increment,
+                                  .end_frame = EffectiveEndFrame(sampler),
+                                  .contiguous_bounds = FadeFreeBounds(sampler),
+                              },
+                              [&](u32 frame_index, PlayHead const& playhead) {
+                                  ApplyRegionFades(frames[frame_index], sampler, playhead);
+                              });
+
+        if (sampler.region->timbre_layering.layer_range) {
+            for (auto const frame_index : Range(num_fetched)) {
+                auto const xfade_vol =
+                    sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
+                                                       context.one_pole_smoothing_cutoff_10ms);
+                if (xfade_vol > 0.0001f) buffer[frame_index] += frames[frame_index] * xfade_vol * s.amp;
+            }
+        } else {
+            for (auto const frame_index : Range(num_fetched))
+                buffer[frame_index] += frames[frame_index] * s.amp;
+        }
+
+        return num_fetched == buffer.size;
     }
 
     // Returns false if playback has ended.
@@ -977,14 +1005,17 @@ struct VoiceProcessor {
 
         // Pre-compute source-wide values - all grains will refer to these.
         f64 pitch_ratios[k_block_size_max];
+        f64 max_pitch_ratio = 0;
         alignas(alignof(f32x4)) f32x2 xfade_vols[k_block_size_max];
         alignas(alignof(f32x4)) f32 env_inv_fades[k_block_size_max];
         f32 smoothing[k_block_size_max];
         {
             ZoneNamedN(precompute, "Granular: Precompute", true);
 
-            for (auto const frame_index : Range(buffer.size))
+            for (auto const frame_index : Range(buffer.size)) {
                 pitch_ratios[frame_index] = PitchRatio(voice, s, lfo_amounts.data[frame_index], context);
+                max_pitch_ratio = Max(max_pitch_ratio, pitch_ratios[frame_index]);
+            }
 
             for (auto const frame_index : Range(buffer.size)) {
                 xfade_vols[frame_index] =
@@ -1225,17 +1256,18 @@ struct VoiceProcessor {
                 {
                     ZoneNamedN(fetch_zone, "Grain: GetSampleFrame", true);
 
-                    for (auto const i : Range<usize>(start, buffer.size)) {
-                        if (!PlaybackEnded(grain.playhead, num_frames)) [[likely]] {
-                            grain_samples[i] = GetSampleFrame(*sampler.data, grain.playhead);
-                            IncrementPlaybackPos(grain.playhead,
-                                                 pitch_ratios[i] * grain.detune_ratio,
-                                                 num_frames);
-                        } else {
-                            end = i;
-                            break;
-                        }
-                    }
+                    auto const num_fetched =
+                        FetchSampleFrames(*sampler.data,
+                                          grain.playhead,
+                                          Span<f32x2> {grain_samples + start, buffer.size - start},
+                                          {
+                                              .increments = {pitch_ratios + start, buffer.size - start},
+                                              .max_increment = max_pitch_ratio,
+                                              .increment_scale = grain.detune_ratio,
+                                              .end_frame = num_frames,
+                                          },
+                                          [](u32, PlayHead const&) {});
+                    end = start + num_fetched;
                 }
 
                 alignas(alignof(f32x4)) f32x2 grain_gains[k_block_size_max] {};
