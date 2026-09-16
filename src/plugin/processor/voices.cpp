@@ -1587,7 +1587,7 @@ struct VoiceProcessor {
                 // Compare against the values the coefficients were last computed from rather than the
                 // per-sample delta: a slow envelope moves the cutoff by less than any per-sample threshold
                 // and would otherwise never be applied.
-                if (has_filter_lfo || Abs(cut - voice.filter_coeffs_cutoff_linear) > 0.0005f ||
+                if (Abs(cut - voice.filter_coeffs_cutoff_linear) > 0.0005f ||
                     Abs(res - voice.filter_coeffs_resonance) > 0.0005f) {
                     voice.filter_coeffs_cutoff_linear = cut;
                     voice.filter_coeffs_resonance = res;
