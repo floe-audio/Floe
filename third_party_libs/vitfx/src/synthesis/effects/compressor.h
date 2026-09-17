@@ -43,6 +43,10 @@ namespace vital {
       force_inline poly_float getInputMeanSquared() { return input_mean_squared_; }
       force_inline poly_float getOutputMeanSquared() { return output_mean_squared_; }
 
+      // Modified by Sam Windell: smallest compression multiplier applied over the most recent
+      // processRms() call, for gain reduction metering. 1 = no reduction. Reset per call.
+      force_inline poly_float getMinGainCompression() { return min_gain_compression_; }
+
     protected:
       poly_float computeMeanSquared(const poly_float* audio_in, int num_samples, poly_float mean_squared);
 
@@ -57,5 +61,7 @@ namespace vital {
       poly_float base_release_ms_;
 
       poly_float output_mult_;
+
+      poly_float min_gain_compression_;
   };
 } // namespace vital

@@ -144,6 +144,11 @@ struct ProcessCompressorArgs {
     float* out_interleaved;
 
     float params[(unsigned)Params::Count];
+
+    // Optional. Receives the smallest gain multiplier applied over this block (1 = no reduction), for
+    // gain reduction metering. This is the compression envelope alone: OutputGainDb and Mix are applied
+    // afterwards and aren't included.
+    float* out_min_gain_mult;
 };
 
 struct Compressor;

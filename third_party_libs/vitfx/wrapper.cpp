@@ -262,6 +262,13 @@ void Process(Compressor& compressor, ProcessCompressorArgs args) {
         args.out_interleaved[i * 2 + 0] = o[0];
         args.out_interleaved[i * 2 + 1] = o[1];
     }
+
+    if (args.out_min_gain_mult) {
+        // in_buffer is filled with unaligned loads of the interleaved input, so only the first two lanes
+        // hold the frame's own stereo pair; the rest belong to the next frame and are discarded above.
+        auto const g = compressor.compressor.getMinGainCompression();
+        args.out_min_gain_mult[0] = g[0] < g[1] ? g[0] : g[1];
+    }
 }
 
 void HardReset(Compressor& compressor) { compressor.compressor.reset(vital::constants::kFullMask); }

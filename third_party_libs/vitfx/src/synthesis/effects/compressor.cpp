@@ -28,6 +28,7 @@ namespace vital {
     base_release_ms_ = utils::maskLoad(second_release, base_release_ms_first, constants::kFirstMask);
     output_mult_ = 0.0f;
     mix_ = 0.0f;
+    min_gain_compression_ = 1.0f;
   }
 
   void Compressor::process(int num_samples) {
@@ -70,6 +71,7 @@ namespace vital {
 
     poly_float low_enveloped_mean_squared = low_enveloped_mean_squared_;
     poly_float high_enveloped_mean_squared = high_enveloped_mean_squared_;
+    poly_float min_gain_compression = 1.0f;
 
     for (int i = 0; i < num_samples; ++i) {
       poly_float sample = audio_in[i];
@@ -96,12 +98,14 @@ namespace vital {
       poly_float lower_mult = futils::pow(lower_mag_delta, lower_ratio);
 
       poly_float gain_compression = utils::clamp(upper_mult * lower_mult, 0.0f, kMaxExpandMult);
+      min_gain_compression = utils::min(min_gain_compression, gain_compression);
       audio_out[i] = gain_compression * sample;
       VITAL_ASSERT(utils::isContained(audio_out[i]));
     }
 
     low_enveloped_mean_squared_ = low_enveloped_mean_squared;
     high_enveloped_mean_squared_ = high_enveloped_mean_squared;
+    min_gain_compression_ = min_gain_compression;
   }
 
   void Compressor::scaleOutput(const poly_float* audio_input, int num_samples) {
@@ -132,6 +136,7 @@ namespace vital {
 
     high_enveloped_mean_squared_ = 0.0f;
     low_enveloped_mean_squared_ = 0.0f;
+    min_gain_compression_ = 1.0f;
   }
 
   poly_float Compressor::computeMeanSquared(const poly_float* audio_in, int num_samples, poly_float mean_squared) {
