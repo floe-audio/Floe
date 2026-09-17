@@ -61,6 +61,18 @@ static Span<f32 const> RenderPreview(DistortionDisplayState& state,
     for (auto& sample : state.wet)
         sample -= mean;
 
+    // Steps in the shape (Bitcrush) make the downsampler ring at the top of the spectrum, which draws as
+    // one-sample spikes. A zero-phase 3-tap smoothing nulls Nyquist and rounds corners by less than a pixel.
+    // The buffer is a whole number of cycles, so it wraps around cleanly.
+    {
+        auto const unsmoothed = state.wet;
+        for (auto const sample_index : Range(k_drawn_samples)) {
+            auto const prev = unsmoothed[(sample_index + k_drawn_samples - 1) % k_drawn_samples];
+            auto const next = unsmoothed[(sample_index + 1) % k_drawn_samples];
+            state.wet[sample_index] = (prev + (2 * unsmoothed[sample_index]) + next) * 0.25f;
+        }
+    }
+
     state.inputs = inputs;
     state.valid = true;
     return state.wet;
