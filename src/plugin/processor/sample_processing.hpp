@@ -732,6 +732,10 @@ ALWAYS_INLINE NO_UBSAN inline u32 FetchSampleFrames(AudioData const& s,
             frame_index +
             ContiguousFramesAvailable(playhead, max_increment, bounds, (u32)out.size - frame_index);
         if (contiguous_end != frame_index) {
+            // The general path's multiply and add are separate statements, so they never contract. These
+            // accumulations are single expressions, which would fuse to an FMA on targets that have one and
+            // round differently, drifting the playhead depending on which path a block took.
+#pragma clang fp contract(off)
             auto const layout = ContiguousTapLayoutFor(audio_data, playhead.inverse_data_lookup);
             auto const increments = options.increments.data;
             auto const increment_scale = options.increment_scale;
