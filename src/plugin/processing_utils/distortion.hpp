@@ -474,6 +474,7 @@ struct DistortionDsp {
         DistortionType type = DistortionType::Tape;
         f32 tilt = 0; // -1 (push lows) to 1 (push highs)
         bool compensate = true; // false: raw shaper output
+        bool dc_block = true; // false: the 10 Hz blockers pass through, for offline analysis of the shape
     };
 
     // Cheap enough to derive every sample, so the caller can smooth these.
@@ -488,8 +489,6 @@ struct DistortionDsp {
         auto const oversampled_rate = base_sample_rate * Oversampler4x::k_factor;
         for (auto& shaper : shapers)
             shaper.SetSampleRate(oversampled_rate);
-        dc_block_cutoff_4x = OnePoleLowPassFilter<f32x2>::HzToCutoff(10, oversampled_rate);
-        dc_block_cutoff_base = OnePoleLowPassFilter<f32x2>::HzToCutoff(10, base_sample_rate);
         interstage_lp_cutoff_4x = OnePoleLowPassFilter<f32x2>::HzToCutoff(10000, oversampled_rate);
         SetSettings(settings);
         Reset();
@@ -501,6 +500,13 @@ struct DistortionDsp {
             for (auto& shaper : shapers)
                 shaper.Reset();
         settings = new_settings;
+
+        // A zero coefficient turns the one-pole high-pass into a pass-through with no extra work.
+        auto const oversampled_rate = sample_rate * (f32)Oversampler4x::k_factor;
+        dc_block_cutoff_4x =
+            settings.dc_block ? OnePoleLowPassFilter<f32x2>::HzToCutoff(10, oversampled_rate) : 0;
+        dc_block_cutoff_base =
+            settings.dc_block ? OnePoleLowPassFilter<f32x2>::HzToCutoff(10, sample_rate) : 0;
 
         auto const tilt_db =
             Clamp(Copysign(settings.tilt * settings.tilt, settings.tilt), -1.0f, 1.0f) * k_tilt_max_db;
@@ -524,7 +530,6 @@ struct DistortionDsp {
 
         emphasis_filter_active = emphasis.db != 0;
         if (emphasis_filter_active) {
-            auto const oversampled_rate = sample_rate * (f32)Oversampler4x::k_factor;
             emphasis_pre_coeffs = rbj_filter::Coefficients({.type = emphasis.type,
                                                             .fs = oversampled_rate,
                                                             .fc = emphasis.hz,

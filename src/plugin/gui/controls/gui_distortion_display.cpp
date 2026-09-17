@@ -17,8 +17,8 @@
 constexpr f32 k_preview_sample_rate = 48000;
 constexpr u32 k_samples_per_cycle = DistortionDisplayState::k_samples_per_cycle;
 constexpr u32 k_drawn_samples = DistortionDisplayState::k_drawn_samples;
-// The DSP's DC blockers sit at 10 Hz, so an asymmetric shape (Punish's bias, Octave) takes tens of
-// milliseconds to settle around zero. These cycles are rendered and discarded before the drawn ones.
+// Octave's DC removal and Punish's coupling filters sit at 10 Hz and up, so an asymmetric shape takes tens
+// of milliseconds to settle. These cycles are rendered and discarded before the drawn ones.
 constexpr u32 k_settle_cycles = 14;
 
 // Amplitude that reaches the top and bottom of the display. A little above the test tone's peak so a clean
@@ -34,8 +34,11 @@ static Span<f32 const> RenderPreview(DistortionDisplayState& state,
                                      DistortionDisplayState::Inputs const& inputs) {
     if (state.valid && state.inputs == inputs) return state.wet;
 
+    // The DSP's 10 Hz DC blockers droop every flat part of the wave by a visible amount within one cycle.
+    // They are bypassed here and replaced by subtracting the mean of the drawn cycles: an exact whole number
+    // of cycles, so this is what an ideal DC blocker would remove.
     auto& dsp = state.dsp;
-    dsp.SetSettings({.type = inputs.type, .tilt = inputs.tilt, .compensate = true});
+    dsp.SetSettings({.type = inputs.type, .tilt = inputs.tilt, .compensate = true, .dc_block = false});
     dsp.SetSampleRate(k_preview_sample_rate); // Also resets, snapping the tilt shelves to their targets.
 
     DistortionDsp::Controls const controls {
@@ -48,6 +51,15 @@ static Span<f32 const> RenderPreview(DistortionDisplayState& state,
         auto const output = dsp.Process(f32x2(TestToneSample((u32)sample_index)), controls);
         if (sample_index >= settle_samples) state.wet[sample_index - settle_samples] = output[0];
     }
+
+    auto const mean = ({
+        f32 sum = 0;
+        for (auto const sample : state.wet)
+            sum += sample;
+        sum / (f32)k_drawn_samples;
+    });
+    for (auto& sample : state.wet)
+        sample -= mean;
 
     state.inputs = inputs;
     state.valid = true;
