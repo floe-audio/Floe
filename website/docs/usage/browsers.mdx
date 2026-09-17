@@ -31,7 +31,7 @@ Similar to if you were shopping online for t-shirts: you might use filters to na
 
 The same principle applies here, except we use filters such as library, tag, or folder to instantly narrow down results of presets, instruments, or impulse responses.
 
-Initially however, Floe starts in the simple 'ONE' filter mode. This mode lets you select only one filter at a time. If you click on another filter, it replaces the existing one. You can change to AND or OR mode using the multi-mode menu **(3)**.
+The filters panel has two views, chosen from the menu **(3)**. _Simple_ view, the default, shows one library at a time and is described in the next section. _Advanced_ view, shown above, lists every library, folder and tag as a filter, and adds the AND/OR multi-select modes.
 
 When no filters are applied, all items are shown in the results list.
 
@@ -45,6 +45,18 @@ When no filters are applied, all items are shown in the results list.
 - **Random icon** <FAIcon icon="fa-solid fa-shuffle" />: load a random item from the results list.
 - **Location arrow** <FAIcon icon="fa-solid fa-location-arrow" />: scroll to the currently loaded item in the results list. The browser also does this when it opens. If the current item is hidden by your filters or search, a notice appears above the results list with a _Show_ button that clears them and scrolls to the item.
 - **Unload instrument**: unload the currently selected item.
+
+## Simple view
+
+Simple view lists the libraries (or the preset banks, in the preset browser) one per row. Click a row to select that library: the results list narrows to its items, and the filters panel shows only that library and its folders.
+
+<GeneratedScreenshot name="browser-simple" alt="Browser in Simple view" />
+
+Click a folder to narrow the results further, or _All_ to see the whole library again. The heading at the top of the panel returns to the list of libraries. The library stays selected until you pick another, remove its filter above the results list, or choose a tag.
+
+<GeneratedScreenshot name="browser-simple-card" alt="Browser in Simple view showing one library" />
+
+Tags and library authors are available below the list, collapsed by default. Simple view has one filter active at a time; for combinations of filters, switch to Advanced view using the menu at the top of the filters panel.
 
 ## Filter buttons
 
@@ -91,9 +103,9 @@ Right-clicking an item in the results list also brings up options, including _Op
 
 ## Multi-select mode
 
-By default, the browsers are in single-select mode: clicking on a new filter replaces the existing filter.
+In Advanced view, the browsers start in ONE mode: clicking on a new filter replaces the existing filter.
 
-Use the ONE/AND/OR menu in the top to switch to a multi-select mode.
+Use the menu at the top of the filters panel to switch to a multi-select mode. The same menu switches between Simple and Advanced view.
 
 <GeneratedScreenshot name="browser-menu" alt="Browser more-options menu" />
 

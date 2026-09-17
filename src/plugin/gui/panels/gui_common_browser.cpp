@@ -1016,11 +1016,267 @@ Box DoFilterTreeButton(GuiBuilder& builder,
     return button;
 }
 
+static prefs::Descriptor SimpleViewPrefsDescriptor() {
+    return {
+        .key = "browser-simple-view"_s,
+        .value_requirements = prefs::ValueType::Bool,
+        .default_value = true,
+    };
+}
+
+// Library icon, or a two-tone circle placeholder for cards that have no library (e.g. preset folders).
+// has_icon reserves the space even when the icon isn't loaded, so the layout doesn't jump.
+static void
+DoCardIcon(GuiBuilder& builder, Box const& parent, bool has_icon, Optional<ImageID> icon, bool has_library) {
+    if (has_icon) {
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .background_tex = icon.NullableValue(),
+                  .layout {
+                      .size = k_library_icon_standard_size,
+                  },
+              });
+    } else if (!has_library) {
+        auto const placeholder = DoBox(builder,
+                                       {
+                                           .parent = parent,
+                                           .layout {
+                                               .size = k_library_icon_standard_size,
+                                           },
+                                       });
+        if (auto const rect = BoxRect(builder, placeholder)) {
+            auto const window_rect = builder.imgui.ViewportRectToWindowRect(*rect);
+            auto const centre = window_rect.Centre();
+            auto const radius = window_rect.w * 0.5f;
+            auto const split = -k_pi<f32> / 4.0f;
+            auto* dl = builder.imgui.draw_list;
+            dl->PathArcTo(centre, radius, split, split + k_pi<f32>);
+            dl->PathFillConvex(ToU32({.c = Col::Overlay2, .dark_mode = true, .alpha = 90}));
+            dl->PathArcTo(centre, radius, split + k_pi<f32>, split + (k_pi<f32> * 2.0f));
+            dl->PathFillConvex(ToU32({.c = Col::Overlay1, .dark_mode = true, .alpha = 70}));
+        }
+    }
+}
+
+// Simple view, list level: a card is a single row. Clicking it selects the card (unless something within
+// it is already selected) and drills in so only that card is shown.
+static Box DoSimpleViewCardRow(GuiBuilder& builder,
+                               CommonBrowserState& state,
+                               FilterItemInfo const& info,
+                               FilterCardOptions const& options) {
+    using namespace filter_card_box;
+
+    auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
+
+    bool is_selected = options.common.is_selected;
+    if (!is_selected && options.folder) {
+        auto const& folder_filter = state.Filter(BrowserFilter::Folder);
+        auto const any_descendant_selected = [&](auto const& self, FolderNode const* node) -> bool {
+            for (auto* child = node->first_child; child; child = child->next)
+                if (folder_filter.Contains(child->Hash()) || self(self, child)) return true;
+            return false;
+        };
+        is_selected = any_descendant_selected(any_descendant_selected, options.folder);
+    }
+
+    auto const row = DoBox(builder,
+                           {
+                               .parent = options.common.parent,
+                               .id_extra = options.common.id_extra,
+                               .background_fill_colours =
+                                   ColSet {
+                                       .base {
+                                           .c = is_selected ? Col::Highlight300 : Col::None,
+                                           .alpha = 37,
+                                       },
+                                       .hot {
+                                           .c = is_selected ? Col::Highlight200 : Col::Overlay0,
+                                           .dark_mode = true,
+                                           .alpha = 37,
+                                       },
+                                       .active {
+                                           .c = is_selected ? Col::Highlight200 : Col::Overlay0,
+                                           .dark_mode = true,
+                                           .alpha = 37,
+                                       },
+                                   },
+                               .round_background_corners = 0b1111,
+                               .corner_rounding = k_corner_rounding,
+                               .layout {
+                                   .size = {layout::k_fill_parent, k_browser_item_height + 4},
+                                   .contents_padding = {.lr = k_outer_pad},
+                                   .contents_gap = k_outer_pad,
+                                   .contents_align = layout::Alignment::Start,
+                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                               },
+                               .value_popup = options.common.value_popup,
+                               .tooltip = "Click to select it and browse its folders."_s,
+                               .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                               .tooltip_placement = TooltipPlacement::LeftThenRight,
+                               .button_behaviour = imgui::ButtonConfig {},
+                               .name = options.name,
+                           });
+
+    if (options.right_click_menu)
+        DoRightClickMenuForBox(builder, state, row, options.common.clicked_key, options.right_click_menu);
+
+    Optional<ImageID> icon {};
+    if (options.library_id) {
+        auto const imgs = GetLibraryImages(options.library_images,
+                                           builder.imgui,
+                                           *options.library_id,
+                                           options.sample_library_server,
+                                           options.instance_index,
+                                           LibraryImagesTypes::Icon);
+        if (imgs.icon && *imgs.icon != k_invalid_image_id) icon = imgs.icon;
+    }
+    DoCardIcon(builder, row, icon.HasValue(), icon, options.library_id.HasValue());
+
+    Col const text_colours = {
+        .c = num_used != 0 ? Col::Text : Col::Overlay2,
+        .dark_mode = true,
+    };
+
+    DoBox(builder,
+          {
+              .parent = row,
+              .text = options.common.text,
+              .size_from_text = false,
+              .font = FontType::Body,
+              .text_colours = text_colours,
+              .text_overflow = TextOverflowType::ShowDotsOnRight,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = f32x2 {layout::k_fill_parent, k_font_body_size},
+              },
+          });
+
+    DoBox(builder,
+          {
+              .parent = row,
+              .text = fmt::FormatInline<16>("({})"_s, info.total_available),
+              .size_from_text = true,
+              .font = FontType::Heading3,
+              .text_colours = text_colours,
+              .parent_dictates_hot_and_active = true,
+          });
+
+    DoBox(builder,
+          {
+              .parent = row,
+              .text = ICON_FA_CARET_RIGHT,
+              .font = FontType::Icons,
+              .font_size = k_font_icons_size * 0.6f,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .text_justification = TextJustification::Centred,
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = {k_font_icons_size * 0.6f, k_font_body_size},
+              },
+          });
+
+    auto const fired_via_keyboard = key_nav::DoItem(builder,
+                                                    state.keyboard_navigation,
+                                                    {
+                                                        .box = row,
+                                                        .panel = BrowserKeyboardNavigation::Panel::Filters,
+                                                        .id = options.common.clicked_key,
+                                                        .is_selected = is_selected,
+                                                        .is_tab_item = true,
+                                                    });
+
+    if (row.button_fired || fired_via_keyboard) {
+        state.simple_view_open_card = options.common.clicked_key;
+        state.scroll_filters_to_start = true;
+        if (!is_selected) HandleFilterButtonClick(builder, state, options.common);
+    }
+
+    return row;
+}
+
+// Simple view, drilled-in level: the heading-style row that returns to the list of cards.
+static void
+DoSimpleViewBackButton(GuiBuilder& builder, CommonBrowserState& state, Box const& parent, String text) {
+    auto const button = DoBox(builder,
+                              {
+                                  .parent = parent,
+                                  .background_fill_auto_hot_active_overlay = true,
+                                  .round_background_corners = 0b1111,
+                                  .corner_rounding = k_corner_rounding,
+                                  .layout {
+                                      .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                      .contents_gap = k_browser_spacing / 2,
+                                      .contents_direction = layout::Direction::Row,
+                                      .contents_align = layout::Alignment::Start,
+                                      .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                  },
+                                  .tooltip = "Back to the list"_s,
+                                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                                  .tooltip_placement = TooltipPlacement::LeftThenRight,
+                                  .button_behaviour = imgui::ButtonConfig {},
+                                  .name = "browser.simple-view-back"_s,
+                              });
+
+    DoBox(builder,
+          {
+              .parent = button,
+              .text = ICON_FA_CARET_LEFT,
+              .font = FontType::Icons,
+              .font_size = k_font_icons_size * 0.6f,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .size = k_font_icons_size * 0.4f,
+              },
+          });
+
+    DynamicArray<char> upper {builder.arena};
+    for (auto const c : text)
+        dyn::Append(upper, ToUppercaseAscii(c));
+
+    DoBox(builder,
+          {
+              .parent = button,
+              .text = upper,
+              .size_from_text = true,
+              .font = FontType::Heading3,
+              .text_colours = Col {.c = Col::Text, .dark_mode = true},
+              .parent_dictates_hot_and_active = true,
+              .layout {
+                  .margins = {.b = k_browser_spacing / 2},
+              },
+          });
+
+    auto const fired_via_keyboard = key_nav::DoItem(builder,
+                                                    state.keyboard_navigation,
+                                                    {
+                                                        .box = button,
+                                                        .panel = BrowserKeyboardNavigation::Panel::Filters,
+                                                        .id = HashFnv1a("simple-view-back"),
+                                                        .is_selected = false,
+                                                        .is_tab_item = true,
+                                                    });
+
+    if (button.button_fired || fired_via_keyboard) {
+        state.simple_view_open_card = 0;
+        state.scroll_filters_to_start = true;
+    }
+}
+
 Box DoFilterCard(GuiBuilder& builder,
                  CommonBrowserState& state,
                  FilterItemInfo const& info,
                  FilterCardOptions const& options) {
     using namespace filter_card_box;
+
+    if (state.simple_view) {
+        if (!IsSimpleViewDrilledIn(state)) return DoSimpleViewCardRow(builder, state, info, options);
+        if (state.simple_view_open_card != options.common.clicked_key) return {};
+    }
+    // A drilled-into card is always expanded and its header isn't a button.
+    bool const drilled_in = IsSimpleViewDrilledIn(state);
+
     bool const is_selected = options.common.is_selected;
 
     auto const num_used = NumUsedForFilter(info, options.common.filter_mode);
@@ -1029,7 +1285,7 @@ Box DoFilterCard(GuiBuilder& builder,
     auto& card_toggled_ids =
         options.default_collapsed ? state.expanded_filter_headers : state.collapsed_filter_headers;
     if (options.store) LoadCollapseStateFromStore(*options.store, card_toggled_ids, collapse_id);
-    bool card_collapsed = Contains(card_toggled_ids, collapse_id) != options.default_collapsed;
+    bool card_collapsed = !drilled_in && Contains(card_toggled_ids, collapse_id) != options.default_collapsed;
 
     // For certain screenshots, force a card to be expanded.
     if (card_collapsed && options.name == "library-card.Lost Reveries"_s &&
@@ -1125,12 +1381,12 @@ Box DoFilterCard(GuiBuilder& builder,
                               .c = Col::None,
                           },
                           .hot {
-                              .c = Col::Overlay2,
+                              .c = drilled_in ? Col::None : Col::Overlay2,
                               .dark_mode = true,
                               .alpha = 37,
                           },
                           .active {
-                              .c = Col::Overlay2,
+                              .c = drilled_in ? Col::None : Col::Overlay2,
                               .dark_mode = true,
                               .alpha = 37,
                           },
@@ -1145,10 +1401,11 @@ Box DoFilterCard(GuiBuilder& builder,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                   },
                   .value_popup = options.common.value_popup,
-                  .tooltip = options.common.tooltip,
+                  .tooltip = drilled_in ? TooltipString {k_nullopt} : options.common.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
                   .tooltip_placement = TooltipPlacement::LeftThenRight,
-                  .button_behaviour = imgui::ButtonConfig {},
+                  .button_behaviour =
+                      drilled_in ? k_nullopt : Optional<imgui::ButtonConfig>(imgui::ButtonConfig {}),
                   .name = options.name.size ? (String)fmt::Format(builder.arena, "{}.header", options.name)
                                             : String {},
               });
@@ -1187,49 +1444,23 @@ Box DoFilterCard(GuiBuilder& builder,
 
     auto const title_row_height = k_font_body_size;
 
-    DoBox(builder,
-          {
-              .parent = top_row,
-              .text = card_collapsed ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
-              .font = FontType::Icons,
-              .font_size = k_font_icons_size * 0.6f,
-              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
-              .text_justification = TextJustification::Centred,
-              .parent_dictates_hot_and_active = true,
-              .layout {
-                  .size = {12, title_row_height},
-              },
-          });
-
-    if (has_icon) {
+    if (!drilled_in) {
         DoBox(builder,
               {
                   .parent = top_row,
-                  .background_tex = icon.NullableValue(),
+                  .text = card_collapsed ? ICON_FA_CARET_RIGHT : ICON_FA_CARET_DOWN,
+                  .font = FontType::Icons,
+                  .font_size = k_font_icons_size * 0.6f,
+                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+                  .text_justification = TextJustification::Centred,
+                  .parent_dictates_hot_and_active = true,
                   .layout {
-                      .size = 18.0f,
+                      .size = {12, title_row_height},
                   },
               });
-    } else if (!options.library_id) {
-        auto const placeholder = DoBox(builder,
-                                       {
-                                           .parent = top_row,
-                                           .layout {
-                                               .size = 18.0f,
-                                           },
-                                       });
-        if (auto const rect = BoxRect(builder, placeholder)) {
-            auto const window_rect = builder.imgui.ViewportRectToWindowRect(*rect);
-            auto const centre = window_rect.Centre();
-            auto const radius = window_rect.w * 0.5f;
-            auto const split = -k_pi<f32> / 4.0f;
-            auto* dl = builder.imgui.draw_list;
-            dl->PathArcTo(centre, radius, split, split + k_pi<f32>);
-            dl->PathFillConvex(ToU32({.c = Col::Overlay2, .dark_mode = true, .alpha = 90}));
-            dl->PathArcTo(centre, radius, split + k_pi<f32>, split + (k_pi<f32> * 2.0f));
-            dl->PathFillConvex(ToU32({.c = Col::Overlay1, .dark_mode = true, .alpha = 70}));
-        }
     }
+
+    DoCardIcon(builder, top_row, has_icon, icon, options.library_id.HasValue());
 
     auto const title_box = DoBox(
         builder,
@@ -1305,15 +1536,15 @@ Box DoFilterCard(GuiBuilder& builder,
     }
 
     auto const card_top_fired_via_keyboard =
-        key_nav::DoItem(builder,
-                        state.keyboard_navigation,
-                        {
-                            .box = card_top,
-                            .panel = BrowserKeyboardNavigation::Panel::Filters,
-                            .id = collapse_id,
-                            .is_selected = is_selected,
-                            .is_tab_item = true,
-                        });
+        !drilled_in && key_nav::DoItem(builder,
+                                       state.keyboard_navigation,
+                                       {
+                                           .box = card_top,
+                                           .panel = BrowserKeyboardNavigation::Panel::Filters,
+                                           .id = collapse_id,
+                                           .is_selected = is_selected,
+                                           .is_tab_item = true,
+                                       });
 
     if (card_top.button_fired || card_top_fired_via_keyboard) {
         if (Contains(card_toggled_ids, collapse_id))
@@ -1643,6 +1874,9 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
                                     Box const& parent,
                                     LibraryFilters const& library_filters) {
     if (library_filters.libraries.size) {
+        auto const drilled_in = IsSimpleViewDrilledIn(context.state);
+        if (drilled_in && !library_filters.card_view) return;
+
         BrowserSection section = {
             .state = context.state,
             .id = context.browser_id ^ HashFnv1a("libraries-section"),
@@ -1650,6 +1884,7 @@ static void DoBrowserLibraryFilters(GuiBuilder& builder,
             .heading = "LIBRARIES"_s,
             .multiline_contents = !library_filters.card_view,
             .default_collapsed = !library_filters.card_view,
+            .skip_heading = drilled_in,
             .dark_mode = true,
             .keyboard_focusable = true,
             .store = &context.store,
@@ -1987,7 +2222,8 @@ static String FilterModeDescription(FilterMode mode) {
     PanicIfReached();
 }
 
-static void DoMoreOptionsMenu(GuiBuilder& builder, BrowserPopupContext& context) {
+static void
+DoMoreOptionsMenu(GuiBuilder& builder, BrowserPopupContext& context, BrowserPopupOptions const& options) {
     auto const root = DoBox(builder,
                             {
                                 .layout {
@@ -1998,19 +2234,37 @@ static void DoMoreOptionsMenu(GuiBuilder& builder, BrowserPopupContext& context)
                                 .name = "browser.more-options-menu"_s,
                             });
 
+    if (MenuItem(builder,
+                 root,
+                 {
+                     .text = "Simple"_s,
+                     .subtext = options.simple_view_description,
+                     .is_selected = context.state.simple_view,
+                 })
+            .button_fired) {
+        prefs::SetValue(context.preferences, SimpleViewPrefsDescriptor(), true);
+        context.state.ClearToOne();
+        context.state.filter_mode = FilterMode::Single;
+        context.state.simple_view_open_card = 0;
+        context.state.scroll_filters_to_start = true;
+    }
+
     for (auto const filter_mode : EnumIterator<FilterMode>()) {
-        if (MenuItem(builder,
-                     root,
-                     {
-                         .text = FilterModeText(filter_mode),
-                         .subtext = FilterModeDescription(filter_mode),
-                         .is_selected = context.state.filter_mode == filter_mode,
-                     },
-                     SourceLocationHash() ^ (u64)filter_mode)
+        if (MenuItem(
+                builder,
+                root,
+                {
+                    .text = FilterModeText(filter_mode),
+                    .subtext = FilterModeDescription(filter_mode),
+                    .is_selected = !context.state.simple_view && context.state.filter_mode == filter_mode,
+                },
+                SourceLocationHash() ^ (u64)filter_mode)
                 .button_fired) {
+            prefs::SetValue(context.preferences, SimpleViewPrefsDescriptor(), false);
             if (context.state.filter_mode != FilterMode::Single && filter_mode == FilterMode::Single)
                 context.state.ClearToOne();
             context.state.filter_mode = filter_mode;
+            context.state.scroll_filters_to_start = true;
         }
     }
 }
@@ -2021,6 +2275,12 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
     using Visibility = CurrentItemStatus::Visibility;
 
     if (builder.imgui.modal_just_opened == context.browser_id) context.state.scroll_to_show_current = true;
+
+    context.state.simple_view =
+        IsAnyScreenshotInProgress()
+            ? (IsScreenshotRequest("browser-simple"_s) || IsScreenshotRequest("browser-simple-card"_s))
+            : prefs::GetBool(context.preferences, SimpleViewPrefsDescriptor());
+    if (context.state.simple_view) context.state.filter_mode = FilterMode::Single;
 
     // A pending scroll is only meaningful while the item can be drawn. Otherwise it would fire unexpectedly
     // later, e.g. when a filter is removed.
@@ -2299,6 +2559,10 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                               },
                               .tooltip = FunctionRef<String()> {[&]() -> String {
+                                  if (context.state.simple_view)
+                                      return fmt::Format(builder.arena,
+                                                         "Simple view: {}"_s,
+                                                         options.simple_view_description);
                                   return fmt::Format(builder.arena,
                                                      "Filter mode: {}"_s,
                                                      FilterModeDescription(context.state.filter_mode));
@@ -2310,7 +2574,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 DoBox(builder,
                       {
                           .parent = filter_mode_button,
-                          .text = FilterModeTextAbbreviated(context.state.filter_mode),
+                          .text = context.state.simple_view
+                                      ? "Simple"_s
+                                      : FilterModeTextAbbreviated(context.state.filter_mode),
                           .size_from_text = true,
                           .font = FontType::Body,
                           .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
@@ -2329,13 +2595,18 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                     DoBoxViewport(
                         builder,
                         {
-                            .run = [&context](GuiBuilder& builder) { DoMoreOptionsMenu(builder, context); },
+                            .run = [&](GuiBuilder& builder) { DoMoreOptionsMenu(builder, context, options); },
                             .bounds = filter_mode_button,
                             .imgui_id = popup_id,
                             .viewport_config = k_default_popup_menu_viewport,
                             .debug_name = "filtermode",
                         });
             }
+        }
+
+        auto const filters_viewport_id = builder.imgui.MakeId("filters");
+        if (Exchange(context.state.scroll_filters_to_start, false)) {
+            if (auto w = builder.imgui.FindViewport(filters_viewport_id)) builder.imgui.SetYScroll(w, 0.0f);
         }
 
         DoBoxViewport(
@@ -2347,10 +2618,20 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
 
                         auto const root = DoBrowserItemsRoot(builder);
 
+                        // Drilled in, only the open card and its folders are shown.
+                        auto const drilled_in = IsSimpleViewDrilledIn(context.state);
+                        if (drilled_in)
+                            DoSimpleViewBackButton(builder,
+                                                   context.state,
+                                                   root,
+                                                   options.simple_view_back_text);
+
                         if (options.do_extra_filters_top) options.do_extra_filters_top(builder, root);
 
                         if (options.library_filters)
                             DoBrowserLibraryFilters(builder, context, root, *options.library_filters);
+
+                        if (drilled_in) return;
 
                         if (options.tags_filters)
                             DoBrowserTagsFilters(builder, context, root, *options.tags_filters);
@@ -2367,7 +2648,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                         .size = layout::k_fill_parent,
                                     },
                                 }),
-                .imgui_id = builder.imgui.MakeId("filters"),
+                .imgui_id = filters_viewport_id,
                 .viewport_config = ({
                     auto cfg = k_default_modal_subviewport;
                     cfg.draw_scrollbars = DrawModalScrollbarsDarkMode, cfg.scrollbar_inside_padding = true;

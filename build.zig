@@ -3180,6 +3180,8 @@ fn doTarget(
                 .{ .id_name = "filter-card-body-tree" },
                 .{ .id_name = "filter-button" },
                 .{ .id_name = "browser-menu" },
+                .{ .id_name = "browser-simple" },
+                .{ .id_name = "browser-simple-card" },
                 .{
                     .id_name = "perform:full",
                     .preset = "Risers/Caustic Build-up.floe-preset",

@@ -470,9 +470,13 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
     bool const is_filter_button_screenshot =
         context.layer.index == 0 && IsScreenshotRequest("filter-button"_s);
     bool const is_browser_menu_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-menu"_s);
+    bool const is_simple_list_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("browser-simple"_s);
+    bool const is_simple_card_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("browser-simple-card"_s);
 
     if ((is_browser_screenshot || is_any_filter_card_screenshot || is_filter_button_screenshot ||
-         is_browser_menu_screenshot) &&
+         is_browser_menu_screenshot || is_simple_list_screenshot || is_simple_card_screenshot) &&
         !builder.imgui.IsModalOpen(state.id))
         builder.imgui.OpenModalViewport(state.id);
 
@@ -485,7 +489,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         if (!tag_filter.Contains((u64)TagType::Ambient)) tag_filter.Add((u64)TagType::Ambient, "ambient"_s);
     }
 
-    if (is_any_filter_card_screenshot) {
+    if (is_any_filter_card_screenshot || is_simple_card_screenshot) {
         sample_lib::Library const* picked = nullptr;
         for (auto const l : libs) {
             if (l->sorted_instruments.size == 0) continue;
@@ -507,7 +511,12 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 if (!filter.Contains(key)) filter.Add(key, name);
             };
 
-            if (is_filter_card_all_selected) {
+            if (is_simple_card_screenshot) {
+                // The pick can change as libraries finish scanning, so replace rather than accumulate.
+                state.common_state.ClearAll();
+                state.common_state.simple_view_open_card = picked->id;
+                add_unique(BrowserFilter::Library, picked->id, picked->name);
+            } else if (is_filter_card_all_selected) {
                 add_unique(BrowserFilter::Library, picked->id, picked->name);
             } else if (is_filter_card_body_item) {
                 if (auto* child = root->first_child)

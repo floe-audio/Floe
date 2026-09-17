@@ -914,6 +914,8 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             .on_load_next = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomPreset(context, state); },
             .current_item = current_item,
+            .simple_view_back_text = "Preset banks"_s,
+            .simple_view_description = "Browse one preset bank at a time."_s,
             .library_filters =
                 LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
@@ -934,6 +936,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                         .parent = parent,
                         .heading = "FOLDERS"_s,
                         .multiline_contents = false,
+                        .skip_heading = IsSimpleViewDrilledIn(state.common_state),
                         .dark_mode = true,
                         .keyboard_focusable = true,
                         .right_click_menu = PresetFolderRightClickMenu,

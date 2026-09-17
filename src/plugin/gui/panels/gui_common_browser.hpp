@@ -241,12 +241,23 @@ struct CommonBrowserState {
     DynamicArrayBounded<char, 100> search {};
     DynamicArrayBounded<char, 100> filter_search {};
     FilterMode filter_mode = FilterMode::Single;
+
+    // Simple view shows filter cards as a list of rows; clicking one 'drills in' to show only that card,
+    // permanently expanded. Advanced view is the full tree. Synced from preferences each frame.
+    bool simple_view {true};
+    u64 simple_view_open_card {}; // The card drilled into; 0 means the list of cards.
+    bool scroll_filters_to_start {};
     bool scroll_items_to_start {};
     bool scroll_to_show_current {}; // Pending request; see ScrollBrowserToShowCurrent.
     bool items_still_loading {}; // Set by the browser each frame: a scan is still adding items.
     RightClickMenuState right_click_menu_state {};
     BrowserKeyboardNavigation keyboard_navigation {};
 };
+
+// Searching the filters always shows the list of cards, so that typing from inside a card finds others.
+inline bool IsSimpleViewDrilledIn(CommonBrowserState const& state) {
+    return state.simple_view && state.simple_view_open_card != 0 && state.filter_search.size == 0;
+}
 
 inline bool IsSingleFolderFilterSelected(CommonBrowserState const& state, u64 section_folder_hash) {
     auto const& folder_filter = state.Filter(BrowserFilter::Folder);
@@ -467,6 +478,10 @@ struct BrowserPopupOptions {
     TrivialFunctionRef<void()> on_load_next {};
     TrivialFunctionRef<void()> on_load_random {};
     CurrentItemStatus current_item {};
+
+    // Simple view: heading of the back row shown above a drilled-into card, and the mode menu's description.
+    String simple_view_back_text {"Libraries"};
+    String simple_view_description {"Browse one library at a time."};
 
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};

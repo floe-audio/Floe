@@ -240,6 +240,8 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
         IsScreenshotRequest("filter-card-body-tree"_s)) {
         return simple("library-card.Dulcitone"_s);
     }
+    if (IsScreenshotRequest("browser-simple"_s) || IsScreenshotRequest("browser-simple-card"_s))
+        return simple("browser.modal"_s);
     if (IsScreenshotRequest("filter-button"_s)) return simple("browser.favourites-button"_s);
     if (IsScreenshotRequest("browser-menu"_s)) return simple("browser.more-options-menu"_s);
 
