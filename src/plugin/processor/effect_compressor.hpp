@@ -9,6 +9,7 @@
 
 #include "dsp_stillwell_majortom.hpp"
 #include "effect.hpp"
+#include "processing_utils/peak_meter.hpp"
 
 constexpr f32 k_compressor_gain_reduction_meter_falldown_db_per_second = 40.0f;
 
@@ -21,6 +22,11 @@ class Compressor final : public Effect {
     // compressor types report their compression envelope alone, so this is unaffected by the Gain and
     // Mix params.
     f32 GainReductionDb() const { return m_gain_reduction_db_atomic.Load(LoadMemoryOrder::Relaxed); }
+
+    // audio-thread: fed with the block's input and its fully-compressed output; safe to read from another
+    // thread for display.
+    StereoPeakMeter input_peak_meter {};
+    StereoPeakMeter output_peak_meter {};
 
   private:
     void ProcessChangesInternal(ProcessBlockChanges const& changes,
@@ -63,12 +69,16 @@ class Compressor final : public Effect {
     EffectProcessResult
     ProcessBlock(Span<f32x2> io_frames, AudioProcessingContext const& context, void*) override {
         if (!ShouldProcessBlock()) {
-            ResetGainReductionMeter();
+            ResetMeters();
             return EffectProcessResult::Done;
         }
 
+        input_peak_meter.AddBuffer(io_frames);
+
         switch (m_type) {
             case param_values::CompressorType::Vintage: {
+                f32x2 wet[k_block_size_max];
+                u32 wet_index = 0;
                 auto const result = ProcessBlockByFrame(
                     io_frames,
                     [&](f32x2 in) {
@@ -79,10 +89,12 @@ class Compressor final : public Effect {
                         m_major_tom.Process(context.sample_rate, in.x, in.y, out[0], out[1]);
                         m_worst_gain_reduction_db =
                             Max(m_worst_gain_reduction_db, m_major_tom.gain_reduction_db);
-                        return LoadAlignedToType<f32x2>(out);
+                        auto const wet_frame = LoadAlignedToType<f32x2>(out);
+                        wet[wet_index++] = wet_frame;
+                        return wet_frame;
                     },
                     context);
-                PublishGainReductionStat((u32)io_frames.size, context.sample_rate);
+                PublishMeterStats({wet, io_frames.size}, context.sample_rate);
                 return result;
             }
 
@@ -131,7 +143,7 @@ class Compressor final : public Effect {
                     io_frames[frame_index] =
                         ApplyBypassCrossfade(context, wet[frame_index], io_frames[frame_index]);
 
-                PublishGainReductionStat((u32)io_frames.size, context.sample_rate);
+                PublishMeterStats({wet, io_frames.size}, context.sample_rate);
                 return EffectProcessResult::Done;
             }
 
@@ -141,9 +153,13 @@ class Compressor final : public Effect {
         return EffectProcessResult::Done;
     }
 
-    // audio-thread: call once per processed block, after all its frames, to publish that block's worst
-    // gain reduction (peak-hold with a steady falldown, like a peak meter).
-    void PublishGainReductionStat(u32 num_frames_in_block, f32 sample_rate) {
+    // audio-thread: call once per processed block, after all its frames. Metering the fully-compressed
+    // signal rather than io_frames keeps the output meter meaningful regardless of the Mix setting.
+    void PublishMeterStats(Span<f32x2> wet_frames, f32 sample_rate) {
+        output_peak_meter.AddBuffer(wet_frames);
+
+        // Peak-hold with a steady falldown, like a peak meter.
+        auto const num_frames_in_block = (u32)wet_frames.size;
         auto const worst_db = m_worst_gain_reduction_db;
         m_worst_gain_reduction_db = 0;
         m_gain_reduction_meter_db =
@@ -153,10 +169,12 @@ class Compressor final : public Effect {
         m_gain_reduction_db_atomic.Store(m_gain_reduction_meter_db, StoreMemoryOrder::Relaxed);
     }
 
-    void ResetGainReductionMeter() {
+    void ResetMeters() {
         m_worst_gain_reduction_db = 0;
         m_gain_reduction_meter_db = 0;
         m_gain_reduction_db_atomic.Store(0.0f, StoreMemoryOrder::Relaxed);
+        input_peak_meter.Zero();
+        output_peak_meter.Zero();
     }
 
     void ResetInternal() override {
@@ -165,12 +183,14 @@ class Compressor final : public Effect {
         m_threshold_smoother.Reset();
         m_ratio_smoother.Reset();
         m_gain_smoother.Reset();
-        ResetGainReductionMeter();
+        ResetMeters();
     }
 
     void PrepareToPlay(AudioProcessingContext const& context) override {
         m_major_tom.SetSampleRate(context.sample_rate);
         vitfx::compressor::SetSampleRate(*m_vital, (int)context.sample_rate);
+        input_peak_meter.PrepareToPlay(context.sample_rate);
+        output_peak_meter.PrepareToPlay(context.sample_rate);
     }
 
     param_values::CompressorType m_type {param_values::CompressorType::Modern};

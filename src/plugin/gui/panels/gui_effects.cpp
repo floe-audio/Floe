@@ -825,6 +825,69 @@ static void DoSwitchboard(GuiState& g, Box root) {
     }
 }
 
+// A gain reduction meter is a single bar, so it's drawn much narrower than a stereo peak meter.
+constexpr f32 k_gain_reduction_meter_w = 9.0f;
+
+// Row of meters sitting alongside an effect's knobs.
+static Box DoFxMetersRow(GuiState& g, Box param_container) {
+    return DoBox(g.builder,
+                 {
+                     .parent = param_container,
+                     .layout {
+                         .size = layout::k_hug_contents,
+                         .contents_gap = 16,
+                         .contents_direction = layout::Direction::Row,
+                     },
+                 });
+}
+
+struct FxMeterColumnOptions {
+    Box parent;
+    u64 id_extra;
+    String label;
+    f32 width;
+    bool greyed_out;
+};
+
+// A single meter in a row made by DoFxMetersRow, with its label underneath.
+static void DoFxMeterColumn(GuiState& g,
+                            FxMeterColumnOptions const& options,
+                            FunctionRef<void(Rect)> draw,
+                            FunctionRef<MeterTooltipText()> text) {
+    auto const column = DoBox(g.builder,
+                              {
+                                  .parent = options.parent,
+                                  .id_extra = options.id_extra,
+                                  .layout {
+                                      .size = {options.width, layout::k_hug_contents},
+                                      .contents_gap = 3,
+                                      .contents_direction = layout::Direction::Column,
+                                  },
+                              });
+    auto const meter_box =
+        DoBox(g.builder,
+              {
+                  .parent = column,
+                  .layout {
+                      .size = {layout::k_fill_parent, 40},
+                  },
+                  .value_popup = FunctionRef<String()> {[&]() -> String { return text().value_popup; }},
+                  .tooltip = FunctionRef<String()> {[&]() -> String { return text().tooltip; }},
+              });
+    if (auto const r = BoxRect(g.builder, meter_box)) draw(g.imgui.ViewportRectToWindowRect(*r));
+    DoBox(g.builder,
+          {
+              .parent = column,
+              .text = options.label,
+              .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                 : Colours {LiveColStruct(UiColMap::MidText)},
+              .text_justification = TextJustification::Centred,
+              .layout {
+                  .size = {layout::k_fill_parent, k_font_body_size},
+              },
+          });
+}
+
 // Per-effect-type parameter controls.
 static void DoEffectParams(GuiState& g,
                            GuiFrameContext const& frame_context,
@@ -1016,8 +1079,21 @@ static void DoEffectParams(GuiState& g,
                             });
 
             if (type == param_values::CompressorType::Vintage) {
+                // Give the button a slot exactly as wide as the Modern type's 2 extra knobs so the rest of
+                // the row doesn't move when switching type.
+                auto const auto_gain_slot =
+                    DoBox(g.builder,
+                          {
+                              .parent = param_container,
+                              .layout {
+                                  .size = {(k_knob_w * 2) + k_fx_controls_gap_x, layout::k_hug_contents},
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Middle,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                          });
                 DoButtonParameter(g,
-                                  param_container,
+                                  auto_gain_slot,
                                   params.DescribedValue(ParamIndex::CompressorAutoGain),
                                   {.width = layout::k_hug_contents,
                                    .height = k_fx_heading_h,
@@ -1025,7 +1101,36 @@ static void DoEffectParams(GuiState& g,
                                    .on_colour = highlight_col});
             }
 
-            auto const& compressor = static_cast<Compressor&>(fx);
+            auto& compressor = static_cast<Compressor&>(fx);
+            auto const meters_row = DoFxMetersRow(g, param_container);
+
+            // The detectors are level-averaging rather than peak-reading, so the marker is where
+            // compression starts to come in, not the exact level at which the meter shows it.
+            auto const in_options = DrawPeakMeterOptions {
+                .flash_when_clipping = false,
+                .show_min_max_markers = true,
+                .min_db = -42,
+                .max_db = 6,
+                .marker_interval_db = 6,
+                .marker_db = params.DescribedValue(ParamIndex::CompressorThreshold).ProjectedValue(),
+                .marker_col = ToU32(highlight_col),
+                .marker_description = "Threshold"_s,
+                .low_signal_threshold_db = -60.0f,
+            };
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 0,
+                    .label = "In"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
+                [&](Rect r) { DrawPeakMeter(g.imgui, r, &compressor.input_peak_meter, in_options); },
+                [&]() -> MeterTooltipText {
+                    return PeakMeterTooltipText(g.builder.arena, compressor.input_peak_meter, in_options);
+                });
+
             // The two compressor types have quite different envelopes, so the same settings won't
             // produce the same reading on both.
             auto const gr_options = DrawGainReductionMeterOptions {
@@ -1034,42 +1139,41 @@ static void DoEffectParams(GuiState& g,
                 .max_reduction_db = 24.0f,
                 .effect_name = "compressor"_s,
             };
-            auto const gr_text = [&]() -> MeterTooltipText {
-                return GainReductionMeterTooltipText(g.builder.arena, gr_options);
-            };
-
-            auto const gr_column = DoBox(g.builder,
-                                         {
-                                             .parent = param_container,
-                                             .layout {
-                                                 .size = {9, layout::k_hug_contents},
-                                                 .contents_gap = 3,
-                                                 .contents_direction = layout::Direction::Column,
-                                             },
-                                         });
-            auto const gr_meter = DoBox(
-                g.builder,
+            DoFxMeterColumn(
+                g,
                 {
-                    .parent = gr_column,
-                    .layout {
-                        .size = {layout::k_fill_parent, 40},
-                    },
-                    .value_popup = FunctionRef<String()> {[&]() -> String { return gr_text().value_popup; }},
-                    .tooltip = FunctionRef<String()> {[&]() -> String { return gr_text().tooltip; }},
+                    .parent = meters_row,
+                    .id_extra = 1,
+                    .label = "GR"_s,
+                    .width = k_gain_reduction_meter_w,
+                    .greyed_out = greyed_out,
+                },
+                [&](Rect r) { DrawGainReductionMeter(g.imgui, r, gr_options); },
+                [&]() -> MeterTooltipText {
+                    return GainReductionMeterTooltipText(g.builder.arena, gr_options);
                 });
-            if (auto const r = BoxRect(g.builder, gr_meter))
-                DrawGainReductionMeter(g.imgui, g.imgui.ViewportRectToWindowRect(*r), gr_options);
-            DoBox(g.builder,
-                  {
-                      .parent = gr_column,
-                      .text = "GR"_s,
-                      .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                                 : Colours {LiveColStruct(UiColMap::MidText)},
-                      .text_justification = TextJustification::Centred,
-                      .layout {
-                          .size = {layout::k_fill_parent, k_font_body_size},
-                      },
-                  });
+
+            auto const out_options = DrawPeakMeterOptions {
+                .flash_when_clipping = false,
+                .show_min_max_markers = true,
+                .min_db = -42,
+                .max_db = 6,
+                .marker_interval_db = 6,
+                .low_signal_threshold_db = -60.0f,
+            };
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 2,
+                    .label = "Out"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
+                [&](Rect r) { DrawPeakMeter(g.imgui, r, &compressor.output_peak_meter, out_options); },
+                [&]() -> MeterTooltipText {
+                    return PeakMeterTooltipText(g.builder.arena, compressor.output_peak_meter, out_options);
+                });
 
             break;
         }
@@ -1605,55 +1709,7 @@ static void DoEffectParams(GuiState& g,
             auto const ceiling_db = params.DescribedValue(ParamIndex::LimiterCeiling).ProjectedValue();
             auto const gain_db = params.DescribedValue(ParamIndex::LimiterGain).ProjectedValue();
 
-            auto const meters_row = DoBox(g.builder,
-                                          {
-                                              .parent = param_container,
-                                              .layout {
-                                                  .size = layout::k_hug_contents,
-                                                  .contents_gap = 16,
-                                                  .contents_direction = layout::Direction::Row,
-                                              },
-                                          });
-
-            auto const do_meter_column = [&](u64 index,
-                                             String label,
-                                             auto draw,
-                                             FunctionRef<MeterTooltipText()> text,
-                                             bool gr = false) {
-                auto const column =
-                    DoBox(g.builder,
-                          {
-                              .parent = meters_row,
-                              .id_extra = index,
-                              .layout {
-                                  .size = {!gr ? k_peak_meter_standard_width : 9, layout::k_hug_contents},
-                                  .contents_gap = 3,
-                                  .contents_direction = layout::Direction::Column,
-                              },
-                          });
-                auto const meter_box = DoBox(
-                    g.builder,
-                    {
-                        .parent = column,
-                        .layout {
-                            .size = {layout::k_fill_parent, 40},
-                        },
-                        .value_popup = FunctionRef<String()> {[&]() -> String { return text().value_popup; }},
-                        .tooltip = FunctionRef<String()> {[&]() -> String { return text().tooltip; }},
-                    });
-                if (auto const r = BoxRect(g.builder, meter_box)) draw(g.imgui.ViewportRectToWindowRect(*r));
-                DoBox(g.builder,
-                      {
-                          .parent = column,
-                          .text = label,
-                          .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                                     : Colours {LiveColStruct(UiColMap::MidText)},
-                          .text_justification = TextJustification::Centred,
-                          .layout {
-                              .size = {layout::k_fill_parent, k_font_body_size},
-                          },
-                      });
-            };
+            auto const meters_row = DoFxMetersRow(g, param_container);
 
             // The input level at which limiting starts: whatever the Gain param pushes up to the ceiling.
             auto const in_options = DrawPeakMeterOptions {
@@ -1667,9 +1723,15 @@ static void DoEffectParams(GuiState& g,
                 .marker_description = "Limiting starts at"_s,
                 .low_signal_threshold_db = -60.0f,
             };
-            do_meter_column(
-                0,
-                "In"_s,
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 0,
+                    .label = "In"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
                 [&](Rect r) { DrawPeakMeter(g.imgui, r, &limiter.limiter_dsp.input_peak_meter, in_options); },
                 [&]() -> MeterTooltipText {
                     return PeakMeterTooltipText(g.builder.arena,
@@ -1682,17 +1744,22 @@ static void DoEffectParams(GuiState& g,
                 .col = ToU32(highlight_col),
                 .effect_name = "limiter"_s,
             };
-            do_meter_column(
-                1,
-                "GR"_s,
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 1,
+                    .label = "GR"_s,
+                    .width = k_gain_reduction_meter_w,
+                    .greyed_out = greyed_out,
+                },
                 [&](Rect r) { DrawGainReductionMeter(g.imgui, r, gr_options); },
                 [&]() -> MeterTooltipText {
                     return GainReductionMeterTooltipText(g.builder.arena, gr_options);
-                },
-                true);
+                });
 
             auto const out_options = DrawPeakMeterOptions {
-                .flash_when_clipping = true,
+                .flash_when_clipping = false,
                 .show_min_max_markers = true,
                 .min_db = -42,
                 .max_db = 6,
@@ -1702,9 +1769,15 @@ static void DoEffectParams(GuiState& g,
                 .marker_description = "Ceiling"_s,
                 .low_signal_threshold_db = -50.0f,
             };
-            do_meter_column(
-                2,
-                "Out"_s,
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 2,
+                    .label = "Out"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
                 [&](Rect r) {
                     DrawPeakMeter(g.imgui, r, &limiter.limiter_dsp.output_peak_meter, out_options);
                 },
