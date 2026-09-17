@@ -91,9 +91,10 @@ struct DrawGainReductionMeterOptions {
     f32 gain_reduction_db;
     u32 col;
     f32 max_reduction_db = 12.0f; // The reduction level at which the bar is full.
+    String effect_name {}; // What's doing the reducing, for the tooltip. E.g. "limiter".
 };
 
-// Single downward bar from 0dB showing how much a limiter is currently attenuating.
+// Single downward bar from 0dB showing how much an effect is currently attenuating.
 void DrawGainReductionMeter(imgui::Context& imgui, Rect r, DrawGainReductionMeterOptions const& options);
 
 struct DrawLoudnessMeterOptions {

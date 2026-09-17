@@ -26,6 +26,7 @@
     X(RegisterChecksumFileTests)                                                                             \
     X(RegisterCircularBufferTests)                                                                           \
     X(RegisterCliArgParseTests)                                                                              \
+    X(RegisterCompressorTests)                                                                               \
     X(RegisterDebugTests)                                                                                    \
     X(RegisterDefaultPresetTests)                                                                            \
     X(RegisterDistortionTests)                                                                               \

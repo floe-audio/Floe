@@ -1025,6 +1025,52 @@ static void DoEffectParams(GuiState& g,
                                    .on_colour = highlight_col});
             }
 
+            auto const& compressor = static_cast<Compressor&>(fx);
+            // The two compressor types have quite different envelopes, so the same settings won't
+            // produce the same reading on both.
+            auto const gr_options = DrawGainReductionMeterOptions {
+                .gain_reduction_db = compressor.GainReductionDb(),
+                .col = ToU32(highlight_col),
+                .max_reduction_db = 24.0f,
+                .effect_name = "compressor"_s,
+            };
+            auto const gr_text = [&]() -> MeterTooltipText {
+                return GainReductionMeterTooltipText(g.builder.arena, gr_options);
+            };
+
+            auto const gr_column = DoBox(g.builder,
+                                         {
+                                             .parent = param_container,
+                                             .layout {
+                                                 .size = {9, layout::k_hug_contents},
+                                                 .contents_gap = 3,
+                                                 .contents_direction = layout::Direction::Column,
+                                             },
+                                         });
+            auto const gr_meter = DoBox(
+                g.builder,
+                {
+                    .parent = gr_column,
+                    .layout {
+                        .size = {layout::k_fill_parent, 40},
+                    },
+                    .value_popup = FunctionRef<String()> {[&]() -> String { return gr_text().value_popup; }},
+                    .tooltip = FunctionRef<String()> {[&]() -> String { return gr_text().tooltip; }},
+                });
+            if (auto const r = BoxRect(g.builder, gr_meter))
+                DrawGainReductionMeter(g.imgui, g.imgui.ViewportRectToWindowRect(*r), gr_options);
+            DoBox(g.builder,
+                  {
+                      .parent = gr_column,
+                      .text = "GR"_s,
+                      .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                 : Colours {LiveColStruct(UiColMap::MidText)},
+                      .text_justification = TextJustification::Centred,
+                      .layout {
+                          .size = {layout::k_fill_parent, k_font_body_size},
+                      },
+                  });
+
             break;
         }
 
@@ -1634,6 +1680,7 @@ static void DoEffectParams(GuiState& g,
             auto const gr_options = DrawGainReductionMeterOptions {
                 .gain_reduction_db = limiter.limiter_dsp.GainReductionDb(),
                 .col = ToU32(highlight_col),
+                .effect_name = "limiter"_s,
             };
             do_meter_column(
                 1,

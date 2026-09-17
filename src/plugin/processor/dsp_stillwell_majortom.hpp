@@ -49,6 +49,7 @@ struct StillwellMajorTom {
         cratio = 0;
         rundb = 0;
         maxover = 0;
+        gain_reduction_db = 0;
         atcoef = Exp(-1 / (attime * sample_rate));
         relcoef = Exp(-1 / (reltime * sample_rate));
 
@@ -87,6 +88,9 @@ struct StillwellMajorTom {
     // Cheap enough to call every sample so slider_gain can be smoothed without re-deriving
     // cthreshv/autogain_db/rmscoef via the full Update().
     void UpdateMakeupGain() { makeupv = Exp((slider_gain + autogain_db) * k_db2log); }
+
+    // Reduction applied to the most recent sample, positive dB. Excludes the makeup gain.
+    f32 gain_reduction_db {};
 
     f32 ospl0 {};
     f32 ospl1 {};
@@ -146,6 +150,7 @@ struct StillwellMajorTom {
 
         auto gr = -overdb * (cratio - 1) / cratio;
         auto grv = Exp(gr * k_db2log);
+        gain_reduction_db = -gr;
 
         runmax = maxover + relcoef * (runmax - maxover); // highest peak for setting att/rel decays in reltime
         maxover = runmax;

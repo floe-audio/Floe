@@ -145,7 +145,8 @@ MeterTooltipText GainReductionMeterTooltipText(ArenaAllocator& arena,
         .value_popup = fmt::Format(arena, "{.1} dB reduction", options.gain_reduction_db),
         .tooltip = fmt::Format(
             arena,
-            "This is a gain reduction meter, showing how much the limiter is turning the signal down.\n\nRange: {.0} to {.0} dB",
+            "This is a gain reduction meter, showing how much the {} is turning the signal down.\n\nRange: {.0} to {.0} dB",
+            options.effect_name,
             0.0f,
             options.max_reduction_db),
     };
