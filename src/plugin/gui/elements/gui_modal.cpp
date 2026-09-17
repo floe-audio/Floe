@@ -305,13 +305,14 @@ Box IconButton(GuiBuilder& builder,
                f32 font_size,
                f32x2 size,
                u64 id_extra,
-               bool closes_popup_or_modal) {
+               bool closes_popup_or_modal,
+               bool disabled) {
     auto const button =
         DoBox(builder,
               {
                   .parent = parent,
                   .id_extra = id_extra,
-                  .background_fill_auto_hot_active_overlay = true,
+                  .background_fill_auto_hot_active_overlay = !disabled,
                   .round_background_corners = 0b1111,
                   .layout {
                       .size = size,
@@ -319,7 +320,10 @@ Box IconButton(GuiBuilder& builder,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
                   .tooltip = tooltip,
-                  .button_behaviour = imgui::ButtonConfig {.closes_popup_or_modal = closes_popup_or_modal},
+                  .button_behaviour = disabled ? k_nullopt
+                                               : Optional<imgui::ButtonConfig>(imgui::ButtonConfig {
+                                                     .closes_popup_or_modal = closes_popup_or_modal,
+                                                 }),
               });
 
     DoBox(builder,
@@ -329,7 +333,7 @@ Box IconButton(GuiBuilder& builder,
               .size_from_text = true,
               .font = FontType::Icons,
               .font_size = font_size,
-              .text_colours = Col {.c = Col::Subtext0},
+              .text_colours = Col {.c = disabled ? Col::Surface1 : Col::Subtext0},
           });
 
     return button;

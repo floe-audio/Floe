@@ -580,6 +580,47 @@ Box DoBrowserItemsRoot(GuiBuilder& builder) {
                  });
 }
 
+void DoBrowserEmptyListMessage(GuiBuilder& builder,
+                               CommonBrowserState const& state,
+                               Box root,
+                               String plural_item_type_name) {
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = fmt::Format(builder.arena,
+                                  (state.HasFilters() || state.search.size)
+                                      ? "No {} match your filters or search."_s
+                                      : "No {} available."_s,
+                                  plural_item_type_name),
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+              .font = FontType::Body,
+              .text_colours = Col {.c = Col::Subtext0},
+              .layout {
+                  .margins = {.lrtb = k_browser_spacing},
+              },
+          });
+}
+
+void ScrollBrowserToShowCurrent(GuiBuilder& builder, CommonBrowserState& state, Box const& box) {
+    if (!state.scroll_to_show_current) return;
+    auto const r = BoxRect(builder, box);
+    if (!r) return;
+
+    // A freshly opened modal and its items viewport need a frame or two before their sizes are known, and
+    // the scroll limit comes from the previous frame's content height, which lags while a scan is still
+    // adding items. Scrolling before the target is within that height lands short, so keep the request
+    // pending.
+    auto const viewport = builder.imgui.curr_viewport;
+    if (viewport->root_viewport->size_resolution != imgui::Viewport::SizeResolutionState::NotPending) return;
+    if (r->Bottom() > viewport->prevprev_content_size.y) return;
+
+    builder.imgui.ScrollViewportToShowRectangle(*r);
+
+    // Items added by a scan shift the list, so keep re-applying until it settles.
+    if (!state.items_still_loading) state.scroll_to_show_current = false;
+}
+
 struct FolderFilterTreeContext {
     FolderFilterItemInfoLookupTable const& folder_infos;
     u8 indent {};
@@ -1405,6 +1446,7 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                       .tooltip_placement = tooltip_placement,
                       .button_behaviour = imgui::ButtonConfig {},
                   });
+        heading_box = heading_container;
 
         auto const heading_fired_via_keyboard =
             keyboard_focusable ? key_nav::DoItem(builder,
@@ -1976,6 +2018,21 @@ static void DoMoreOptionsMenu(GuiBuilder& builder, BrowserPopupContext& context)
 static void DoBrowserPopupInternal(GuiBuilder& builder,
                                    BrowserPopupContext& context,
                                    BrowserPopupOptions const& options) {
+    using Visibility = CurrentItemStatus::Visibility;
+
+    if (builder.imgui.modal_just_opened == context.browser_id) context.state.scroll_to_show_current = true;
+
+    // A pending scroll is only meaningful while the item can be drawn. Otherwise it would fire unexpectedly
+    // later, e.g. when a filter is removed.
+    switch (options.current_item.visibility) {
+        case Visibility::Loading:
+        case Visibility::Shown:
+        case Visibility::InCollapsedSection: break;
+        case Visibility::None:
+        case Visibility::HiddenByFilters:
+        case Visibility::NotInList: context.state.scroll_to_show_current = false; break;
+    }
+
     auto const root = DoBox(builder,
                             {
                                 .layout {
@@ -2081,6 +2138,12 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 if (button.button_fired && !btn->disabled) btn->on_fired();
             }
 
+            auto const scroll_to_current = [&]() {
+                if (options.current_item.visibility == Visibility::InCollapsedSection)
+                    dyn::RemoveValue(context.state.collapsed_filter_headers, options.current_item.section_id);
+                context.state.scroll_to_show_current = true;
+            };
+
             for (auto const& btn : ArrayT<BrowserPopupOptions::Button>({
                      {
                          .text = ICON_FA_CARET_LEFT,
@@ -2102,10 +2165,41 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                      },
                      {
                          .text = ICON_FA_LOCATION_ARROW,
-                         .tooltip =
-                             fmt::Format(builder.arena, "Scroll to current {}", options.item_type_name),
+                         .tooltip = ({
+                             String s {};
+                             auto const type = options.item_type_name;
+                             switch (options.current_item.visibility) {
+                                 case Visibility::Shown:
+                                     s = fmt::Format(builder.arena, "Scroll to current {}", type);
+                                     break;
+                                 case Visibility::InCollapsedSection:
+                                     s = fmt::Format(builder.arena,
+                                                     "Scroll to current {} (expands its folder)",
+                                                     type);
+                                     break;
+                                 case Visibility::HiddenByFilters:
+                                     s = fmt::Format(builder.arena,
+                                                     "The current {} is hidden by your filters or search",
+                                                     type);
+                                     break;
+                                 case Visibility::NotInList:
+                                     s = fmt::Format(builder.arena, "The current {} isn't listed", type);
+                                     break;
+                                 case Visibility::None:
+                                     s = fmt::Format(builder.arena, "No {} is loaded", type);
+                                     break;
+                                 case Visibility::Loading:
+                                     s = fmt::Format(builder.arena,
+                                                     "Still scanning for the current {}",
+                                                     type);
+                                     break;
+                             }
+                             s;
+                         }),
                          .icon_scaling = 0.8f,
-                         .on_fired = options.on_scroll_to_show_selected,
+                         .disabled = options.current_item.visibility != Visibility::Shown &&
+                                     options.current_item.visibility != Visibility::InCollapsedSection,
+                         .on_fired = scroll_to_current,
                      },
                  })) {
                 if (!btn.on_fired) continue;
@@ -2115,7 +2209,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                btn.tooltip,
                                k_font_heading2_size * btn.icon_scaling,
                                k_font_heading2_size,
-                               Hash(btn.text))
+                               Hash(btn.text),
+                               false,
+                               btn.disabled)
                         .button_fired) {
                     btn.on_fired();
                 }
@@ -2468,6 +2564,82 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                         .keyboard_focusable = false,
                         .name = "browser.favourites-button"_s,
                     });
+            }
+
+            switch (options.current_item.visibility) {
+                case Visibility::None:
+                case Visibility::Loading:
+                case Visibility::Shown:
+                case Visibility::InCollapsedSection: break;
+                case Visibility::HiddenByFilters:
+                case Visibility::NotInList: {
+                    auto const& current_item = options.current_item;
+                    auto const hidden_by_filters = current_item.visibility == Visibility::HiddenByFilters;
+
+                    auto const notice = DoBox(
+                        builder,
+                        {
+                            .parent = rhs_top,
+                            .background_fill_colours = Col {.c = Col::Background2},
+                            .round_background_corners = 0b1111,
+                            .layout {
+                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                .contents_padding = {.lr = k_browser_spacing, .tb = k_browser_spacing / 2},
+                                .contents_gap = k_browser_spacing,
+                                .contents_direction = layout::Direction::Row,
+                                .contents_align = layout::Alignment::Start,
+                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                            },
+                        });
+
+                    DoBox(builder,
+                          {
+                              .parent = notice,
+                              .text = ICON_FA_CIRCLE_INFO,
+                              .size_from_text = true,
+                              .font = FontType::Icons,
+                              .font_size = k_font_body_size,
+                              .text_colours = Col {.c = Col::Subtext0},
+                          });
+
+                    DoBox(builder,
+                          {
+                              .parent = notice,
+                              .text = hidden_by_filters
+                                          ? fmt::Format(
+                                                builder.arena,
+                                                "The current {}, '{}', is hidden by your filters or search.",
+                                                options.item_type_name,
+                                                current_item.name)
+                                          : fmt::Format(builder.arena,
+                                                        "The current {}, '{}', isn't listed because {}.",
+                                                        options.item_type_name,
+                                                        current_item.name,
+                                                        current_item.not_in_list_reason),
+                              .wrap_width = k_wrap_to_parent,
+                              .size_from_text = true,
+                              .font = FontType::Body,
+                              .text_colours = Col {.c = Col::Subtext0},
+                          });
+
+                    if (hidden_by_filters &&
+                        TextButton(builder,
+                                   notice,
+                                   {
+                                       .text = "Show"_s,
+                                       .tooltip = (String)fmt::Format(
+                                           builder.arena,
+                                           "Clear the filters and search, then scroll to the current {}",
+                                           options.item_type_name),
+                                       .is_default = true,
+                                   })) {
+                        context.state.ClearAll();
+                        dyn::Clear(context.state.search);
+                        dyn::RemoveValue(context.state.collapsed_filter_headers, current_item.section_id);
+                        context.state.scroll_to_show_current = true;
+                    }
+                    break;
+                }
             }
 
             // For each selected hash, we want to show it with a dismissable button, like showing active

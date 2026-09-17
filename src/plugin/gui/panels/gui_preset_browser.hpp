@@ -59,7 +59,6 @@ static_assert(ToInt(PresetBrowserFilter::Count) <= k_max_browser_filters);
 // Persistent
 struct PresetBrowserState {
     static constexpr u64 k_panel_id = HashFnv1a("preset-browser");
-    bool scroll_to_show_selected = false;
 
     CommonBrowserState common_state = [] {
         CommonBrowserState s {};

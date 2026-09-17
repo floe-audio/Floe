@@ -117,7 +117,8 @@ Box IconButton(GuiBuilder& builder,
                f32 font_size,
                f32x2 size,
                u64 id_extra = SourceLocationHash(),
-               bool closes_popup_or_modal = false);
+               bool closes_popup_or_modal = false,
+               bool disabled = false); // Still shows the tooltip, so it can explain why.
 
 struct TextInputOptions {
     String text;

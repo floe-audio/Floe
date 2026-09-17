@@ -18,7 +18,6 @@ struct IrBrowserState {
         InitCommonFilters(s);
         return s;
     }();
-    bool scroll_to_show_selected = false;
 };
 
 struct IrBrowserContext {

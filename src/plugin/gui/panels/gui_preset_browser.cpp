@@ -223,7 +223,7 @@ LoadPreset(PresetBrowserContext const& context, PresetBrowserState& state, Prese
     PathArena path_arena {PageAllocator::Instance()};
     LoadPresetFromFile(context.engine, folder->folder->FullPathForPreset(preset, path_arena));
 
-    if (scroll) state.scroll_to_show_selected = true;
+    if (scroll) state.common_state.scroll_to_show_current = true;
 }
 
 void LoadAdjacentPreset(PresetBrowserContext const& context,
@@ -451,7 +451,10 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
 
     auto const first =
         IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, SearchDirection::Forward, true);
-    if (!first) return;
+    if (!first) {
+        DoBrowserEmptyListMessage(builder, state.common_state, root, "presets"_s);
+        return;
+    }
 
     auto const current_loaded_cursor = ResolveCurrentLoadedCursor(context);
 
@@ -499,9 +502,9 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
             };
         }
 
-        if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
-            auto const is_current = current_loaded_cursor && *current_loaded_cursor == cursor;
+        auto const is_current = current_loaded_cursor && *current_loaded_cursor == cursor;
 
+        if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
             auto const is_favourite = IsFavourite(context.prefs, FavouriteItemKey(), preset.preset_uuid);
 
             auto const item = DoBrowserItem(
@@ -610,17 +613,14 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                                    preset.full_path_hash,
                                    PresetRightClickMenu);
 
-            if (is_current) {
-                if (auto const r = BoxRect(builder, item.box)) {
-                    if (Exchange(state.scroll_to_show_selected, false))
-                        builder.imgui.ScrollViewportToShowRectangle(*r);
-                }
-            }
+            if (is_current) ScrollBrowserToShowCurrent(builder, state.common_state, item.box);
 
             if (item.fired && !is_current) LoadPreset(context, state, cursor, false);
 
             if (item.favourite_toggled)
                 pending_favourite_toggle = PendingFavouriteToggle {preset.preset_uuid, is_favourite};
+        } else if (is_current) {
+            ScrollBrowserToShowCurrent(builder, state.common_state, folder_section->heading_box);
         }
 
         if (auto next = IteratePreset(context, state, cursor, SearchDirection::Forward, false)) {
@@ -848,6 +848,42 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
         }
     }
 
+    state.common_state.items_still_loading = AreFoldersScanning(context.preset_server);
+
+    auto const current_item = ({
+        using Visibility = CurrentItemStatus::Visibility;
+        CurrentItemStatus status {};
+        auto const& engine = context.engine;
+        if (auto const cursor = ResolveCurrentLoadedCursor(context)) {
+            auto const& folder = *context.presets_snapshot.folders[cursor->folder_index];
+            auto const& preset = folder.folder->presets[cursor->preset_index];
+            status.name = preset.name;
+            if (ShouldSkipPreset(context, state, folder, preset)) {
+                status.visibility = Visibility::HiddenByFilters;
+            } else {
+                status.section_id = folder.node.Hash();
+                status.visibility =
+                    IsBrowserSectionCollapsed(state.common_state, status.section_id, status.section_id)
+                        ? Visibility::InCollapsedSection
+                        : Visibility::Shown;
+            }
+        } else if (auto const path = engine.pending_state_change
+                                         ? (String)engine.pending_state_change->preset_path
+                                         : (String)engine.pinned_snapshot.preset_path;
+                   path.size) {
+            status.name = engine.pending_state_change
+                              ? (String)engine.pending_state_change->snapshot.extras.display_name
+                              : (String)engine.pinned_snapshot.state.extras.display_name;
+            if (state.common_state.items_still_loading) {
+                status.visibility = Visibility::Loading;
+            } else {
+                status.visibility = Visibility::NotInList;
+                status.not_in_list_reason = "it isn't in any scanned preset folder"_s;
+            }
+        }
+        status;
+    });
+
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
     DoBrowserModal(
@@ -877,7 +913,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             .on_load_previous = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentPreset(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomPreset(context, state); },
-            .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
+            .current_item = current_item,
             .library_filters =
                 LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,

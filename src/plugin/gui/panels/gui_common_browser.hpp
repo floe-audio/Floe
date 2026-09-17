@@ -242,6 +242,8 @@ struct CommonBrowserState {
     DynamicArrayBounded<char, 100> filter_search {};
     FilterMode filter_mode = FilterMode::Single;
     bool scroll_items_to_start {};
+    bool scroll_to_show_current {}; // Pending request; see ScrollBrowserToShowCurrent.
+    bool items_still_loading {}; // Set by the browser each frame: a scan is still adding items.
     RightClickMenuState right_click_menu_state {};
     BrowserKeyboardNavigation keyboard_navigation {};
 };
@@ -263,6 +265,13 @@ inline bool IsSingleFolderFilterSelected(CommonBrowserState const& state, u64 se
             if (index != (usize)BrowserFilter::Folder && filter.HasSelected()) return false;
     }
     return true;
+}
+
+// Whether an items-list folder section is collapsed. section_id is the BrowserSection id; folder_hash is
+// the folder's own hash, which decides whether the heading is skipped entirely.
+inline bool IsBrowserSectionCollapsed(CommonBrowserState const& state, u64 section_id, u64 folder_hash) {
+    if (IsSingleFolderFilterSelected(state, folder_hash)) return false;
+    return Contains(state.collapsed_filter_headers, section_id);
 }
 
 // Combines per-value matches according to the filter mode: AND requires all selected values to match,
@@ -408,6 +417,23 @@ struct LibraryFilters {
     String card_name_prefix {};
 };
 
+// Whether the browser's current item (the loaded instrument, preset, etc.) appears in the items list, so
+// the modal can explain the situation and offer to fix it.
+struct CurrentItemStatus {
+    enum class Visibility : u8 {
+        None, // Nothing is loaded.
+        Loading, // Not found yet, but a scan is in progress so it may appear shortly.
+        Shown,
+        InCollapsedSection,
+        HiddenByFilters, // Excluded by the filters or search.
+        NotInList, // Not in the browser's data at all, e.g. its library isn't installed.
+    };
+    Visibility visibility {Visibility::None};
+    String name {};
+    u64 section_id {}; // Folder section containing the item, so it can be expanded.
+    String not_in_list_reason {}; // Completes "isn't listed because ...".
+};
+
 // IMPORTANT: we use FunctionRef here, you need to make sure the lifetime of the functions outlives the
 // options.
 struct BrowserPopupOptions {
@@ -440,7 +466,7 @@ struct BrowserPopupOptions {
     TrivialFunctionRef<void()> on_load_previous {};
     TrivialFunctionRef<void()> on_load_next {};
     TrivialFunctionRef<void()> on_load_random {};
-    TrivialFunctionRef<void()> on_scroll_to_show_selected {};
+    CurrentItemStatus current_item {};
 
     Optional<LibraryFilters> library_filters {};
     Optional<TagsFilters> tags_filters {};
@@ -453,6 +479,15 @@ struct BrowserPopupOptions {
 };
 
 Box DoBrowserItemsRoot(GuiBuilder& builder);
+
+void DoBrowserEmptyListMessage(GuiBuilder& builder,
+                               CommonBrowserState const& state,
+                               Box root,
+                               String plural_item_type_name);
+
+// Fulfils state.scroll_to_show_current by scrolling the items viewport so that box is visible. Call from
+// the items list with the current item's box, or its section heading if the section is collapsed.
+void ScrollBrowserToShowCurrent(GuiBuilder& builder, CommonBrowserState& state, Box const& box);
 
 struct BrowserItemsSectionOptions {};
 
@@ -508,6 +543,7 @@ struct BrowserSection {
 
     // Don't set these, they are set internally.
     Box box_cache {};
+    Box heading_box {};
     u8 init : 1 = 0;
     u8 is_collapsed : 1 = 0;
     u8 is_box_init : 1 = 0;

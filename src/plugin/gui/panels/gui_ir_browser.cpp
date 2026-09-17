@@ -116,7 +116,7 @@ static void LoadIr(IrBrowserContext const& context, IrBrowserState& state, IrCur
     auto const& lib = *context.frame_context.libraries[cursor.lib_index];
     auto const& ir = *lib.sorted_irs[cursor.ir_index];
     LoadConvolutionIr(context.engine, sample_lib::IrId {lib.id, ir.id});
-    state.scroll_to_show_selected = true;
+    state.common_state.scroll_to_show_current = true;
 }
 
 void LoadAdjacentIr(IrBrowserContext const& context, IrBrowserState& state, SearchDirection direction) {
@@ -167,7 +167,10 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
 
     auto const first =
         IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
-    if (!first) return;
+    if (!first) {
+        DoBrowserEmptyListMessage(builder, state.common_state, root, "impulse responses"_s);
+        return;
+    }
 
     auto const total_irs = ({
         usize n = 0;
@@ -268,17 +271,14 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
                     .store = context.persistent_store,
                 });
 
-            if (is_current) {
-                if (auto const r = BoxRect(builder, item.box)) {
-                    if (Exchange(state.scroll_to_show_selected, false))
-                        builder.imgui.ScrollViewportToShowRectangle(*r);
-                }
-            }
+            if (is_current) ScrollBrowserToShowCurrent(builder, state.common_state, item.box);
 
             if (item.fired && !is_current) LoadConvolutionIr(context.engine, ir_id);
 
             if (item.favourite_toggled)
                 pending_favourite_toggle = PendingFavouriteToggle {ir_hash, is_favourite};
+        } else if (is_current) {
+            ScrollBrowserToShowCurrent(builder, state.common_state, folder_section->heading_box);
         }
 
         if (auto next = IterateIr(context, state, cursor, SearchDirection::Forward, false)) {
@@ -359,6 +359,42 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
         }
     }
 
+    state.common_state.items_still_loading =
+        sample_lib_server::AreLibrariesScanning(context.sample_library_server);
+
+    auto const current_item = ({
+        using Visibility = CurrentItemStatus::Visibility;
+        CurrentItemStatus status {};
+        if (ir_id) {
+            status.name = IrName(context.engine);
+
+            auto const lib = context.frame_context.lib_table.Find(ir_id->library);
+            auto const ir = lib ? (*lib)->irs_by_id.Find((String)ir_id->ir_id) : nullptr;
+            if (!ir) {
+                if (state.common_state.items_still_loading) {
+                    status.visibility = Visibility::Loading;
+                } else {
+                    status.visibility = Visibility::NotInList;
+                    status.not_in_list_reason =
+                        lib ? "it's no longer in its library"_s : "its library isn't installed"_s;
+                }
+            } else if (ShouldSkipIr(context, state, **ir)) {
+                status.visibility = Visibility::HiddenByFilters;
+            } else {
+                status.section_id = ({
+                    auto h = (*ir)->folder->Hash();
+                    HashUpdate(h, (*lib)->id);
+                    h;
+                });
+                status.visibility =
+                    IsBrowserSectionCollapsed(state.common_state, status.section_id, (*ir)->folder->Hash())
+                        ? Visibility::InCollapsedSection
+                        : Visibility::Shown;
+            }
+        }
+        status;
+    });
+
     DoBrowserModal(
         builder,
         {
@@ -403,7 +439,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
             .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },
             .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },
             .on_load_random = [&]() { LoadRandomIr(context, state); },
-            .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
+            .current_item = current_item,
             .library_filters =
                 LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
