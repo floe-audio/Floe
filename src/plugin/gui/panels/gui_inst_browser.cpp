@@ -277,7 +277,7 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
                 .tooltip = FunctionRef<String()>([&]() -> String {
                     return fmt::Format(
                         builder.arena,
-                        "{} waveform. A simple waveform useful for layering with sample instruments.",
+                        "{} waveform. A simple waveform useful for layering with sample instruments. Click to load. Double-click to load and close the browser.",
                         k_waveform_type_names[ToInt(waveform_type)]);
                 }),
                 .item_id = inst_hash,
@@ -287,12 +287,7 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
                 .store = context.persistent_store,
             });
 
-        if (item.fired) {
-            if (is_current)
-                LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-            else
-                LoadInstrument(context.engine, context.layer.index, waveform_type);
-        }
+        if (item.fired && !is_current) LoadInstrument(context.engine, context.layer.index, waveform_type);
 
         if (item.favourite_toggled)
             ToggleFavourite(context.prefs, k_favourite_inst_key, inst_hash, is_favourite);
@@ -386,7 +381,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 
                         return buf.ToOwnedSpan();
                     }),
-                    .tooltip = "Click to load the instrument."_s,
+                    .tooltip = "Click to load the instrument. Double-click to load and close the browser."_s,
                     .item_id = inst_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
@@ -420,12 +415,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
                 }
             }
 
-            if (item.fired) {
-                if (is_current)
-                    LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-                else
-                    LoadInstrument(context.engine, context.layer.index, inst_id);
-            }
+            if (item.fired && !is_current) LoadInstrument(context.engine, context.layer.index, inst_id);
 
             if (item.favourite_toggled)
                 pending_favourite_toggle = PendingFavouriteToggle {inst_hash, is_favourite};

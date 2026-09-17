@@ -212,61 +212,61 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
         auto const is_favourite = IsFavourite(context.prefs, k_favourite_ir_key, ir_hash);
 
         if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
-            auto const item =
-                DoBrowserItem(builder,
-                              state.common_state,
-                              {
-                                  .parent = folder_section->Do(builder).Get<Box>(),
-                                  .id_extra = ir_hash,
-                                  .text = ir.name,
-                                  .value_popup = FunctionRef<String()>([&]() -> String {
-                                      DynamicArray<char> buffer {builder.arena};
+            auto const item = DoBrowserItem(
+                builder,
+                state.common_state,
+                {
+                    .parent = folder_section->Do(builder).Get<Box>(),
+                    .id_extra = ir_hash,
+                    .text = ir.name,
+                    .value_popup = FunctionRef<String()>([&]() -> String {
+                        DynamicArray<char> buffer {builder.arena};
 
-                                      if (ir.description && ir.description->size)
-                                          fmt::Append(buffer, "{}\n\n", *ir.description);
+                        if (ir.description && ir.description->size)
+                            fmt::Append(buffer, "{}\n\n", *ir.description);
 
-                                      dyn::AppendSpan(buffer, "Tags: ");
-                                      if (ir.tags.AnyValuesSet()) {
-                                          bool first = true;
-                                          ir.tags.ForEachSetBit([&](usize bit) {
-                                              if (!first) fmt::Append(buffer, ", ");
-                                              first = false;
-                                              fmt::Append(buffer, "{}", GetTagInfo((TagType)bit).name);
-                                          });
-                                      } else {
-                                          dyn::AppendSpan(buffer, "None");
-                                      }
+                        dyn::AppendSpan(buffer, "Tags: ");
+                        if (ir.tags.AnyValuesSet()) {
+                            bool first = true;
+                            ir.tags.ForEachSetBit([&](usize bit) {
+                                if (!first) fmt::Append(buffer, ", ");
+                                first = false;
+                                fmt::Append(buffer, "{}", GetTagInfo((TagType)bit).name);
+                            });
+                        } else {
+                            dyn::AppendSpan(buffer, "None");
+                        }
 
-                                      fmt::Append(buffer, "\n\nLibrary: {} by {}", lib.name, lib.author);
+                        fmt::Append(buffer, "\n\nLibrary: {} by {}", lib.name, lib.author);
 
-                                      return buffer.ToOwnedSpan();
-                                  }),
-                                  .tooltip = "Click to load the IR."_s,
-                                  .item_id = ir_hash,
-                                  .is_current = is_current,
-                                  .is_favourite = is_favourite,
-                                  .is_tab_item = new_folder,
-                                  .icons = ({
-                                      if (&lib != previous_library) {
-                                          previous_library = &lib;
-                                          auto const imgs = GetLibraryImages(context.library_images,
-                                                                             builder.imgui,
-                                                                             lib.id,
-                                                                             context.sample_library_server,
-                                                                             context.engine.instance_index,
-                                                                             LibraryImagesTypes::Icon);
-                                          if (imgs.icon)
-                                              lib_icon = *imgs.icon;
-                                          else
-                                              lib_icon = ItemIconType::None;
-                                      }
-                                      decltype(BrowserItemOptions::icons) result;
-                                      dyn::Emplace(result, lib_icon);
-                                      result;
-                                  }),
-                                  .notifications = context.notifications,
-                                  .store = context.persistent_store,
-                              });
+                        return buffer.ToOwnedSpan();
+                    }),
+                    .tooltip = "Click to load the IR. Double-click to load and close the browser."_s,
+                    .item_id = ir_hash,
+                    .is_current = is_current,
+                    .is_favourite = is_favourite,
+                    .is_tab_item = new_folder,
+                    .icons = ({
+                        if (&lib != previous_library) {
+                            previous_library = &lib;
+                            auto const imgs = GetLibraryImages(context.library_images,
+                                                               builder.imgui,
+                                                               lib.id,
+                                                               context.sample_library_server,
+                                                               context.engine.instance_index,
+                                                               LibraryImagesTypes::Icon);
+                            if (imgs.icon)
+                                lib_icon = *imgs.icon;
+                            else
+                                lib_icon = ItemIconType::None;
+                        }
+                        decltype(BrowserItemOptions::icons) result;
+                        dyn::Emplace(result, lib_icon);
+                        result;
+                    }),
+                    .notifications = context.notifications,
+                    .store = context.persistent_store,
+                });
 
             if (is_current) {
                 if (auto const r = BoxRect(builder, item.box)) {
@@ -275,12 +275,7 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
                 }
             }
 
-            if (item.fired) {
-                if (is_current)
-                    LoadConvolutionIr(context.engine, k_nullopt);
-                else
-                    LoadConvolutionIr(context.engine, ir_id);
-            }
+            if (item.fired && !is_current) LoadConvolutionIr(context.engine, ir_id);
 
             if (item.favourite_toggled)
                 pending_favourite_toggle = PendingFavouriteToggle {ir_hash, is_favourite};

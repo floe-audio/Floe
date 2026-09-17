@@ -559,7 +559,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
 
                             return buffer.ToOwnedSpan();
                         }),
-                    .tooltip = "Click to load the preset."_s,
+                    .tooltip = "Click to load the preset. Double-click to load and close the browser."_s,
                     .item_id = preset.full_path_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
@@ -617,12 +617,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                 }
             }
 
-            if (item.fired) {
-                if (!is_current)
-                    LoadPreset(context, state, cursor, false);
-                else
-                    SetToDefaultState(context.engine);
-            }
+            if (item.fired && !is_current) LoadPreset(context, state, cursor, false);
 
             if (item.favourite_toggled)
                 pending_favourite_toggle = PendingFavouriteToggle {preset.preset_uuid, is_favourite};
