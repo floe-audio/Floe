@@ -1200,14 +1200,14 @@ void DoWaveformElement(GuiState& g,
                     f32x2 marker_pos {Round(viewport_r.x + (pos * viewport_r.w)), viewport_r.y};
                     marker_pos = g.imgui.ViewportPosToWindowPos(marker_pos);
 
-                    // Draw grain markers as thin lines, fading with the voice's amplitude.
+                    f32 const grain_envelope = (f32)vm.grains[i].envelope / 255.0f;
                     DrawVoiceMarkerLine(g.imgui,
                                         marker_pos,
                                         viewport_r.h,
                                         g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
                                         {},
                                         {
-                                            .opacity = voice_intensity * muted_opacity,
+                                            .opacity = voice_intensity * muted_opacity * grain_envelope,
                                             .col = LiveCol(UiColMap::WaveformLoopGrainMarkers),
                                         });
                 }

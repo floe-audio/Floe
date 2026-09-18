@@ -148,6 +148,7 @@ struct VoiceWaveformMarkerForGui {
 
 struct GrainMarkerForGui {
     u16 position {};
+    u8 envelope {}; // Grain's current Hann envelope value (0-255), for GUI opacity.
 };
 
 // Per-voice values shown as blips on parameter controls. press/slide are the effective MPE destination

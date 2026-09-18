@@ -382,6 +382,15 @@ ALWAYS_INLINE auto HannRise(ScalarOrVectorFloat auto x) {
     return u + T(0.0022458674f);
 }
 
+// Grain envelope value: Hann-shaped rise/fall combined with any steal fade-out, at a given phase.
+ALWAYS_INLINE auto GrainEnvelope(ScalarOrVectorFloat auto phase,
+                                 ScalarOrVectorFloat auto inv_fade,
+                                 ScalarOrVectorFloat auto steal_fade) {
+    auto const rise = Clamp01(phase * inv_fade);
+    auto const fall = Clamp01((decltype(phase)(1) - phase) * inv_fade);
+    return HannRise(rise) * HannRise(fall) * Max(steal_fade, decltype(steal_fade)(0));
+}
+
 // SIMD version where 2 pan positions are processed at once.
 // The result is a vector of 4 floats: {left 1, right 1, left 2, right 2}.
 // Constant power pan law (AKA -3dB centre).
@@ -800,13 +809,21 @@ struct VoiceProcessor {
                 }
 
                 if (ref_num_frames) {
+                    // Reuses the smoothed value this block's granular processing already computed, so
+                    // the envelope matches what was just rendered.
+                    auto const inv_fade = 1.0f / (voice.grain_pool.smoothing_smoother.prev_output * 0.5f);
+
                     voice.grain_pool.active_grains.ForEachSetBit([&](usize grain_index) {
                         auto const& grain = voice.grain_pool.grains[grain_index];
                         auto const pos = grain.playhead.RealFramePos(ref_num_frames);
                         if (pos) {
+                            auto const env =
+                                Clamp01(GrainEnvelope(grain.env_phase, inv_fade, grain.steal_fade));
+
                             grain_markers.grains[grain_markers.num_active++] = {
                                 .position = (u16)((*pos / (f64)ref_num_frames) *
                                                   (f64)LargestRepresentableValue<u16>()),
+                                .envelope = (u8)(env * 255.0f + 0.5f),
                             };
                         }
                     });
@@ -1320,11 +1337,7 @@ struct VoiceProcessor {
                     static_assert(k_block_size_max % 4 == 0);
                     for (u32 i = 0; i < buffer.size; i += 4) {
                         auto const inv_fade = *(f32x4 const*)(void const*)(&env_inv_fades[i]);
-                        auto const rise = Clamp01(phases * inv_fade);
-                        auto const fall = Clamp01((f32x4(1) - phases) * inv_fade);
-                        auto const env = HannRise(rise) * HannRise(fall);
-                        auto const fade = Max(steals, f32x4(0));
-                        auto const env_scalars = env * fade;
+                        auto const env_scalars = GrainEnvelope(phases, inv_fade, steals);
                         phases += phase_inc4;
                         steals -= steal_dec4;
 
