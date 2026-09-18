@@ -13,3 +13,5 @@ Instead, when we want to change a parameter, we must:
 - Add new version to StateVersion and handle the case to ensure old presets/DAW saves sound identical to before
 
 The only occasion where we can modify the existing parameter (and reuse a StateVersion) is when the parameter has never been shipped (`gh release view --json name --jq .name`) and therefore no users will be effected.
+
+The new parameter may keep the old `id_string` (giving the legacy one a new one instead), for `preset-tool` Lua script compatibility, only if its value range is a superset of the old one's in the same unit, so every old value still resolves to the same real value.

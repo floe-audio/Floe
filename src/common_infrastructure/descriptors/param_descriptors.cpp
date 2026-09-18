@@ -88,6 +88,7 @@ Optional<f32> ParamDescriptor::StringToLinearValue(String str,
     }
 
     switch (display_format) {
+        case ParamDisplayFormat::Float2dp: break;
         case ParamDisplayFormat::None: {
             switch (value_type) {
                 case ParamValueType::Float: {
@@ -262,6 +263,10 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
     }
 
     switch (display_format) {
+        case ParamDisplayFormat::Float2dp: {
+            result = fmt::FormatInline<k_size>("{.2}", value);
+            break;
+        }
         case ParamDisplayFormat::None: {
             switch (value_type) {
                 case ParamValueType::Float: {
@@ -685,6 +690,8 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
         case ParamIndex::LimiterCeiling: return is_on(ParamIndex::LimiterOn);
 
         case ParamIndex::LegacyMasterVelocity:
+        case ParamIndex::LegacyBitCrushBits:
+        case ParamIndex::LegacyBitCrushBitRate:
         case ParamIndex::LegacyBitCrushWet:
         case ParamIndex::LegacyBitCrushDry:
         case ParamIndex::LegacyCompressorThreshold:
@@ -790,8 +797,8 @@ constexpr auto k_non_layer_params = ArrayT<NonLayerParamId>({
     {"DistType", ParamIndex::LegacyDistortionType},
     {"DistDrive", ParamIndex::DistortionDrive},
     {"DistOn", ParamIndex::DistortionOn},
-    {"BitcBits", ParamIndex::BitCrushBits},
-    {"BitcRate", ParamIndex::BitCrushBitRate},
+    {"BitcBits", ParamIndex::LegacyBitCrushBits},
+    {"BitcRate", ParamIndex::LegacyBitCrushBitRate},
     {"BitcWet", ParamIndex::LegacyBitCrushWet},
     {"BitcDry", ParamIndex::LegacyBitCrushDry},
     {"BitcOn", ParamIndex::BitCrushOn},

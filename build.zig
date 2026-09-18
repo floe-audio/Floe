@@ -1751,6 +1751,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "processing_utils/peak_meter.cpp",
             "processing_utils/true_peak_detector.cpp",
             "processing_utils/volume_fade.cpp",
+            "processor/effect_bitcrush.cpp",
             "processor/effect_compressor.cpp",
             "processor/layer_processor.cpp",
             "processor/param.cpp",

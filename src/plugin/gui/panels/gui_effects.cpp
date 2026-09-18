@@ -1017,10 +1017,11 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::BitCrush: {
-            DoIntParameter(g,
-                           param_container,
-                           params.DescribedValue(ParamIndex::BitCrushBits),
-                           {.width = 52.0f, .greyed_out = greyed_out});
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::BitCrushBits),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
             DoKnobParameter(
                 g,
                 param_container,

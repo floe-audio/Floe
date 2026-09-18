@@ -142,7 +142,9 @@ enum class ParamIndex : u16 {
     DistortionGain,
     DistortionAutoGain,
 
+    LegacyBitCrushBits,
     BitCrushBits,
+    LegacyBitCrushBitRate,
     BitCrushBitRate,
     LegacyBitCrushWet,
     LegacyBitCrushDry,
@@ -266,6 +268,7 @@ constexpr auto k_num_parameters =
 
 enum class ParamDisplayFormat : u8 {
     None,
+    Float2dp,
     Percent,
     Percent2dp,
     Pan,
@@ -2304,19 +2307,55 @@ consteval auto CreateParams() {
     };
 
     // =====================================================================================================
-    mp(BitCrushBits) = Args {
+    mp(LegacyBitCrushBits) = Args {
         .id = id(IdRegion::Master, 6), // never change
-        .id_string = "fx.bitcrush.bits"_s,
+        .id_string = "fx.bitcrush.legacy_bits"_s,
         .value_config = val_config_helpers::Int({.range = {2, 32}, .default_val = 32}),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Legacy Bits"_s,
+        .gui_label = "Bits"_s,
+        .tooltip = "Legacy bits parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(BitCrushBits) = Args {
+        .id = id(IdRegion::Master, 153), // never change
+        .id_string = "fx.bitcrush.bits"_s,
+        .added_in_generation = 7,
+        .value_config = val_config_helpers::CustomProjected({
+            .display_format = ParamDisplayFormat::Float2dp,
+            .default_val = 32,
+            // Linear in bits (each bit is a fixed 6 dB step in quantisation noise) across the useful range,
+            // then accelerating away to the transparent end in the last fifth of the travel.
+            .projection = {.range = {1, 32},
+                           .exponent = 2.5f,
+                           .type = ParamDescriptor::Projection::Type::LinearThenExponential,
+                           .split_01 = 0.8f,
+                           .split_value = 10},
+        }),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
         .name = "Bits"_s,
         .gui_label = "Bits"_s,
         .tooltip =
             "Reduce the bit depth of the signal, adding a gritty digital noise that's most obvious in quiet passages and tails."_s,
     };
-    mp(BitCrushBitRate) = Args {
+    mp(LegacyBitCrushBitRate) = Args {
         .id = id(IdRegion::Master, 7), // never change
+        .id_string = "fx.bitcrush.legacy_bit_rate"_s,
+        .value_config = val_config_helpers::CustomProjected({
+            .display_format = ParamDisplayFormat::Hz,
+            .default_val = 44100,
+            .projection = {{256, 44100}, 3.0f},
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Legacy Sample Rate"_s,
+        .gui_label = "Samp Rate"_s,
+        .tooltip = "Legacy sample rate parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(BitCrushBitRate) = Args {
+        .id = id(IdRegion::Master, 154), // never change
         .id_string = "fx.bitcrush.bit_rate"_s,
+        .added_in_generation = 7,
         .value_config = val_config_helpers::CustomProjected({
             .display_format = ParamDisplayFormat::Hz,
             .default_val = 44100,

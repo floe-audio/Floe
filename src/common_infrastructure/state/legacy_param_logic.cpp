@@ -173,6 +173,8 @@ constexpr Optional<LayerParamIndex> SuccessorOfLegacyLayerParamIndex(LayerParamI
 constexpr Optional<ParamIndex> SuccessorOfLegacyParamIndex(ParamIndex legacy) {
     ASSERT(!LayerParamIndexAndLayerFor(legacy), "use layer version of this function");
     switch (legacy) {
+        case ParamIndex::LegacyBitCrushBits: return ParamIndex::BitCrushBits;
+        case ParamIndex::LegacyBitCrushBitRate: return ParamIndex::BitCrushBitRate;
         case ParamIndex::LegacyFilterCutoff: return ParamIndex::FilterCutoff;
         case ParamIndex::LegacyFilterResonance: return ParamIndex::FilterResonance;
         case ParamIndex::LegacyFilterGain: return ParamIndex::FilterGain;
@@ -297,6 +299,17 @@ static f32 RemapLegacyValue(ParamIndex legacy, f32 legacy_linear) {
         k_param_descriptors[ToInt(*SuccessorOfLegacyParamIndex(legacy))].default_linear_value;
 
     switch (legacy) {
+        case ParamIndex::LegacyBitCrushBits: {
+            auto const& legacy_desc = k_param_descriptors[ToInt(legacy)];
+            auto const& modern_desc = k_param_descriptors[ToInt(ParamIndex::BitCrushBits)];
+            // The legacy quantiser had 2^bits - 1 steps per unit where the modern one has 2^(bits - 1), so
+            // the same sound sits at a fractional modern bit depth.
+            auto const legacy_bits = legacy_desc.ProjectValue(legacy_linear);
+            auto const bits = 1.0f + Log2(Pow(2.0f, legacy_bits) - 1.0f);
+            return modern_desc.LineariseValue(bits, true).ValueOr(modern_desc.default_linear_value);
+        }
+        // Same unit and range. The legacy parameter exists because the DSP timing differs, not the value.
+        case ParamIndex::LegacyBitCrushBitRate: return legacy_linear;
         case ParamIndex::LegacyFilterCutoff:
             return FrequencyRemap(legacy, ParamIndex::FilterCutoff, legacy_linear);
         case ParamIndex::LegacyFilterResonance: return Clamp(Pow(legacy_linear, 2.5f), 0.0f, 1.0f);

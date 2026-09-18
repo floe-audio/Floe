@@ -21,6 +21,7 @@
     X(RegisterAudioFileTests)                                                                                \
     X(RegisterAudioUtilsTests)                                                                               \
     X(RegisterAutosaveTests)                                                                                 \
+    X(RegisterBitCrushTests)                                                                                 \
     X(RegisterBitsetTests)                                                                                   \
     X(RegisterBoundedListTests)                                                                              \
     X(RegisterChecksumFileTests)                                                                             \
