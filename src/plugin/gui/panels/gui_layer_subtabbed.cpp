@@ -1915,10 +1915,29 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
 
     // Velocity curve
     {
-        constexpr String k_velocity_curve_tooltip =
-            "This curve turns how hard you play into how loud each note sounds: velocity runs left to right, the volume it produces bottom to top. Steepen it for a wider dynamic range, or flatten it to even your playing out.\n\n"
+        constexpr String k_base_velocity_curve_tooltip =
+            "This curve turns how hard you play (typically MIDI velocity) into how loud each note sounds: velocity runs left to right, the volume it produces bottom to top. Steepen it for a wider dynamic range, or flatten it to even your playing out.\n\n"
             "Play a note and a red line appears on the curve: how far across it sits is the velocity you played, and how tall it stands is the volume you get.\n\n"
             "The curve doesn't affect which samples a multi-sampled Instrument plays.";
+
+        auto const k_velocity_curve_tooltip = ({
+            String t = k_base_velocity_curve_tooltip;
+            if (layer.arp_state.on_for_gui.Load(LoadMemoryOrder::Relaxed)) {
+                // Slices force Played mode regardless of the parameter.
+                auto const mode =
+                    layer.IsSliced()
+                        ? param_values::ArpMode::Played
+                        : params.IntValue<param_values::ArpMode>(layer_index, LayerParamIndex::ArpMode);
+                t = fmt::Format(
+                    g.builder.arena,
+                    "{}\n\n{}",
+                    k_base_velocity_curve_tooltip,
+                    mode == param_values::ArpMode::Fixed
+                        ? "The arpeggiator is running on this layer in Fixed Notes mode, so it's each step's own velocity that reaches this curve — how hard you play the notes that trigger the sequence doesn't come into it."_s
+                        : "The arpeggiator is running on this layer, so what reaches this curve is each step's velocity scaled by how hard you play the note that triggers the sequence — at the softest playing (e.g. MIDI velocity 1) the step velocities are 50% as intense, while at the hardest (velocity 127) they reach their full intensity. The red line follows that combined value."_s);
+            }
+            t;
+        });
 
         auto const col = DoBox(g.builder,
                                {

@@ -222,7 +222,7 @@ void DoArpStepSequencer(GuiState& g,
                             arp_state.steps[cursor_step].Load(LoadMemoryOrder::Relaxed).Velocity01()));
                 }},
                 .tooltip =
-                    "The height of each bar is that step's velocity. How velocity translates to volume is shaped by the curve on the CONFIG tab.\n\nTip: drag sideways across the bars to draw in a whole pattern in one go."_s,
+                    "The height of each bar is that step's velocity. How velocity translates to volume is shaped by the curve on the CONFIG tab. In Played Notes mode, how hard you play the note that triggers the sequence (typically MIDI velocity) also scales the step velocities — at the softest playing (e.g. MIDI velocity 1) the step velocities are 50% as intense, while at the hardest (velocity 127) they reach their full intensity.\n\nTip: drag sideways across the bars to draw in a whole pattern in one go."_s,
                 .tooltip_footer = "Click and drag to set. " MODIFIER_KEY_NAME
                                   "-click to reset. Right-click for more options."_s,
                 .avoid_r = rect,
