@@ -11,6 +11,7 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/controls/gui_bit_crush_display.hpp"
 #include "gui/controls/gui_distortion_display.hpp"
 #include "gui/controls/gui_filter_graphs.hpp"
 #include "gui/core/custom_icons.hpp"
@@ -1017,6 +1018,15 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::BitCrush: {
+            auto const vis_box = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = {120, 50},
+                                           },
+                                       });
+            if (auto const r = BoxRect(g.builder, vis_box)) DoBitCrushDisplay(g, *r, greyed_out);
+
             DoKnobParameter(
                 g,
                 param_container,

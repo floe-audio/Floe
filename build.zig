@@ -1680,6 +1680,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "engine/shared_engine_systems.cpp",
             "engine/undo.cpp",
             "gui/controls/gui_arp_step_sequencer.cpp",
+            "gui/controls/gui_bit_crush_display.cpp",
             "gui/controls/gui_curve_map.cpp",
             "gui/controls/gui_envelope.cpp",
             "gui/controls/gui_filter_graph_draw.cpp",
