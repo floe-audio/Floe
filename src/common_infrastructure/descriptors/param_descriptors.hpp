@@ -2336,7 +2336,7 @@ consteval auto CreateParams() {
         .name = "Bits"_s,
         .gui_label = "Bits"_s,
         .tooltip =
-            "Reduce the bit depth of the signal, adding a gritty digital noise that's most obvious in quiet passages and tails."_s,
+            "Reduce the bit depth of the signal, adding a gritty digital noise that's most obvious in quiet passages and tails. At the lowest settings quiet signals quantise to silence, so feed the effect hot."_s,
     };
     mp(LegacyBitCrushBitRate) = Args {
         .id = id(IdRegion::Master, 7), // never change
