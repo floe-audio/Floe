@@ -27,10 +27,12 @@ static bool ShouldSkipIr(IrBrowserContext const& context,
                          sample_lib::ImpulseResponse const& ir) {
     if (state.common_state.search.size && !IrMatchesSearch(ir, state.common_state.search)) return true;
 
+    if (state.common_state.favourites.HasSelected() &&
+        !IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(ir)))
+        return true;
+
     return IsFilteredOut(state.common_state, [&](usize index, FilterSelection const& filter) -> bool {
         switch ((BrowserFilter)index) {
-            case BrowserFilter::Favourites:
-                return IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(ir));
             case BrowserFilter::Folder:
                 return MatchesFilterValues(filter, state.common_state.filter_mode, [&](String, u64 key) {
                     return IsInsideFolder(ir.folder, key);
@@ -314,6 +316,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
     auto root_folder = FolderRootSet::Create(builder.arena, 8);
 
     FilterItemInfo favourites_info {};
+    u32 num_results = 0;
 
     for (auto const l : libs) {
         if (l->irs_by_id.size == 0) continue;
@@ -326,6 +329,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
 
         for (auto const& ir : l->sorted_irs) {
             auto const skip = ShouldSkipIr(context, state, *ir);
+            if (!skip) ++num_results;
 
             if (IsFavourite(context.prefs, k_favourite_ir_key, sample_lib::PersistentIrHash(*ir))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
@@ -370,6 +374,13 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
 
             auto const lib = context.frame_context.lib_table.Find(ir_id->library);
             auto const ir = lib ? (*lib)->irs_by_id.Find((String)ir_id->ir_id) : nullptr;
+            if (ir) {
+                status.collection = BrowserCollection {
+                    .filter = BrowserFilter::Library,
+                    .key = (*lib)->id,
+                    .name = (*lib)->name,
+                };
+            }
             if (!ir) {
                 if (state.common_state.items_still_loading) {
                     status.visibility = Visibility::Loading;
@@ -395,51 +406,58 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
         status;
     });
 
+    auto const library_collection = [&](sample_lib::Library const& lib) {
+        auto const info = libraries.Find(lib.id);
+        return LibraryCollection(builder.arena, lib, info ? info->total_available : 0);
+    };
+    auto const collection_of_library = [&](sample_lib::LibraryId id) -> Optional<BrowserCollection> {
+        for (auto const l : libs)
+            if (l->id == id) return library_collection(*l);
+        return k_nullopt;
+    };
+    // The library whose root folder this is.
+    auto const library_collection_of_root = [&](FolderNode const& root) -> Optional<BrowserCollection> {
+        for (auto const l : libs)
+            if (&l->root_folders[ToInt(sample_lib::ResourceType::Ir)] == &root) return library_collection(*l);
+        return k_nullopt;
+    };
+
     DoBrowserModal(
         builder,
         {
             .browser_id = state.k_panel_id,
             .sample_library_server = context.sample_library_server,
+            .library_images = context.library_images,
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
             .instance_index = context.engine.instance_index,
         },
         BrowserPopupOptions {
-            .title = "Impulse Response",
-            .height = 600,
-            .rhs_width = 230,
+            .height = ({
+                auto const window_height = GuiIo().in.window_size.height;
+                auto const& button_rect = state.common_state.absolute_button_rect;
+                auto const space_below = window_height - button_rect.Bottom() - WwToPixels(20.0f);
+                auto const space_above = button_rect.y - WwToPixels(20.0f);
+                Min(600.0f, PixelsToWw(Max(space_below, space_above)));
+            }),
+            .results_width = 230,
             .filters_col_width = 230,
+            .size_store_id = HashFnv1a("ir-browser"),
+            .flush_with_opener = true,
             .item_type_name = "impulse response",
-            .rhs_top_button =
-                BrowserPopupOptions::Button {
-                    .text = fmt::Format(builder.arena,
-                                        "Unload {}",
-                                        ir_id ? ({
-                                            auto n = IrName(context.engine);
-                                            usize constexpr k_max_len = 10;
-                                            if (n.size > k_max_len)
-                                                n = fmt::Format(
-                                                    builder.arena,
-                                                    "{}…",
-                                                    n.SubSpan(0, FindUtf8TruncationPoint(n, k_max_len)));
-                                            n;
-                                        })
-                                              : "IR"_s),
-                    .tooltip = "Unload the current impulse response.",
-                    .disabled = !ir_id,
-                    .on_fired = TrivialFunctionRef<void()>([&]() {
-                                    LoadConvolutionIr(context.engine, k_nullopt);
-                                    builder.imgui.CloseModal(state.k_panel_id);
-                                }).CloneObject(builder.arena),
-                },
-            .rhs_do_items = [&](GuiBuilder& builder) { IrBrowserItems(builder, context, state); },
+            .plural_item_type_name = "impulse responses",
+            .do_items = [&](GuiBuilder& builder) { IrBrowserItems(builder, context, state); },
             .filter_search_placeholder_text = "Search libraries/tags",
             .item_search_placeholder_text = "Search IRs",
-            .on_load_previous = [&]() { LoadAdjacentIr(context, state, SearchDirection::Backward); },
-            .on_load_next = [&]() { LoadAdjacentIr(context, state, SearchDirection::Forward); },
-            .on_load_random = [&]() { LoadRandomIr(context, state); },
             .current_item = current_item,
+            .browse_scope = CurrentBrowseScope(state.common_state,
+                                               {
+                                                   .collection_noun = "library"_s,
+                                                   .folders = folders,
+                                                   .collection_of_root = library_collection_of_root,
+                                                   .collection_of_library = collection_of_library,
+                                               }),
             .library_filters =
                 LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
@@ -447,7 +465,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
                     .instance_index = context.engine.instance_index,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .card_view = true,
+                    .collection_view = true,
                     .resource_type = sample_lib::ResourceType::Ir,
                     .folders = folders,
                     .error_notifications = context.engine.error_notifications,
@@ -456,5 +474,6 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
                 },
             .tags_filters = tags_filters,
             .favourites_filter_info = favourites_info,
+            .num_results = num_results,
         });
 }

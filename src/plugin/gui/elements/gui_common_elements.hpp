@@ -38,7 +38,10 @@ constexpr f32 k_mid_button_height = 22.4f;
 
 // Reusable row with prev/next arrow buttons. Add your content to the row, then call
 // DoMidPanelPrevNextButtons.
-Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width);
+Box DoMidPanelPrevNextRow(GuiBuilder& builder,
+                          Optional<Box> parent,
+                          f32 width,
+                          Corners round_corners = 0b1111);
 
 struct MidPanelPrevNextButtonsResult {
     bool prev_fired;

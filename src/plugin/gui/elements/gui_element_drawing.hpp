@@ -15,6 +15,9 @@
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {}, f32 opacity = 1);
 
+// Three diagonal lines filling the rect's bottom-right triangle, the classic corner grip.
+void DrawResizeCornerGrip(imgui::Context const& imgui, Rect r, u32 colour);
+
 struct VoiceMarkerLineOptions {
     f32 opacity = 1;
     u32 col = LiveCol(UiColMap::WaveformLoopVoiceMarkers);
@@ -138,5 +141,6 @@ void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollba
 
 void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
 void DrawModalScrollbarsDarkMode(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
+void DrawFullscreenDim(imgui::Context const& imgui);
 void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui);
 void DrawOverlayViewportBackground(imgui::Context const& imgui);

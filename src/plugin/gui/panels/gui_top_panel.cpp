@@ -19,6 +19,7 @@
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/panels/gui_attribution_panel.hpp"
+#include "gui/panels/gui_common_browser.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
 #include "gui/panels/gui_ir_browser.hpp"
 #include "gui/panels/gui_legacy_params_panel.hpp"
@@ -185,106 +186,77 @@ static void DoDotsMenu(GuiState& g) {
     }
 }
 
-static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context) {
-    auto const root_size = PixelsToWw(builder.imgui.CurrentVpSize());
-    auto root = DoBox(builder,
-                      {
-                          .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
-                          .layout {
-                              .size = root_size,
-                              .contents_padding = {.lr = k_default_spacing},
-                              .contents_gap = k_default_spacing,
-                              .contents_direction = layout::Direction::Row,
-                              .contents_align = layout::Alignment::Start,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                          .name = "top-panel"_s,
-                      });
-
-    // Scales the size keeping the aspect ratio, so that it fits within the given height.
-    auto scale_size_to_fit_height = [&](f32x2 size, f32 height) {
-        return f32x2 {size.x * (height / size.y), height};
-    };
-
-    auto const logo_image = LogoImage(g);
-    if (logo_image && All(logo_image->size.ToFloat2() > f32x2(0)))
-        DoBox(builder,
-              {
-                  .parent = root,
-                  .background_tex = logo_image.NullableValue(),
-                  .layout {
-                      .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
-                  },
-              });
-
+static Box DoTopPanelIconButton(GuiBuilder& builder,
+                                Box parent,
+                                String icon,
+                                String tooltip,
+                                f32 font_scale,
+                                f32 padding_x,
+                                Col colour = {.c = Col::Subtext1, .dark_mode = true},
+                                u64 id_extra = SourceLocationHash(),
+                                bool disabled = false,
+                                TooltipString value_popup = k_nullopt) {
+    // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
+    auto const button = DoBox(builder,
+                              {
+                                  .parent = parent,
+                                  .id_extra = id_extra,
+                                  .layout {
+                                      .size = layout::k_hug_contents,
+                                      .contents_padding = {.lr = padding_x, .tb = 3},
+                                  },
+                                  .value_popup = value_popup,
+                                  .tooltip = tooltip,
+                                  .button_behaviour = imgui::ButtonConfig {},
+                              });
     DoBox(builder,
           {
-              .parent = root,
-              .text = fmt::Format(builder.arena,
-                                  "v" FLOE_VERSION_STRING "  {}",
-                                  prefs::GetBool(g.engine.shared_engine_systems.prefs,
-                                                 SettingDescriptor(GuiPreference::ShowInstanceName))
-                                      ? String {InstanceId(g.engine.autosave_state)}
-                                      : ""_s),
+              .parent = button,
+              .text = icon,
               .size_from_text = true,
-              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .font = FontType::Icons,
+              .font_size = k_font_icons_size * font_scale,
+              .text_colours =
+                  ColSet {
+                      .base = colour,
+                      .hot = disabled ? colour : Col {.c = Col::Highlight},
+                      .active = disabled ? colour : Col {.c = Col::Highlight},
+                  },
+              .parent_dictates_hot_and_active = true,
           });
+    return button;
+}
 
-    auto const do_icon_button = [&](Box parent,
-                                    String icon,
-                                    String tooltip,
-                                    f32 font_scale,
-                                    f32 padding_x,
-                                    Col colour = {.c = Col::Subtext1, .dark_mode = true},
-                                    u64 id_extra = SourceLocationHash(),
-                                    bool disabled = false,
-                                    TooltipString value_popup = k_nullopt) {
-        // We use a wrapper so that the interactable area is larger and touches the adjacent buttons.
-        auto const button = DoBox(builder,
-                                  {
-                                      .parent = parent,
-                                      .id_extra = id_extra,
-                                      .layout {
-                                          .size = layout::k_hug_contents,
-                                          .contents_padding = {.lr = padding_x, .tb = 3},
-                                      },
-                                      .value_popup = value_popup,
-                                      .tooltip = tooltip,
-                                      .button_behaviour = imgui::ButtonConfig {},
-                                  });
-        DoBox(builder,
-              {
-                  .parent = button,
-                  .text = icon,
-                  .size_from_text = true,
-                  .font = FontType::Icons,
-                  .font_size = k_font_icons_size * font_scale,
-                  .text_colours =
-                      ColSet {
-                          .base = colour,
-                          .hot = disabled ? colour : Col {.c = Col::Highlight},
-                          .active = disabled ? colour : Col {.c = Col::Highlight},
-                      },
-                  .parent_dictates_hot_and_active = true,
-              });
-        return button;
-    };
+// Run via DoBrowserOpenerViewport: while the preset browser is open, the box floats above the modal's dim
+// and stays interactable, with the browser flush beneath it so the two read as one element.
+static void DoPresetBox(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context) {
+    auto const browser_id = g.preset_browser_state.k_panel_id;
+    auto const browser_open = g.imgui.IsModalOpen(browser_id);
+
+    auto preset_box = DoBox(builder,
+                            {
+                                .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
+                                .round_background_corners =
+                                    BrowserOpenerCornersToRound(builder.imgui,
+                                                                browser_id,
+                                                                builder.imgui.curr_viewport->unpadded_bounds),
+                                .corner_rounding = k_corner_rounding,
+                                .layout {
+                                    .size = PixelsToWw(builder.imgui.CurrentVpSize()),
+                                    .contents_padding = {.l = 7, .r = 4, .tb = 2},
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                },
+                                .name = "top-panel.preset-box"_s,
+                            });
+
+    if (browser_open)
+        if (auto const r = BoxRect(builder, preset_box))
+            g.preset_browser_state.common_state.absolute_button_rect =
+                builder.imgui.ViewportRectToWindowRect(*r);
 
     {
-        auto preset_box = DoBox(builder,
-                                {
-                                    .parent = root,
-                                    .background_fill_colours = Col {.c = Col::Surface0, .dark_mode = true},
-                                    .round_background_corners = 0b1111,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_padding = {.l = 7, .r = 4, .tb = 2},
-                                        .contents_direction = layout::Direction::Row,
-                                        .contents_align = layout::Alignment::Start,
-                                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                    },
-                                });
-
         // Don't allow multi-line description to overflow.
         bool pop_clip_rect = false;
         if (auto const r = BoxRect(g.builder, preset_box)) {
@@ -309,9 +281,14 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             });
 
         if (preset_box_left.button_fired) {
-            g.imgui.OpenModalViewport(g.preset_browser_state.k_panel_id);
-            g.preset_browser_state.common_state.absolute_button_rect =
-                g.imgui.ViewportRectToWindowRect(*BoxRect(builder, preset_box_left));
+            if (browser_open)
+                g.imgui.CloseModal(browser_id);
+            else {
+                g.imgui.OpenModalViewport(browser_id);
+                if (auto const r = BoxRect(builder, preset_box))
+                    g.preset_browser_state.common_state.absolute_button_rect =
+                        builder.imgui.ViewportRectToWindowRect(*r);
+            }
         }
         if (preset_box_left.is_hot) StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
 
@@ -424,7 +401,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_next = do_icon_button(
+            auto const preset_next = DoTopPanelIconButton(
+                builder,
                 preset_box,
                 ICON_FA_CARET_LEFT,
                 "Step to the previous preset. A quick way to audition sounds without opening the browser.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
@@ -452,7 +430,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_prev = do_icon_button(
+            auto const preset_prev = DoTopPanelIconButton(
+                builder,
                 preset_box,
                 ICON_FA_CARET_RIGHT,
                 "Step to the next preset. A quick way to audition sounds without opening the browser.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
@@ -480,7 +459,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_random = do_icon_button(
+            auto const preset_random = DoTopPanelIconButton(
+                builder,
                 preset_box,
                 ICON_FA_SHUFFLE,
                 "Jump to a random preset. A quick way to stumble upon sounds you might not have picked yourself.\n\n" PRESET_BROWSER_FILTERS_TOOLTIP_NOTE
@@ -508,7 +488,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_save = do_icon_button(
+            auto const preset_save = DoTopPanelIconButton(
+                builder,
                 preset_box,
                 ICON_FA_FLOPPY_DISK,
                 "Open the save panel.\n\nFrom there you can set the preset's name, tags, description and other details, then either overwrite the existing preset or save it as a new file."_s,
@@ -518,7 +499,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         }
 
         {
-            auto const preset_load = do_icon_button(
+            auto const preset_load = DoTopPanelIconButton(
+                builder,
                 preset_box,
                 ICON_FA_FILE_IMPORT,
                 "Open a file browser to load a preset file from anywhere on your computer. The file doesn't need to be in one of Floe's preset folders."_s,
@@ -529,6 +511,73 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                          g.shared_engine_systems.paths,
                                          g.shared_engine_systems.persistent_store);
         }
+    }
+}
+
+static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context) {
+    auto const root_size = PixelsToWw(builder.imgui.CurrentVpSize());
+    auto root = DoBox(builder,
+                      {
+                          .background_fill_colours = Col {.c = Col::Background0, .dark_mode = true},
+                          .layout {
+                              .size = root_size,
+                              .contents_padding = {.lr = k_default_spacing},
+                              .contents_gap = k_default_spacing,
+                              .contents_direction = layout::Direction::Row,
+                              .contents_align = layout::Alignment::Start,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                          .name = "top-panel"_s,
+                      });
+
+    // Scales the size keeping the aspect ratio, so that it fits within the given height.
+    auto scale_size_to_fit_height = [&](f32x2 size, f32 height) {
+        return f32x2 {size.x * (height / size.y), height};
+    };
+
+    auto const logo_image = LogoImage(g);
+    if (logo_image && All(logo_image->size.ToFloat2() > f32x2(0)))
+        DoBox(builder,
+              {
+                  .parent = root,
+                  .background_tex = logo_image.NullableValue(),
+                  .layout {
+                      .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
+                  },
+              });
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = fmt::Format(builder.arena,
+                                  "v" FLOE_VERSION_STRING "  {}",
+                                  prefs::GetBool(g.engine.shared_engine_systems.prefs,
+                                                 SettingDescriptor(GuiPreference::ShowInstanceName))
+                                      ? String {InstanceId(g.engine.autosave_state)}
+                                      : ""_s),
+              .size_from_text = true,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+          });
+
+    {
+        auto const preset_box_bounds =
+            DoBox(builder,
+                  {
+                      .parent = root,
+                      .layout {
+                          // The name and description column plus the box's vertical padding.
+                          .size = {layout::k_fill_parent, k_font_body_size + k_font_body_italic_size + 4},
+                      },
+                  });
+        DoBrowserOpenerViewport(
+            builder,
+            {
+                .browser_id = g.preset_browser_state.k_panel_id,
+                .viewport_id = builder.imgui.MakeId("PresetBox"),
+                .bounds = preset_box_bounds,
+                .run = [&g, &frame_context](GuiBuilder& builder) { DoPresetBox(builder, g, frame_context); },
+                .debug_name = "preset-box",
+            });
     }
 
     auto right_icon_buttons_container = DoBox(builder,
@@ -542,7 +591,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
     // preferences
     {
-        auto const prefs_button = do_icon_button(
+        auto const prefs_button = DoTopPanelIconButton(
+            builder,
             right_icon_buttons_container,
             ICON_FA_GEAR,
             "Open the Preferences window.\n\nPreferences are settings for Floe itself rather than for your sound: how the interface looks, which folders Floe scans for libraries and presets, and where you install packages of sample libraries and presets. They're saved on your computer and apply to every instance of Floe."_s,
@@ -553,7 +603,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
     // performance controls
     {
-        auto const perf_config_button = do_icon_button(
+        auto const perf_config_button = DoTopPanelIconButton(
+            builder,
             right_icon_buttons_container,
             ICON_FA_GAUGE,
             "Open the Performance Controls window.\n\nPerformance Controls shape how you play Floe: mostly MIDI settings, plus options for making performances exactly reproducible. They're saved with this instance of Floe in your DAW project. Loading a preset never changes them, so you can set up your MIDI controls once and flick through presets freely."_s,
@@ -568,7 +619,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         auto const next = g.engine.undo_history.NextUndoName();
         auto const value_popup =
             next ? (String)fmt::Format(builder.arena, "Undo: {}", *next) : "Nothing to undo"_s;
-        auto const undo_button = do_icon_button(
+        auto const undo_button = DoTopPanelIconButton(
+            builder,
             right_icon_buttons_container,
             ICON_FA_ARROW_ROTATE_LEFT,
             fmt::Format(
@@ -589,7 +641,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         auto const next = g.engine.undo_history.NextRedoName();
         auto const value_popup =
             next ? (String)fmt::Format(builder.arena, "Redo: {}", *next) : "Nothing to redo"_s;
-        auto const redo_button = do_icon_button(
+        auto const redo_button = DoTopPanelIconButton(
+            builder,
             right_icon_buttons_container,
             ICON_FA_ARROW_ROTATE_RIGHT,
             "Redo the change you just undid.\n\nRedo is only available after using undo. If you make a new change instead, the redo history is cleared."_s,
@@ -604,12 +657,13 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
     // attribution
     if (g.engine.attribution_requirements.formatted_text.size) {
-        auto const attribution_button = do_icon_button(right_icon_buttons_container,
-                                                       ICON_FA_FILE_SIGNATURE,
-                                                       "Open attribution requirements"_s,
-                                                       0.9f,
-                                                       5,
-                                                       Col {.c = Col::Red});
+        auto const attribution_button = DoTopPanelIconButton(builder,
+                                                             right_icon_buttons_container,
+                                                             ICON_FA_FILE_SIGNATURE,
+                                                             "Open attribution requirements"_s,
+                                                             0.9f,
+                                                             5,
+                                                             Col {.c = Col::Red});
         if (attribution_button.button_fired) g.imgui.OpenModalViewport(AttributionPanelContext::k_panel_id);
     }
 
@@ -625,11 +679,13 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             g.show_new_version_indicator = true;
         }
 
-        auto const dots_button = do_icon_button(right_icon_buttons_container,
-                                                ICON_FA_ELLIPSIS_VERTICAL,
-                                                "Open the Main Menu, with more options and information."_s,
-                                                1.0f,
-                                                6);
+        auto const dots_button =
+            DoTopPanelIconButton(builder,
+                                 right_icon_buttons_container,
+                                 ICON_FA_ELLIPSIS_VERTICAL,
+                                 "Open the Main Menu, with more options and information."_s,
+                                 1.0f,
+                                 6);
         if (g.show_new_version_indicator) {
             DoBox(builder,
                   {

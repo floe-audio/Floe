@@ -320,6 +320,7 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
         g.mid_panel_state.tab = tab;
         break;
     }
+    LayerPanelPreUpdate(g);
 
     DoBoxViewport(
         g.builder,
@@ -382,8 +383,6 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
                             break;
                         case MidPanelTab::Count: break;
                     }
-
-                    LayerPanelPreUpdate(g);
                 },
             .bounds = bounds,
             .imgui_id = SourceLocationHash(),

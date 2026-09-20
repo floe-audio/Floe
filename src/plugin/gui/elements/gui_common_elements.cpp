@@ -23,12 +23,12 @@ static ColSet MidIconButtonColours(bool greyed_out, bool is_on = false) {
     };
 }
 
-Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
+Box DoMidPanelPrevNextRow(GuiBuilder& builder, Optional<Box> parent, f32 width, Corners round_corners) {
     return DoBox(builder,
                  {
                      .parent = parent,
                      .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
-                     .round_background_corners = 0b1111,
+                     .round_background_corners = round_corners,
                      .corner_rounding = k_corner_rounding,
                      .layout {
                          .size = {width, layout::k_hug_contents},

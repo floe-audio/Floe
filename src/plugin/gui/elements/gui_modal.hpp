@@ -54,6 +54,9 @@ struct DividerOptions {
     bool vertical = false;
     bool subtle = false;
     bool dark_mode = false;
+    // Put the line on the first pixel row/column of its box instead of the centre, so that it sits flush
+    // against whatever precedes it even when the layout lands on a sub-pixel position.
+    bool snap_to_start = false;
 };
 Box DoModalDivider(GuiBuilder& builder,
                    Box parent,

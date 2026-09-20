@@ -106,11 +106,11 @@ Box DoModalDivider(GuiBuilder& builder, Box parent, DividerOptions options, u64 
         f32x2 p_min;
         f32x2 p_max;
         if (options.horizontal) {
-            auto const y = Round(r.Centre().y);
+            auto const y = options.snap_to_start ? Floor(r.y) : Round(r.Centre().y);
             p_min = {Floor(r.x), y};
             p_max = {Ceil(r.Right()), y + 1.0f};
         } else {
-            auto const x = Round(r.Centre().x);
+            auto const x = options.snap_to_start ? Floor(r.x) : Round(r.Centre().x);
             p_min = {x, Floor(r.y)};
             p_max = {x + 1.0f, Ceil(r.Bottom())};
         }

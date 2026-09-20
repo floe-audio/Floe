@@ -392,25 +392,20 @@ static void DoIrSelectorRightClickMenu(GuiState& g, Box selector_button) {
     });
 }
 
-static void DoImpulseResponseSelector(GuiState& g,
-                                      GuiFrameContext const& frame_context,
-                                      Box param_container,
-                                      bool greyed_out) {
+// Run via DoBrowserOpenerViewport: while the IR browser is open, the row floats above the modal's dim and
+// stays interactable, with the browser flush against it so the two read as one element.
+static void DoImpulseResponseSelectorRow(GuiState& g, GuiFrameContext const& frame_context, bool greyed_out) {
     auto const ir_name = IrName(g.engine);
-
-    // Selector row
-    auto const selector_row = DoBox(g.builder,
-                                    {
-                                        .parent = param_container,
-                                        .layout {
-                                            .size = {193, layout::k_hug_contents},
-                                            .contents_padding {.r = 3},
-                                            .contents_direction = layout::Direction::Column,
-                                        },
-                                    });
+    auto const browser_id = g.ir_browser_state.k_panel_id;
+    auto const window_r = g.imgui.curr_viewport->unpadded_bounds;
 
     // Row for button + arrows + shuffle
-    auto const btn_row = DoMidPanelPrevNextRow(g.builder, selector_row, layout::k_fill_parent);
+    auto const btn_row = DoMidPanelPrevNextRow(g.builder,
+                                               k_nullopt,
+                                               PixelsToWw(window_r.w),
+                                               BrowserOpenerCornersToRound(g.imgui, browser_id, window_r));
+
+    if (g.imgui.IsModalOpen(browser_id)) g.ir_browser_state.common_state.absolute_button_rect = window_r;
 
     // IR name button
     auto const ir_btn = DoBox(
@@ -445,9 +440,12 @@ static void DoImpulseResponseSelector(GuiState& g,
         });
 
     if (ir_btn.button_fired) {
-        g.imgui.OpenModalViewport(g.ir_browser_state.k_panel_id);
-        if (auto const r = BoxRect(g.builder, ir_btn))
-            g.ir_browser_state.common_state.absolute_button_rect = g.imgui.ViewportRectToWindowRect(*r);
+        if (g.imgui.IsModalOpen(browser_id))
+            g.imgui.CloseModal(browser_id);
+        else {
+            g.imgui.OpenModalViewport(browser_id);
+            g.ir_browser_state.common_state.absolute_button_rect = window_r;
+        }
     }
 
     DoIrSelectorRightClickMenu(g, ir_btn);
@@ -500,6 +498,40 @@ static void DoImpulseResponseSelector(GuiState& g,
                                                      .greyed_out = greyed_out || !has_ir,
                                                  });
     if (unload_btn.button_fired && has_ir) LoadConvolutionIr(g.engine, k_nullopt);
+}
+
+static void DoImpulseResponseSelector(GuiState& g,
+                                      GuiFrameContext const& frame_context,
+                                      Box param_container,
+                                      bool greyed_out) {
+    // Selector row
+    auto const selector_row = DoBox(g.builder,
+                                    {
+                                        .parent = param_container,
+                                        .layout {
+                                            .size = {193, layout::k_hug_contents},
+                                            .contents_padding {.r = 3},
+                                            .contents_direction = layout::Direction::Column,
+                                        },
+                                    });
+
+    auto const btn_row_bounds = DoBox(g.builder,
+                                      {
+                                          .parent = selector_row,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, k_mid_button_height},
+                                          },
+                                      });
+    DoBrowserOpenerViewport(
+        g.builder,
+        {
+            .browser_id = g.ir_browser_state.k_panel_id,
+            .viewport_id = g.imgui.MakeId("ir-selector"),
+            .bounds = btn_row_bounds,
+            .run = [&g, &frame_context, greyed_out](
+                       GuiBuilder&) { DoImpulseResponseSelectorRow(g, frame_context, greyed_out); },
+            .debug_name = "ir-selector",
+        });
 
     // Label below
     DoBox(g.builder,

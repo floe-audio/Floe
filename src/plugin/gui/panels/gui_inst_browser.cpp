@@ -38,10 +38,12 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
 
+    if (common_state.favourites.HasSelected() &&
+        !IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst)))
+        return true;
+
     return IsFilteredOut(common_state, [&](usize index, FilterSelection const& filter) -> bool {
         switch ((BrowserFilter)index) {
-            case BrowserFilter::Favourites:
-                return IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst));
             case BrowserFilter::Folder:
                 return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
                     return IsInsideFolder(inst.folder, key);
@@ -467,38 +469,60 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
 
     bool const is_browser_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-full"_s);
-    bool const is_filter_card_screenshot = context.layer.index == 0 && IsScreenshotRequest("filter-card"_s);
-    bool const is_filter_card_all_selected =
-        context.layer.index == 0 && IsScreenshotRequest("filter-card-all-selected"_s);
-    bool const is_filter_card_body_item =
-        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-item-selected"_s);
-    bool const is_filter_card_body_tree =
-        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-tree"_s);
-    bool const is_any_filter_card_screenshot = is_filter_card_screenshot || is_filter_card_all_selected ||
-                                               is_filter_card_body_item || is_filter_card_body_tree;
-    bool const is_filter_button_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("filter-button"_s);
+    bool const is_filter_collection_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("filter-collection"_s);
+    bool const is_filter_collection_all_selected =
+        context.layer.index == 0 && IsScreenshotRequest("filter-collection-all-selected"_s);
+    bool const is_filter_collection_folder_selected =
+        context.layer.index == 0 && IsScreenshotRequest("filter-collection-folder-selected"_s);
+    bool const is_filter_collection_folder_tree =
+        context.layer.index == 0 && IsScreenshotRequest("filter-collection-folder-tree"_s);
+    bool const is_any_filter_collection_screenshot =
+        is_filter_collection_screenshot || is_filter_collection_all_selected ||
+        is_filter_collection_folder_selected || is_filter_collection_folder_tree;
     bool const is_browser_menu_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-menu"_s);
-    bool const is_simple_list_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("browser-simple"_s);
-    bool const is_simple_card_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("browser-simple-card"_s);
+    bool const is_browse_list_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("browser-browse"_s);
+    bool const is_browse_section_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("browser-browse-section"_s);
+    bool const is_browse_collection_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("browser-browse-collection"_s);
+    bool const is_browse_attribute_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("browser-browse-attribute"_s);
 
-    if ((is_browser_screenshot || is_any_filter_card_screenshot || is_filter_button_screenshot ||
-         is_browser_menu_screenshot || is_simple_list_screenshot || is_simple_card_screenshot) &&
+    if ((is_browser_screenshot || is_any_filter_collection_screenshot || is_browser_menu_screenshot ||
+         is_browse_list_screenshot || is_browse_section_screenshot || is_browse_collection_screenshot ||
+         is_browse_attribute_screenshot) &&
         !builder.imgui.IsModalOpen(state.id))
         builder.imgui.OpenModalViewport(state.id);
+
+    if (is_browse_attribute_screenshot) {
+        state.common_state.ClearAll();
+        state.common_state.browse.open_attribute = (u8)BrowserFilter::Tags;
+    }
 
     if (!builder.imgui.IsModalOpen(state.id)) return;
     auto const& libs = context.frame_context.libraries;
 
-    if (is_browser_screenshot) {
-        // Add a tag filter so the screenshot is more interesting than an empty browser.
+    if (is_browser_screenshot || is_browser_menu_screenshot) {
+        // Add a tag filter so the screenshot is more interesting than an empty browser. The browser-menu
+        // screenshot captures the match menu, which needs 2 or more selected filters to exist.
         auto& tag_filter = state.common_state.Filter(BrowserFilter::Tags);
         if (!tag_filter.Contains((u64)TagType::Ambient)) tag_filter.Add((u64)TagType::Ambient, "ambient"_s);
+        if (is_browser_menu_screenshot && !tag_filter.Contains((u64)TagType::Warm))
+            tag_filter.Add((u64)TagType::Warm, "warm"_s);
+        // A library too, so the Filter-mode screenshot shows filters combining.
+        if (is_browser_screenshot) {
+            auto& library_filter = state.common_state.Filter(BrowserFilter::Library);
+            for (auto const l : libs) {
+                if (l->name != "Lost Reveries"_s) continue;
+                if (!library_filter.Contains(l->id)) library_filter.Add(l->id, l->name);
+                break;
+            }
+        }
     }
 
-    if (is_any_filter_card_screenshot || is_simple_card_screenshot) {
+    if (is_any_filter_collection_screenshot || is_browse_collection_screenshot) {
         sample_lib::Library const* picked = nullptr;
         for (auto const l : libs) {
             if (l->sorted_instruments.size == 0) continue;
@@ -509,7 +533,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             if (!picked) picked = &*l;
         }
         if (picked) {
-            auto const collapse_id = picked->id ^ HashFnv1a("card-collapse");
+            auto const collapse_id = CollectionCollapseId(picked->id);
             if (!Contains(state.common_state.expanded_filter_headers, collapse_id))
                 dyn::Append(state.common_state.expanded_filter_headers, collapse_id);
 
@@ -520,17 +544,16 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 if (!filter.Contains(key)) filter.Add(key, name);
             };
 
-            if (is_simple_card_screenshot) {
+            if (is_browse_collection_screenshot) {
                 // The pick can change as libraries finish scanning, so replace rather than accumulate.
                 state.common_state.ClearAll();
-                state.common_state.simple_view_open_card = picked->id;
                 add_unique(BrowserFilter::Library, picked->id, picked->name);
-            } else if (is_filter_card_all_selected) {
+            } else if (is_filter_collection_all_selected) {
                 add_unique(BrowserFilter::Library, picked->id, picked->name);
-            } else if (is_filter_card_body_item) {
+            } else if (is_filter_collection_folder_selected) {
                 if (auto* child = root->first_child)
                     add_unique(BrowserFilter::Folder, child->Hash(), child->name);
-            } else if (is_filter_card_body_tree) {
+            } else if (is_filter_collection_folder_tree) {
                 FolderNode const* tree = nullptr;
                 for (auto* c = root->first_child; c; c = c->next) {
                     if (c->name == "Mic Options"_s) {
@@ -555,6 +578,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
     auto root_folder = FolderRootSet::Create(builder.arena, 8);
 
     FilterItemInfo favourites_info {};
+    u32 num_results = 0;
 
     for (auto const l : libs) {
         if (l->sorted_instruments.size == 0) continue;
@@ -567,6 +591,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
 
         for (auto const& inst : l->sorted_instruments) {
             auto const skip = ShouldSkipInstrument(context, state, *inst);
+            if (!skip) ++num_results;
 
             if (IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(*inst))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
@@ -604,7 +629,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         }
     }
 
-    FilterCardOptions const waveform_card {
+    FilterCollectionOptions const waveform_collection {
         .common =
             {
                 .id_extra = SourceLocationHash(),
@@ -615,11 +640,14 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 .clicked_key = sample_lib::k_waveform_library_id,
                 .filter_mode = state.common_state.filter_mode,
             },
-        .library_id = sample_lib::k_waveform_library_id,
-        .library_images = context.library_images,
-        .sample_library_server = context.sample_library_server,
-        .instance_index = context.engine.instance_index,
-        .subtext = "Basic waveforms built into Floe",
+        .icon =
+            {
+                .library_id = sample_lib::k_waveform_library_id,
+                .library_images = context.library_images,
+                .sample_library_server = context.sample_library_server,
+                .instance_index = context.engine.instance_index,
+            },
+        .collection_noun = "library"_s,
         .default_collapsed = true,
         .store = &context.persistent_store,
     };
@@ -628,6 +656,12 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         .num_used_in_items_lists = state.common_state.HasFilters() ? 0u : ToInt(WaveformType::Count),
         .total_available = ToInt(WaveformType::Count),
     };
+
+    {
+        WaveformPseudoLibrary pseudo_lib {};
+        for (auto const waveform_type : EnumIterator<WaveformType>())
+            if (!ShouldSkipInstrument(context, state, pseudo_lib.Instrument(waveform_type))) ++num_results;
+    }
 
     state.common_state.items_still_loading =
         sample_lib_server::AreLibrariesScanning(context.sample_library_server);
@@ -641,6 +675,11 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 WaveformPseudoLibrary pseudo_lib {};
                 auto const inst = pseudo_lib.Instrument(context.layer.instrument_id.Get<WaveformType>());
                 status.name = inst.name;
+                status.collection = BrowserCollection {
+                    .filter = BrowserFilter::Library,
+                    .key = sample_lib::k_waveform_library_id,
+                    .name = "Built-in Waveforms"_s,
+                };
                 status.visibility = ShouldSkipInstrument(context, state, inst) ? Visibility::HiddenByFilters
                                                                                : Visibility::Shown;
                 break;
@@ -662,6 +701,12 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     break;
                 }
 
+                status.collection = BrowserCollection {
+                    .filter = BrowserFilter::Library,
+                    .key = (*lib)->id,
+                    .name = (*lib)->name,
+                };
+
                 if (ShouldSkipInstrument(context, state, **inst)) {
                     status.visibility = Visibility::HiddenByFilters;
                     break;
@@ -682,6 +727,33 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         status;
     });
 
+    auto const library_collection = [&](sample_lib::Library const& lib) {
+        auto const info = libraries.Find(lib.id);
+        return LibraryCollection(builder.arena, lib, info ? info->total_available : 0);
+    };
+    auto const collection_of_library = [&](sample_lib::LibraryId id) -> Optional<BrowserCollection> {
+        if (id == sample_lib::k_waveform_library_id) {
+            return BrowserCollection {
+                .filter = BrowserFilter::Library,
+                .key = id,
+                .name = waveform_collection.common.text,
+                .library_id = id,
+                .num_items = waveform_info.total_available,
+                .subtext = "Basic waveforms built into Floe"_s,
+            };
+        }
+        for (auto const l : libs)
+            if (l->id == id) return library_collection(*l);
+        return k_nullopt;
+    };
+    // The library whose root folder this is.
+    auto const library_collection_of_root = [&](FolderNode const& root) -> Optional<BrowserCollection> {
+        for (auto const l : libs)
+            if (&l->root_folders[ToInt(sample_lib::ResourceType::Instrument)] == &root)
+                return library_collection(*l);
+        return k_nullopt;
+    };
+
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
     DoBrowserModal(
@@ -689,51 +761,38 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         {
             .browser_id = state.id,
             .sample_library_server = context.sample_library_server,
+            .library_images = context.library_images,
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
             .instance_index = context.engine.instance_index,
         },
         BrowserPopupOptions {
-            .title = fmt::Format(builder.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
                 auto const window_height = GuiIo().in.window_size.height;
                 auto const& button_rect = state.common_state.absolute_button_rect;
-                auto const space_below = window_height - button_rect.Bottom() - 20;
-                auto const space_above = button_rect.y - 20;
+                auto const space_below = window_height - button_rect.Bottom() - WwToPixels(20.0f);
+                auto const space_above = button_rect.y - WwToPixels(20.0f);
                 PixelsToWw(Max(space_below, space_above));
             }),
-            .rhs_width = 300,
+            .results_width = 300,
             .filters_col_width = 250,
+            .size_store_id = HashFnv1a("instrument-browser"),
+            .flush_with_opener = true,
             .item_type_name = "instrument",
-            .rhs_top_button =
-                BrowserPopupOptions::Button {
-                    .text = fmt::Format(
-                        builder.arena,
-                        "Unload {}",
-                        context.layer.instrument_id.tag == InstrumentType::None ? "Instrument"_s : ({
-                            auto n = context.layer.InstName();
-                            if (n.size > 14)
-                                n = fmt::Format(builder.arena,
-                                                "{}…",
-                                                n.SubSpan(0, FindUtf8TruncationPoint(n, 14)));
-                            n;
-                        })),
-                    .tooltip = "Unload the current instrument.",
-                    .disabled = context.layer.instrument_id.tag == InstrumentType::None,
-                    .on_fired = TrivialFunctionRef<void()>([&]() {
-                                    LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-                                    builder.imgui.CloseTopModal();
-                                }).CloneObject(builder.arena),
-                },
-            .rhs_do_items = [&](GuiBuilder& builder) { InstBrowserItems(builder, context, state); },
+            .plural_item_type_name = "instruments",
+            .do_items = [&](GuiBuilder& builder) { InstBrowserItems(builder, context, state); },
             .show_search = true,
             .filter_search_placeholder_text = "Search libraries/tags",
             .item_search_placeholder_text = "Search instruments",
-            .on_load_previous = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Backward); },
-            .on_load_next = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Forward); },
-            .on_load_random = [&]() { LoadRandomInstrument(context, state); },
             .current_item = current_item,
+            .browse_scope = CurrentBrowseScope(state.common_state,
+                                               {
+                                                   .collection_noun = "library"_s,
+                                                   .folders = folders,
+                                                   .collection_of_root = library_collection_of_root,
+                                                   .collection_of_library = collection_of_library,
+                                               }),
             .library_filters = ({
                 Optional<LibraryFilters> f = LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
@@ -741,16 +800,17 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     .instance_index = context.engine.instance_index,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .card_view = true,
+                    .collection_view = true,
                     .resource_type = sample_lib::ResourceType::Instrument,
                     .folders = folders,
-                    .additional_pseudo_card = &waveform_card,
-                    .additional_pseudo_card_info = &waveform_info,
+                    .additional_pseudo_collection = &waveform_collection,
+                    .additional_pseudo_collection_info = &waveform_info,
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
-                    .card_name_prefix =
-                        (is_any_filter_card_screenshot || is_browser_screenshot) ? "library-card."_s : ""_s,
+                    .collection_name_prefix = (is_any_filter_collection_screenshot || is_browser_screenshot)
+                                                  ? "browser.library."_s
+                                                  : ""_s,
                 };
                 f;
             }),
@@ -759,5 +819,6 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 f;
             }),
             .favourites_filter_info = favourites_info,
+            .num_results = num_results,
         });
 }

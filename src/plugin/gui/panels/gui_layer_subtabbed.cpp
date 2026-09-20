@@ -19,6 +19,7 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
+#include "gui/panels/gui_common_browser.hpp"
 #include "gui/panels/gui_layer_common.hpp"
 #include "gui/panels/gui_macros.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -251,16 +252,18 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
     }
 }
 
-static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box root) {
+// Run via DoBrowserOpenerViewport: while the layer's Instrument browser is open, the selector floats above
+// the modal's dim and stays interactable, with the browser flush against it so the two read as one element.
+static void DoInstSelectorContents(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index) {
     auto& layer_obj = g.engine.Layer(layer_index);
     auto const inst_name = layer_obj.InstName();
+    auto const browser_id = g.inst_browser_state[layer_index].id;
 
     // Selector row container
     auto const selector_box = DoBox(g.builder,
                                     {
-                                        .parent = root,
                                         .layout {
-                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .size = PixelsToWw(g.imgui.CurrentVpSize()),
                                             .contents_padding {.r = 3.44f},
                                             .contents_direction = layout::Direction::Row,
                                             .contents_align = layout::Alignment::Start,
@@ -272,10 +275,14 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
     if (auto const r = BoxRect(g.builder, selector_box)) {
         auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
         auto const rounding = WwToPixels(k_corner_rounding);
+        auto const corners = BrowserOpenerCornersToRound(g.imgui, browser_id, window_r);
+
+        if (g.imgui.IsModalOpen(browser_id))
+            g.inst_browser_state[layer_index].common_state.absolute_button_rect = window_r;
 
         {
             auto const col = LiveCol(UiColMap::MidDarkSurface);
-            g.imgui.draw_list->AddRectFilled(window_r, col, rounding);
+            g.imgui.draw_list->AddRectFilled(window_r, col, rounding, corners);
         }
 
         // Timbre layer highlight
@@ -284,7 +291,8 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
              CcControllerMovedParamRecently(g.engine.processor, ParamIndex::MasterTimbre))) {
             g.imgui.draw_list->AddRectFilled(window_r,
                                              LiveCol(UiColMap::InstSelectorMenuBackHighlight),
-                                             rounding);
+                                             rounding,
+                                             corners);
         }
 
         // Loading progress bar
@@ -295,7 +303,11 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
             f32 const load_percent = (f32)percent / 100.0f;
             auto const min = window_r.Min();
             auto const max = f32x2 {window_r.x + Max(4.0f, window_r.w * load_percent), window_r.Bottom()};
-            g.imgui.draw_list->AddRectFilled(min, max, LiveCol(UiColMap::InstSelectorMenuLoading), rounding);
+            g.imgui.draw_list->AddRectFilled(min,
+                                             max,
+                                             LiveCol(UiColMap::InstSelectorMenuLoading),
+                                             rounding,
+                                             corners);
             GuiIo().WakeupAtTimedInterval(g.redraw_counter, 0.1, SourceLocationHash());
         }
     }
@@ -368,10 +380,14 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
           });
 
     if (inst_button.button_fired) {
-        g.imgui.OpenModalViewport(g.inst_browser_state[layer_index].id);
-        if (auto const r = BoxRect(g.builder, inst_button))
-            g.inst_browser_state[layer_index].common_state.absolute_button_rect =
-                g.imgui.ViewportRectToWindowRect(*r);
+        if (g.imgui.IsModalOpen(browser_id))
+            g.imgui.CloseModal(browser_id);
+        else {
+            g.imgui.OpenModalViewport(browser_id);
+            if (auto const r = BoxRect(g.builder, selector_box))
+                g.inst_browser_state[layer_index].common_state.absolute_button_rect =
+                    g.imgui.ViewportRectToWindowRect(*r);
+        }
     }
 
     // Right-click menu
@@ -453,6 +469,29 @@ static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8
         });
     if (unload_btn.button_fired && has_instrument)
         LoadInstrument(g.engine, layer_index, InstrumentType::None);
+}
+
+static void DoInstSelector(GuiState& g, GuiFrameContext const& frame_context, u8 layer_index, Box root) {
+    auto const bounds = DoBox(g.builder,
+                              {
+                                  .parent = root,
+                                  .layout {
+                                      .size = {layout::k_fill_parent, k_mid_button_height},
+                                  },
+                              });
+
+    g.imgui.PushId(layer_index);
+    DEFER { g.imgui.PopId(); };
+    DoBrowserOpenerViewport(
+        g.builder,
+        {
+            .browser_id = g.inst_browser_state[layer_index].id,
+            .viewport_id = g.imgui.MakeId("inst-selector"),
+            .bounds = bounds,
+            .run = [&g, &frame_context, layer_index](
+                       GuiBuilder&) { DoInstSelectorContents(g, frame_context, layer_index); },
+            .debug_name = "inst-selector",
+        });
 }
 
 void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
@@ -3052,6 +3091,18 @@ static bool IsLayerScreenshotRequest() {
     if (IsScreenshotRequest("key-range-controls"_s)) return true;
     if (IsScreenshotRequest("velocity-curve"_s)) return true;
     if (IsScreenshotRequest("loop-mode-menu"_s)) return true;
+    // Layer 1's Instrument browser opens from this tab, where it sits directly below its selector.
+    for (auto const region : Array {"browser-browse"_s,
+                                    "browser-browse-section"_s,
+                                    "browser-browse-collection"_s,
+                                    "browser-browse-attribute"_s,
+                                    "browser-full"_s,
+                                    "browser-menu"_s,
+                                    "filter-collection"_s,
+                                    "filter-collection-all-selected"_s,
+                                    "filter-collection-folder-selected"_s,
+                                    "filter-collection-folder-tree"_s})
+        if (IsScreenshotRequest(region)) return true;
     for (auto const page : EnumIterator<LayerPageType>()) {
         DynamicArrayBounded<char, 32> region;
         fmt::Append(region, "layer-{}", EnumToString(page));

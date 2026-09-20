@@ -50,6 +50,7 @@ static void SampleLibraryChanged(GuiState& g, sample_lib::LibraryId library_id) 
 // Keep in sync with the icons used across the GUI. Any icon not listed here will render as a missing glyph.
 static constexpr auto k_used_icons = Array {
     String {ICON_FA_ARROWS_UP_DOWN},
+    String {ICON_FA_ARROW_LEFT},
     String {ICON_FA_ARROW_RIGHT},
     String {ICON_FA_ARROW_ROTATE_LEFT},
     String {ICON_FA_ARROW_ROTATE_RIGHT},
@@ -68,6 +69,7 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_CIRCLE_PLUS},
     String {ICON_FA_CIRCLE_QUESTION},
     String {ICON_FA_DRUM_STEELPAN},
+    String {ICON_FA_ELLIPSIS},
     String {ICON_FA_ELLIPSIS_VERTICAL},
     String {ICON_FA_EYE},
     String {ICON_FA_FACE_FROWN},
@@ -75,6 +77,7 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_FACE_SMILE},
     String {ICON_FA_FILE_IMPORT},
     String {ICON_FA_FILE_SIGNATURE},
+    String {ICON_FA_FILTER},
     String {ICON_FA_FIRE},
     String {ICON_FA_FLASK},
     String {ICON_FA_FLOPPY_DISK},
@@ -87,10 +90,12 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_HAND},
     String {ICON_FA_HEADPHONES},
     String {ICON_FA_HOUSE},
+    String {ICON_FA_INDUSTRY},
     String {ICON_FA_INFO},
     String {ICON_FA_LANDMARK},
     String {ICON_FA_LAYER_GROUP},
     String {ICON_FA_LINK},
+    String {ICON_FA_LIST},
     String {ICON_FA_LOCATION_ARROW},
     String {ICON_FA_LOCK},
     String {ICON_FA_M},
@@ -119,6 +124,7 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_UNLOCK},
     String {ICON_FA_UP_DOWN},
     String {ICON_FA_UP_RIGHT_FROM_SQUARE},
+    String {ICON_FA_USER},
     String {ICON_FA_USERS},
     String {ICON_FA_VOLUME_HIGH},
     String {ICON_FA_WAND_MAGIC_SPARKLES},
@@ -284,20 +290,12 @@ static void DoResizeCorner(GuiState& g) {
             prefs::SetValue(g.prefs, desc, (s64)new_size->width);
     }
 
-    imgui.draw_list->AddTriangleFilled(r.TopRight(),
-                                       r.BottomRight(),
-                                       r.BottomLeft(),
-                                       ToU32(Col {.c = Col::Background0, .dark_mode = true}));
-
-    auto const line_col = ToU32(
-        Col {.c = imgui.IsHotOrActive(id, MouseButton::Left) ? Col::Text : Col::Overlay2, .dark_mode = true});
-    auto const line_gap = WwToPixels(3.55f);
-    imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap},
-                             r.BottomLeft() + f32x2 {line_gap, 0},
-                             line_col);
-    imgui.draw_list->AddLine(r.TopRight() + f32x2 {0, line_gap * 2},
-                             r.BottomLeft() + f32x2 {line_gap * 2, 0},
-                             line_col);
+    DrawResizeCornerGrip(imgui,
+                         r,
+                         ToU32(Col {
+                             .c = imgui.IsHotOrActive(id, MouseButton::Left) ? Col::Text : Col::Subtext0,
+                             .dark_mode = true,
+                         }));
 
     Tooltip(g.builder,
             id,

@@ -53,6 +53,13 @@ library_for_visuals = FrozenPlain - Slow
 ; one a new instance of Floe opens with. It's only a suggestion:
 ; Floe ignores it if the user has chosen their own default preset.
 default_preset = Pads/Warm Welcome.floe-preset
+
+; Set to true if this bank ships with a library rather than being
+; user-made. The preset browser groups factory banks separately from
+; the user's own banks. Banks whose folder name contains
+; "factory presets" are treated as factory automatically, even
+; without this field.
+factory = true
 ```
 
 You can create this INI file with any text editor such as Notepad or TextEdit. You just need to type in the various `field = value` with new lines between them.
