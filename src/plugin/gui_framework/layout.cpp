@@ -56,24 +56,28 @@ static void SetItemSize(Item& item, f32x2 size) {
     item.size = size;
 
     auto const w = size[0];
+    item.flags &= ~flags::FillOrHugHorizontal;
     if (w == k_hug_contents)
         item.flags &= ~flags::HorizontalSizeFixed;
-    else if (w == k_fill_parent) {
+    else if (w == k_fill_parent || w == k_fill_or_hug) {
         item.size[0] = 0;
         item.flags &= ~flags::HorizontalSizeFixed;
         item.flags |= flags::AnchorLeftAndRight;
+        if (w == k_fill_or_hug) item.flags |= flags::FillOrHugHorizontal;
     } else {
         ASSERT(w > 0);
         item.flags |= flags::HorizontalSizeFixed;
     }
 
     auto const h = size[1];
+    item.flags &= ~flags::FillOrHugVertical;
     if (h == k_hug_contents)
         item.flags &= ~flags::VerticalSizeFixed;
-    else if (h == k_fill_parent) {
+    else if (h == k_fill_parent || h == k_fill_or_hug) {
         item.size[1] = 0;
         item.flags &= ~flags::VerticalSizeFixed;
         item.flags |= flags::AnchorTopAndBottom;
+        if (h == k_fill_or_hug) item.flags |= flags::FillOrHugVertical;
     } else {
         ASSERT(h > 0);
         item.flags |= flags::VerticalSizeFixed;
@@ -473,6 +477,7 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool cons
             if ((behaviour_flags & flags::AnchorLeftAndRight) == flags::AnchorLeftAndRight) {
                 ++count;
                 extend += child_rect[dim] + child_margins[k_size_dim];
+                if (child_flags & (flags::FillOrHugHorizontal << dim)) extend += child_rect[k_size_dim];
             } else {
                 extend += child_rect[dim] + child_rect[k_size_dim] + child_margins[k_size_dim];
             }
@@ -553,9 +558,10 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeStacked(Context& ctx, Id id, bool cons
             auto child_rect = ctx.rects[ToInt(child_id)];
 
             x += child_rect[dim] + extra_margin;
-            if ((behaviour_flags & flags::AnchorLeftAndRight) == flags::AnchorLeftAndRight) // grow
+            if ((behaviour_flags & flags::AnchorLeftAndRight) == flags::AnchorLeftAndRight) { // grow
                 x1 = x + filler;
-            else if ((fixed_size_flags & flags::HorizontalSizeFixed) == flags::HorizontalSizeFixed)
+                if (child_flags & (flags::FillOrHugHorizontal << dim)) x1 += child_rect[k_size_dim];
+            } else if ((fixed_size_flags & flags::HorizontalSizeFixed) == flags::HorizontalSizeFixed)
                 x1 = x + child_rect[k_size_dim];
             else // squeeze
                 // NOTE(Sam): I have removed the eater addition in the squeeze calculations, so that when
@@ -604,9 +610,13 @@ NO_UBSAN static ALWAYS_INLINE void ArrangeOverlay(Context& ctx, Id id) {
                 child_rect[dim] +=
                     space - child_rect[k_size_dim] - child_margins[dim] - child_margins[k_size_dim];
                 break;
-            case flags::AnchorLeftAndRight:
-                child_rect[k_size_dim] = Max(0.0f, space - child_rect[dim] - child_margins[k_size_dim]);
+            case flags::AnchorLeftAndRight: {
+                auto const fill_size = Max(0.0f, space - child_rect[dim] - child_margins[k_size_dim]);
+                child_rect[k_size_dim] = (child->flags & (flags::FillOrHugHorizontal << dim))
+                                             ? Max(child_rect[k_size_dim], fill_size)
+                                             : fill_size;
                 break;
+            }
             default: break;
         }
 
@@ -639,7 +649,9 @@ ArrangeOverlaySqueezedRange(Context& ctx, Id start_item_id, Id end_item_id, f32 
                 rect[dim] = space - rect[k_size_dim] - margins[k_size_dim];
                 break;
             case flags::AnchorLeftAndRight: {
-                rect[k_size_dim] = min_size;
+                rect[k_size_dim] = (item->flags & (flags::FillOrHugHorizontal << dim))
+                                       ? Max(rect[k_size_dim], min_size)
+                                       : min_size;
                 break;
             }
             default: {
@@ -956,6 +968,7 @@ static String DirectionName(layout::Direction direction) {
     switch (direction) {
         case layout::Direction::Row: return "row";
         case layout::Direction::Column: return "column";
+        case layout::Direction::Overlay: return "overlay";
     }
     PanicIfReached();
     return {};
@@ -1047,7 +1060,55 @@ TEST_CASE(TestLayout) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterLayoutTests) { REGISTER_TEST(TestLayout); }
+TEST_CASE(TestLayoutFillOrHug) {
+    struct Case {
+        layout::Direction parent_direction;
+        f32 content_height;
+        f32 expected_height;
+    };
+    for (auto const c : Array {
+             Case {layout::Direction::Column, 30, 100},
+             Case {layout::Direction::Column, 150, 150},
+             Case {layout::Direction::Row, 30, 100},
+             Case {layout::Direction::Row, 150, 150},
+         }) {
+        layout::Context ctx;
+        DEFER { layout::DestroyContext(ctx, tester.arena); };
+
+        auto const root = layout::CreateItem(ctx,
+                                             tester.arena,
+                                             {
+                                                 .size = 100,
+                                                 .contents_direction = c.parent_direction,
+                                                 .contents_align = layout::Alignment::Start,
+                                             });
+        auto const child = layout::CreateItem(ctx,
+                                              tester.arena,
+                                              {
+                                                  .parent = root,
+                                                  .size = {layout::k_fill_parent, layout::k_fill_or_hug},
+                                                  .contents_direction = layout::Direction::Column,
+                                              });
+        layout::CreateItem(ctx,
+                           tester.arena,
+                           {
+                               .parent = child,
+                               .size = {50, c.content_height},
+                           });
+
+        layout::RunContext(ctx);
+
+        auto const child_rect = layout::GetRect(ctx, child);
+        CHECK_EQ(child_rect.w, 100.0f);
+        CHECK_EQ(child_rect.h, c.expected_height);
+    }
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterLayoutTests) {
+    REGISTER_TEST(TestLayout);
+    REGISTER_TEST(TestLayoutFillOrHug);
+}
 
 BENCHMARK_FN void BenchmarkLayoutColumn10000() {
     ArenaAllocator arena {PageAllocator::Instance()};

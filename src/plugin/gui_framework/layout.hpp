@@ -129,14 +129,19 @@ enum : u32 {
     ContainerMask = BitRange(0, 7),
     ChildBehaviourMask = BitRange(8, 13),
 
-    ItemInserted = 1 << 14,
-    HorizontalSizeFixed = 1 << 15,
-    VerticalSizeFixed = 1 << 16,
+    // With AnchorLeftAndRight/AnchorTopAndBottom: the item stretches to fill the parent but never shrinks
+    // below its contents. Shifted by the dimension like the anchors.
+    FillOrHugHorizontal = 1 << 14,
+    FillOrHugVertical = 1 << 15,
+
+    ItemInserted = 1 << 16,
+    HorizontalSizeFixed = 1 << 17,
+    VerticalSizeFixed = 1 << 18,
 
     FixedSizeMask = HorizontalSizeFixed | VerticalSizeFixed,
 
     // These bits can be used by the user.
-    UserMask = BitRange(17, 31),
+    UserMask = BitRange(19, 31),
 };
 
 } // namespace flags
@@ -160,6 +165,8 @@ BITWISE_OPERATORS(Anchor)
 enum class Direction : u8 {
     Row = flags::Row,
     Column = flags::Column,
+    // No auto-layout: children lie on top of one another, each placed by its anchor and margins.
+    Overlay = flags::NoLayout,
 };
 
 enum class Alignment : u8 {
@@ -181,6 +188,10 @@ constexpr f32 k_hug_contents = 0.0f;
 
 // Fill parent: a special 'size' value for any item. Scales the size up to fill the parent's available space.
 constexpr f32 k_fill_parent = -1.0f;
+
+// Fill or hug: a special 'size' value for any item. Whichever is larger: fill the parent's available space,
+// or hug the contents. CSS equivalent: flex: 1 1 auto.
+constexpr f32 k_fill_or_hug = -2.0f;
 
 struct ItemOptions {
     // Item that this element lives inside.
