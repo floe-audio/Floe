@@ -9,10 +9,6 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 
-constexpr String k_waveform_library_id_string = "Waveforms - " FLOE_VENDOR;
-constexpr sample_lib::LibraryId k_waveform_library_id =
-    sample_lib::HashLibraryIdStringWithoutRegistration(k_waveform_library_id_string);
-
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
     usize lib_index;
@@ -239,8 +235,8 @@ struct WaveformPseudoLibrary {
 
     sample_lib::Library const lib {
         .name = "Waveforms"_s,
-        .id = k_waveform_library_id,
-        .id_string = k_waveform_library_id_string,
+        .id = sample_lib::k_waveform_library_id,
+        .id_string = sample_lib::k_waveform_library_id_string,
         .author = FLOE_VENDOR,
         .file_format_specifics = sample_lib::LuaSpecifics {},
     };
@@ -268,6 +264,18 @@ static bool InstBrowserWaveformItems(GuiBuilder& builder,
     WaveformPseudoLibrary pseudo_lib {};
     bool any_drawn = false;
 
+    auto const icons = ({
+        auto const imgs = GetLibraryImages(context.library_images,
+                                           builder.imgui,
+                                           sample_lib::k_waveform_library_id,
+                                           context.sample_library_server,
+                                           context.engine.instance_index,
+                                           LibraryImagesTypes::Icon);
+        decltype(BrowserItemOptions::icons) result {};
+        dyn::Emplace(result, imgs.icon ? ItemIcon {*imgs.icon} : ItemIcon {ItemIconType::None});
+        result;
+    });
+
     for (auto const waveform_type : EnumIterator<WaveformType>()) {
         auto const pseudo_inst = pseudo_lib.Instrument(waveform_type);
 
@@ -294,6 +302,7 @@ static bool InstBrowserWaveformItems(GuiBuilder& builder,
                 .item_id = inst_hash,
                 .is_current = is_current,
                 .is_favourite = is_favourite,
+                .icons = icons,
                 .notifications = context.notifications,
                 .store = context.persistent_store,
             });
@@ -599,14 +608,14 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         .common =
             {
                 .id_extra = SourceLocationHash(),
-                .is_selected =
-                    state.common_state.Filter(BrowserFilter::Library).Contains(k_waveform_library_id),
+                .is_selected = state.common_state.Filter(BrowserFilter::Library)
+                                   .Contains(sample_lib::k_waveform_library_id),
                 .text = "Built-in Waveforms",
                 .filter = state.common_state.Filter(BrowserFilter::Library),
-                .clicked_key = k_waveform_library_id,
+                .clicked_key = sample_lib::k_waveform_library_id,
                 .filter_mode = state.common_state.filter_mode,
             },
-        .library_id = k_waveform_library_id,
+        .library_id = sample_lib::k_waveform_library_id,
         .library_images = context.library_images,
         .sample_library_server = context.sample_library_server,
         .instance_index = context.engine.instance_index,

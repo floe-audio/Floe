@@ -1239,7 +1239,6 @@ inline String ToString(EmbeddedString s) { return {s.data, s.size}; }
 
 // Not thread-safe
 static sample_lib::Library* BuiltinLibrary() {
-    static constexpr String k_icon_path = "builtin-library-icon";
     static constexpr String k_background_path = "builtin-library-background";
     static sample_lib::Library builtin_library {
         .name = "Built-in",
@@ -1249,17 +1248,13 @@ static sample_lib::Library* BuiltinLibrary() {
         .author = FLOE_VENDOR,
         .revision = 1,
         .background_image_path = k_background_path,
-        .icon_image_path = k_icon_path,
         .insts_by_id = {},
         .irs_by_id = {},
         .path = ":memory:",
         .file_hash = 100,
         .create_file_reader = [](sample_lib::Library const&,
                                  sample_lib::LibraryPath path) -> ErrorCodeOr<Reader> {
-            if (path == k_icon_path) {
-                auto data = EmbeddedIconImage();
-                return Reader::FromMemory({data.data, data.size});
-            } else if (path == k_background_path) {
+            if (path == k_background_path) {
                 auto data = EmbeddedDefaultBackground();
                 return Reader::FromMemory({data.data, data.size});
             }

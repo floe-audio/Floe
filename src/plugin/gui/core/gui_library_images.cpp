@@ -81,6 +81,19 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryId lib_id,
 
 inline Allocator& ImageBytesAllocator() { return PageAllocator::Instance(); }
 
+// Floe's own built-in resources (IRs and waveforms) don't ship an icon file; they use Floe's icon.
+static bool UsesFloeIcon(sample_lib::LibraryId lib_id) {
+    return lib_id == sample_lib::k_builtin_library_id || lib_id == sample_lib::k_waveform_library_id;
+}
+
+static Optional<ImageBytes> FloeIconPixels(ArenaAllocator& result_allocator) {
+    auto const image_data = EmbeddedIconImage();
+    if (!image_data.size) return k_nullopt;
+    auto outcome = DecodeImage({image_data.data, image_data.size}, result_allocator);
+    if (outcome.HasError()) return k_nullopt;
+    return outcome.ReleaseValue();
+}
+
 static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
                           imgui::Context const&,
                           Future<Optional<ImageBytes>>& result,
@@ -97,8 +110,12 @@ static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
             DEFER { RequestGuiUpdate(instance_index); };
 
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
-            auto pixels =
-                ImagePixelsFromLibrary(lib_id, LibraryImageType::Icon, server, scratch_arena, scratch_arena);
+            auto pixels = UsesFloeIcon(lib_id) ? FloeIconPixels(scratch_arena)
+                                               : ImagePixelsFromLibrary(lib_id,
+                                                                        LibraryImageType::Icon,
+                                                                        server,
+                                                                        scratch_arena,
+                                                                        scratch_arena);
             if (!pixels) return k_nullopt;
             auto const result = ResizeImage(*pixels, desired_icon_size, ImageBytesAllocator()).OrElse([&] {
                 return pixels->Clone(ImageBytesAllocator());
