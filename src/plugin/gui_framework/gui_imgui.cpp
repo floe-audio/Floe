@@ -2135,7 +2135,12 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
             }
         }
 
-        if (viewport->has_scrollbar.y) viewport->clipping_rect.h -= 2;
+        // Scrolling content clips flush with the bounds: the expansion is for the edges of unscrolled
+        // content, and would otherwise let rows spill a pixel over whatever borders the viewport.
+        if (viewport->has_scrollbar.y) {
+            viewport->clipping_rect.y += k_clipping_expansion;
+            viewport->clipping_rect.h -= k_clipping_expansion * 2;
+        }
 
         if (viewport->has_scrollbar.y && !viewport->has_scrollbar.x) {
             bounds_for_scrollbar.w -= scrollbar_size;
