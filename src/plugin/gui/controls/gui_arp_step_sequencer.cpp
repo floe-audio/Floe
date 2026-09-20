@@ -48,7 +48,7 @@ void DoArpStepSequencer(GuiState& g,
     auto const velocity_string = [&](f32 velocity_01) -> String {
         return uses_fractional_velocity
                    ? fmt::Format(g.scratch_arena, "{.1}%", velocity_01 * 100.0f)
-                   : fmt::Format(g.scratch_arena, "{}", RoundPositiveFloat(velocity_01 * 127.0f));
+                   : fmt::Format(g.scratch_arena, "{}", 1 + RoundPositiveFloat(velocity_01 * 126.0f));
     };
 
     // Background drawn on the parent viewport, so corner rounding covers the whole widget.
