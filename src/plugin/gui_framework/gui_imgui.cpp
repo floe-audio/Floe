@@ -2494,7 +2494,7 @@ void Context::OpenModalViewport(Id id) {
     if (GuiIoValid()) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
-bool Context::IsModalOpen(Id id) {
+bool Context::IsModalOpen(Id id) const {
     for (auto& m : open_modals)
         if (m->id == id) return true;
     return false;

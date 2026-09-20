@@ -742,7 +742,7 @@ struct Context {
     // can be open simultaneously (e.g. an "are you sure?" dialog on top of another modal).
 
     void OpenModalViewport(Id id);
-    bool IsModalOpen(Id id);
+    bool IsModalOpen(Id id) const;
     bool IsAnyModalOpen();
     void CloseModal(Id id);
     void CloseTopModal();
