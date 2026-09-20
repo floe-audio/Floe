@@ -26,8 +26,9 @@ static f32 HeightOfWrappedText(GuiBuilder& builder, layout::Id id, f32 width) {
 
 static imgui::ViewportConfig ConvertViewportConfigWwToPixels(imgui::ViewportConfig c) {
     c.padding = {.lrtb = WwToPixels(c.padding.lrtb)};
-    c.scrollbar_width = WwToPixels(c.scrollbar_width);
-    c.scrollbar_padding = Max(2.0f, WwToPixels(c.scrollbar_padding));
+    // Whole pixels so the content edge (rounded by the layout) and the scrollbar strip (ceiled) agree.
+    c.scrollbar_width = Round(WwToPixels(c.scrollbar_width));
+    c.scrollbar_padding = c.scrollbar_padding > 0 ? Max(2.0f, Round(WwToPixels(c.scrollbar_padding))) : 0;
     c.scroll_line_size = WwToPixels(c.scroll_line_size);
     c.scroll_button_size = WwToPixels(c.scroll_button_size);
     return c;
