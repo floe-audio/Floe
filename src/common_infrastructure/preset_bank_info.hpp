@@ -19,6 +19,9 @@ struct PresetBank {
     // Relative path (posix separators) of a preset within the bank folder, including the extension. Empty if
     // the bank doesn't suggest one.
     String default_preset {};
+
+    // An 'Offical' bank. See also IsFactoryPresetBank.
+    bool factory {};
 };
 
 PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena);

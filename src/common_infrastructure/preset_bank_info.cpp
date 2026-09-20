@@ -54,6 +54,8 @@ PresetBank ParsePresetBankFile(String file_data, ArenaAllocator& arena) {
             bank.default_preset = ValidatedDefaultPreset(value_str, arena);
         } else if (key == "library_for_visuals"_s) {
             bank.library_for_visuals_id = sample_lib::HashLibraryIdStringWithoutRegistration(value_str);
+        } else if (key == "factory"_s) {
+            bank.factory = IsEqualToCaseInsensitiveAscii(value_str, "true"_s);
         }
     }
 
@@ -67,12 +69,20 @@ TEST_CASE(TestPresetBankInfoParsing) {
         auto const bank = ParsePresetBankFile("id = org.floe-audio.test\n"
                                               "subtitle = A test bank\n"
                                               "revision = 3\n"
-                                              "default_preset = Pads/Init.floe-preset\n"_s,
+                                              "default_preset = Pads/Init.floe-preset\n"
+                                              "factory = true\n"_s,
                                               arena);
         CHECK_EQ(bank.id, HashFnv1a("org.floe-audio.test"_s));
         CHECK_EQ(bank.subtitle, "A test bank"_s);
         CHECK_EQ(bank.revision, (u16)3);
         CHECK_EQ(bank.default_preset, "Pads/Init.floe-preset"_s);
+        CHECK(bank.factory);
+    }
+
+    SUBCASE("factory defaults to false and rejects unknown values") {
+        CHECK(!ParsePresetBankFile("subtitle = A test bank\n"_s, arena).factory);
+        CHECK(!ParsePresetBankFile("factory = maybe\n"_s, arena).factory);
+        CHECK(ParsePresetBankFile("factory = TRUE\n"_s, arena).factory);
     }
 
     SUBCASE("backslashes are normalised") {
