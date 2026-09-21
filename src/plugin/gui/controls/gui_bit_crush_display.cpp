@@ -51,14 +51,26 @@ static f32 Sweep(f32 t) { return (t - 0.5f) - (0.5f * Cos(k_pi<> * t)); }
 // the threshold then collapses hard toward the floor - matching how little headroom there really is between
 // "just audible" and "ruined". Above the threshold the literal resolution is already far beyond pixel
 // resolution, so using it there draws the same honest smooth ramp either way.
+//
+// Jumping straight from the literal resolution to the indicative curve would make the trace snap from smooth
+// to visibly stepped in a single knob tick. So over the bit above the curve's top, the step height grows
+// linearly from the literal step (sub-pixel, so it draws the same as above) to the curve's, and the stepping
+// eases into view as Bits is pulled down.
 constexpr f32 k_bits_indicative_min = 1.0f;
-constexpr f32 k_bits_indicative_max = 9.0f;
+constexpr f32 k_bits_indicative_max = 8.0f;
 constexpr f32 k_bits_indicative_min_resolution = 1.2f;
-constexpr f32 k_bits_indicative_max_resolution = 9.0f;
+constexpr f32 k_bits_indicative_max_resolution = 5.6f;
+constexpr f32 k_bits_ease_in_max = 9.0f;
 
 static f32 DisplayResolution(f32 bits) {
     if (bits >= 32.0f) return 0.0f;
-    if (bits > k_bits_indicative_max) return Pow(2.0f, bits - 1.0f);
+    if (bits > k_bits_ease_in_max) return Pow(2.0f, bits - 1.0f);
+    if (bits > k_bits_indicative_max) {
+        auto const ease_t = (k_bits_ease_in_max - bits) / (k_bits_ease_in_max - k_bits_indicative_max);
+        auto const literal_step = 1.0f / Pow(2.0f, k_bits_ease_in_max - 1.0f);
+        auto const indicative_step = 1.0f / k_bits_indicative_max_resolution;
+        return 1.0f / LinearInterpolate(ease_t, literal_step, indicative_step);
+    }
     auto const bits_t =
         Clamp((bits - k_bits_indicative_min) / (k_bits_indicative_max - k_bits_indicative_min), 0.0f, 1.0f);
     auto const shaped_bits_t = bits_t * bits_t;
@@ -90,9 +102,12 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
             rate_01 >= breakpoint_01
                 ? 1.0f - (((1.0f - rate_01) / (1.0f - breakpoint_01)) * k_step_curve_smooth_fraction)
                 : (rate_01 / breakpoint_01) * (1.0f - k_step_curve_smooth_fraction);
-        auto const steps = k_min_steps * Pow((f32)k_max_steps / k_min_steps, shaped_01);
-        Clamp((u32)Round(steps), 2u, k_max_steps);
+        Clamp(k_min_steps * Pow((f32)k_max_steps / k_min_steps, shaped_01), 2.0f, (f32)k_max_steps);
     });
+
+    // The count is kept fractional so the hold boundaries slide continuously with the parameter rather than
+    // snapping whenever it crosses a whole number; the last hold is simply clipped at the right edge.
+    auto const num_whole_steps = (u32)Ceil(num_steps);
 
     // Shared by the trace's quantiser and the grid lines, so they always agree.
     auto const resolution = DisplayResolution(bits);
@@ -110,14 +125,12 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
         auto const id = imgui.MakeId("bit_crush_display");
         imgui.RegisterRectForMouseTracking(window_r, false);
         imgui.SetHot(window_r, id);
-        Tooltip(
-            g,
-            id,
-            window_r,
-            {
-                .tooltip =
-                    "A preview of the bit crushing applied to a rising test signal. Bits is shown to scale; the number of sample-rate steps is indicative."_s,
-            });
+        Tooltip(g,
+                id,
+                window_r,
+                {
+                    .tooltip = "An indicative preview of the bit crushing applied to a rising test signal."_s,
+                });
     }
 
     imgui.draw_list->AddRectFilled(window_r, LiveCol(UiColMap::EqBack), WwToPixels(k_corner_rounding));
@@ -146,11 +159,10 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
         }
     }
     {
-        auto const step_spacing_px = window_r.w / (f32)num_steps;
+        auto const step_spacing_px = window_r.w / num_steps;
         if (step_spacing_px >= k_min_grid_line_spacing_px) {
-            for (auto const step_index : Range(1u, num_steps)) {
-                auto const x =
-                    snap_to_pixel_centre(window_r.x + ((f32)step_index / (f32)num_steps * window_r.w));
+            for (auto const step_index : Range(1u, num_whole_steps)) {
+                auto const x = snap_to_pixel_centre(window_r.x + ((f32)step_index / num_steps * window_r.w));
                 imgui.draw_list->AddLine(f32x2 {x, window_r.y}, f32x2 {x, window_r.Bottom()}, grid_col);
             }
         }
@@ -164,13 +176,13 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
     // staircase - fuzzy rather than informative, and a fair picture anyway of how close to continuous the
     // signal already is up there. So below it the trace switches from the honest hold to a plain curve
     // through the same sample points, connected diagonally instead of held flat.
-    auto const step_width_px = window_r.w / (f32)num_steps;
+    auto const step_width_px = window_r.w / num_steps;
     auto const smooth = step_width_px < k_min_grid_line_spacing_px;
 
-    DynamicArrayBounded<f32x2, k_max_steps * 2> points;
+    DynamicArrayBounded<f32x2, (k_max_steps + 1) * 2> points;
     if (smooth) {
-        for (auto const step_index : Range(num_steps + 1)) {
-            auto const t = (f32)step_index / (f32)num_steps;
+        for (auto const step_index : Range(num_whole_steps + 1)) {
+            auto const t = Min((f32)step_index / num_steps, 1.0f);
             auto const value = quantise(Sweep(t)) / k_full_scale_amplitude;
             auto const y = snap_to_pixel_centre(zero_y - (value * half_h));
             auto const x = snap_to_pixel_centre(window_r.x + (t * window_r.w));
@@ -181,9 +193,9 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
         // held. Neighbouring runs regularly land on the same value, and they're one line rather than
         // several: a point per sample would leave zero-length segments that the anti-aliased polyline draws
         // as fuzz.
-        for (auto const step_index : Range(num_steps)) {
-            auto const t0 = (f32)step_index / (f32)num_steps;
-            auto const t1 = (f32)(step_index + 1) / (f32)num_steps;
+        for (auto const step_index : Range(num_whole_steps)) {
+            auto const t0 = (f32)step_index / num_steps;
+            auto const t1 = Min((f32)(step_index + 1) / num_steps, 1.0f);
             auto const value = quantise(Sweep(t0)) / k_full_scale_amplitude;
             auto const y = snap_to_pixel_centre(zero_y - (value * half_h));
             auto const x0 = snap_to_pixel_centre(window_r.x + (t0 * window_r.w));
