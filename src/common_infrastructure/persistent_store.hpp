@@ -131,6 +131,9 @@ PUBLIC void AddValue(Store& store, Id id, T value) {
 // Main-thread.
 void RemoveValue(Store& store, Id id, Optional<Span<u8 const>> value);
 
+// Main-thread. Replaces all values for the id with this one, in a single write of the file.
+void SetValue(Store& store, Id id, Span<u8 const> data);
+
 // Main-thread.
 PUBLIC bool GetFlag(Store& store, Id id) { return Get(store, id).tag == GetResult::Found; }
 PUBLIC void AddFlag(Store& store, Id id) { AddValue(store, id, {}); }

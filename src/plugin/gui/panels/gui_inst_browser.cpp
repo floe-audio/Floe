@@ -778,7 +778,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             }),
             .results_width = 300,
             .filters_col_width = 250,
-            .size_store_id = HashFnv1a("instrument-browser"),
+            .store_id = HashFnv1a("instrument-browser"),
             .flush_with_opener = true,
             .item_type_name = "instrument",
             .plural_item_type_name = "instruments",

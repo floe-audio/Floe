@@ -2933,6 +2933,7 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/foundation/utils/random.cpp",
             "src/foundation/utils/version.cpp",
             "src/foundation/utils/writer.cpp",
+            "src/plugin/plugin/plugin_entry.cpp",
             "src/preset_tool/preset_tool_lua_codec.cpp",
             "src/tests/tests_main.cpp",
             "src/utils/error_notifications.cpp",

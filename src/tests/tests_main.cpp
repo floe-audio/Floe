@@ -24,6 +24,7 @@
     X(RegisterBitCrushTests)                                                                                 \
     X(RegisterBitsetTests)                                                                                   \
     X(RegisterBoundedListTests)                                                                              \
+    X(RegisterBrowsePlaceTests)                                                                              \
     X(RegisterChecksumFileTests)                                                                             \
     X(RegisterCircularBufferTests)                                                                           \
     X(RegisterCliArgParseTests)                                                                              \

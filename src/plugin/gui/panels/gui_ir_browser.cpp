@@ -443,7 +443,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
             }),
             .results_width = 230,
             .filters_col_width = 230,
-            .size_store_id = HashFnv1a("ir-browser"),
+            .store_id = HashFnv1a("ir-browser"),
             .flush_with_opener = true,
             .item_type_name = "impulse response",
             .plural_item_type_name = "impulse responses",

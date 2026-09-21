@@ -1168,7 +1168,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             }),
             .results_width = 320,
             .filters_col_width = 320,
-            .size_store_id = HashFnv1a("preset-browser"),
+            .store_id = HashFnv1a("preset-browser"),
             .flush_with_opener = true,
             .item_type_name = "preset",
             .plural_item_type_name = "presets",

@@ -315,6 +315,12 @@ struct CommonBrowserState {
     DynamicArrayBounded<ForwardLevel, 4> browse_forward_levels {};
     u64 browse_navigation_hash {};
 
+    // Browse mode's place (location and selection) is kept in the persistent store so a new instance opens
+    // where the last one left off. Loaded once, the first time the browser is drawn; saved whenever the
+    // navigation hash differs from the one last saved.
+    bool browse_place_loaded_from_store {};
+    u64 browse_place_saved_hash {};
+
     // Armed when clicking an item loads it. Once armed, moving the cursor off both the browser and the
     // element that opened it closes the browser: the click already did what the browser was opened for.
     bool close_when_cursor_leaves {};
@@ -444,6 +450,14 @@ bool IsFilteredOut(CommonBrowserState const& state, auto&& matches_filter) {
 // and the user can select multiple tags. This function resolves the inner AND/OR logic within the Tags
 // filter into a single bool for IsFilteredOut.
 bool ItemMatchesTagFilter(FilterSelection const& filter, TagsBitset const& item_tags, FilterMode mode);
+
+// Persistent-store format of Browse mode's place: the location and every selected filter value, with the
+// display name each was selected under. The filters must already be initialised: values are matched to
+// them by index, so the format is only meaningful for the browser type that wrote it.
+Span<u8 const> EncodeBrowsePlace(CommonBrowserState const& state, ArenaAllocator& arena);
+// False leaves the state untouched: the data is truncated, from another version, or names a filter, tag
+// or category the state doesn't have.
+bool DecodeBrowsePlace(Span<u8 const> data, CommonBrowserState& state);
 
 inline void InitCommonFilters(CommonBrowserState& state) {
     dyn::Append(state.filters, FilterSelection::Hashes("Library"_s));
@@ -632,9 +646,9 @@ struct BrowserPopupOptions {
     f32 height {};
     f32 results_width {};
     f32 filters_col_width {};
-    // Persistent-store key for the user's resize. One per browser type, so every place that opens the same
-    // browser shares it.
-    u64 size_store_id {};
+    // Persistent-store key for the user's resize and their Browse mode location. One per browser type, so
+    // every place that opens the same browser shares it.
+    u64 store_id {};
 
     // The browser sits flush against the element that opened it (absolute_button_rect), below or above,
     // the two drawn as one shape. The opener is run with DoBrowserOpenerViewport so it floats above the

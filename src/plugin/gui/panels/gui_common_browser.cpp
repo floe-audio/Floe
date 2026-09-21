@@ -4,6 +4,7 @@
 #include "gui/panels/gui_common_browser.hpp"
 
 #include "os/filesystem.hpp"
+#include "tests/framework.hpp"
 
 #include "common_infrastructure/tags.hpp"
 
@@ -1932,6 +1933,104 @@ static u64 BrowseNavigationHash(CommonBrowserState const& state) {
     HashUpdate(hash, state.browse.open_collection_section.ValueOr(0));
     HashUpdate(hash, (u8)state.browse.open_tag_category.ValueOr(TagCategory::Count));
     return hash;
+}
+
+static constexpr u8 k_browse_place_version = 1;
+static constexpr u64 k_browser_browse_place_store_id = HashFnv1a("browser-browse-place");
+
+Span<u8 const> EncodeBrowsePlace(CommonBrowserState const& state, ArenaAllocator& arena) {
+    DynamicArray<u8> out {arena};
+    auto const write = [&]<Arithmetic T>(T value) {
+        dyn::AppendSpan(out, Span<u8 const> {(u8 const*)&value, sizeof(T)});
+    };
+    write(k_browse_place_version);
+    write(state.browse.open_attribute.ValueOr((u8)k_max_browser_filters));
+    write(state.browse.open_collection_section.ValueOr(0));
+    write((u8)state.browse.open_tag_category.ValueOr(TagCategory::Count));
+
+    u16 num_selected = 0;
+    for (auto const& filter : state.filters) {
+        filter.ForEachSelected([&](String, u64) {
+            ++num_selected;
+            return LoopControl::Continue;
+        });
+    }
+    write(num_selected);
+    for (auto const [filter_index, filter] : Enumerate<u8>(state.filters)) {
+        filter.ForEachSelected([&](String display_name, u64 key) {
+            // Only a hash carries its name in the selection; tags and bools are named from the key.
+            auto const name = filter.data.tag == FilterSelection::Type::Hashes ? display_name : String {};
+            ASSERT(name.size <= FilterSelection::DisplayName::Capacity());
+            write(filter_index);
+            write(key);
+            write((u8)name.size);
+            dyn::AppendSpan(out, name.ToConstByteSpan());
+            return LoopControl::Continue;
+        });
+    }
+    return out.ToOwnedSpan();
+}
+
+bool DecodeBrowsePlace(Span<u8 const> data, CommonBrowserState& state) {
+    usize pos = 0;
+    auto const read = [&]<Arithmetic T>(T& out) {
+        if (pos + sizeof(T) > data.size) return false;
+        __builtin_memcpy_inline(&out, data.data + pos, sizeof(T));
+        pos += sizeof(T);
+        return true;
+    };
+
+    u8 version;
+    if (!read(version) || version != k_browse_place_version) return false;
+
+    u8 open_attribute;
+    u64 open_collection_section;
+    u8 open_tag_category;
+    if (!read(open_attribute) || !read(open_collection_section) || !read(open_tag_category)) return false;
+    CommonBrowserState::BrowseLocation location {};
+    if (open_attribute != k_max_browser_filters) {
+        if (open_attribute >= state.filters.size) return false;
+        location.open_attribute = open_attribute;
+    }
+    if (open_collection_section) location.open_collection_section = open_collection_section;
+    if (open_tag_category != (u8)TagCategory::Count) {
+        if (open_tag_category > (u8)TagCategory::Count) return false;
+        location.open_tag_category = (TagCategory)open_tag_category;
+    }
+
+    auto filters = state.filters;
+    for (auto& filter : filters)
+        filter.Clear();
+    u16 num_selected;
+    if (!read(num_selected)) return false;
+    for (auto _ : Range((usize)num_selected)) {
+        u8 filter_index;
+        u64 key;
+        u8 name_size;
+        if (!read(filter_index) || !read(key) || !read(name_size)) return false;
+        if (filter_index >= filters.size) return false;
+        if (name_size > FilterSelection::DisplayName::Capacity()) return false;
+        if (pos + name_size > data.size) return false;
+        String const name {(char const*)data.data + pos, name_size};
+        pos += name_size;
+
+        auto& filter = filters[filter_index];
+        switch (filter.data.tag) {
+            case FilterSelection::Type::Hashes: break;
+            case FilterSelection::Type::Tags:
+                if (key != k_untagged_key && key >= ToInt(TagType::Count)) return false;
+                break;
+            case FilterSelection::Type::Bool:
+                if (key != 1) return false;
+                break;
+        }
+        filter.Add(key, name);
+    }
+    if (pos != data.size) return false;
+
+    state.browse = location;
+    state.filters = filters;
+    return true;
 }
 
 static void BrowseBack(CommonBrowserState& state, BreadcrumbAction action) {
@@ -4010,13 +4109,11 @@ static BrowserSize CurrentBrowserSize(BrowserPopupContext& context, BrowserPopup
     if (!Exchange(state.size_loaded_from_store, true)) {
         state.size.results_width =
             persistent_store::GetValueAs<f32>(context.store,
-                                              k_browser_results_width_store_id ^ options.size_store_id);
+                                              k_browser_results_width_store_id ^ options.store_id);
         state.size.filters_col_width =
-            persistent_store::GetValueAs<f32>(context.store,
-                                              k_browser_width_store_id ^ options.size_store_id);
+            persistent_store::GetValueAs<f32>(context.store, k_browser_width_store_id ^ options.store_id);
         state.size.height =
-            persistent_store::GetValueAs<f32>(context.store,
-                                              k_browser_height_store_id ^ options.size_store_id);
+            persistent_store::GetValueAs<f32>(context.store, k_browser_height_store_id ^ options.store_id);
     }
     if (IsAnyScreenshotInProgress())
         return {options.results_width, options.filters_col_width, options.height};
@@ -4032,9 +4129,9 @@ static void SaveBrowserSize(BrowserPopupContext& context, BrowserPopupOptions co
         persistent_store::RemoveValue(context.store, id, k_nullopt);
         if (value) persistent_store::AddValue(context.store, id, *value);
     };
-    save(k_browser_results_width_store_id ^ options.size_store_id, context.state.size.results_width);
-    save(k_browser_width_store_id ^ options.size_store_id, context.state.size.filters_col_width);
-    save(k_browser_height_store_id ^ options.size_store_id, context.state.size.height);
+    save(k_browser_results_width_store_id ^ options.store_id, context.state.size.results_width);
+    save(k_browser_width_store_id ^ options.store_id, context.state.size.filters_col_width);
+    save(k_browser_height_store_id ^ options.store_id, context.state.size.height);
 }
 
 // The filters panel's bottom-right corner is the only one the browser doesn't share with the opener or the
@@ -4206,6 +4303,17 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                        ? FilterMode::MultipleAnd
                        : (FilterMode)prefs::GetInt(context.preferences, BrowserFilterModePrefsDescriptor()));
 
+    // Screenshots never touch the store, so the docs images don't depend on it and don't change it. The
+    // place is restored before the checks below so a stale one is corrected the same way as any other.
+    if (!IsAnyScreenshotInProgress() && !Exchange(context.state.browse_place_loaded_from_store, true) &&
+        context.state.mode == BrowserMode::Browse) {
+        auto const stored =
+            persistent_store::Get(context.store, k_browser_browse_place_store_id ^ options.store_id);
+        if (stored.tag == persistent_store::GetResult::Found)
+            DecodeBrowsePlace(stored.Get<persistent_store::Value const*>()->data, context.state);
+        context.state.browse_place_saved_hash = BrowseNavigationHash(context.state);
+    }
+
     auto& browse = context.state.browse;
 
     if (context.state.mode != BrowserMode::Browse) {
@@ -4231,8 +4339,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
     }
 
     // A section can stop existing while it's open, such as when preset banks are no longer split into
-    // factory and user groups.
-    if (browse.open_collection_section &&
+    // factory and user groups. Not while a scan is still adding items: the sections are derived from the
+    // items, so a restored section may simply not have appeared yet.
+    if (browse.open_collection_section && !context.state.items_still_loading &&
         !CollectionSectionTitle(context, options, *browse.open_collection_section).text.size) {
         browse.open_collection_section = k_nullopt;
         context.state.ClearAll();
@@ -4259,9 +4368,19 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
         }
     }
 
+    auto const navigation_hash = BrowseNavigationHash(context.state);
+
     // Forward only undoes back: any other navigation since then makes the stacked levels stale.
-    if (BrowseNavigationHash(context.state) != context.state.browse_navigation_hash)
+    if (navigation_hash != context.state.browse_navigation_hash)
         dyn::Clear(context.state.browse_forward_levels);
+
+    if (context.state.mode == BrowserMode::Browse && !IsAnyScreenshotInProgress() &&
+        !context.state.items_still_loading && navigation_hash != context.state.browse_place_saved_hash) {
+        context.state.browse_place_saved_hash = navigation_hash;
+        persistent_store::SetValue(context.store,
+                                   k_browser_browse_place_store_id ^ options.store_id,
+                                   EncodeBrowsePlace(context.state, builder.arena));
+    }
 
     // A pending scroll is only meaningful while the item can be drawn. Otherwise it would fire unexpectedly
     // later, e.g. when a filter is removed.
@@ -5129,3 +5248,91 @@ void DoBrowserModal(GuiBuilder& builder, BrowserPopupContext context, BrowserPop
 
     CloseBrowserIfCursorLeft(builder.imgui, context.state, context.browser_id);
 }
+
+TEST_CASE(TestBrowsePlaceCoding) {
+    auto const make_state = [] {
+        CommonBrowserState state {};
+        InitCommonFilters(state);
+        dyn::Append(state.filters, FilterSelection::Bool("Extra"_s));
+        return state;
+    };
+
+    auto source = make_state();
+    source.browse.open_attribute = (u8)BrowserFilter::Tags;
+    source.browse.open_collection_section = 12345u;
+    source.browse.open_tag_category = TagCategory::RealInstrument;
+    source.Filter(BrowserFilter::Library).Add(HashFnv1a("abyss"), "Abyss"_s);
+    source.Filter(BrowserFilter::Folder).Add(HashFnv1a("pads"), "Pads"_s);
+    source.Filter(BrowserFilter::Tags).Add(ToInt(TagType::FieldRecording), {});
+    source.Filter(BrowserFilter::Tags).Add(k_untagged_key, {});
+    source.filters[ToInt(BrowserFilter::CommonCount)].Add(1, {});
+
+    auto const encoded = EncodeBrowsePlace(source, tester.scratch_arena);
+
+    SUBCASE("round trip") {
+        auto decoded = make_state();
+        REQUIRE(DecodeBrowsePlace(encoded, decoded));
+        CHECK_EQ(*decoded.browse.open_attribute, (u8)BrowserFilter::Tags);
+        CHECK_EQ(*decoded.browse.open_collection_section, 12345u);
+        CHECK(*decoded.browse.open_tag_category == TagCategory::RealInstrument);
+        for (auto const [filter_index, filter] : Enumerate(source.filters)) {
+            auto const& decoded_filter = decoded.filters[filter_index];
+            filter.ForEachSelected([&](String name, u64 key) {
+                CHECK(decoded_filter.Contains(key));
+                if (filter.data.tag == FilterSelection::Type::Hashes) {
+                    bool found = false;
+                    decoded_filter.ForEachSelected([&](String decoded_name, u64 decoded_key) {
+                        if (decoded_key == key) found = decoded_name == name;
+                        return LoopControl::Continue;
+                    });
+                    CHECK(found);
+                }
+                return LoopControl::Continue;
+            });
+        }
+        CHECK(!decoded.Filter(BrowserFilter::LibraryAuthor).HasSelected());
+    }
+
+    SUBCASE("root place") {
+        auto const root = make_state();
+        auto decoded = make_state();
+        decoded.browse.open_attribute = (u8)0;
+        decoded.Filter(BrowserFilter::Library).Add(1, "Stale"_s);
+        REQUIRE(DecodeBrowsePlace(EncodeBrowsePlace(root, tester.scratch_arena), decoded));
+        CHECK(!decoded.browse.open_attribute);
+        CHECK(!decoded.browse.open_collection_section);
+        CHECK(!decoded.HasFilters());
+    }
+
+    SUBCASE("rejected data leaves the state untouched") {
+        auto decoded = make_state();
+        decoded.browse.open_collection_section = 99u;
+
+        SUBCASE("truncated") {
+            for (auto const size : Range(encoded.size))
+                CHECK(!DecodeBrowsePlace(encoded.SubSpan(0, size), decoded));
+        }
+        SUBCASE("trailing bytes") {
+            DynamicArray<u8> longer {tester.scratch_arena};
+            dyn::AppendSpan(longer, encoded);
+            dyn::Append(longer, (u8)0);
+            CHECK(!DecodeBrowsePlace(longer, decoded));
+        }
+        SUBCASE("other version") {
+            auto other = tester.scratch_arena.Clone(encoded);
+            other[0] = k_browse_place_version + 1;
+            CHECK(!DecodeBrowsePlace(other, decoded));
+        }
+        SUBCASE("filter the state doesn't have") {
+            dyn::Pop(decoded.filters);
+            CHECK(!DecodeBrowsePlace(encoded, decoded));
+        }
+
+        CHECK_EQ(*decoded.browse.open_collection_section, 99u);
+        CHECK(!decoded.HasFilters());
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterBrowsePlaceTests) { REGISTER_TEST(TestBrowsePlaceCoding); }
