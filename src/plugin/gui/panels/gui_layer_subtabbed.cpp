@@ -807,17 +807,34 @@ static void DoPageTabs(GuiState& g, u8 layer_index, Box parent) {
             return {};
         }();
 
-        auto const tab_btn = DoTabButton(g.builder,
-                                         tabs_row,
-                                         name,
-                                         {
-                                             .is_selected = is_selected,
-                                             .show_dot_indicator = tab_has_active_content,
-                                             .tooltip = FunctionRef<String()> {[&]() -> String {
-                                                 return fmt::Format(g.scratch_arena, "Open {} tab", name);
-                                             }},
-                                         },
-                                         (u64)i);
+        auto const tooltip = [&]() -> String {
+            switch (page_type) {
+                case LayerPageType::Main: return "Shape this layer's volume envelope and filter."_s;
+                case LayerPageType::Playback:
+                    return "Choose how the Instrument plays: play mode, looping, reverse and granular settings."_s;
+                case LayerPageType::Eq: return "Equalise this layer's tone; the dot shows the EQ is on."_s;
+                case LayerPageType::Config:
+                    return "Set how this layer responds to your keyboard: key range, transpose, velocity curve, pitch bend and MPE."_s;
+                case LayerPageType::Lfo:
+                    return "Modulate a parameter with a low-frequency oscillator; the dot shows the LFO is on."_s;
+                case LayerPageType::Arp:
+                    return "Turn held notes into rhythmic patterns; the dot shows the arpeggiator is on."_s;
+                case LayerPageType::Count: PanicIfReached();
+            }
+            return {};
+        }();
+
+        auto const tab_btn =
+            DoTabButton(g.builder,
+                        tabs_row,
+                        name,
+                        {
+                            .is_selected = is_selected,
+                            .show_dot_indicator = tab_has_active_content,
+                            .tooltip = FunctionRef<String()> {[&]() -> String { return tooltip; }},
+                            .tooltip_footer = k_right_click_tooltip_footer,
+                        },
+                        (u64)i);
 
         if (tab_btn.button_fired) layer_state.selected_page = page_type;
 
@@ -1800,7 +1817,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                               .size_from_text = true,
                                               .font = FontType::Icons,
                                               .text_colours = {Col {.c = Col::Yellow}},
-                                              .tooltip = warning_tooltip,
+                                              .value_popup = warning_tooltip,
                                           });
                                 }
 

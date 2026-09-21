@@ -224,6 +224,7 @@ Box DoTabButton(GuiBuilder& builder, Box parent, String text, TabButtonOptions c
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
                   .tooltip = options.tooltip,
+                  .tooltip_footer = options.tooltip_footer,
                   .button_behaviour = imgui::ButtonConfig {},
               });
 
