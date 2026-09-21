@@ -9,6 +9,7 @@
 #include "engine/engine.hpp"
 #include "engine/favourite_items.hpp"
 #include "gui/core/gui_state.hpp"
+#include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui/overlays/gui_notifications.hpp"
 #include "gui/panels/gui_common_browser.hpp"
@@ -563,7 +564,8 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
 
                             return buffer.ToOwnedSpan();
                         }),
-                    .tooltip = "Click to load the preset. Double-click to load and close the browser."_s,
+                    .tooltip = BrowserItemLoadTooltip(builder.arena, "preset"_s),
+                    .tooltip_footer = k_right_click_tooltip_footer,
                     .item_id = preset.full_path_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
@@ -677,6 +679,7 @@ DoPresetTypeValues(GuiBuilder& builder,
                         .is_selected =
                             state.common_state.Filter(PresetBrowserFilter::PresetType).Contains(type_index),
                         .text = name,
+                        .match_phrase = "of this type"_s,
                         .filter = state.common_state.Filter(PresetBrowserFilter::PresetType),
                         .clicked_key = type_index,
                         .filter_mode = state.common_state.filter_mode,
@@ -707,6 +710,7 @@ static void DoPresetAuthorValues(GuiBuilder& builder,
                         .is_selected =
                             state.common_state.Filter(PresetBrowserFilter::Author).Contains(author_hash),
                         .text = author,
+                        .match_phrase = "by this author"_s,
                         .filter = state.common_state.Filter(PresetBrowserFilter::Author),
                         .clicked_key = author_hash,
                         .filter_mode = state.common_state.filter_mode,
@@ -971,18 +975,20 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             n;
         });
         if (context.presets_snapshot.has_preset_type.NumSet() > 1 && num_types) {
-            dyn::Append(extra_browse_attributes,
+            dyn::Append(
+                extra_browse_attributes,
+                {
+                    .filter_index = (u8)PresetBrowserFilter::PresetType,
+                    .entry =
                         {
-                            .filter_index = (u8)PresetBrowserFilter::PresetType,
-                            .entry =
-                                {
-                                    .name = "Preset type"_s,
-                                    .icon = ICON_FA_FLOPPY_DISK,
-                                    .count = num_types,
-                                    .tooltip = "Browse by the format the preset was saved in."_s,
-                                },
-                            .do_values = do_preset_type_values,
-                        });
+                            .name = "Preset type"_s,
+                            .icon = ICON_FA_FLOPPY_DISK,
+                            .count = num_types,
+                            .tooltip =
+                                "Separate presets made in Floe from ones made in Mirage, Floe's predecessor."_s,
+                        },
+                    .do_values = do_preset_type_values,
+                });
         }
         if (preset_authors.size) {
             dyn::Append(extra_browse_attributes,
@@ -993,7 +999,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                     .name = "Preset authors"_s,
                                     .icon = ICON_FA_PEN,
                                     .count = (u32)preset_authors.size,
-                                    .tooltip = "Browse by who made the preset."_s,
+                                    .tooltip = "Find presets by who made them."_s,
                                 },
                             .do_values = do_preset_author_values,
                         });
@@ -1030,7 +1036,6 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                         .text = folder_name,
                         .value_popup = folder->name != folder_name ? TooltipString {folder->name}
                                                                    : TooltipString {k_nullopt},
-                        .tooltip = "Click to expand/collapse the preset bank."_s,
                         .filter = state.common_state.Filter(BrowserFilter::Folder),
                         .clicked_key = folder_hash,
                         .filter_mode = state.common_state.filter_mode,
@@ -1103,7 +1108,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                     .name = "Factory preset banks"_s,
                                     .icon = ICON_FA_INDUSTRY,
                                     .count = num_banks(true),
-                                    .tooltip = "Browse the preset banks that came with your libraries."_s,
+                                    .tooltip = "Preset banks that came with your libraries."_s,
                                 },
                             .right_click_menu = PresetFolderRightClickMenu,
                             .do_collections = do_factory_banks,
@@ -1116,25 +1121,27 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                                     .name = "User presets"_s,
                                     .icon = ICON_FA_USER,
                                     .count = num_banks(false),
-                                    .tooltip = "Browse the preset banks you made or installed yourself."_s,
+                                    .tooltip = "Preset banks you've made or installed yourself."_s,
                                 },
                             .right_click_menu = PresetFolderRightClickMenu,
                             .do_collections = do_user_banks,
                         });
         } else {
-            dyn::Append(sections,
+            dyn::Append(
+                sections,
+                {
+                    .id = k_folders_section_id,
+                    .entry =
                         {
-                            .id = k_folders_section_id,
-                            .entry =
-                                {
-                                    .name = "Preset banks"_s,
-                                    .icon = ICON_FA_BOX_OPEN,
-                                    .count = num_banks(k_nullopt),
-                                    .tooltip = "Browse the preset banks you have installed."_s,
-                                },
-                            .right_click_menu = PresetFolderRightClickMenu,
-                            .do_collections = do_all_banks,
-                        });
+                            .name = "Preset banks"_s,
+                            .icon = ICON_FA_BOX_OPEN,
+                            .count = num_banks(k_nullopt),
+                            .tooltip =
+                                "Your preset banks, one per row. A preset bank is a folder of presets, either from a library or one you've added yourself."_s,
+                        },
+                    .right_click_menu = PresetFolderRightClickMenu,
+                    .do_collections = do_all_banks,
+                });
         }
         sections;
     });
@@ -1168,6 +1175,8 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             .do_items = [&](GuiBuilder& builder) { PresetBrowserItems(builder, context, state); },
             .filter_search_placeholder_text = "Search preset banks/tags",
             .item_search_placeholder_text = "Search presets",
+            .item_search_tooltip = "Search the current results by preset name only. " MODIFIER_KEY_NAME
+                                   "+F jumps here from anywhere in the browser.",
             .current_item = current_item,
             .browse_scope = CurrentBrowseScope(state.common_state,
                                                {

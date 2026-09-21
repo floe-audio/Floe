@@ -535,7 +535,13 @@ struct FilterButtonCommonOptions {
     bool is_selected;
     String text;
     TooltipString value_popup = k_nullopt;
-    TooltipString tooltip = k_nullopt;
+    TooltipString tooltip = k_nullopt; // Overrides the tooltip built from match_phrase.
+    // Completes "Show only the items ...", e.g. "with this tag", "in this folder". The tooltip is built from
+    // it, the mode and the selected state; leave it empty for no tooltip.
+    String match_phrase {};
+    // Browse mode: what clicking the selected value shows, completing "Click again to show ...". Defaults
+    // to "everything".
+    String deselect_shows {};
     FilterSelection& filter;
     u64 clicked_key;
     FilterMode filter_mode;
@@ -643,6 +649,8 @@ struct BrowserPopupOptions {
     bool show_search {true};
     String filter_search_placeholder_text {"Search filters..."};
     String item_search_placeholder_text {"Search"};
+    String item_search_tooltip {"Search the current results by name. " MODIFIER_KEY_NAME
+                                "+F jumps here from anywhere in the browser."};
 
     CurrentItemStatus current_item {};
 
@@ -767,6 +775,7 @@ struct BrowserItemOptions {
     String text;
     TooltipString value_popup = k_nullopt;
     TooltipString tooltip = k_nullopt;
+    String tooltip_footer {};
     u64 item_id;
     bool is_current;
     bool is_favourite;
@@ -785,6 +794,14 @@ struct BrowserItemResult {
 
 BrowserItemResult
 DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions const& options);
+
+// The tooltip every item row shares. item_type_name as it should read mid-sentence: "Instrument", "preset".
+inline String BrowserItemLoadTooltip(ArenaAllocator& arena, String item_type_name) {
+    return fmt::Format(arena,
+                       "Click to load this {}. The browser stays open until you move the mouse away from it, "
+                       "so you can try a few in a row. Double-click to load and close straight away.",
+                       item_type_name);
+}
 
 struct FilterButtonOptions {
     FilterButtonCommonOptions common;

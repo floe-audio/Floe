@@ -442,7 +442,7 @@ static String CurrentItemUnlistedTooltip(ArenaAllocator& arena, String type, Cur
                                type,
                                item.name,
                                item.not_in_list_reason);
-        case Visibility::Loading: return fmt::Format(arena, "Still scanning for the current {}", type);
+        case Visibility::Loading: return fmt::Format(arena, "Still scanning for the current {}.", type);
         case Visibility::None:
         case Visibility::Shown:
         case Visibility::InCollapsedSection:
@@ -469,6 +469,7 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                   .value_popup = options.value_popup,
                   .value_popup_delay_secs = 0.4,
                   .tooltip = options.tooltip,
+                  .tooltip_footer = options.tooltip_footer,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
                   .tooltip_placement = TooltipPlacement::LeftThenRight,
                   .button_behaviour = imgui::ButtonConfig {.dont_fire_on_double_click = true},
@@ -547,42 +548,49 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
     }
 
     if (options.is_default) {
-        DoBox(builder,
-              {
-                  .parent = item,
-                  .text = ICON_FA_HOUSE,
-                  .font = FontType::Icons,
-                  .font_size = k_font_icons_size * 0.7f,
-                  .text_colours = Col {.c = Col::Subtext0},
-                  .text_justification = TextJustification::CentredLeft,
-                  .layout {
-                      .size = {16, layout::k_fill_parent},
-                  },
-                  .tooltip = "Default preset"_s,
-              });
+        DoBox(
+            builder,
+            {
+                .parent = item,
+                .text = ICON_FA_HOUSE,
+                .font = FontType::Icons,
+                .font_size = k_font_icons_size * 0.7f,
+                .text_colours = Col {.c = Col::Subtext0},
+                .text_justification = TextJustification::CentredLeft,
+                .layout {
+                    .size = {16, layout::k_fill_parent},
+                },
+                .tooltip =
+                    "Your default preset. Floe loads it whenever you open a new instance. Right-click any preset to make it the default."_s,
+            });
     }
 
     auto const favourite_toggled =
-        !!DoBox(builder,
-                {
-                    .parent = item,
-                    .text = ICON_FA_STAR,
-                    .font = FontType::Icons,
-                    .font_size = k_font_icons_size * 0.7f,
-                    .text_colours =
-                        ColSet {
-                            .base = Col {.c = options.is_favourite ? Col::Highlight400
-                                              : item.is_hot        ? Col::Surface2
-                                                                   : Col::None},
-                            .hot = Col {.c = Col::Highlight200},
-                            .active = Col {.c = Col::Highlight200},
-                        },
-                    .text_justification = TextJustification::Centred,
-                    .layout {
-                        .size = {5 + (k_browser_row_pad_x * 2), layout::k_fill_parent},
-                    },
-                    .button_behaviour = imgui::ButtonConfig {},
-                })
+        !!DoBox(
+              builder,
+              {
+                  .parent = item,
+                  .text = ICON_FA_STAR,
+                  .font = FontType::Icons,
+                  .font_size = k_font_icons_size * 0.7f,
+                  .text_colours =
+                      ColSet {
+                          .base = Col {.c = options.is_favourite ? Col::Highlight400
+                                            : item.is_hot        ? Col::Surface2
+                                                                 : Col::None},
+                          .hot = Col {.c = Col::Highlight200},
+                          .active = Col {.c = Col::Highlight200},
+                      },
+                  .text_justification = TextJustification::Centred,
+                  .layout {
+                      .size = {5 + (k_browser_row_pad_x * 2), layout::k_fill_parent},
+                  },
+                  .tooltip =
+                      "Mark this as a favourite. Favourites are shared by every Floe instance, and the star button in the toolbar shows only them."_s,
+                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                  .tooltip_placement = TooltipPlacement::LeftThenRight,
+                  .button_behaviour = imgui::ButtonConfig {},
+              })
               .button_fired;
 
     auto const fired_via_keyboard = key_nav::DoItem(builder,
@@ -737,11 +745,12 @@ void DoBrowserEmptyListMessage(GuiBuilder& builder,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                       },
                       .tooltip = (String)fmt::Format(builder.arena,
-                                                     "Clear the {} and keep the {}",
+                                                     "Clear the {} but keep your {}, so it covers all {}.",
                                                      SelectionNoun(state),
                                                      searching && favourites_only ? "search and Favourites"_s
                                                      : searching                  ? "search"_s
-                                                                                  : "Favourites"_s),
+                                                                                  : "Favourites"_s,
+                                                     plural_item_type_name),
                       .button_behaviour = imgui::ButtonConfig {},
                       .name = "browser.search-all-button"_s,
                   });
@@ -797,6 +806,7 @@ struct FolderFilterTreeOptions {
     // Selection of this folder, or anything above it, doesn't light the lines into descendants.
     FolderNode const* excluded_ancestor {};
     DeselectFallback deselect_fallback {};
+    String collection_noun {}; // Names what deselecting a folder goes back to showing.
 };
 
 // A folder with nothing in it is left out, as is a preset bank within the preset bank.
@@ -856,6 +866,11 @@ static void DoFolderFilterAndChildren(GuiBuilder& builder,
                     .is_selected = is_selected,
                     .text = folder->display_name.size ? folder->display_name : folder->name,
                     .value_popup = folder->display_name.size ? TooltipString {folder->name} : k_nullopt,
+                    .match_phrase = "in this folder, subfolders included"_s,
+                    .deselect_shows =
+                        options.deselect_fallback.filter
+                            ? (String)fmt::Format(builder.arena, "the whole {}", options.collection_noun)
+                            : String {},
                     .filter = state.Filter(BrowserFilter::Folder),
                     .clicked_key = folder_hash,
                     .filter_mode = state.filter_mode,
@@ -937,6 +952,56 @@ static u32 NumUsedForFilter(FilterItemInfo const& info, FilterMode mode) {
         case FilterMode::Count: PanicIfReached();
     }
     return 0;
+}
+
+// What clicking a filter value does: it depends on the mode, whether the value is already selected, and
+// whether it's greyed out. An explicit tooltip wins; no match phrase means no tooltip.
+static TooltipString FilterValueTooltip(ArenaAllocator& arena,
+                                        CommonBrowserState const& state,
+                                        FilterButtonCommonOptions const& options,
+                                        u32 num_used) {
+    if (options.tooltip.tag != TooltipStringType::None) return options.tooltip;
+    if (!options.match_phrase.size) return k_nullopt;
+
+    if (options.filter_mode == FilterMode::MultipleAnd && num_used == 0 && !options.is_selected)
+        return "Greyed out because nothing in the current results matches it, so selecting it would leave the list empty."_s;
+
+    auto const show_only = fmt::Format(arena, "Show only the items {}.", options.match_phrase);
+
+    switch (state.mode) {
+        case BrowserMode::Browse:
+            if (options.is_selected)
+                return (String)fmt::Format(arena,
+                                           "Click again to show {}.",
+                                           options.deselect_shows.size ? options.deselect_shows
+                                                                       : "everything"_s);
+            return (String)fmt::Format(arena, "{} Click another to switch.", show_only);
+        case BrowserMode::Filter:
+            switch (options.filter_mode) {
+                case FilterMode::Single:
+                    if (options.is_selected) return "Click again to clear this filter."_s;
+                    return (String)fmt::Format(
+                        arena,
+                        "{} Selecting a filter replaces the previous one. Switch to Match all or Match any below to combine filters.",
+                        show_only);
+                case FilterMode::MultipleAnd:
+                    if (options.is_selected) return "Remove this filter."_s;
+                    return (String)fmt::Format(
+                        arena,
+                        "Add a filter for the items {}. Items must match every selected filter.",
+                        options.match_phrase);
+                case FilterMode::MultipleOr:
+                    if (options.is_selected) return "Remove this filter."_s;
+                    return (String)fmt::Format(
+                        arena,
+                        "Add a filter for the items {}. Items matching any selected filter are shown.",
+                        options.match_phrase);
+                case FilterMode::Count: break;
+            }
+            break;
+        case BrowserMode::Count: break;
+    }
+    PanicIfReached();
 }
 
 struct NumUsedForFilterString {
@@ -1072,7 +1137,7 @@ Box DoFilterButton(GuiBuilder& builder,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
                   .value_popup = options.common.value_popup,
-                  .tooltip = options.common.tooltip,
+                  .tooltip = FilterValueTooltip(builder.arena, state, options.common, num_used),
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
                   .tooltip_placement = TooltipPlacement::RightThenLeft,
                   .button_behaviour = imgui::ButtonConfig {},
@@ -1178,27 +1243,28 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                                         },
                                     });
 
-    auto const button = DoBox(builder,
-                              {
-                                  .parent = button_outer,
-                                  .id_extra = options.common.id_extra,
-                                  .background_fill_colours = BrowserRowColours(options.common.is_selected),
-                                  .background_fill_auto_hot_active_overlay = false,
-                                  .layout {
-                                      .size {
-                                          layout::k_fill_parent,
-                                          k_browser_item_height,
-                                      },
-                                      .contents_padding {.lr = k_browser_row_pad_x},
-                                      .contents_align = layout::Alignment::Start,
-                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                  },
-                                  .value_popup = options.common.value_popup,
-                                  .tooltip = options.common.tooltip,
-                                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                                  .tooltip_placement = TooltipPlacement::RightThenLeft,
-                                  .button_behaviour = imgui::ButtonConfig {},
-                              });
+    auto const button =
+        DoBox(builder,
+              {
+                  .parent = button_outer,
+                  .id_extra = options.common.id_extra,
+                  .background_fill_colours = BrowserRowColours(options.common.is_selected),
+                  .background_fill_auto_hot_active_overlay = false,
+                  .layout {
+                      .size {
+                          layout::k_fill_parent,
+                          k_browser_item_height,
+                      },
+                      .contents_padding {.lr = k_browser_row_pad_x},
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .value_popup = options.common.value_popup,
+                  .tooltip = FilterValueTooltip(builder.arena, state, options.common, num_used),
+                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                  .tooltip_placement = TooltipPlacement::RightThenLeft,
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
 
     if (options.icon) {
         DoBox(builder,
@@ -1472,24 +1538,29 @@ static void DoBrowseModeCollectionRow(GuiBuilder& builder,
                                       CommonBrowserState& state,
                                       FilterItemInfo const& info,
                                       FilterCollectionOptions const& options) {
-    if (DoBrowseDrillDownRow(builder,
-                             state,
-                             {
-                                 .parent = options.common.parent,
-                                 .id = options.common.id_extra,
-                                 .entry =
-                                     {
-                                         .name = options.common.text,
-                                         .count = info.total_available,
-                                         .tooltip = "Click to browse its folders."_s,
-                                     },
-                                 .collection_icon = &options.icon,
-                                 .greyed = NumUsedForFilter(info, options.common.filter_mode) == 0,
-                                 .keyboard_id = options.common.clicked_key,
-                                 .value_popup = options.common.value_popup,
-                                 .right_click_menu = options.right_click_menu,
-                                 .name = options.name,
-                             }))
+    if (DoBrowseDrillDownRow(
+            builder,
+            state,
+            {
+                .parent = options.common.parent,
+                .id = options.common.id_extra,
+                .entry =
+                    {
+                        .name = options.common.text,
+                        .count = info.total_available,
+                        .tooltip = fmt::Format(
+                            builder.arena,
+                            "Show only this {}'s{}. Its folders are then listed here so you can narrow down further.",
+                            options.collection_noun,
+                            options.all_items_suffix),
+                    },
+                .collection_icon = &options.icon,
+                .greyed = NumUsedForFilter(info, options.common.filter_mode) == 0,
+                .keyboard_id = options.common.clicked_key,
+                .value_popup = options.common.value_popup,
+                .right_click_menu = options.right_click_menu,
+                .name = options.name,
+            }))
         HandleFilterButtonClick(builder, state, options.common);
 }
 
@@ -1516,21 +1587,23 @@ static BrowseEntry CommonAttributeEntry(BrowserFilter filter, u32 count) {
                 .name = "Libraries used"_s,
                 .icon = ICON_FA_BOOK_OPEN,
                 .count = count,
-                .tooltip = "Browse by the libraries an item uses."_s,
+                .tooltip =
+                    "Find presets by the library their sounds come from. A preset can use several libraries, so it can appear under more than one."_s,
             };
         case BrowserFilter::LibraryAuthor:
             return {
                 .name = "Library authors"_s,
                 .icon = ICON_FA_USERS,
                 .count = count,
-                .tooltip = "Browse by who made the library."_s,
+                .tooltip = "Find items by who made their library."_s,
             };
         case BrowserFilter::Tags:
             return {
                 .name = "Tags"_s,
                 .icon = ICON_FA_TAG,
                 .count = count,
-                .tooltip = "Browse by tag, such as a genre, mood or timbre."_s,
+                .tooltip =
+                    "Find items by tag. Tags are grouped into categories such as Mood and Sound source. Open a category to see its tags."_s,
             };
         case BrowserFilter::Folder:
         case BrowserFilter::CommonCount: break;
@@ -1584,7 +1657,8 @@ static BrowseEntry LibrariesCollectionSectionEntry(u32 count) {
         .name = "Libraries"_s,
         .icon = ICON_FA_BOOK_OPEN,
         .count = count,
-        .tooltip = "Browse the libraries you have installed."_s,
+        .tooltip =
+            "Your installed libraries, one per row. Open one to see just its items, with its folders to narrow down further."_s,
     };
 }
 
@@ -2189,26 +2263,30 @@ static void DoFilterModeCollection(GuiBuilder& builder,
                                       .name = options.name,
                                   });
 
-    auto const header =
-        DoBox(builder,
-              {
-                  .parent = collection,
-                  .background_fill_colours = BrowserRowColours(false),
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.lr = k_browser_row_pad_x, .tb = 2},
-                      .contents_gap = k_browser_row_pad_x,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-                  .value_popup = options.common.value_popup,
-                  .tooltip = options.common.tooltip,
-                  .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_placement = TooltipPlacement::RightThenLeft,
-                  .button_behaviour = imgui::ButtonConfig {},
-                  .name = options.name.size ? (String)fmt::Format(builder.arena, "{}.header", options.name)
-                                            : String {},
-              });
+    auto const header = DoBox(
+        builder,
+        {
+            .parent = collection,
+            .background_fill_colours = BrowserRowColours(false),
+            .layout {
+                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                .contents_padding = {.lr = k_browser_row_pad_x, .tb = 2},
+                .contents_gap = k_browser_row_pad_x,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+            },
+            .value_popup = options.common.value_popup,
+            .tooltip = (String)fmt::Format(
+                builder.arena,
+                "Expand to see the {}'s folders. The All row selects the whole {}, and the rows below it select single folders.",
+                options.collection_noun,
+                options.collection_noun),
+            .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+            .tooltip_placement = TooltipPlacement::RightThenLeft,
+            .button_behaviour = imgui::ButtonConfig {},
+            .name =
+                options.name.size ? (String)fmt::Format(builder.arena, "{}.header", options.name) : String {},
+        });
 
     if (options.right_click_menu) {
         DoRightClickMenuForBox(builder, state, header, options.common.clicked_key, options.right_click_menu);
@@ -2275,27 +2353,29 @@ static void DoFilterModeCollection(GuiBuilder& builder,
     };
 
     // "All" leaf: selects the root node (all children).
-    DoFilterTreeButton(builder,
-                       state,
-                       info,
-                       {
-                           .common =
-                               {
-                                   .parent = body,
-                                   .id_extra = options.common.id_extra,
-                                   .is_selected = is_selected,
-                                   .text = fmt::Format(builder.arena,
-                                                       "All {}{}"_s,
-                                                       options.common.text,
-                                                       options.all_items_suffix),
-                                   .filter = options.common.filter,
-                                   .clicked_key = options.common.clicked_key,
-                                   .filter_mode = options.common.filter_mode,
-                               },
-                           .lines = lines,
-                           .font_override = FontType::BodyItalic,
-                           .display_text = fmt::Format(builder.arena, "All{}"_s, options.all_items_suffix),
-                       });
+    DoFilterTreeButton(
+        builder,
+        state,
+        info,
+        {
+            .common =
+                {
+                    .parent = body,
+                    .id_extra = options.common.id_extra,
+                    .is_selected = is_selected,
+                    .text = fmt::Format(builder.arena,
+                                        "All {}{}"_s,
+                                        options.common.text,
+                                        options.all_items_suffix),
+                    .match_phrase = fmt::Format(builder.arena, "in this {}", options.collection_noun),
+                    .filter = options.common.filter,
+                    .clicked_key = options.common.clicked_key,
+                    .filter_mode = options.common.filter_mode,
+                },
+            .lines = lines,
+            .font_override = FontType::BodyItalic,
+            .display_text = fmt::Format(builder.arena, "All{}"_s, options.all_items_suffix),
+        });
 
     if (options.folder) {
         FolderFilterTreeContext const context {.folder_infos = options.folder_infos, .lines = lines};
@@ -2380,6 +2460,7 @@ static void DoBrowseModeOpenCollection(GuiBuilder& builder,
                     .key = options.common.clicked_key,
                     .display_name = options.common.text,
                 },
+            .collection_noun = options.collection_noun,
         };
         any_folders = DoFolderFilterChildren(builder,
                                              state,
@@ -2459,24 +2540,27 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                                  });
 
     if (!skip_heading && (heading || folder)) {
-        auto const heading_container =
-            DoBox(builder,
-                  {
-                      .parent = container,
-                      .background_fill_auto_hot_active_overlay = true,
-                      .layout {
-                          .size = {layout::k_fill_parent, k_browser_item_height},
-                          .contents_padding = {.lr = k_browser_row_pad_x},
-                          .contents_gap = k_browser_row_pad_x,
-                          .contents_direction = layout::Direction::Row,
-                          .contents_align = layout::Alignment::Start,
-                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                      },
-                      .tooltip = folder ? TooltipString {"Expand/collapse folder"_s} : k_nullopt,
-                      .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                      .tooltip_placement = tooltip_placement,
-                      .button_behaviour = imgui::ButtonConfig {},
-                  });
+        auto const heading_container = DoBox(
+            builder,
+            {
+                .parent = container,
+                .background_fill_auto_hot_active_overlay = true,
+                .layout {
+                    .size = {layout::k_fill_parent, k_browser_item_height},
+                    .contents_padding = {.lr = k_browser_row_pad_x},
+                    .contents_gap = k_browser_row_pad_x,
+                    .contents_direction = layout::Direction::Row,
+                    .contents_align = layout::Alignment::Start,
+                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                },
+                .tooltip =
+                    folder ? TooltipString {"Collapse or expand this folder.\n\nTip: hold " MODIFIER_KEY_NAME
+                                            " and press the up or down arrow to jump between folders."_s}
+                           : k_nullopt,
+                .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
+                .tooltip_placement = tooltip_placement,
+                .button_behaviour = imgui::ButtonConfig {},
+            });
         heading_box = heading_container;
 
         auto const heading_fired_via_keyboard =
@@ -2749,7 +2833,6 @@ static void DoLibraryCollections(GuiBuilder& builder,
                             .is_selected = context.state.Filter(BrowserFilter::Library).Contains(lib_hash),
                             .text = lib->name,
                             .value_popup = LibraryDescription(builder.arena, *lib),
-                            .tooltip = "Click to expand/collapse the library."_s,
                             .filter = context.state.Filter(BrowserFilter::Library),
                             .clicked_key = lib_hash,
                             .filter_mode = context.state.filter_mode,
@@ -2845,6 +2928,7 @@ static void DoLibraryValues(GuiBuilder& builder,
                                 }
                                 return buf.ToOwnedSpan();
                             }),
+                            .match_phrase = "from this library"_s,
                             .filter = context.state.Filter(BrowserFilter::Library),
                             .clicked_key = lib_hash,
                             .filter_mode = context.state.filter_mode,
@@ -2988,6 +3072,7 @@ static void DoLibraryAuthorValues(GuiBuilder& builder,
                         .is_selected =
                             context.state.Filter(BrowserFilter::LibraryAuthor).Contains(author_hash),
                         .text = author,
+                        .match_phrase = "from libraries by this author"_s,
                         .filter = context.state.Filter(BrowserFilter::LibraryAuthor),
                         .clicked_key = author_hash,
                         .filter_mode = context.state.filter_mode,
@@ -3057,6 +3142,7 @@ static void DoTagValues(GuiBuilder& builder,
                         .id_extra = (u64)tag,
                         .is_selected = context.state.Filter(BrowserFilter::Tags).Contains((u64)tag),
                         .text = tag_info.name,
+                        .match_phrase = "with this tag"_s,
                         .filter = context.state.Filter(BrowserFilter::Tags),
                         .clicked_key = (u64)tag,
                         .filter_mode = context.state.filter_mode,
@@ -3083,6 +3169,7 @@ static void DoUntaggedValue(GuiBuilder& builder,
                     .id_extra = k_untagged_key,
                     .is_selected = context.state.Filter(BrowserFilter::Tags).Contains(k_untagged_key),
                     .text = k_untagged_tag_name,
+                    .match_phrase = "with no tags"_s,
                     .filter = context.state.Filter(BrowserFilter::Tags),
                     .clicked_key = k_untagged_key,
                     .filter_mode = context.state.filter_mode,
@@ -3311,6 +3398,25 @@ BrowserModeDescription(ArenaAllocator& arena, BrowserMode mode, BrowserPopupOpti
     PanicIfReached();
 }
 
+static String
+BrowserModeTooltip(ArenaAllocator& arena, BrowserMode mode, BrowserPopupOptions const& options) {
+    switch (mode) {
+        case BrowserMode::Browse:
+            return fmt::Format(
+                arena,
+                "Switch to Browse mode. Start from a short list of places to look and drill down, one {}, folder or tag at a time. Only one of your selected filters is kept.",
+                options.browse_scope.collection_noun);
+        case BrowserMode::Filter:
+            return fmt::Format(
+                arena,
+                "Switch to Filter mode. Every {}, folder and tag is shown at once as a tree, so you can combine several, such as a tag within one {}.",
+                options.browse_scope.collection_noun,
+                options.browse_scope.collection_noun);
+        case BrowserMode::Count: break;
+    }
+    PanicIfReached();
+}
+
 static String FilterModeMenuText(FilterMode mode) {
     switch (mode) {
         case FilterMode::Single: return "One";
@@ -3402,10 +3508,7 @@ static void DoBrowserModeToggle(GuiBuilder& builder,
                     .contents_align = layout::Alignment::Middle,
                     .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                 },
-                .tooltip = (String)fmt::Format(builder.arena,
-                                               "{} mode: {}",
-                                               BrowserModeText(mode),
-                                               BrowserModeDescription(builder.arena, mode, options)),
+                .tooltip = BrowserModeTooltip(builder.arena, mode, options),
                 .button_behaviour = imgui::ButtonConfig {},
             });
 
@@ -3496,7 +3599,11 @@ static void DoBrowserToolbarOverflowMenu(GuiBuilder& builder,
                                          BrowserPopupContext& context,
                                          BrowserPopupOptions const& options,
                                          Box const& parent) {
-    auto const button = ToolbarIconButton(builder, parent, ICON_FA_ELLIPSIS, "Browser options"_s, true);
+    auto const button = ToolbarIconButton(builder,
+                                          parent,
+                                          ICON_FA_ELLIPSIS,
+                                          "Choose Browse or Filter mode, and how filters combine."_s,
+                                          true);
     auto const popup_id = builder.imgui.MakeId("toolbar-overflow");
     if (button.button_fired) builder.imgui.OpenPopupMenu(popup_id, button.imgui_id);
     if (!builder.imgui.IsPopupMenuOpen(popup_id)) return;
@@ -3657,7 +3764,7 @@ static void DoToolbarSearch(GuiBuilder& builder, ToolbarSearchOptions const& opt
                           .contents_align = layout::Alignment::Middle,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                       },
-                      .tooltip = "Clear search"_s,
+                      .tooltip = "Clear the search."_s,
                       .button_behaviour = imgui::ButtonConfig {},
                   });
         DoBox(builder,
@@ -3781,14 +3888,14 @@ static void DoResultsFooter(GuiBuilder& builder,
     // Favourites and the search refine whatever else is selected, so they come first.
     bool any_refinement = false;
     if (state.favourites.HasSelected()) {
-        if (do_removable("favourites"_s, "Stop showing only favourites"_s)) state.favourites.Clear();
+        if (do_removable("favourites"_s, "Stop showing only favourites."_s)) state.favourites.Clear();
         any_refinement = true;
     }
     if (state.search.size) {
         auto const text = fmt::Format(builder.arena,
                                       any_refinement ? "matching \"{}\""_s : "matches for \"{}\""_s,
                                       state.search);
-        if (do_removable(text, "Clear search"_s)) dyn::Clear(state.search);
+        if (do_removable(text, "Clear the search."_s)) dyn::Clear(state.search);
         any_refinement = true;
     }
 
@@ -3798,15 +3905,18 @@ static void DoResultsFooter(GuiBuilder& builder,
     if (scope.collection) {
         do_words("from"_s);
         if (scope.folder_name.size) {
-            if (do_removable(
-                    scope.folder_name,
-                    (String)fmt::Format(builder.arena, "Show the whole {}", scope.collection_noun))) {
+            if (do_removable(scope.folder_name,
+                             (String)fmt::Format(builder.arena,
+                                                 "Go back to showing the whole {}.",
+                                                 scope.collection_noun))) {
                 state.Filter(BrowserFilter::Folder).Clear();
                 state.Filter(scope.collection->filter).Add(scope.collection->key, scope.collection->name);
                 state.scroll_items_to_start = true;
             }
         } else if (do_removable(scope.collection->name,
-                                (String)fmt::Format(builder.arena, "Leave this {}", scope.collection_noun))) {
+                                (String)fmt::Format(builder.arena,
+                                                    "Go back to the list of {}s.",
+                                                    scope.collection_noun))) {
             ApplyBreadcrumbAction(state, BreadcrumbAction::SectionRoot);
         }
         return;
@@ -3834,7 +3944,7 @@ static void DoResultsFooter(GuiBuilder& builder,
             auto const text = display_name.size
                                   ? (String)fmt::Format(builder.arena, "{}: {}", filter.name, display_name)
                                   : filter.name;
-            if (do_removable(text, "Remove filter"_s)) filter.Remove(key);
+            if (do_removable(text, "Remove this filter."_s)) filter.Remove(key);
             return LoopControl::Continue;
         });
     }
@@ -3937,21 +4047,23 @@ static void DoBrowserResizeGrip(GuiBuilder& builder,
                                 Box const& overlay_parent,
                                 BrowserSize current_size) {
     auto& state = context.state;
-    auto const grip = DoBox(builder,
-                            {
-                                .parent = overlay_parent,
-                                .layout {
-                                    .size = k_browser_spacing * 2,
-                                    .anchor = layout::Anchor::Right | layout::Anchor::Bottom,
-                                },
-                                .tooltip = "Drag to resize the browser. Double-click to reset its size."_s,
-                                .button_behaviour =
-                                    imgui::ButtonConfig {
-                                        .event = MouseButtonEvent::Down,
-                                        .cursor_type = CursorType::UpLeftDownRight,
-                                    },
-                                .name = "browser.resize-grip"_s,
-                            });
+    auto const grip = DoBox(
+        builder,
+        {
+            .parent = overlay_parent,
+            .layout {
+                .size = k_browser_spacing * 2,
+                .anchor = layout::Anchor::Right | layout::Anchor::Bottom,
+            },
+            .tooltip =
+                "Drag to resize the browser. Double-click to reset its size. Floe remembers the size."_s,
+            .button_behaviour =
+                imgui::ButtonConfig {
+                    .event = MouseButtonEvent::Down,
+                    .cursor_type = CursorType::UpLeftDownRight,
+                },
+            .name = "browser.resize-grip"_s,
+        });
 
     auto const& input = GuiIo().in;
 
@@ -4011,20 +4123,21 @@ static void DoBrowserPanelSplitter(GuiBuilder& builder,
                                    BrowserPopupOptions const& options,
                                    BrowserSize current_size) {
     auto& state = context.state;
-    auto const splitter =
-        DoBox(builder,
-              {
-                  .layout {
-                      .size = layout::k_fill_parent,
-                  },
-                  .tooltip = "Drag to resize the items panel. Double-click to reset its width."_s,
-                  .button_behaviour =
-                      imgui::ButtonConfig {
-                          .event = MouseButtonEvent::Down,
-                          .cursor_type = CursorType::HorizontalArrows,
-                      },
-                  .name = "browser.panel-splitter"_s,
-              });
+    auto const splitter = DoBox(
+        builder,
+        {
+            .layout {
+                .size = layout::k_fill_parent,
+            },
+            .tooltip =
+                "Drag to resize the results panel. Double-click to reset its width. Floe remembers the size."_s,
+            .button_behaviour =
+                imgui::ButtonConfig {
+                    .event = MouseButtonEvent::Down,
+                    .cursor_type = CursorType::HorizontalArrows,
+                },
+            .name = "browser.panel-splitter"_s,
+        });
 
     auto const& input = GuiIo().in;
 
@@ -4392,7 +4505,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                filters_panel,
                                size.filters_col_width,
                                BreadcrumbSegments(builder.arena, context, options),
-                               BrowseRootName(builder.arena, options));
+                               fmt::Format(builder.arena,
+                                           "Back to the starting page, showing all {}.",
+                                           options.plural_item_type_name));
         }
 
         // The controls stop short of the row's end so the resize grip overlaying the corner never sits on
@@ -4456,7 +4571,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                               .contents_align = layout::Alignment::Middle,
                               .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                           },
-                          .tooltip = FilterModeDescription(context.state.filter_mode),
+                          .tooltip = (String)fmt::Format(builder.arena,
+                                                         "How selected filters combine. {} Click to change.",
+                                                         FilterModeDescription(context.state.filter_mode)),
                           .button_behaviour = imgui::ButtonConfig {},
                           .name = "browser.match-button"_s,
                       });
@@ -4496,15 +4613,16 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
         }
 
         if (filter_mode) {
-            DoToolbarSearch(builder,
-                            {
-                                .parent = toolbar,
-                                .text_input_id = filter_search_id,
-                                .text = context.state.filter_search,
-                                .placeholder = options.filter_search_placeholder_text,
-                                .tooltip = "Search filters"_s,
-                                .dark_mode = true,
-                            });
+            DoToolbarSearch(
+                builder,
+                {
+                    .parent = toolbar,
+                    .text_input_id = filter_search_id,
+                    .text = context.state.filter_search,
+                    .placeholder = options.filter_search_placeholder_text,
+                    .tooltip = "Find a filter by name. Only filters whose names match stay in the tree."_s,
+                    .dark_mode = true,
+                });
         }
 
         DoBrowserResizeGrip(builder, context, options, main_section, size);
@@ -4683,25 +4801,26 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
             auto const is_selected = context.state.favourites.HasSelected();
             auto const grey_out = !is_selected && info.num_used_in_items_lists == 0;
 
-            auto const button =
-                DoBox(builder,
-                      {
-                          .parent = toolbar,
-                          .background_fill_colours = is_selected ? Colours {Col {.c = Col::Highlight}}
-                                                                 : Colours {Col {.c = Col::None}},
-                          .background_fill_auto_hot_active_overlay = true,
-                          .round_background_corners = 0b1111,
-                          .layout {
-                              .size = {layout::k_hug_contents, k_browser_item_height},
-                              .contents_padding = {.lr = k_browser_spacing / 2},
-                              .contents_gap = 3,
-                              .contents_align = layout::Alignment::Middle,
-                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                          },
-                          .tooltip = "Only show favourites, within the current results"_s,
-                          .button_behaviour = imgui::ButtonConfig {},
-                          .name = "browser.favourites-button"_s,
-                      });
+            auto const button = DoBox(
+                builder,
+                {
+                    .parent = toolbar,
+                    .background_fill_colours =
+                        is_selected ? Colours {Col {.c = Col::Highlight}} : Colours {Col {.c = Col::None}},
+                    .background_fill_auto_hot_active_overlay = true,
+                    .round_background_corners = 0b1111,
+                    .layout {
+                        .size = {layout::k_hug_contents, k_browser_item_height},
+                        .contents_padding = {.lr = k_browser_spacing / 2},
+                        .contents_gap = 3,
+                        .contents_align = layout::Alignment::Middle,
+                        .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                    },
+                    .tooltip =
+                        "Show only your favourites, within whatever the list is currently showing. Hover an item and click its star to make it a favourite."_s,
+                    .button_behaviour = imgui::ButtonConfig {},
+                    .name = "browser.favourites-button"_s,
+                });
 
             auto const text_colours = ColSet {
                 .base = Col {.c = grey_out ? Col::Surface1 : (is_selected ? Col::Text : Col::Subtext0)},
@@ -4737,16 +4856,15 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
         }
 
         if (options.show_search) {
-            DoToolbarSearch(
-                builder,
-                {
-                    .parent = toolbar,
-                    .text_input_id = search_input_id,
-                    .text = context.state.search,
-                    .placeholder = options.item_search_placeholder_text,
-                    .tooltip = "Search within the current results (" MODIFIER_KEY_NAME "+F to focus)"_s,
-                    .dark_mode = false,
-                });
+            DoToolbarSearch(builder,
+                            {
+                                .parent = toolbar,
+                                .text_input_id = search_input_id,
+                                .text = context.state.search,
+                                .placeholder = options.item_search_placeholder_text,
+                                .tooltip = options.item_search_tooltip,
+                                .dark_mode = false,
+                            });
 
             if (builder.IsInputAndRenderPass() && builder.imgui.IsKeyboardFocus(search_input_id)) {
                 auto const& frame_input = GuiIo().in;

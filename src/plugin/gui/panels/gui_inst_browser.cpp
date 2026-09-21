@@ -295,12 +295,13 @@ static bool InstBrowserWaveformItems(GuiBuilder& builder,
                 .parent = container,
                 .id_extra = (u64)waveform_type,
                 .text = k_waveform_type_names[ToInt(waveform_type)],
-                .tooltip = FunctionRef<String()>([&]() -> String {
+                .value_popup = FunctionRef<String()>([&]() -> String {
                     return fmt::Format(
                         builder.arena,
-                        "{} waveform. A simple waveform useful for layering with sample instruments. Click to load. Double-click to load and close the browser.",
+                        "{} waveform. A simple waveform useful for layering with sampled Instruments.",
                         k_waveform_type_names[ToInt(waveform_type)]);
                 }),
+                .tooltip = BrowserItemLoadTooltip(builder.arena, "Instrument"_s),
                 .item_id = inst_hash,
                 .is_current = is_current,
                 .is_favourite = is_favourite,
@@ -414,7 +415,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 
                         return buf.ToOwnedSpan();
                     }),
-                    .tooltip = "Click to load the instrument. Double-click to load and close the browser."_s,
+                    .tooltip = BrowserItemLoadTooltip(builder.arena, "Instrument"_s),
                     .item_id = inst_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
