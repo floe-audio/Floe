@@ -186,7 +186,8 @@ bool Tooltip(GuiBuilder& builder, imgui::Id id, Rect rect_in_window_coords, Tool
     auto const has_tooltip = builder.config.show_tooltips && args.tooltip.tag != TooltipStringType::None;
     if (!has_value_popup && !has_tooltip) return false;
 
-    auto const opacities = builder.imgui.TooltipBehaviour(rect_in_window_coords, id);
+    auto const opacities =
+        builder.imgui.TooltipBehaviour(rect_in_window_coords, id, args.value_popup_delay_secs);
     auto const value_popup_opacity = ({
         f32 o = opacities.immediate;
         if (!builder.config.instant_value_popups && !builder.imgui.IsActive(id) &&
@@ -562,6 +563,7 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                         rect,
                         {
                             .value_popup = config.value_popup,
+                            .value_popup_delay_secs = config.value_popup_delay_secs,
                             .tooltip = config.tooltip,
                             .tooltip_footer = config.tooltip_footer,
                             .avoid_r = avoid_r,

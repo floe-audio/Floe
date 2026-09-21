@@ -2615,23 +2615,22 @@ static f32 TooltipFadeOpacity(Context::TooltipFadeState& state, Id id, bool show
     return fade_out_opacity();
 }
 
-Context::TooltipOpacities Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
+Context::TooltipOpacities
+Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id, f64 settle_secs) {
     SetHot(rect_in_window_coords, id);
     RegisterRectForMouseTracking(rect_in_window_coords);
 
     constexpr auto k_delay_secs = 1.5;
-    constexpr auto k_settle_secs = 0.08; // Stops rapid flicker when sweeping the cursor across many items.
 
     if (WasJustMadeHot(id)) {
-        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_settle_secs);
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + settle_secs);
         GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_delay_secs);
     }
 
     // WasJustDeactivated bridges the frame between releasing a drag and becoming hot again. An item can't
     // be hot while it's active, so a released drag restarts the hot timer: skip the settle delay if the
     // popup is already showing for this item, else it'd blink off for the settle duration.
-    auto const settled_hot =
-        IsHot(id) && (SecondsSpentHot() >= k_settle_secs || immediate_tooltip.item == id);
+    auto const settled_hot = IsHot(id) && (SecondsSpentHot() >= settle_secs || immediate_tooltip.item == id);
 
     return {
         .immediate =

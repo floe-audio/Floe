@@ -467,6 +467,7 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                       .contents_direction = layout::Direction::Row,
                   },
                   .value_popup = options.value_popup,
+                  .value_popup_delay_secs = 0.4,
                   .tooltip = options.tooltip,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
                   .tooltip_placement = TooltipPlacement::LeftThenRight,
