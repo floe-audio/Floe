@@ -1841,7 +1841,7 @@ static BreadcrumbLayout FitBreadcrumb(GuiBuilder& builder, Span<String const> up
         auto const first = layout.first_shown_index;
         auto const num_shown = upper_labels.size - first;
         auto const fixed_width = icon_cells_width + (first > 1 ? folded_cell_width : 0) +
-                                 (f32)num_shown * (separator_width + cell_padding);
+                                 ((f32)num_shown * (separator_width + cell_padding));
         auto const share = ShareWidth(natural_widths.Items().SubSpan(first),
                                       row_width - fixed_width,
                                       layout.label_widths.Items().SubSpan(first));

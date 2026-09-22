@@ -638,7 +638,8 @@ void DrawGainReductionMeter(imgui::Context& imgui, Rect r, DrawGainReductionMete
     auto const meter_w = total_w;
     constexpr auto k_channel_gap = 2; // matches DrawPeakMeterOptions::gap_px default
     auto const chan_w = (meter_w - k_channel_gap) / 2;
-    auto const bar_x0 = origin_x + (f32)((meter_w - chan_w) / 2);
+    auto const bar_inset = (meter_w - chan_w) / 2;
+    auto const bar_x0 = origin_x + (f32)bar_inset;
     auto const bar_x1 = bar_x0 + (f32)chan_w;
 
     auto const rounding_full = WwToPixels(k_corner_rounding);
@@ -671,7 +672,8 @@ void DrawLoudnessMeter(imgui::Context& imgui, Rect r, DrawLoudnessMeterOptions c
 
     constexpr auto k_channel_gap = 2; // matches DrawPeakMeterOptions::gap_px default
     auto const bar_w = (total_w - k_channel_gap) / 2;
-    auto const bar_x0 = origin_x + (f32)((total_w - bar_w) / 2);
+    auto const bar_inset = (total_w - bar_w) / 2;
+    auto const bar_x0 = origin_x + (f32)bar_inset;
     auto const bar_x1 = bar_x0 + (f32)bar_w;
 
     auto const rounding_full = WwToPixels(k_corner_rounding);

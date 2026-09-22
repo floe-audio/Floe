@@ -53,7 +53,7 @@ Optional<String> ParameterMenuItemDescription(ParamIndex param_index, u32 item_i
     }
 }
 
-static f32 HzToSemitones(f32 hz) { return 12.0f * Log2(hz / 440.0f) + 69.0f; }
+static f32 HzToSemitones(f32 hz) { return (12.0f * Log2(hz / 440.0f)) + 69.0f; }
 static f32 SemitonesToHz(f32 semitones) { return 440.0f * Exp2((semitones - 69.0f) / 12.0f); }
 
 Optional<f32> ParamDescriptor::StringToLinearValue(String str,

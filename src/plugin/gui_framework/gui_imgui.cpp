@@ -1123,7 +1123,7 @@ bool Context::SliderBehaviourFraction(SliderBehaviourFractionArgs const& args) {
             distance_from_drag_start -= slider_drag.dead_zone_offset;
 
             slider_drag.fraction =
-                Clamp(slider_drag.fraction_at_origin - distance_from_drag_start / sensitivity, 0.0f, 1.0f);
+                Clamp(slider_drag.fraction_at_origin - (distance_from_drag_start / sensitivity), 0.0f, 1.0f);
             args.fraction = slider_drag.fraction;
         }
     }
