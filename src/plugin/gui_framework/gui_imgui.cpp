@@ -571,7 +571,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustific
 
     if (justification == PopupJustification::LeftOrRight) {
         auto right_outer_most = avoid_r.Right() + base_r.w;
-        if (right_outer_most < viewport_size.x) {
+        if (right_outer_most <= viewport_size.x) {
             auto pos = f32x2 {avoid_r.Right(), base_r.y};
             return ensure_bottom_fits(ensure_top_fits(pos));
         }
@@ -584,7 +584,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustific
 
     } else {
         auto below_outer_most = avoid_r.Bottom() + base_r.h;
-        if (below_outer_most < viewport_size.y) {
+        if (below_outer_most <= viewport_size.y) {
             auto pos = f32x2 {base_r.x, avoid_r.Bottom()};
             return ensure_right_fits(ensure_left_fits(pos));
         }

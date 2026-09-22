@@ -4081,25 +4081,31 @@ static constexpr u64 k_browser_results_width_store_id = HashFnv1a("browser-resul
 static constexpr u64 k_browser_width_store_id = HashFnv1a("browser-filters-width");
 static constexpr u64 k_browser_height_store_id = HashFnv1a("browser-height");
 
-// The panels can't grow past the window, and the height's default is already what the window has room for.
-// The floors are the least that still fits the toolbar and a few rows. The results panel is settled first
-// and the filters panel gets what's left, so neither can push the other off the window.
-static BrowserSize ClampBrowserSize(BrowserSize size, BrowserPopupOptions const& options) {
+// The panels can't grow past the window. The height can reach the window's edge on whichever side of the
+// opener has more room: the browser is placed on that side once it's too tall for the other. The floors
+// are the least that still fits the toolbar and a few rows. The results panel is settled first and the
+// filters panel gets what's left, so neither can push the other off the window.
+static BrowserSize ClampBrowserSize(BrowserSize size, BrowserPopupOptions const& options, Rect opener_rect) {
     constexpr f32 k_min_results_width = 150;
     constexpr f32 k_min_filters_width = 100;
     constexpr f32 k_window_edge_space = 40;
-    auto const window_width = PixelsToWw((f32)GuiIo().in.window_size.width);
+    auto const window_size = GuiIo().in.window_size.ToFloat2();
+    auto const window_width = PixelsToWw(window_size.x);
     auto const results_width =
         Clamp(size.results_width,
               k_min_results_width,
               Max(k_min_results_width, window_width - k_min_filters_width - k_window_edge_space));
+    // The opener's edges can be fractional. Whole pixels, so the rounded layout can't overshoot the window
+    // and leave the popup with nowhere to go.
+    auto const max_height = PixelsToWw(Floor(Max(window_size.y - opener_rect.Bottom(), opener_rect.y)));
+    auto const min_height = Min(150.0f, options.height);
     return {
         .results_width = results_width,
         .filters_col_width =
             Clamp(size.filters_col_width,
                   k_min_filters_width,
                   Max(k_min_filters_width, window_width - results_width - k_window_edge_space)),
-        .height = Clamp(size.height, Min(150.0f, options.height), options.height),
+        .height = Clamp(size.height, min_height, Max(min_height, max_height)),
     };
 }
 
@@ -4121,7 +4127,8 @@ static BrowserSize CurrentBrowserSize(BrowserPopupContext& context, BrowserPopup
         {.results_width = state.size.results_width.ValueOr(options.results_width),
          .filters_col_width = state.size.filters_col_width.ValueOr(options.filters_col_width),
          .height = state.size.height.ValueOr(options.height)},
-        options);
+        options,
+        state.absolute_button_rect);
 }
 
 static void SaveBrowserSize(BrowserPopupContext& context, BrowserPopupOptions const& options) {
@@ -4187,7 +4194,8 @@ static void DoBrowserResizeGrip(GuiBuilder& builder,
         auto const size = ClampBrowserSize({.results_width = current_size.results_width,
                                             .filters_col_width = origin.x + delta.x,
                                             .height = origin.y + (above_opener ? -delta.y : delta.y)},
-                                           options);
+                                           options,
+                                           state.absolute_button_rect);
         state.size.filters_col_width = size.filters_col_width;
         state.size.height = size.height;
     }
@@ -4256,7 +4264,8 @@ static void DoBrowserPanelSplitter(GuiBuilder& builder,
             ClampBrowserSize({.results_width = state.resize_drag.results_width_at_origin + delta.x,
                               .filters_col_width = current_size.filters_col_width,
                               .height = current_size.height},
-                             options)
+                             options,
+                             state.absolute_button_rect)
                 .results_width;
     }
 

@@ -335,11 +335,19 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             if (config.name.size) builder.imgui.RegisterNamedRect(config.name, rect);
 
             // We want to let our IMGUI system know our margins when it's doing an auto-size otherwise the
-            // bottom or rightmost elements might not have the requested spacing around it.
+            // bottom or rightmost elements might not have the requested spacing around it. A parent already
+            // holds its children's margins, so they reach no further than its rect: the layout snapped the
+            // rects to whole pixels but the margins are unsnapped, and re-adding them would leave a sub-pixel
+            // sliver past the parent, making the viewport a fraction too big for a space it exactly fits.
             if (cache.is_auto_sized) {
                 auto const margins = layout::GetMargins(builder.state->layout, box.layout_id);
                 auto bb = layout::GetRect(builder.state->layout, box.layout_id);
-                bb.size += margins.lrtb.yw;
+                auto far_edge = bb.pos + bb.size + margins.lrtb.yw;
+                if (config.parent) {
+                    auto const parent_rect = layout::GetRect(builder.state->layout, config.parent->layout_id);
+                    far_edge = Max(Min(far_edge, parent_rect.pos + parent_rect.size), bb.pos + bb.size);
+                }
+                bb.size = far_edge - bb.pos;
                 auto _ = builder.imgui.RegisterAndConvertRect(bb);
             }
 
