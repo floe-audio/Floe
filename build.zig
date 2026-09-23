@@ -3179,7 +3179,7 @@ fn doTarget(
                 .{ .id_name = "uninstall-library" },
                 .{ .id_name = "browser-full" },
                 .{ .id_name = "browser-menu" },
-                .{ .id_name = "browser-browse" },
+                .{ .id_name = "browser-browse", .preset = "Drones/Faded Silhouettes.floe-preset" },
                 .{
                     .id_name = "perform:full",
                     .preset = "Risers/Caustic Build-up.floe-preset",
