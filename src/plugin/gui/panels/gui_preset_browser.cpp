@@ -783,9 +783,6 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                 dyn::Append(state.common_state.expanded_filter_headers, id);
     }
 
-    if (IsScreenshotRequest("browser-preset-browse"_s) && !builder.imgui.IsModalOpen(state.k_panel_id))
-        builder.imgui.OpenModalViewport(state.k_panel_id);
-
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     context.Init(builder.arena);

@@ -470,37 +470,13 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
 
     bool const is_browser_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-full"_s);
-    bool const is_filter_collection_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("filter-collection"_s);
-    bool const is_filter_collection_all_selected =
-        context.layer.index == 0 && IsScreenshotRequest("filter-collection-all-selected"_s);
-    bool const is_filter_collection_folder_selected =
-        context.layer.index == 0 && IsScreenshotRequest("filter-collection-folder-selected"_s);
-    bool const is_filter_collection_folder_tree =
-        context.layer.index == 0 && IsScreenshotRequest("filter-collection-folder-tree"_s);
-    bool const is_any_filter_collection_screenshot =
-        is_filter_collection_screenshot || is_filter_collection_all_selected ||
-        is_filter_collection_folder_selected || is_filter_collection_folder_tree;
     bool const is_browser_menu_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-menu"_s);
     bool const is_browse_list_screenshot =
         context.layer.index == 0 && IsScreenshotRequest("browser-browse"_s);
-    bool const is_browse_section_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("browser-browse-section"_s);
-    bool const is_browse_collection_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("browser-browse-collection"_s);
-    bool const is_browse_attribute_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("browser-browse-attribute"_s);
 
-    if ((is_browser_screenshot || is_any_filter_collection_screenshot || is_browser_menu_screenshot ||
-         is_browse_list_screenshot || is_browse_section_screenshot || is_browse_collection_screenshot ||
-         is_browse_attribute_screenshot) &&
+    if ((is_browser_screenshot || is_browser_menu_screenshot || is_browse_list_screenshot) &&
         !builder.imgui.IsModalOpen(state.id))
         builder.imgui.OpenModalViewport(state.id);
-
-    if (is_browse_attribute_screenshot) {
-        state.common_state.ClearAll();
-        state.common_state.browse.open_attribute = (u8)BrowserFilter::Tags;
-    }
 
     if (!builder.imgui.IsModalOpen(state.id)) return;
     auto const& libs = context.frame_context.libraries;
@@ -519,51 +495,6 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 if (l->name != "Lost Reveries"_s) continue;
                 if (!library_filter.Contains(l->id)) library_filter.Add(l->id, l->name);
                 break;
-            }
-        }
-    }
-
-    if (is_any_filter_collection_screenshot || is_browse_collection_screenshot) {
-        sample_lib::Library const* picked = nullptr;
-        for (auto const l : libs) {
-            if (l->sorted_instruments.size == 0) continue;
-            if (l->name == "Dulcitone"_s) {
-                picked = &*l;
-                break;
-            }
-            if (!picked) picked = &*l;
-        }
-        if (picked) {
-            auto const collapse_id = CollectionCollapseId(picked->id);
-            if (!Contains(state.common_state.expanded_filter_headers, collapse_id))
-                dyn::Append(state.common_state.expanded_filter_headers, collapse_id);
-
-            auto const* root = &picked->root_folders[ToInt(sample_lib::ResourceType::Instrument)];
-
-            auto const add_unique = [&](BrowserFilter f, u64 key, String name) {
-                auto& filter = state.common_state.Filter(f);
-                if (!filter.Contains(key)) filter.Add(key, name);
-            };
-
-            if (is_browse_collection_screenshot) {
-                // The pick can change as libraries finish scanning, so replace rather than accumulate.
-                state.common_state.ClearAll();
-                add_unique(BrowserFilter::Library, picked->id, picked->name);
-            } else if (is_filter_collection_all_selected) {
-                add_unique(BrowserFilter::Library, picked->id, picked->name);
-            } else if (is_filter_collection_folder_selected) {
-                if (auto* child = root->first_child)
-                    add_unique(BrowserFilter::Folder, child->Hash(), child->name);
-            } else if (is_filter_collection_folder_tree) {
-                FolderNode const* tree = nullptr;
-                for (auto* c = root->first_child; c; c = c->next) {
-                    if (c->name == "Mic Options"_s) {
-                        tree = c;
-                        break;
-                    }
-                    if (!tree && c->first_child) tree = c;
-                }
-                if (tree) add_unique(BrowserFilter::Folder, tree->Hash(), tree->name);
             }
         }
     }
@@ -809,9 +740,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
-                    .collection_name_prefix = (is_any_filter_collection_screenshot || is_browser_screenshot)
-                                                  ? "browser.library."_s
-                                                  : ""_s,
+                    .collection_name_prefix = is_browser_screenshot ? "browser.library."_s : ""_s,
                 };
                 f;
             }),

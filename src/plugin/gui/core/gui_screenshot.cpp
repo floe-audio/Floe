@@ -227,25 +227,19 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
         auto spec = browser_with_opener(inst_opener);
         auto const results = named("browser.results-panel"_s);
         auto const summary = named("browser.results-summary"_s);
-        auto const results_toolbar = named("browser.results-toolbar"_s);
         auto const filters = named("browser.filters-panel"_s);
         auto const breadcrumb = named("browser.breadcrumb-row"_s);
         auto const mode = named("browser.mode-toggle"_s);
-        auto const grip = named("browser.resize-grip"_s);
-        if (!(spec && results && summary && results_toolbar && filters && breadcrumb && mode && grip))
-            return k_nullopt;
-        AppendOverlay(*spec, "opener"_s, inst_opener);
+        if (!(spec && results && summary && filters && breadcrumb && mode)) return k_nullopt;
         AppendOverlay(*spec,
                       "results-list"_s,
                       {.xywh {results->x, results->y, results->w, summary->y - results->y}});
-        AppendOverlay(*spec, "results-summary"_s, *summary);
-        AppendOverlay(*spec, "results-toolbar"_s, *results_toolbar);
         AppendOverlay(*spec,
                       "filters-page"_s,
                       {.xywh {filters->x, filters->y, filters->w, breadcrumb->y - filters->y}});
+        AppendOverlay(*spec, "opener"_s, inst_opener);
         AppendOverlay(*spec, "breadcrumb"_s, *breadcrumb);
         AppendOverlay(*spec, "mode-toggle"_s, *mode);
-        AppendOverlay(*spec, "resize-grip"_s, *grip);
         return spec;
     }
     if (IsScreenshotRequest("browser-full"_s)) {
@@ -264,27 +258,6 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
         AppendOverlay(*spec, "match-button"_s, *match);
         return spec;
     }
-    if (IsScreenshotRequest("browser-preset-browse"_s))
-        return browser_with_opener(g.preset_browser_state.common_state.absolute_button_rect);
-    if (IsScreenshotRequest("filter-collection"_s)) {
-        auto const outer = named("browser.library.Dulcitone"_s);
-        auto const header = named("browser.library.Dulcitone.header"_s);
-        auto const body = named("browser.library.Dulcitone.body"_s);
-        if (!(outer && header && body)) return k_nullopt;
-        CaptureSpec spec {.rect = *outer};
-        AppendOverlay(spec, "header"_s, *header);
-        AppendOverlay(spec, "body"_s, *body);
-        return spec;
-    }
-    if (IsScreenshotRequest("filter-collection-all-selected"_s) ||
-        IsScreenshotRequest("filter-collection-folder-selected"_s) ||
-        IsScreenshotRequest("filter-collection-folder-tree"_s)) {
-        return simple("browser.library.Dulcitone"_s);
-    }
-    if (IsScreenshotRequest("browser-browse"_s) || IsScreenshotRequest("browser-browse-section"_s) ||
-        IsScreenshotRequest("browser-browse-collection"_s) ||
-        IsScreenshotRequest("browser-browse-attribute"_s))
-        return simple("browser.modal"_s);
     if (IsScreenshotRequest("browser-menu"_s)) return simple("browser.match-menu"_s);
 
     return k_nullopt;

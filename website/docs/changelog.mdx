@@ -16,22 +16,25 @@ For instance: 0.0.1. Don't change the headings.
 # Changelog
 ## 2.0.4-beta.2
 ### Browsers
-The preset, Instrument and impulse response browsers have been redesigned around getting to a sound with less fuss:
-- Add a Browse mode, now the default. Rather than a tree of filters, you start from a short list of places to look - your libraries or preset banks, tags, authors - and drill down one page at a time until you're looking at just one library, folder or tag. Less scrolling, fewer things to consider, and it's much harder to lose your place. A trail at the top of the panel, with back and forward arrows, takes you back up
-- Keep everything the browser could do before in a Filter mode: the full tree of libraries, folders and tags, where several filters can be combined with Match all (AND) or Match any (OR). Switch modes with the toggle at the bottom of the right panel; Floe remembers your choice
-- Remember where you were in Browse mode, so a new instance of Floe opens the browser there
-- Put the results on the left and the places to look on the right. The browser opens directly beneath the box you clicked, so the sounds are right under your cursor, like a menu
-- When you click on an item, if you then move your cursor out of the browser window, it closes - a faster way to quickly select a new item
-- Make the box that opened the browser part of it. The preset box, a layer's Instrument selector or the IR selector stays visible and usable while the browser is open, showing the current item and keeping its previous/next/random and unload buttons, so the browser no longer duplicates them and has no title bar of its own
-- Add a line above the results saying what you're looking at, such as "Showing from Abyss preset bank" or "Showing favourites matching "pad" with Tag: Ambient". Each part is a button with an x that removes that filter, clears the search or steps back out of the library or preset bank
-- Move search and Favourites into a toolbar at the bottom of the results, alongside a new jump-to-current button that scrolls to the loaded item, clearing anything that hides it first, and in Browse mode opens its library or preset bank in the right panel
-- Make Favourites a refinement of whatever is currently shown rather than a filter of its own: open a preset bank and turn on Favourites to see just your favourites within it. Search works the same way, and when nothing matches within the current selection, a button offers to search everything instead
-- Make the preset search match preset names only. It used to match preset bank and folder names too, which made results surprisingly broad
-- Make the browser resizable: drag the bottom-right corner to change its size, or the border between the two panels to change their widths. Double-click either to reset
-- Group preset banks into Factory preset banks and User presets when you have both kinds. Preset bank makers can mark a bank as factory with a new `factory = true` key in `floe-preset-bank.ini`; banks whose folder name contains "factory presets" count automatically
-- Scroll to the currently loaded item when the browser opens, and show a message in the results when nothing matches
-- Rename the preset browser's Libraries filter to Libraries used, since it lists the libraries a preset draws its sounds from rather than preset banks
-- Improve spacing, headings and layout throughout the browsers
+The preset, Instrument and IR browsers have been redesigned. See the [browsers docs](usage/browsers) for a full walkthrough.
+
+#### What's different
+- Add Browse mode, now the default: click through a few short pages to narrow down to a library, preset bank, folder or tag, rather than scanning a long tree of filters. Switch to Filter mode <FAIcon icon="fa-solid fa-filter" /> for the previous behaviour
+- Swap the left and right panels: items are now on the left, so they drop down directly beneath the selector you clicked and need less mouse movement
+- Restyle the browsers to feel like a menu rather than a dialog window
+- Keep the selector that opened the browser usable while the browser is open, so its next, previous, randomise and unload buttons replace the browser's duplicate ones
+- Make Favourites <FAIcon icon="fa-solid fa-star" /> narrow the current list rather than act as a separate filter, so you can see just your favourites within a preset bank, for example
+- Make preset search match preset names only, not preset bank or folder names, so results are more precise and predictable
+
+#### Improvements
+- Make the browsers resizable
+- Add a line beneath the items saying what you're looking at, such as "Showing from Abyss preset bank". Click any part of it to undo that narrowing down
+- Make <FAIcon icon="fa-solid fa-location-arrow" /> also open the current item's library or preset bank in the right panel in Browse mode, rather than just scrolling to the item
+- Show the current item more reliably when a browser opens
+- Remember your place in Browse mode, so the next new instance of Floe opens the browser there
+- Group preset banks into Factory preset banks and User presets when you have both
+- Rename the preset browser's Libraries section to Libraries used, since it shows presets that use a particular sample library
+- Fix clicking an already-loaded item unloading it. This was easy to do by accident and left the preset blank. To unload, use the <FAIcon icon="fa-solid fa-xmark" /> on the selector instead
 
 ### Other changes
 - Improve performance of the audio engine to be easier on the CPU, up to 2.5x faster in heavy granular use cases
@@ -41,7 +44,6 @@ The preset, Instrument and impulse response browsers have been redesigned around
 - Add input, gain-reduction and output meters to the compressor effect, showing the level going in, how much it's turning the signal down, and the level coming out - same as the Limiter
 - Add a graph showing the High-pass filter's response, draggable to set the cutoff - now matching what the Convolution Reverb does
 - Improve how granular lines are drawn on the UI - each grain now fades in/out based on their real envelope from the Smooth parameter
-- Fix a common issue where clicking an already-loaded item in the Instrument, IR or preset browser unloaded it. It was easy to trigger by accident and left the preset blank. Instead, use the x or right-click menu on the Instrument or IR selector, or the top panel's reset.
 - Improve how waveform instruments are displayed (sine, white noise). Now, the play mode, reverse and loop mode controls are hidden, since a waveform has always ignored them anyways. Additionally, the red line voice markers now appear on the waveform display in a more useful way, placed left to right by pitch.
 - Fix the Ring Mod (44.1k) legacy distortion type modulating 4 times too fast
 - Fix voice marker persisting in Granular Playback mode even when the playback has finished

@@ -2449,8 +2449,6 @@ static void DoFilterModeCollection(GuiBuilder& builder,
             .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
             .tooltip_placement = TooltipPlacement::RightThenLeft,
             .button_behaviour = imgui::ButtonConfig {},
-            .name =
-                options.name.size ? (String)fmt::Format(builder.arena, "{}.header", options.name) : String {},
         });
 
     if (options.right_click_menu) {
@@ -2498,18 +2496,15 @@ static void DoFilterModeCollection(GuiBuilder& builder,
     if (collapsed) return;
 
     // The gap at the foot closes the open collection before the next one's header.
-    auto const body =
-        DoBox(builder,
-              {
-                  .parent = collection,
-                  .layout {
-                      .size = {layout::k_fill_parent, layout::k_hug_contents},
-                      .contents_padding = {.b = k_tree_inner_gap},
-                      .contents_direction = layout::Direction::Column,
-                  },
-                  .name = options.name.size ? (String)fmt::Format(builder.arena, "{}.body", options.name)
-                                            : String {},
-              });
+    auto const body = DoBox(builder,
+                            {
+                                .parent = collection,
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .contents_padding = {.b = k_tree_inner_gap},
+                                    .contents_direction = layout::Direction::Column,
+                                },
+                            });
 
     // Top-level rows have no lines; their text sits on the collection's content column.
     TreeLines const lines {
@@ -4232,7 +4227,6 @@ static void DoBrowserResizeGrip(GuiBuilder& builder,
                     .event = MouseButtonEvent::Down,
                     .cursor_type = CursorType::UpLeftDownRight,
                 },
-            .name = "browser.resize-grip"_s,
         });
 
     auto const& input = GuiIo().in;
@@ -4357,26 +4351,19 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
 
     if (builder.imgui.modal_just_opened == context.browser_id) context.state.scroll_to_show_current = true;
 
-    SetBrowserMode(context.state,
-                   ({
-                       BrowserMode mode;
-                       if (IsAnyScreenshotInProgress()) {
-                           mode = (IsScreenshotRequest("browser-browse"_s) ||
-                                   IsScreenshotRequest("browser-browse-section"_s) ||
-                                   IsScreenshotRequest("browser-browse-collection"_s) ||
-                                   IsScreenshotRequest("browser-browse-attribute"_s) ||
-                                   IsScreenshotRequest("browser-preset-browse"_s))
-                                      ? BrowserMode::Browse
-                                      : BrowserMode::Filter;
-                       } else {
-                           mode =
-                               (BrowserMode)prefs::GetInt(context.preferences, BrowserModePrefsDescriptor());
-                       }
-                       mode;
-                   }),
-                   IsAnyScreenshotInProgress()
-                       ? FilterMode::MultipleAnd
-                       : (FilterMode)prefs::GetInt(context.preferences, BrowserFilterModePrefsDescriptor()));
+    SetBrowserMode(
+        context.state,
+        ({
+            BrowserMode mode;
+            if (IsAnyScreenshotInProgress())
+                mode = IsScreenshotRequest("browser-browse"_s) ? BrowserMode::Browse : BrowserMode::Filter;
+            else
+                mode = (BrowserMode)prefs::GetInt(context.preferences, BrowserModePrefsDescriptor());
+            mode;
+        }),
+        IsAnyScreenshotInProgress()
+            ? FilterMode::MultipleAnd
+            : (FilterMode)prefs::GetInt(context.preferences, BrowserFilterModePrefsDescriptor()));
 
     // Screenshots never touch the store, so the docs images don't depend on it and don't change it. The
     // place is restored before the checks below so a stale one is corrected the same way as any other.
@@ -4407,10 +4394,6 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 browse.open_tag_category = tag_and_cat->category;
             return LoopControl::Break;
         });
-    }
-    if (IsScreenshotRequest("browser-browse-section"_s) && !browse.open_collection_section) {
-        auto const rows = BrowseRootRows(context, options);
-        if (rows.num_collection_sections) browse.open_collection_section = rows.rows[0].id;
     }
 
     // A section can stop existing while it's open, such as when preset banks are no longer split into

@@ -3109,16 +3109,7 @@ static bool IsLayerScreenshotRequest() {
     if (IsScreenshotRequest("velocity-curve"_s)) return true;
     if (IsScreenshotRequest("loop-mode-menu"_s)) return true;
     // Layer 1's Instrument browser opens from this tab, where it sits directly below its selector.
-    for (auto const region : Array {"browser-browse"_s,
-                                    "browser-browse-section"_s,
-                                    "browser-browse-collection"_s,
-                                    "browser-browse-attribute"_s,
-                                    "browser-full"_s,
-                                    "browser-menu"_s,
-                                    "filter-collection"_s,
-                                    "filter-collection-all-selected"_s,
-                                    "filter-collection-folder-selected"_s,
-                                    "filter-collection-folder-tree"_s})
+    for (auto const region : Array {"browser-browse"_s, "browser-full"_s, "browser-menu"_s})
         if (IsScreenshotRequest(region)) return true;
     for (auto const page : EnumIterator<LayerPageType>()) {
         DynamicArrayBounded<char, 32> region;
