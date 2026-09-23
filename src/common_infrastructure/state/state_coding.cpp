@@ -635,6 +635,10 @@ enum class StateVersion : u16 {
     // integer-hold timing so DAW automation sounds identical.
     ReplacedBitCrushBitsAndSampleRate,
 
+    // Added a per-layer granular seed. Older states default to following Performance Controls so the
+    // grains are unchanged.
+    AddedGranularSeed,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -649,7 +653,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 416,
+    static_assert(k_num_non_experimental_parameters == 422,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -870,6 +874,15 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     if (version < StateVersion::ReplacedBitCrushBitsAndSampleRate) {
         ModerniseLegacyParam(state, ParamIndex::LegacyBitCrushBits, source);
         ModerniseLegacyParam(state, ParamIndex::LegacyBitCrushBitRate, source);
+    }
+
+    if (version < StateVersion::AddedGranularSeed) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            for (auto const lpi : Array {LayerParamIndex::GranularSeedMode, LayerParamIndex::GranularSeed}) {
+                auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
+                state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+            }
+        }
     }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's

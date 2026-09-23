@@ -649,6 +649,8 @@ Box DoMenuParameter(GuiState& g,
                           .viewport_config = k_default_popup_menu_viewport,
                       });
 
+    if (options.do_extra_row_buttons) options.do_extra_row_buttons(row);
+
     auto const arrows = ({
         auto const min_val = (int)param.info.linear_range.min;
         auto const max_val = (int)param.info.linear_range.max;

@@ -98,6 +98,7 @@ Box DoMidPanelIconButton(GuiBuilder& builder, Box row, MidPanelIconButtonOptions
             case MidPanelIcon::Shuffle: v = {ICON_FA_SHUFFLE, k_font_icons_size * 0.82f}; break;
             case MidPanelIcon::Unload: v = {ICON_FA_XMARK, k_font_icons_size * 0.9f}; break;
             case MidPanelIcon::Power: v = {ICON_FA_POWER_OFF, k_font_icons_size * 0.85f}; break;
+            case MidPanelIcon::Seed: v = {ICON_FA_SEEDLING, k_font_icons_size * 0.85f}; break;
         }
         v;
     });

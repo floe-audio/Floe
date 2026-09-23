@@ -433,6 +433,31 @@ void StartVoice(VoicePool& pool,
         };
     }
 
+    voice.granular_random_seed = ({
+        u32x4 seed;
+        switch (voice_controller.granular.seed_mode) {
+            case param_values::GranularSeedMode::Random: seed = voice.random_seed; break;
+            case param_values::GranularSeedMode::Fixed:
+            case param_values::GranularSeedMode::FixedPerKey: {
+                // Local state only: drawing from the master seed here would shift every later draw.
+                u64 state = (u64)voice_controller.granular.seed << 8;
+                if (voice_controller.granular.seed_mode == param_values::GranularSeedMode::FixedPerKey)
+                    state |= (u64)params.midi_key_trigger.note + 1;
+                auto const s1 = RandomU64(state);
+                auto const s2 = RandomU64(state);
+                seed = {
+                    (u32)s1 | 1u,
+                    (u32)(s1 >> 32) | 1u,
+                    (u32)s2 | 1u,
+                    (u32)(s2 >> 32) | 1u,
+                };
+                break;
+            }
+            case param_values::GranularSeedMode::Count: PanicIfReached();
+        }
+        seed;
+    });
+
     voice.controller = &voice_controller;
     voice.lfo.phase = params.lfo_start_state.phase;
     if (params.lfo_start_state.random_state != 0) {
@@ -1126,8 +1151,8 @@ struct VoiceProcessor {
 
                     // We need some random floats in a few places, we already have SIMD support for
                     // generating 4 randoms at once, so we can save a few instructions.
-                    auto const r1 = Rand01(voice.random_seed);
-                    auto const r2 = Rand01(voice.random_seed);
+                    auto const r1 = Rand01(voice.granular_random_seed);
+                    auto const r2 = Rand01(voice.granular_random_seed);
                     auto const spread_rand = r1[0];
                     auto const length_jitter_rand = r1[1];
                     auto const pan_rand = r1[2];
@@ -1228,7 +1253,8 @@ struct VoiceProcessor {
                             // If the grain pool is nearing full, we initiate quick fade-outs for grains to
                             // that hopefully by the time we next want to spawn a grain, we have inactive ones
                             // to pick from. We pick one randomly to avoid any unpleasant-sounding regularity.
-                            auto const pick = Rand(voice.random_seed).x % pool.num_active_non_stealing;
+                            auto const pick =
+                                Rand(voice.granular_random_seed).x % pool.num_active_non_stealing;
                             u32 index = 0;
                             for (auto [gi, g] : Enumerate(pool.grains)) {
                                 if (!pool.active_grains.Get(gi) || g.IsStealing() || &g == new_grain)
@@ -2208,6 +2234,7 @@ TEST_CASE(TestVoiceRandomDrawsAreStable) {
     auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
     fix.controller.play_mode = param_values::PlayMode::Standard;
     fix.controller.vol_env_on = false;
+    fix.controller.granular.seed_mode = param_values::GranularSeedMode::Random;
 
     auto const active_voice = [&]() -> Voice& {
         for (auto& v : fix.pool->EnumerateActiveVoices())
@@ -2276,10 +2303,10 @@ TEST_CASE(TestVoiceRandomDrawsAreStable) {
         for (auto _ : Range(4))
             ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
         auto const& voice = active_voice();
-        CHECK_EQ(voice.random_seed[0], 1914549177u);
-        CHECK_EQ(voice.random_seed[1], 1999904904u);
-        CHECK_EQ(voice.random_seed[2], 2969056295u);
-        CHECK_EQ(voice.random_seed[3], 1358338367u);
+        CHECK_EQ(voice.granular_random_seed[0], 1914549177u);
+        CHECK_EQ(voice.granular_random_seed[1], 1999904904u);
+        CHECK_EQ(voice.granular_random_seed[2], 2969056295u);
+        CHECK_EQ(voice.granular_random_seed[3], 1358338367u);
         fix.pool->EndAllVoicesInstantly();
     }
 
@@ -2311,10 +2338,73 @@ TEST_CASE(TestVoiceRandomDrawsAreStable) {
     return k_success;
 }
 
+// Presets bake in a granular seed, so the stream it produces is pinned like the master-seed draws above.
+TEST_CASE(TestGranularSeedModes) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+    fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
+    fix.controller.vol_env_on = false;
+    fix.controller.granular.seed = 7;
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {.root_key = 60};
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    struct Result {
+        u32x4 granular_random_seed;
+        u64 master_random_seed_after;
+    };
+    auto const start = [&](u64 master_random_seed, u7 note) -> Result {
+        fix.master_random_seed = master_random_seed;
+        StartTestSamplerVoice(fix, region, audio_data, note);
+        Result result {};
+        for (auto& v : fix.pool->EnumerateActiveVoices())
+            result.granular_random_seed = v.granular_random_seed;
+        result.master_random_seed_after = fix.master_random_seed;
+        fix.pool->EndAllVoicesInstantly();
+        return result;
+    };
+    auto const same = [](u32x4 a, u32x4 b) { return All(a == b); };
+
+    SUBCASE("fixed") {
+        fix.controller.granular.seed_mode = param_values::GranularSeedMode::Fixed;
+        auto const a = start(1234, 60);
+        CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
+        CHECK(same(a.granular_random_seed, start(1234, 64).granular_random_seed));
+
+        // The master seed advances exactly as it does in Performance mode.
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.granular_random_seed[0], 1348644999u);
+        CHECK_EQ(a.granular_random_seed[1], 2001189359u);
+        CHECK_EQ(a.granular_random_seed[2], 1210227535u);
+        CHECK_EQ(a.granular_random_seed[3], 1380255225u);
+
+        fix.controller.granular.seed = 8;
+        CHECK(!same(a.granular_random_seed, start(1234, 60).granular_random_seed));
+    }
+
+    SUBCASE("fixed per key") {
+        fix.controller.granular.seed_mode = param_values::GranularSeedMode::FixedPerKey;
+        auto const a = start(1234, 60);
+        CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
+        CHECK(!same(a.granular_random_seed, start(1234, 64).granular_random_seed));
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.granular_random_seed[0], 1782879839u);
+        CHECK_EQ(a.granular_random_seed[1], 44886013u);
+        CHECK_EQ(a.granular_random_seed[2], 381245659u);
+        CHECK_EQ(a.granular_random_seed[3], 2816732097u);
+    }
+
+    fix.controller.granular.seed_mode = param_values::GranularSeedMode::Random;
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterVoiceTests) {
     REGISTER_TEST(TestEqualPanGains);
     REGISTER_TEST(TestVoiceProcessingSampler);
     REGISTER_TEST(TestVoiceProcessingGranular);
     REGISTER_TEST(TestVoiceProcessingNonTypicalBufferSizes);
     REGISTER_TEST(TestVoiceRandomDrawsAreStable);
+    REGISTER_TEST(TestGranularSeedModes);
 }

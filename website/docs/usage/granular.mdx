@@ -80,6 +80,15 @@ The Random section adds per-grain variation so the texture doesn't sound mechani
 - **Direction**: chance that a grain plays backwards. At 100% every grain has a 50/50 chance of forwards or backwards.
 - **Harmony**: chance that a grain spawns at one of the selected harmony intervals rather than at the root pitch. The **Intervals** menu next to the knob picks which intervals are active — pick from presets like _Octaves_, _Fifth_, _Major Triad_, _Pentatonic_, _Whole Tone_, _Chromatic_, _Cluster_, and many more, or toggle individual semitones on and off. The knob is greyed out until at least one non-unison interval is selected.
 
+### Seed
+Click the <FAIcon icon="fa-solid fa-seedling" /> seedling next to the play mode menu to choose where the grain randomness comes from. The icon lights up when the layer uses its own seed.
+
+- **Random**: the default. Every note scatters its grains in a fresh way, which suits most sounds, especially dense textures. To make a whole performance repeat exactly in your DAW, use the [Reproducibility](./reproducibility) settings in Performance Controls.
+- **Fixed**: every note plays exactly the same grains, chosen by **Seed**. Useful when Density is low and you can hear the individual grains. Hold a chord and all the notes follow the same movement, each at its own pitch.
+- **Fixed Per Key**: like Fixed, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it.
+
+The seed is saved with the preset, so Fixed and Fixed Per Key let you save the exact grain scatter you heard while designing a sound. Different Seed values give different results.
+
 ## Tips
 
 - It's often interesting to control the Position (_Granular Fixed_ mode) using the LFO or a [macro](./macros) for added movement.

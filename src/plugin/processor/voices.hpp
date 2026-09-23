@@ -89,6 +89,7 @@ struct Voice {
     // Never change the number or order of draws from this; see the backwards-compatibility note where
     // voices start.
     u32x4 random_seed = {};
+    u32x4 granular_random_seed = {};
 
     sv_filter::CachedHelpers filter_coeffs = {};
     // The values filter_coeffs were last computed from; negative when they've not been computed yet.

@@ -48,6 +48,8 @@ struct MenuParameterComponentOptions {
     Box const* tooltip_avoid_box = nullptr; // Defaults to this widget's own container. Set it to a box that
                                             // also encloses a caller-drawn label so the tooltip clears that
                                             // too.
+    FunctionRef<void(Box row)>
+        do_extra_row_buttons {}; // Drawn between the menu text and the prev/next arrows.
 };
 
 Box DoMenuParameter(GuiState& g,

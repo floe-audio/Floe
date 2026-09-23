@@ -111,6 +111,7 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_ROTATE_LEFT},
     String {ICON_FA_ROTATE_RIGHT},
     String {ICON_FA_S},
+    String {ICON_FA_SEEDLING},
     String {ICON_FA_SHUFFLE},
     String {ICON_FA_SLIDERS},
     String {ICON_FA_STAR},

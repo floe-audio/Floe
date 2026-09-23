@@ -834,6 +834,12 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.random_direction = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularHarmony))
         vmst.granular.harmony = *p;
+    if (auto p = changes.changed_params.IntValue<param_values::GranularSeedMode>(
+            layer.index,
+            LayerParamIndex::GranularSeedMode))
+        vmst.granular.seed_mode = *p;
+    if (auto p = changes.changed_params.IntValue<int>(layer.index, LayerParamIndex::GranularSeed))
+        vmst.granular.seed = (u8)*p;
 
     // EQ
     // =======================================================================================================

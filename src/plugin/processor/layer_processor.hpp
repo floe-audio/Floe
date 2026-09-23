@@ -95,6 +95,8 @@ struct VoiceProcessingController {
         f32 random_direction {};
         f32 harmony {};
         HarmonyIntervalsBitset harmony_intervals {};
+        param_values::GranularSeedMode seed_mode {};
+        u8 seed {};
     } granular {};
 
     bool no_key_tracking = false;

@@ -90,6 +90,8 @@ enum class LayerParamIndex : u8 {
     GranularRandomDetune,
     GranularRandomDirection,
     GranularHarmony,
+    GranularSeedMode,
+    GranularSeed,
 
     ArpOn,
     ArpMode,
@@ -1162,6 +1164,31 @@ constexpr auto k_play_mode_strings = ArrayT<String>({
 });
 static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
 
+enum class GranularSeedMode : u8 { // never reorder
+    Random,
+    Fixed,
+    FixedPerKey,
+    Count,
+};
+constexpr auto k_granular_seed_mode_strings = ArrayT<String>({
+    "Random",
+    "Fixed",
+    "Fixed Per Key",
+});
+static_assert(k_granular_seed_mode_strings.size == ToInt(GranularSeedMode::Count));
+constexpr String GranularSeedModeDescription(GranularSeedMode mode) {
+    switch (mode) {
+        case GranularSeedMode::Random:
+            return "Every note scatters its grains in a fresh way, keeping the sound random and alive. The best choice for most sounds, especially dense, textural ones.\n\nTo make a whole performance repeat exactly in your DAW, use the Reproducibility settings in Performance Controls."_s;
+        case GranularSeedMode::Fixed:
+            return "Every note plays exactly the same grains, down to each one's random pan, detune and direction. Useful when Density is low and you can hear the individual grains, so every note you press sounds the same.\n\nHold a chord and all the notes follow the same movement, each at its own pitch."_s;
+        case GranularSeedMode::FixedPerKey:
+            return "Like Fixed, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it."_s;
+        case GranularSeedMode::Count: break;
+    }
+    return {};
+}
+
 enum class ArpMode : u8 { // never reorder
     Played,
     Fixed,
@@ -1434,6 +1461,7 @@ struct ParamDescriptor {
         ArpOctavePolyrate,
         ArpAutoRate,
         MpeDestination,
+        GranularSeedMode,
         Count,
     };
 
@@ -1790,6 +1818,7 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
         case ParamDescriptor::MenuType::ArpAutoRate: return k_arp_auto_rate_strings;
         case ParamDescriptor::MenuType::MpeDestination: return k_mpe_destination_strings;
+        case ParamDescriptor::MenuType::GranularSeedMode: return k_granular_seed_mode_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -1836,6 +1865,7 @@ constexpr bool MenuIsOrderedScale(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpOctavePolyrate:
         case ParamDescriptor::MenuType::ArpAutoRate:
         case ParamDescriptor::MenuType::MpeDestination:
+        case ParamDescriptor::MenuType::GranularSeedMode:
         case ParamDescriptor::MenuType::Count: break;
     }
     return false;
@@ -4606,6 +4636,31 @@ consteval auto CreateParams() {
                 "Harmony gives each grain a chance of playing at a musical interval above or below the note you played, so a single note can bloom into a chord or a shimmering octave.\n\n"
                 "At 0% every grain plays at the root. Turning it up shifts more of the grains, until at 100% every grain picks at random from the root and the intervals you've chosen.\n\n"
                 "Choose which intervals are allowed with the Intervals menu next to this knob: pick a preset such as Octaves or Major Triad, or toggle individual semitones yourself."_s,
+        };
+        lp(GranularSeedMode) = Args {
+            .id = id(region, 103), // never change
+            .id_string = LAYER_ID("granular.seed_mode"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::GranularSeedMode,
+                .default_val = (u32)param_values::GranularSeedMode::Random,
+            }),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Seed Mode"_s,
+            .gui_label = "Seed Mode"_s,
+            .tooltip =
+                "Seed Mode decides whether each note scatters its grains differently or plays back the exact same grains every time. Random suits most sounds, while Fixed and Fixed Per Key let you capture a particular pattern of grains and save it with the preset.\n\nOpen the menu and hover over each option for details."_s,
+        };
+        lp(GranularSeed) = Args {
+            .id = id(region, 104), // never change
+            .id_string = LAYER_ID("granular.seed"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Seed"_s,
+            .gui_label = "Seed"_s,
+            .tooltip =
+                "Seed picks which pattern of grains Fixed and Fixed Per Key repeat. Try a few numbers until you find one you like: it's saved with the preset, so the grains you choose are the grains everyone hears.\n\nSet Seed Mode to Fixed or Fixed Per Key for this to take effect."_s,
         };
 
         // Arpeggiator
