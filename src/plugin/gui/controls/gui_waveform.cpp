@@ -87,7 +87,7 @@ static Optional<String> WaveformTooltipText(ArenaAllocator& arena,
                     m = "When playing, the red markers are voices. Each one is the point grains are being drawn from, tracking through the sample as it plays. The lilac lines are the individual grains."_s;
                     break;
                 case param_values::PlayMode::GranularFixed:
-                    m = "When playing, the lilac lines are individual grains. The highlighted region is where they can be drawn from, set by the Position and Spread controls."_s;
+                    m = "When playing, the lilac lines are individual grains. The highlighted region is where they can be drawn from, set by the Position and Spread controls. If the LFO is modulating Position, red markers show each voice's modulated position."_s;
                     break;
                 case param_values::PlayMode::Count: PanicIfReached();
             }
@@ -974,6 +974,10 @@ void DoWaveformElement(GuiState& g,
             auto f = options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode)
                                                   : PlayModeFeatures {.show_voice_cursors = true};
             if (layer.IsSliced()) f.show_sample_offset = false;
+            if (params.BoolValue(layer.index, LayerParamIndex::LfoOn) &&
+                params.IntValue<param_values::LfoDestination>(layer.index, LayerParamIndex::LfoDestination) ==
+                    param_values::LfoDestination::GranularPosition)
+                f.show_voice_cursors = true;
             f;
         });
 
@@ -1243,8 +1247,8 @@ void DoWaveformElement(GuiState& g,
                                  col);
         }
 
-        // Voice cursors. Hidden in GranularFixed: the playhead there is just the Position param, which
-        // the spread region already shows.
+        // Voice cursors. Hidden in GranularFixed unless the LFO modulates position: otherwise the playhead
+        // there is just the Position param, which the spread region already shows.
         if (has_active_voices && features.show_voice_cursors) {
             for (auto const voice_index : Range(k_num_voices)) {
                 auto const marker = voice_waveform_markers[voice_index];
