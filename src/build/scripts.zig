@@ -16,6 +16,15 @@ const Context = struct {
     env_map: std.process.EnvMap,
 };
 
+// TSan tests fail on GitHub's macOS runners due to environment issues, so we skip them there. Whether they
+// work needs re-evaluating whenever we update Zig.
+const skip_macos_tsan_on_github_actions = true;
+comptime {
+    const evaluated_with_zig = std.SemanticVersion.parse("0.14.0") catch unreachable;
+    if (skip_macos_tsan_on_github_actions and builtin.zig_version.order(evaluated_with_zig) != .eq)
+        @compileError("Zig version changed: re-evaluate whether TSan tests work on GitHub's macOS runners, then update skip_macos_tsan_on_github_actions.");
+}
+
 pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer _ = arena.deinit();
@@ -1066,7 +1075,8 @@ fn runCi(context: *Context, test_level: enum { basic, full }) !u8 {
             spawnZigBuild(&pool, &wg, &ci_report, &.{"test:windows-install"});
         },
         .macos => {
-            if (test_level == .full) {
+            const run_tsan = !(skip_macos_tsan_on_github_actions and context.env_map.get("GITHUB_ACTIONS") != null);
+            if (test_level == .full and run_tsan) {
                 spawnZigBuild(&pool, &wg, &ci_report, &.{
                     "test",
                     "-Dsanitize-thread",
@@ -1289,7 +1299,10 @@ fn runBenchmarkCi(context: *Context) !u8 {
 
         var lines = std.mem.splitScalar(u8, std.mem.trim(u8, result.stdout, " \n\r\t"), '\n');
         while (lines.next()) |line| {
-            const trimmed = std.mem.trim(u8, line, " \r\t");
+            // Benchmarks needing a command-line argument are marked with a tab-separated suffix; they can't
+            // run unattended.
+            if (std.mem.indexOfScalar(u8, line, '\t') != null) continue;
+            const trimmed = std.mem.trim(u8, line, " \r");
             if (trimmed.len > 0) {
                 try benchmark_names.append(trimmed);
             }

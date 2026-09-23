@@ -11,13 +11,13 @@
 #include "processor/layer_processor.hpp"
 
 struct InstBrowserState {
+    static constexpr u64 k_store_id = HashFnv1a("instrument-browser");
     imgui::Id const id;
     CommonBrowserState common_state = [] {
         CommonBrowserState s {};
         InitCommonFilters(s);
         return s;
     }();
-    bool scroll_to_show_selected = false;
 };
 
 // Ephemeral

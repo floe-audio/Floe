@@ -288,6 +288,9 @@ struct BoxConfig {
     // Shown immediately while hovered or dragged, regardless of preferences. For information the UI doesn't
     // otherwise show: a knob's value, a meter's level, a preset's description.
     TooltipString value_popup = k_nullopt;
+    // How long the mouse must be over the element before the value popup appears. Raise it for dense lists,
+    // where a popup on every row would flicker as the cursor sweeps down them.
+    f64 value_popup_delay_secs = imgui::Context::k_tooltip_settle_secs;
     // Help text. Shown in italics after the mouse rests on the element, only if the show-tooltips
     // preference is on. Placed beside the value popup when both are present.
     TooltipString tooltip = k_nullopt;
@@ -316,6 +319,7 @@ Optional<Rect> BoxRect(GuiBuilder& builder, Box const& box);
 // BoxConfig::tooltip. Returns true if anything was drawn.
 struct TooltipArgs {
     TooltipString value_popup = k_nullopt;
+    f64 value_popup_delay_secs = imgui::Context::k_tooltip_settle_secs;
     // WW units. When set, the value popup box always uses this width instead of sizing to fit the text.
     // Use this when the text length varies between frames (e.g. a cutoff frequency shown as a note name,
     // where sharps change the string length) so the popup doesn't resize/jump as the value changes.

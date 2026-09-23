@@ -140,6 +140,10 @@ void LoadInstruments(Engine& engine,
                      Array<Optional<sample_lib::InstrumentId>, k_num_layers> const& new_ids,
                      String undo_name);
 
+// Trade 2 layers' instruments, parameters and per-layer state, remapping macro destinations so nothing
+// changes how the layers sound. Recorded as a single undo step.
+void SwapLayers(Engine& engine, u8 layer_a, u8 layer_b);
+
 struct LoadStateOptions {
     StateSource source;
     String preset_path = ""_s;

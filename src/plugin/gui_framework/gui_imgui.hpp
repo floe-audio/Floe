@@ -655,10 +655,14 @@ struct Context {
     // overlay draw-list for drawing tooltips.
     struct TooltipOpacities {
         // Both quickly fade out once their show condition ends.
-        f32 immediate; // Quickly fades in once hot for a brief settle time, or instantly when active.
+        f32 immediate; // Quickly fades in once hot for the settle time, or instantly when active.
         f32 delayed; // Fades in after the mouse has rested on the element for a moment. Hidden while active.
     };
-    TooltipOpacities TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id);
+    // The default settle time is brief: just enough to stop rapid flicker when sweeping the cursor across
+    // many items.
+    static constexpr f64 k_tooltip_settle_secs = 0.08;
+    TooltipOpacities
+    TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id, f64 settle_secs = k_tooltip_settle_secs);
 
     //
     // Viewports
@@ -742,7 +746,7 @@ struct Context {
     // can be open simultaneously (e.g. an "are you sure?" dialog on top of another modal).
 
     void OpenModalViewport(Id id);
-    bool IsModalOpen(Id id);
+    bool IsModalOpen(Id id) const;
     bool IsAnyModalOpen();
     void CloseModal(Id id);
     void CloseTopModal();

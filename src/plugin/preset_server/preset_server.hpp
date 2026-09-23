@@ -131,6 +131,10 @@ PresetBank const* PresetBankAtNode(FolderNode const& node);
 // The bank that is node is part of.
 PresetBank const* ContainingPresetBank(FolderNode const* node);
 
+// The bank ships with a library rather than being user-made: its metadata says so, or its folder name
+// contains "factory presets".
+bool IsFactoryPresetBank(FolderNode const& bank_node);
+
 bool IsInsideFolder(PresetFolderListing const* listing, usize folder_node_hash);
 
 bool HasNestedBank(FolderNode const& node);

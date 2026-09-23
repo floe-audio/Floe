@@ -42,6 +42,8 @@ Each step has a vertical bar. Click and drag inside the sequencer to set velocit
 
 This distinction matters most for multisampled instruments that have separate velocity layers: a step's velocity selects which velocity layer is played, not just how loud it is. A low-velocity step on a piano, for example, gives you the soft-velocity samples rather than just a quieter version of the loud ones.
 
+In _Played Notes_ mode your own playing is folded in as well: how hard you play the notes that trigger the sequence (typically MIDI velocity) scales each step's velocity rather than replacing it. At the softest playing (MIDI velocity 1) the step velocities are 50% as intense, while at the hardest (velocity 127) they reach their full intensity. The pattern's accents therefore survive intact while your performance shapes the dynamics over the top of them. In _Fixed Notes_ mode the steps stand alone and how hard you play is ignored.
+
 ### Step rows
 Under each bar you'll find:
 

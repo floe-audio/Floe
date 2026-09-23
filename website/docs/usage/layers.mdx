@@ -29,7 +29,7 @@ A permanent fixture on each layer are the _top controls_, which provide quick ac
 
 <GeneratedScreenshot name="layer-top-controls" alt="Layer Top Controls" />
 
-- **1**: the _instrument_ selector: click this to open the [browser](./browsers) and select a new instrument for this layer - or unload the current one. You can also right-click and choose 'Unload' from the menu, or click the x-mark.
+- **1**: the _instrument_ selector: click this to open the [browser](./browsers) and select a new instrument for this layer - or unload the current one. You can also right-click and choose 'Unload' from the menu, or click the x-mark. The right-click menu also lets you copy and paste the instrument or the whole layer, and swap this layer with the one to its left or right - macro assignments move with the layer, so nothing changes about how it sounds.
 - **2**: instrument navigation: left/right arrows to quickly switch between instruments, a randomise button to load a random instrument, and an unload button to clear this layer. The navigation and randomise buttons are based on the current filter settings in the browser. For example, if you have selected the 'Distant Signals' sample library on the browser's filters, the navigation buttons will only cycle through instruments from that library.
 - **3**: mute/solo buttons: buttons to mute or solo this layer. Soloing a layer automatically mutes the other two layers.
 - **Volume**: adjust the layer's output volume. While notes are sounding, a red line on the slider marks each active voice's current level. Visit the [MIDI](./midi#velocity) page for details.
@@ -49,6 +49,8 @@ The Playback tab controls how the loaded instrument's samples are played back.
 - **Sample info caption**: shows _single sample_ or _multisample_, the sample length, and the root key of the loaded instrument.
 - **Reverse**: toggle to play the sample(s) in reverse.
 - **Loop mode** (bottom selector): select the looping mode — _No Loop_, _Standard_, _Ping-Pong_, etc. Visit the [looping](./looping) page for full details.
+
+When the layer holds a waveform Instrument (a built-in oscillator rather than a sampled sound), only the waveform display and its caption are shown. Play mode, reverse and loop mode don't apply to a waveform, so those controls are hidden and the caption says so. Since a waveform has no playhead, its red voice markers are placed left to right by pitch instead.
 
 It's typically a good idea to add a small attack using the volume envelope to avoid clicks if you change the sample-start position.
 
@@ -85,8 +87,9 @@ The Low Frequency Oscillator (LFO) can modulate various parameters to add moveme
 - **Waveform display**: a live representative preview of the current LFO shape and rate. Drag it left or right to change the _Time_, and up or down to change the _Amount_.
 - **Target**: select the parameter that the LFO will modulate: Volume, Filter, Pan, Pitch, or Grain Position. Some targets require their associated feature to be active (e.g. the filter must be enabled, or the play mode must be Granular Fixed).
 - **Shape**: choose the LFO waveform shape.
+- **Seed** <FAIcon icon="fa-solid fa-seedling" />: shown next to the Shape menu when a random shape (Random Steps or Random Glide) is selected. _Random_ gives every note a fresh random pattern. _Fixed_ makes every note move through exactly the same pattern, chosen by the **Seed** number, so the movement is saved with the preset. _Fixed Per Key_ gives each key its own repeatable pattern. In Free mode, a note that joins already-sounding notes follows their pattern.
 - **Mode**: switch between _Retrigger_ — new notes always start with the LFO at the beginning of its cycle — and _Free_ — a new note joins in wherever the layer's sounding notes have reached in the cycle, so all notes share the same LFO phase.
-- **Amount**: control the intensity of the LFO effect on the target parameter.
+- **Amount**: control the intensity of the LFO effect on the target parameter. If MPE press or slide is routed to LFO amount (see the [Config tab](#config-tab)), a red line marks each active voice's current amount.
 - **Time**: adjust the LFO rate. When Sync is enabled, this is synced to the host tempo (e.g., 1/4 note); when disabled, it operates in Hz.
 - **Sync**: toggle to sync the LFO speed to the host tempo.
 
@@ -116,6 +119,6 @@ The Config tab contains MIDI and playback behaviour settings for this layer.
 - **Pitch Bend Range**: set the pitch range in semitones for the MIDI pitch wheel.
 - **Keytrack**: when enabled, tunes the sound to match the key played. When disabled, the sound always plays at its root pitch regardless of the MIDI note. This is not typically useful if the instrument is multi-sampled.
 - **Monophonic**: select the voice behaviour when notes overlap. _Off_ (polyphonic): multiple voices can play simultaneously. _Retrigger_ (monophonic): new notes stop previous notes, triggering their volume envelope Release section. _Latch_ (monophonic): the first note plays until all keys are released; new notes are ignored — useful for drones and textural elements.
-- **MPE**: opens a menu where you can choose what per-note press (channel pressure) and slide (CC74) control on this layer — volume, filter cutoff, or timbre — along with an amount; negative amounts invert the response. Visit the [MIDI](./midi#mpe) page for full details about MPE.
+- **MPE**: opens a menu where you can choose what per-note press (channel pressure) and slide (CC74) control on this layer — volume, filter cutoff, timbre, or LFO amount — along with an amount; negative amounts invert the response. Visit the [MIDI](./midi#mpe) page for full details about MPE.
 - **Range** and **Key Fade**: visit the [key ranges](./key-ranges) page for full details about these settings.
 - **Velocity to volume curve**: graphical control showing how MIDI velocity affects the layer's volume. A straight line from bottom-left to top-right means there's a 1:1 relationship with velocity and volume. The curve can be adjusted to create different velocity response characteristics. Visit the [MIDI](./midi) page for full details about editing velocity curves.

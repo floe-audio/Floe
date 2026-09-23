@@ -24,6 +24,18 @@ void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_
                                    rounding);
 }
 
+void DrawResizeCornerGrip(imgui::Context const& imgui, Rect r, u32 colour) {
+    auto const glyph_size = Min(r.w, r.h);
+    auto const bottom_right = r.BottomRight();
+    for (auto const step : Range(3)) {
+        auto const offset = glyph_size * ((f32)step + 1) / 3.5f;
+        imgui.draw_list->AddLine(bottom_right - f32x2 {offset, 0},
+                                 bottom_right - f32x2 {0, offset},
+                                 colour,
+                                 WwToPixels(1.0f));
+    }
+}
+
 void DrawVoiceMarkerLine(imgui::Context const& imgui,
                          f32x2 pos,
                          f32 height,
@@ -626,7 +638,8 @@ void DrawGainReductionMeter(imgui::Context& imgui, Rect r, DrawGainReductionMete
     auto const meter_w = total_w;
     constexpr auto k_channel_gap = 2; // matches DrawPeakMeterOptions::gap_px default
     auto const chan_w = (meter_w - k_channel_gap) / 2;
-    auto const bar_x0 = origin_x + (f32)((meter_w - chan_w) / 2);
+    auto const bar_inset = (meter_w - chan_w) / 2;
+    auto const bar_x0 = origin_x + (f32)bar_inset;
     auto const bar_x1 = bar_x0 + (f32)chan_w;
 
     auto const rounding_full = WwToPixels(k_corner_rounding);
@@ -659,7 +672,8 @@ void DrawLoudnessMeter(imgui::Context& imgui, Rect r, DrawLoudnessMeterOptions c
 
     constexpr auto k_channel_gap = 2; // matches DrawPeakMeterOptions::gap_px default
     auto const bar_w = (total_w - k_channel_gap) / 2;
-    auto const bar_x0 = origin_x + (f32)((total_w - bar_w) / 2);
+    auto const bar_inset = (total_w - bar_w) / 2;
+    auto const bar_x0 = origin_x + (f32)bar_inset;
     auto const bar_x1 = bar_x0 + (f32)bar_w;
 
     auto const rounding_full = WwToPixels(k_corner_rounding);
@@ -827,10 +841,14 @@ void DrawModalScrollbarsDarkMode(imgui::Context const& imgui, imgui::ViewportScr
     DrawModalScrollbarsWithMode(imgui, bars, true);
 }
 
-void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui) {
+void DrawFullscreenDim(imgui::Context const& imgui) {
     imgui.draw_list->PushClipRectFullScreen();
     imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x6c0f0d0d);
     imgui.draw_list->PopClipRect();
+}
+
+void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui) {
+    DrawFullscreenDim(imgui);
 
     auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;

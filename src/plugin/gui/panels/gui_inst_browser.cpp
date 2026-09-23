@@ -9,10 +9,6 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/panels/gui_common_browser.hpp"
 
-constexpr String k_waveform_library_id_string = "Waveforms - " FLOE_VENDOR;
-constexpr sample_lib::LibraryId k_waveform_library_id =
-    sample_lib::HashLibraryIdStringWithoutRegistration(k_waveform_library_id_string);
-
 struct InstrumentCursor {
     bool operator==(InstrumentCursor const& o) const = default;
     usize lib_index;
@@ -42,10 +38,12 @@ static bool ShouldSkipInstrument(InstBrowserContext const& context,
 
     if (common_state.search.size && !InstMatchesSearch(inst, common_state.search)) return true;
 
+    if (common_state.favourites.HasSelected() &&
+        !IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst)))
+        return true;
+
     return IsFilteredOut(common_state, [&](usize index, FilterSelection const& filter) -> bool {
         switch ((BrowserFilter)index) {
-            case BrowserFilter::Favourites:
-                return IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(inst));
             case BrowserFilter::Folder:
                 return MatchesFilterValues(filter, common_state.filter_mode, [&](String, u64 key) {
                     return IsInsideFolder(inst.folder, key);
@@ -143,11 +141,12 @@ static void LoadInstrument(InstBrowserContext const& context,
                            InstrumentCursor const& cursor,
                            bool scroll) {
     LoadInstrument(context.engine, context.layer.index, InstrumentIdFromCursor(context, cursor));
-    if (scroll) state.scroll_to_show_selected = true;
+    if (scroll) state.common_state.scroll_to_show_current = true;
 }
 
 static Optional<InstrumentCursor> PickRandomInstrumentCursor(InstBrowserContext const& context,
                                                              InstBrowserState& state) {
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     auto const first =
         IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
     if (!first) return k_nullopt;
@@ -177,6 +176,7 @@ static Optional<InstrumentCursor> PickRandomInstrumentCursor(InstBrowserContext 
 void LoadAdjacentInstrument(InstBrowserContext const& context,
                             InstBrowserState& state,
                             SearchDirection direction) {
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     switch (context.layer.instrument_id.tag) {
         case InstrumentType::WaveformSynth: {
             auto waveform_index = ToInt(context.layer.instrument_id.Get<WaveformType>());
@@ -198,11 +198,19 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
             break;
         }
         case InstrumentType::None: {
+            if (WaitForScanBeforeStep(state.common_state,
+                                      context.frame_context.libraries_scanning,
+                                      StepForDirection(direction)))
+                break;
             if (auto const cursor = IterateInstrument(context, state, {0, 0}, direction, true))
                 LoadInstrument(context, state, *cursor, true);
             break;
         }
         case InstrumentType::Sampler: {
+            if (WaitForScanBeforeStep(state.common_state,
+                                      context.frame_context.libraries_scanning,
+                                      StepForDirection(direction)))
+                break;
             auto const inst_id = context.layer.instrument_id.Get<sample_lib::InstrumentId>();
 
             if (auto const cursor = CurrentCursor(context, inst_id)) {
@@ -215,6 +223,10 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
 }
 
 void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state) {
+    if (WaitForScanBeforeStep(state.common_state,
+                              context.frame_context.libraries_scanning,
+                              BrowserStep::Random))
+        return;
     if (auto const cursor = PickRandomInstrumentCursor(context, state))
         LoadInstrument(context, state, *cursor, true);
 }
@@ -226,7 +238,31 @@ Optional<sample_lib::InstrumentId> RandomInstrumentId(InstBrowserContext const& 
     return k_nullopt;
 }
 
-static void InstBrowserWaveformItems(GuiBuilder& builder,
+// Built-in waveforms are presented as instruments of a pseudo library so the filters apply to them too.
+struct WaveformPseudoLibrary {
+    sample_lib::Instrument Instrument(WaveformType waveform_type) {
+        return {
+            .library = lib,
+            .name = k_waveform_type_names[ToInt(waveform_type)],
+            .id = k_waveform_type_names[ToInt(waveform_type)],
+            .folder = &folder,
+        };
+    }
+
+    sample_lib::Library const lib {
+        .name = "Waveforms"_s,
+        .id = sample_lib::k_waveform_library_id,
+        .id_string = sample_lib::k_waveform_library_id_string,
+        .author = FLOE_VENDOR,
+        .file_format_specifics = sample_lib::LuaSpecifics {},
+    };
+    FolderNode folder {
+        .name = "Waveforms"_s,
+    };
+};
+
+// Returns true if any waveform items were drawn.
+static bool InstBrowserWaveformItems(GuiBuilder& builder,
                                      InstBrowserContext& context,
                                      InstBrowserState& state,
                                      Box const root) {
@@ -241,27 +277,26 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
                                  });
 
     auto& common_state = state.common_state;
+    WaveformPseudoLibrary pseudo_lib {};
+    bool any_drawn = false;
 
-    sample_lib::Library const pseudo_lib {
-        .name = "Waveforms"_s,
-        .id = k_waveform_library_id,
-        .id_string = k_waveform_library_id_string,
-        .author = FLOE_VENDOR,
-        .file_format_specifics = sample_lib::LuaSpecifics {},
-    };
-    FolderNode pseudo_folder {
-        .name = "Waveforms"_s,
-    };
+    auto const icons = ({
+        auto const imgs = GetLibraryImages(context.library_images,
+                                           builder.imgui,
+                                           sample_lib::k_waveform_library_id,
+                                           context.sample_library_server,
+                                           context.engine.instance_index,
+                                           LibraryImagesTypes::Icon);
+        decltype(BrowserItemOptions::icons) result {};
+        dyn::Emplace(result, imgs.icon ? ItemIcon {*imgs.icon} : ItemIcon {ItemIconType::None});
+        result;
+    });
 
     for (auto const waveform_type : EnumIterator<WaveformType>()) {
-        sample_lib::Instrument const pseudo_inst {
-            .library = pseudo_lib,
-            .name = k_waveform_type_names[ToInt(waveform_type)],
-            .id = k_waveform_type_names[ToInt(waveform_type)],
-            .folder = &pseudo_folder,
-        };
+        auto const pseudo_inst = pseudo_lib.Instrument(waveform_type);
 
         if (ShouldSkipInstrument(context, state, pseudo_inst)) continue;
+        any_drawn = true;
 
         auto const inst_hash = sample_lib::PersistentInstHash(pseudo_inst);
         auto const is_current = waveform_type == context.layer.instrument_id.TryGetOpt<WaveformType>();
@@ -274,29 +309,30 @@ static void InstBrowserWaveformItems(GuiBuilder& builder,
                 .parent = container,
                 .id_extra = (u64)waveform_type,
                 .text = k_waveform_type_names[ToInt(waveform_type)],
-                .tooltip = FunctionRef<String()>([&]() -> String {
+                .value_popup = FunctionRef<String()>([&]() -> String {
                     return fmt::Format(
                         builder.arena,
-                        "{} waveform. A simple waveform useful for layering with sample instruments.",
+                        "{} waveform. A simple waveform useful for layering with sampled Instruments.",
                         k_waveform_type_names[ToInt(waveform_type)]);
                 }),
+                .tooltip = BrowserItemLoadTooltip(builder.arena, "Instrument"_s),
                 .item_id = inst_hash,
                 .is_current = is_current,
                 .is_favourite = is_favourite,
+                .icons = icons,
                 .notifications = context.notifications,
                 .store = context.persistent_store,
             });
 
-        if (item.fired) {
-            if (is_current)
-                LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-            else
-                LoadInstrument(context.engine, context.layer.index, waveform_type);
-        }
+        if (is_current) ScrollBrowserToShowCurrent(builder, common_state, item.box);
+
+        if (item.fired && !is_current) LoadInstrument(context.engine, context.layer.index, waveform_type);
 
         if (item.favourite_toggled)
             ToggleFavourite(context.prefs, k_favourite_inst_key, inst_hash, is_favourite);
     }
+
+    return any_drawn;
 }
 
 static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
@@ -304,7 +340,12 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 
     auto const root = DoBrowserItemsRoot(builder);
 
-    DEFER { InstBrowserWaveformItems(builder, context, state, root); };
+    bool any_sampled_items = false;
+    DEFER {
+        auto const any_waveform_items = InstBrowserWaveformItems(builder, context, state, root);
+        if (!any_sampled_items && !any_waveform_items)
+            DoBrowserEmptyListMessage(builder, common_state, root, "instruments"_s);
+    };
 
     Optional<u64> previous_folder_hash {};
     Optional<BrowserSection> folder_section {};
@@ -312,6 +353,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
     auto const first =
         IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
+    any_sampled_items = true;
 
     auto const total_instruments = ({
         usize n = 0;
@@ -352,10 +394,11 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
             };
         }
 
+        auto const inst_id = sample_lib::InstrumentId {lib.id, inst.id};
+        auto const is_current = context.layer.instrument_id == inst_id;
+
         if (folder_section->Do(builder).tag != BrowserSection::State::Collapsed) {
-            auto const inst_id = sample_lib::InstrumentId {lib.id, inst.id};
             auto const inst_hash = sample_lib::PersistentInstHash(inst);
-            auto const is_current = context.layer.instrument_id == inst_id;
             auto const is_favourite = IsFavourite(context.prefs, k_favourite_inst_key, inst_hash);
 
             auto const item = DoBrowserItem(
@@ -386,7 +429,7 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 
                         return buf.ToOwnedSpan();
                     }),
-                    .tooltip = "Click to load the instrument."_s,
+                    .tooltip = BrowserItemLoadTooltip(builder.arena, "Instrument"_s),
                     .item_id = inst_hash,
                     .is_current = is_current,
                     .is_favourite = is_favourite,
@@ -413,22 +456,14 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
                     .store = context.persistent_store,
                 });
 
-            if (is_current) {
-                if (auto const r = BoxRect(builder, item.box)) {
-                    if (Exchange(state.scroll_to_show_selected, false))
-                        builder.imgui.ScrollViewportToShowRectangle(*r);
-                }
-            }
+            if (is_current) ScrollBrowserToShowCurrent(builder, common_state, item.box);
 
-            if (item.fired) {
-                if (is_current)
-                    LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-                else
-                    LoadInstrument(context.engine, context.layer.index, inst_id);
-            }
+            if (item.fired && !is_current) LoadInstrument(context.engine, context.layer.index, inst_id);
 
             if (item.favourite_toggled)
                 pending_favourite_toggle = PendingFavouriteToggle {inst_hash, is_favourite};
+        } else if (is_current) {
+            ScrollBrowserToShowCurrent(builder, common_state, folder_section->heading_box);
         }
 
         if (auto next = IterateInstrument(context, state, cursor, SearchDirection::Forward, false)) {
@@ -447,72 +482,44 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 }
 
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
+    if (state.common_state.step_waiting_for_scan && !context.frame_context.libraries_scanning) {
+        auto const step = *state.common_state.step_waiting_for_scan;
+        state.common_state.step_waiting_for_scan = k_nullopt;
+        switch (step) {
+            case BrowserStep::Previous:
+                LoadAdjacentInstrument(context, state, SearchDirection::Backward);
+                break;
+            case BrowserStep::Next: LoadAdjacentInstrument(context, state, SearchDirection::Forward); break;
+            case BrowserStep::Random: LoadRandomInstrument(context, state); break;
+        }
+    }
 
     bool const is_browser_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-full"_s);
-    bool const is_filter_card_screenshot = context.layer.index == 0 && IsScreenshotRequest("filter-card"_s);
-    bool const is_filter_card_all_selected =
-        context.layer.index == 0 && IsScreenshotRequest("filter-card-all-selected"_s);
-    bool const is_filter_card_body_item =
-        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-item-selected"_s);
-    bool const is_filter_card_body_tree =
-        context.layer.index == 0 && IsScreenshotRequest("filter-card-body-tree"_s);
-    bool const is_any_filter_card_screenshot = is_filter_card_screenshot || is_filter_card_all_selected ||
-                                               is_filter_card_body_item || is_filter_card_body_tree;
-    bool const is_filter_button_screenshot =
-        context.layer.index == 0 && IsScreenshotRequest("filter-button"_s);
     bool const is_browser_menu_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-menu"_s);
+    bool const is_browse_list_screenshot =
+        context.layer.index == 0 && IsScreenshotRequest("browser-browse"_s);
 
-    if ((is_browser_screenshot || is_any_filter_card_screenshot || is_filter_button_screenshot ||
-         is_browser_menu_screenshot) &&
+    if ((is_browser_screenshot || is_browser_menu_screenshot || is_browse_list_screenshot) &&
         !builder.imgui.IsModalOpen(state.id))
         builder.imgui.OpenModalViewport(state.id);
 
     if (!builder.imgui.IsModalOpen(state.id)) return;
     auto const& libs = context.frame_context.libraries;
 
-    if (is_browser_screenshot) {
-        // Add a tag filter so the screenshot is more interesting than an empty browser.
+    if (is_browser_screenshot || is_browser_menu_screenshot) {
+        // Add a tag filter so the screenshot is more interesting than an empty browser. The browser-menu
+        // screenshot captures the match menu, which needs 2 or more selected filters to exist.
         auto& tag_filter = state.common_state.Filter(BrowserFilter::Tags);
         if (!tag_filter.Contains((u64)TagType::Ambient)) tag_filter.Add((u64)TagType::Ambient, "ambient"_s);
-    }
-
-    if (is_any_filter_card_screenshot) {
-        sample_lib::Library const* picked = nullptr;
-        for (auto const l : libs) {
-            if (l->sorted_instruments.size == 0) continue;
-            if (l->name == "Dulcitone"_s) {
-                picked = &*l;
+        if (is_browser_menu_screenshot && !tag_filter.Contains((u64)TagType::Warm))
+            tag_filter.Add((u64)TagType::Warm, "warm"_s);
+        // A library too, so the Filter-mode screenshot shows filters combining.
+        if (is_browser_screenshot) {
+            auto& library_filter = state.common_state.Filter(BrowserFilter::Library);
+            for (auto const l : libs) {
+                if (l->name != "Lost Reveries"_s) continue;
+                if (!library_filter.Contains(l->id)) library_filter.Add(l->id, l->name);
                 break;
-            }
-            if (!picked) picked = &*l;
-        }
-        if (picked) {
-            auto const collapse_id = picked->id ^ HashFnv1a("card-collapse");
-            if (!Contains(state.common_state.expanded_filter_headers, collapse_id))
-                dyn::Append(state.common_state.expanded_filter_headers, collapse_id);
-
-            auto const* root = &picked->root_folders[ToInt(sample_lib::ResourceType::Instrument)];
-
-            auto const add_unique = [&](BrowserFilter f, u64 key, String name) {
-                auto& filter = state.common_state.Filter(f);
-                if (!filter.Contains(key)) filter.Add(key, name);
-            };
-
-            if (is_filter_card_all_selected) {
-                add_unique(BrowserFilter::Library, picked->id, picked->name);
-            } else if (is_filter_card_body_item) {
-                if (auto* child = root->first_child)
-                    add_unique(BrowserFilter::Folder, child->Hash(), child->name);
-            } else if (is_filter_card_body_tree) {
-                FolderNode const* tree = nullptr;
-                for (auto* c = root->first_child; c; c = c->next) {
-                    if (c->name == "Mic Options"_s) {
-                        tree = c;
-                        break;
-                    }
-                    if (!tree && c->first_child) tree = c;
-                }
-                if (tree) add_unique(BrowserFilter::Folder, tree->Hash(), tree->name);
             }
         }
     }
@@ -528,6 +535,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
     auto root_folder = FolderRootSet::Create(builder.arena, 8);
 
     FilterItemInfo favourites_info {};
+    u32 num_results = 0;
 
     for (auto const l : libs) {
         if (l->sorted_instruments.size == 0) continue;
@@ -540,6 +548,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
 
         for (auto const& inst : l->sorted_instruments) {
             auto const skip = ShouldSkipInstrument(context, state, *inst);
+            if (!skip) ++num_results;
 
             if (IsFavourite(context.prefs, k_favourite_inst_key, sample_lib::PersistentInstHash(*inst))) {
                 if (!skip) ++favourites_info.num_used_in_items_lists;
@@ -577,22 +586,25 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         }
     }
 
-    FilterCardOptions const waveform_card {
+    FilterCollectionOptions const waveform_collection {
         .common =
             {
                 .id_extra = SourceLocationHash(),
-                .is_selected =
-                    state.common_state.Filter(BrowserFilter::Library).Contains(k_waveform_library_id),
+                .is_selected = state.common_state.Filter(BrowserFilter::Library)
+                                   .Contains(sample_lib::k_waveform_library_id),
                 .text = "Built-in Waveforms",
                 .filter = state.common_state.Filter(BrowserFilter::Library),
-                .clicked_key = k_waveform_library_id,
+                .clicked_key = sample_lib::k_waveform_library_id,
                 .filter_mode = state.common_state.filter_mode,
             },
-        .library_id = k_waveform_library_id,
-        .library_images = context.library_images,
-        .sample_library_server = context.sample_library_server,
-        .instance_index = context.engine.instance_index,
-        .subtext = "Basic waveforms built into Floe",
+        .icon =
+            {
+                .library_id = sample_lib::k_waveform_library_id,
+                .library_images = context.library_images,
+                .sample_library_server = context.sample_library_server,
+                .instance_index = context.engine.instance_index,
+            },
+        .collection_noun = "library"_s,
         .default_collapsed = true,
         .store = &context.persistent_store,
     };
@@ -602,6 +614,103 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         .total_available = ToInt(WaveformType::Count),
     };
 
+    {
+        WaveformPseudoLibrary pseudo_lib {};
+        for (auto const waveform_type : EnumIterator<WaveformType>())
+            if (!ShouldSkipInstrument(context, state, pseudo_lib.Instrument(waveform_type))) ++num_results;
+    }
+
+    state.common_state.items_still_loading =
+        sample_lib_server::AreLibrariesScanning(context.sample_library_server);
+
+    auto const current_item = ({
+        using Visibility = CurrentItemStatus::Visibility;
+        CurrentItemStatus status {};
+        switch (context.layer.instrument_id.tag) {
+            case InstrumentType::None: break;
+            case InstrumentType::WaveformSynth: {
+                WaveformPseudoLibrary pseudo_lib {};
+                auto const inst = pseudo_lib.Instrument(context.layer.instrument_id.Get<WaveformType>());
+                status.name = inst.name;
+                status.collection = BrowserCollection {
+                    .filter = BrowserFilter::Library,
+                    .key = sample_lib::k_waveform_library_id,
+                    .name = "Built-in Waveforms"_s,
+                };
+                status.visibility = ShouldSkipInstrument(context, state, inst) ? Visibility::HiddenByFilters
+                                                                               : Visibility::Shown;
+                break;
+            }
+            case InstrumentType::Sampler: {
+                auto const& id = context.layer.instrument_id.GetFromTag<InstrumentType::Sampler>();
+                status.name = context.layer.InstName();
+
+                auto const lib = context.frame_context.lib_table.Find(id.library);
+                auto const inst = lib ? (*lib)->insts_by_id.Find((String)id.inst_id) : nullptr;
+                if (!inst) {
+                    if (state.common_state.items_still_loading) {
+                        status.visibility = Visibility::Loading;
+                        break;
+                    }
+                    status.visibility = Visibility::NotInList;
+                    status.not_in_list_reason =
+                        lib ? "it's no longer in its library"_s : "its library isn't installed"_s;
+                    break;
+                }
+
+                status.collection = BrowserCollection {
+                    .filter = BrowserFilter::Library,
+                    .key = (*lib)->id,
+                    .name = (*lib)->name,
+                };
+
+                if (ShouldSkipInstrument(context, state, **inst)) {
+                    status.visibility = Visibility::HiddenByFilters;
+                    break;
+                }
+
+                status.section_id = ({
+                    auto h = (*inst)->folder->Hash();
+                    HashUpdate(h, (*lib)->id);
+                    h;
+                });
+                status.visibility =
+                    IsBrowserSectionCollapsed(state.common_state, status.section_id, (*inst)->folder->Hash())
+                        ? Visibility::InCollapsedSection
+                        : Visibility::Shown;
+                break;
+            }
+        }
+        status;
+    });
+
+    auto const library_collection = [&](sample_lib::Library const& lib) {
+        auto const info = libraries.Find(lib.id);
+        return LibraryCollection(builder.arena, lib, info ? info->total_available : 0);
+    };
+    auto const collection_of_library = [&](sample_lib::LibraryId id) -> Optional<BrowserCollection> {
+        if (id == sample_lib::k_waveform_library_id) {
+            return BrowserCollection {
+                .filter = BrowserFilter::Library,
+                .key = id,
+                .name = waveform_collection.common.text,
+                .library_id = id,
+                .num_items = waveform_info.total_available,
+                .subtext = "Basic waveforms built into Floe"_s,
+            };
+        }
+        for (auto const l : libs)
+            if (l->id == id) return library_collection(*l);
+        return k_nullopt;
+    };
+    // The library whose root folder this is.
+    auto const library_collection_of_root = [&](FolderNode const& root) -> Optional<BrowserCollection> {
+        for (auto const l : libs)
+            if (&l->root_folders[ToInt(sample_lib::ResourceType::Instrument)] == &root)
+                return library_collection(*l);
+        return k_nullopt;
+    };
+
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
     DoBrowserModal(
@@ -609,51 +718,38 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
         {
             .browser_id = state.id,
             .sample_library_server = context.sample_library_server,
+            .library_images = context.library_images,
             .preferences = context.prefs,
             .store = context.persistent_store,
             .state = state.common_state,
             .instance_index = context.engine.instance_index,
         },
         BrowserPopupOptions {
-            .title = fmt::Format(builder.arena, "Layer {} Instrument", context.layer.index + 1),
             .height = ({
                 auto const window_height = GuiIo().in.window_size.height;
                 auto const& button_rect = state.common_state.absolute_button_rect;
-                auto const space_below = window_height - button_rect.Bottom() - 20;
-                auto const space_above = button_rect.y - 20;
+                auto const space_below = window_height - button_rect.Bottom() - WwToPixels(20.0f);
+                auto const space_above = button_rect.y - WwToPixels(20.0f);
                 PixelsToWw(Max(space_below, space_above));
             }),
-            .rhs_width = 300,
+            .results_width = 300,
             .filters_col_width = 250,
+            .store_id = state.k_store_id,
+            .flush_with_opener = true,
             .item_type_name = "instrument",
-            .rhs_top_button =
-                BrowserPopupOptions::Button {
-                    .text = fmt::Format(
-                        builder.arena,
-                        "Unload {}",
-                        context.layer.instrument_id.tag == InstrumentType::None ? "Instrument"_s : ({
-                            auto n = context.layer.InstName();
-                            if (n.size > 14)
-                                n = fmt::Format(builder.arena,
-                                                "{}…",
-                                                n.SubSpan(0, FindUtf8TruncationPoint(n, 14)));
-                            n;
-                        })),
-                    .tooltip = "Unload the current instrument.",
-                    .disabled = context.layer.instrument_id.tag == InstrumentType::None,
-                    .on_fired = TrivialFunctionRef<void()>([&]() {
-                                    LoadInstrument(context.engine, context.layer.index, InstrumentType::None);
-                                    builder.imgui.CloseTopModal();
-                                }).CloneObject(builder.arena),
-                },
-            .rhs_do_items = [&](GuiBuilder& builder) { InstBrowserItems(builder, context, state); },
+            .plural_item_type_name = "instruments",
+            .do_items = [&](GuiBuilder& builder) { InstBrowserItems(builder, context, state); },
             .show_search = true,
             .filter_search_placeholder_text = "Search libraries/tags",
             .item_search_placeholder_text = "Search instruments",
-            .on_load_previous = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Backward); },
-            .on_load_next = [&]() { LoadAdjacentInstrument(context, state, SearchDirection::Forward); },
-            .on_load_random = [&]() { LoadRandomInstrument(context, state); },
-            .on_scroll_to_show_selected = [&]() { state.scroll_to_show_selected = true; },
+            .current_item = current_item,
+            .browse_scope = CurrentBrowseScope(state.common_state,
+                                               {
+                                                   .collection_noun = "library"_s,
+                                                   .folders = folders,
+                                                   .collection_of_root = library_collection_of_root,
+                                                   .collection_of_library = collection_of_library,
+                                               }),
             .library_filters = ({
                 Optional<LibraryFilters> f = LibraryFilters {
                     .libraries_table = context.frame_context.lib_table,
@@ -661,16 +757,15 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     .instance_index = context.engine.instance_index,
                     .libraries = libraries,
                     .library_authors = library_authors,
-                    .card_view = true,
+                    .collection_view = true,
                     .resource_type = sample_lib::ResourceType::Instrument,
                     .folders = folders,
-                    .additional_pseudo_card = &waveform_card,
-                    .additional_pseudo_card_info = &waveform_info,
+                    .additional_pseudo_collection = &waveform_collection,
+                    .additional_pseudo_collection_info = &waveform_info,
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
-                    .card_name_prefix =
-                        (is_any_filter_card_screenshot || is_browser_screenshot) ? "library-card."_s : ""_s,
+                    .collection_name_prefix = is_browser_screenshot ? "browser.library."_s : ""_s,
                 };
                 f;
             }),
@@ -679,5 +774,6 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                 f;
             }),
             .favourites_filter_info = favourites_info,
+            .num_results = num_results,
         });
 }

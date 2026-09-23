@@ -305,6 +305,60 @@ static void DoParamContextMenu(GuiState& g, Box root, Span<ParamIndex const> par
                                     target_section);
             }
 
+            auto const swap_with_macro = [&](u8 other) {
+                BeginUndoableStep(g.engine, "Swap macros"_s);
+                DEFER { EndUndoableStep(g.engine); };
+
+                auto snapshot = CurrentStateSnapshot(g.engine);
+
+                // A default name belongs to the position rather than the macro that's leaving it.
+                auto const default_names = DefaultMacroNames();
+                if (snapshot.macro_names[*macro_index] == default_names[*macro_index])
+                    snapshot.macro_names[*macro_index] = default_names[other];
+                if (snapshot.macro_names[other] == default_names[other])
+                    snapshot.macro_names[other] = default_names[*macro_index];
+
+                StateSnapshotSection const other_section {MacroSection {other}};
+                ApplySectionOfState(g.engine, snapshot, target_section, other_section);
+                ApplySectionOfState(g.engine, snapshot, other_section, target_section);
+            };
+
+            struct SwapItem {
+                String text;
+                String tooltip;
+                Optional<u8> other;
+            };
+            auto const swap_items = ArrayT<SwapItem>({
+                {
+                    "Swap with Left"_s,
+                    "Exchange this macro with the one to its left: its value, name and destinations move with it. MIDI CC and DAW automation stay with the position, not the macro."_s,
+                    *macro_index > 0 ? Optional<u8> {(u8)(*macro_index - 1)} : Optional<u8> {},
+                },
+                {
+                    "Swap with Right"_s,
+                    "Exchange this macro with the one to its right: its value, name and destinations move with it. MIDI CC and DAW automation stay with the position, not the macro."_s,
+                    *macro_index + 1 < k_num_macros ? Optional<u8> {(u8)(*macro_index + 1)} : Optional<u8> {},
+                },
+            });
+
+            for (auto const [index, item] : Enumerate(swap_items)) {
+                g.imgui.PushId(index);
+                DEFER { g.imgui.PopId(); };
+
+                if (MenuItem(g.builder,
+                             root,
+                             {
+                                 .text = item.text,
+                                 .tooltip = item.tooltip,
+                                 .mode = item.other ? MenuItemOptions::Mode::Active
+                                                    : MenuItemOptions::Mode::Disabled,
+                             })
+                        .button_fired &&
+                    item.other) {
+                    swap_with_macro(*item.other);
+                }
+            }
+
             DoResetSectionMenuItems(g, root, target_section, "Macro"_s, false);
         }
 
@@ -595,6 +649,8 @@ Box DoMenuParameter(GuiState& g,
                           .viewport_config = k_default_popup_menu_viewport,
                       });
 
+    if (options.do_extra_row_buttons) options.do_extra_row_buttons(row);
+
     auto const arrows = ({
         auto const min_val = (int)param.info.linear_range.min;
         auto const max_val = (int)param.info.linear_range.max;
@@ -716,7 +772,8 @@ Span<f32 const> VoiceBlips01(GuiState& g,
                     break;
                 }
                 case param_values::MpeDestination::Filter:
-                case param_values::MpeDestination::Timbre: {
+                case param_values::MpeDestination::Timbre:
+                case param_values::MpeDestination::LfoAmount: {
                     if (!marker.expression_active) break;
                     auto const press_dest =
                         params.DescribedValue(marker.layer_index, LayerParamIndex::MpePressDestination)
@@ -734,12 +791,20 @@ Span<f32 const> VoiceBlips01(GuiState& g,
                         value_01 = (f32)marker.slide_dest_value / 255.0f;
 
                     if (value_01) {
-                        if (destination == param_values::MpeDestination::Filter)
-                            linear =
-                                dest_knob_param.info.LineariseValue(sv_filter::LinearToHz(*value_01), true)
-                                    .ValueOr(0);
-                        else
-                            linear = *value_01;
+                        switch (destination) {
+                            case param_values::MpeDestination::Filter:
+                                linear = dest_knob_param.info
+                                             .LineariseValue(sv_filter::LinearToHz(*value_01), true)
+                                             .ValueOr(0);
+                                break;
+                            case param_values::MpeDestination::LfoAmount:
+                                linear = MapFrom01(*value_01, -1, 1);
+                                break;
+                            case param_values::MpeDestination::Timbre: linear = *value_01; break;
+                            case param_values::MpeDestination::Off:
+                            case param_values::MpeDestination::Volume:
+                            case param_values::MpeDestination::Count: break;
+                        }
                     }
                     break;
                 }
@@ -1110,68 +1175,73 @@ Box DoButtonParameter(GuiState& g,
                       Box parent,
                       DescribedParamValue const& param,
                       ButtonParameterComponentOptions options) {
-    bool const state = param.BoolValue();
+    bool const state = options.locked_state ? *options.locked_state : param.BoolValue();
 
     bool const legacy_override =
         IsAnyLegacyOverriding(param.info.index, g.engine.processor.main_params.values);
-    if (legacy_override) options.greyed_out = true;
+    bool const interactive = !legacy_override && !options.locked_state;
+    if (!interactive) options.greyed_out = true;
 
     auto const label_text = options.override_label.size ? options.override_label : param.info.gui_label;
 
-    auto const container = DoBox(g.builder,
-                                 {
-                                     .parent = parent,
-                                     .id_extra = (u64)param.info.id,
-                                     .layout {
-                                         .size = {options.width, options.height},
-                                         .margins = options.margins,
-                                         .contents_direction = layout::Direction::Row,
-                                         .contents_align = layout::Alignment::Start,
-                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                     },
-                                     .tooltip = FunctionRef<String()> {[&]() -> String {
-                                         if (options.override_tooltip.size) return options.override_tooltip;
-                                         return ParamTooltipText(param, g.builder.arena);
-                                     }},
-                                     .tooltip_footer = ParamClickableTooltipFooter(param),
-                                     .button_behaviour = imgui::ButtonConfig {},
-                                 });
+    auto const container =
+        DoBox(g.builder,
+              {
+                  .parent = parent,
+                  .id_extra = (u64)param.info.id,
+                  .layout {
+                      .size = {options.width, options.height},
+                      .margins = options.margins,
+                      .contents_direction = layout::Direction::Row,
+                      .contents_align = layout::Alignment::Start,
+                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                  },
+                  .tooltip = FunctionRef<String()> {[&]() -> String {
+                      if (options.override_tooltip.size) return options.override_tooltip;
+                      return ParamTooltipText(param, g.builder.arena);
+                  }},
+                  .tooltip_footer = interactive ? ParamClickableTooltipFooter(param) : String {},
+                  .button_behaviour =
+                      imgui::ButtonConfig {
+                          .cursor_type = interactive ? CursorType::Hand : CursorType::Default,
+                      },
+              });
 
     // Toggle icon.
     DoToggleIcon(g.builder,
                  container,
-                 {.state = state, .greyed_out = options.greyed_out, .on_colour = options.on_colour});
+                 {
+                     .state = state,
+                     .greyed_out = options.greyed_out,
+                     .parent_dictates_hot_and_active = interactive,
+                     .on_colour = options.on_colour,
+                 });
 
     // Text label.
+    auto const label_colours = ({
+        auto const base = LiveColStruct(options.greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText);
+        auto const hot = interactive ? LiveColStruct(UiColMap::MidTextHot) : base;
+        Colours {ColSet {.base = base, .hot = hot, .active = hot}};
+    });
     DoBox(g.builder,
           {
               .parent = container,
               .text = label_text,
-              .text_colours = options.greyed_out ? Colours {ColSet {
-                                                       .base = LiveColStruct(UiColMap::MidTextDimmed),
-                                                       .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                       .active = LiveColStruct(UiColMap::MidTextHot),
-                                                   }}
-                                                 : Colours {ColSet {
-                                                       .base = LiveColStruct(UiColMap::MidText),
-                                                       .hot = LiveColStruct(UiColMap::MidTextHot),
-                                                       .active = LiveColStruct(UiColMap::MidTextHot),
-                                                   }},
+              .size_from_text = options.width == layout::k_hug_contents,
+              .size_from_text_preserve_height = true,
+              .text_colours = label_colours,
               .text_justification = TextJustification::CentredLeft,
-              .parent_dictates_hot_and_active = true,
+              .parent_dictates_hot_and_active = interactive,
               .layout {
-                  .size = {options.width == layout::k_hug_contents
-                               ? g.imgui.draw_list->fonts.CalcTextSize(label_text, {}).x
-                               : layout::k_fill_parent,
-                           options.height},
+                  .size = {layout::k_fill_parent, options.height},
               },
           });
 
     // Toggle behaviour.
-    if (!legacy_override && container.button_fired)
+    if (interactive && container.button_fired)
         SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
 
-    if (!legacy_override) AddParamContextMenuBehaviour(g, container, param);
+    if (interactive) AddParamContextMenuBehaviour(g, container, param);
 
     if (auto const viewport_r = BoxRect(g.builder, container)) {
         auto const window_r = g.builder.imgui.RegisterAndConvertRect(*viewport_r);

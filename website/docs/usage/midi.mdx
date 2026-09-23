@@ -59,13 +59,13 @@ When enabled, Floe responds to the standard MPE per-note messages:
 - **Press**: each note's channel pressure (aftertouch).
 - **Slide**: each note's CC74.
 
-Choose what press and slide control per layer on the [Config tab](./layers#config-tab). You can set a target (volume, filter cutoff, or timbre) and an amount (which can be negative to invert the response, and even have values beyond 100% to reach the full effect with a smaller gesture).
+Choose what press and slide control per layer on the [Config tab](./layers#config-tab). You can set a target (volume, filter cutoff, timbre, or LFO amount) and an amount (which can be negative to invert the response, and even have values beyond 100% to reach the full effect with a smaller gesture).
 
-For the volume target, press restores volume up to the layer's Volume slider, and slide acts as a per-note fader — the top of its travel is the layer's Volume level. For the filter cutoff and timbre targets, press adds an offset and slide is bipolar with its centre position neutral. The timbre target offsets the master timbre control per note.
+For the volume target, press restores volume up to the layer's Volume slider, and slide acts as a per-note fader — the top of its travel is the layer's Volume level. For the filter cutoff, timbre and LFO amount targets, press adds an offset and slide is bipolar with its centre position neutral. The timbre target offsets the master timbre control per note, and the LFO amount target offsets the layer's LFO Amount per note.
 
 The smoothing setting in the [Performance Controls](./performance-controls) panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
 
-While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, or the master Timbre knob in the top panel — so you can see the expression from each voice.
+While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, the LFO Amount knob, or the master Timbre knob in the top panel — so you can see the expression from each voice.
 
 Floe also understands the MPE Configuration Message for zone setup, and a sustain pedal on a zone's master channel sustains the whole zone.
 

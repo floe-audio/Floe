@@ -83,6 +83,7 @@ static void DoLfoDisplayDrag(GuiState& g,
                              DescribedParamValue const& amount_param,
                              DescribedParamValue const& rate_param,
                              bool sync_on,
+                             bool is_random,
                              bool greyed_out) {
     auto& imgui = g.imgui;
     auto& processor = g.engine.processor;
@@ -159,11 +160,15 @@ static void DoLfoDisplayDrag(GuiState& g,
             .tooltip = FunctionRef<String()> {[&]() -> String {
                 constexpr String k_description =
                     "A preview of the LFO's settings: the current Shape at the current Amount, with faster Time settings showing more cycles."_s;
-                if (greyed_out)
-                    return fmt::Format(g.scratch_arena,
-                                       "{}\n\nThe LFO is off right now, so this is only a preview.",
-                                       k_description);
-                return k_description;
+                constexpr String k_random_note =
+                    "\n\nThis Shape is random, so the preview is just representative; the actual shape will be different."_s;
+                constexpr String k_greyed_out_note =
+                    "\n\nThe LFO is off right now, so this is only a preview."_s;
+                return fmt::Format(g.scratch_arena,
+                                   "{}{}{}",
+                                   k_description,
+                                   is_random ? k_random_note : ""_s,
+                                   greyed_out ? k_greyed_out_note : ""_s);
             }},
             .tooltip_footer =
                 "Drag left/right to change Time, up/down to change Amount. Shift-drag for fine control. Right-click for more options."_s,
@@ -192,9 +197,14 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     });
     auto const window_rect = imgui.RegisterAndConvertRect(viewport_r);
 
+    auto const shape = shape_param.IntValue<param_values::LfoShape>();
+    // Random modes run at 2x rate in the DSP (see lfo.hpp's RecomputePhaseIncrement); mirror here.
+    auto const is_random =
+        shape == param_values::LfoShape::RandomSteps || shape == param_values::LfoShape::RandomGlide;
+
     if (!IsAnyLegacyOverriding(amount_param.info.index, params.values) &&
         !IsAnyLegacyOverriding(rate_param.info.index, params.values))
-        DoLfoDisplayDrag(g, window_rect, drag_id, amount_param, rate_param, sync_on, greyed_out);
+        DoLfoDisplayDrag(g, window_rect, drag_id, amount_param, rate_param, sync_on, is_random, greyed_out);
 
     // Background.
     imgui.draw_list->AddRectFilled(window_rect, LiveCol(UiColMap::EqBack), WwToPixels(k_corner_rounding));
@@ -207,10 +217,6 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
         imgui.draw_list->AddLine(p0, p1, LiveCol(UiColMap::EqGridZero));
     }
 
-    auto const shape = shape_param.IntValue<param_values::LfoShape>();
-    // Random modes run at 2x rate in the DSP (see lfo.hpp's RecomputePhaseIncrement); mirror here.
-    auto const is_random =
-        shape == param_values::LfoShape::RandomSteps || shape == param_values::LfoShape::RandomGlide;
     auto const half_h = viewport_r.h * 0.5f;
 
     auto const curve_points_for = [&](f32 amount_linear, f32 rate_linear) {

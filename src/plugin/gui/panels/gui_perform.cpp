@@ -162,6 +162,117 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
 
 constexpr f32 k_inst_name_top_margin = 2;
 
+// Run via DoBrowserOpenerViewport: while the layer's Instrument browser is open, the button floats above
+// the modal's dim and stays interactable, with the browser flush against it so the two read as one element.
+static void DoInstButtonContents(GuiState& g, GuiBuilder& builder, u8 layer_index, bool active) {
+    auto& layer = g.engine.Layer(layer_index);
+    auto const browser_id = g.inst_browser_state[layer_index].id;
+    auto const window_r = g.imgui.curr_viewport->unpadded_bounds;
+
+    auto const inst_btn = DoBox(
+        builder,
+        {
+            .background_fill_colours =
+                ColSet {
+                    .base = Col {.c = Col::None},
+                    .hot = Col {.c = Col::White, .alpha = 10},
+                    .active = Col {.c = Col::White, .alpha = 18},
+                },
+            .round_background_corners = BrowserOpenerCornersToRound(g.imgui, browser_id, window_r),
+            .corner_rounding = k_corner_rounding,
+            .layout {
+                .size = PixelsToWw(window_r.size),
+                .contents_direction = layout::Direction::Column,
+                .contents_align = layout::Alignment::Start,
+                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+            },
+            .tooltip =
+                active
+                    ? "Open the Instrument Browser to choose a different Instrument for this layer. The Instrument is the sound source that this layer plays.\n\nAlso shown, in italics, is the library or folder it comes from."_s
+                    : "Open the Instrument Browser to choose an Instrument for this layer. The Instrument is the sound source that this layer plays.\n\nThis layer is silent until it has an Instrument."_s,
+            .button_behaviour = imgui::ButtonConfig {},
+        });
+
+    if (g.imgui.IsModalOpen(browser_id))
+        g.inst_browser_state[layer_index].common_state.absolute_button_rect = window_r;
+
+    if (inst_btn.button_fired) {
+        if (g.imgui.IsModalOpen(browser_id))
+            g.imgui.CloseModal(browser_id);
+        else {
+            g.imgui.OpenModalViewport(browser_id);
+            g.inst_browser_state[layer_index].common_state.absolute_button_rect = window_r;
+        }
+    }
+
+    if (active) {
+        auto const inst_name = layer.InstName();
+
+        if (inst_name.size) {
+            DoBox(builder,
+                  {
+                      .parent = inst_btn,
+                      .text = inst_name,
+                      .font = FontType::Body,
+                      .text_colours =
+                          ColSet {
+                              .base = Col {.c = Col::White, .alpha = 200},
+                              .hot = Col {.c = Col::White, .alpha = 240},
+                              .active = Col {.c = Col::White, .alpha = 255},
+                          },
+                      .text_overflow = TextOverflowType::ShowDotsOnRight,
+                      .parent_dictates_hot_and_active = true,
+                      .layout {
+                          .size = {layout::k_fill_parent, k_font_body_size},
+                          .margins = {.l = 2, .t = k_inst_name_top_margin},
+                      },
+                  });
+
+            if (auto sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
+                auto const& inst = (*sampled_inst)->instrument;
+                if (inst.folder) {
+                    auto const raw_folder_name =
+                        inst.folder->display_name.size ? inst.folder->display_name : inst.folder->name;
+                    auto const folder_name = StripNumberedPrefix(raw_folder_name);
+                    DoBox(builder,
+                          {
+                              .parent = inst_btn,
+                              .text = folder_name,
+                              .font = FontType::BodyItalic,
+                              .text_colours = Col {.c = Col::White, .alpha = 120},
+                              .text_overflow = TextOverflowType::ShowDotsOnRight,
+                              .parent_dictates_hot_and_active = true,
+                              .layout {
+                                  .size = {layout::k_fill_parent, k_font_body_size},
+                                  .margins = {.l = 2},
+                              },
+                          });
+                }
+            }
+        }
+    } else {
+        DoBox(builder,
+              {
+                  .parent = inst_btn,
+                  .text = "None"_s,
+                  .font = FontType::Body,
+                  .text_colours =
+                      ColSet {
+                          .base = Col {.c = Col::White, .alpha = 60},
+                          .hot = Col {.c = Col::White, .alpha = 120},
+                          .active = Col {.c = Col::White, .alpha = 160},
+                      },
+                  .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .size = {layout::k_fill_parent, k_font_body_size},
+                      .margins = {.l = 2, .t = k_inst_name_top_margin},
+                  },
+              });
+    }
+
+    DoInstSelectorRightClickMenu(g, inst_btn, layer_index);
+}
+
 static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
     auto& params = g.engine.processor.main_params;
 
@@ -291,106 +402,29 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                     });
 
         {
-            auto const inst_btn = DoBox(
+            auto const inst_btn_bounds = DoBox(
                 builder,
                 {
                     .parent = left_col,
                     .id_extra = layer_index,
-                    .background_fill_colours =
-                        ColSet {
-                            .base = Col {.c = Col::None},
-                            .hot = Col {.c = Col::White, .alpha = 10},
-                            .active = Col {.c = Col::White, .alpha = 18},
-                        },
-                    .round_background_corners = 0b1111,
-                    .corner_rounding = k_corner_rounding,
                     .layout {
                         .size = {layout::k_fill_parent, (k_font_body_size * 2) + k_inst_name_top_margin},
-                        .contents_direction = layout::Direction::Column,
-                        .contents_align = layout::Alignment::Start,
-                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                     },
-                    .tooltip =
-                        active
-                            ? "Open the Instrument Browser to choose a different Instrument for this layer. The Instrument is the sound source that this layer plays.\n\nAlso shown, in italics, is the library or folder it comes from."_s
-                            : "Open the Instrument Browser to choose an Instrument for this layer. The Instrument is the sound source that this layer plays.\n\nThis layer is silent until it has an Instrument."_s,
-                    .button_behaviour = imgui::ButtonConfig {},
                 });
 
-            if (inst_btn.button_fired) {
-                g.imgui.OpenModalViewport(g.inst_browser_state[layer_index].id);
-                if (auto const r = BoxRect(builder, inst_btn))
-                    g.inst_browser_state[layer_index].common_state.absolute_button_rect =
-                        g.imgui.ViewportRectToWindowRect(*r);
-            }
-
-            if (active) {
-                auto const inst_name = layer.InstName();
-
-                if (inst_name.size) {
-                    DoBox(builder,
-                          {
-                              .parent = inst_btn,
-                              .text = inst_name,
-                              .font = FontType::Body,
-                              .text_colours =
-                                  ColSet {
-                                      .base = Col {.c = Col::White, .alpha = 200},
-                                      .hot = Col {.c = Col::White, .alpha = 240},
-                                      .active = Col {.c = Col::White, .alpha = 255},
-                                  },
-                              .text_overflow = TextOverflowType::ShowDotsOnRight,
-                              .parent_dictates_hot_and_active = true,
-                              .layout {
-                                  .size = {layout::k_fill_parent, k_font_body_size},
-                                  .margins = {.l = 2, .t = k_inst_name_top_margin},
-                              },
-                          });
-
-                    if (auto sampled_inst = layer.instrument.TryGetFromTag<InstrumentType::Sampler>()) {
-                        auto const& inst = (*sampled_inst)->instrument;
-                        if (inst.folder) {
-                            auto const raw_folder_name = inst.folder->display_name.size
-                                                             ? inst.folder->display_name
-                                                             : inst.folder->name;
-                            auto const folder_name = StripNumberedPrefix(raw_folder_name);
-                            DoBox(builder,
-                                  {
-                                      .parent = inst_btn,
-                                      .text = folder_name,
-                                      .font = FontType::BodyItalic,
-                                      .text_colours = Col {.c = Col::White, .alpha = 120},
-                                      .text_overflow = TextOverflowType::ShowDotsOnRight,
-                                      .parent_dictates_hot_and_active = true,
-                                      .layout {
-                                          .size = {layout::k_fill_parent, k_font_body_size},
-                                          .margins = {.l = 2},
-                                      },
-                                  });
-                        }
-                    }
-                }
-            } else {
-                DoBox(builder,
-                      {
-                          .parent = inst_btn,
-                          .text = "None"_s,
-                          .font = FontType::Body,
-                          .text_colours =
-                              ColSet {
-                                  .base = Col {.c = Col::White, .alpha = 60},
-                                  .hot = Col {.c = Col::White, .alpha = 120},
-                                  .active = Col {.c = Col::White, .alpha = 160},
-                              },
-                          .parent_dictates_hot_and_active = true,
-                          .layout {
-                              .size = {layout::k_fill_parent, k_font_body_size},
-                              .margins = {.l = 2, .t = k_inst_name_top_margin},
-                          },
-                      });
-            }
-
-            DoInstSelectorRightClickMenu(g, inst_btn, layer_index);
+            g.imgui.PushId(layer_index);
+            DEFER { g.imgui.PopId(); };
+            DoBrowserOpenerViewport(builder,
+                                    {
+                                        .browser_id = g.inst_browser_state[layer_index].id,
+                                        .viewport_id = g.imgui.MakeId("inst-button"),
+                                        .bounds = inst_btn_bounds,
+                                        .run =
+                                            [&g, layer_index, active](GuiBuilder& builder) {
+                                                DoInstButtonContents(g, builder, layer_index, active);
+                                            },
+                                        .debug_name = "inst-button",
+                                    });
         }
 
         {

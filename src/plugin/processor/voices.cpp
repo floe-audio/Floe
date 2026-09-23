@@ -188,6 +188,12 @@ f32 ExpressionAdjustedTimbre01(f32 timbre_01, Voice const& v) {
     return Clamp01(timbre_01 + ExpressionOffset(v, param_values::MpeDestination::Timbre));
 }
 
+static f32 ExpressionAdjustedLfoAmount(Voice const& v) {
+    return Clamp(v.controller->lfo.amount + ExpressionOffset(v, param_values::MpeDestination::LfoAmount),
+                 -1.0f,
+                 1.0f);
+}
+
 static f32 ExpressionVolumeGain(Voice const& v) {
     if (!v.per_note_expression_active) return 1;
     auto const& mpe = v.controller->mpe;
@@ -212,6 +218,7 @@ static f32 EffectiveMpeDestinationValueForGui(Voice const& v, param_values::MpeD
                            ExpressionOffset(v, param_values::MpeDestination::Filter));
         case param_values::MpeDestination::Timbre:
             return ExpressionAdjustedTimbre01(*v.pool.master_timbre_01, v);
+        case param_values::MpeDestination::LfoAmount: return (ExpressionAdjustedLfoAmount(v) + 1) / 2;
         case param_values::MpeDestination::Count: break;
     }
     return 0;
@@ -382,6 +389,15 @@ ALWAYS_INLINE auto HannRise(ScalarOrVectorFloat auto x) {
     return u + T(0.0022458674f);
 }
 
+// Grain envelope value: Hann-shaped rise/fall combined with any steal fade-out, at a given phase.
+ALWAYS_INLINE auto GrainEnvelope(ScalarOrVectorFloat auto phase,
+                                 ScalarOrVectorFloat auto inv_fade,
+                                 ScalarOrVectorFloat auto steal_fade) {
+    auto const rise = Clamp01(phase * inv_fade);
+    auto const fall = Clamp01((decltype(phase)(1) - phase) * inv_fade);
+    return HannRise(rise) * HannRise(fall) * Max(steal_fade, decltype(steal_fade)(0));
+}
+
 // SIMD version where 2 pan positions are processed at once.
 // The result is a vector of 4 floats: {left 1, right 1, left 2, right 2}.
 // Constant power pan law (AKA -3dB centre).
@@ -395,6 +411,23 @@ inline f32x4 EqualPanGains2(f32x2 pan_pos) {
     return __builtin_shufflevector(left, right, 0, 2, 1, 3);
 }
 
+enum class FixedSeedDomain : u8 { Granular, Lfo };
+
+struct FixedSeedArgs {
+    param_values::SeedMode mode;
+    u8 seed;
+    u7 note;
+    FixedSeedDomain domain;
+};
+
+// Local state only: drawing from the master seed for a fixed seed would shift every later draw.
+static u64 FixedSeedRandomState(FixedSeedArgs const& args) {
+    ASSERT(args.mode != param_values::SeedMode::Random);
+    u64 state = ((u64)args.domain << 16) | ((u64)args.seed << 8);
+    if (args.mode == param_values::SeedMode::FixedPerKey) state |= (u64)args.note + 1;
+    return state;
+}
+
 void StartVoice(VoicePool& pool,
                 VoiceProcessingController& voice_controller,
                 VoiceStartParams const& params,
@@ -405,6 +438,12 @@ void StartVoice(VoicePool& pool,
     ASSERT(sample_rate != 0);
 
     // Derive this voice's random seed from the master seed for reproducible randomness.
+    //
+    // Backwards compatibility: DAW projects rely on a seed reproducing the same performance across Floe
+    // versions, so the number and order of draws from the master seed and the voice's seed must never
+    // change. A new feature that needs randomness should derive its own seed by hashing a value that's
+    // already drawn, not by drawing again. A feature that overrides randomness (such as a fixed seed) must
+    // still make the usual draws and replace the results, otherwise every later draw shifts.
     ASSERT(pool.master_random_seed);
     {
         auto const s1 = RandomU64(*pool.master_random_seed);
@@ -417,6 +456,33 @@ void StartVoice(VoicePool& pool,
             (u32)(s2 >> 32) | 1u,
         };
     }
+
+    voice.granular_random_seed = ({
+        u32x4 seed;
+        switch (voice_controller.granular.seed_mode) {
+            case param_values::SeedMode::Random: seed = voice.random_seed; break;
+            case param_values::SeedMode::Fixed:
+            case param_values::SeedMode::FixedPerKey: {
+                auto state = FixedSeedRandomState({
+                    .mode = voice_controller.granular.seed_mode,
+                    .seed = voice_controller.granular.seed,
+                    .note = params.midi_key_trigger.note,
+                    .domain = FixedSeedDomain::Granular,
+                });
+                auto const s1 = RandomU64(state);
+                auto const s2 = RandomU64(state);
+                seed = {
+                    (u32)s1 | 1u,
+                    (u32)(s1 >> 32) | 1u,
+                    (u32)s2 | 1u,
+                    (u32)(s2 >> 32) | 1u,
+                };
+                break;
+            }
+            case param_values::SeedMode::Count: PanicIfReached();
+        }
+        seed;
+    });
 
     voice.controller = &voice_controller;
     voice.lfo.phase = params.lfo_start_state.phase;
@@ -431,6 +497,21 @@ void StartVoice(VoicePool& pool,
         // seed so reproducibility (Reset on Transport / Reset Keyswitch / Seed) extends to
         // random LFO waveforms. Bootstrap next_random so the very first cycle has a target.
         voice.lfo.random_state = (u32)RandomU64(*pool.master_random_seed) | 1u;
+        switch (voice_controller.lfo.seed_mode) {
+            case param_values::SeedMode::Random: break;
+            case param_values::SeedMode::Fixed:
+            case param_values::SeedMode::FixedPerKey: {
+                auto state = FixedSeedRandomState({
+                    .mode = voice_controller.lfo.seed_mode,
+                    .seed = voice_controller.lfo.seed,
+                    .note = params.midi_key_trigger.note,
+                    .domain = FixedSeedDomain::Lfo,
+                });
+                voice.lfo.random_state = (u32)RandomU64(state) | 1u;
+                break;
+            }
+            case param_values::SeedMode::Count: PanicIfReached();
+        }
         voice.lfo.prev_random = 0;
         voice.lfo.next_random = voice.lfo.NextRandomBipolar();
     }
@@ -458,6 +539,7 @@ void StartVoice(VoicePool& pool,
     voice.filter_mix_smoother.Reset();
     voice.filter_resonance_smoother.Reset();
     voice.stereo_width_smoother.Reset();
+    voice.lfo_amount_smoother.Reset();
 
     voice.track_expression = params.track_expression;
     voice.per_note_expression_active =
@@ -681,7 +763,10 @@ struct VoiceProcessor {
         End,
     };
 
-    static void Process(Voice& voice, AudioProcessingContext const& audio_context, u32 num_frames) {
+    static void Process(Voice& voice,
+                        AudioProcessingContext const& audio_context,
+                        u32 num_frames,
+                        bool publish_gui_markers) {
         ZoneNamedN(process, "Voice Process", true);
         ZoneTextVF(process, "Voice %u", voice.index);
         ASSERT_HOT(voice.is_active);
@@ -712,23 +797,36 @@ struct VoiceProcessor {
 
         Array<f32, k_block_size_max> lfo_amounts_buffer;
         auto lfo_amounts = Span<f32> {lfo_amounts_buffer}.SubSpan(0, num_frames);
-        FillLfoBuffer(voice, lfo_amounts);
+        FillLfoBuffer(voice, lfo_amounts, audio_context);
 
         FillBufferWithSampleData(voice, output, lfo_amounts, audio_context);
 
         auto const block_result = ApplyGain(voice, output, lfo_amounts, audio_context);
         ApplyFilter(voice, output, lfo_amounts, audio_context);
 
-        {
+        if (publish_gui_markers) {
+            // Sampler voices report their playhead; a waveform voice has none, so it reports its pitch
+            // across the MIDI note range instead.
             f64 position_for_gui = {};
             for (auto const& s : voice.sound_sources) {
                 if (!s.is_active) continue;
-                if (s.source_data.tag != InstrumentType::Sampler) continue;
-                auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-                if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
-                position_for_gui = sampler.playhead.RealFramePos(sampler.data->num_frames)
-                                       .ValueOr(sampler.data->num_frames) /
-                                   (f64)sampler.data->num_frames;
+                switch (s.source_data.tag) {
+                    case InstrumentType::None: break;
+                    case InstrumentType::Sampler: {
+                        auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
+                        if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff)
+                            continue;
+                        position_for_gui = sampler.playhead.RealFramePos(sampler.data->num_frames)
+                                               .ValueOr(sampler.data->num_frames) /
+                                           (f64)sampler.data->num_frames;
+                        break;
+                    }
+                    case InstrumentType::WaveformSynth: {
+                        auto const frequency = (f32)(s.pitch_ratio * (f64)audio_context.sample_rate);
+                        position_for_gui = (f64)FrequencyToMidiNote(frequency) / 127.0;
+                        break;
+                    }
+                }
             }
 
             constexpr f32 k_max_u16 = LargestRepresentableValue<u16>();
@@ -784,16 +882,24 @@ struct VoiceProcessor {
                 }
 
                 if (ref_num_frames) {
-                    for (auto const& grain : voice.grain_pool.grains) {
-                        if (!grain.active || grain_markers.num_active >= k_max_grains_per_voice) continue;
+                    // Reuses the smoothed value this block's granular processing already computed, so
+                    // the envelope matches what was just rendered.
+                    auto const inv_fade = 1.0f / (voice.grain_pool.smoothing_smoother.prev_output * 0.5f);
+
+                    voice.grain_pool.active_grains.ForEachSetBit([&](usize grain_index) {
+                        auto const& grain = voice.grain_pool.grains[grain_index];
                         auto const pos = grain.playhead.RealFramePos(ref_num_frames);
                         if (pos) {
+                            auto const env =
+                                Clamp01(GrainEnvelope(grain.env_phase, inv_fade, grain.steal_fade));
+
                             grain_markers.grains[grain_markers.num_active++] = {
                                 .position = (u16)((*pos / (f64)ref_num_frames) *
                                                   (f64)LargestRepresentableValue<u16>()),
+                                .envelope = (u8)(env * 255.0f + 0.5f),
                             };
                         }
-                    }
+                    });
                 }
             }
         }
@@ -840,55 +946,83 @@ struct VoiceProcessor {
 
         auto pitch_ratio = s.pitch_ratio;
         if (HasPitchLfo(voice)) {
-            auto const pitch_addition_in_semitones =
-                (f64)current_lfo_value * (f64)voice.controller->lfo.amount * k_lfo_range_semitones;
+            auto const pitch_addition_in_semitones = (f64)current_lfo_value * k_lfo_range_semitones;
             pitch_ratio *= Exp2Fast(pitch_addition_in_semitones / 12.0);
         }
         return s.pitch_ratio_smoother.LowPass(pitch_ratio, (f64)context.one_pole_smoothing_cutoff_0_2ms);
     }
 
-    static f32x2 NextSampleFrame(Voice const& voice,
-                                 VoiceSoundSource& s,
-                                 f32 current_lfo_value,
-                                 AudioProcessingContext const& context) {
-        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-
-        auto out = GetSampleFrame(*sampler.data, sampler.playhead);
-
-        // Do the sample fade-in/out if it's the first time the sample is played.
-        if (auto const fade_in_frames = sampler.region->audio_props.fade_in_frames,
-            fade_out_frames = sampler.region->audio_props.fade_out_frames;
-            (fade_in_frames || fade_out_frames) &&
-            (!sampler.playhead.loop ||
-             (sampler.playhead.loop && !sampler.playhead.loop->only_use_frames_within_loop))) {
-            auto const real_pos = sampler.playhead.RealFramePos(sampler.data->num_frames);
-            if (real_pos) {
-                auto const fade_in_origin =
-                    sampler.slice ? sampler.slice->start : sampler.region->audio_props.start_offset_frames;
-                if (auto const pos = *real_pos - fade_in_origin; pos >= 0 && pos < fade_in_frames) {
-                    auto const percent = pos / (f64)fade_in_frames;
-                    auto const amount = QuarterSineFade((f32)percent);
-                    out *= amount;
-                }
-
-                auto const fade_out_end = EffectiveEndFrame(sampler);
-                if (auto const dist_to_end = (s64)fade_out_end - (s64)*real_pos;
-                    dist_to_end > 0 && dist_to_end <= fade_out_frames) {
-                    auto const percent = (f64)dist_to_end / (f64)fade_out_frames;
-                    auto const amount = QuarterSineFade((f32)percent);
-                    out *= amount;
-                }
-            }
-        }
-
-        IncrementPlaybackPos(sampler.playhead,
-                             PitchRatio(voice, s, current_lfo_value, context),
-                             sampler.data->num_frames);
-        return out;
-    }
-
     static u32 EffectiveEndFrame(VoiceSoundSource::SampleSource const& sampler) {
         return sampler.slice ? sampler.slice->end : sampler.data->num_frames;
+    }
+
+    struct FadeRegions {
+        u32 fade_in_start, fade_in_end, fade_out_start, fade_out_end; // Real frame positions.
+    };
+
+    static FadeRegions RegionFadeRegions(VoiceSoundSource::SampleSource const& sampler) {
+        auto const& props = sampler.region->audio_props;
+        auto const fade_in_start = sampler.slice ? sampler.slice->start : props.start_offset_frames;
+        auto const fade_out_end = EffectiveEndFrame(sampler);
+        return {
+            .fade_in_start = fade_in_start,
+            .fade_in_end = fade_in_start + props.fade_in_frames,
+            .fade_out_start = fade_out_end - Min(fade_out_end, props.fade_out_frames),
+            .fade_out_end = fade_out_end,
+        };
+    }
+
+    // The sample fade-in/out for the first time the sample is played.
+    static void
+    ApplyRegionFades(f32x2& frame, VoiceSoundSource::SampleSource const& sampler, PlayHead const& playhead) {
+        if (playhead.loop && playhead.loop->only_use_frames_within_loop) return;
+        auto const real_pos = playhead.RealFramePos(sampler.data->num_frames);
+        if (!real_pos) return;
+
+        auto const regions = RegionFadeRegions(sampler);
+        if (auto const pos = *real_pos - regions.fade_in_start;
+            pos >= 0 && pos < regions.fade_in_end - regions.fade_in_start) {
+            auto const percent = pos / (f64)(regions.fade_in_end - regions.fade_in_start);
+            frame *= QuarterSineFade((f32)percent);
+        }
+        if (auto const dist_to_end = (s64)regions.fade_out_end - (s64)*real_pos;
+            dist_to_end > 0 && dist_to_end <= (s64)(regions.fade_out_end - regions.fade_out_start)) {
+            auto const percent = (f64)dist_to_end / (f64)(regions.fade_out_end - regions.fade_out_start);
+            frame *= QuarterSineFade((f32)percent);
+        }
+    }
+
+    // Frames within the fade regions need per-frame handling; this returns the bounds of the fade-free
+    // stretch that the playhead is currently in.
+    static ContiguousFrameBounds FadeFreeBounds(VoiceSoundSource::SampleSource const& sampler) {
+        auto const& props = sampler.region->audio_props;
+        if (!props.fade_in_frames && !props.fade_out_frames) return {};
+
+        auto const regions = RegionFadeRegions(sampler);
+        auto const num_frames = sampler.data->num_frames;
+
+        // In playhead coordinates, ordered by position.
+        struct Region {
+            u32 start, end;
+        };
+        struct OrderedRegions {
+            Region low, high;
+        };
+        auto const [low, high] = ({
+            OrderedRegions r;
+            if (!sampler.playhead.inverse_data_lookup)
+                r = {{regions.fade_in_start, regions.fade_in_end},
+                     {regions.fade_out_start, regions.fade_out_end}};
+            else
+                r = {{num_frames - regions.fade_out_end, num_frames - regions.fade_out_start},
+                     {num_frames - regions.fade_in_end, num_frames - regions.fade_in_start}};
+            r;
+        });
+
+        auto const pos = sampler.playhead.frame_pos;
+        if (pos < low.start) return {.lower = 0, .upper = low.start};
+        if (pos < high.start) return {.lower = low.end, .upper = high.start};
+        return {.lower = high.end};
     }
 
     static bool AddSampleDataOntoBuffer(Voice const& voice,
@@ -896,44 +1030,43 @@ struct VoiceProcessor {
                                         Span<f32x2> buffer,
                                         Span<f32 const> lfo_amounts,
                                         AudioProcessingContext const& context) {
-        if (auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-            sampler.region->timbre_layering.layer_range) {
-            auto const end_frame = EffectiveEndFrame(sampler);
-            for (auto [frame_index, val] : Enumerate(buffer)) {
-                if (PlaybackEnded(sampler.playhead, end_frame)) return false;
+        auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
 
-                auto const sample_frame = ({
-                    f32x2 f;
-                    if (auto const v =
-                            sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
-                                                               context.one_pole_smoothing_cutoff_10ms);
-                        v > 0.0001f) {
-                        f = NextSampleFrame(voice, s, lfo_amounts.data[frame_index], context);
-                        f *= v;
-                    } else {
-                        auto const pitch_ratio1 =
-                            PitchRatio(voice, s, lfo_amounts.data[frame_index], context);
-                        f = 0.0f;
-                        IncrementPlaybackPos(sampler.playhead, pitch_ratio1, sampler.data->num_frames);
-                    }
-                    f;
-                });
-
-                val += sample_frame * s.amp;
-            }
-        } else {
-            auto const end_frame = EffectiveEndFrame(s.source_data.Get<VoiceSoundSource::SampleSource>());
-            for (auto [frame_index, val] : Enumerate(buffer)) {
-                if (PlaybackEnded(s.source_data.Get<VoiceSoundSource::SampleSource>().playhead, end_frame))
-                    return false;
-
-                auto const sample_frame = NextSampleFrame(voice, s, lfo_amounts[frame_index], context);
-
-                val += sample_frame * s.amp;
-            }
+        f64 increments[k_block_size_max];
+        f64 max_increment = 0;
+        for (auto const frame_index : Range(buffer.size)) {
+            increments[frame_index] = PitchRatio(voice, s, lfo_amounts[frame_index], context);
+            max_increment = Max(max_increment, increments[frame_index]);
         }
 
-        return true;
+        alignas(alignof(f32x4)) f32x2 frames[k_block_size_max];
+        auto const num_fetched =
+            FetchSampleFrames(*sampler.data,
+                              sampler.playhead,
+                              Span<f32x2> {frames, buffer.size},
+                              {
+                                  .increments = {increments, buffer.size},
+                                  .max_increment = max_increment,
+                                  .end_frame = EffectiveEndFrame(sampler),
+                                  .contiguous_bounds = FadeFreeBounds(sampler),
+                              },
+                              [&](u32 frame_index, PlayHead const& playhead) {
+                                  ApplyRegionFades(frames[frame_index], sampler, playhead);
+                              });
+
+        if (sampler.region->timbre_layering.layer_range) {
+            for (auto const frame_index : Range(num_fetched)) {
+                auto const xfade_vol =
+                    sampler.xfade_vol_smoother.LowPass(sampler.xfade_vol,
+                                                       context.one_pole_smoothing_cutoff_10ms);
+                if (xfade_vol > 0.0001f) buffer[frame_index] += frames[frame_index] * xfade_vol * s.amp;
+            }
+        } else {
+            for (auto const frame_index : Range(num_fetched))
+                buffer[frame_index] += frames[frame_index] * s.amp;
+        }
+
+        return num_fetched == buffer.size;
     }
 
     // Returns false if playback has ended.
@@ -958,9 +1091,7 @@ struct VoiceProcessor {
 
 #ifdef TRACY_ENABLE
         {
-            u32 num_active = 0;
-            for (auto const& g : pool.grains)
-                if (g.active) num_active++;
+            auto const num_active = (u32)pool.active_grains.NumSet();
             ZoneTextVF(granular_zone,
                        "%u active grains, %u frames, %u ch",
                        num_active,
@@ -977,14 +1108,17 @@ struct VoiceProcessor {
 
         // Pre-compute source-wide values - all grains will refer to these.
         f64 pitch_ratios[k_block_size_max];
+        f64 max_pitch_ratio = 0;
         alignas(alignof(f32x4)) f32x2 xfade_vols[k_block_size_max];
         alignas(alignof(f32x4)) f32 env_inv_fades[k_block_size_max];
         f32 smoothing[k_block_size_max];
         {
             ZoneNamedN(precompute, "Granular: Precompute", true);
 
-            for (auto const frame_index : Range(buffer.size))
+            for (auto const frame_index : Range(buffer.size)) {
                 pitch_ratios[frame_index] = PitchRatio(voice, s, lfo_amounts.data[frame_index], context);
+                max_pitch_ratio = Max(max_pitch_ratio, pitch_ratios[frame_index]);
+            }
 
             for (auto const frame_index : Range(buffer.size)) {
                 xfade_vols[frame_index] =
@@ -1022,8 +1156,7 @@ struct VoiceProcessor {
 
             if (is_fixed) {
                 auto position = (f64)ctrl.granular.position;
-                if (has_grain_pos_lfo)
-                    position = Clamp(position + ((f64)lfo_amounts[0] * (f64)ctrl.lfo.amount * 0.5), 0.0, 1.0);
+                if (has_grain_pos_lfo) position = Clamp(position + ((f64)lfo_amounts[0] * 0.5), 0.0, 1.0);
                 sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
             }
 
@@ -1032,10 +1165,8 @@ struct VoiceProcessor {
 
             for (auto const frame_index : Range(buffer.size)) {
                 if (is_fixed && has_grain_pos_lfo) {
-                    auto position = Clamp((f64)ctrl.granular.position +
-                                              ((f64)lfo_amounts[frame_index] * (f64)ctrl.lfo.amount * 0.5),
-                                          0.0,
-                                          1.0);
+                    auto position =
+                        Clamp((f64)ctrl.granular.position + ((f64)lfo_amounts[frame_index] * 0.5), 0.0, 1.0);
                     sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
                 }
                 if (!is_fixed && PlaybackEnded(sampler.playhead, num_frames)) {
@@ -1044,21 +1175,12 @@ struct VoiceProcessor {
                 }
 
                 if (pool.spawn_counters[source_index] == 0) {
-                    // Find first inactive grain slot.
-                    Grain* new_grain = nullptr;
-                    usize new_grain_index = 0;
-                    for (auto [gi, g] : Enumerate(pool.grains)) {
-                        if (!g.active) {
-                            new_grain = &g;
-                            new_grain_index = gi;
-                            break;
-                        }
-                    }
+                    auto const new_grain_index = pool.active_grains.FirstUnsetBit();
 
                     // It's unlikely we couldn't find an inactive grain since we have a stealing process that
                     // should have already run. However, if it got to this state then we just don't spawn and
                     // try again next block.
-                    if (!new_grain) {
+                    if (new_grain_index == k_max_grains_per_voice) {
                         // Push the spawn counter to the next block since it's wasteful to keep checking for
                         // inactive grains every frame - activeness only changes at the end of this block.
                         pool.spawn_counters[source_index] = (u32)(buffer.size - frame_index);
@@ -1067,8 +1189,8 @@ struct VoiceProcessor {
 
                     // We need some random floats in a few places, we already have SIMD support for
                     // generating 4 randoms at once, so we can save a few instructions.
-                    auto const r1 = Rand01(voice.random_seed);
-                    auto const r2 = Rand01(voice.random_seed);
+                    auto const r1 = Rand01(voice.granular_random_seed);
+                    auto const r2 = Rand01(voice.granular_random_seed);
                     auto const spread_rand = r1[0];
                     auto const length_jitter_rand = r1[1];
                     auto const pan_rand = r1[2];
@@ -1078,6 +1200,7 @@ struct VoiceProcessor {
                     auto const amp_jitter_rand = r2[3];
 
                     auto const spread_offset = (f64)(spread_rand * ctrl.granular.spread) * (f64)num_frames;
+                    auto const new_grain = &pool.grains[new_grain_index];
 
                     if (auto const grain_playhead = [&]() -> Optional<PlayHead> {
                             auto p = sampler.playhead;
@@ -1112,7 +1235,7 @@ struct VoiceProcessor {
                                 1.0f / (f32)effective_length;
                             });
                             new_grain->env_phase = 0;
-                            new_grain->active = true;
+                            pool.active_grains.Set(new_grain_index);
                             new_grain->steal_fade = 1.0f;
                             new_grain->steal_fade_dec = 0;
 
@@ -1168,10 +1291,12 @@ struct VoiceProcessor {
                             // If the grain pool is nearing full, we initiate quick fade-outs for grains to
                             // that hopefully by the time we next want to spawn a grain, we have inactive ones
                             // to pick from. We pick one randomly to avoid any unpleasant-sounding regularity.
-                            auto const pick = Rand(voice.random_seed).x % pool.num_active_non_stealing;
+                            auto const pick =
+                                Rand(voice.granular_random_seed).x % pool.num_active_non_stealing;
                             u32 index = 0;
-                            for (auto& g : pool.grains) {
-                                if (!g.active || g.IsStealing() || &g == new_grain) continue;
+                            for (auto [gi, g] : Enumerate(pool.grains)) {
+                                if (!pool.active_grains.Get(gi) || g.IsStealing() || &g == new_grain)
+                                    continue;
                                 if (index == pick) {
                                     g.steal_fade_dec = pool.steal_fade_dec_value;
                                     pool.num_active_non_stealing--;
@@ -1210,8 +1335,9 @@ struct VoiceProcessor {
         {
             ZoneNamedN(granular_pass2, "Granular: Process Grains", true);
 
-            for (auto [grain_index, grain] : Enumerate(pool.grains)) {
-                if (!grain.active || grain.source_index != source_index) continue;
+            pool.active_grains.ForEachSetBit([&](usize grain_index) ALWAYS_INLINE NO_UBSAN {
+                auto& grain = pool.grains[grain_index];
+                if (grain.source_index != source_index) return;
 
                 // IMPORTANT: this is a very hot code path:
                 // num-active-voices * num-active-grains * num-frames.
@@ -1221,77 +1347,75 @@ struct VoiceProcessor {
                 ASSERT_HOT(start < end);
 
                 // --- Fetch samples and advance playhead ---
-                alignas(alignof(f32x4)) f32x2 grain_samples[k_block_size_max] {};
+                alignas(alignof(f32x4)) f32x2 grain_samples[k_block_size_max];
                 {
                     ZoneNamedN(fetch_zone, "Grain: GetSampleFrame", true);
 
-                    for (auto const i : Range<usize>(start, buffer.size)) {
-                        if (!PlaybackEnded(grain.playhead, num_frames)) [[likely]] {
-                            grain_samples[i] = GetSampleFrame(*sampler.data, grain.playhead);
-                            IncrementPlaybackPos(grain.playhead,
-                                                 pitch_ratios[i] * grain.detune_ratio,
-                                                 num_frames);
-                        } else {
-                            end = i;
-                            break;
-                        }
-                    }
+                    auto const num_fetched =
+                        FetchSampleFrames(*sampler.data,
+                                          grain.playhead,
+                                          Span<f32x2> {grain_samples + start, buffer.size - start},
+                                          {
+                                              .increments = {pitch_ratios + start, buffer.size - start},
+                                              .max_increment = max_pitch_ratio,
+                                              .increment_scale = grain.detune_ratio,
+                                              .end_frame = num_frames,
+                                          },
+                                          [](u32, PlayHead const&) {});
+                    end = start + num_fetched;
                 }
 
-                alignas(alignof(f32x4)) f32x2 grain_gains[k_block_size_max] {};
+                // Frames outside [start, end) contribute nothing. The loop below works in groups of 4 frames,
+                // so zero the unfetched frames within the groups it touches.
+                for (auto i = start & ~3u; i < start; ++i)
+                    grain_samples[i] = 0;
+                for (auto i = end; i < buffer.size; ++i)
+                    grain_samples[i] = 0;
 
-                // --- Calculate gains ---
+                // --- Envelope, gain and mix in one pass ---
                 {
-                    ZoneNamedN(mix_zone, "Grain: Gain calc", true);
+                    ZoneNamedN(mix_zone, "Grain: Mix", true);
 
                     auto const amp = s.amp * grain.amp;
                     auto const grain_pan_gains = EqualPanGains2(f32x2(grain.pan_pos)).xy;
-
-                    // Constants.
                     auto const amp4 =
                         __builtin_shufflevector(grain_pan_gains, grain_pan_gains, 0, 1, 0, 1) * amp;
-                    for (u32 i = 0; i < k_block_size_max; i += 2)
-                        *(f32x4*)(void*)(&grain_gains[i]) = amp4;
 
-                    // Xfade.
-                    for (u32 i = 0; i < k_block_size_max; i += 2)
-                        *(f32x4*)(void*)(&grain_gains[i]) *= *(f32x4*)(void*)(&xfade_vols[i]);
+                    auto const phase_inc = grain.env_phase_inc;
+                    auto const steal_dec = grain.steal_fade_dec;
+                    f32x4 phases = grain.env_phase + (phase_inc * f32x4 {0, 1, 2, 3});
+                    f32x4 steals = grain.steal_fade - (steal_dec * f32x4 {0, 1, 2, 3});
+                    auto const phase_inc4 = phase_inc * 4;
+                    auto const steal_dec4 = steal_dec * 4;
 
-                    // Envelopes.
-                    {
-                        static_assert(k_block_size_max % 4 == 0);
-                        alignas(alignof(f32x4)) f32 env_scalars[k_block_size_max];
-                        {
-                            auto const phase_inc = grain.env_phase_inc;
-                            auto const steal_dec = grain.steal_fade_dec;
-                            f32x4 phases = grain.env_phase + (phase_inc * f32x4 {0, 1, 2, 3});
-                            f32x4 steals = grain.steal_fade - (steal_dec * f32x4 {0, 1, 2, 3});
-                            auto const phase_inc4 = phase_inc * 4;
-                            auto const steal_dec4 = steal_dec * 4;
-
-                            for (u32 i = 0; i < k_block_size_max; i += 4) {
-                                auto const inv_fade = *(f32x4 const*)(void const*)(&env_inv_fades[i]);
-                                auto const rise = Clamp01(phases * inv_fade);
-                                auto const fall = Clamp01((f32x4(1) - phases) * inv_fade);
-                                auto const env = HannRise(rise) * HannRise(fall);
-                                auto const fade = Max(steals, f32x4(0));
-                                *(f32x4*)(void*)(&env_scalars[i]) = env * fade;
-                                phases += phase_inc4;
-                                steals -= steal_dec4;
-                            }
+                    // Mixes the frame pair (frame, frame + 1); env_pair is {env0, env0, env1, env1}.
+                    auto const mix_pair = [&](u32 frame, f32x4 env_pair) ALWAYS_INLINE NO_UBSAN {
+                        auto const gains =
+                            (amp4 * *(f32x4 const*)(void const*)(&xfade_vols[frame])) * env_pair;
+                        if (frame + 1 < buffer.size) {
+                            auto const samples = *(f32x4 const*)(void const*)(&grain_samples[frame]);
+                            // The buffer might not be aligned, so we need memcpy.
+                            f32x4 buf;
+                            __builtin_memcpy_inline(&buf, &buffer.data[frame], sizeof(f32x4));
+                            buf += samples * gains;
+                            __builtin_memcpy_inline(&buffer.data[frame], &buf, sizeof(f32x4));
+                        } else {
+                            buffer.data[frame] += grain_samples[frame] * gains.xy;
                         }
+                    };
 
-                        // Zero out-of-range entries (before start and after end).
-                        for (u32 i = 0; i < start; ++i)
-                            env_scalars[i] = 0;
-                        for (auto i = end; i < k_block_size_max; ++i)
-                            env_scalars[i] = 0;
+                    static_assert(k_block_size_max % 4 == 0);
+                    for (u32 i = 0; i < buffer.size; i += 4) {
+                        auto const inv_fade = *(f32x4 const*)(void const*)(&env_inv_fades[i]);
+                        auto const env_scalars = GrainEnvelope(phases, inv_fade, steals);
+                        phases += phase_inc4;
+                        steals -= steal_dec4;
 
-                        for (u32 i = 0; i < k_block_size_max; i += 2) {
-                            auto const env_pair = *(f32x2*)(void*)(&env_scalars[i]);
-                            auto const expanded = __builtin_shufflevector(env_pair, env_pair, 0, 0, 1, 1);
-                            *(f32x4*)(void*)(&grain_gains[i]) *= expanded;
-                        }
+                        if (i + 4 <= start || i >= end) continue;
+
+                        mix_pair(i, __builtin_shufflevector(env_scalars, env_scalars, 0, 0, 1, 1));
+                        if (i + 2 < buffer.size)
+                            mix_pair(i + 2, __builtin_shufflevector(env_scalars, env_scalars, 2, 2, 3, 3));
                     }
 
                     // Advance phases.
@@ -1299,42 +1423,27 @@ struct VoiceProcessor {
                         auto const frames_processed = (f32)(end - start);
                         grain.env_phase += grain.env_phase_inc * frames_processed;
                         grain.steal_fade -= grain.steal_fade_dec * frames_processed;
-                        if (grain.env_phase >= 1.0f || grain.steal_fade <= 0.0f) {
-                            grain.active = false;
+
+                        // A short fetch means the grain's playhead ran past the end of the sample. It has
+                        // no data left, so it must end here regardless of its envelope - otherwise it would
+                        // fetch zero frames forever, never advancing its phase, and keep the voice alive.
+                        auto const out_of_data = end < buffer.size;
+
+                        if (grain.env_phase >= 1.0f || grain.steal_fade <= 0.0f || out_of_data) {
+                            pool.active_grains.Clear(grain_index);
                             if (!grain.IsStealing()) pool.num_active_non_stealing--;
                         }
                     }
                 }
-
-                // --- Mix into buffer ---
-                {
-                    ZoneNamedN(mix_zone, "Grain: Mix", true);
-
-                    auto const even_size = buffer.size & ~usize(1);
-                    for (usize i = 0; i < even_size; i += 2) {
-                        auto const samples = *(f32x4*)(void*)(&grain_samples[i]);
-                        auto const gains = *(f32x4*)(void*)(&grain_gains[i]);
-                        // The buffer might not be aligned, so we need memcpy.
-                        f32x4 buf;
-                        __builtin_memcpy_inline(&buf, &buffer.data[i], sizeof(f32x4));
-                        buf += samples * gains;
-                        __builtin_memcpy_inline(&buffer.data[i], &buf, sizeof(f32x4));
-                    }
-                    if (buffer.size & 1)
-                        buffer.data[even_size] += grain_samples[even_size] * grain_gains[even_size];
-                }
-            }
+            });
         }
 
         // --- Pass 3: check if the source should end. ---
         if (source_dead_frame < buffer.size) {
             bool any_grain_active = false;
-            for (auto const& g : pool.grains) {
-                if (g.active && g.source_index == source_index) {
-                    any_grain_active = true;
-                    break;
-                }
-            }
+            pool.active_grains.ForEachSetBit([&](usize grain_index) {
+                if (pool.grains[grain_index].source_index == source_index) any_grain_active = true;
+            });
             if (!any_grain_active) return false;
         }
 
@@ -1455,9 +1564,6 @@ struct VoiceProcessor {
         // LFO parameters
         auto const has_volume_lfo = HasVolumeLfo(voice);
         auto const has_pan_lfo = HasPanLfo(voice);
-        auto const lfo_amp = (has_volume_lfo || has_pan_lfo) ? voice.controller->lfo.amount : 0.0f;
-        auto const lfo_base = has_volume_lfo ? (1.0f - (Fabs(lfo_amp) / 2.0f)) : 1.0f;
-        auto const lfo_half_amp = lfo_amp / 2.0f;
 
         // Per-note expression gain (press/slide routed to Volume); block-constant, smoothed per frame-pair.
         auto const expression_gain_target = ExpressionVolumeGain(voice);
@@ -1476,8 +1582,8 @@ struct VoiceProcessor {
             f32 vol_lfo1 = 1.0f;
             f32 vol_lfo2 = 1.0f;
             if (has_volume_lfo) {
-                vol_lfo1 = lfo_base + (lfo_amounts[frame] * lfo_half_amp);
-                vol_lfo2 = (frame_p1_is_valid) ? lfo_base + (lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
+                vol_lfo1 = 1.0f + lfo_amounts[frame];
+                vol_lfo2 = (frame_p1_is_valid) ? 1.0f + lfo_amounts[frame_p1] : vol_lfo1;
             }
 
             auto const expression_gain =
@@ -1493,10 +1599,10 @@ struct VoiceProcessor {
             auto pan_pos1 = voice.controller->pan_pos;
             auto pan_pos2 = pan_pos1;
             if (has_pan_lfo) {
-                pan_pos1 += (lfo_amounts[frame] * lfo_amp);
+                pan_pos1 += lfo_amounts[frame];
                 pan_pos1 = Clamp(pan_pos1, -1.0f, 1.0f);
                 if (frame_p1_is_valid) {
-                    pan_pos2 += (lfo_amounts[frame_p1] * lfo_amp);
+                    pan_pos2 += lfo_amounts[frame_p1];
                     pan_pos2 = Clamp(pan_pos2, -1.0f, 1.0f);
                 }
             }
@@ -1574,7 +1680,7 @@ struct VoiceProcessor {
                            ((env - 0.5f) * voice.controller->fil_env_amount);
                 auto res = voice.controller->sv_filter_resonance;
 
-                if (has_filter_lfo) cut += (lfo_amounts[frame_index] * voice.controller->lfo.amount) / 2;
+                if (has_filter_lfo) cut += lfo_amounts[frame_index] / 2;
 
                 cut += expression_cutoff_offset;
 
@@ -1587,7 +1693,7 @@ struct VoiceProcessor {
                 // Compare against the values the coefficients were last computed from rather than the
                 // per-sample delta: a slow envelope moves the cutoff by less than any per-sample threshold
                 // and would otherwise never be applied.
-                if (has_filter_lfo || Abs(cut - voice.filter_coeffs_cutoff_linear) > 0.0005f ||
+                if (Abs(cut - voice.filter_coeffs_cutoff_linear) > 0.0005f ||
                     Abs(res - voice.filter_coeffs_resonance) > 0.0005f) {
                     voice.filter_coeffs_cutoff_linear = cut;
                     voice.filter_coeffs_resonance = res;
@@ -1611,10 +1717,25 @@ struct VoiceProcessor {
         }
     }
 
-    static void FillLfoBuffer(Voice& voice, Span<f32> lfo_amounts) {
+    // Scaled by the smoothed LFO Amount (including any MPE expression) so destinations can apply values
+    // directly. For the Volume destination the value is the gain offset from full level, since the volume
+    // LFO dips by the amount's magnitude and so needs the per-frame smoothed amount too.
+    static void FillLfoBuffer(Voice& voice, Span<f32> lfo_amounts, AudioProcessingContext const& context) {
         ZoneScoped;
-        for (auto& amount : lfo_amounts)
-            amount = -voice.lfo.Tick();
+        auto const target_amount = ExpressionAdjustedLfoAmount(voice);
+        if (HasVolumeLfo(voice)) {
+            for (auto& value : lfo_amounts) {
+                auto const amount =
+                    voice.lfo_amount_smoother.LowPass(target_amount, context.one_pole_smoothing_cutoff_10ms);
+                value = ((-voice.lfo.Tick() * amount) - Fabs(amount)) / 2.0f;
+            }
+        } else {
+            for (auto& value : lfo_amounts) {
+                auto const amount =
+                    voice.lfo_amount_smoother.LowPass(target_amount, context.one_pole_smoothing_cutoff_10ms);
+                value = -voice.lfo.Tick() * amount;
+            }
+        }
     }
 };
 
@@ -1629,7 +1750,8 @@ void OnThreadPoolExec(VoicePool& pool, u32 task_index) {
     auto& voice = pool.voices[pool.multithread_processing.task_index_to_voice_index[task_index]];
     VoiceProcessor::Process(voice,
                             *pool.multithread_processing.audio_processing_context,
-                            pool.multithread_processing.num_frames);
+                            pool.multithread_processing.num_frames,
+                            pool.multithread_processing.publish_gui_markers);
 }
 
 void Reset(VoicePool& pool) {
@@ -1652,7 +1774,10 @@ void Reset(VoicePool& pool) {
     pool.voice_blip_markers_for_gui.Publish();
 }
 
-void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context) {
+void ProcessVoices(VoicePool& pool,
+                   u32 num_frames,
+                   AudioProcessingContext const& context,
+                   bool publish_gui_markers) {
     ZoneScoped;
     for (auto& v : pool.voices) {
         v.processed_this_block = false;
@@ -1675,6 +1800,7 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
             (clap_host_thread_pool const*)context.host.get_extension(&context.host, CLAP_EXT_THREAD_POOL);
         thread_pool && thread_pool->request_exec) {
         pool.multithread_processing.num_frames = num_frames;
+        pool.multithread_processing.publish_gui_markers = publish_gui_markers;
         pool.multithread_processing.audio_processing_context = &context;
         pool.multithread_processing.num_tasks = 0;
         for (auto const& v : pool.voices)
@@ -1690,30 +1816,35 @@ void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const
 
     // Process all voices that haven't already been processed (possibly by the thread pool).
     for (auto& v : pool.voices)
-        if (v.is_active && !v.processed_this_block) VoiceProcessor::Process(v, context, num_frames);
+        if (v.is_active && !v.processed_this_block)
+            VoiceProcessor::Process(v, context, num_frames, publish_gui_markers);
 
-    for (auto& v : pool.voices) {
-        if (v.produced_audio_this_block) {
-            if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
-                for (auto const frame : Range(num_frames)) {
-                    auto const& val = v.buffer[frame];
-                    ASSERT(All(val >= -k_erroneous_sample_value && val <= k_erroneous_sample_value));
-                }
+    if constexpr (RUNTIME_SAFETY_CHECKS_ON && PRODUCTION_BUILD) {
+        for (auto& v : pool.voices) {
+            if (!v.produced_audio_this_block) continue;
+            for (auto const frame : Range(num_frames)) {
+                auto const& val = v.buffer[frame];
+                ASSERT(All(val >= -k_erroneous_sample_value && val <= k_erroneous_sample_value));
             }
-        } else {
+        }
+    }
+
+    if (publish_gui_markers) {
+        for (auto& v : pool.voices) {
+            if (v.produced_audio_this_block) continue;
             pool.voice_waveform_markers_for_gui.Write()[v.index] = {};
             pool.voice_vol_env_markers_for_gui.Write()[v.index] = {};
             pool.voice_fil_env_markers_for_gui.Write()[v.index] = {};
             pool.grain_markers_for_gui.Write()[v.index] = {};
             pool.voice_blip_markers_for_gui.Write()[v.index] = {};
         }
-    }
 
-    pool.voice_waveform_markers_for_gui.Publish();
-    pool.voice_vol_env_markers_for_gui.Publish();
-    pool.voice_fil_env_markers_for_gui.Publish();
-    pool.grain_markers_for_gui.Publish();
-    pool.voice_blip_markers_for_gui.Publish();
+        pool.voice_waveform_markers_for_gui.Publish();
+        pool.voice_vol_env_markers_for_gui.Publish();
+        pool.voice_fil_env_markers_for_gui.Publish();
+        pool.grain_markers_for_gui.Publish();
+        pool.voice_blip_markers_for_gui.Publish();
+    }
 }
 
 TEST_CASE(TestEqualPanGains) {
@@ -1875,7 +2006,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 1u);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
 
@@ -1891,7 +2022,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         StartTestSamplerVoice(fix, region, short_data);
 
         for (int i = 0; i < 10; ++i)
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
@@ -1917,7 +2048,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         StartTestSamplerVoice(fix, note_off_region, short_data);
 
         for (int i = 0; i < 10; ++i)
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
@@ -1927,7 +2058,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         fix.controller.vol_env_on = false;
         StartTestSamplerVoice(fix, region, audio_data);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
 
@@ -1942,7 +2073,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         fix.controller.vol_env_on = false;
         StartTestSamplerVoice(fix, region, stereo_data);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
 
@@ -1955,7 +2086,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
         fix.controller.reverse = true;
         StartTestSamplerVoice(fix, region, audio_data);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(VoiceBufferHasNonZero(*fix.pool, k_block_size_max));
         REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
@@ -1974,7 +2105,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 3u);
 
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, k_block_size_max));
 
@@ -1992,7 +2123,7 @@ TEST_CASE(TestVoiceProcessingSampler) {
 
         // Process enough blocks for the envelope release to complete.
         for (int i = 0; i < 500; ++i)
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
@@ -2042,7 +2173,7 @@ TEST_CASE(TestVoiceProcessingGranular) {
         StartVoice(*fix.pool, fix.controller, start_params, fix.context);
 
         // First block: buffer is entirely consumed by frames_before_starting, giving size 0.
-        ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
 
         // Voice should still be active (it hasn't started producing audio yet).
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 1u);
@@ -2050,12 +2181,34 @@ TEST_CASE(TestVoiceProcessingGranular) {
         // Subsequent blocks should produce audio normally.
         bool found_nonzero = false;
         for (int block = 0; block < 100 && !found_nonzero; ++block) {
-            ProcessVoices(*fix.pool, k_block_size_max, fix.context);
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
             found_nonzero = VoiceBufferHasNonZero(*fix.pool, k_block_size_max);
         }
         REQUIRE(found_nonzero);
 
         fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("granular voice ends after sample exhausted") {
+        Array<f32, 512> short_buf {};
+        auto short_data = CreateTestAudioData(short_buf, 512);
+
+        fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
+        fix.controller.vol_env_on = false;
+        fix.controller.granular = {
+            .speed = 1.0f,
+            .density = 0.5f,
+            .length_ms = 20.0f,
+            .spread = 0.1f,
+            .smoothing = 0.5f,
+        };
+
+        StartTestSamplerVoice(fix, region, short_data);
+
+        for (int i = 0; i < 200; ++i)
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, false);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
 
     return k_success;
@@ -2113,7 +2266,7 @@ TEST_CASE(TestVoiceProcessingNonTypicalBufferSizes) {
 
                 // Process several blocks to exercise grain spawning and mixing.
                 for (int block = 0; block < 20; ++block)
-                    ProcessVoices(*fix.pool, block_size, fix.context);
+                    ProcessVoices(*fix.pool, block_size, fix.context, true);
 
                 REQUIRE(AllVoiceBuffersWithinBounds(*fix.pool, block_size));
 
@@ -2125,9 +2278,240 @@ TEST_CASE(TestVoiceProcessingNonTypicalBufferSizes) {
     return k_success;
 }
 
+// Pins the exact random draws so a refactor can't silently change them. If this fails, the change breaks
+// backwards compatibility for existing DAW projects; see the note where voices start.
+TEST_CASE(TestVoiceRandomDrawsAreStable) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+    fix.controller.play_mode = param_values::PlayMode::Standard;
+    fix.controller.vol_env_on = false;
+    fix.controller.granular.seed_mode = param_values::SeedMode::Random;
+    fix.controller.lfo.seed_mode = param_values::SeedMode::Random;
+
+    auto const active_voice = [&]() -> Voice& {
+        for (auto& v : fix.pool->EnumerateActiveVoices())
+            return v;
+        PanicIfReached();
+    };
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {.root_key = 60};
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    SUBCASE("voice start") {
+        fix.master_random_seed = 1234;
+        StartTestSamplerVoice(fix, region, audio_data);
+        auto const& voice = active_voice();
+        CHECK_EQ(voice.random_seed[0], 790109403u);
+        CHECK_EQ(voice.random_seed[1], 3138188827u);
+        CHECK_EQ(voice.random_seed[2], 1307600165u);
+        CHECK_EQ(voice.random_seed[3], 2546442551u);
+        CHECK_EQ(voice.lfo.random_state, 1880770214u);
+        CHECK_EQ(fix.master_random_seed, 15755400384260045073ull);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("voice start inheriting free-running LFO state") {
+        fix.master_random_seed = 1234;
+        VoiceStartParams::SamplerParams sampler_params {};
+        dyn::Append(sampler_params.voice_sample_params,
+                    VoiceStartParams::SamplerParams::Region {
+                        .region = region,
+                        .audio_data = audio_data,
+                        .amp = 1.0f,
+                    });
+        StartVoice(*fix.pool,
+                   fix.controller,
+                   {
+                       .initial_pitch = 0,
+                       .midi_key_trigger = {.note = 60, .channel = 0},
+                       .note_num = 60,
+                       .note_vel = 0.8f,
+                       .lfo_start_state = {.random_state = 99},
+                       .num_frames_before_starting = 0,
+                       .params = Move(sampler_params),
+                       .disable_vol_env = true,
+                   },
+                   fix.context);
+        CHECK_EQ(active_voice().lfo.random_state, 99u);
+        CHECK_EQ(fix.master_random_seed, 4354685564936846588ull);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("granular grain draws") {
+        fix.master_random_seed = 1234;
+        fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
+        fix.controller.granular = {
+            .speed = 1.0f,
+            .density = 0.7f,
+            .length_ms = 30.0f,
+            .spread = 0.3f,
+            .smoothing = 0.5f,
+            .random_pan = 0.5f,
+            .random_detune = 0.5f,
+            .random_direction = 0.5f,
+        };
+        StartTestSamplerVoice(fix, region, audio_data);
+        for (auto _ : Range(4))
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
+        auto const& voice = active_voice();
+        CHECK_EQ(voice.granular_random_seed[0], 1914549177u);
+        CHECK_EQ(voice.granular_random_seed[1], 1999904904u);
+        CHECK_EQ(voice.granular_random_seed[2], 2969056295u);
+        CHECK_EQ(voice.granular_random_seed[3], 1358338367u);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("white noise draws") {
+        fix.master_random_seed = 1234;
+        StartVoice(*fix.pool,
+                   fix.controller,
+                   {
+                       .initial_pitch = 0,
+                       .midi_key_trigger = {.note = 60, .channel = 0},
+                       .note_num = 60,
+                       .note_vel = 0.8f,
+                       .lfo_start_state = {},
+                       .num_frames_before_starting = 0,
+                       .params = VoiceStartParams::WaveformParams {.type = WaveformType::WhiteNoiseStereo,
+                                                                   .amp = 1.0f},
+                       .disable_vol_env = true,
+                   },
+                   fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
+        auto const& voice = active_voice();
+        CHECK_EQ(voice.random_seed[0], 2708405840u);
+        CHECK_EQ(voice.random_seed[1], 4237695296u);
+        CHECK_EQ(voice.random_seed[2], 1282332051u);
+        CHECK_EQ(voice.random_seed[3], 3663055939u);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    return k_success;
+}
+
+// Presets bake in a granular seed, so the stream it produces is pinned like the master-seed draws above.
+TEST_CASE(TestGranularSeedModes) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+    fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
+    fix.controller.vol_env_on = false;
+    fix.controller.granular.seed = 7;
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {.root_key = 60};
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    struct Result {
+        u32x4 granular_random_seed;
+        u64 master_random_seed_after;
+    };
+    auto const start = [&](u64 master_random_seed, u7 note) -> Result {
+        fix.master_random_seed = master_random_seed;
+        StartTestSamplerVoice(fix, region, audio_data, note);
+        Result result {};
+        for (auto& v : fix.pool->EnumerateActiveVoices())
+            result.granular_random_seed = v.granular_random_seed;
+        result.master_random_seed_after = fix.master_random_seed;
+        fix.pool->EndAllVoicesInstantly();
+        return result;
+    };
+    auto const same = [](u32x4 a, u32x4 b) { return All(a == b); };
+
+    SUBCASE("fixed") {
+        fix.controller.granular.seed_mode = param_values::SeedMode::Fixed;
+        auto const a = start(1234, 60);
+        CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
+        CHECK(same(a.granular_random_seed, start(1234, 64).granular_random_seed));
+
+        // The master seed advances exactly as it does in Performance mode.
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.granular_random_seed[0], 1348644999u);
+        CHECK_EQ(a.granular_random_seed[1], 2001189359u);
+        CHECK_EQ(a.granular_random_seed[2], 1210227535u);
+        CHECK_EQ(a.granular_random_seed[3], 1380255225u);
+
+        fix.controller.granular.seed = 8;
+        CHECK(!same(a.granular_random_seed, start(1234, 60).granular_random_seed));
+    }
+
+    SUBCASE("fixed per key") {
+        fix.controller.granular.seed_mode = param_values::SeedMode::FixedPerKey;
+        auto const a = start(1234, 60);
+        CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
+        CHECK(!same(a.granular_random_seed, start(1234, 64).granular_random_seed));
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.granular_random_seed[0], 1782879839u);
+        CHECK_EQ(a.granular_random_seed[1], 44886013u);
+        CHECK_EQ(a.granular_random_seed[2], 381245659u);
+        CHECK_EQ(a.granular_random_seed[3], 2816732097u);
+    }
+
+    fix.controller.granular.seed_mode = param_values::SeedMode::Random;
+    return k_success;
+}
+
+// Presets bake in an LFO seed, so the random LFO state it produces is pinned too.
+TEST_CASE(TestLfoSeedModes) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+    fix.controller.play_mode = param_values::PlayMode::Standard;
+    fix.controller.vol_env_on = false;
+    fix.controller.lfo.seed = 7;
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {.root_key = 60};
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    struct Result {
+        u32 lfo_random_state;
+        u64 master_random_seed_after;
+    };
+    auto const start = [&](u64 master_random_seed, u7 note) -> Result {
+        fix.master_random_seed = master_random_seed;
+        StartTestSamplerVoice(fix, region, audio_data, note);
+        Result result {};
+        for (auto& v : fix.pool->EnumerateActiveVoices())
+            result.lfo_random_state = v.lfo.random_state;
+        result.master_random_seed_after = fix.master_random_seed;
+        fix.pool->EndAllVoicesInstantly();
+        return result;
+    };
+
+    SUBCASE("fixed") {
+        fix.controller.lfo.seed_mode = param_values::SeedMode::Fixed;
+        auto const a = start(1234, 60);
+        CHECK_EQ(a.lfo_random_state, start(999, 60).lfo_random_state);
+        CHECK_EQ(a.lfo_random_state, start(1234, 64).lfo_random_state);
+
+        // The master seed advances exactly as it does in Performance mode.
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.lfo_random_state, 2391429707u);
+
+        fix.controller.lfo.seed = 8;
+        CHECK_NEQ(a.lfo_random_state, start(1234, 60).lfo_random_state);
+    }
+
+    SUBCASE("fixed per key") {
+        fix.controller.lfo.seed_mode = param_values::SeedMode::FixedPerKey;
+        auto const a = start(1234, 60);
+        CHECK_EQ(a.lfo_random_state, start(999, 60).lfo_random_state);
+        CHECK_NEQ(a.lfo_random_state, start(1234, 64).lfo_random_state);
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.lfo_random_state, 3984787369u);
+    }
+
+    fix.controller.lfo.seed_mode = param_values::SeedMode::Random;
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterVoiceTests) {
     REGISTER_TEST(TestEqualPanGains);
     REGISTER_TEST(TestVoiceProcessingSampler);
     REGISTER_TEST(TestVoiceProcessingGranular);
     REGISTER_TEST(TestVoiceProcessingNonTypicalBufferSizes);
+    REGISTER_TEST(TestVoiceRandomDrawsAreStable);
+    REGISTER_TEST(TestGranularSeedModes);
+    REGISTER_TEST(TestLfoSeedModes);
 }

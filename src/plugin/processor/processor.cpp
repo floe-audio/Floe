@@ -649,6 +649,7 @@ static bool Activate(AudioProcessor& processor, PluginActivateArgs args) {
             PrepareToPlay(l, processor.audio_processing_context);
 
         processor.peak_meter.PrepareToPlay(processor.audio_processing_context.sample_rate);
+        processor.pre_master_output_silent = true;
     }
 
     // Update the audio-thread representations of the parameters.
@@ -1420,7 +1421,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             k_fade_out_ms);
     }
 
-    if (processor.peak_meter.Silent() && !processor.fx_need_another_frame_of_processing) {
+    if (processor.pre_master_output_silent && !processor.fx_need_another_frame_of_processing) {
         ResetProcessor(processor, changes);
         changes.changed_params.changed.ClearAll();
     }
@@ -1569,7 +1570,10 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     // Voices and layers
     // ======================================================================================================
     // IMPROVE: support sending the host CLAP_EVENT_NOTE_END events when voices end
-    ProcessVoices(processor.voice_pool, sub_block_size, processor.audio_processing_context);
+    ProcessVoices(processor.voice_pool,
+                  sub_block_size,
+                  processor.audio_processing_context,
+                  frame_index + sub_block_size == process.frames_count);
 
     Array<f32x2, k_block_size_max> output_buffer;
     auto const output = Span<f32x2>(output_buffer.data, sub_block_size);
@@ -1635,7 +1639,9 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
         // Master
         // ==================================================================================================
 
+        f32x2 pre_master_peak {};
         for (auto& frame : output) {
+            pre_master_peak = Max(pre_master_peak, Abs(frame));
             frame *= processor.master_vol_smoother.LowPass(
                 processor.master_vol,
                 processor.audio_processing_context.one_pole_smoothing_cutoff_10ms);
@@ -1643,9 +1649,11 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
             // frame = Clamp(frame, {-1, -1}, {1, 1}); // hard limit
             frame *= processor.whole_engine_volume_fade.GetFade();
         }
+        processor.pre_master_output_silent = All(pre_master_peak == 0);
         processor.peak_meter.AddBuffer(output);
         if (processor.show_lufs_meter.Load(LoadMemoryOrder::Relaxed)) processor.lufs_meter.AddBuffer(output);
     } else {
+        processor.pre_master_output_silent = true;
         processor.peak_meter.Zero();
         for (auto& l : processor.layer_processors)
             l.peak_meter.Zero();

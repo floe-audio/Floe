@@ -9,6 +9,14 @@
 
 #include "common_infrastructure/global.hpp"
 
+#if defined(__linux__) && __has_feature(thread_sanitizer)
+// Without this, TSan initialises lazily on its first intercepted call, which is too late when a shared
+// library constructor (libX11's) calls malloc during dynamic-loader startup: the test exe segfaults before
+// main.
+extern "C" void __tsan_init();
+__attribute__((section(".preinit_array"), used)) static void (*g_tsan_preinit)() = __tsan_init;
+#endif
+
 #define TEST_REGISTER_FUNCTIONS                                                                              \
     X(RegisterAlgorithmTests)                                                                                \
     X(RegisterAllocatorTests)                                                                                \
@@ -21,11 +29,14 @@
     X(RegisterAudioFileTests)                                                                                \
     X(RegisterAudioUtilsTests)                                                                               \
     X(RegisterAutosaveTests)                                                                                 \
+    X(RegisterBitCrushTests)                                                                                 \
     X(RegisterBitsetTests)                                                                                   \
     X(RegisterBoundedListTests)                                                                              \
+    X(RegisterBrowsePlaceTests)                                                                              \
     X(RegisterChecksumFileTests)                                                                             \
     X(RegisterCircularBufferTests)                                                                           \
     X(RegisterCliArgParseTests)                                                                              \
+    X(RegisterCompressorTests)                                                                               \
     X(RegisterDebugTests)                                                                                    \
     X(RegisterDefaultPresetTests)                                                                            \
     X(RegisterDistortionTests)                                                                               \

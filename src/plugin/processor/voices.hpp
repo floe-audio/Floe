@@ -86,7 +86,10 @@ struct Voice {
 
     u16 index = 0;
 
+    // Never change the number or order of draws from this; see the backwards-compatibility note where
+    // voices start.
     u32x4 random_seed = {};
+    u32x4 granular_random_seed = {};
 
     sv_filter::CachedHelpers filter_coeffs = {};
     // The values filter_coeffs were last computed from; negative when they've not been computed yet.
@@ -102,6 +105,7 @@ struct Voice {
     MidiChannelNote midi_key_trigger = {};
 
     LFO lfo = {};
+    OnePoleLowPassFilter<f32> lfo_amount_smoother = {};
 
     OnePoleLowPassFilter<f32x2> gain_smoother;
     OnePoleLowPassFilter<f32> stereo_width_smoother = {};
@@ -148,6 +152,7 @@ struct VoiceWaveformMarkerForGui {
 
 struct GrainMarkerForGui {
     u16 position {};
+    u8 envelope {}; // Grain's current Hann envelope value (0-255), for GUI opacity.
 };
 
 // Per-voice values shown as blips on parameter controls. press/slide are the effective MPE destination
@@ -262,6 +267,7 @@ struct VoicePool {
     struct {
         AudioProcessingContext const* audio_processing_context = nullptr;
         u32 num_frames = 0;
+        bool publish_gui_markers = false;
         Array<u16, k_num_voices> task_index_to_voice_index;
         u16 num_tasks {};
         Atomic<u8> fence;
@@ -335,7 +341,12 @@ void StartVoice(VoicePool& pool,
 
 void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannelNote note);
 
-void ProcessVoices(VoicePool& pool, u32 num_frames, AudioProcessingContext const& context);
+// The GUI only ever sees the most recent publish, so publish_gui_markers need only be set for the last
+// sub-block of a host block.
+void ProcessVoices(VoicePool& pool,
+                   u32 num_frames,
+                   AudioProcessingContext const& context,
+                   bool publish_gui_markers);
 
 void OnThreadPoolExec(VoicePool& pool, u32 task_index);
 

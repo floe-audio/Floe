@@ -509,8 +509,161 @@ TEST_CASE(TestPlayheadSetupCases) {
     return k_success;
 }
 
+static PlayHead RandomTestPlayhead(u64& seed, u32 num_frames) {
+    PlayHead playhead {
+        .frame_pos = RandomFloatInRange<f64>(seed, 0, num_frames - 0.001),
+        .inverse_data_lookup = RandomIntInRange<u32>(seed, 0, 1) == 1,
+    };
+    if (RandomIntInRange<u32>(seed, 0, 2) != 0) {
+        auto const start = RandomIntInRange<u32>(seed, 0, num_frames - 8);
+        auto const end = RandomIntInRange<u32>(seed, start + 4, num_frames);
+        auto const mode = RandomIntInRange<u32>(seed, 0, 1) == 0 ? sample_lib::LoopMode::Standard
+                                                                 : sample_lib::LoopMode::PingPong;
+        playhead.loop = PlayHead::Loop {
+            {
+                .start = start,
+                .end = end,
+                .crossfade =
+                    ClampCrossfadeSize(RandomIntInRange<u32>(seed, 0, 16), start, end, num_frames, mode),
+                .mode = mode,
+            },
+            RandomIntInRange<u32>(seed, 0, 1) == 1,
+        };
+        if (playhead.loop->only_use_frames_within_loop)
+            playhead.frame_pos = RandomFloatInRange<f64>(seed, start, end - 0.001);
+    }
+    return playhead;
+}
+
+TEST_CASE(TestContiguousFrames) {
+    Array<f32, 128> data;
+    u64 seed = SourceLocationHash();
+    for (auto& v : data)
+        v = RandomFloatInRange<f32>(seed, -1, 1);
+
+    AudioData const audio {
+        .hash = SourceLocationHash(),
+        .channels = 2,
+        .sample_rate = 44100,
+        .num_frames = data.size / 2,
+        .interleaved_samples = data,
+    };
+
+    for (auto const _ : Range(2000)) {
+        auto playhead = RandomTestPlayhead(seed, audio.num_frames);
+        auto const max_increment = RandomFloatInRange<f64>(seed, 0, 6);
+        auto const count =
+            ContiguousFramesAvailable(playhead, max_increment, {.upper = audio.num_frames}, 512);
+
+        for (auto const frame : Range(count)) {
+            CAPTURE(frame);
+            auto const frame_index = (u32)playhead.frame_pos;
+            REQUIRE(frame_index >= 1 && frame_index + 2 < audio.num_frames);
+
+            auto const expected = GetSampleFrame(audio, playhead);
+            auto const fast =
+                InterpolateContiguousFrame(audio, playhead.frame_pos, playhead.inverse_data_lookup);
+            CHECK_EQ(fast[0], expected[0]);
+            CHECK_EQ(fast[1], expected[1]);
+
+            // Advancing must be equivalent to a plain addition: no wrap and no change to the loop state.
+            auto const increment = RandomFloatInRange<f64>(seed, 0, max_increment);
+            auto const before = playhead;
+            IncrementPlaybackPos(playhead, increment, audio.num_frames);
+            REQUIRE(playhead.frame_pos == before.frame_pos + increment);
+            REQUIRE(playhead.inverse_data_lookup == before.inverse_data_lookup);
+            if (before.loop) {
+                REQUIRE(playhead.loop->only_use_frames_within_loop ==
+                        before.loop->only_use_frames_within_loop);
+                REQUIRE(playhead.loop->start == before.loop->start);
+            }
+        }
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestFetchSampleFrames) {
+    Array<f32, 128> data;
+    u64 seed = SourceLocationHash();
+    for (auto& v : data)
+        v = RandomFloatInRange<f32>(seed, -1, 1);
+
+    for (auto const iteration : Range(4000)) {
+        u8 const channels = (iteration % 2) ? 2 : 1;
+        AudioData const audio {
+            .hash = SourceLocationHash(),
+            .channels = channels,
+            .sample_rate = 44100,
+            .num_frames = (u32)data.size / channels,
+            .interleaved_samples = data,
+        };
+        CAPTURE(channels);
+
+        auto playhead = RandomTestPlayhead(seed, audio.num_frames);
+        auto reference_playhead = playhead;
+
+        constexpr u32 k_num_frames = 40;
+        f64 increments[k_num_frames];
+        f64 max_increment = 0;
+        for (auto& inc : increments) {
+            inc = RandomFloatInRange<f64>(seed, 0, 4);
+            max_increment = Max(max_increment, inc);
+        }
+        SampleFetchOptions const options {
+            .increments = increments,
+            .max_increment = max_increment,
+            .increment_scale = RandomFloatInRange<f64>(seed, 0.5, 1.5),
+            .end_frame = RandomIntInRange<u32>(seed, 1, audio.num_frames),
+            .contiguous_bounds =
+                {
+                    .lower = RandomIntInRange<u32>(seed, 0, 10),
+                    .upper = RandomIntInRange<u32>(seed, audio.num_frames - 10, audio.num_frames),
+                },
+        };
+
+        f32x2 expected[k_num_frames];
+        u32 expected_count = 0;
+        for (auto const frame_index : Range(k_num_frames)) {
+            if (PlaybackEnded(reference_playhead, options.end_frame)) break;
+            expected[frame_index] = GetSampleFrame(audio, reference_playhead);
+            IncrementPlaybackPos(reference_playhead,
+                                 increments[frame_index] * options.increment_scale,
+                                 audio.num_frames);
+            ++expected_count;
+        }
+
+        f32x2 out[k_num_frames];
+        u32 general_path_frames = 0;
+        auto const count = FetchSampleFrames(audio, playhead, out, options, [&](u32, PlayHead const&) {
+            ++general_path_frames;
+        });
+
+        REQUIRE_EQ(count, expected_count);
+        CHECK(general_path_frames <= count);
+        for (auto const frame_index : Range(count)) {
+            CAPTURE(frame_index);
+            CHECK_EQ(out[frame_index][0], expected[frame_index][0]);
+            CHECK_EQ(out[frame_index][1], expected[frame_index][1]);
+        }
+        REQUIRE_EQ(playhead.frame_pos, reference_playhead.frame_pos);
+        REQUIRE_EQ(playhead.inverse_data_lookup, reference_playhead.inverse_data_lookup);
+        REQUIRE_EQ(playhead.loop.HasValue(), reference_playhead.loop.HasValue());
+        if (playhead.loop) {
+            REQUIRE_EQ(playhead.loop->start, reference_playhead.loop->start);
+            REQUIRE_EQ(playhead.loop->end, reference_playhead.loop->end);
+            REQUIRE_EQ(playhead.loop->only_use_frames_within_loop,
+                       reference_playhead.loop->only_use_frames_within_loop);
+        }
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterSamplePlayheadTests) {
     REGISTER_TEST(TestSamplePlayhead);
+    REGISTER_TEST(TestContiguousFrames);
+    REGISTER_TEST(TestFetchSampleFrames);
     REGISTER_TEST(TestInterpolation);
     REGISTER_TEST(TestStandardLoopSmoothness);
     REGISTER_TEST(TestPlayheadSetupCases);

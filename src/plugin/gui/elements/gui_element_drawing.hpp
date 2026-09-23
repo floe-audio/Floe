@@ -15,6 +15,9 @@
 
 void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {}, f32 opacity = 1);
 
+// Three diagonal lines filling the rect's bottom-right triangle, the classic corner grip.
+void DrawResizeCornerGrip(imgui::Context const& imgui, Rect r, u32 colour);
+
 struct VoiceMarkerLineOptions {
     f32 opacity = 1;
     u32 col = LiveCol(UiColMap::WaveformLoopVoiceMarkers);
@@ -91,9 +94,10 @@ struct DrawGainReductionMeterOptions {
     f32 gain_reduction_db;
     u32 col;
     f32 max_reduction_db = 12.0f; // The reduction level at which the bar is full.
+    String effect_name {}; // What's doing the reducing, for the tooltip. E.g. "limiter".
 };
 
-// Single downward bar from 0dB showing how much a limiter is currently attenuating.
+// Single downward bar from 0dB showing how much an effect is currently attenuating.
 void DrawGainReductionMeter(imgui::Context& imgui, Rect r, DrawGainReductionMeterOptions const& options);
 
 struct DrawLoudnessMeterOptions {
@@ -137,5 +141,6 @@ void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollba
 
 void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
 void DrawModalScrollbarsDarkMode(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
+void DrawFullscreenDim(imgui::Context const& imgui);
 void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui);
 void DrawOverlayViewportBackground(imgui::Context const& imgui);

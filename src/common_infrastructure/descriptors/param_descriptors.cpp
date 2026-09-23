@@ -44,6 +44,10 @@ Optional<String> ParameterMenuItemDescription(ParamIndex param_index, u32 item_i
             auto const description = MpeDestinationDescription((param_values::MpeDestination)item_index);
             return description.size ? Optional<String> {description} : k_nullopt;
         }
+        case ParamDescriptor::MenuType::GranularSeedMode:
+            return GranularSeedModeDescription((param_values::SeedMode)item_index);
+        case ParamDescriptor::MenuType::LfoSeedMode:
+            return LfoSeedModeDescription((param_values::SeedMode)item_index);
         case ParamDescriptor::MenuType::ArpOctavePolyrate: {
             auto const description =
                 ArpOctavePolyrateDescription((param_values::ArpOctavePolyrate)item_index);
@@ -53,7 +57,7 @@ Optional<String> ParameterMenuItemDescription(ParamIndex param_index, u32 item_i
     }
 }
 
-static f32 HzToSemitones(f32 hz) { return 12.0f * Log2(hz / 440.0f) + 69.0f; }
+static f32 HzToSemitones(f32 hz) { return (12.0f * Log2(hz / 440.0f)) + 69.0f; }
 static f32 SemitonesToHz(f32 semitones) { return 440.0f * Exp2((semitones - 69.0f) / 12.0f); }
 
 Optional<f32> ParamDescriptor::StringToLinearValue(String str,
@@ -88,6 +92,7 @@ Optional<f32> ParamDescriptor::StringToLinearValue(String str,
     }
 
     switch (display_format) {
+        case ParamDisplayFormat::Float2dp: break;
         case ParamDisplayFormat::None: {
             switch (value_type) {
                 case ParamValueType::Float: {
@@ -262,6 +267,10 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
     }
 
     switch (display_format) {
+        case ParamDisplayFormat::Float2dp: {
+            result = fmt::FormatInline<k_size>("{.2}", value);
+            break;
+        }
         case ParamDisplayFormat::None: {
             switch (value_type) {
                 case ParamValueType::Float: {
@@ -402,6 +411,11 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             ParamToInt<param_values::PlayMode>(layer_linear(ln, LayerParamIndex::PlayMode));
         auto const is_granular = play_mode == param_values::PlayMode::GranularPlayback ||
                                  play_mode == param_values::PlayMode::GranularFixed;
+        auto const lfo_is_random_shape = [&](u32 layer) {
+            return layer_is_on(layer, LayerParamIndex::LfoOn) &&
+                   param_values::LfoShapeIsRandom(
+                       ParamToInt<param_values::LfoShape>(layer_linear(layer, LayerParamIndex::LfoShape)));
+        };
 
         switch (lp) {
             case LayerParamIndex::Volume:
@@ -462,6 +476,12 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::LfoShape:
             case LayerParamIndex::LfoDestination: return layer_is_on(ln, LayerParamIndex::LfoOn);
 
+            case LayerParamIndex::LfoSeedMode: return lfo_is_random_shape(ln);
+            case LayerParamIndex::LfoSeed:
+                return lfo_is_random_shape(ln) &&
+                       ParamToInt<param_values::SeedMode>(layer_linear(ln, LayerParamIndex::LfoSeedMode)) !=
+                           param_values::SeedMode::Random;
+
             case LayerParamIndex::LfoRateTempoSynced:
                 return layer_is_on(ln, LayerParamIndex::LfoOn) &&
                        layer_is_on(ln, LayerParamIndex::LfoSyncSwitch);
@@ -501,7 +521,12 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::GranularRandomPan:
             case LayerParamIndex::GranularRandomDetune:
             case LayerParamIndex::GranularRandomDirection:
-            case LayerParamIndex::GranularHarmony: return is_granular;
+            case LayerParamIndex::GranularHarmony:
+            case LayerParamIndex::GranularSeedMode: return is_granular;
+            case LayerParamIndex::GranularSeed:
+                return is_granular && ParamToInt<param_values::SeedMode>(
+                                          layer_linear(ln, LayerParamIndex::GranularSeedMode)) !=
+                                          param_values::SeedMode::Random;
 
             case LayerParamIndex::ArpMode:
             case LayerParamIndex::ArpNoteOrder:
@@ -685,6 +710,8 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
         case ParamIndex::LimiterCeiling: return is_on(ParamIndex::LimiterOn);
 
         case ParamIndex::LegacyMasterVelocity:
+        case ParamIndex::LegacyBitCrushBits:
+        case ParamIndex::LegacyBitCrushBitRate:
         case ParamIndex::LegacyBitCrushWet:
         case ParamIndex::LegacyBitCrushDry:
         case ParamIndex::LegacyCompressorThreshold:
@@ -790,8 +817,8 @@ constexpr auto k_non_layer_params = ArrayT<NonLayerParamId>({
     {"DistType", ParamIndex::LegacyDistortionType},
     {"DistDrive", ParamIndex::DistortionDrive},
     {"DistOn", ParamIndex::DistortionOn},
-    {"BitcBits", ParamIndex::BitCrushBits},
-    {"BitcRate", ParamIndex::BitCrushBitRate},
+    {"BitcBits", ParamIndex::LegacyBitCrushBits},
+    {"BitcRate", ParamIndex::LegacyBitCrushBitRate},
     {"BitcWet", ParamIndex::LegacyBitCrushWet},
     {"BitcDry", ParamIndex::LegacyBitCrushDry},
     {"BitcOn", ParamIndex::BitCrushOn},

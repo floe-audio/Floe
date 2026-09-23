@@ -158,6 +158,36 @@ template void AssignDiffDescription<DynamicArrayBounded<char, Kb(4)>>(DynamicArr
 template void
 AssignDiffDescription<DynamicArray<char>>(DynamicArray<char>&, StateSnapshot const&, StateSnapshot const&);
 
+void SwapLayers(StateSnapshot& snapshot, u8 layer_a, u8 layer_b) {
+    ASSERT(layer_a < k_num_layers);
+    ASSERT(layer_b < k_num_layers);
+    ASSERT(layer_a != layer_b);
+
+    Swap(snapshot.inst_ids[layer_a], snapshot.inst_ids[layer_b]);
+    Swap(snapshot.velocity_curve_points[layer_a], snapshot.velocity_curve_points[layer_b]);
+    Swap(snapshot.harmony_intervals[layer_a], snapshot.harmony_intervals[layer_b]);
+    Swap(snapshot.arp_steps[layer_a], snapshot.arp_steps[layer_b]);
+    Swap(snapshot.slice_arp_configs[layer_a], snapshot.slice_arp_configs[layer_b]);
+
+    for (auto const param_index : Range(k_num_layer_parameters)) {
+        auto const layer_param = (LayerParamIndex)param_index;
+        Swap(snapshot.LinearParam(ParamIndexFromLayerParamIndex(layer_a, layer_param)),
+             snapshot.LinearParam(ParamIndexFromLayerParamIndex(layer_b, layer_param)));
+    }
+
+    for (auto& destination_list : snapshot.macro_destinations) {
+        for (auto& destination : destination_list.items) {
+            if (!destination.param_index) continue;
+            auto const layer_param = LayerParamIndexAndLayerFor(*destination.param_index);
+            if (!layer_param) continue;
+            if (layer_param->layer_num == layer_a)
+                destination.param_index = ParamIndexFromLayerParamIndex(layer_b, layer_param->param);
+            else if (layer_param->layer_num == layer_b)
+                destination.param_index = ParamIndexFromLayerParamIndex(layer_a, layer_param->param);
+        }
+    }
+}
+
 StateSnapshot const& DefaultStateSnapshot() {
     static StateSnapshot const state = ({
         StateSnapshot s {};

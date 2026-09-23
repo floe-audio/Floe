@@ -1034,9 +1034,14 @@ void DoReverbPostShelfGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
 }
 
 // =============================================================================
-// Convolution reverb high-pass visualiser.
+// Single-cutoff high-pass visualiser, shared by the effects whose only filter control is one
+// high-pass cutoff.
 
-void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
+static void DoSingleHighpassGraph(GuiState& g,
+                                  ParamIndex cutoff_index,
+                                  String area_tooltip,
+                                  Rect viewport_r,
+                                  bool greyed_out) {
     auto& imgui = g.imgui;
     auto& engine = g.engine;
     auto& params = engine.processor.main_params;
@@ -1045,13 +1050,16 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
     auto const handle_radius = WwToPixels(k_graph_handle_radius);
     auto const grabber_radius = WwToPixels(k_grabber_radius_ww);
 
-    imgui.PushId(SourceLocationHash());
+    auto push_id = HashInit();
+    HashUpdate(push_id, SourceLocationHash());
+    HashUpdate(push_id, ToInt(cutoff_index));
+    imgui.PushId(push_id);
     DEFER { imgui.PopId(); };
 
-    auto const cutoff_param = params.DescribedValue(ParamIndex::ConvolutionReverbHighpass);
+    auto const cutoff_param = params.DescribedValue(cutoff_index);
 
     filter_graph_draw::DrawBackground(imgui, viewport_r, cutoff_param.info);
-    DoFilterGraphAreaTooltip(g, viewport_r, "The high-pass filter applied to the reverb signal."_s);
+    DoFilterGraphAreaTooltip(g, viewport_r, area_tooltip);
 
     auto const node_pos = [&] {
         return f32x2 {viewport_r.x + (cutoff_param.LinearValue() * viewport_r.w),
@@ -1061,7 +1069,7 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
     auto const interaction_id = imgui.MakeId(SourceLocationHash());
     auto const grabber_window_r = MakeGrabberWindowRect(imgui, node_pos(), grabber_radius);
 
-    ParamIndex const moving[] = {ParamIndex::ConvolutionReverbHighpass};
+    ParamIndex const moving[] = {cutoff_index};
     RunGrabberDrag(
         g,
         {
@@ -1070,13 +1078,10 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
             .interaction_id = interaction_id,
             .node_pos_viewport = node_pos(),
             .moving_params = moving,
-            .double_click_target = ParamIndex::ConvolutionReverbHighpass,
+            .double_click_target = cutoff_index,
             .y_drag = GrabberYDrag::None,
-            .on_drag =
-                [&](f32 x_t, f32) {
-                    SetParameterValue(engine.processor, ParamIndex::ConvolutionReverbHighpass, x_t, {});
-                },
-            .drag_name = "Reverb highpass node"_s,
+            .on_drag = [&](f32 x_t, f32) { SetParameterValue(engine.processor, cutoff_index, x_t, {}); },
+            .drag_name = "High-pass node"_s,
         });
 
     auto const cutoff_adj_linear =
@@ -1116,13 +1121,27 @@ void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_
                                   .greyed_out = greyed_out,
                                   .active_cursor = CursorType::HorizontalArrows,
                               });
-    DoResetParamsRightClickMenu(g,
-                                grabber_window_r,
-                                interaction_id,
-                                Array {ParamIndex::ConvolutionReverbHighpass});
+    DoResetParamsRightClickMenu(g, grabber_window_r, interaction_id, Array {cutoff_index});
 
-    ParamIndex const editor_indices[] = {ParamIndex::ConvolutionReverbHighpass};
+    ParamIndex const editor_indices[] = {cutoff_index};
     DoParamTextEditorOverlay(g, viewport_r, editor_indices);
+}
+
+void DoConvolutionReverbHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
+    DoSingleHighpassGraph(g,
+                          ParamIndex::ConvolutionReverbHighpass,
+                          "The high-pass filter applied to the reverb signal."_s,
+                          viewport_r,
+                          greyed_out);
+}
+
+void DoChorusHighpassGraph(GuiState& g, Rect viewport_r, bool greyed_out) {
+    DoSingleHighpassGraph(
+        g,
+        ParamIndex::ChorusHighpass,
+        "The high-pass filter applied to the chorused copies. The dry signal is unaffected."_s,
+        viewport_r,
+        greyed_out);
 }
 
 // =============================================================================

@@ -625,6 +625,20 @@ enum class StateVersion : u16 {
     // LegacyTuneSemitone and kept only for DAW automation backwards compatibility.
     WidenedLayerPitchRange,
 
+    // Added a continuous Bits parameter for Bit Crush with an exponential curve that spends more of the
+    // knob on the low, more dramatic bit depths. The previous integer Bits parameter is now hidden as
+    // LegacyBitCrushBits and kept only for DAW automation backwards compatibility.
+    //
+    // Also replaced Bit Crush's Sample Rate parameter. The value range is unchanged, but the DSP now holds
+    // for a fractional number of host samples so any rate is reachable and the sound is the same at every
+    // host sample rate. The previous parameter is hidden as LegacyBitCrushBitRate and drives the old
+    // integer-hold timing so DAW automation sounds identical.
+    ReplacedBitCrushBitsAndSampleRate,
+
+    // Added per-layer granular and LFO seeds. Older states default to following Performance Controls so the
+    // grains and random LFO shapes are unchanged.
+    AddedGranularAndLfoSeeds,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -639,7 +653,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 414,
+    static_assert(k_num_non_experimental_parameters == 428,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -856,6 +870,23 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
     if (version < StateVersion::WidenedLayerPitchRange)
         ModerniseLegacyParam(state, LayerParamIndex::LegacyTuneSemitone, source);
+
+    if (version < StateVersion::ReplacedBitCrushBitsAndSampleRate) {
+        ModerniseLegacyParam(state, ParamIndex::LegacyBitCrushBits, source);
+        ModerniseLegacyParam(state, ParamIndex::LegacyBitCrushBitRate, source);
+    }
+
+    if (version < StateVersion::AddedGranularAndLfoSeeds) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            for (auto const lpi : Array {LayerParamIndex::GranularSeedMode,
+                                         LayerParamIndex::GranularSeed,
+                                         LayerParamIndex::LfoSeedMode,
+                                         LayerParamIndex::LfoSeed}) {
+                auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
+                state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+            }
+        }
+    }
 
     // When sustain is at max, decay has no audible effect but a short value causes the GUI's
     // decay handle to overlap with the attack point, which looks confusing. Set it to 200ms so

@@ -11,6 +11,8 @@
 #include "common_infrastructure/descriptors/param_descriptors.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/controls/gui_bit_crush_display.hpp"
+#include "gui/controls/gui_distortion_display.hpp"
 #include "gui/controls/gui_filter_graphs.hpp"
 #include "gui/core/custom_icons.hpp"
 #include "gui/core/gui_state.hpp"
@@ -390,25 +392,20 @@ static void DoIrSelectorRightClickMenu(GuiState& g, Box selector_button) {
     });
 }
 
-static void DoImpulseResponseSelector(GuiState& g,
-                                      GuiFrameContext const& frame_context,
-                                      Box param_container,
-                                      bool greyed_out) {
+// Run via DoBrowserOpenerViewport: while the IR browser is open, the row floats above the modal's dim and
+// stays interactable, with the browser flush against it so the two read as one element.
+static void DoImpulseResponseSelectorRow(GuiState& g, GuiFrameContext const& frame_context, bool greyed_out) {
     auto const ir_name = IrName(g.engine);
-
-    // Selector row
-    auto const selector_row = DoBox(g.builder,
-                                    {
-                                        .parent = param_container,
-                                        .layout {
-                                            .size = {193, layout::k_hug_contents},
-                                            .contents_padding {.r = 3},
-                                            .contents_direction = layout::Direction::Column,
-                                        },
-                                    });
+    auto const browser_id = g.ir_browser_state.k_panel_id;
+    auto const window_r = g.imgui.curr_viewport->unpadded_bounds;
 
     // Row for button + arrows + shuffle
-    auto const btn_row = DoMidPanelPrevNextRow(g.builder, selector_row, layout::k_fill_parent);
+    auto const btn_row = DoMidPanelPrevNextRow(g.builder,
+                                               k_nullopt,
+                                               PixelsToWw(window_r.w),
+                                               BrowserOpenerCornersToRound(g.imgui, browser_id, window_r));
+
+    if (g.imgui.IsModalOpen(browser_id)) g.ir_browser_state.common_state.absolute_button_rect = window_r;
 
     // IR name button
     auto const ir_btn = DoBox(
@@ -443,9 +440,12 @@ static void DoImpulseResponseSelector(GuiState& g,
         });
 
     if (ir_btn.button_fired) {
-        g.imgui.OpenModalViewport(g.ir_browser_state.k_panel_id);
-        if (auto const r = BoxRect(g.builder, ir_btn))
-            g.ir_browser_state.common_state.absolute_button_rect = g.imgui.ViewportRectToWindowRect(*r);
+        if (g.imgui.IsModalOpen(browser_id))
+            g.imgui.CloseModal(browser_id);
+        else {
+            g.imgui.OpenModalViewport(browser_id);
+            g.ir_browser_state.common_state.absolute_button_rect = window_r;
+        }
     }
 
     DoIrSelectorRightClickMenu(g, ir_btn);
@@ -498,6 +498,40 @@ static void DoImpulseResponseSelector(GuiState& g,
                                                      .greyed_out = greyed_out || !has_ir,
                                                  });
     if (unload_btn.button_fired && has_ir) LoadConvolutionIr(g.engine, k_nullopt);
+}
+
+static void DoImpulseResponseSelector(GuiState& g,
+                                      GuiFrameContext const& frame_context,
+                                      Box param_container,
+                                      bool greyed_out) {
+    // Selector row
+    auto const selector_row = DoBox(g.builder,
+                                    {
+                                        .parent = param_container,
+                                        .layout {
+                                            .size = {193, layout::k_hug_contents},
+                                            .contents_padding {.r = 3},
+                                            .contents_direction = layout::Direction::Column,
+                                        },
+                                    });
+
+    auto const btn_row_bounds = DoBox(g.builder,
+                                      {
+                                          .parent = selector_row,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, k_mid_button_height},
+                                          },
+                                      });
+    DoBrowserOpenerViewport(
+        g.builder,
+        {
+            .browser_id = g.ir_browser_state.k_panel_id,
+            .viewport_id = g.imgui.MakeId("ir-selector"),
+            .bounds = btn_row_bounds,
+            .run = [&g, &frame_context, greyed_out](
+                       GuiBuilder&) { DoImpulseResponseSelectorRow(g, frame_context, greyed_out); },
+            .debug_name = "ir-selector",
+        });
 
     // Label below
     DoBox(g.builder,
@@ -824,6 +858,69 @@ static void DoSwitchboard(GuiState& g, Box root) {
     }
 }
 
+// A gain reduction meter is a single bar, so it's drawn much narrower than a stereo peak meter.
+constexpr f32 k_gain_reduction_meter_w = 9.0f;
+
+// Row of meters sitting alongside an effect's knobs.
+static Box DoFxMetersRow(GuiState& g, Box param_container) {
+    return DoBox(g.builder,
+                 {
+                     .parent = param_container,
+                     .layout {
+                         .size = layout::k_hug_contents,
+                         .contents_gap = 16,
+                         .contents_direction = layout::Direction::Row,
+                     },
+                 });
+}
+
+struct FxMeterColumnOptions {
+    Box parent;
+    u64 id_extra;
+    String label;
+    f32 width;
+    bool greyed_out;
+};
+
+// A single meter in a row made by DoFxMetersRow, with its label underneath.
+static void DoFxMeterColumn(GuiState& g,
+                            FxMeterColumnOptions const& options,
+                            FunctionRef<void(Rect)> draw,
+                            FunctionRef<MeterTooltipText()> text) {
+    auto const column = DoBox(g.builder,
+                              {
+                                  .parent = options.parent,
+                                  .id_extra = options.id_extra,
+                                  .layout {
+                                      .size = {options.width, layout::k_hug_contents},
+                                      .contents_gap = 3,
+                                      .contents_direction = layout::Direction::Column,
+                                  },
+                              });
+    auto const meter_box =
+        DoBox(g.builder,
+              {
+                  .parent = column,
+                  .layout {
+                      .size = {layout::k_fill_parent, 40},
+                  },
+                  .value_popup = FunctionRef<String()> {[&]() -> String { return text().value_popup; }},
+                  .tooltip = FunctionRef<String()> {[&]() -> String { return text().tooltip; }},
+              });
+    if (auto const r = BoxRect(g.builder, meter_box)) draw(g.imgui.ViewportRectToWindowRect(*r));
+    DoBox(g.builder,
+          {
+              .parent = column,
+              .text = options.label,
+              .text_colours = options.greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
+                                                 : Colours {LiveColStruct(UiColMap::MidText)},
+              .text_justification = TextJustification::Centred,
+              .layout {
+                  .size = {layout::k_fill_parent, k_font_body_size},
+              },
+          });
+}
+
 // Per-effect-type parameter controls.
 static void DoEffectParams(GuiState& g,
                            GuiFrameContext const& frame_context,
@@ -891,11 +988,14 @@ static void DoEffectParams(GuiState& g,
             auto const is_legacy = param_values::IsLegacyDistortionType(
                 params.IntValue<param_values::DistortionType>(ParamIndex::DistortionType));
 
-            // Legacy types show an extra Auto Gain button. Flank the main controls with equal-fill
-            // spacers so they stay centred at the same point, and the button appears in the right spacer
-            // without shifting the rest of the layout.
-            if (is_legacy)
-                DoBox(g.builder, {.parent = param_container, .layout {.size = {layout::k_fill_parent, 0}}});
+            auto const vis_box = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = {120, 50},
+                                           },
+                                       });
+            if (auto const r = BoxRect(g.builder, vis_box)) DoDistortionDisplay(g, *r, greyed_out);
 
             DoMenuParameter(g,
                             param_container,
@@ -929,34 +1029,41 @@ static void DoEffectParams(GuiState& g,
                                 .greyed_out = greyed_out,
                                 .bidirectional = true,
                             });
-            if (is_legacy) {
-                auto const right_spacer =
-                    DoBox(g.builder,
-                          {
-                              .parent = param_container,
-                              .layout {
-                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                  .contents_direction = layout::Direction::Row,
-                                  .contents_align = layout::Alignment::Start,
-                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                              },
-                          });
-                DoButtonParameter(g,
-                                  right_spacer,
-                                  params.DescribedValue(ParamIndex::DistortionAutoGain),
-                                  {.width = layout::k_hug_contents,
-                                   .height = k_fx_heading_h,
-                                   .greyed_out = greyed_out,
-                                   .on_colour = highlight_col});
-            }
+            // Only Legacy types can switch Auto Gain off; the other types always compensate, so the button
+            // stays in place but is shown locked on.
+            DoButtonParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::DistortionAutoGain),
+                {
+                    .width = layout::k_hug_contents,
+                    .height = k_fx_heading_h,
+                    .greyed_out = greyed_out,
+                    .on_colour = highlight_col,
+                    .locked_state = is_legacy ? Optional<bool> {} : Optional<bool> {true},
+                    .override_tooltip =
+                        is_legacy
+                            ? String {}
+                            : "Auto Gain is always on for this type, holding its loudness steady as Drive is increased. It can only be switched off for Legacy types."_s,
+                });
             break;
         }
 
         case EffectType::BitCrush: {
-            DoIntParameter(g,
-                           param_container,
-                           params.DescribedValue(ParamIndex::BitCrushBits),
-                           {.width = 52.0f, .greyed_out = greyed_out});
+            auto const vis_box = DoBox(g.builder,
+                                       {
+                                           .parent = param_container,
+                                           .layout {
+                                               .size = {120, 50},
+                                           },
+                                       });
+            if (auto const r = BoxRect(g.builder, vis_box)) DoBitCrushDisplay(g, *r, greyed_out);
+
+            DoKnobParameter(
+                g,
+                param_container,
+                params.DescribedValue(ParamIndex::BitCrushBits),
+                {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
             DoKnobParameter(
                 g,
                 param_container,
@@ -1015,14 +1122,101 @@ static void DoEffectParams(GuiState& g,
                             });
 
             if (type == param_values::CompressorType::Vintage) {
+                // Give the button a slot exactly as wide as the Modern type's 2 extra knobs so the rest of
+                // the row doesn't move when switching type.
+                auto const auto_gain_slot =
+                    DoBox(g.builder,
+                          {
+                              .parent = param_container,
+                              .layout {
+                                  .size = {(k_knob_w * 2) + k_fx_controls_gap_x, layout::k_hug_contents},
+                                  .contents_direction = layout::Direction::Row,
+                                  .contents_align = layout::Alignment::Middle,
+                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                              },
+                          });
                 DoButtonParameter(g,
-                                  param_container,
+                                  auto_gain_slot,
                                   params.DescribedValue(ParamIndex::CompressorAutoGain),
                                   {.width = layout::k_hug_contents,
                                    .height = k_fx_heading_h,
                                    .greyed_out = greyed_out,
                                    .on_colour = highlight_col});
             }
+
+            auto& compressor = static_cast<Compressor&>(fx);
+            auto const meters_row = DoFxMetersRow(g, param_container);
+
+            // The detectors are level-averaging rather than peak-reading, so the marker is where
+            // compression starts to come in, not the exact level at which the meter shows it.
+            auto const in_options = DrawPeakMeterOptions {
+                .flash_when_clipping = false,
+                .show_min_max_markers = true,
+                .min_db = -42,
+                .max_db = 6,
+                .marker_interval_db = 6,
+                .marker_db = params.DescribedValue(ParamIndex::CompressorThreshold).ProjectedValue(),
+                .marker_col = ToU32(highlight_col),
+                .marker_description = "Threshold"_s,
+                .low_signal_threshold_db = -60.0f,
+            };
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 0,
+                    .label = "In"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
+                [&](Rect r) { DrawPeakMeter(g.imgui, r, &compressor.input_peak_meter, in_options); },
+                [&]() -> MeterTooltipText {
+                    return PeakMeterTooltipText(g.builder.arena, compressor.input_peak_meter, in_options);
+                });
+
+            // The two compressor types have quite different envelopes, so the same settings won't
+            // produce the same reading on both.
+            auto const gr_options = DrawGainReductionMeterOptions {
+                .gain_reduction_db = compressor.GainReductionDb(),
+                .col = ToU32(highlight_col),
+                .max_reduction_db = 24.0f,
+                .effect_name = "compressor"_s,
+            };
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 1,
+                    .label = "GR"_s,
+                    .width = k_gain_reduction_meter_w,
+                    .greyed_out = greyed_out,
+                },
+                [&](Rect r) { DrawGainReductionMeter(g.imgui, r, gr_options); },
+                [&]() -> MeterTooltipText {
+                    return GainReductionMeterTooltipText(g.builder.arena, gr_options);
+                });
+
+            auto const out_options = DrawPeakMeterOptions {
+                .flash_when_clipping = false,
+                .show_min_max_markers = true,
+                .min_db = -42,
+                .max_db = 6,
+                .marker_interval_db = 6,
+                .low_signal_threshold_db = -60.0f,
+            };
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 2,
+                    .label = "Out"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
+                [&](Rect r) { DrawPeakMeter(g.imgui, r, &compressor.output_peak_meter, out_options); },
+                [&]() -> MeterTooltipText {
+                    return PeakMeterTooltipText(g.builder.arena, compressor.output_peak_meter, out_options);
+                });
 
             break;
         }
@@ -1034,7 +1228,7 @@ static void DoEffectParams(GuiState& g,
                                        {
                                            .parent = param_container,
                                            .layout {
-                                               .size = {250, 90},
+                                               .size = {200, 70},
                                            },
                                        });
             if (auto const r = BoxRect(g.builder, vis_box)) DoEffectFilterGraph(g, *r, greyed_out);
@@ -1072,16 +1266,27 @@ static void DoEffectParams(GuiState& g,
         }
 
         case EffectType::Chorus: {
-            DoKnobParameter(
+            auto const rate_knob = DoKnobParameter(
                 g,
                 param_container,
                 params.DescribedValue(ParamIndex::ChorusRate),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            DoKnobParameter(
+            auto const depth_knob = DoKnobParameter(
                 g,
                 param_container,
                 params.DescribedValue(ParamIndex::ChorusDepth),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            DoKnobJoiningLine(g, rate_knob, depth_knob);
+
+            auto const hp_vis = DoBox(g.builder,
+                                      {
+                                          .parent = param_container,
+                                          .layout {
+                                              .size = {200, 70},
+                                          },
+                                      });
+            if (auto const r = BoxRect(g.builder, hp_vis)) DoChorusHighpassGraph(g, *r, greyed_out);
+
             DoKnobParameter(
                 g,
                 param_container,
@@ -1303,17 +1508,17 @@ static void DoEffectParams(GuiState& g,
                                               },
                                           });
 
-            constexpr f32 k_time_row_h = (k_knob_w * 0.96f) + 2 + k_font_body_size;
-            auto const time_row = DoBox(g.builder,
-                                        {
-                                            .parent = time_group,
-                                            .layout {
-                                                .size = {layout::k_fill_parent, k_time_row_h},
-                                                .contents_gap = synced ? 4 : k_fx_controls_gap_x,
-                                                .contents_align = layout::Alignment::Middle,
-                                                .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                            },
-                                        });
+            auto const time_row =
+                DoBox(g.builder,
+                      {
+                          .parent = time_group,
+                          .layout {
+                              .size = {layout::k_fill_parent, (k_knob_w * 0.96f) + 2 + k_font_body_size},
+                              .contents_gap = synced ? 4 : k_fx_controls_gap_x,
+                              .contents_align = layout::Alignment::Middle,
+                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                          },
+                      });
             // Time params (conditional)
             if (synced) {
                 DoMenuParameter(g,
@@ -1367,11 +1572,13 @@ static void DoEffectParams(GuiState& g,
                                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                  },
                              });
-            constexpr f32 k_delay_vis_w = 200;
-            constexpr f32 k_delay_vis_h = 70;
-            auto const filter_vis =
-                DoBox(g.builder, {.parent = sub, .layout {.size = {k_delay_vis_w, k_delay_vis_h}}});
-            if (auto const r = BoxRect(g.builder, filter_vis)) DoDelayFilterGraph(g, *r, greyed_out);
+            if (auto const r = BoxRect(g.builder,
+                                       DoBox(g.builder,
+                                             {
+                                                 .parent = sub,
+                                                 .layout {.size = {190, 70}},
+                                             })))
+                DoDelayFilterGraph(g, *r, greyed_out);
             auto const cutoff_knob = DoKnobParameter(
                 g,
                 sub,
@@ -1545,55 +1752,7 @@ static void DoEffectParams(GuiState& g,
             auto const ceiling_db = params.DescribedValue(ParamIndex::LimiterCeiling).ProjectedValue();
             auto const gain_db = params.DescribedValue(ParamIndex::LimiterGain).ProjectedValue();
 
-            auto const meters_row = DoBox(g.builder,
-                                          {
-                                              .parent = param_container,
-                                              .layout {
-                                                  .size = layout::k_hug_contents,
-                                                  .contents_gap = 16,
-                                                  .contents_direction = layout::Direction::Row,
-                                              },
-                                          });
-
-            auto const do_meter_column = [&](u64 index,
-                                             String label,
-                                             auto draw,
-                                             FunctionRef<MeterTooltipText()> text,
-                                             bool gr = false) {
-                auto const column =
-                    DoBox(g.builder,
-                          {
-                              .parent = meters_row,
-                              .id_extra = index,
-                              .layout {
-                                  .size = {!gr ? k_peak_meter_standard_width : 9, layout::k_hug_contents},
-                                  .contents_gap = 3,
-                                  .contents_direction = layout::Direction::Column,
-                              },
-                          });
-                auto const meter_box = DoBox(
-                    g.builder,
-                    {
-                        .parent = column,
-                        .layout {
-                            .size = {layout::k_fill_parent, 40},
-                        },
-                        .value_popup = FunctionRef<String()> {[&]() -> String { return text().value_popup; }},
-                        .tooltip = FunctionRef<String()> {[&]() -> String { return text().tooltip; }},
-                    });
-                if (auto const r = BoxRect(g.builder, meter_box)) draw(g.imgui.ViewportRectToWindowRect(*r));
-                DoBox(g.builder,
-                      {
-                          .parent = column,
-                          .text = label,
-                          .text_colours = greyed_out ? Colours {LiveColStruct(UiColMap::MidTextDimmed)}
-                                                     : Colours {LiveColStruct(UiColMap::MidText)},
-                          .text_justification = TextJustification::Centred,
-                          .layout {
-                              .size = {layout::k_fill_parent, k_font_body_size},
-                          },
-                      });
-            };
+            auto const meters_row = DoFxMetersRow(g, param_container);
 
             // The input level at which limiting starts: whatever the Gain param pushes up to the ceiling.
             auto const in_options = DrawPeakMeterOptions {
@@ -1607,9 +1766,15 @@ static void DoEffectParams(GuiState& g,
                 .marker_description = "Limiting starts at"_s,
                 .low_signal_threshold_db = -60.0f,
             };
-            do_meter_column(
-                0,
-                "In"_s,
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 0,
+                    .label = "In"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
                 [&](Rect r) { DrawPeakMeter(g.imgui, r, &limiter.limiter_dsp.input_peak_meter, in_options); },
                 [&]() -> MeterTooltipText {
                     return PeakMeterTooltipText(g.builder.arena,
@@ -1620,18 +1785,24 @@ static void DoEffectParams(GuiState& g,
             auto const gr_options = DrawGainReductionMeterOptions {
                 .gain_reduction_db = limiter.limiter_dsp.GainReductionDb(),
                 .col = ToU32(highlight_col),
+                .effect_name = "limiter"_s,
             };
-            do_meter_column(
-                1,
-                "GR"_s,
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 1,
+                    .label = "GR"_s,
+                    .width = k_gain_reduction_meter_w,
+                    .greyed_out = greyed_out,
+                },
                 [&](Rect r) { DrawGainReductionMeter(g.imgui, r, gr_options); },
                 [&]() -> MeterTooltipText {
                     return GainReductionMeterTooltipText(g.builder.arena, gr_options);
-                },
-                true);
+                });
 
             auto const out_options = DrawPeakMeterOptions {
-                .flash_when_clipping = true,
+                .flash_when_clipping = false,
                 .show_min_max_markers = true,
                 .min_db = -42,
                 .max_db = 6,
@@ -1641,9 +1812,15 @@ static void DoEffectParams(GuiState& g,
                 .marker_description = "Ceiling"_s,
                 .low_signal_threshold_db = -50.0f,
             };
-            do_meter_column(
-                2,
-                "Out"_s,
+            DoFxMeterColumn(
+                g,
+                {
+                    .parent = meters_row,
+                    .id_extra = 2,
+                    .label = "Out"_s,
+                    .width = k_peak_meter_standard_width,
+                    .greyed_out = greyed_out,
+                },
                 [&](Rect r) {
                     DrawPeakMeter(g.imgui, r, &limiter.limiter_dsp.output_peak_meter, out_options);
                 },

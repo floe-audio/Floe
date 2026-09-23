@@ -281,6 +281,9 @@ struct AudioProcessor {
 
     f32 master_vol;
     OnePoleLowPassFilter<f32> master_vol_smoother;
+    // Silence is judged before master volume so that turning it to -inf doesn't make a still-running
+    // engine look idle and get reset every block.
+    bool pre_master_output_silent = true;
 
     Distortion distortion;
     BitCrush bit_crush;
@@ -304,7 +307,9 @@ struct AudioProcessor {
     // Written by main thread, read by audio thread.
     Atomic<PerformanceControls::Settings> performance_settings {};
 
-    u64 master_random_seed {}; // Audio thread only. Deterministic PRNG advanced per voice start.
+    // Audio thread only. Deterministic PRNG advanced per voice start and by the arpeggiators. Never change
+    // the number or order of draws from this; see the backwards-compatibility note where voices start.
+    u64 master_random_seed {};
     bool prev_transport_playing {}; // Audio thread only. Tracks transport state transitions.
 
     bool activated = false;

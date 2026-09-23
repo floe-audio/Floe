@@ -14,6 +14,45 @@ For instance: 0.0.1. Don't change the headings.
 */}
 
 # Changelog
+## 2.0.4-beta.2
+### Browsers
+The preset, Instrument and IR browsers have been redesigned. See the [browsers docs](usage/browsers) for a full walkthrough.
+
+#### What's different
+- Add Browse mode, now the default: click through a few short pages to narrow down to a library, preset bank, folder or tag, rather than scanning a long tree of filters. Switch to Filter mode <FAIcon icon="fa-solid fa-filter" /> for the previous behaviour
+- Swap the left and right panels: items are now on the left, so they drop down directly beneath the selector you clicked and need less mouse movement
+- Restyle the browsers to feel like a menu rather than a dialog window
+- Keep the selector that opened the browser usable while the browser is open, so its next, previous, randomise and unload buttons replace the browser's duplicate ones
+- Make Favourites <FAIcon icon="fa-solid fa-star" /> narrow the current list rather than act as a separate filter, so you can see just your favourites within a preset bank, for example
+- Make preset search match preset names only, not preset bank or folder names, so results are more precise and predictable
+
+#### Improvements
+- Make the browsers resizable
+- Add a line beneath the items saying what you're looking at, such as "Showing from Abyss preset bank". Click any part of it to undo that narrowing down
+- Make <FAIcon icon="fa-solid fa-location-arrow" /> also open the current item's library or preset bank in the right panel in Browse mode, rather than just scrolling to the item
+- Show the current item more reliably when a browser opens
+- Remember your place in Browse mode, so the next new instance of Floe opens the browser there
+- Group preset banks into Factory preset banks and User presets when you have both
+- Rename the preset browser's Libraries section to Libraries used, since it shows presets that use a particular sample library
+- Fix clicking an already-loaded item unloading it. This was easy to do by accident and left the preset blank. To unload, use the <FAIcon icon="fa-solid fa-xmark" /> on the selector instead
+
+### Other changes
+- Improve performance of the audio engine to be easier on the CPU, up to 2.5x faster in heavy granular use cases
+- Add a seed option to granular layers and random LFO shapes <FAIcon icon="fa-solid fa-seedling" />, so a preset can save the exact grain scatter or LFO movement. Choose Fixed for the same pattern on every note, or Fixed Per Key for a repeatable variation on each key
+- Add LFO Amount as an MPE press and slide target, so you can dig into a key to bring in vibrato or tremolo on just that note
+- Add 'Swap with Left/Right' options to the right-click menu of Layers (the instrument selector button) and Macros (the knobs). So that you can reorder them easily. Swapping a layer also migrates the macro assignments so they now point to the new location.
+- Add a display to the Distortion and Bitcrush effects showing a representitive preview of the current shape
+- Improve the Bit Crush effect. Bits and Sample Rate parameter are now smooth and continuous allowing for more granularity. The Bits parameter also now focuses on a more useful range of around 8 to 3 - where most of the audible changes happen. These changes required new parameters and therefore run through our Legacy Parameters system where necessary (loading DAW projects).
+- Add input, gain-reduction and output meters to the compressor effect, showing the level going in, how much it's turning the signal down, and the level coming out - same as the Limiter
+- Add a graph showing the High-pass filter's response, draggable to set the cutoff - now matching what the Convolution Reverb does
+- Improve how granular lines are drawn on the UI - each grain now fades in/out based on their real envelope from the Smooth parameter
+- Improve how waveform instruments are displayed (sine, white noise). Now, the 'play mode', reverse and 'loop mode' controls are hidden, since a waveform has always ignored them anyways. Additionally, the red line voice markers now appear on the waveform display in a more useful way, placed left to right by pitch.
+- Smooth changes to the LFO Amount, so moving or automating it while notes play doesn't step audibly
+- Fix the Ring Mod (44.1k) legacy distortion type modulating 4 times too fast
+- Fix voice persisting in Granular Playback mode even when the playback has finished
+- Fix tooltips persisting when the mouse leaves Floe's window
+- Fix library icons and backgrounds sometimes staying missing until Floe was restarted, when they were requested while libraries were still loading
+
 ## 2.0.4-beta.1
 ### Distortion
 Huge improvements to the distortion effect:
@@ -233,15 +272,15 @@ Our biggest update to date. This follows on from 1.2.0-beta.1; we chose to skip 
 - Support encrypted packages (`.floe-pkg-enc`) that require a license key to install, with a paste button on the licence key dialog
 - Fix voices from jumping into the loop region if you toggle the 'reversed' mode of a playing voice.
 - GUI: improve browsers panels:
-  - Cards are now expand and collapsible, selecting all items in a card is now done with a separate 'All' button.
-  - Left panel (filters) is now dark to better differentiate it and make the cards and icons look nicer.
+  - Collections are now expand and collapsible, selecting all items in a collection is now done with a separate 'All' button.
+  - Left panel (filters) is now dark to better differentiate it and make the collections and icons look nicer.
   - Sections are collapsed by default, but retains the collapse/expand state across Floe sessions.
   - Fix toggle not working for Favourites button
   - Use smaller radius corner rounding for tag buttons to match the rest of the UI
   - Remove 3-dots menu and instead put the filter selection modes (One, AND, OR) at the top of the filters panel.
   - Remove dividers between filter sections
   - Remove "Show Primary Filter Section Header" option. Libraries/folders are now always collapsible - more consistent and intuitive.
-  - Expanded keyboard navigation: section headings, library/preset-bank cards, and filter buttons in the left panel are now reachable with the arrow keys and toggled with Enter
+  - Expanded keyboard navigation: section headings, library/preset-bank collections, and filter buttons in the left panel are now reachable with the arrow keys and toggled with Enter
 - Library development: removed the ability to add custom tags for instruments/IRs. Only tags from the known set are now allowed. This change allowed for simpler and faster code and enforces standardisation. Non-standard tags are now ignored. https://floe.audio/docs/develop/tags-and-folders
 - Library development: new [`floe-library-inspector` CLI tool](https://floe.audio/docs/beta/develop/develop-libraries#library-inspector) for debugging libraries — dumps the parsed library as JSON or Lua, captures `print()` output, and reports orphan/missing samples
 - Info panel moved from the top of Floe into a menu item within the 3-dots menu.
@@ -324,7 +363,7 @@ In latch mode, the note only ends when all notes are released; new key-presses a
 ## 1.1.0-beta.1
 - **Browser UI overhaul** (instruments, presets, IRs)
   - Filtering mode is now 'one' mode by default, and alternate modes for 'AND' or 'OR' filtering are selected in the 3-dots menu
-  - New 'cards' on left panel for libraries or preset-packs
+  - New 'collections' on left panel for libraries or preset-packs
   - Full keyboard arrow navigation, enter to select, CTRL+F/CMD+F to focus search box, page up/down, home/end, CTRL+up/down to jump sections
   - Search for libraries, preset-packs and tags
   - Favourites system - 'star' items as for easy access later

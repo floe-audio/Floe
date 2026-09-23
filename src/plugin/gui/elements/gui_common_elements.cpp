@@ -23,12 +23,12 @@ static ColSet MidIconButtonColours(bool greyed_out, bool is_on = false) {
     };
 }
 
-Box DoMidPanelPrevNextRow(GuiBuilder& builder, Box parent, f32 width) {
+Box DoMidPanelPrevNextRow(GuiBuilder& builder, Optional<Box> parent, f32 width, Corners round_corners) {
     return DoBox(builder,
                  {
                      .parent = parent,
                      .background_fill_colours = LiveColStruct(UiColMap::MidDarkSurface),
-                     .round_background_corners = 0b1111,
+                     .round_background_corners = round_corners,
                      .corner_rounding = k_corner_rounding,
                      .layout {
                          .size = {width, layout::k_hug_contents},
@@ -98,6 +98,7 @@ Box DoMidPanelIconButton(GuiBuilder& builder, Box row, MidPanelIconButtonOptions
             case MidPanelIcon::Shuffle: v = {ICON_FA_SHUFFLE, k_font_icons_size * 0.82f}; break;
             case MidPanelIcon::Unload: v = {ICON_FA_XMARK, k_font_icons_size * 0.9f}; break;
             case MidPanelIcon::Power: v = {ICON_FA_POWER_OFF, k_font_icons_size * 0.85f}; break;
+            case MidPanelIcon::Seed: v = {ICON_FA_SEEDLING, k_font_icons_size * 0.85f}; break;
         }
         v;
     });
@@ -145,7 +146,8 @@ MeterTooltipText GainReductionMeterTooltipText(ArenaAllocator& arena,
         .value_popup = fmt::Format(arena, "{.1} dB reduction", options.gain_reduction_db),
         .tooltip = fmt::Format(
             arena,
-            "This is a gain reduction meter, showing how much the limiter is turning the signal down.\n\nRange: {.0} to {.0} dB",
+            "This is a gain reduction meter, showing how much the {} is turning the signal down.\n\nRange: {.0} to {.0} dB",
+            options.effect_name,
             0.0f,
             options.max_reduction_db),
     };
@@ -223,6 +225,7 @@ Box DoTabButton(GuiBuilder& builder, Box parent, String text, TabButtonOptions c
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                   },
                   .tooltip = options.tooltip,
+                  .tooltip_footer = options.tooltip_footer,
                   .button_behaviour = imgui::ButtonConfig {},
               });
 

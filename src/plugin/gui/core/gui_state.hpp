@@ -8,6 +8,7 @@
 #include "common_infrastructure/state/state_snapshot.hpp"
 
 #include "engine/engine.hpp"
+#include "gui/controls/gui_distortion_display.hpp"
 #include "gui/controls/gui_envelope.hpp"
 #include "gui/controls/gui_waveform.hpp"
 #include "gui/core/gui_file_picker.hpp"
@@ -80,6 +81,7 @@ struct GuiState : EngineListener {
     BottomPanelState bottom_panel_state {};
     MidPanelState mid_panel_state {};
     MacrosGuiState macros_gui_state {};
+    DistortionDisplayState distortion_display_state {};
     Optional<TimePoint> screenshot_clear_since {};
     f32x2 curve_map_add_point_click_pos {};
 

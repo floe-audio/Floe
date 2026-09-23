@@ -304,6 +304,12 @@ constexpr LibraryId k_builtin_library_id =
 constexpr LibraryId k_mirage_compat_library_id =
     HashLibraryIdStringWithoutRegistration(k_mirage_compat_library_id_string);
 
+// Floe's built-in waveforms are presented in the GUI as a pseudo library. It's never registered with the
+// library server.
+constexpr String k_waveform_library_id_string = "Waveforms - " FLOE_VENDOR;
+constexpr LibraryId k_waveform_library_id =
+    HashLibraryIdStringWithoutRegistration(k_waveform_library_id_string);
+
 // Prior to Floe 1.1.1, all Mirage libraries had this author. We changed this when we added separate library
 // IDs.
 constexpr String k_old_mirage_author = "FrozenPlain (Mirage)"_s;

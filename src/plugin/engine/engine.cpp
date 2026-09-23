@@ -799,6 +799,16 @@ void LoadInstruments(Engine& engine,
     RecordUndoableStep(engine, undo_name);
 }
 
+void SwapLayers(Engine& engine, u8 layer_a, u8 layer_b) {
+    ASSERT(g_is_logical_main_thread);
+
+    auto snapshot = CurrentStateSnapshot(engine);
+    SwapLayers(snapshot, layer_a, layer_b);
+
+    LoadState(engine, snapshot, {.source = StateSource::GeneratedVariation, .update_pinned_snapshot = false});
+    RecordUndoableStep(engine, "Swap layers"_s);
+}
+
 bool ViewingPinnedSnapshot(Engine const& engine) { return engine.stashed_modifications.HasValue(); }
 
 void TogglePinnedView(Engine& engine) {

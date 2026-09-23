@@ -32,6 +32,8 @@ static bool ScreenshotPreconditionsMet(GuiState& g) {
         for (auto const& [_, imgs, _] : g.library_images.table) {
             if (imgs.loading_icon && imgs.loading_icon->IsInProgress()) return false;
             if (imgs.loading_backgrounds && imgs.loading_backgrounds->IsInProgress()) return false;
+            if (imgs.icon_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
+            if (imgs.backgrounds_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
         }
         for (auto const& [_, w, _] : g.waveform_images.table)
             if (w.loading_pixels && w.loading_pixels->IsInProgress()) return false;
@@ -181,11 +183,11 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
 
     // --- Preset browser uninstall ----------------------------------------------------------------------
     if (IsScreenshotRequest("uninstall-preset-bank"_s)) {
-        auto const card = named("preset-browser.first-bank-card"_s);
+        auto const bank = named("preset-browser.first-bank"_s);
         auto const menu = named("preset-browser.folder-menu"_s);
-        if (!(card && menu)) return k_nullopt;
-        auto const tl = ::Min(card->Min(), menu->Min());
-        auto const br = ::Max(card->Max(), menu->Max());
+        if (!(bank && menu)) return k_nullopt;
+        auto const tl = ::Min(bank->Min(), menu->Min());
+        auto const br = ::Max(bank->Max(), menu->Max());
         return CaptureSpec {.rect = {.pos = tl, .size = br - tl}};
     }
 
@@ -212,36 +214,53 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
             .rect = {.xywh {dots->x - h_pad, dots->y - v_pad, dots->w + (h_pad * 2), dots->h + (v_pad * 2)}}};
     }
 
-    // --- Instrument browser ----------------------------------------------------------------------------
-    if (IsScreenshotRequest("browser-full"_s)) {
+    // --- Browsers --------------------------------------------------------------------------------------
+    // A browser and the element that opened it are drawn as one shape, so they're captured together.
+    auto const browser_with_opener = [&](Rect opener) -> Optional<CaptureSpec> {
         auto const modal = named("browser.modal"_s);
-        auto const filters = named("browser.filters-panel"_s);
+        if (!modal || All(opener.size == 0)) return k_nullopt;
+        auto const tl = ::Min(opener.Min(), modal->Min());
+        auto const br = ::Max(opener.Max(), modal->Max());
+        return CaptureSpec {.rect = {.pos = tl, .size = br - tl}};
+    };
+    auto const inst_opener = g.inst_browser_state[0].common_state.absolute_button_rect;
+
+    if (IsScreenshotRequest("browser-browse"_s)) {
+        auto spec = browser_with_opener(inst_opener);
         auto const results = named("browser.results-panel"_s);
-        auto const mode = named("browser.mode-selector"_s);
-        if (!(modal && filters && results && mode)) return k_nullopt;
-        CaptureSpec spec {.rect = *modal};
-        AppendOverlay(spec, "filters-panel"_s, *filters);
-        AppendOverlay(spec, "results-panel"_s, *results);
-        AppendOverlay(spec, "mode-selector"_s, *mode);
+        auto const summary = named("browser.results-summary"_s);
+        auto const filters = named("browser.filters-panel"_s);
+        auto const breadcrumb = named("browser.breadcrumb-row"_s);
+        auto const mode = named("browser.mode-toggle"_s);
+        if (!(spec && results && summary && filters && breadcrumb && mode)) return k_nullopt;
+        AppendOverlay(*spec,
+                      "results-list"_s,
+                      {.xywh {results->x, results->y, results->w, summary->y - results->y}});
+        AppendOverlay(*spec,
+                      "filters-page"_s,
+                      {.xywh {filters->x, filters->y, filters->w, breadcrumb->y - filters->y}});
+        AppendOverlay(*spec, "opener"_s, inst_opener);
+        AppendOverlay(*spec, "breadcrumb"_s, *breadcrumb);
+        AppendOverlay(*spec, "mode-toggle"_s, *mode);
         return spec;
     }
-    if (IsScreenshotRequest("filter-card"_s)) {
-        auto const outer = named("library-card.Dulcitone"_s);
-        auto const header = named("library-card.Dulcitone.header"_s);
-        auto const body = named("library-card.Dulcitone.body"_s);
-        if (!(outer && header && body)) return k_nullopt;
-        CaptureSpec spec {.rect = *outer};
-        AppendOverlay(spec, "header"_s, *header);
-        AppendOverlay(spec, "body"_s, *body);
+    if (IsScreenshotRequest("browser-full"_s)) {
+        auto spec = browser_with_opener(inst_opener);
+        auto const filters = named("browser.filters-panel"_s);
+        auto const filters_toolbar = named("browser.filters-toolbar"_s);
+        auto const summary = named("browser.results-summary"_s);
+        auto const mode = named("browser.mode-toggle"_s);
+        auto const match = named("browser.match-button"_s);
+        if (!(spec && filters && filters_toolbar && summary && mode && match)) return k_nullopt;
+        AppendOverlay(*spec,
+                      "filters-tree"_s,
+                      {.xywh {filters->x, filters->y, filters->w, filters_toolbar->y - filters->y}});
+        AppendOverlay(*spec, "results-summary"_s, *summary);
+        AppendOverlay(*spec, "mode-toggle"_s, *mode);
+        AppendOverlay(*spec, "match-button"_s, *match);
         return spec;
     }
-    if (IsScreenshotRequest("filter-card-all-selected"_s) ||
-        IsScreenshotRequest("filter-card-body-item-selected"_s) ||
-        IsScreenshotRequest("filter-card-body-tree"_s)) {
-        return simple("library-card.Dulcitone"_s);
-    }
-    if (IsScreenshotRequest("filter-button"_s)) return simple("browser.favourites-button"_s);
-    if (IsScreenshotRequest("browser-menu"_s)) return simple("browser.more-options-menu"_s);
+    if (IsScreenshotRequest("browser-menu"_s)) return simple("browser.match-menu"_s);
 
     return k_nullopt;
 }

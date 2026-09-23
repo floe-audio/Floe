@@ -571,7 +571,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustific
 
     if (justification == PopupJustification::LeftOrRight) {
         auto right_outer_most = avoid_r.Right() + base_r.w;
-        if (right_outer_most < viewport_size.x) {
+        if (right_outer_most <= viewport_size.x) {
             auto pos = f32x2 {avoid_r.Right(), base_r.y};
             return ensure_bottom_fits(ensure_top_fits(pos));
         }
@@ -584,7 +584,7 @@ f32x2 BestPopupPos(Rect base_r, Rect avoid_r, f32x2 viewport_size, PopupJustific
 
     } else {
         auto below_outer_most = avoid_r.Bottom() + base_r.h;
-        if (below_outer_most < viewport_size.y) {
+        if (below_outer_most <= viewport_size.y) {
             auto pos = f32x2 {base_r.x, avoid_r.Bottom()};
             return ensure_right_fits(ensure_left_fits(pos));
         }
@@ -1123,7 +1123,7 @@ bool Context::SliderBehaviourFraction(SliderBehaviourFractionArgs const& args) {
             distance_from_drag_start -= slider_drag.dead_zone_offset;
 
             slider_drag.fraction =
-                Clamp(slider_drag.fraction_at_origin - distance_from_drag_start / sensitivity, 0.0f, 1.0f);
+                Clamp(slider_drag.fraction_at_origin - (distance_from_drag_start / sensitivity), 0.0f, 1.0f);
             args.fraction = slider_drag.fraction;
         }
     }
@@ -2135,7 +2135,12 @@ void Context::BeginViewport(ViewportConfig const& cfg, Viewport* viewport, Rect 
             }
         }
 
-        if (viewport->has_scrollbar.y) viewport->clipping_rect.h -= 2;
+        // Scrolling content clips flush with the bounds: the expansion is for the edges of unscrolled
+        // content, and would otherwise let rows spill a pixel over whatever borders the viewport.
+        if (viewport->has_scrollbar.y) {
+            viewport->clipping_rect.y += k_clipping_expansion;
+            viewport->clipping_rect.h -= k_clipping_expansion * 2;
+        }
 
         if (viewport->has_scrollbar.y && !viewport->has_scrollbar.x) {
             bounds_for_scrollbar.w -= scrollbar_size;
@@ -2489,7 +2494,7 @@ void Context::OpenModalViewport(Id id) {
     if (GuiIoValid()) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
 }
 
-bool Context::IsModalOpen(Id id) {
+bool Context::IsModalOpen(Id id) const {
     for (auto& m : open_modals)
         if (m->id == id) return true;
     return false;
@@ -2610,23 +2615,22 @@ static f32 TooltipFadeOpacity(Context::TooltipFadeState& state, Id id, bool show
     return fade_out_opacity();
 }
 
-Context::TooltipOpacities Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id) {
+Context::TooltipOpacities
+Context::TooltipBehaviour(Rect rect_in_window_coords, imgui::Id id, f64 settle_secs) {
     SetHot(rect_in_window_coords, id);
     RegisterRectForMouseTracking(rect_in_window_coords);
 
     constexpr auto k_delay_secs = 1.5;
-    constexpr auto k_settle_secs = 0.08; // Stops rapid flicker when sweeping the cursor across many items.
 
     if (WasJustMadeHot(id)) {
-        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_settle_secs);
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + settle_secs);
         GuiIo().out.SetTimedWakeup(SourceLocationHash(), GuiIo().in.current_time + k_delay_secs);
     }
 
     // WasJustDeactivated bridges the frame between releasing a drag and becoming hot again. An item can't
     // be hot while it's active, so a released drag restarts the hot timer: skip the settle delay if the
     // popup is already showing for this item, else it'd blink off for the settle duration.
-    auto const settled_hot =
-        IsHot(id) && (SecondsSpentHot() >= k_settle_secs || immediate_tooltip.item == id);
+    auto const settled_hot = IsHot(id) && (SecondsSpentHot() >= settle_secs || immediate_tooltip.item == id);
 
     return {
         .immediate =

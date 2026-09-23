@@ -87,7 +87,7 @@ static Optional<String> WaveformTooltipText(ArenaAllocator& arena,
                     m = "When playing, the red markers are voices. Each one is the point grains are being drawn from, tracking through the sample as it plays. The lilac lines are the individual grains."_s;
                     break;
                 case param_values::PlayMode::GranularFixed:
-                    m = "When playing, the lilac lines are individual grains. The highlighted region is where they can be drawn from, set by the Position and Spread controls."_s;
+                    m = "When playing, the lilac lines are individual grains. The highlighted region is where they can be drawn from, set by the Position and Spread controls. If the LFO is modulating Position, red markers show each voice's modulated position."_s;
                     break;
                 case param_values::PlayMode::Count: PanicIfReached();
             }
@@ -101,7 +101,7 @@ static Optional<String> WaveformTooltipText(ArenaAllocator& arena,
         case InstrumentType::None: return k_nullopt;
         case InstrumentType::WaveformSynth:
             return WAVEFORM_INTRO
-                "This layer's Instrument is a built-in waveform rather than a sampled sound, so this shows its shape."_s;
+                "This layer's Instrument is a built-in waveform rather than a sampled sound, so this shows its shape. When playing, the red lines are individual voices, placed left to right by pitch."_s;
         case InstrumentType::Sampler: {
             auto const& inst = *layer.instrument.GetFromTag<InstrumentType::Sampler>();
             switch (inst.instrument.category) {
@@ -167,7 +167,6 @@ struct PlayModeFeatures {
     bool show_loop_controls;
     bool show_crossfade;
     bool show_grain_position_indicator;
-    bool show_voice_cursors;
 };
 
 static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
@@ -179,7 +178,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_loop_controls = true,
                 .show_crossfade = true,
                 .show_grain_position_indicator = false,
-                .show_voice_cursors = true,
             };
         case param_values::PlayMode::GranularPlayback:
             return {
@@ -188,7 +186,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_loop_controls = true,
                 .show_crossfade = true,
                 .show_grain_position_indicator = false,
-                .show_voice_cursors = true,
             };
         case param_values::PlayMode::GranularFixed:
             return {
@@ -197,7 +194,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_loop_controls = false,
                 .show_crossfade = false,
                 .show_grain_position_indicator = true,
-                .show_voice_cursors = false,
             };
         case param_values::PlayMode::Count: PanicIfReached();
     }
@@ -971,11 +967,21 @@ void DoWaveformElement(GuiState& g,
     } else {
         auto const& params = g.engine.processor.main_params;
         auto const features = ({
-            auto f = options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode)
-                                                  : PlayModeFeatures {.show_voice_cursors = true};
+            auto f =
+                options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
             if (layer.IsSliced()) f.show_sample_offset = false;
             f;
         });
+
+        // In GranularFixed the playhead sits at the start of the spread region unless the LFO moves it, so
+        // voice cursors would add nothing.
+        auto const show_voice_cursors =
+            layer.instrument_id.tag != InstrumentType::Sampler ||
+            params.IntValue<param_values::PlayMode>(layer.index, LayerParamIndex::PlayMode) !=
+                param_values::PlayMode::GranularFixed ||
+            (params.BoolValue(layer.index, LayerParamIndex::LfoOn) &&
+             params.IntValue<param_values::LfoDestination>(layer.index, LayerParamIndex::LfoDestination) ==
+                 param_values::LfoDestination::GranularPosition);
 
         auto const is_multisample = IsMultisampledInstrument(layer);
 
@@ -1200,14 +1206,14 @@ void DoWaveformElement(GuiState& g,
                     f32x2 marker_pos {Round(viewport_r.x + (pos * viewport_r.w)), viewport_r.y};
                     marker_pos = g.imgui.ViewportPosToWindowPos(marker_pos);
 
-                    // Draw grain markers as thin lines, fading with the voice's amplitude.
+                    f32 const grain_envelope = (f32)vm.grains[i].envelope / 255.0f;
                     DrawVoiceMarkerLine(g.imgui,
                                         marker_pos,
                                         viewport_r.h,
                                         g.imgui.ViewportPosToWindowPos(viewport_r.pos).x,
                                         {},
                                         {
-                                            .opacity = voice_intensity * muted_opacity,
+                                            .opacity = voice_intensity * muted_opacity * grain_envelope,
                                             .col = LiveCol(UiColMap::WaveformLoopGrainMarkers),
                                         });
                 }
@@ -1243,16 +1249,17 @@ void DoWaveformElement(GuiState& g,
                                  col);
         }
 
-        // Voice cursors. Hidden in GranularFixed: the playhead there is just the Position param, which
-        // the spread region already shows.
-        if (has_active_voices && features.show_voice_cursors) {
+        // Voice cursors.
+        if (has_active_voices && show_voice_cursors) {
             for (auto const voice_index : Range(k_num_voices)) {
                 auto const marker = voice_waveform_markers[voice_index];
                 if (!marker.intensity || marker.layer_index != layer.index) continue;
 
                 f32 position = (f32)marker.position / (f32)UINT16_MAX;
                 f32 const intensity = (f32)marker.intensity / (f32)UINT16_MAX;
-                if (params.BoolValue(layer.index, LayerParamIndex::Reverse)) position = 1 - position;
+                if (layer.instrument_id.tag == InstrumentType::Sampler &&
+                    params.BoolValue(layer.index, LayerParamIndex::Reverse))
+                    position = 1 - position;
 
                 f32x2 cursor_pos {Round(viewport_r.x + (position * viewport_r.w)), viewport_r.y};
                 cursor_pos = g.imgui.ViewportPosToWindowPos(cursor_pos);

@@ -72,7 +72,7 @@ constexpr auto k_effect_info = []() {
             case EffectType::FilterEffect:
                 info = {
                     .description =
-                        "This effect filters the signal, either cutting away a region of the frequency range or boosting and dipping it.",
+                        "This effect filters the signal, either cutting away a region of the frequency range or boosting/dipping it.",
                     .name = "Filter",
                     .id = 4, // never change
                     .on_param_index = ParamIndex::FilterOn,

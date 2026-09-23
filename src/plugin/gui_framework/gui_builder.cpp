@@ -26,8 +26,9 @@ static f32 HeightOfWrappedText(GuiBuilder& builder, layout::Id id, f32 width) {
 
 static imgui::ViewportConfig ConvertViewportConfigWwToPixels(imgui::ViewportConfig c) {
     c.padding = {.lrtb = WwToPixels(c.padding.lrtb)};
-    c.scrollbar_width = WwToPixels(c.scrollbar_width);
-    c.scrollbar_padding = Max(2.0f, WwToPixels(c.scrollbar_padding));
+    // Whole pixels so the content edge (rounded by the layout) and the scrollbar strip (ceiled) agree.
+    c.scrollbar_width = Round(WwToPixels(c.scrollbar_width));
+    c.scrollbar_padding = c.scrollbar_padding > 0 ? Max(2.0f, Round(WwToPixels(c.scrollbar_padding))) : 0;
     c.scroll_line_size = WwToPixels(c.scroll_line_size);
     c.scroll_button_size = WwToPixels(c.scroll_button_size);
     return c;
@@ -185,7 +186,8 @@ bool Tooltip(GuiBuilder& builder, imgui::Id id, Rect rect_in_window_coords, Tool
     auto const has_tooltip = builder.config.show_tooltips && args.tooltip.tag != TooltipStringType::None;
     if (!has_value_popup && !has_tooltip) return false;
 
-    auto const opacities = builder.imgui.TooltipBehaviour(rect_in_window_coords, id);
+    auto const opacities =
+        builder.imgui.TooltipBehaviour(rect_in_window_coords, id, args.value_popup_delay_secs);
     auto const value_popup_opacity = ({
         f32 o = opacities.immediate;
         if (!builder.config.instant_value_popups && !builder.imgui.IsActive(id) &&
@@ -333,11 +335,19 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
             if (config.name.size) builder.imgui.RegisterNamedRect(config.name, rect);
 
             // We want to let our IMGUI system know our margins when it's doing an auto-size otherwise the
-            // bottom or rightmost elements might not have the requested spacing around it.
+            // bottom or rightmost elements might not have the requested spacing around it. A parent already
+            // holds its children's margins, so they reach no further than its rect: the layout snapped the
+            // rects to whole pixels but the margins are unsnapped, and re-adding them would leave a sub-pixel
+            // sliver past the parent, making the viewport a fraction too big for a space it exactly fits.
             if (cache.is_auto_sized) {
                 auto const margins = layout::GetMargins(builder.state->layout, box.layout_id);
                 auto bb = layout::GetRect(builder.state->layout, box.layout_id);
-                bb.size += margins.lrtb.yw;
+                auto far_edge = bb.pos + bb.size + margins.lrtb.yw;
+                if (config.parent) {
+                    auto const parent_rect = layout::GetRect(builder.state->layout, config.parent->layout_id);
+                    far_edge = Max(Min(far_edge, parent_rect.pos + parent_rect.size), bb.pos + bb.size);
+                }
+                bb.size = far_edge - bb.pos;
                 auto _ = builder.imgui.RegisterAndConvertRect(bb);
             }
 
@@ -561,6 +571,7 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                         rect,
                         {
                             .value_popup = config.value_popup,
+                            .value_popup_delay_secs = config.value_popup_delay_secs,
                             .tooltip = config.tooltip,
                             .tooltip_footer = config.tooltip_footer,
                             .avoid_r = avoid_r,

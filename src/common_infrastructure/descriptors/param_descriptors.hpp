@@ -48,6 +48,8 @@ enum class LayerParamIndex : u8 {
     LegacyLfoShapeV2,
     LfoShape,
     LfoDestination,
+    LfoSeedMode,
+    LfoSeed,
     EqOn,
     LegacyEqFreq1,
     EqFreq1,
@@ -90,6 +92,8 @@ enum class LayerParamIndex : u8 {
     GranularRandomDetune,
     GranularRandomDirection,
     GranularHarmony,
+    GranularSeedMode,
+    GranularSeed,
 
     ArpOn,
     ArpMode,
@@ -142,7 +146,9 @@ enum class ParamIndex : u16 {
     DistortionGain,
     DistortionAutoGain,
 
+    LegacyBitCrushBits,
     BitCrushBits,
+    LegacyBitCrushBitRate,
     BitCrushBitRate,
     LegacyBitCrushWet,
     LegacyBitCrushDry,
@@ -266,6 +272,7 @@ constexpr auto k_num_parameters =
 
 enum class ParamDisplayFormat : u8 {
     None,
+    Float2dp,
     Percent,
     Percent2dp,
     Pan,
@@ -623,6 +630,7 @@ enum class MpeDestination : u8 { // never reorder
     Volume,
     Filter,
     Timbre,
+    LfoAmount,
     Count,
 };
 constexpr auto k_mpe_destination_strings = ArrayT<String>({
@@ -630,6 +638,7 @@ constexpr auto k_mpe_destination_strings = ArrayT<String>({
     "Volume",
     "Filter",
     "Timbre",
+    "LFO Amount",
 });
 static_assert(k_mpe_destination_strings.size == ToInt(MpeDestination::Count));
 constexpr String MpeDestinationDescription(MpeDestination destination) {
@@ -641,6 +650,8 @@ constexpr String MpeDestinationDescription(MpeDestination destination) {
             return "Move the layer's filter cutoff per note, so you can open one note up while the others stay dark. The layer's filter needs to be switched on for this to be heard."_s;
         case MpeDestination::Timbre:
             return "Sweep each note through the Instrument's crossfade layers, the same thing the master Timbre knob does but note by note. Only Instruments built with crossfade layers respond."_s;
+        case MpeDestination::LfoAmount:
+            return "Change how strongly the layer's LFO moves each note, so you can dig into a key to bring in vibrato or tremolo on just that note. The layer's LFO needs to be switched on for this to be heard."_s;
         case MpeDestination::Count: break;
     }
     return {};
@@ -708,6 +719,23 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
     "Trapezoid",
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
+constexpr bool LfoShapeIsRandom(LfoShape shape) {
+    switch (shape) {
+        case LfoShape::RandomSteps:
+        case LfoShape::RandomGlide: return true;
+        case LfoShape::Sine:
+        case LfoShape::Triangle:
+        case LfoShape::Sawtooth:
+        case LfoShape::Square:
+        case LfoShape::Pluck:
+        case LfoShape::PluckSharp:
+        case LfoShape::PulseNarrow:
+        case LfoShape::PulseWide:
+        case LfoShape::Trapezoid:
+        case LfoShape::Count: break;
+    }
+    return false;
+}
 constexpr String LfoShapeDescription(LfoShape shape) {
     switch (shape) {
         case LfoShape::Sine:
@@ -1159,6 +1187,43 @@ constexpr auto k_play_mode_strings = ArrayT<String>({
 });
 static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
 
+enum class SeedMode : u8 { // never reorder
+    Random,
+    Fixed,
+    FixedPerKey,
+    Count,
+};
+constexpr auto k_seed_mode_strings = ArrayT<String>({
+    "Random",
+    "Fixed",
+    "Fixed Per Key",
+});
+static_assert(k_seed_mode_strings.size == ToInt(SeedMode::Count));
+constexpr String GranularSeedModeDescription(SeedMode mode) {
+    switch (mode) {
+        case SeedMode::Random:
+            return "Every note scatters its grains in a fresh way, keeping the sound random and alive. The best choice for most sounds, especially dense, textural ones.\n\nTo make a whole performance repeat exactly in your DAW, use the Reproducibility settings in Performance Controls."_s;
+        case SeedMode::Fixed:
+            return "Every note plays exactly the same grains, down to each one's random pan, detune and direction. Useful when Density is low and you can hear the individual grains, so every note you press sounds the same.\n\nHold a chord and all the notes follow the same movement, each at its own pitch."_s;
+        case SeedMode::FixedPerKey:
+            return "Like Fixed, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it."_s;
+        case SeedMode::Count: break;
+    }
+    return {};
+}
+constexpr String LfoSeedModeDescription(SeedMode mode) {
+    switch (mode) {
+        case SeedMode::Random:
+            return "Every note gets a fresh random pattern, so the movement never repeats.\n\nTo make a whole performance repeat exactly in your DAW, use the Reproducibility settings in Performance Controls."_s;
+        case SeedMode::Fixed:
+            return "Every note moves through exactly the same random pattern, so the movement you hear while designing a sound is the movement saved with the preset."_s;
+        case SeedMode::FixedPerKey:
+            return "Like Fixed, but each key gets its own pattern. C3 always moves the same way, and D3 has a different pattern that also repeats every time you play it."_s;
+        case SeedMode::Count: break;
+    }
+    return {};
+}
+
 enum class ArpMode : u8 { // never reorder
     Played,
     Fixed,
@@ -1431,6 +1496,8 @@ struct ParamDescriptor {
         ArpOctavePolyrate,
         ArpAutoRate,
         MpeDestination,
+        GranularSeedMode,
+        LfoSeedMode,
         Count,
     };
 
@@ -1787,6 +1854,8 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
         case ParamDescriptor::MenuType::ArpAutoRate: return k_arp_auto_rate_strings;
         case ParamDescriptor::MenuType::MpeDestination: return k_mpe_destination_strings;
+        case ParamDescriptor::MenuType::GranularSeedMode:
+        case ParamDescriptor::MenuType::LfoSeedMode: return k_seed_mode_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -1833,6 +1902,8 @@ constexpr bool MenuIsOrderedScale(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpOctavePolyrate:
         case ParamDescriptor::MenuType::ArpAutoRate:
         case ParamDescriptor::MenuType::MpeDestination:
+        case ParamDescriptor::MenuType::GranularSeedMode:
+        case ParamDescriptor::MenuType::LfoSeedMode:
         case ParamDescriptor::MenuType::Count: break;
     }
     return false;
@@ -2289,7 +2360,7 @@ consteval auto CreateParams() {
         .name = "Gain"_s,
         .gui_label = "Gain"_s,
         .tooltip =
-            "Change the level of the distorted signal, applied after all the shaping and before the Mix blend."_s,
+            "If needed, you can adjust the level of the distorted signal, applied after all the shaping and before the Mix blend. This is a flat adjustment separate from 'Auto Gain' — which smartly counteracts any change in perceived loudness as you turn up the Drive or Punish."_s,
     };
     mp(DistortionAutoGain) = Args {
         .id = id(IdRegion::Master, 148), // never change
@@ -2304,19 +2375,55 @@ consteval auto CreateParams() {
     };
 
     // =====================================================================================================
-    mp(BitCrushBits) = Args {
+    mp(LegacyBitCrushBits) = Args {
         .id = id(IdRegion::Master, 6), // never change
-        .id_string = "fx.bitcrush.bits"_s,
+        .id_string = "fx.bitcrush.legacy_bits"_s,
         .value_config = val_config_helpers::Int({.range = {2, 32}, .default_val = 32}),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Legacy Bits"_s,
+        .gui_label = "Bits"_s,
+        .tooltip = "Legacy bits parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
+    };
+    mp(BitCrushBits) = Args {
+        .id = id(IdRegion::Master, 153), // never change
+        .id_string = "fx.bitcrush.bits"_s,
+        .added_in_generation = 7,
+        .value_config = val_config_helpers::CustomProjected({
+            .display_format = ParamDisplayFormat::Float2dp,
+            .default_val = 32,
+            // Linear in bits (each bit is a fixed 6 dB step in quantisation noise) across the useful range,
+            // then accelerating away to the transparent end in the last fifth of the travel.
+            .projection = {.range = {1, 32},
+                           .exponent = 2.5f,
+                           .type = ParamDescriptor::Projection::Type::LinearThenExponential,
+                           .split_01 = 0.8f,
+                           .split_value = 10},
+        }),
         .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
         .name = "Bits"_s,
         .gui_label = "Bits"_s,
         .tooltip =
-            "Reduce the bit depth of the signal, adding a gritty digital noise that's most obvious in quiet passages and tails."_s,
+            "Reduce the bit depth of the signal, adding a gritty digital noise that's most obvious in quiet passages and tails. At the lowest settings quiet signals quantise to silence, so feed the effect hot."_s,
+    };
+    mp(LegacyBitCrushBitRate) = Args {
+        .id = id(IdRegion::Master, 7), // never change
+        .id_string = "fx.bitcrush.legacy_bit_rate"_s,
+        .value_config = val_config_helpers::CustomProjected({
+            .display_format = ParamDisplayFormat::Hz,
+            .default_val = 44100,
+            .projection = {{256, 44100}, 3.0f},
+        }),
+        .modules = {ParameterModule::Effect, ParameterModule::Bitcrush},
+        .name = "Legacy Sample Rate"_s,
+        .gui_label = "Samp Rate"_s,
+        .tooltip = "Legacy sample rate parameter. Kept for backwards-compatibility with DAW automation"_s,
+        .flags = {.legacy = true},
     };
     mp(BitCrushBitRate) = Args {
-        .id = id(IdRegion::Master, 7), // never change
+        .id = id(IdRegion::Master, 154), // never change
         .id_string = "fx.bitcrush.bit_rate"_s,
+        .added_in_generation = 7,
         .value_config = val_config_helpers::CustomProjected({
             .display_format = ParamDisplayFormat::Hz,
             .default_val = 44100,
@@ -2726,7 +2833,7 @@ consteval auto CreateParams() {
         .name = "High-pass"_s,
         .gui_label = "High-pass"_s,
         .tooltip =
-            "Remove low frequencies from the chorused copies. The dry signal keeps its full low end, so raise this to hold the bass tight and centred while the higher frequencies shimmer."_s,
+            "Remove low frequencies from the chorused copies. The dry signal is unaffected. Raise this to keep the bass tight and free from movement."_s,
         .flags = {.cutoff_frequency = true},
     };
     mp(ChorusDepth) = Args {
@@ -3215,7 +3322,7 @@ consteval auto CreateParams() {
         .name = "High-pass"_s,
         .gui_label = "High-pass"_s,
         .tooltip =
-            "Roll off the low end of the reverb, keeping its rumble and boom clear of the dry sound. It applies to the reverb signal alone, before the Mix blend."_s,
+            "Use the high-pass to roll off the low end of the reverb to avoid muddy bass. It applies to the reverbed signal alone, before the Mix blend."_s,
         .flags = {.cutoff_frequency = true},
     };
     mp(LegacyConvolutionReverbWet) = Args {
@@ -4058,6 +4165,31 @@ consteval auto CreateParams() {
                 "Choose the Target: what the LFO modulates.\n\n"
                 "The modulation is applied relative to the target's current knob/slider. For example, when Volume is chosen, the movement will occur around wherever the layer's volume slider is currently set. Hover over each option for details."_s,
         };
+        lp(LfoSeedMode) = Args {
+            .id = id(region, 105), // never change
+            .id_string = LAYER_ID("lfo.seed_mode"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LfoSeedMode,
+                .default_val = (u32)param_values::SeedMode::Random,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Seed Mode"_s,
+            .gui_label = "Seed Mode"_s,
+            .tooltip =
+                "Seed Mode decides whether the random shapes move differently on each note or play back the exact same pattern every time. Random suits most sounds, while Fixed and Fixed Per Key let you capture a particular pattern and save it with the preset.\n\nIn Free mode, a note that joins already-sounding notes follows their pattern.\n\nOpen the menu and hover over each option for details."_s,
+        };
+        lp(LfoSeed) = Args {
+            .id = id(region, 106), // never change
+            .id_string = LAYER_ID("lfo.seed"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Seed"_s,
+            .gui_label = "Seed"_s,
+            .tooltip =
+                "Seed picks which random pattern Fixed and Fixed Per Key repeat. Try a few numbers until you find one you like: it's saved with the preset, so the movement you choose is the movement everyone hears.\n\nSet Seed Mode to Fixed or Fixed Per Key for this to take effect."_s,
+        };
 
         // =================================================================================================
         lp(EqOn) = Args {
@@ -4567,6 +4699,31 @@ consteval auto CreateParams() {
                 "Harmony gives each grain a chance of playing at a musical interval above or below the note you played, so a single note can bloom into a chord or a shimmering octave.\n\n"
                 "At 0% every grain plays at the root. Turning it up shifts more of the grains, until at 100% every grain picks at random from the root and the intervals you've chosen.\n\n"
                 "Choose which intervals are allowed with the Intervals menu next to this knob: pick a preset such as Octaves or Major Triad, or toggle individual semitones yourself."_s,
+        };
+        lp(GranularSeedMode) = Args {
+            .id = id(region, 103), // never change
+            .id_string = LAYER_ID("granular.seed_mode"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::GranularSeedMode,
+                .default_val = (u32)param_values::SeedMode::Random,
+            }),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Seed Mode"_s,
+            .gui_label = "Seed Mode"_s,
+            .tooltip =
+                "Seed Mode decides whether each note scatters its grains differently or plays back the exact same grains every time. Random suits most sounds, while Fixed and Fixed Per Key let you capture a particular pattern of grains and save it with the preset.\n\nOpen the menu and hover over each option for details."_s,
+        };
+        lp(GranularSeed) = Args {
+            .id = id(region, 104), // never change
+            .id_string = LAYER_ID("granular.seed"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Seed"_s,
+            .gui_label = "Seed"_s,
+            .tooltip =
+                "Seed picks which pattern of grains Fixed and Fixed Per Key repeat. Try a few numbers until you find one you like: it's saved with the preset, so the grains you choose are the grains everyone hears.\n\nSet Seed Mode to Fixed or Fixed Per Key for this to take effect."_s,
         };
 
         // Arpeggiator

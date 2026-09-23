@@ -17,6 +17,8 @@ struct PresetServer;
 struct PresetBrowserContext {
     void Init(ArenaAllocator& arena) {
         if (init++) return;
+        StartScanningIfNeeded(preset_server);
+        folders_scanning = AreFoldersScanning(preset_server);
         auto const [snapshot, handle] = BeginReadFolders(preset_server, arena);
         presets_snapshot = snapshot;
         preset_read_handle = handle;
@@ -37,6 +39,7 @@ struct PresetBrowserContext {
     GuiFrameContext const& frame_context;
 
     u32 init = 0;
+    bool folders_scanning {}; // Taken before the snapshot, so false means it's complete.
     PresetsSnapshot presets_snapshot;
     PresetServerReadHandle preset_read_handle;
 
@@ -59,7 +62,7 @@ static_assert(ToInt(PresetBrowserFilter::Count) <= k_max_browser_filters);
 // Persistent
 struct PresetBrowserState {
     static constexpr u64 k_panel_id = HashFnv1a("preset-browser");
-    bool scroll_to_show_selected = false;
+    static constexpr u64 k_store_id = HashFnv1a("preset-browser");
 
     CommonBrowserState common_state = [] {
         CommonBrowserState s {};

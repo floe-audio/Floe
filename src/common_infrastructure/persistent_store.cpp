@@ -224,6 +224,13 @@ void RemoveValue(Store& store, Id id, Optional<Span<u8 const>> value) {
     WriteFile(store);
 }
 
+void SetValue(Store& store, Id id, Span<u8 const> data) {
+    if (!InitIfNeeded(store)) return;
+    RemoveValue((StoreTable&)store, id, k_nullopt);
+    AddValue(store, store.arena, id, data);
+    WriteFile(store);
+}
+
 TEST_CASE(TestPersistentStore) {
     SUBCASE("write and read") {
         StoreTable store;
