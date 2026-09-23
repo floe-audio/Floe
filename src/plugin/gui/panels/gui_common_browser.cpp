@@ -3946,7 +3946,8 @@ static void DoToolbarSearch(GuiBuilder& builder, ToolbarSearchOptions const& opt
 static void DoResultsFooter(GuiBuilder& builder,
                             BrowserPopupContext& context,
                             BrowserPopupOptions const& options,
-                            Box const& parent) {
+                            Box const& parent,
+                            f32 row_width) {
     auto& state = context.state;
     auto const row = DoBox(
         builder,
@@ -3984,8 +3985,17 @@ static void DoResultsFooter(GuiBuilder& builder,
               });
     };
 
+    constexpr f32 k_removable_padding = 3;
+    constexpr f32 k_removable_icon_size = k_font_icons_size * 0.5f;
+    // The line wraps between segments, but a single segment wider than the whole line gets ellipsised.
+    auto const max_removable_text_width =
+        Max(row_width - (k_browser_spacing * 2) - (k_removable_padding * 3) - k_removable_icon_size, 1.0f);
+
     // Reads on from the words around it; hovering shows it as a button, and the cross removes it.
     auto const do_removable = [&](String text, TooltipString tooltip) -> bool {
+        auto const pixels_per_ww = builder.state->viewport_cache.pixels_per_ww;
+        auto const text_width =
+            builder.fonts.atlas[ToInt(FontType::BodyItalic)]->CalcTextSize(text, {}).x / pixels_per_ww;
         auto const button = DoBox(builder,
                                   {
                                       .parent = row,
@@ -4000,8 +4010,8 @@ static void DoResultsFooter(GuiBuilder& builder,
                                       .corner_rounding = k_corner_rounding,
                                       .layout {
                                           .size = {layout::k_hug_contents, k_browser_item_height - 4},
-                                          .contents_padding = {.lr = 3},
-                                          .contents_gap = 3,
+                                          .contents_padding = {.lr = k_removable_padding},
+                                          .contents_gap = k_removable_padding,
                                           .contents_direction = layout::Direction::Row,
                                           .contents_align = layout::Alignment::Middle,
                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
@@ -4013,7 +4023,6 @@ static void DoResultsFooter(GuiBuilder& builder,
               {
                   .parent = button,
                   .text = text,
-                  .size_from_text = true,
                   .font = FontType::BodyItalic,
                   .text_colours =
                       ColSet {
@@ -4021,7 +4030,11 @@ static void DoResultsFooter(GuiBuilder& builder,
                           .hot = Col {.c = Col::Text},
                           .active = Col {.c = Col::Text},
                       },
+                  .text_overflow = TextOverflowType::ShowDotsOnRight,
                   .parent_dictates_hot_and_active = true,
+                  .layout {
+                      .size = f32x2 {Min(text_width, max_removable_text_width), k_font_body_size},
+                  },
               });
         DoBox(builder,
               {
@@ -4037,7 +4050,7 @@ static void DoResultsFooter(GuiBuilder& builder,
                       },
                   .parent_dictates_hot_and_active = true,
                   .layout {
-                      .size = k_font_icons_size * 0.5f,
+                      .size = k_removable_icon_size,
                   },
               });
         return button.button_fired;
@@ -4865,7 +4878,7 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
 
         DoModalDivider(builder, results_column, {.horizontal = true, .subtle = true, .snap_to_start = true});
 
-        DoResultsFooter(builder, context, options, results_panel);
+        DoResultsFooter(builder, context, options, results_panel, size.results_width);
 
         auto const toolbar = do_toolbar(results_panel, false, "browser.results-toolbar"_s);
 
