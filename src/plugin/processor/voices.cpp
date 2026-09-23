@@ -404,6 +404,23 @@ inline f32x4 EqualPanGains2(f32x2 pan_pos) {
     return __builtin_shufflevector(left, right, 0, 2, 1, 3);
 }
 
+enum class FixedSeedDomain : u8 { Granular, Lfo };
+
+struct FixedSeedArgs {
+    param_values::SeedMode mode;
+    u8 seed;
+    u7 note;
+    FixedSeedDomain domain;
+};
+
+// Local state only: drawing from the master seed for a fixed seed would shift every later draw.
+static u64 FixedSeedRandomState(FixedSeedArgs const& args) {
+    ASSERT(args.mode != param_values::SeedMode::Random);
+    u64 state = ((u64)args.domain << 16) | ((u64)args.seed << 8);
+    if (args.mode == param_values::SeedMode::FixedPerKey) state |= (u64)args.note + 1;
+    return state;
+}
+
 void StartVoice(VoicePool& pool,
                 VoiceProcessingController& voice_controller,
                 VoiceStartParams const& params,
@@ -436,13 +453,15 @@ void StartVoice(VoicePool& pool,
     voice.granular_random_seed = ({
         u32x4 seed;
         switch (voice_controller.granular.seed_mode) {
-            case param_values::GranularSeedMode::Random: seed = voice.random_seed; break;
-            case param_values::GranularSeedMode::Fixed:
-            case param_values::GranularSeedMode::FixedPerKey: {
-                // Local state only: drawing from the master seed here would shift every later draw.
-                u64 state = (u64)voice_controller.granular.seed << 8;
-                if (voice_controller.granular.seed_mode == param_values::GranularSeedMode::FixedPerKey)
-                    state |= (u64)params.midi_key_trigger.note + 1;
+            case param_values::SeedMode::Random: seed = voice.random_seed; break;
+            case param_values::SeedMode::Fixed:
+            case param_values::SeedMode::FixedPerKey: {
+                auto state = FixedSeedRandomState({
+                    .mode = voice_controller.granular.seed_mode,
+                    .seed = voice_controller.granular.seed,
+                    .note = params.midi_key_trigger.note,
+                    .domain = FixedSeedDomain::Granular,
+                });
                 auto const s1 = RandomU64(state);
                 auto const s2 = RandomU64(state);
                 seed = {
@@ -453,7 +472,7 @@ void StartVoice(VoicePool& pool,
                 };
                 break;
             }
-            case param_values::GranularSeedMode::Count: PanicIfReached();
+            case param_values::SeedMode::Count: PanicIfReached();
         }
         seed;
     });
@@ -471,6 +490,21 @@ void StartVoice(VoicePool& pool,
         // seed so reproducibility (Reset on Transport / Reset Keyswitch / Seed) extends to
         // random LFO waveforms. Bootstrap next_random so the very first cycle has a target.
         voice.lfo.random_state = (u32)RandomU64(*pool.master_random_seed) | 1u;
+        switch (voice_controller.lfo.seed_mode) {
+            case param_values::SeedMode::Random: break;
+            case param_values::SeedMode::Fixed:
+            case param_values::SeedMode::FixedPerKey: {
+                auto state = FixedSeedRandomState({
+                    .mode = voice_controller.lfo.seed_mode,
+                    .seed = voice_controller.lfo.seed,
+                    .note = params.midi_key_trigger.note,
+                    .domain = FixedSeedDomain::Lfo,
+                });
+                voice.lfo.random_state = (u32)RandomU64(state) | 1u;
+                break;
+            }
+            case param_values::SeedMode::Count: PanicIfReached();
+        }
         voice.lfo.prev_random = 0;
         voice.lfo.next_random = voice.lfo.NextRandomBipolar();
     }
@@ -2234,7 +2268,8 @@ TEST_CASE(TestVoiceRandomDrawsAreStable) {
     auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
     fix.controller.play_mode = param_values::PlayMode::Standard;
     fix.controller.vol_env_on = false;
-    fix.controller.granular.seed_mode = param_values::GranularSeedMode::Random;
+    fix.controller.granular.seed_mode = param_values::SeedMode::Random;
+    fix.controller.lfo.seed_mode = param_values::SeedMode::Random;
 
     auto const active_voice = [&]() -> Voice& {
         for (auto& v : fix.pool->EnumerateActiveVoices())
@@ -2366,7 +2401,7 @@ TEST_CASE(TestGranularSeedModes) {
     auto const same = [](u32x4 a, u32x4 b) { return All(a == b); };
 
     SUBCASE("fixed") {
-        fix.controller.granular.seed_mode = param_values::GranularSeedMode::Fixed;
+        fix.controller.granular.seed_mode = param_values::SeedMode::Fixed;
         auto const a = start(1234, 60);
         CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
         CHECK(same(a.granular_random_seed, start(1234, 64).granular_random_seed));
@@ -2384,7 +2419,7 @@ TEST_CASE(TestGranularSeedModes) {
     }
 
     SUBCASE("fixed per key") {
-        fix.controller.granular.seed_mode = param_values::GranularSeedMode::FixedPerKey;
+        fix.controller.granular.seed_mode = param_values::SeedMode::FixedPerKey;
         auto const a = start(1234, 60);
         CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
         CHECK(!same(a.granular_random_seed, start(1234, 64).granular_random_seed));
@@ -2396,7 +2431,62 @@ TEST_CASE(TestGranularSeedModes) {
         CHECK_EQ(a.granular_random_seed[3], 2816732097u);
     }
 
-    fix.controller.granular.seed_mode = param_values::GranularSeedMode::Random;
+    fix.controller.granular.seed_mode = param_values::SeedMode::Random;
+    return k_success;
+}
+
+// Presets bake in an LFO seed, so the random LFO state it produces is pinned too.
+TEST_CASE(TestLfoSeedModes) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+    fix.controller.play_mode = param_values::PlayMode::Standard;
+    fix.controller.vol_env_on = false;
+    fix.controller.lfo.seed = 7;
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {.root_key = 60};
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    struct Result {
+        u32 lfo_random_state;
+        u64 master_random_seed_after;
+    };
+    auto const start = [&](u64 master_random_seed, u7 note) -> Result {
+        fix.master_random_seed = master_random_seed;
+        StartTestSamplerVoice(fix, region, audio_data, note);
+        Result result {};
+        for (auto& v : fix.pool->EnumerateActiveVoices())
+            result.lfo_random_state = v.lfo.random_state;
+        result.master_random_seed_after = fix.master_random_seed;
+        fix.pool->EndAllVoicesInstantly();
+        return result;
+    };
+
+    SUBCASE("fixed") {
+        fix.controller.lfo.seed_mode = param_values::SeedMode::Fixed;
+        auto const a = start(1234, 60);
+        CHECK_EQ(a.lfo_random_state, start(999, 60).lfo_random_state);
+        CHECK_EQ(a.lfo_random_state, start(1234, 64).lfo_random_state);
+
+        // The master seed advances exactly as it does in Performance mode.
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.lfo_random_state, 2391429707u);
+
+        fix.controller.lfo.seed = 8;
+        CHECK_NEQ(a.lfo_random_state, start(1234, 60).lfo_random_state);
+    }
+
+    SUBCASE("fixed per key") {
+        fix.controller.lfo.seed_mode = param_values::SeedMode::FixedPerKey;
+        auto const a = start(1234, 60);
+        CHECK_EQ(a.lfo_random_state, start(999, 60).lfo_random_state);
+        CHECK_NEQ(a.lfo_random_state, start(1234, 64).lfo_random_state);
+        CHECK_EQ(a.master_random_seed_after, 15755400384260045073ull);
+
+        CHECK_EQ(a.lfo_random_state, 3984787369u);
+    }
+
+    fix.controller.lfo.seed_mode = param_values::SeedMode::Random;
     return k_success;
 }
 
@@ -2407,4 +2497,5 @@ TEST_REGISTRATION(RegisterVoiceTests) {
     REGISTER_TEST(TestVoiceProcessingNonTypicalBufferSizes);
     REGISTER_TEST(TestVoiceRandomDrawsAreStable);
     REGISTER_TEST(TestGranularSeedModes);
+    REGISTER_TEST(TestLfoSeedModes);
 }

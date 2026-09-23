@@ -87,6 +87,7 @@ The Low Frequency Oscillator (LFO) can modulate various parameters to add moveme
 - **Waveform display**: a live representative preview of the current LFO shape and rate. Drag it left or right to change the _Time_, and up or down to change the _Amount_.
 - **Target**: select the parameter that the LFO will modulate: Volume, Filter, Pan, Pitch, or Grain Position. Some targets require their associated feature to be active (e.g. the filter must be enabled, or the play mode must be Granular Fixed).
 - **Shape**: choose the LFO waveform shape.
+- **Seed** <FAIcon icon="fa-solid fa-seedling" />: shown next to the Shape menu when a random shape (Random Steps or Random Glide) is selected. _Random_ gives every note a fresh random pattern. _Fixed_ makes every note move through exactly the same pattern, chosen by the **Seed** number, so the movement is saved with the preset. _Fixed Per Key_ gives each key its own repeatable pattern. In Free mode, a note that joins already-sounding notes follows their pattern.
 - **Mode**: switch between _Retrigger_ — new notes always start with the LFO at the beginning of its cycle — and _Free_ — a new note joins in wherever the layer's sounding notes have reached in the cycle, so all notes share the same LFO phase.
 - **Amount**: control the intensity of the LFO effect on the target parameter.
 - **Time**: adjust the LFO rate. When Sync is enabled, this is synced to the host tempo (e.g., 1/4 note); when disabled, it operates in Hz.

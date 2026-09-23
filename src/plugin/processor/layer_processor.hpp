@@ -41,6 +41,8 @@ struct VoiceProcessingController {
         param_values::LfoDestination dest;
         f32 amount;
         f32 time_hz;
+        param_values::SeedMode seed_mode;
+        u8 seed;
     } lfo {};
 
     struct Loop {
@@ -95,7 +97,7 @@ struct VoiceProcessingController {
         f32 random_direction {};
         f32 harmony {};
         HarmonyIntervalsBitset harmony_intervals {};
-        param_values::GranularSeedMode seed_mode {};
+        param_values::SeedMode seed_mode {};
         u8 seed {};
     } granular {};
 

@@ -48,6 +48,8 @@ enum class LayerParamIndex : u8 {
     LegacyLfoShapeV2,
     LfoShape,
     LfoDestination,
+    LfoSeedMode,
+    LfoSeed,
     EqOn,
     LegacyEqFreq1,
     EqFreq1,
@@ -713,6 +715,23 @@ constexpr auto k_lfo_shape_strings = ArrayT<String>({
     "Trapezoid",
 });
 static_assert(k_lfo_shape_strings.size == ToInt(LfoShape::Count));
+constexpr bool LfoShapeIsRandom(LfoShape shape) {
+    switch (shape) {
+        case LfoShape::RandomSteps:
+        case LfoShape::RandomGlide: return true;
+        case LfoShape::Sine:
+        case LfoShape::Triangle:
+        case LfoShape::Sawtooth:
+        case LfoShape::Square:
+        case LfoShape::Pluck:
+        case LfoShape::PluckSharp:
+        case LfoShape::PulseNarrow:
+        case LfoShape::PulseWide:
+        case LfoShape::Trapezoid:
+        case LfoShape::Count: break;
+    }
+    return false;
+}
 constexpr String LfoShapeDescription(LfoShape shape) {
     switch (shape) {
         case LfoShape::Sine:
@@ -1164,27 +1183,39 @@ constexpr auto k_play_mode_strings = ArrayT<String>({
 });
 static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
 
-enum class GranularSeedMode : u8 { // never reorder
+enum class SeedMode : u8 { // never reorder
     Random,
     Fixed,
     FixedPerKey,
     Count,
 };
-constexpr auto k_granular_seed_mode_strings = ArrayT<String>({
+constexpr auto k_seed_mode_strings = ArrayT<String>({
     "Random",
     "Fixed",
     "Fixed Per Key",
 });
-static_assert(k_granular_seed_mode_strings.size == ToInt(GranularSeedMode::Count));
-constexpr String GranularSeedModeDescription(GranularSeedMode mode) {
+static_assert(k_seed_mode_strings.size == ToInt(SeedMode::Count));
+constexpr String GranularSeedModeDescription(SeedMode mode) {
     switch (mode) {
-        case GranularSeedMode::Random:
+        case SeedMode::Random:
             return "Every note scatters its grains in a fresh way, keeping the sound random and alive. The best choice for most sounds, especially dense, textural ones.\n\nTo make a whole performance repeat exactly in your DAW, use the Reproducibility settings in Performance Controls."_s;
-        case GranularSeedMode::Fixed:
+        case SeedMode::Fixed:
             return "Every note plays exactly the same grains, down to each one's random pan, detune and direction. Useful when Density is low and you can hear the individual grains, so every note you press sounds the same.\n\nHold a chord and all the notes follow the same movement, each at its own pitch."_s;
-        case GranularSeedMode::FixedPerKey:
+        case SeedMode::FixedPerKey:
             return "Like Fixed, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it."_s;
-        case GranularSeedMode::Count: break;
+        case SeedMode::Count: break;
+    }
+    return {};
+}
+constexpr String LfoSeedModeDescription(SeedMode mode) {
+    switch (mode) {
+        case SeedMode::Random:
+            return "Every note gets a fresh random pattern, so the movement never repeats.\n\nTo make a whole performance repeat exactly in your DAW, use the Reproducibility settings in Performance Controls."_s;
+        case SeedMode::Fixed:
+            return "Every note moves through exactly the same random pattern, so the movement you hear while designing a sound is the movement saved with the preset."_s;
+        case SeedMode::FixedPerKey:
+            return "Like Fixed, but each key gets its own pattern. C3 always moves the same way, and D3 has a different pattern that also repeats every time you play it."_s;
+        case SeedMode::Count: break;
     }
     return {};
 }
@@ -1462,6 +1493,7 @@ struct ParamDescriptor {
         ArpAutoRate,
         MpeDestination,
         GranularSeedMode,
+        LfoSeedMode,
         Count,
     };
 
@@ -1818,7 +1850,8 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
         case ParamDescriptor::MenuType::ArpAutoRate: return k_arp_auto_rate_strings;
         case ParamDescriptor::MenuType::MpeDestination: return k_mpe_destination_strings;
-        case ParamDescriptor::MenuType::GranularSeedMode: return k_granular_seed_mode_strings;
+        case ParamDescriptor::MenuType::GranularSeedMode:
+        case ParamDescriptor::MenuType::LfoSeedMode: return k_seed_mode_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -1866,6 +1899,7 @@ constexpr bool MenuIsOrderedScale(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpAutoRate:
         case ParamDescriptor::MenuType::MpeDestination:
         case ParamDescriptor::MenuType::GranularSeedMode:
+        case ParamDescriptor::MenuType::LfoSeedMode:
         case ParamDescriptor::MenuType::Count: break;
     }
     return false;
@@ -4127,6 +4161,31 @@ consteval auto CreateParams() {
                 "Choose the Target: what the LFO modulates.\n\n"
                 "The modulation is applied relative to the target's current knob/slider. For example, when Volume is chosen, the movement will occur around wherever the layer's volume slider is currently set. Hover over each option for details."_s,
         };
+        lp(LfoSeedMode) = Args {
+            .id = id(region, 105), // never change
+            .id_string = LAYER_ID("lfo.seed_mode"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Menu({
+                .type = ParamDescriptor::MenuType::LfoSeedMode,
+                .default_val = (u32)param_values::SeedMode::Random,
+            }),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Seed Mode"_s,
+            .gui_label = "Seed Mode"_s,
+            .tooltip =
+                "Seed Mode decides whether the random shapes move differently on each note or play back the exact same pattern every time. Random suits most sounds, while Fixed and Fixed Per Key let you capture a particular pattern and save it with the preset.\n\nIn Free mode, a note that joins already-sounding notes follows their pattern.\n\nOpen the menu and hover over each option for details."_s,
+        };
+        lp(LfoSeed) = Args {
+            .id = id(region, 106), // never change
+            .id_string = LAYER_ID("lfo.seed"),
+            .added_in_generation = 1,
+            .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
+            .modules = {layer_module, ParameterModule::Lfo},
+            .name = "Seed"_s,
+            .gui_label = "Seed"_s,
+            .tooltip =
+                "Seed picks which random pattern Fixed and Fixed Per Key repeat. Try a few numbers until you find one you like: it's saved with the preset, so the movement you choose is the movement everyone hears.\n\nSet Seed Mode to Fixed or Fixed Per Key for this to take effect."_s,
+        };
 
         // =================================================================================================
         lp(EqOn) = Args {
@@ -4643,7 +4702,7 @@ consteval auto CreateParams() {
             .added_in_generation = 1,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::GranularSeedMode,
-                .default_val = (u32)param_values::GranularSeedMode::Random,
+                .default_val = (u32)param_values::SeedMode::Random,
             }),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Seed Mode"_s,

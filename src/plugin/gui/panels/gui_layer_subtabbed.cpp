@@ -1176,6 +1176,127 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                    3);
 }
 
+static void DrawDarkPopupMenuBackground(imgui::Context const& imgui) {
+    auto const rounding = WwToPixels(k_panel_rounding);
+    auto const r = imgui.curr_viewport->unpadded_bounds;
+    DrawDropShadow(imgui, r, rounding);
+    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
+    imgui.draw_list->AddRect(r, ToU32(Col {.c = Col::White, .alpha = 28}), rounding);
+}
+
+struct SeedButtonOptions {
+    LayerParamIndex seed_mode_param;
+    LayerParamIndex seed_param;
+    String description;
+    bool greyed_out;
+};
+
+static void DoSeedButton(GuiState& g, u8 layer_index, Box row, SeedButtonOptions const& options) {
+    auto& params = g.engine.processor.main_params;
+    auto const seed_mode = params.IntValue<param_values::SeedMode>(layer_index, options.seed_mode_param);
+
+    auto const btn =
+        DoMidPanelIconButton(g.builder,
+                             row,
+                             {
+                                 .icon = MidPanelIcon::Seed,
+                                 .tooltip = fmt::Format(g.scratch_arena,
+                                                        "{}\n\nCurrently: {}",
+                                                        options.description,
+                                                        param_values::k_seed_mode_strings[ToInt(seed_mode)]),
+                                 .greyed_out = options.greyed_out,
+                                 .is_on = seed_mode != param_values::SeedMode::Random,
+                             });
+
+    auto const popup_id =
+        (imgui::Id)(SourceLocationHash() ^ ((u64)layer_index << 8) ^ (u64)ToInt(options.seed_mode_param));
+    if (btn.button_fired) g.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
+
+    // bounds is a Box so the run lambda is deferred: locals must be captured by value.
+    if (g.imgui.IsPopupMenuOpen(popup_id)) {
+        DoBoxViewport(
+            g.builder,
+            {
+                .run =
+                    [&g,
+                     layer_index,
+                     seed_mode_param_index = options.seed_mode_param,
+                     seed_param_index = options.seed_param](GuiBuilder&) {
+                        auto& params = g.engine.processor.main_params;
+                        auto const mode_param = params.DescribedValue(layer_index, seed_mode_param_index);
+                        auto const seed_param = params.DescribedValue(layer_index, seed_param_index);
+
+                        auto const root = DoBox(g.builder,
+                                                {
+                                                    .layout {
+                                                        .size = layout::k_hug_contents,
+                                                        .contents_padding = {.lr = 8, .tb = 6},
+                                                        .contents_gap = 6,
+                                                        .contents_direction = layout::Direction::Column,
+                                                        .contents_align = layout::Alignment::Start,
+                                                    },
+                                                });
+
+                        auto const seed_greyed_out =
+                            mode_param.IntValue<param_values::SeedMode>() == param_values::SeedMode::Random;
+
+                        auto const do_row = [&](DescribedParamValue const& param,
+                                                bool greyed_out,
+                                                u64 loc_hash = SourceLocationHash()) {
+                            auto const param_row =
+                                DoBox(g.builder,
+                                      {
+                                          .parent = root,
+                                          .id_extra = loc_hash,
+                                          .layout {
+                                              .size = layout::k_hug_contents,
+                                              .contents_gap = k_page_row_gap_x,
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                          },
+                                      });
+                            DoBox(g.builder,
+                                  {
+                                      .parent = param_row,
+                                      .text = param.info.gui_label,
+                                      .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed
+                                                                               : UiColMap::MidText),
+                                      .text_justification = TextJustification::CentredRight,
+                                      .layout {
+                                          .size = {70, k_font_body_size},
+                                      },
+                                      .tooltip = FunctionRef<String()> {[&]() -> String {
+                                          return param.info.tooltip;
+                                      }},
+                                  });
+                            return param_row;
+                        };
+
+                        DoMenuParameter(g,
+                                        do_row(mode_param, false),
+                                        mode_param,
+                                        {.width = 140, .label = false});
+
+                        DoIntParameter(g,
+                                       do_row(seed_param, seed_greyed_out),
+                                       seed_param,
+                                       {
+                                           .width = 140,
+                                           .greyed_out = seed_greyed_out,
+                                           .label = false,
+                                       });
+                    },
+                .bounds = btn,
+                .imgui_id = popup_id,
+                .viewport_config = ({
+                    auto cfg = k_default_popup_menu_viewport;
+                    cfg.draw_background = DrawDarkPopupMenuBackground;
+                    cfg;
+                }),
+            });
+    }
+}
+
 static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     auto& params = g.engine.processor.main_params;
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
@@ -1222,70 +1343,73 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     DoWhitespace(g.builder, page, 10);
 
     // Menu + label rows
-    auto const do_menu_label_row =
-        [&](LayerParamIndex param_index, String warning_tooltip = {}, u64 loc_hash = SourceLocationHash()) {
-            auto const param = params.DescribedValue(layer_index, param_index);
+    auto const do_menu_label_row = [&](LayerParamIndex param_index,
+                                       String warning_tooltip = {},
+                                       FunctionRef<void(Box)> do_extra_row_buttons = {},
+                                       u64 loc_hash = SourceLocationHash()) {
+        auto const param = params.DescribedValue(layer_index, param_index);
 
-            auto const row = DoBox(g.builder,
-                                   {
-                                       .parent = page,
-                                       .id_extra = loc_hash,
-                                       .layout {
-                                           .size = layout::k_hug_contents,
-                                           .contents_direction = layout::Direction::Row,
-                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                       },
-                                   });
+        auto const row = DoBox(g.builder,
+                               {
+                                   .parent = page,
+                                   .id_extra = loc_hash,
+                                   .layout {
+                                       .size = layout::k_hug_contents,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                   },
+                               });
 
-            auto const label_cell = DoBox(g.builder,
-                                          {
-                                              .parent = row,
-                                              .layout {
-                                                  .size = {k_menu_label_width, k_font_body_size},
-                                                  .contents_padding = {.r = k_page_row_gap_x},
-                                                  .contents_gap = 3,
-                                                  .contents_direction = layout::Direction::Row,
-                                                  .contents_align = layout::Alignment::End,
-                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                              },
-                                          });
+        auto const label_cell = DoBox(g.builder,
+                                      {
+                                          .parent = row,
+                                          .layout {
+                                              .size = {k_menu_label_width, k_font_body_size},
+                                              .contents_padding = {.r = k_page_row_gap_x},
+                                              .contents_gap = 3,
+                                              .contents_direction = layout::Direction::Row,
+                                              .contents_align = layout::Alignment::End,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                          },
+                                      });
 
-            if (warning_tooltip.size)
-                DoBox(g.builder,
-                      {
-                          .parent = label_cell,
-                          .text = ICON_FA_TRIANGLE_EXCLAMATION,
-                          .size_from_text = true,
-                          .font = FontType::Icons,
-                          .text_colours = {Col {.c = Col::Yellow}},
-                          .value_popup = warning_tooltip,
-                      });
-
+        if (warning_tooltip.size)
             DoBox(g.builder,
                   {
                       .parent = label_cell,
-                      .text = param.info.gui_label,
+                      .text = ICON_FA_TRIANGLE_EXCLAMATION,
                       .size_from_text = true,
-                      .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
+                      .font = FontType::Icons,
+                      .text_colours = {Col {.c = Col::Yellow}},
+                      .value_popup = warning_tooltip,
                   });
 
-            auto const tooltip = ({
-                auto t = ParamTooltipText(param, g.builder.arena, greyed_out);
-                if (warning_tooltip.size) t = fmt::Format(g.builder.arena, "{}\n\n{}", t, warning_tooltip);
-                t;
-            });
+        DoBox(g.builder,
+              {
+                  .parent = label_cell,
+                  .text = param.info.gui_label,
+                  .size_from_text = true,
+                  .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed : UiColMap::MidText),
+              });
 
-            DoMenuParameter(g,
-                            row,
-                            param,
-                            {
-                                .width = k_menu_width,
-                                .greyed_out = greyed_out,
-                                .label = false,
-                                .override_tooltip = tooltip,
-                                .tooltip_avoid_box = &row,
-                            });
-        };
+        auto const tooltip = ({
+            auto t = ParamTooltipText(param, g.builder.arena, greyed_out);
+            if (warning_tooltip.size) t = fmt::Format(g.builder.arena, "{}\n\n{}", t, warning_tooltip);
+            t;
+        });
+
+        DoMenuParameter(g,
+                        row,
+                        param,
+                        {
+                            .width = k_menu_width,
+                            .greyed_out = greyed_out,
+                            .label = false,
+                            .override_tooltip = tooltip,
+                            .tooltip_avoid_box = &row,
+                            .do_extra_row_buttons = do_extra_row_buttons,
+                        });
+    };
 
     auto const dest_warning = ({
         String s {};
@@ -1313,7 +1437,25 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     });
 
     do_menu_label_row(LayerParamIndex::LfoDestination, dest_warning);
-    do_menu_label_row(LayerParamIndex::LfoShape);
+    do_menu_label_row(
+        LayerParamIndex::LfoShape,
+        {},
+        param_values::LfoShapeIsRandom(
+            params.IntValue<param_values::LfoShape>(layer_index, LayerParamIndex::LfoShape))
+            ? FunctionRef<void(Box)> {[&](Box row) {
+                  DoSeedButton(
+                      g,
+                      layer_index,
+                      row,
+                      {
+                          .seed_mode_param = LayerParamIndex::LfoSeedMode,
+                          .seed_param = LayerParamIndex::LfoSeed,
+                          .description =
+                              "Choose whether each note gets a different random pattern or plays back the exact same pattern every time."_s,
+                          .greyed_out = greyed_out,
+                      });
+              }}
+            : FunctionRef<void(Box)> {});
     do_menu_label_row(LayerParamIndex::LfoRestart);
 
     DoWhitespace(g.builder, page, 5);
@@ -1386,14 +1528,6 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                               .override_tooltip = ParamTooltipText(sync_param, g.builder.arena, greyed_out),
                           });
     }
-}
-
-static void DrawDarkPopupMenuBackground(imgui::Context const& imgui) {
-    auto const rounding = WwToPixels(k_panel_rounding);
-    auto const r = imgui.curr_viewport->unpadded_bounds;
-    DrawDropShadow(imgui, r, rounding);
-    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
-    imgui.draw_list->AddRect(r, ToU32(Col {.c = Col::White, .alpha = 28}), rounding);
 }
 
 static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
@@ -2309,110 +2443,6 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
     }
 }
 
-static void DoGranularSeedButton(GuiState& g, u8 layer_index, Box row) {
-    auto& params = g.engine.processor.main_params;
-    auto const seed_mode =
-        params.IntValue<param_values::GranularSeedMode>(layer_index, LayerParamIndex::GranularSeedMode);
-
-    auto const btn = DoMidPanelIconButton(
-        g.builder,
-        row,
-        {
-            .icon = MidPanelIcon::Seed,
-            .tooltip = fmt::Format(
-                g.scratch_arena,
-                "Choose whether each note scatters its grains differently or plays back the exact same grains every time.\n\nCurrently: {}",
-                param_values::k_granular_seed_mode_strings[ToInt(seed_mode)]),
-            .is_on = seed_mode != param_values::GranularSeedMode::Random,
-        });
-
-    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer_index);
-    if (btn.button_fired) g.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
-
-    // bounds is a Box so the run lambda is deferred: locals must be captured by value.
-    if (g.imgui.IsPopupMenuOpen(popup_id)) {
-        DoBoxViewport(
-            g.builder,
-            {
-                .run =
-                    [&g, layer_index](GuiBuilder&) {
-                        auto& params = g.engine.processor.main_params;
-                        auto const mode_param =
-                            params.DescribedValue(layer_index, LayerParamIndex::GranularSeedMode);
-                        auto const seed_param =
-                            params.DescribedValue(layer_index, LayerParamIndex::GranularSeed);
-
-                        auto const root = DoBox(g.builder,
-                                                {
-                                                    .layout {
-                                                        .size = layout::k_hug_contents,
-                                                        .contents_padding = {.lr = 8, .tb = 6},
-                                                        .contents_gap = 6,
-                                                        .contents_direction = layout::Direction::Column,
-                                                        .contents_align = layout::Alignment::Start,
-                                                    },
-                                                });
-
-                        auto const seed_greyed_out = mode_param.IntValue<param_values::GranularSeedMode>() ==
-                                                     param_values::GranularSeedMode::Random;
-
-                        auto const do_row = [&](DescribedParamValue const& param,
-                                                bool greyed_out,
-                                                u64 loc_hash = SourceLocationHash()) {
-                            auto const param_row =
-                                DoBox(g.builder,
-                                      {
-                                          .parent = root,
-                                          .id_extra = loc_hash,
-                                          .layout {
-                                              .size = layout::k_hug_contents,
-                                              .contents_gap = k_page_row_gap_x,
-                                              .contents_direction = layout::Direction::Row,
-                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                          },
-                                      });
-                            DoBox(g.builder,
-                                  {
-                                      .parent = param_row,
-                                      .text = param.info.gui_label,
-                                      .text_colours = LiveColStruct(greyed_out ? UiColMap::MidTextDimmed
-                                                                               : UiColMap::MidText),
-                                      .text_justification = TextJustification::CentredRight,
-                                      .layout {
-                                          .size = {70, k_font_body_size},
-                                      },
-                                      .tooltip = FunctionRef<String()> {[&]() -> String {
-                                          return param.info.tooltip;
-                                      }},
-                                  });
-                            return param_row;
-                        };
-
-                        DoMenuParameter(g,
-                                        do_row(mode_param, false),
-                                        mode_param,
-                                        {.width = 140, .label = false});
-
-                        DoIntParameter(g,
-                                       do_row(seed_param, seed_greyed_out),
-                                       seed_param,
-                                       {
-                                           .width = 140,
-                                           .greyed_out = seed_greyed_out,
-                                           .label = false,
-                                       });
-                    },
-                .bounds = btn,
-                .imgui_id = popup_id,
-                .viewport_config = ({
-                    auto cfg = k_default_popup_menu_viewport;
-                    cfg.draw_background = DrawDarkPopupMenuBackground;
-                    cfg;
-                }),
-            });
-    }
-}
-
 static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
@@ -2459,18 +2489,28 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     if (!is_waveform_synth) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
-        DoMenuParameter(g,
-                        page,
-                        param,
+        DoMenuParameter(
+            g,
+            page,
+            param,
+            {
+                .width = layout::k_fill_parent,
+                .label = false,
+                .do_extra_row_buttons = IsGranular(play_mode) ? FunctionRef<void(Box)> {[&](Box row) {
+                    DoSeedButton(
+                        g,
+                        layer_index,
+                        row,
                         {
-                            .width = layout::k_fill_parent,
-                            .label = false,
-                            .do_extra_row_buttons = IsGranular(play_mode)
-                                                        ? FunctionRef<void(Box)> {[&](Box row) {
-                                                              DoGranularSeedButton(g, layer_index, row);
-                                                          }}
-                                                        : FunctionRef<void(Box)> {},
+                            .seed_mode_param = LayerParamIndex::GranularSeedMode,
+                            .seed_param = LayerParamIndex::GranularSeed,
+                            .description =
+                                "Choose whether each note scatters its grains differently or plays back the exact same grains every time."_s,
+                            .greyed_out = false,
                         });
+                }}
+                                                              : FunctionRef<void(Box)> {},
+            });
     }
 
     // Waveform display + info strip
