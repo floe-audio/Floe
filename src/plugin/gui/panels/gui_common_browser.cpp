@@ -209,8 +209,10 @@ static void
 FocusPanel(BrowserKeyboardNavigation& nav, BrowserKeyboardNavigation::Panel panel, bool always_select_first) {
     nav.focused_panel = panel;
     nav.panel_state = {};
-    if (always_select_first || !nav.focused_items[ToInt(nav.focused_panel)])
+    if (always_select_first)
         nav.panel_state.select_next = true;
+    else if (!nav.focused_items[ToInt(nav.focused_panel)])
+        nav.panel_state.select_selected = true;
     nav.panel_just_focused = true;
     g_show_focus_rectangles = true;
 }
@@ -249,15 +251,20 @@ static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav) {
             else if (e.modifiers.IsNone())
                 nav.input.up_presses++;
 
+        for (auto const& e : frame_input.Key(KeyCode::LeftArrow).presses_or_repeats)
+            if (e.modifiers.IsNone()) nav.input.left_presses++;
+
+        for (auto const& e : frame_input.Key(KeyCode::RightArrow).presses_or_repeats)
+            if (e.modifiers.IsNone()) nav.input.right_presses++;
+
         nav.input.page_down_presses = CheckedCast<u8>(key_events(KeyCode::PageDown));
         nav.input.page_up_presses = CheckedCast<u8>(key_events(KeyCode::PageUp));
 
         if (nav.input != BrowserKeyboardNavigation::Input {}) g_show_focus_rectangles = true;
 
-        // There's only 2 panels so right/left or tab/shift-tab do the same thing since we wrap around.
+        // There's only 2 panels so tab and shift-tab do the same thing since we wrap around.
         static_assert(ToInt(BrowserKeyboardNavigation::Panel::Count) == 2 + 1);
-        for (auto const _ : Range(key_events(KeyCode::Tab) + key_events(KeyCode::RightArrow) +
-                                  key_events(KeyCode::LeftArrow))) {
+        for (auto const _ : Range(key_events(KeyCode::Tab))) {
             switch (nav.focused_panel) {
                 case BrowserKeyboardNavigation::Panel::None:
                 case BrowserKeyboardNavigation::Panel::Filters:
@@ -274,7 +281,7 @@ static void BeginFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav) {
 
         if (nav.focused_items[ToInt(nav.focused_panel)] == 0) {
             if (key_events(KeyCode::DownArrow) || key_events(KeyCode::UpArrow) || key_events(KeyCode::PageUp))
-                nav.panel_state.select_next = true;
+                nav.panel_state.select_selected = true;
         }
     }
 }
@@ -299,6 +306,12 @@ static void EndFrame(imgui::Context& imgui, BrowserKeyboardNavigation& nav) {
         if (nav.temp_focused_items != nav.focused_items || nav.panel_state.id_to_select)
             frame_output.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
     }
+
+    // Nothing in the panel is selected, so start from the top next frame.
+    if (Exchange(nav.panel_state.select_selected, false)) {
+        nav.panel_state.select_next = true;
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+    }
 }
 
 struct ItemArgs {
@@ -319,13 +332,25 @@ static void DrawFocusBox(GuiBuilder& builder, Rect relative_rect) {
                                      2);
 }
 
+// 0 means 'nothing' throughout the navigation state, but a caller's id can legitimately be 0: filter values
+// are keyed by enum values that start at zero. Shifting is bijective, so it frees 0 for the sentinel without
+// making any two items collide.
+static constexpr u64 ItemId(u64 id) { return id + 1; }
+
+static bool IsFocused(BrowserKeyboardNavigation const& nav, BrowserKeyboardNavigation::Panel panel, u64 id) {
+    return nav.focused_items[ToInt(panel)] == ItemId(id);
+}
+
+// A click focuses the item's panel as well as the item.
+static void FocusClickedItem(BrowserKeyboardNavigation& nav, BrowserKeyboardNavigation::Panel panel, u64 id) {
+    nav.focused_panel = panel;
+    FocusItem(nav, panel, ItemId(id));
+}
+
 static bool DoItem(GuiBuilder& builder, BrowserKeyboardNavigation& nav, ItemArgs const& args) {
     if (!builder.IsInputAndRenderPass()) return {};
 
-    // 0 means 'nothing' throughout the navigation state, but a caller's id can legitimately be 0: filter
-    // values are keyed by enum values that start at zero. Shifting is bijective, so it frees 0 for the
-    // sentinel without making any two items collide.
-    auto const item_id = args.id + 1;
+    auto const item_id = ItemId(args.id);
 
     auto const panel_index = ToInt(args.panel);
     auto const is_focused = nav.focused_items[panel_index] == item_id;
@@ -337,6 +362,8 @@ static bool DoItem(GuiBuilder& builder, BrowserKeyboardNavigation& nav, ItemArgs
         bool focus_this = false;
 
         if (Exchange(panel.select_next, false)) focus_this = true;
+
+        if (args.is_selected && Exchange(panel.select_selected, false)) focus_this = true;
 
         if (args.is_tab_item && Exchange(panel.select_next_tab_item, false)) focus_this = true;
 
@@ -407,10 +434,7 @@ static bool DoItem(GuiBuilder& builder, BrowserKeyboardNavigation& nav, ItemArgs
         }
     }
 
-    if (args.box.button_fired) {
-        nav.focused_panel = args.panel;
-        FocusItem(nav, args.panel, item_id);
-    }
+    if (args.box.button_fired) FocusClickedItem(nav, args.panel, args.id);
 
     if (is_focused && !nav.temp_focused_items[panel_index]) FocusItem(nav, args.panel, item_id);
 
@@ -2055,11 +2079,15 @@ static void BrowseForward(CommonBrowserState& state) {
 // starts the trail, '›' separates crumbs, and every crumb but the last (where you are now) jumps
 // straight to that level.
 static void DoBrowseBreadcrumb(GuiBuilder& builder,
-                               CommonBrowserState& state,
-                               Box const& parent,
-                               f32 row_width,
-                               Span<BreadcrumbSegment const> segments,
-                               String home_tooltip) {
+                               BrowserPopupContext& context,
+                               BrowserPopupOptions const& options,
+                               f32 row_width) {
+    auto& state = context.state;
+    auto const segments = BreadcrumbSegments(builder.arena, context, options);
+    auto const home_tooltip = (String)fmt::Format(builder.arena,
+                                                  "Back to the starting page, showing all {}.",
+                                                  options.plural_item_type_name);
+
     // Every crumb (clickable or not) shares the same font, size, case and padding. The home crumb is the
     // icon alone.
     DynamicArrayBounded<String, k_max_breadcrumb_segments> upper_labels {};
@@ -2071,7 +2099,6 @@ static void DoBrowseBreadcrumb(GuiBuilder& builder,
     // full-height and edge-to-edge, and a crumb's text sits in the same place whether or not it's a button.
     auto const row = DoBox(builder,
                            {
-                               .parent = parent,
                                .layout {
                                    .size = {layout::k_fill_parent, k_browser_item_height},
                                    .contents_direction = layout::Direction::Row,
@@ -2128,61 +2155,52 @@ static void DoBrowseBreadcrumb(GuiBuilder& builder,
         .active = Col {.c = Col::Text, .dark_mode = true},
     }};
 
-    auto const do_arrow_button =
-        [&](String icon, String tooltip, bool enabled, u64 id_extra, u64 key_nav_id) {
-            auto const button = do_cell(id_extra, enabled, tooltip);
-            do_icon(button,
-                    icon,
-                    enabled ? clickable_colours
-                            : Colours {Col {.c = Col::Subtext0, .dark_mode = true, .alpha = 60}},
-                    k_breadcrumb_arrow_icon_scale);
+    // To the keyboard the bar is one item in the panel's up/down order. Left and right move along its
+    // clickable cells, and Enter fires the one the focus box is on. The cells are gathered as they're drawn
+    // and acted on at the end, once the focused cell is known.
+    struct ClickableCell {
+        enum class Kind : u8 { Back, Forward, Jump };
+        Box box;
+        Kind kind;
+        BreadcrumbAction action {}; // Back and Jump only.
+    };
+    DynamicArrayBounded<ClickableCell, 3 + k_max_breadcrumb_segments> cells {};
 
-            bool fired_via_keyboard = false;
-            if (enabled) {
-                fired_via_keyboard = key_nav::DoItem(builder,
-                                                     state.keyboard_navigation,
-                                                     {
-                                                         .box = button,
-                                                         .panel = BrowserKeyboardNavigation::Panel::Filters,
-                                                         .id = key_nav_id,
-                                                         .is_selected = false,
-                                                         .is_tab_item = true,
-                                                     });
-            }
-            return enabled && (button.button_fired || fired_via_keyboard);
-        };
+    auto const do_arrow_button = [&](String icon, String tooltip, bool enabled, u64 id_extra) {
+        auto const button = do_cell(id_extra, enabled, tooltip);
+        do_icon(button,
+                icon,
+                enabled ? clickable_colours
+                        : Colours {Col {.c = Col::Subtext0, .dark_mode = true, .alpha = 60}},
+                k_breadcrumb_arrow_icon_scale);
+        return button;
+    };
 
     // The last crumb is where you are; the one before it is the level above.
     auto const back_action =
         segments.size >= 2 ? segments[segments.size - 2].action : Optional<BreadcrumbAction> {};
-    if (do_arrow_button(ICON_FA_ARROW_LEFT,
-                        back_action ? "Back up a level"_s : "Already at the top level"_s,
-                        back_action.HasValue(),
-                        HashFnv1a("back"),
-                        HashFnv1a("breadcrumb-back")))
-        BrowseBack(state, *back_action);
+    {
+        auto const button = do_arrow_button(ICON_FA_ARROW_LEFT,
+                                            back_action ? "Back up a level"_s : "Already at the top level"_s,
+                                            back_action.HasValue(),
+                                            HashFnv1a("back"));
+        if (back_action)
+            dyn::Append(cells, {.box = button, .kind = ClickableCell::Kind::Back, .action = *back_action});
+    }
 
-    auto const can_go_forward = state.browse_forward_levels.size != 0;
-    if (do_arrow_button(ICON_FA_ARROW_RIGHT,
-                        can_go_forward ? "Forward to the level you stepped back from"_s
-                                       : "Forward is only available after stepping back"_s,
-                        can_go_forward,
-                        HashFnv1a("forward"),
-                        HashFnv1a("breadcrumb-forward")))
-        BrowseForward(state);
+    {
+        auto const can_go_forward = state.browse_forward_levels.size != 0;
+        auto const button =
+            do_arrow_button(ICON_FA_ARROW_RIGHT,
+                            can_go_forward ? "Forward to the level you stepped back from"_s
+                                           : "Forward is only available after stepping back"_s,
+                            can_go_forward,
+                            HashFnv1a("forward"));
+        if (can_go_forward) dyn::Append(cells, {.box = button, .kind = ClickableCell::Kind::Forward});
+    }
 
-    auto const handle_crumb_click = [&](Box const& crumb, u64 id_extra, BreadcrumbAction action) {
-        auto const fired_via_keyboard =
-            key_nav::DoItem(builder,
-                            state.keyboard_navigation,
-                            {
-                                .box = crumb,
-                                .panel = BrowserKeyboardNavigation::Panel::Filters,
-                                .id = HashFnv1a("breadcrumb") ^ id_extra,
-                                .is_selected = false,
-                                .is_tab_item = true,
-                            });
-        if (crumb.button_fired || fired_via_keyboard) ApplyBreadcrumbAction(state, action);
+    auto const handle_crumb_click = [&](Box const& crumb, BreadcrumbAction action) {
+        dyn::Append(cells, {.box = crumb, .kind = ClickableCell::Kind::Jump, .action = action});
     };
 
     auto const do_separator = [&](u64 id_extra) {
@@ -2226,7 +2244,7 @@ static void DoBrowseBreadcrumb(GuiBuilder& builder,
                       .size = {width.ValueOr(0), k_font_heading3_size},
                   },
               });
-        if (clickable) handle_crumb_click(crumb, id_extra, *action);
+        if (clickable) handle_crumb_click(crumb, *action);
     };
 
     {
@@ -2237,13 +2255,13 @@ static void DoBrowseBreadcrumb(GuiBuilder& builder,
         do_icon(crumb,
                 ICON_FA_HOUSE,
                 clickable ? clickable_colours : Colours {Col {.c = Col::Text, .dark_mode = true}});
-        if (clickable) handle_crumb_click(crumb, 0, *home.action);
+        if (clickable) handle_crumb_click(crumb, *home.action);
     }
 
     // The folded crumb stands in for the hidden levels and jumps to the nearest of them: the parent of the
     // first crumb shown after it.
     if (fit.first_shown_index > 1) {
-        auto const hidden = segments.SubSpan(1, fit.first_shown_index - 1);
+        auto const hidden = segments.Items().SubSpan(1, fit.first_shown_index - 1);
         DynamicArray<char> tooltip {builder.arena};
         dyn::AppendSpan(tooltip, "Back to "_s);
         for (auto const [hidden_index, hidden_segment] : Enumerate(hidden)) {
@@ -2266,6 +2284,54 @@ static void DoBrowseBreadcrumb(GuiBuilder& builder,
                        fit.label_widths[index],
                        segment.action,
                        segment.action ? TooltipString {"Back to this level"_s} : TooltipString {k_nullopt});
+    }
+
+    if (!cells.size) return;
+
+    auto& nav = state.keyboard_navigation;
+    auto const bar_id = HashFnv1a("breadcrumb");
+    constexpr auto k_panel = BrowserKeyboardNavigation::Panel::Filters;
+
+    // The cell count changes with the level, so the remembered cell is kept in range.
+    nav.breadcrumb_cell = CheckedCast<u8>(Min<usize>(nav.breadcrumb_cell, cells.size - 1));
+    if (key_nav::IsFocused(nav, k_panel, bar_id)) {
+        auto const moved_to =
+            Clamp((s32)nav.breadcrumb_cell + nav.input.right_presses - nav.input.left_presses,
+                  0,
+                  (s32)cells.size - 1);
+        nav.input.right_presses = 0;
+        nav.input.left_presses = 0;
+        if (moved_to != nav.breadcrumb_cell) {
+            nav.breadcrumb_cell = CheckedCast<u8>(moved_to);
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+        }
+    }
+    auto const focused_cell = (usize)nav.breadcrumb_cell;
+
+    auto const fired_via_keyboard =
+        key_nav::DoItem(builder,
+                        nav,
+                        {
+                            .box = row,
+                            .rect_for_drawing = BoxRect(builder, cells[focused_cell].box),
+                            .panel = k_panel,
+                            .id = bar_id,
+                            .is_selected = false,
+                            .is_tab_item = true,
+                        });
+
+    for (auto const [index, cell] : Enumerate(cells)) {
+        auto const clicked = cell.box.button_fired;
+        if (!clicked && !(fired_via_keyboard && index == focused_cell)) continue;
+        if (clicked) {
+            key_nav::FocusClickedItem(nav, k_panel, bar_id);
+            nav.breadcrumb_cell = CheckedCast<u8>(index);
+        }
+        switch (cell.kind) {
+            case ClickableCell::Kind::Back: BrowseBack(state, cell.action); break;
+            case ClickableCell::Kind::Forward: BrowseForward(state); break;
+            case ClickableCell::Kind::Jump: ApplyBreadcrumbAction(state, cell.action); break;
+        }
     }
 }
 
@@ -4622,20 +4688,37 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                           .debug_name = "filters",
                       });
 
-        // Browse mode's breadcrumb is a menu row like the ones below it, so it runs edge to edge. Filter mode
-        // has nothing above its tree: its search and match controls live in the toolbar at the bottom.
+        // Browse mode's breadcrumb is a menu row like the ones above it, so it runs edge to edge. Filter mode
+        // has nothing below its tree: its search and match controls live in the toolbar at the bottom.
+        //
+        // Keyboard focus moves in the order items are registered, and a child viewport runs after its
+        // parent's pass. So the breadcrumb is a viewport of its own, queued after the rows' viewport, and
+        // the arrow keys reach it after the last row, where it is.
         if (in_browse_mode) {
             DoModalDivider(builder,
                            filters_column,
                            {.horizontal = true, .subtle = true, .dark_mode = true, .snap_to_start = true});
-            DoBrowseBreadcrumb(builder,
-                               context.state,
-                               filters_panel,
-                               size.filters_col_width,
-                               BreadcrumbSegments(builder.arena, context, options),
-                               fmt::Format(builder.arena,
-                                           "Back to the starting page, showing all {}.",
-                                           options.plural_item_type_name));
+            DoBoxViewport(builder,
+                          {
+                              .run =
+                                  [&, size](GuiBuilder& builder) {
+                                      DoBrowseBreadcrumb(builder, context, options, size.filters_col_width);
+                                  },
+                              .bounds = DoBox(builder,
+                                              {
+                                                  .parent = filters_panel,
+                                                  .layout {
+                                                      .size = {layout::k_fill_parent, k_browser_item_height},
+                                                  },
+                                              }),
+                              .imgui_id = builder.imgui.MakeId("breadcrumb"),
+                              .viewport_config = ({
+                                  auto cfg = k_default_modal_subviewport;
+                                  cfg.scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never;
+                                  cfg;
+                              }),
+                              .debug_name = "breadcrumb",
+                          });
         }
 
         // The controls stop short of the row's end so the resize grip overlaying the corner never sits on

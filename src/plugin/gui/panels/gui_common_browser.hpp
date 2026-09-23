@@ -195,6 +195,7 @@ struct BrowserKeyboardNavigation {
         u64 id_to_select {};
         bool select_next_tab_item {}; // Doesn't wrap around.
         bool select_next {}; // Wraps around.
+        bool select_selected {}; // The panel's selected item, else the first.
         u8 select_next_at {}; // Doesn't wrap around.
     };
 
@@ -206,11 +207,14 @@ struct BrowserKeyboardNavigation {
         u8 page_up_presses {};
         u8 next_section_presses {};
         u8 previous_section_presses {};
+        u8 left_presses {};
+        u8 right_presses {};
     };
 
     Panel focused_panel {Panel::Items};
     bool panel_just_focused {};
     PanelState panel_state {};
+    u8 breadcrumb_cell {}; // Which of the breadcrumb's clickable cells left/right have landed on.
 
     Array<u64, ToInt(Panel::Count)> focused_items {};
     Array<u64, ToInt(Panel::Count)> temp_focused_items {};
