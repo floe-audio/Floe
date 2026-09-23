@@ -10,21 +10,41 @@
 
 // Images for a particular sample library.
 struct LibraryImages {
-    struct LoadingBackgrounds {
-        Optional<ImageBytes> background {};
-        Optional<ImageBytes> blurred_background {};
+    enum class LoadFailure : u8 {
+        Missing, // The library doesn't have this image. Not retried.
+        Unavailable, // The library couldn't be found or read at the time, e.g. mid-rescan. Retried later.
     };
 
-    using FutureIcon = Future<Optional<ImageBytes>>;
-    using FutureBackgrounds = Future<Optional<LibraryImages::LoadingBackgrounds>>;
+    struct LoadedIcon {
+        Optional<ImageBytes> icon {};
+        Optional<LoadFailure> failure {};
+    };
+
+    struct LoadedBackgrounds {
+        Optional<ImageBytes> background {};
+        Optional<ImageBytes> blurred_background {};
+        Optional<LoadFailure> failure {};
+    };
+
+    using FutureIcon = Future<LoadedIcon>;
+    using FutureBackgrounds = Future<LoadedBackgrounds>;
+
+    struct LoadState {
+        Optional<LoadFailure> failure {};
+        TimePoint retry_time {};
+        u32 generation_at_start {};
+    };
 
     enum class ImageType : u8 { Icon, Background, BlurredBackground, Count };
 
     Optional<ImageID> icon {};
     Optional<ImageID> background {};
     Optional<ImageID> blurred_background {};
-    bool icon_missing {};
-    bool background_missing {};
+    LoadState icon_load {};
+    LoadState backgrounds_load {};
+
+    // Incremented on invalidation. Results from loads that started before it are discarded.
+    u32 generation {};
 
     // Futures cannot be moved around (for example when a hash table resizes), so they are allocated elsewhere
     // and we have pointers to them.

@@ -30,16 +30,27 @@ static Optional<sample_lib::LibraryPath> LibraryImagePath(sample_lib::Library co
     return {};
 }
 
-static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryId lib_id,
+using ImagePixelsOrFailure = ValueOrError<ImageBytes, LibraryImages::LoadFailure>;
+
+static ImagePixelsOrFailure ImagePixelsFromLibrary(sample_lib::LibraryId lib_id,
                                                    LibraryImageType type,
                                                    sample_lib_server::Server& server,
                                                    ArenaAllocator& scratch_arena,
-                                                   Allocator& result_allocator) {
+                                                   Allocator& result_allocator,
+                                                   bool log_failure) {
+    auto const filename = FilenameForLibraryImageType(type);
+
     auto lib = sample_lib_server::FindLibraryRetained(server, lib_id);
     DEFER { lib.Release(); };
-    if (!lib) return {};
-
-    auto const filename = FilenameForLibraryImageType(type);
+    if (!lib) {
+        if (log_failure)
+            Log(ModuleName::Gui,
+                LogLevel::Warning,
+                "{} not found when loading {}",
+                sample_lib::LookupLibraryIdString(lib_id).ValueOr("Unknown library"_s),
+                filename);
+        return LibraryImages::LoadFailure::Unavailable;
+    }
 
     if (lib->file_format_specifics.tag == sample_lib::FileFormat::Mdata) {
         // Back in the Mirage days, some libraries didn't embed their own images, but instead got them from a
@@ -61,18 +72,25 @@ static Optional<ImageBytes> ImagePixelsFromLibrary(sample_lib::LibraryId lib_id,
 
     auto const path_in_lib = LibraryImagePath(*lib, type);
 
-    auto const err = [&](String middle, Optional<ErrorCode> error) -> Optional<ImageBytes> {
-        Log(ModuleName::Gui, LogLevel::Warning, "{} {} {}, code: {}", lib->name, middle, filename, error);
-        return k_nullopt;
+    auto const err = [&](String middle,
+                         Optional<ErrorCode> error,
+                         LibraryImages::LoadFailure failure) -> ImagePixelsOrFailure {
+        if (log_failure)
+            Log(ModuleName::Gui, LogLevel::Warning, "{} {} {}, code: {}", lib->name, middle, filename, error);
+        return failure;
     };
 
-    if (!path_in_lib) return err("does not have", k_nullopt);
+    if (!path_in_lib) return err("does not have", k_nullopt, LibraryImages::LoadFailure::Missing);
 
-    auto reader = TRY_OR(lib->create_file_reader(*lib, *path_in_lib), return err("error opening", error));
+    auto reader = TRY_OR(lib->create_file_reader(*lib, *path_in_lib),
+                         return err("error opening", error, LibraryImages::LoadFailure::Unavailable));
 
-    auto const file_data = TRY_OR(reader.ReadOrFetchAll(scratch_arena), return err("error reading", error));
+    auto const file_data =
+        TRY_OR(reader.ReadOrFetchAll(scratch_arena),
+               return err("error reading", error, LibraryImages::LoadFailure::Unavailable));
 
-    auto pixels = TRY_OR(DecodeImage(file_data, result_allocator), return err("error decoding", error));
+    auto pixels = TRY_OR(DecodeImage(file_data, result_allocator),
+                         return err("error decoding", error, LibraryImages::LoadFailure::Missing));
 
     ASSERT(pixels.size.width && pixels.size.height, "ImageBytes cannot be empty");
 
@@ -96,31 +114,41 @@ static Optional<ImageBytes> FloeIconPixels(ArenaAllocator& result_allocator) {
 
 static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
                           imgui::Context const&,
-                          Future<Optional<ImageBytes>>& result,
+                          LibraryImages::FutureIcon& result,
                           sample_lib_server::Server& server,
                           ThreadPool& thread_pool,
-                          FloeInstanceIndex instance_index) {
+                          FloeInstanceIndex instance_index,
+                          bool log_failure) {
     thread_pool.Async(
         result,
         [lib_id = lib_id,
          &server,
          instance_index,
-         desired_icon_size =
-             CheckedCast<u16>(Ceil(WwToPixels(k_library_icon_standard_size)) * 2)]() -> Optional<ImageBytes> {
+         log_failure,
+         desired_icon_size = CheckedCast<u16>(Ceil(WwToPixels(k_library_icon_standard_size)) *
+                                              2)]() -> LibraryImages::LoadedIcon {
             DEFER { RequestGuiUpdate(instance_index); };
 
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
-            auto pixels = UsesFloeIcon(lib_id) ? FloeIconPixels(scratch_arena)
-                                               : ImagePixelsFromLibrary(lib_id,
-                                                                        LibraryImageType::Icon,
-                                                                        server,
-                                                                        scratch_arena,
-                                                                        scratch_arena);
-            if (!pixels) return k_nullopt;
-            auto const result = ResizeImage(*pixels, desired_icon_size, ImageBytesAllocator()).OrElse([&] {
-                return pixels->Clone(ImageBytesAllocator());
+            auto const pixels = ({
+                ImagePixelsOrFailure p = LibraryImages::LoadFailure::Missing;
+                if (UsesFloeIcon(lib_id)) {
+                    if (auto floe_icon = FloeIconPixels(scratch_arena)) p = *floe_icon;
+                } else {
+                    p = ImagePixelsFromLibrary(lib_id,
+                                               LibraryImageType::Icon,
+                                               server,
+                                               scratch_arena,
+                                               scratch_arena,
+                                               log_failure);
+                }
+                p;
             });
-            return result;
+            if (pixels.HasError()) return {.failure = pixels.Error()};
+            auto const source = pixels.ReleaseValue();
+            return {.icon = ResizeImage(source, desired_icon_size, ImageBytesAllocator()).OrElse([&] {
+                return source.Clone(ImageBytesAllocator());
+            })};
         },
         []() {
             // no cleanup
@@ -129,12 +157,13 @@ static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
 
 static void AsyncLoadBackgrounds(sample_lib::LibraryId lib_id,
                                  imgui::Context const&,
-                                 Future<Optional<LibraryImages::LoadingBackgrounds>>& result,
+                                 LibraryImages::FutureBackgrounds& result,
                                  bool reload_background,
                                  bool reload_blurred_background,
                                  sample_lib_server::Server& server,
                                  ThreadPool& thread_pool,
-                                 FloeInstanceIndex instance_index) {
+                                 FloeInstanceIndex instance_index,
+                                 bool log_failure) {
     BlurredImageBackgroundOptions const blur_options {
         .downscale_factor = Clamp01(29.13f / 100.0f),
         .brightness_scaling_exponent = 62.0f / 100.0f,
@@ -153,35 +182,41 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryId lib_id,
          blur_options,
          &server,
          instance_index,
-         window_width = GuiIo().in.window_size.width]() -> Optional<LibraryImages::LoadingBackgrounds> {
+         log_failure,
+         window_width = GuiIo().in.window_size.width]() -> LibraryImages::LoadedBackgrounds {
             DEFER { RequestGuiUpdate(instance_index); };
 
             ArenaAllocator scratch_arena {PageAllocator::Instance()};
 
-            Optional<ImageBytes> pixels;
-            if (lib_id == k_default_background_lib_id) {
-                auto const image_data = EmbeddedDefaultBackground();
-                pixels = DecodeImage({image_data.data, image_data.size}, scratch_arena).Value();
-            } else {
-                pixels = ImagePixelsFromLibrary(lib_id,
-                                                LibraryImageType::Background,
-                                                server,
-                                                scratch_arena,
-                                                scratch_arena);
-            }
+            auto const pixels_or_failure = ({
+                ImagePixelsOrFailure p = LibraryImages::LoadFailure::Missing;
+                if (lib_id == k_default_background_lib_id) {
+                    auto const image_data = EmbeddedDefaultBackground();
+                    p = DecodeImage({image_data.data, image_data.size}, scratch_arena).Value();
+                } else {
+                    p = ImagePixelsFromLibrary(lib_id,
+                                               LibraryImageType::Background,
+                                               server,
+                                               scratch_arena,
+                                               scratch_arena,
+                                               log_failure);
+                }
+                p;
+            });
 
-            if (!pixels) return k_nullopt;
+            if (pixels_or_failure.HasError()) return {.failure = pixels_or_failure.Error()};
+            auto const pixels = pixels_or_failure.ReleaseValue();
 
-            LibraryImages::LoadingBackgrounds result {};
+            LibraryImages::LoadedBackgrounds result {};
 
             // If the image is quite a lot larger than we need, resize it down to avoid storing a huge
             // image on the GPU
             auto const background =
-                (f32)pixels->size.width > (f32)window_width * 1.3f
-                    ? ResizeImage(*pixels, window_width, ImageBytesAllocator()).OrElse([&] {
-                          return pixels->Clone(ImageBytesAllocator());
+                (f32)pixels.size.width > (f32)window_width * 1.3f
+                    ? ResizeImage(pixels, window_width, ImageBytesAllocator()).OrElse([&] {
+                          return pixels.Clone(ImageBytesAllocator());
                       })
-                    : pixels->Clone(ImageBytesAllocator());
+                    : pixels.Clone(ImageBytesAllocator());
 
             if (reload_background) result.background = background;
 
@@ -227,8 +262,16 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
             load = true;
         }
 
-        if (load)
-            AsyncLoadIcon(lib_id, imgui, *images.loading_icon, server, server.thread_pool, instance_index);
+        if (load) {
+            images.icon_load.generation_at_start = images.generation;
+            AsyncLoadIcon(lib_id,
+                          imgui,
+                          *images.loading_icon,
+                          server,
+                          server.thread_pool,
+                          instance_index,
+                          !images.icon_load.failure.HasValue());
+        }
 
         images.needs_reload.Clear(ToInt(LibraryImages::ImageType::Icon));
     }
@@ -243,7 +286,8 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
             load = true;
         }
 
-        if (load)
+        if (load) {
+            images.backgrounds_load.generation_at_start = images.generation;
             AsyncLoadBackgrounds(lib_id,
                                  imgui,
                                  *images.loading_backgrounds,
@@ -251,7 +295,9 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                  images.needs_reload.Get(ToInt(LibraryImages::ImageType::BlurredBackground)),
                                  server,
                                  server.thread_pool,
-                                 instance_index);
+                                 instance_index,
+                                 !images.backgrounds_load.failure.HasValue());
+        }
 
         images.needs_reload.ClearBits(k_background_type_bits);
     }
@@ -259,30 +305,33 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
     return images;
 }
 
+static void Invalidate(LibraryImages& imgs, Renderer& renderer) {
+    ++imgs.generation;
+    imgs.icon_load.failure = k_nullopt;
+    imgs.backgrounds_load.failure = k_nullopt;
+    if (imgs.icon) renderer.DestroyImageID(*imgs.icon);
+    if (imgs.background) renderer.DestroyImageID(*imgs.background);
+    if (imgs.blurred_background) renderer.DestroyImageID(*imgs.blurred_background);
+}
+
 void InvalidateLibraryImages(LibraryImagesTable& table,
                              sample_lib::LibraryId library_id,
                              Renderer& renderer) {
     ASSERT(g_is_logical_main_thread);
 
-    if (auto imgs = table.table.Find(library_id)) {
-        imgs->icon_missing = false;
-        imgs->background_missing = false;
-        if (imgs->icon) renderer.DestroyImageID(*imgs->icon);
-        if (imgs->background) renderer.DestroyImageID(*imgs->background);
-        if (imgs->blurred_background) renderer.DestroyImageID(*imgs->blurred_background);
-    }
+    if (auto imgs = table.table.Find(library_id)) Invalidate(*imgs, renderer);
 }
 
 void InvalidateAllLibraryImages(LibraryImagesTable& table, Renderer& renderer) {
     ASSERT(g_is_logical_main_thread);
 
-    for (auto [_, imgs, _] : table.table) {
-        imgs.icon_missing = false;
-        imgs.background_missing = false;
-        if (imgs.icon) renderer.DestroyImageID(*imgs.icon);
-        if (imgs.background) renderer.DestroyImageID(*imgs.background);
-        if (imgs.blurred_background) renderer.DestroyImageID(*imgs.blurred_background);
-    }
+    for (auto [_, imgs, _] : table.table)
+        Invalidate(imgs, renderer);
+}
+
+static void FreeLoadedBackgrounds(LibraryImages::LoadedBackgrounds const& backgrounds) {
+    if (backgrounds.background) backgrounds.background->Free(ImageBytesAllocator());
+    if (backgrounds.blurred_background) backgrounds.blurred_background->Free(ImageBytesAllocator());
 }
 
 void Shutdown(LibraryImagesTable& table) {
@@ -290,53 +339,78 @@ void Shutdown(LibraryImagesTable& table) {
 
     for (auto [_, imgs, _] : table.table) {
         if (imgs.loading_icon) {
-            if (auto const bytes_opt_ptr = imgs.loading_icon->ShutdownAndRelease(60000u)) {
-                if (auto const bytes_optional = *bytes_opt_ptr) bytes_optional->Free(ImageBytesAllocator());
-            }
+            if (auto const loaded = imgs.loading_icon->ShutdownAndRelease(60000u))
+                if (loaded->icon) loaded->icon->Free(ImageBytesAllocator());
         }
 
         if (imgs.loading_backgrounds) {
-            if (auto const bgs_ptr = imgs.loading_backgrounds->ShutdownAndRelease(60000u)) {
-                if (auto const bgs = *bgs_ptr) {
-                    if (bgs->background) bgs->background->Free(ImageBytesAllocator());
-                    if (bgs->blurred_background) bgs->blurred_background->Free(ImageBytesAllocator());
-                }
-            }
+            if (auto const loaded = imgs.loading_backgrounds->ShutdownAndRelease(60000u))
+                FreeLoadedBackgrounds(*loaded);
         }
     }
+}
+
+static void
+RecordLoadFailure(LibraryImages::LoadState& state, LibraryImages::LoadFailure failure, u64 wakeup_id) {
+    state.failure = failure;
+    switch (failure) {
+        case LibraryImages::LoadFailure::Missing: break;
+        case LibraryImages::LoadFailure::Unavailable:
+            state.retry_time = TimePoint::Now() + 1.0;
+            GuiIo().out.SetTimedWakeup(wakeup_id, state.retry_time);
+            break;
+    }
+}
+
+static bool ShouldLoad(LibraryImages::LoadState const& state) {
+    if (!state.failure) return true;
+    switch (*state.failure) {
+        case LibraryImages::LoadFailure::Missing: return false;
+        case LibraryImages::LoadFailure::Unavailable: return TimePoint::Now() >= state.retry_time;
+    }
+    PanicIfReached();
+    return false;
 }
 
 void BeginFrame(LibraryImagesTable& table) {
     ASSERT(g_is_logical_main_thread);
 
-    for (auto [_, imgs, _] : table.table) {
+    auto& renderer = *GuiIo().in.renderer;
+
+    for (auto [lib_id, imgs, _] : table.table) {
         if (imgs.loading_icon) {
-            if (auto const result = imgs.loading_icon->TryReleaseResult()) {
-                auto const icon_pixels = *result;
-                if (icon_pixels) {
-                    imgs.icon = CreateImageIdChecked(*GuiIo().in.renderer, *icon_pixels);
-                    icon_pixels->Free(ImageBytesAllocator());
-                } else
-                    imgs.icon_missing = true;
+            if (auto result = imgs.loading_icon->TryReleaseResult()) {
+                if (imgs.icon_load.generation_at_start != imgs.generation) {
+                    if (result->icon) result->icon->Free(ImageBytesAllocator());
+                } else if (result->icon) {
+                    imgs.icon = CreateImageIdChecked(renderer, *result->icon);
+                    result->icon->Free(ImageBytesAllocator());
+                    imgs.icon_load.failure = k_nullopt;
+                } else {
+                    ASSERT(result->failure.HasValue());
+                    RecordLoadFailure(imgs.icon_load, *result->failure, Hash(lib_id) ^ SourceLocationHash());
+                }
             }
         }
 
         if (imgs.loading_backgrounds) {
-            if (auto const result = imgs.loading_backgrounds->TryReleaseResult()) {
-                auto const backgrounds = *result;
-                if (backgrounds) {
-                    if (backgrounds->background) {
-                        imgs.background =
-                            CreateImageIdChecked(*GuiIo().in.renderer, *backgrounds->background);
-                        backgrounds->background->Free(ImageBytesAllocator());
-                    }
-                    if (backgrounds->blurred_background) {
-                        imgs.blurred_background =
-                            CreateImageIdChecked(*GuiIo().in.renderer, *backgrounds->blurred_background);
-                        backgrounds->blurred_background->Free(ImageBytesAllocator());
-                    }
+            if (auto result = imgs.loading_backgrounds->TryReleaseResult()) {
+                if (imgs.backgrounds_load.generation_at_start != imgs.generation) {
+                    FreeLoadedBackgrounds(*result);
+                } else if (result->failure) {
+                    RecordLoadFailure(imgs.backgrounds_load,
+                                      *result->failure,
+                                      Hash(lib_id) ^ SourceLocationHash());
                 } else {
-                    imgs.background_missing = true;
+                    if (result->background) {
+                        imgs.background = CreateImageIdChecked(renderer, *result->background);
+                        result->background->Free(ImageBytesAllocator());
+                    }
+                    if (result->blurred_background) {
+                        imgs.blurred_background = CreateImageIdChecked(renderer, *result->blurred_background);
+                        result->blurred_background->Free(ImageBytesAllocator());
+                    }
+                    imgs.backgrounds_load.failure = k_nullopt;
                 }
             }
         }
@@ -345,15 +419,14 @@ void BeginFrame(LibraryImagesTable& table) {
         // defer it to the point where we know that the images are actually needed.
         {
             imgs.needs_reload.ClearAll();
-            auto& graphics = *GuiIo().in.renderer;
 
-            if (!graphics.ImageIdIsValid(imgs.icon) && !imgs.icon_missing)
+            if (!renderer.ImageIdIsValid(imgs.icon) && ShouldLoad(imgs.icon_load))
                 imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Icon));
 
-            if (!imgs.background_missing) {
-                if (!graphics.ImageIdIsValid(imgs.background))
+            if (ShouldLoad(imgs.backgrounds_load)) {
+                if (!renderer.ImageIdIsValid(imgs.background))
                     imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::Background));
-                if (!graphics.ImageIdIsValid(imgs.blurred_background))
+                if (!renderer.ImageIdIsValid(imgs.blurred_background))
                     imgs.needs_reload.Set(ToInt(LibraryImages::ImageType::BlurredBackground));
             }
         }

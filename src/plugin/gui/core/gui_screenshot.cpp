@@ -32,6 +32,8 @@ static bool ScreenshotPreconditionsMet(GuiState& g) {
         for (auto const& [_, imgs, _] : g.library_images.table) {
             if (imgs.loading_icon && imgs.loading_icon->IsInProgress()) return false;
             if (imgs.loading_backgrounds && imgs.loading_backgrounds->IsInProgress()) return false;
+            if (imgs.icon_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
+            if (imgs.backgrounds_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
         }
         for (auto const& [_, w, _] : g.waveform_images.table)
             if (w.loading_pixels && w.loading_pixels->IsInProgress()) return false;
