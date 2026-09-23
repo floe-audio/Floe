@@ -2700,27 +2700,21 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                                  });
 
     if (!skip_heading && (heading || folder)) {
-        auto const heading_container = DoBox(
-            builder,
-            {
-                .parent = container,
-                .background_fill_auto_hot_active_overlay = true,
-                .layout {
-                    .size = {layout::k_fill_parent, k_browser_item_height},
-                    .contents_padding = {.lr = k_browser_row_pad_x},
-                    .contents_gap = k_browser_row_pad_x,
-                    .contents_direction = layout::Direction::Row,
-                    .contents_align = layout::Alignment::Start,
-                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                },
-                .tooltip =
-                    folder ? TooltipString {"Collapse or expand this folder.\n\nTip: hold " MODIFIER_KEY_NAME
-                                            " and press the up or down arrow to jump between folders."_s}
-                           : k_nullopt,
-                .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                .tooltip_placement = tooltip_placement,
-                .button_behaviour = imgui::ButtonConfig {},
-            });
+        auto const heading_container =
+            DoBox(builder,
+                  {
+                      .parent = container,
+                      .background_fill_auto_hot_active_overlay = true,
+                      .layout {
+                          .size = {layout::k_fill_parent, k_browser_item_height},
+                          .contents_padding = {.lr = k_browser_row_pad_x},
+                          .contents_gap = k_browser_row_pad_x,
+                          .contents_direction = layout::Direction::Row,
+                          .contents_align = layout::Alignment::Start,
+                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                      },
+                      .button_behaviour = imgui::ButtonConfig {},
+                  });
         heading_box = heading_container;
 
         auto const heading_fired_via_keyboard =
@@ -2766,10 +2760,10 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
                   });
         }
 
+        DynamicArray<char> buf {builder.arena};
+        String text = heading.ValueOr({});
+        Optional<Box> text_box {};
         {
-            DynamicArray<char> buf {builder.arena};
-
-            String text = heading.ValueOr({});
 
             if (capitalise) {
                 text = UppercaseAscii(builder.arena, text);
@@ -2805,19 +2799,44 @@ BrowserSection::Result BrowserSection::Do(GuiBuilder& builder) {
             }
 
             if (text.size) {
-                DoBox(builder,
-                      {
-                          .parent = heading_container,
-                          .text = text,
-                          .font = FontType::Heading3,
-                          .text_colours = Col {.c = Col::Subtext0, .dark_mode = dark_mode},
-                          .text_overflow = TextOverflowType::ShowDotsOnRight,
-                          .parent_dictates_hot_and_active = true,
-                          .layout {
-                              .size = {layout::k_fill_parent, k_font_heading3_size},
-                          },
-                      });
+                text_box = DoBox(builder,
+                                 {
+                                     .parent = heading_container,
+                                     .text = text,
+                                     .font = FontType::Heading3,
+                                     .text_colours = Col {.c = Col::Subtext0, .dark_mode = dark_mode},
+                                     .text_overflow = TextOverflowType::ShowDotsOnRight,
+                                     .parent_dictates_hot_and_active = true,
+                                     .layout {
+                                         .size = {layout::k_fill_parent, k_font_heading3_size},
+                                     },
+                                 });
             }
+        }
+
+        // Done once the text is laid out, so an ellipsised heading can show its full text.
+        if (auto const heading_r = BoxRect(builder, heading_container)) {
+            auto const text_is_truncated = ({
+                auto const text_r = text_box ? BoxRect(builder, *text_box) : k_nullopt;
+                text_r&& builder.fonts.atlas[ToInt(FontType::Heading3)]->CalcTextSize(text, {}).x > text_r->w;
+            });
+            auto const window_r = builder.imgui.ViewportRectToWindowRect(*heading_r);
+            Tooltip(
+                builder,
+                heading_container.imgui_id,
+                window_r,
+                {
+                    .value_popup = text_is_truncated ? TooltipString {text} : k_nullopt,
+                    .tooltip =
+                        folder
+                            ? TooltipString {"Collapse or expand this folder.\n\nTip: hold " MODIFIER_KEY_NAME
+                                             " and press the up or down arrow to jump between folders."_s}
+                            : k_nullopt,
+                    .avoid_r = Rect::MakeRectThatEnclosesRects(
+                        window_r,
+                        builder.imgui.curr_viewport->root_viewport->visible_bounds),
+                    .placement = tooltip_placement,
+                });
         }
 
         if (is_collapsed) return State::Collapsed;
