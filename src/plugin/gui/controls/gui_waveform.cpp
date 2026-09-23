@@ -167,7 +167,6 @@ struct PlayModeFeatures {
     bool show_loop_controls;
     bool show_crossfade;
     bool show_grain_position_indicator;
-    bool show_voice_cursors;
 };
 
 static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
@@ -179,7 +178,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_loop_controls = true,
                 .show_crossfade = true,
                 .show_grain_position_indicator = false,
-                .show_voice_cursors = true,
             };
         case param_values::PlayMode::GranularPlayback:
             return {
@@ -188,7 +186,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_loop_controls = true,
                 .show_crossfade = true,
                 .show_grain_position_indicator = false,
-                .show_voice_cursors = true,
             };
         case param_values::PlayMode::GranularFixed:
             return {
@@ -197,7 +194,6 @@ static PlayModeFeatures GetPlayModeFeatures(param_values::PlayMode play_mode) {
                 .show_loop_controls = false,
                 .show_crossfade = false,
                 .show_grain_position_indicator = true,
-                .show_voice_cursors = false,
             };
         case param_values::PlayMode::Count: PanicIfReached();
     }
@@ -971,15 +967,21 @@ void DoWaveformElement(GuiState& g,
     } else {
         auto const& params = g.engine.processor.main_params;
         auto const features = ({
-            auto f = options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode)
-                                                  : PlayModeFeatures {.show_voice_cursors = true};
+            auto f =
+                options.play_mode.HasValue() ? GetPlayModeFeatures(*options.play_mode) : PlayModeFeatures {};
             if (layer.IsSliced()) f.show_sample_offset = false;
-            if (params.BoolValue(layer.index, LayerParamIndex::LfoOn) &&
-                params.IntValue<param_values::LfoDestination>(layer.index, LayerParamIndex::LfoDestination) ==
-                    param_values::LfoDestination::GranularPosition)
-                f.show_voice_cursors = true;
             f;
         });
+
+        // In GranularFixed the playhead sits at the start of the spread region unless the LFO moves it, so
+        // voice cursors would add nothing.
+        auto const show_voice_cursors =
+            layer.instrument_id.tag != InstrumentType::Sampler ||
+            params.IntValue<param_values::PlayMode>(layer.index, LayerParamIndex::PlayMode) !=
+                param_values::PlayMode::GranularFixed ||
+            (params.BoolValue(layer.index, LayerParamIndex::LfoOn) &&
+             params.IntValue<param_values::LfoDestination>(layer.index, LayerParamIndex::LfoDestination) ==
+                 param_values::LfoDestination::GranularPosition);
 
         auto const is_multisample = IsMultisampledInstrument(layer);
 
@@ -1247,9 +1249,8 @@ void DoWaveformElement(GuiState& g,
                                  col);
         }
 
-        // Voice cursors. Hidden in GranularFixed unless the LFO modulates position: otherwise the playhead
-        // there is just the Position param, which the spread region already shows.
-        if (has_active_voices && features.show_voice_cursors) {
+        // Voice cursors.
+        if (has_active_voices && show_voice_cursors) {
             for (auto const voice_index : Range(k_num_voices)) {
                 auto const marker = voice_waveform_markers[voice_index];
                 if (!marker.intensity || marker.layer_index != layer.index) continue;
