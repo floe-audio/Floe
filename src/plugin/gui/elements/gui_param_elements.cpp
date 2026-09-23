@@ -772,7 +772,8 @@ Span<f32 const> VoiceBlips01(GuiState& g,
                     break;
                 }
                 case param_values::MpeDestination::Filter:
-                case param_values::MpeDestination::Timbre: {
+                case param_values::MpeDestination::Timbre:
+                case param_values::MpeDestination::LfoAmount: {
                     if (!marker.expression_active) break;
                     auto const press_dest =
                         params.DescribedValue(marker.layer_index, LayerParamIndex::MpePressDestination)
@@ -790,12 +791,20 @@ Span<f32 const> VoiceBlips01(GuiState& g,
                         value_01 = (f32)marker.slide_dest_value / 255.0f;
 
                     if (value_01) {
-                        if (destination == param_values::MpeDestination::Filter)
-                            linear =
-                                dest_knob_param.info.LineariseValue(sv_filter::LinearToHz(*value_01), true)
-                                    .ValueOr(0);
-                        else
-                            linear = *value_01;
+                        switch (destination) {
+                            case param_values::MpeDestination::Filter:
+                                linear = dest_knob_param.info
+                                             .LineariseValue(sv_filter::LinearToHz(*value_01), true)
+                                             .ValueOr(0);
+                                break;
+                            case param_values::MpeDestination::LfoAmount:
+                                linear = MapFrom01(*value_01, -1, 1);
+                                break;
+                            case param_values::MpeDestination::Timbre: linear = *value_01; break;
+                            case param_values::MpeDestination::Off:
+                            case param_values::MpeDestination::Volume:
+                            case param_values::MpeDestination::Count: break;
+                        }
                     }
                     break;
                 }

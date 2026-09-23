@@ -1473,16 +1473,22 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                          },
                                      });
 
-        DoKnobParameter(g,
-                        knobs_row,
-                        params.DescribedValue(layer_index, LayerParamIndex::LfoAmount),
-                        {
-                            .width = k_knob_width,
-                            .style_system = GuiStyleSystem::MidPanel,
-                            .greyed_out = greyed_out,
-                            .bidirectional = true,
-                            .inactive_reason = "LFO is off"_s,
-                        });
+        {
+            auto const amount_param = params.DescribedValue(layer_index, LayerParamIndex::LfoAmount);
+            DoKnobParameter(
+                g,
+                knobs_row,
+                amount_param,
+                {
+                    .width = k_knob_width,
+                    .style_system = GuiStyleSystem::MidPanel,
+                    .greyed_out = greyed_out,
+                    .bidirectional = true,
+                    .inactive_reason = "LFO is off"_s,
+                    .voice_blips_01 =
+                        VoiceBlips01(g, layer_index, param_values::MpeDestination::LfoAmount, amount_param),
+                });
+        }
 
         // Rate column
         auto const rate_col = DoBox(g.builder,
@@ -1937,6 +1943,11 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                                 s = "Filter is off — turn the filter on to hear MPE modulation"_s;
                                             break;
 
+                                        case param_values::MpeDestination::LfoAmount:
+                                            if (!params.BoolValue(layer_index, LayerParamIndex::LfoOn))
+                                                s = "LFO is off — turn the LFO on to hear MPE modulation"_s;
+                                            break;
+
                                         case param_values::MpeDestination::Off:
                                         case param_values::MpeDestination::Volume:
                                         case param_values::MpeDestination::Count: break;
@@ -1971,7 +1982,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                                 mpe_row,
                                                 dest_param,
                                                 {
-                                                    .width = 90,
+                                                    .width = 110,
                                                     .greyed_out = !mpe_enabled,
                                                     .label = false,
                                                 });

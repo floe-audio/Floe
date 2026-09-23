@@ -105,6 +105,7 @@ struct Voice {
     MidiChannelNote midi_key_trigger = {};
 
     LFO lfo = {};
+    OnePoleLowPassFilter<f32> lfo_amount_smoother = {};
 
     OnePoleLowPassFilter<f32x2> gain_smoother;
     OnePoleLowPassFilter<f32> stereo_width_smoother = {};

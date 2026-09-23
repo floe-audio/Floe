@@ -188,6 +188,12 @@ f32 ExpressionAdjustedTimbre01(f32 timbre_01, Voice const& v) {
     return Clamp01(timbre_01 + ExpressionOffset(v, param_values::MpeDestination::Timbre));
 }
 
+static f32 ExpressionAdjustedLfoAmount(Voice const& v) {
+    return Clamp(v.controller->lfo.amount + ExpressionOffset(v, param_values::MpeDestination::LfoAmount),
+                 -1.0f,
+                 1.0f);
+}
+
 static f32 ExpressionVolumeGain(Voice const& v) {
     if (!v.per_note_expression_active) return 1;
     auto const& mpe = v.controller->mpe;
@@ -212,6 +218,7 @@ static f32 EffectiveMpeDestinationValueForGui(Voice const& v, param_values::MpeD
                            ExpressionOffset(v, param_values::MpeDestination::Filter));
         case param_values::MpeDestination::Timbre:
             return ExpressionAdjustedTimbre01(*v.pool.master_timbre_01, v);
+        case param_values::MpeDestination::LfoAmount: return (ExpressionAdjustedLfoAmount(v) + 1) / 2;
         case param_values::MpeDestination::Count: break;
     }
     return 0;
@@ -532,6 +539,7 @@ void StartVoice(VoicePool& pool,
     voice.filter_mix_smoother.Reset();
     voice.filter_resonance_smoother.Reset();
     voice.stereo_width_smoother.Reset();
+    voice.lfo_amount_smoother.Reset();
 
     voice.track_expression = params.track_expression;
     voice.per_note_expression_active =
@@ -789,7 +797,7 @@ struct VoiceProcessor {
 
         Array<f32, k_block_size_max> lfo_amounts_buffer;
         auto lfo_amounts = Span<f32> {lfo_amounts_buffer}.SubSpan(0, num_frames);
-        FillLfoBuffer(voice, lfo_amounts);
+        FillLfoBuffer(voice, lfo_amounts, audio_context);
 
         FillBufferWithSampleData(voice, output, lfo_amounts, audio_context);
 
@@ -938,8 +946,7 @@ struct VoiceProcessor {
 
         auto pitch_ratio = s.pitch_ratio;
         if (HasPitchLfo(voice)) {
-            auto const pitch_addition_in_semitones =
-                (f64)current_lfo_value * (f64)voice.controller->lfo.amount * k_lfo_range_semitones;
+            auto const pitch_addition_in_semitones = (f64)current_lfo_value * k_lfo_range_semitones;
             pitch_ratio *= Exp2Fast(pitch_addition_in_semitones / 12.0);
         }
         return s.pitch_ratio_smoother.LowPass(pitch_ratio, (f64)context.one_pole_smoothing_cutoff_0_2ms);
@@ -1149,8 +1156,7 @@ struct VoiceProcessor {
 
             if (is_fixed) {
                 auto position = (f64)ctrl.granular.position;
-                if (has_grain_pos_lfo)
-                    position = Clamp(position + ((f64)lfo_amounts[0] * (f64)ctrl.lfo.amount * 0.5), 0.0, 1.0);
+                if (has_grain_pos_lfo) position = Clamp(position + ((f64)lfo_amounts[0] * 0.5), 0.0, 1.0);
                 sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
             }
 
@@ -1159,10 +1165,8 @@ struct VoiceProcessor {
 
             for (auto const frame_index : Range(buffer.size)) {
                 if (is_fixed && has_grain_pos_lfo) {
-                    auto position = Clamp((f64)ctrl.granular.position +
-                                              ((f64)lfo_amounts[frame_index] * (f64)ctrl.lfo.amount * 0.5),
-                                          0.0,
-                                          1.0);
+                    auto position =
+                        Clamp((f64)ctrl.granular.position + ((f64)lfo_amounts[frame_index] * 0.5), 0.0, 1.0);
                     sampler.playhead.frame_pos = position * (f64)(num_frames - 1);
                 }
                 if (!is_fixed && PlaybackEnded(sampler.playhead, num_frames)) {
@@ -1560,9 +1564,6 @@ struct VoiceProcessor {
         // LFO parameters
         auto const has_volume_lfo = HasVolumeLfo(voice);
         auto const has_pan_lfo = HasPanLfo(voice);
-        auto const lfo_amp = (has_volume_lfo || has_pan_lfo) ? voice.controller->lfo.amount : 0.0f;
-        auto const lfo_base = has_volume_lfo ? (1.0f - (Fabs(lfo_amp) / 2.0f)) : 1.0f;
-        auto const lfo_half_amp = lfo_amp / 2.0f;
 
         // Per-note expression gain (press/slide routed to Volume); block-constant, smoothed per frame-pair.
         auto const expression_gain_target = ExpressionVolumeGain(voice);
@@ -1581,8 +1582,8 @@ struct VoiceProcessor {
             f32 vol_lfo1 = 1.0f;
             f32 vol_lfo2 = 1.0f;
             if (has_volume_lfo) {
-                vol_lfo1 = lfo_base + (lfo_amounts[frame] * lfo_half_amp);
-                vol_lfo2 = (frame_p1_is_valid) ? lfo_base + (lfo_amounts[frame_p1] * lfo_half_amp) : vol_lfo1;
+                vol_lfo1 = 1.0f + lfo_amounts[frame];
+                vol_lfo2 = (frame_p1_is_valid) ? 1.0f + lfo_amounts[frame_p1] : vol_lfo1;
             }
 
             auto const expression_gain =
@@ -1598,10 +1599,10 @@ struct VoiceProcessor {
             auto pan_pos1 = voice.controller->pan_pos;
             auto pan_pos2 = pan_pos1;
             if (has_pan_lfo) {
-                pan_pos1 += (lfo_amounts[frame] * lfo_amp);
+                pan_pos1 += lfo_amounts[frame];
                 pan_pos1 = Clamp(pan_pos1, -1.0f, 1.0f);
                 if (frame_p1_is_valid) {
-                    pan_pos2 += (lfo_amounts[frame_p1] * lfo_amp);
+                    pan_pos2 += lfo_amounts[frame_p1];
                     pan_pos2 = Clamp(pan_pos2, -1.0f, 1.0f);
                 }
             }
@@ -1679,7 +1680,7 @@ struct VoiceProcessor {
                            ((env - 0.5f) * voice.controller->fil_env_amount);
                 auto res = voice.controller->sv_filter_resonance;
 
-                if (has_filter_lfo) cut += (lfo_amounts[frame_index] * voice.controller->lfo.amount) / 2;
+                if (has_filter_lfo) cut += lfo_amounts[frame_index] / 2;
 
                 cut += expression_cutoff_offset;
 
@@ -1716,10 +1717,25 @@ struct VoiceProcessor {
         }
     }
 
-    static void FillLfoBuffer(Voice& voice, Span<f32> lfo_amounts) {
+    // Scaled by the smoothed LFO Amount (including any MPE expression) so destinations can apply values
+    // directly. For the Volume destination the value is the gain offset from full level, since the volume
+    // LFO dips by the amount's magnitude and so needs the per-frame smoothed amount too.
+    static void FillLfoBuffer(Voice& voice, Span<f32> lfo_amounts, AudioProcessingContext const& context) {
         ZoneScoped;
-        for (auto& amount : lfo_amounts)
-            amount = -voice.lfo.Tick();
+        auto const target_amount = ExpressionAdjustedLfoAmount(voice);
+        if (HasVolumeLfo(voice)) {
+            for (auto& value : lfo_amounts) {
+                auto const amount =
+                    voice.lfo_amount_smoother.LowPass(target_amount, context.one_pole_smoothing_cutoff_10ms);
+                value = ((-voice.lfo.Tick() * amount) - Fabs(amount)) / 2.0f;
+            }
+        } else {
+            for (auto& value : lfo_amounts) {
+                auto const amount =
+                    voice.lfo_amount_smoother.LowPass(target_amount, context.one_pole_smoothing_cutoff_10ms);
+                value = -voice.lfo.Tick() * amount;
+            }
+        }
     }
 };
 

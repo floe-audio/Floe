@@ -39,6 +39,7 @@ The preset, Instrument and IR browsers have been redesigned. See the [browsers d
 ### Other changes
 - Improve performance of the audio engine to be easier on the CPU, up to 2.5x faster in heavy granular use cases
 - Add a seed option to granular layers and random LFO shapes <FAIcon icon="fa-solid fa-seedling" />, so a preset can save the exact grain scatter or LFO movement. Choose Fixed for the same pattern on every note, or Fixed Per Key for a repeatable variation on each key
+- Add LFO Amount as an MPE press and slide target, so you can dig into a key to bring in vibrato or tremolo on just that note
 - Add 'Swap with Left/Right' options to the right-click menu of Layers (the instrument selector button) and Macros (the knobs). So that you can reorder them easily. Swapping a layer also migrates the macro assignments so they now point to the new location.
 - Add a display to the Distortion and Bitcrush effects showing a representitive preview of the current shape
 - Improve the Bit Crush effect. Bits and Sample Rate parameter are now smooth and continuous allowing for more granularity. The Bits parameter also now focuses on a more useful range of around 8 to 3 - where most of the audible changes happen. These changes required new parameters and therefore run through our Legacy Parameters system where necessary (loading DAW projects).
@@ -46,6 +47,7 @@ The preset, Instrument and IR browsers have been redesigned. See the [browsers d
 - Add a graph showing the High-pass filter's response, draggable to set the cutoff - now matching what the Convolution Reverb does
 - Improve how granular lines are drawn on the UI - each grain now fades in/out based on their real envelope from the Smooth parameter
 - Improve how waveform instruments are displayed (sine, white noise). Now, the 'play mode', reverse and 'loop mode' controls are hidden, since a waveform has always ignored them anyways. Additionally, the red line voice markers now appear on the waveform display in a more useful way, placed left to right by pitch.
+- Smooth changes to the LFO Amount, so moving or automating it while notes play doesn't step audibly
 - Fix the Ring Mod (44.1k) legacy distortion type modulating 4 times too fast
 - Fix voice persisting in Granular Playback mode even when the playback has finished
 - Fix tooltips persisting when the mouse leaves Floe's window

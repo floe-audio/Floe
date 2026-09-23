@@ -630,6 +630,7 @@ enum class MpeDestination : u8 { // never reorder
     Volume,
     Filter,
     Timbre,
+    LfoAmount,
     Count,
 };
 constexpr auto k_mpe_destination_strings = ArrayT<String>({
@@ -637,6 +638,7 @@ constexpr auto k_mpe_destination_strings = ArrayT<String>({
     "Volume",
     "Filter",
     "Timbre",
+    "LFO Amount",
 });
 static_assert(k_mpe_destination_strings.size == ToInt(MpeDestination::Count));
 constexpr String MpeDestinationDescription(MpeDestination destination) {
@@ -648,6 +650,8 @@ constexpr String MpeDestinationDescription(MpeDestination destination) {
             return "Move the layer's filter cutoff per note, so you can open one note up while the others stay dark. The layer's filter needs to be switched on for this to be heard."_s;
         case MpeDestination::Timbre:
             return "Sweep each note through the Instrument's crossfade layers, the same thing the master Timbre knob does but note by note. Only Instruments built with crossfade layers respond."_s;
+        case MpeDestination::LfoAmount:
+            return "Change how strongly the layer's LFO moves each note, so you can dig into a key to bring in vibrato or tremolo on just that note. The layer's LFO needs to be switched on for this to be heard."_s;
         case MpeDestination::Count: break;
     }
     return {};

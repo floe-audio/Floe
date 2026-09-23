@@ -89,7 +89,7 @@ The Low Frequency Oscillator (LFO) can modulate various parameters to add moveme
 - **Shape**: choose the LFO waveform shape.
 - **Seed** <FAIcon icon="fa-solid fa-seedling" />: shown next to the Shape menu when a random shape (Random Steps or Random Glide) is selected. _Random_ gives every note a fresh random pattern. _Fixed_ makes every note move through exactly the same pattern, chosen by the **Seed** number, so the movement is saved with the preset. _Fixed Per Key_ gives each key its own repeatable pattern. In Free mode, a note that joins already-sounding notes follows their pattern.
 - **Mode**: switch between _Retrigger_ — new notes always start with the LFO at the beginning of its cycle — and _Free_ — a new note joins in wherever the layer's sounding notes have reached in the cycle, so all notes share the same LFO phase.
-- **Amount**: control the intensity of the LFO effect on the target parameter.
+- **Amount**: control the intensity of the LFO effect on the target parameter. If MPE press or slide is routed to LFO amount (see the [Config tab](#config-tab)), a red line marks each active voice's current amount.
 - **Time**: adjust the LFO rate. When Sync is enabled, this is synced to the host tempo (e.g., 1/4 note); when disabled, it operates in Hz.
 - **Sync**: toggle to sync the LFO speed to the host tempo.
 
@@ -119,6 +119,6 @@ The Config tab contains MIDI and playback behaviour settings for this layer.
 - **Pitch Bend Range**: set the pitch range in semitones for the MIDI pitch wheel.
 - **Keytrack**: when enabled, tunes the sound to match the key played. When disabled, the sound always plays at its root pitch regardless of the MIDI note. This is not typically useful if the instrument is multi-sampled.
 - **Monophonic**: select the voice behaviour when notes overlap. _Off_ (polyphonic): multiple voices can play simultaneously. _Retrigger_ (monophonic): new notes stop previous notes, triggering their volume envelope Release section. _Latch_ (monophonic): the first note plays until all keys are released; new notes are ignored — useful for drones and textural elements.
-- **MPE**: opens a menu where you can choose what per-note press (channel pressure) and slide (CC74) control on this layer — volume, filter cutoff, or timbre — along with an amount; negative amounts invert the response. Visit the [MIDI](./midi#mpe) page for full details about MPE.
+- **MPE**: opens a menu where you can choose what per-note press (channel pressure) and slide (CC74) control on this layer — volume, filter cutoff, timbre, or LFO amount — along with an amount; negative amounts invert the response. Visit the [MIDI](./midi#mpe) page for full details about MPE.
 - **Range** and **Key Fade**: visit the [key ranges](./key-ranges) page for full details about these settings.
 - **Velocity to volume curve**: graphical control showing how MIDI velocity affects the layer's volume. A straight line from bottom-left to top-right means there's a 1:1 relationship with velocity and volume. The curve can be adjusted to create different velocity response characteristics. Visit the [MIDI](./midi) page for full details about editing velocity curves.
