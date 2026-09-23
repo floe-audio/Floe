@@ -122,6 +122,11 @@ static void LoadIr(IrBrowserContext const& context, IrBrowserState& state, IrCur
 }
 
 void LoadAdjacentIr(IrBrowserContext const& context, IrBrowserState& state, SearchDirection direction) {
+    if (WaitForScanBeforeStep(state.common_state,
+                              context.frame_context.libraries_scanning,
+                              StepForDirection(direction)))
+        return;
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     auto const ir_id = context.engine.processor.convo.ir_id;
 
     if (ir_id) {
@@ -135,6 +140,11 @@ void LoadAdjacentIr(IrBrowserContext const& context, IrBrowserState& state, Sear
 }
 
 void LoadRandomIr(IrBrowserContext const& context, IrBrowserState& state) {
+    if (WaitForScanBeforeStep(state.common_state,
+                              context.frame_context.libraries_scanning,
+                              BrowserStep::Random))
+        return;
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     auto const first =
         IterateIr(context, state, {.lib_index = 0, .ir_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
@@ -299,6 +309,16 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
 }
 
 void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserState& state) {
+    if (state.common_state.step_waiting_for_scan && !context.frame_context.libraries_scanning) {
+        auto const step = *state.common_state.step_waiting_for_scan;
+        state.common_state.step_waiting_for_scan = k_nullopt;
+        switch (step) {
+            case BrowserStep::Previous: LoadAdjacentIr(context, state, SearchDirection::Backward); break;
+            case BrowserStep::Next: LoadAdjacentIr(context, state, SearchDirection::Forward); break;
+            case BrowserStep::Random: LoadRandomIr(context, state); break;
+        }
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     auto const& libs = context.frame_context.libraries;
@@ -443,7 +463,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
             }),
             .results_width = 230,
             .filters_col_width = 230,
-            .store_id = HashFnv1a("ir-browser"),
+            .store_id = state.k_store_id,
             .flush_with_opener = true,
             .item_type_name = "impulse response",
             .plural_item_type_name = "impulse responses",

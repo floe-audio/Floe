@@ -146,6 +146,7 @@ static void LoadInstrument(InstBrowserContext const& context,
 
 static Optional<InstrumentCursor> PickRandomInstrumentCursor(InstBrowserContext const& context,
                                                              InstBrowserState& state) {
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     auto const first =
         IterateInstrument(context, state, {.lib_index = 0, .inst_index = 0}, SearchDirection::Forward, true);
     if (!first) return k_nullopt;
@@ -175,6 +176,7 @@ static Optional<InstrumentCursor> PickRandomInstrumentCursor(InstBrowserContext 
 void LoadAdjacentInstrument(InstBrowserContext const& context,
                             InstBrowserState& state,
                             SearchDirection direction) {
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     switch (context.layer.instrument_id.tag) {
         case InstrumentType::WaveformSynth: {
             auto waveform_index = ToInt(context.layer.instrument_id.Get<WaveformType>());
@@ -196,11 +198,19 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
             break;
         }
         case InstrumentType::None: {
+            if (WaitForScanBeforeStep(state.common_state,
+                                      context.frame_context.libraries_scanning,
+                                      StepForDirection(direction)))
+                break;
             if (auto const cursor = IterateInstrument(context, state, {0, 0}, direction, true))
                 LoadInstrument(context, state, *cursor, true);
             break;
         }
         case InstrumentType::Sampler: {
+            if (WaitForScanBeforeStep(state.common_state,
+                                      context.frame_context.libraries_scanning,
+                                      StepForDirection(direction)))
+                break;
             auto const inst_id = context.layer.instrument_id.Get<sample_lib::InstrumentId>();
 
             if (auto const cursor = CurrentCursor(context, inst_id)) {
@@ -213,6 +223,10 @@ void LoadAdjacentInstrument(InstBrowserContext const& context,
 }
 
 void LoadRandomInstrument(InstBrowserContext const& context, InstBrowserState& state) {
+    if (WaitForScanBeforeStep(state.common_state,
+                              context.frame_context.libraries_scanning,
+                              BrowserStep::Random))
+        return;
     if (auto const cursor = PickRandomInstrumentCursor(context, state))
         LoadInstrument(context, state, *cursor, true);
 }
@@ -468,6 +482,17 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
 }
 
 void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBrowserState& state) {
+    if (state.common_state.step_waiting_for_scan && !context.frame_context.libraries_scanning) {
+        auto const step = *state.common_state.step_waiting_for_scan;
+        state.common_state.step_waiting_for_scan = k_nullopt;
+        switch (step) {
+            case BrowserStep::Previous:
+                LoadAdjacentInstrument(context, state, SearchDirection::Backward);
+                break;
+            case BrowserStep::Next: LoadAdjacentInstrument(context, state, SearchDirection::Forward); break;
+            case BrowserStep::Random: LoadRandomInstrument(context, state); break;
+        }
+    }
 
     bool const is_browser_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-full"_s);
     bool const is_browser_menu_screenshot = context.layer.index == 0 && IsScreenshotRequest("browser-menu"_s);
@@ -709,7 +734,7 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
             }),
             .results_width = 300,
             .filters_col_width = 250,
-            .store_id = HashFnv1a("instrument-browser"),
+            .store_id = state.k_store_id,
             .flush_with_opener = true,
             .item_type_name = "instrument",
             .plural_item_type_name = "instruments",

@@ -7,4 +7,5 @@
 struct GuiFrameContext {
     sample_lib_server::LibrariesSpan libraries;
     sample_lib_server::LibrariesTable lib_table;
+    bool libraries_scanning {}; // Taken before the libraries, so false means they're complete.
 };

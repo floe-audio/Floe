@@ -13,6 +13,7 @@
 
 struct IrBrowserState {
     static constexpr u64 k_panel_id = SourceLocationHash();
+    static constexpr u64 k_store_id = HashFnv1a("ir-browser");
     CommonBrowserState common_state = [] {
         CommonBrowserState s {};
         InitCommonFilters(s);

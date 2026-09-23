@@ -232,6 +232,9 @@ void LoadAdjacentPreset(PresetBrowserContext const& context,
                         PresetBrowserState& state,
                         SearchDirection direction) {
     ASSERT(context.init);
+    if (WaitForScanBeforeStep(state.common_state, context.folders_scanning, StepForDirection(direction)))
+        return;
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     if (auto const current = ResolveCurrentLoadedCursor(context)) {
         if (auto const next = IteratePreset(context, state, *current, direction, false))
             LoadPreset(context, state, *next, true);
@@ -243,6 +246,8 @@ void LoadAdjacentPreset(PresetBrowserContext const& context,
 
 void LoadRandomPreset(PresetBrowserContext const& context, PresetBrowserState& state) {
     ASSERT(context.init);
+    if (WaitForScanBeforeStep(state.common_state, context.folders_scanning, BrowserStep::Random)) return;
+    ApplyBrowserSettings(state.common_state, context.prefs, context.persistent_store, state.k_store_id);
     auto const first =
         IteratePreset(context, state, {.folder_index = 0, .preset_index = 0}, SearchDirection::Forward, true);
     if (!first) return;
@@ -783,6 +788,22 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                 dyn::Append(state.common_state.expanded_filter_headers, id);
     }
 
+    if (state.common_state.step_waiting_for_scan) {
+        context.Init(builder.arena);
+        DEFER { context.Deinit(); };
+        if (!context.folders_scanning) {
+            auto const step = *state.common_state.step_waiting_for_scan;
+            state.common_state.step_waiting_for_scan = k_nullopt;
+            switch (step) {
+                case BrowserStep::Previous:
+                    LoadAdjacentPreset(context, state, SearchDirection::Backward);
+                    break;
+                case BrowserStep::Next: LoadAdjacentPreset(context, state, SearchDirection::Forward); break;
+                case BrowserStep::Random: LoadRandomPreset(context, state); break;
+            }
+        }
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) return;
 
     context.Init(builder.arena);
@@ -1165,7 +1186,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
             }),
             .results_width = 320,
             .filters_col_width = 320,
-            .store_id = HashFnv1a("preset-browser"),
+            .store_id = state.k_store_id,
             .flush_with_opener = true,
             .item_type_name = "preset",
             .plural_item_type_name = "presets",

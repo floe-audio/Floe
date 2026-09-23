@@ -346,6 +346,8 @@ void GuiUpdate(GuiState& g) {
     GuiFrameContext frame_context;
     DEFER { sample_lib_server::ReleaseAll(frame_context.libraries); };
     {
+        auto const libraries_scanning =
+            sample_lib_server::AreLibrariesScanning(g.shared_engine_systems.sample_library_server);
         auto libs = sample_lib_server::AllLibrariesRetained(g.shared_engine_systems.sample_library_server,
                                                             g.scratch_arena);
         Sort(libs, [](auto const& a, auto const& b) { return a->name < b->name; });
@@ -353,6 +355,7 @@ void GuiUpdate(GuiState& g) {
         frame_context = {
             .libraries = libs,
             .lib_table = libs_table,
+            .libraries_scanning = libraries_scanning,
         };
     }
 
@@ -546,8 +549,19 @@ void GuiUpdate(GuiState& g) {
         DoIrBrowserPopup(g.builder, context, g.ir_browser_state);
     }
 
+    auto const browser_step_waiting_for_scan = ({
+        bool waiting = g.preset_browser_state.common_state.step_waiting_for_scan.HasValue() ||
+                       g.ir_browser_state.common_state.step_waiting_for_scan.HasValue();
+        for (auto const& state : g.inst_browser_state)
+            if (state.common_state.step_waiting_for_scan) waiting = true;
+        waiting;
+    });
+    // Keep polling so the step happens as soon as the scan finishes, not on the next input.
+    if (browser_step_waiting_for_scan)
+        GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+
     DoLoadingOverlay(g.builder,
-                     g.engine.pending_state_change.HasValue(),
+                     g.engine.pending_state_change.HasValue() || browser_step_waiting_for_scan,
                      g.engine.loading_default_preset ? "Loading Default Preset"_s : "Loading…"_s);
 
     {

@@ -2057,6 +2057,34 @@ bool DecodeBrowsePlace(Span<u8 const> data, CommonBrowserState& state) {
     return true;
 }
 
+void ApplyBrowserSettings(CommonBrowserState& state,
+                          prefs::Preferences& preferences,
+                          persistent_store::Store& store,
+                          u64 store_id) {
+    SetBrowserMode(state,
+                   ({
+                       BrowserMode mode;
+                       if (IsAnyScreenshotInProgress())
+                           mode = IsScreenshotRequest("browser-browse"_s) ? BrowserMode::Browse
+                                                                          : BrowserMode::Filter;
+                       else
+                           mode = (BrowserMode)prefs::GetInt(preferences, BrowserModePrefsDescriptor());
+                       mode;
+                   }),
+                   IsAnyScreenshotInProgress()
+                       ? FilterMode::MultipleAnd
+                       : (FilterMode)prefs::GetInt(preferences, BrowserFilterModePrefsDescriptor()));
+
+    // Screenshots never touch the store, so the docs images don't depend on it and don't change it.
+    if (!IsAnyScreenshotInProgress() && !Exchange(state.browse_place_loaded_from_store, true) &&
+        state.mode == BrowserMode::Browse) {
+        auto const stored = persistent_store::Get(store, k_browser_browse_place_store_id ^ store_id);
+        if (stored.tag == persistent_store::GetResult::Found)
+            DecodeBrowsePlace(stored.Get<persistent_store::Value const*>()->data, state);
+        state.browse_place_saved_hash = BrowseNavigationHash(state);
+    }
+}
+
 static void BrowseBack(CommonBrowserState& state, BreadcrumbAction action) {
     if (state.browse_forward_levels.size == state.browse_forward_levels.Capacity())
         dyn::Remove(state.browse_forward_levels, 0);
@@ -4383,30 +4411,8 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
 
     if (builder.imgui.modal_just_opened == context.browser_id) context.state.scroll_to_show_current = true;
 
-    SetBrowserMode(
-        context.state,
-        ({
-            BrowserMode mode;
-            if (IsAnyScreenshotInProgress())
-                mode = IsScreenshotRequest("browser-browse"_s) ? BrowserMode::Browse : BrowserMode::Filter;
-            else
-                mode = (BrowserMode)prefs::GetInt(context.preferences, BrowserModePrefsDescriptor());
-            mode;
-        }),
-        IsAnyScreenshotInProgress()
-            ? FilterMode::MultipleAnd
-            : (FilterMode)prefs::GetInt(context.preferences, BrowserFilterModePrefsDescriptor()));
-
-    // Screenshots never touch the store, so the docs images don't depend on it and don't change it. The
-    // place is restored before the checks below so a stale one is corrected the same way as any other.
-    if (!IsAnyScreenshotInProgress() && !Exchange(context.state.browse_place_loaded_from_store, true) &&
-        context.state.mode == BrowserMode::Browse) {
-        auto const stored =
-            persistent_store::Get(context.store, k_browser_browse_place_store_id ^ options.store_id);
-        if (stored.tag == persistent_store::GetResult::Found)
-            DecodeBrowsePlace(stored.Get<persistent_store::Value const*>()->data, context.state);
-        context.state.browse_place_saved_hash = BrowseNavigationHash(context.state);
-    }
+    // Before the checks below so a stale restored place is corrected the same way as any other.
+    ApplyBrowserSettings(context.state, context.preferences, context.store, options.store_id);
 
     auto& browse = context.state.browse;
 

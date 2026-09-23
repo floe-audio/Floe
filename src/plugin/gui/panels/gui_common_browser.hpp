@@ -44,6 +44,9 @@ constexpr u64 k_untagged_key = ToInt(TagType::Count);
 
 enum class SearchDirection : u8 { Forward, Backward };
 
+// The prev/next/random buttons.
+enum class BrowserStep : u8 { Previous, Next, Random };
+
 enum class LoopControl : u8 { Continue, Break };
 
 enum class FilterMode : u8 {
@@ -334,6 +337,9 @@ struct CommonBrowserState {
     bool scroll_to_show_current {}; // Pending request; see ScrollBrowserToShowCurrent.
     bool flash_current_when_shown {}; // Opening the browser just scrolls; the locate button also flashes.
     bool items_still_loading {}; // Set by the browser each frame: a scan is still adding items.
+    // A step clicked while the items were still being scanned; done once the scan finishes, so it steps
+    // from the current item rather than through a partial list.
+    Optional<BrowserStep> step_waiting_for_scan {};
     RightClickMenuState right_click_menu_state {};
     BrowserKeyboardNavigation keyboard_navigation {};
 
@@ -462,6 +468,30 @@ Span<u8 const> EncodeBrowsePlace(CommonBrowserState const& state, ArenaAllocator
 // False leaves the state untouched: the data is truncated, from another version, or names a filter, tag
 // or category the state doesn't have.
 bool DecodeBrowsePlace(Span<u8 const> data, CommonBrowserState& state);
+
+// Applies the mode from the preferences and, the first time, Browse mode's place from the store. Call before
+// anything reads the selection, not just when drawing the browser: the prev/next/random buttons can be used
+// before the browser has ever been opened.
+void ApplyBrowserSettings(CommonBrowserState& state,
+                          prefs::Preferences& preferences,
+                          persistent_store::Store& store,
+                          u64 store_id);
+
+// True if the step has to wait for the scan, in which case it's stored for the browser to do once the scan
+// finishes.
+inline bool WaitForScanBeforeStep(CommonBrowserState& state, bool items_scanning, BrowserStep step) {
+    if (!items_scanning) return false;
+    state.step_waiting_for_scan = step;
+    return true;
+}
+
+inline BrowserStep StepForDirection(SearchDirection direction) {
+    switch (direction) {
+        case SearchDirection::Forward: return BrowserStep::Next;
+        case SearchDirection::Backward: return BrowserStep::Previous;
+    }
+    PanicIfReached();
+}
 
 inline void InitCommonFilters(CommonBrowserState& state) {
     dyn::Append(state.filters, FilterSelection::Hashes("Library"_s));
