@@ -307,7 +307,9 @@ struct AudioProcessor {
     // Written by main thread, read by audio thread.
     Atomic<PerformanceControls::Settings> performance_settings {};
 
-    u64 master_random_seed {}; // Audio thread only. Deterministic PRNG advanced per voice start.
+    // Audio thread only. Deterministic PRNG advanced per voice start and by the arpeggiators. Never change
+    // the number or order of draws from this; see the backwards-compatibility note where voices start.
+    u64 master_random_seed {};
     bool prev_transport_playing {}; // Audio thread only. Tracks transport state transitions.
 
     bool activated = false;

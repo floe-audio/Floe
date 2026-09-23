@@ -414,6 +414,12 @@ void StartVoice(VoicePool& pool,
     ASSERT(sample_rate != 0);
 
     // Derive this voice's random seed from the master seed for reproducible randomness.
+    //
+    // Backwards compatibility: DAW projects rely on a seed reproducing the same performance across Floe
+    // versions, so the number and order of draws from the master seed and the voice's seed must never
+    // change. A new feature that needs randomness should derive its own seed by hashing a value that's
+    // already drawn, not by drawing again. A feature that overrides randomness (such as a fixed seed) must
+    // still make the usual draws and replace the results, otherwise every later draw shifts.
     ASSERT(pool.master_random_seed);
     {
         auto const s1 = RandomU64(*pool.master_random_seed);
@@ -2196,9 +2202,119 @@ TEST_CASE(TestVoiceProcessingNonTypicalBufferSizes) {
     return k_success;
 }
 
+// Pins the exact random draws so a refactor can't silently change them. If this fails, the change breaks
+// backwards compatibility for existing DAW projects; see the note where voices start.
+TEST_CASE(TestVoiceRandomDrawsAreStable) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+    fix.controller.play_mode = param_values::PlayMode::Standard;
+    fix.controller.vol_env_on = false;
+
+    auto const active_voice = [&]() -> Voice& {
+        for (auto& v : fix.pool->EnumerateActiveVoices())
+            return v;
+        PanicIfReached();
+    };
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {.root_key = 60};
+    auto audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    SUBCASE("voice start") {
+        fix.master_random_seed = 1234;
+        StartTestSamplerVoice(fix, region, audio_data);
+        auto const& voice = active_voice();
+        CHECK_EQ(voice.random_seed[0], 790109403u);
+        CHECK_EQ(voice.random_seed[1], 3138188827u);
+        CHECK_EQ(voice.random_seed[2], 1307600165u);
+        CHECK_EQ(voice.random_seed[3], 2546442551u);
+        CHECK_EQ(voice.lfo.random_state, 1880770214u);
+        CHECK_EQ(fix.master_random_seed, 15755400384260045073ull);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("voice start inheriting free-running LFO state") {
+        fix.master_random_seed = 1234;
+        VoiceStartParams::SamplerParams sampler_params {};
+        dyn::Append(sampler_params.voice_sample_params,
+                    VoiceStartParams::SamplerParams::Region {
+                        .region = region,
+                        .audio_data = audio_data,
+                        .amp = 1.0f,
+                    });
+        StartVoice(*fix.pool,
+                   fix.controller,
+                   {
+                       .initial_pitch = 0,
+                       .midi_key_trigger = {.note = 60, .channel = 0},
+                       .note_num = 60,
+                       .note_vel = 0.8f,
+                       .lfo_start_state = {.random_state = 99},
+                       .num_frames_before_starting = 0,
+                       .params = Move(sampler_params),
+                       .disable_vol_env = true,
+                   },
+                   fix.context);
+        CHECK_EQ(active_voice().lfo.random_state, 99u);
+        CHECK_EQ(fix.master_random_seed, 4354685564936846588ull);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("granular grain draws") {
+        fix.master_random_seed = 1234;
+        fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
+        fix.controller.granular = {
+            .speed = 1.0f,
+            .density = 0.7f,
+            .length_ms = 30.0f,
+            .spread = 0.3f,
+            .smoothing = 0.5f,
+            .random_pan = 0.5f,
+            .random_detune = 0.5f,
+            .random_direction = 0.5f,
+        };
+        StartTestSamplerVoice(fix, region, audio_data);
+        for (auto _ : Range(4))
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
+        auto const& voice = active_voice();
+        CHECK_EQ(voice.random_seed[0], 1914549177u);
+        CHECK_EQ(voice.random_seed[1], 1999904904u);
+        CHECK_EQ(voice.random_seed[2], 2969056295u);
+        CHECK_EQ(voice.random_seed[3], 1358338367u);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    SUBCASE("white noise draws") {
+        fix.master_random_seed = 1234;
+        StartVoice(*fix.pool,
+                   fix.controller,
+                   {
+                       .initial_pitch = 0,
+                       .midi_key_trigger = {.note = 60, .channel = 0},
+                       .note_num = 60,
+                       .note_vel = 0.8f,
+                       .lfo_start_state = {},
+                       .num_frames_before_starting = 0,
+                       .params = VoiceStartParams::WaveformParams {.type = WaveformType::WhiteNoiseStereo,
+                                                                   .amp = 1.0f},
+                       .disable_vol_env = true,
+                   },
+                   fix.context);
+        ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
+        auto const& voice = active_voice();
+        CHECK_EQ(voice.random_seed[0], 2708405840u);
+        CHECK_EQ(voice.random_seed[1], 4237695296u);
+        CHECK_EQ(voice.random_seed[2], 1282332051u);
+        CHECK_EQ(voice.random_seed[3], 3663055939u);
+        fix.pool->EndAllVoicesInstantly();
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterVoiceTests) {
     REGISTER_TEST(TestEqualPanGains);
     REGISTER_TEST(TestVoiceProcessingSampler);
     REGISTER_TEST(TestVoiceProcessingGranular);
     REGISTER_TEST(TestVoiceProcessingNonTypicalBufferSizes);
+    REGISTER_TEST(TestVoiceRandomDrawsAreStable);
 }

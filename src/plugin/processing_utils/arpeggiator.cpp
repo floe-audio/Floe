@@ -1194,8 +1194,50 @@ TEST_CASE(TestAutoRateSharedShiftPreservesCrossLayerRatios) {
     return k_success;
 }
 
+// Pins the exact random draws so a refactor can't silently change them. If this fails, the change breaks
+// backwards compatibility for existing DAW projects: they rely on a seed reproducing the same performance
+// across Floe versions.
+TEST_CASE(TestArpRandomDrawsAreStable) {
+    sample_lib::Region const* const no_sliced_region = nullptr;
+
+    ArpeggiatorState arp {.audio {
+        .any_notes_held = true,
+        .type = param_values::ArpMode::Played,
+        .on = true,
+        .note_order = param_values::ArpNoteOrder::Random,
+        .rate = SyncedTimes::_1_16,
+        .humanise = 0.5f,
+    }};
+
+    AudioProcessingContext context {
+        .sample_rate = 44100,
+        .process_block_size_max = 512,
+        .tempo = 120,
+        .host = k_test_host,
+    };
+    for (auto const note : Array {60, 64, 67, 71})
+        context.midi_note_state.NoteOn({.note = (u7)note, .channel = 0}, 0.8f);
+
+    u64 random_seed = 1234;
+    DynamicArrayBounded<u32, 64> note_on_values {};
+    for (auto _ : Range(128)) {
+        ArpNoteCommands commands {};
+        ArpProcessBlock(arp, context, no_sliced_region, random_seed, 512, commands);
+        for (auto const& c : commands)
+            if (c.type == NoteEvent::Type::On)
+                dyn::Append(note_on_values, (u32)c.note.note | (c.offset << 7));
+    }
+    REQUIRE(note_on_values.size > 8);
+
+    CHECK_EQ(random_seed, 17542363414333621458ull);
+    CHECK_EQ(HashFnv1a(note_on_values.Items()), 11679987476709050566ull);
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterArpeggiatorTests) {
     REGISTER_TEST(TestArpOneShotPolyrateWaitsForSlowest);
     REGISTER_TEST(TestArpReleaseCarriesNoteOnVelocity);
     REGISTER_TEST(TestAutoRateSharedShiftPreservesCrossLayerRatios);
+    REGISTER_TEST(TestArpRandomDrawsAreStable);
 }
