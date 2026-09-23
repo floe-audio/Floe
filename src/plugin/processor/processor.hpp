@@ -281,6 +281,9 @@ struct AudioProcessor {
 
     f32 master_vol;
     OnePoleLowPassFilter<f32> master_vol_smoother;
+    // Silence is judged before master volume so that turning it to -inf doesn't make a still-running
+    // engine look idle and get reset every block.
+    bool pre_master_output_silent = true;
 
     Distortion distortion;
     BitCrush bit_crush;
