@@ -1,0 +1,47 @@
+# Uninstalling
+
+> Instructions for uninstalling Floe and removing libraries and presets
+
+You can uninstall sample libraries, presets, and Floe itself by following the steps below. If you want to completely remove Floe, follow all the steps in order.
+
+_Packages_ are not uninstalled directly because they're just the distribution format for sample libraries and presets; Floe doesn't 'remember' packages.
+
+If you uninstall or overwrite a library, preset or preset bank by accident you can typically recover the item from your computer's Trash or Recycle Bin. You may find that item in the trash has a suffix such as '(old)'. Once restored you may rename the file/folder to remove this suffix.
+
+## Uninstall sample libraries
+
+1.  Open Floe
+2.  Click on the 3-dots menu at the top, then "Info".
+3.  For each installed libraries, click the _uninstall_ button.
+
+You can also do this by right-clicking on the library name in the instrument/IR browser and choosing 'Uninstall'.
+
+![Uninstall library](/images/screenshots/uninstall-library.png)
+
+## Uninstall presets
+
+1.  Open Floe
+2.  Open the preset browser by clicking on the preset name at the top.
+3.  Right-click on the heading of each preset bank and choose 'Uninstall'
+
+Repeat for all installed preset banks.
+
+![Uninstall preset bank](/images/screenshots/uninstall-preset-bank.png)
+
+## Uninstall Floe plugin
+
+### Windows
+
+On Windows, Floe can be uninstalled using the standard method for uninstalling software, via the 'Add or Remove Programs' control panel. See the [Windows documentation here](https://support.microsoft.com/en-gb/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98).
+
+Close your DAW before running the uninstaller.
+
+**This uninstalls Floe, but not libraries or presets.**
+
+This uninstaller also supports uninstalling Mirage, the predecessor to Floe.
+
+### / macOS or Linux
+
+To uninstall Floe on macOS or Linux, you must delete Floe's files manually. Visit the [file locations](/docs/beta/reference/file-locations) page to find where Floe's files are located on your system. For each of these locations, delete the files and folders.
+
+The key files to delete are the plugin files. However, you might also want to delete Floe's small additional files for thoroughness.
