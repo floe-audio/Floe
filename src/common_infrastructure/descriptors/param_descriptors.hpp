@@ -2155,11 +2155,10 @@ constexpr ValConfig CustomProjected(CustomProjectedOptions opts) {
 
 using IdMapIntType = u16;
 constexpr IdMapIntType k_invalid_param_id = LargestRepresentableValue<IdMapIntType>();
+constexpr u32 k_param_ids_per_region = 160; // never change
 
 consteval auto CreateParams() {
     // =====================================================================================================
-    constexpr u32 k_ids_per_region = 160; // never change
-
     enum class IdRegion : u8 {
         Master = 0, // never change
         Layer1 = 1, // never change
@@ -2171,8 +2170,8 @@ consteval auto CreateParams() {
     };
 
     auto const id = [](IdRegion region, u32 index) {
-        if (index >= k_ids_per_region) throw "region overflow";
-        return ((u32)region * k_ids_per_region) + index;
+        if (index >= k_param_ids_per_region) throw "region overflow";
+        return ((u32)region * k_param_ids_per_region) + index;
     };
 
     // =====================================================================================================
@@ -2180,7 +2179,7 @@ consteval auto CreateParams() {
         Array<ParamDescriptor, k_num_parameters> params;
 
         // index is an ID, value is a ParamIndex
-        Array<IdMapIntType, k_ids_per_region * u32(IdRegion::Count)> id_map;
+        Array<IdMapIntType, k_param_ids_per_region * u32(IdRegion::Count)> id_map;
     };
     Result result {};
     for (auto& i : result.id_map)

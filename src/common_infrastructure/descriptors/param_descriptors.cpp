@@ -1033,6 +1033,73 @@ TEST_CASE(TestParamIdStringsUnique) {
     return k_success;
 }
 
+TEST_CASE(TestParamGenerationsMatchSnapshot) {
+    // The AUv2 parameter order is derived from added_in_generation, so a released generation's ids must never
+    // change. New params go in the latest generation if it's unreleased, otherwise append a new one. Ids are
+    // relative to their region; layer ids apply to every layer.
+    struct GenerationIds {
+        Span<u8 const> master;
+        Span<u8 const> layer;
+    };
+
+    static constexpr u8 k_gen0_master[] = {
+        0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,  19,  20,  21,  22,
+        23, 24, 25, 26, 27, 28, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,  78,  79,  80,  81,
+        82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+    };
+    static constexpr u8 k_gen0_layer[] = {
+        0,  1,  2,  3,  4,  5,  7,  8,  9,  11, 12, 13, 14, 15, 16, 17, 18, 19,
+        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
+        38, 39, 40, 41, 42, 43, 44, 45, 46, 48, 49, 50, 51, 52, 53, 54, 55,
+    };
+    static constexpr u8 k_gen1_master[] = {
+        29,  30,  31,  32,  33,  34,  35,  36,  105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
+        116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133,
+    };
+    static constexpr u8 k_gen1_layer[] = {
+        56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
+        76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
+    };
+    static constexpr u8 k_gen2_layer[] = {96, 97, 98, 99};
+    static constexpr u8 k_gen3_layer[] = {100, 101};
+    static constexpr u8 k_gen5_master[] = {146, 147};
+    static constexpr u8 k_gen6_master[] = {140, 141, 142, 143, 148, 149, 150, 151, 152};
+    static constexpr u8 k_gen6_layer[] = {102};
+    static constexpr u8 k_gen7_master[] = {153, 154};
+    static constexpr u8 k_gen8_layer[] = {103, 104, 105, 106};
+
+    static constexpr GenerationIds k_generations[] = {
+        {.master = k_gen0_master, .layer = k_gen0_layer},
+        {.master = k_gen1_master, .layer = k_gen1_layer},
+        {.layer = k_gen2_layer},
+        {.layer = k_gen3_layer},
+        {},
+        {.master = k_gen5_master},
+        {.master = k_gen6_master, .layer = k_gen6_layer},
+        {.master = k_gen7_master},
+        {.layer = k_gen8_layer},
+    };
+
+    usize num_snapshot_params = 0;
+    for (auto const& generation : k_generations)
+        num_snapshot_params += generation.master.size + (generation.layer.size * k_num_layers);
+    CHECK_EQ(num_snapshot_params, (usize)k_num_parameters);
+
+    for (auto const& desc : k_param_descriptors) {
+        CAPTURE(desc.id_string);
+        auto const id_in_region = (u8)(desc.id % k_param_ids_per_region);
+        u32 num_matches = 0;
+        for (auto const [generation_index, generation] : Enumerate<u8>(k_generations)) {
+            if (!Contains(desc.IsLayerParam() ? generation.layer : generation.master, id_in_region)) continue;
+            ++num_matches;
+            CHECK_EQ(desc.added_in_generation, generation_index);
+        }
+        CHECK_EQ(num_matches, 1u);
+    }
+
+    return k_success;
+}
+
 TEST_CASE(TestDistortionTypeCategoriesComplete) {
     using namespace param_values;
 
@@ -1053,6 +1120,7 @@ TEST_REGISTRATION(RegisterParamDescriptorTests) {
     REGISTER_TEST(TestLegacyConversion);
     REGISTER_TEST(TestParamStringConversion);
     REGISTER_TEST(TestParamIdStringsUnique);
+    REGISTER_TEST(TestParamGenerationsMatchSnapshot);
     REGISTER_TEST(TestDistortionTypeCategoriesComplete);
     REGISTER_TEST(TestCutoffSemitonesNoteNameDisplay);
 }
