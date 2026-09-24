@@ -4168,7 +4168,7 @@ consteval auto CreateParams() {
         lp(LfoSeedMode) = Args {
             .id = id(region, 105), // never change
             .id_string = LAYER_ID("lfo.seed_mode"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::LfoSeedMode,
                 .default_val = (u32)param_values::SeedMode::Random,
@@ -4182,7 +4182,7 @@ consteval auto CreateParams() {
         lp(LfoSeed) = Args {
             .id = id(region, 106), // never change
             .id_string = LAYER_ID("lfo.seed"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Lfo},
             .name = "Seed"_s,
@@ -4703,7 +4703,7 @@ consteval auto CreateParams() {
         lp(GranularSeedMode) = Args {
             .id = id(region, 103), // never change
             .id_string = LAYER_ID("granular.seed_mode"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Menu({
                 .type = ParamDescriptor::MenuType::GranularSeedMode,
                 .default_val = (u32)param_values::SeedMode::Random,
@@ -4717,7 +4717,7 @@ consteval auto CreateParams() {
         lp(GranularSeed) = Args {
             .id = id(region, 104), // never change
             .id_string = LAYER_ID("granular.seed"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Seed"_s,
