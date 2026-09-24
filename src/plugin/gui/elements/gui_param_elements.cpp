@@ -469,20 +469,50 @@ static void DoDistortionTypeMenuItems(GuiState& g, ParamIndex param_index) {
     }
 }
 
+static void AppendMacroAdjustedValueLine(GuiState const& g,
+                                         DynamicArray<char>& buf,
+                                         DescribedParamValue const& param,
+                                         bool show_cutoff_in_semitones) {
+    auto const& macro_destinations = g.engine.processor.main_macro_destinations;
+    DynamicArrayBounded<usize, k_num_macros> macro_numbers {};
+    for (auto const [macro_index, dests] : Enumerate(macro_destinations)) {
+        for (auto const& dest : dests.items) {
+            if (dest.param_index != param.info.index) continue;
+            dyn::Append(macro_numbers, macro_index + 1);
+            break;
+        }
+    }
+    if (!macro_numbers.size) return;
+
+    auto const adjusted = AdjustedLinearValue(g.engine.processor.main_params.values,
+                                              macro_destinations,
+                                              param.LinearValue(),
+                                              param.info.index);
+    auto const adjusted_string = *param.info.LinearValueToString(adjusted, show_cutoff_in_semitones);
+    if (adjusted_string == *param.info.LinearValueToString(param.LinearValue(), show_cutoff_in_semitones))
+        return;
+    fmt::Append(buf, "\nMacro-adjusted to {} (M", adjusted_string);
+    for (auto const [index, number] : Enumerate(macro_numbers)) {
+        if (index) dyn::AppendSpan(buf, ", "_s);
+        fmt::Append(buf, "{}", number);
+    }
+    dyn::Append(buf, ')');
+}
+
 String
 ParamValuePopupText(GuiState const& g, Span<DescribedParamValue const*> params, ArenaAllocator& arena) {
     auto const show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs);
-    if (params.size == 1)
-        return arena.Clone(
-            *params[0]->info.LinearValueToString(params[0]->LinearValue(), show_cutoff_in_semitones));
-
     DynamicArray<char> buf {arena};
     for (auto param : params) {
-        if (MacroIndexFromParamIndex(param->info.index)) dyn::AppendSpan(buf, "Macro "_s);
-        fmt::Append(buf,
-                    "{}: {}",
-                    param->info.gui_label,
-                    *param->info.LinearValueToString(param->LinearValue(), show_cutoff_in_semitones));
+        auto const value_string =
+            *param->info.LinearValueToString(param->LinearValue(), show_cutoff_in_semitones);
+        if (params.size == 1) {
+            dyn::AppendSpan(buf, value_string);
+        } else {
+            if (MacroIndexFromParamIndex(param->info.index)) dyn::AppendSpan(buf, "Macro "_s);
+            fmt::Append(buf, "{}: {}", param->info.gui_label, value_string);
+        }
+        AppendMacroAdjustedValueLine(g, buf, *param, show_cutoff_in_semitones);
         if (param != Last(params)) dyn::Append(buf, '\n');
     }
     return buf.ToOwnedSpan();
