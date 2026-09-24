@@ -196,6 +196,7 @@ CalcWordWrapPositionW(Font const* font, Char32 const* text, Char32 const* text_e
     Char32 const* word_end = text;
     Char32 const* prev_word_end = nullptr;
     bool inside_word = true;
+    bool after_wrap_punctuation = false;
 
     Char32 const* s = text;
     while (s < text_end) {
@@ -215,9 +216,13 @@ CalcWordWrapPositionW(Font const* font, Char32 const* text, Char32 const* text_e
             }
             blank_width += char_width;
             inside_word = false;
+            after_wrap_punctuation = false;
         } else {
+            bool const is_wrap_punctuation =
+                c == '.' || c == ',' || c == ';' || c == '!' || c == '?' || c == '\"';
             word_width += char_width;
-            if (inside_word) {
+            // Punctuation runs like "..." or "\"." stay together so a line never starts with punctuation.
+            if (inside_word || (is_wrap_punctuation && after_wrap_punctuation)) {
                 word_end = next_s;
             } else {
                 prev_word_end = word_end;
@@ -226,7 +231,8 @@ CalcWordWrapPositionW(Font const* font, Char32 const* text, Char32 const* text_e
             }
 
             // Allow wrapping after punctuation.
-            inside_word = !(c == '.' || c == ',' || c == ';' || c == '!' || c == '?' || c == '\"');
+            inside_word = !is_wrap_punctuation;
+            after_wrap_punctuation = is_wrap_punctuation;
         }
 
         if (line_width + word_width >= wrap_width) {
