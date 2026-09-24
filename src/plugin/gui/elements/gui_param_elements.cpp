@@ -796,9 +796,13 @@ Span<f32 const> VoiceBlips01(GuiState& g,
                     // volume_gain already includes any MPE volume expression, so every sounding voice
                     // gets exactly one blip.
                     auto const gain = (f32)marker.volume_gain / 255.0f;
+                    auto const macro_adjusted_projected = dest_knob_param.info.ProjectValue(
+                        AdjustedLinearValue(params.values,
+                                            g.engine.processor.main_macro_destinations,
+                                            dest_knob_param.LinearValue(),
+                                            dest_knob_param.info.index));
                     linear =
-                        dest_knob_param.info.LineariseValue(dest_knob_param.ProjectedValue() * gain, true)
-                            .ValueOr(0);
+                        dest_knob_param.info.LineariseValue(macro_adjusted_projected * gain, true).ValueOr(0);
                     break;
                 }
                 case param_values::MpeDestination::Filter:
