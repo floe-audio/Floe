@@ -77,7 +77,50 @@ constexpr auto k_macro_params = ComptimeParamSearch<ComptimeParamSearchOptions {
 
 static_assert(k_macro_params.size == k_num_macros);
 
+// Treats the macro as if it were at the given value, without changing the macro's parameter.
+struct MacroPositionOverride {
+    bool operator==(MacroPositionOverride const&) const = default;
+    u8 macro_index;
+    f32 value;
+};
+
 f32 AdjustedLinearValue(Span<f32 const> param_values,
                         MacroDestinations const& macros,
                         f32 linear_value,
-                        ParamIndex param_index);
+                        ParamIndex param_index,
+                        Optional<MacroPositionOverride> position_override = {});
+
+// The destination's parameter value (linear, unclamped) with its macro at 0% and 100%, and every other macro
+// at its current position.
+struct MacroDestinationRange {
+    f32 at_0;
+    f32 at_100;
+};
+
+MacroDestinationRange UnclampedMacroDestinationRange(Span<f32 const> param_values,
+                                                     MacroDestinations const& macros,
+                                                     u8 macro_index,
+                                                     u8 destination_index);
+
+enum class MacroRangeEnd : u8 { At0, At100 };
+
+struct MacroRangeEdit {
+    MacroRangeEnd end;
+    f32 target_linear_value;
+    // Move the macro so that the parameter keeps the value it currently has.
+    bool keep_current_value;
+};
+
+struct MacroRangeEditResult {
+    f32 base_linear_value;
+    f32 destination_value;
+    Optional<f32> macro_value;
+};
+
+// Moves one end of a destination's range while the other end stays put, as far as the base parameter range
+// and destination amount allow.
+MacroRangeEditResult EditMacroDestinationRange(Span<f32 const> param_values,
+                                               MacroDestinations const& macros,
+                                               u8 macro_index,
+                                               u8 destination_index,
+                                               MacroRangeEdit const& edit);

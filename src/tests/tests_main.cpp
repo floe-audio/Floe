@@ -67,6 +67,7 @@ __attribute__((section(".preinit_array"), used)) static void (*g_tsan_preinit)()
     X(RegisterLinkedListTests)                                                                               \
     X(RegisterLogRingBufferTests)                                                                            \
     X(RegisterLoudnessMeterTests)                                                                            \
+    X(RegisterMacrosTests)                                                                                   \
     X(RegisterMathsTests)                                                                                    \
     X(RegisterMemoryTests)                                                                                   \
     X(RegisterMidiNoteStateTests)                                                                            \

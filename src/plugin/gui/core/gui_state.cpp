@@ -238,6 +238,7 @@ GuiState::~GuiState() {
         engine.processor.gui_note_click_state.Store({.is_held = false}, StoreMemoryOrder::Release);
         engine.host.request_process(&engine.host);
     }
+    SetMacroAudition(engine.processor, k_nullopt);
 }
 
 void GuiState::OnEngineChange() {

@@ -144,3 +144,4 @@ void DrawModalScrollbarsDarkMode(imgui::Context const& imgui, imgui::ViewportScr
 void DrawFullscreenDim(imgui::Context const& imgui);
 void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui);
 void DrawOverlayViewportBackground(imgui::Context const& imgui);
+void DrawDarkPopupMenuBackground(imgui::Context const& imgui);

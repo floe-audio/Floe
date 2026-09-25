@@ -1176,14 +1176,6 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                    3);
 }
 
-static void DrawDarkPopupMenuBackground(imgui::Context const& imgui) {
-    auto const rounding = WwToPixels(k_panel_rounding);
-    auto const r = imgui.curr_viewport->unpadded_bounds;
-    DrawDropShadow(imgui, r, rounding);
-    imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
-    imgui.draw_list->AddRect(r, ToU32(Col {.c = Col::White, .alpha = 28}), rounding);
-}
-
 struct SeedButtonOptions {
     LayerParamIndex seed_mode_param;
     LayerParamIndex seed_param;

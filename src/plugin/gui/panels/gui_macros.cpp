@@ -9,6 +9,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
+#include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
 #include "gui_framework/gui_builder.hpp"
@@ -28,6 +29,278 @@ static void DrawLinkLine(GuiState& g, f32x2 p1, f32x2 p2) {
                                        p2,
                                        ChangeAlpha(ToU32({.c = Col::Blue}), 0.7f),
                                        Max(1.0f, WwToPixels(2.0f)));
+}
+
+static void DoDestinationRangeEditor(GuiState& g, u8 macro_index, u8 destination_index) {
+    auto& builder = g.builder;
+    auto& processor = g.engine.processor;
+    auto& state = g.macros_gui_state;
+    auto& dest = processor.main_macro_destinations[macro_index].items[destination_index];
+    auto const param_index = *dest.param_index;
+    auto const macro_param_index = k_macro_params[macro_index];
+    auto const& descriptor = k_param_descriptors[ToInt(param_index)];
+    auto const& linear_range = descriptor.linear_range;
+    auto const show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs);
+    auto const macro_name = (String)g.engine.macro_names[macro_index];
+
+    auto const value_string = [&](f32 linear_value) -> String {
+        auto const s =
+            descriptor.LinearValueToString(linear_value, show_cutoff_in_semitones).ReleaseValueOr({});
+        return builder.arena.Clone((String)s);
+    };
+
+    auto const apply_edit = [&](MacroRangeEditResult const& result) {
+        SetParameterValue(processor, param_index, result.base_linear_value, {});
+        dest.value = result.destination_value;
+        MacroDestinationValueChanged(processor,
+                                     {
+                                         .value = dest.value,
+                                         .macro_index = macro_index,
+                                         .destination_index = destination_index,
+                                     });
+        if (result.macro_value) SetParameterValue(processor, macro_param_index, *result.macro_value, {});
+    };
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = {220, layout::k_hug_contents},
+                                    .contents_padding = {.lr = k_menu_item_padding_x, .tb = 6},
+                                    .contents_gap = 8,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = fmt::Format(builder.arena,
+                                  "{} ({}) across {}",
+                                  descriptor.gui_label,
+                                  descriptor.ModuleString(" › "_s),
+                                  macro_name),
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+              .text_colours = Col {.c = Col::Text, .dark_mode = true},
+          });
+
+    auto const knobs_row = DoBox(builder,
+                                 {
+                                     .parent = root,
+                                     .layout {
+                                         .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                         .contents_direction = layout::Direction::Row,
+                                         .contents_align = layout::Alignment::Justify,
+                                     },
+                                 });
+
+    auto const live_range = UnclampedMacroDestinationRange(processor.main_params.values,
+                                                           processor.main_macro_destinations,
+                                                           macro_index,
+                                                           destination_index);
+
+    for (auto const end : Array {MacroRangeEnd::At0, MacroRangeEnd::At100}) {
+        struct EndInfo {
+            String percent_text;
+            f32 macro_value;
+            f32 unclamped_value;
+        };
+        auto const end_info = ({
+            EndInfo info {};
+            switch (end) {
+                case MacroRangeEnd::At0: info = {"0%"_s, 0.0f, live_range.at_0}; break;
+                case MacroRangeEnd::At100: info = {"100%"_s, 1.0f, live_range.at_100}; break;
+            }
+            info;
+        });
+
+        auto const column = DoBox(builder,
+                                  {
+                                      .parent = knobs_row,
+                                      .id_extra = ToInt(end),
+                                      .layout {
+                                          .size = {95, layout::k_hug_contents},
+                                          .contents_gap = 3,
+                                          .contents_direction = layout::Direction::Column,
+                                          .contents_align = layout::Alignment::Start,
+                                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                      },
+                                  });
+
+        DoBox(builder,
+              {
+                  .parent = column,
+                  .id_extra = ToInt(end),
+                  .text = fmt::Format(builder.arena, "Macro at {}", end_info.percent_text),
+                  .size_from_text = true,
+                  .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              });
+
+        auto const knob_box = DoBox(builder,
+                                    {
+                                        .parent = column,
+                                        .id_extra = ToInt(end),
+                                        .layout {.size = {k_small_knob_width, k_small_knob_width}},
+                                    });
+
+        auto value = Clamp(end_info.unclamped_value, linear_range.min, linear_range.max);
+
+        DoBox(builder,
+              {
+                  .parent = column,
+                  .id_extra = ToInt(end),
+                  .text = value_string(value),
+                  .text_colours = Col {.c = Col::Text, .dark_mode = true},
+                  .text_justification = TextJustification::Centred,
+                  .layout {.size = {layout::k_fill_parent, k_font_body_size}},
+              });
+
+        auto const r = BoxRect(builder, knob_box);
+        if (!r) continue;
+        auto const window_r = builder.imgui.RegisterAndConvertRect(*r);
+        auto const id = knob_box.imgui_id;
+
+        if (builder.imgui.WasJustActivated(id, MouseButton::Left)) {
+            BeginUndoableStep(g.engine, "Macro destination range"_s);
+            ParameterJustStartedMoving(processor, param_index);
+            if (state.range_editor_keeps_current_value)
+                ParameterJustStartedMoving(processor, macro_param_index);
+        }
+
+        auto const dragger_result = builder.imgui.DraggerBehaviour({
+            .rect_in_window_coords = window_r,
+            .id = id,
+            .text = value_string(value),
+            .min = linear_range.min,
+            .max = linear_range.max,
+            .value = value,
+            .default_value = value,
+            .text_input_button_cfg {
+                .mouse_button = MouseButton::Left,
+                .event = MouseButtonEvent::DoubleClick,
+            },
+            .text_input_cfg {
+                .x_padding = WwToPixels(4.0f),
+                .centre_align = true,
+                .escape_unfocuses = true,
+                .select_all_when_opening = true,
+            },
+            .slider_cfg {
+                .sensitivity = 256 / linear_range.Delta(),
+                .slower_with_shift = true,
+            },
+        });
+
+        auto const edit = [&](f32 target) -> MacroRangeEdit {
+            return {
+                .end = end,
+                .target_linear_value = target,
+                .keep_current_value = state.range_editor_keeps_current_value,
+            };
+        };
+
+        if (dragger_result.value_changed) {
+            if (!state.range_edit_drag_start) {
+                state.range_edit_drag_start = MacrosGuiState::RangeEditDragStart {
+                    .param_values = processor.main_params.values,
+                    .macros = processor.main_macro_destinations,
+                };
+            }
+            apply_edit(EditMacroDestinationRange(state.range_edit_drag_start->param_values,
+                                                 state.range_edit_drag_start->macros,
+                                                 macro_index,
+                                                 destination_index,
+                                                 edit(value)));
+        }
+
+        if (dragger_result.new_string_value) {
+            if (auto const typed = descriptor.StringToLinearValue(*dragger_result.new_string_value,
+                                                                  show_cutoff_in_semitones)) {
+                BeginUndoableStep(g.engine, "Macro destination range"_s);
+                apply_edit(EditMacroDestinationRange(processor.main_params.values,
+                                                     processor.main_macro_destinations,
+                                                     macro_index,
+                                                     destination_index,
+                                                     edit(*typed)));
+                EndUndoableStep(g.engine);
+            }
+        }
+
+        if (builder.imgui.WasJustDeactivated(id, MouseButton::Left)) {
+            state.range_edit_drag_start.Clear();
+            ParameterJustStoppedMoving(processor, param_index);
+            if (state.range_editor_keeps_current_value)
+                ParameterJustStoppedMoving(processor, macro_param_index);
+            EndUndoableStep(g.engine);
+        }
+
+        if (builder.imgui.IsActive(id, MouseButton::Left)) {
+            state.macro_audition_request = MacroPositionOverride {
+                .macro_index = macro_index,
+                .value = end_info.macro_value,
+            };
+        }
+
+        Tooltip(
+            g,
+            id,
+            window_r,
+            {
+                .tooltip = (String)fmt::Format(
+                    builder.arena,
+                    "The value of {} when {} is at {}. While you hold this knob you hear {} at that position.",
+                    descriptor.gui_label,
+                    macro_name,
+                    end_info.percent_text,
+                    macro_name),
+                .tooltip_footer = "Double-click to type a value."_s,
+            });
+
+        DrawKnob(builder.imgui,
+                 id,
+                 window_r,
+                 MapTo01(value, linear_range.min, linear_range.max),
+                 {
+                     .highlight_col = ToU32({.c = Col::Blue}),
+                     .line_col = ToU32({.c = Col::Blue}),
+                 });
+
+        if (dragger_result.text_input_result)
+            DrawParameterTextInput(builder.imgui, window_r, *dragger_result.text_input_result);
+    }
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = fmt::Format(
+                  builder.arena,
+                  "Now {} with {} at {.0}%",
+                  value_string(AdjustedLinearValue(processor.main_params.values,
+                                                   processor.main_macro_destinations,
+                                                   processor.main_params.values[ToInt(param_index)],
+                                                   param_index)),
+                  macro_name,
+                  processor.main_params.values[ToInt(macro_param_index)] * 100),
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+              .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+          });
+
+    if (CheckboxButton(
+            builder,
+            root,
+            fmt::Format(builder.arena, "Move {} to keep this value", macro_name),
+            state.range_editor_keeps_current_value,
+            (String)fmt::Format(builder.arena,
+                                "When you change either end, Floe moves {} so that {} keeps the value it has "
+                                "now. Everything else {} controls moves with it.",
+                                macro_name,
+                                descriptor.gui_label,
+                                macro_name),
+            GuiStyleSystem::TopBottomPanels))
+        state.range_editor_keeps_current_value = !state.range_editor_keeps_current_value;
 }
 
 void DoMacrosEditGui(GuiState& g, Box const& parent) {
@@ -308,8 +581,59 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                              })
                                         .button_fired)
                                     set_dest_value(-dest.value, "Invert macro destination amount"_s);
+
+                                MenuDivider(builder, root);
+
+                                auto const is_legacy =
+                                    k_param_descriptors[ToInt(*dest.param_index)].flags.legacy;
+                                if (MenuItem(
+                                        builder,
+                                        root,
+                                        {
+                                            .text = "Edit Range…"_s,
+                                            .tooltip = "Set the parameter's value at each end of the macro"_s,
+                                            .mode = is_legacy ? MenuItemOptions::Mode::Disabled
+                                                              : MenuItemOptions::Mode::Active,
+                                            .no_icon_gap = true,
+                                        })
+                                        .button_fired &&
+                                    !is_legacy) {
+                                    g.macros_gui_state.range_editor_to_open =
+                                        MacrosGuiState::DestinationRangeEditor {
+                                            .macro_index = macro_index,
+                                            .destination_index = dest_knob_index,
+                                        };
+                                }
                             },
                     });
+
+                {
+                    auto const range_popup_id = builder.imgui.MakeId("dest-range-editor"_s);
+                    if (g.builder.IsInputAndRenderPass()) {
+                        auto& to_open = g.macros_gui_state.range_editor_to_open;
+                        if (to_open && to_open->macro_index == macro_index &&
+                            to_open->destination_index == dest_knob_index) {
+                            to_open.Clear();
+                            builder.imgui.OpenPopupMenu(range_popup_id, imgui_id);
+                        }
+                    }
+                    if (builder.imgui.IsPopupMenuOpen(range_popup_id)) {
+                        DoBoxViewport(builder,
+                                      {
+                                          .run =
+                                              [&](GuiBuilder&) {
+                                                  DoDestinationRangeEditor(g, macro_index, dest_knob_index);
+                                              },
+                                          .bounds = knob_r,
+                                          .imgui_id = range_popup_id,
+                                          .viewport_config = ({
+                                              auto cfg = k_default_popup_menu_viewport;
+                                              cfg.draw_background = DrawDarkPopupMenuBackground;
+                                              cfg;
+                                          }),
+                                      });
+                    }
+                }
 
                 if (g.builder.IsInputAndRenderPass()) {
                     auto& to_open = g.macros_gui_state.destination_text_editor_to_open;
@@ -742,11 +1066,14 @@ void OverlayMacroDestinationRegion(GuiState& g, Rect window_r, ParamIndex param_
 void MacroGuiBeginFrame(GuiState& g) {
     g.macros_gui_state.hot_destination_param.Clear();
     dyn::Clear(g.macros_gui_state.draw_overlays);
+    g.macros_gui_state.macro_audition_request.Clear();
 }
 
 void MacroGuiEndFrame(GuiState& g) {
     for (auto const& draw_overlay : g.macros_gui_state.draw_overlays)
         draw_overlay(g);
+
+    SetMacroAudition(g.engine.processor, g.macros_gui_state.macro_audition_request);
 
     // Check if we should exit macro destination select mode.
     if (g.macros_gui_state.macro_destination_select_mode) {

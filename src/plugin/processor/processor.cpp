@@ -130,6 +130,25 @@ void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationVal
     processor.host.request_process(&processor.host);
 }
 
+void SetMacroAudition(AudioProcessor& processor, Optional<MacroPositionOverride> position) {
+    ASSERT(g_is_logical_main_thread);
+
+    auto const audition = ({
+        AudioProcessor::MacroAudition a {};
+        if (position) {
+            a = {
+                .value = position->value,
+                .macro_index = position->macro_index,
+                .active = true,
+            };
+        }
+        a;
+    });
+    if (processor.macro_audition.Load(LoadMemoryOrder::Relaxed) == audition) return;
+    processor.macro_audition.Store(audition, StoreMemoryOrder::Relaxed);
+    processor.host.request_process(&processor.host);
+}
+
 static Bitset<k_num_layers> LayerSilentState(Bitset<k_num_layers> solo, Bitset<k_num_layers> mute) {
     bool const any_solo = solo.AnyValuesSet();
     Bitset<k_num_layers> result {};
@@ -179,7 +198,8 @@ bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index) {
 
 static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params,
                                                ChangedParams const& params,
-                                               MacroDestinations const& macros) {
+                                               MacroDestinations const& macros,
+                                               Optional<MacroPositionOverride> position_override) {
     Bitset<k_num_parameters> needs_adjustment {};
     for (auto const [macro_index, macro] : Enumerate(macros)) {
         auto const macro_param_index = k_macro_params[macro_index];
@@ -202,7 +222,8 @@ static ChangedParams UpdateMacroAdjustedValues(Parameters& macro_adjusted_params
         macro_adjusted_params.values[param_index] = AdjustedLinearValue(params.params.values,
                                                                         macros,
                                                                         params.params.values[param_index],
-                                                                        (ParamIndex)param_index);
+                                                                        (ParamIndex)param_index,
+                                                                        position_override);
     }
 
     return {
@@ -226,7 +247,8 @@ static void ProcessorHandleChanges(AudioProcessor& processor, ProcessBlockChange
     PLACEMENT_NEW(&changes.changed_params)
     ChangedParams {UpdateMacroAdjustedValues(processor.audio_macro_adjusted_params,
                                              changes.changed_params,
-                                             processor.audio_macro_destinations)};
+                                             processor.audio_macro_destinations,
+                                             processor.audio_macro_audition.Position())};
 
     if (auto p = changes.changed_params.ProjectedValue(ParamIndex::MasterVolume)) processor.master_vol = *p;
 
@@ -1409,6 +1431,13 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 d = {};
             }
         }
+    }
+
+    if (auto const audition = processor.macro_audition.Load(LoadMemoryOrder::Relaxed);
+        audition != processor.audio_macro_audition) {
+        for (auto const& a : Array {processor.audio_macro_audition, audition})
+            if (a.active) changes.changed_params.changed.Set(ToInt(k_macro_params[a.macro_index]));
+        processor.audio_macro_audition = audition;
     }
 
     if (changes.changed_params.changed.Get(ToInt(ParamIndex::ConvolutionReverbOn)))
