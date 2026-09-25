@@ -66,6 +66,7 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_CHEVRON_UP},
     String {ICON_FA_CIRCLE_INFO},
     String {ICON_FA_CIRCLE_MINUS},
+    String {ICON_FA_CIRCLE_NODES},
     String {ICON_FA_CIRCLE_PLUS},
     String {ICON_FA_CIRCLE_QUESTION},
     String {ICON_FA_DRUM_STEELPAN},

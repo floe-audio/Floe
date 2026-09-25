@@ -94,6 +94,7 @@ enum class LayerParamIndex : u8 {
     GranularHarmony,
     GranularSeedMode,
     GranularSeed,
+    GranularShareGrains,
 
     ArpOn,
     ArpMode,
@@ -4723,6 +4724,17 @@ consteval auto CreateParams() {
             .gui_label = "Seed"_s,
             .tooltip =
                 "Seed picks which pattern of grains Fixed and Fixed Per Key repeat. Try a few numbers until you find one you like: it's saved with the preset, so the grains you choose are the grains everyone hears.\n\nSet Seed Mode to Fixed or Fixed Per Key for this to take effect."_s,
+        };
+        lp(GranularShareGrains) = Args {
+            .id = id(region, 107), // never change
+            .id_string = LAYER_ID("granular.share_grains"),
+            .added_in_generation = 9,
+            .value_config = val_config_helpers::Bool({.default_state = false}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Share Grains"_s,
+            .gui_label = "Share Grains"_s,
+            .tooltip =
+                "Share Grains keeps the number of grains the same whether you play one note or a chord, so the sound keeps the same density however many notes you hold. Each grain plays from one of the held notes, weaving the chord's pitches together.\n\nAt low Density you can hear the grains hop between the notes of the chord."_s,
         };
 
         // Arpeggiator

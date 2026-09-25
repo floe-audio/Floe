@@ -522,7 +522,8 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::GranularRandomDetune:
             case LayerParamIndex::GranularRandomDirection:
             case LayerParamIndex::GranularHarmony:
-            case LayerParamIndex::GranularSeedMode: return is_granular;
+            case LayerParamIndex::GranularSeedMode:
+            case LayerParamIndex::GranularShareGrains: return is_granular;
             case LayerParamIndex::GranularSeed:
                 return is_granular && ParamToInt<param_values::SeedMode>(
                                           layer_linear(ln, LayerParamIndex::GranularSeedMode)) !=
@@ -1067,6 +1068,7 @@ TEST_CASE(TestParamGenerationsMatchSnapshot) {
     static constexpr u8 k_gen6_layer[] = {102};
     static constexpr u8 k_gen7_master[] = {153, 154};
     static constexpr u8 k_gen8_layer[] = {103, 104, 105, 106};
+    static constexpr u8 k_gen9_layer[] = {107};
 
     static constexpr GenerationIds k_generations[] = {
         {.master = k_gen0_master, .layer = k_gen0_layer},
@@ -1078,6 +1080,7 @@ TEST_CASE(TestParamGenerationsMatchSnapshot) {
         {.master = k_gen6_master, .layer = k_gen6_layer},
         {.master = k_gen7_master},
         {.layer = k_gen8_layer},
+        {.layer = k_gen9_layer},
     };
 
     usize num_snapshot_params = 0;

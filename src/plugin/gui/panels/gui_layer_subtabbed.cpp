@@ -2500,6 +2500,24 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                 .width = layout::k_fill_parent,
                 .label = false,
                 .do_extra_row_buttons = IsGranular(play_mode) ? FunctionRef<void(Box)> {[&](Box row) {
+                    {
+                        auto const share_param =
+                            params.DescribedValue(layer_index, LayerParamIndex::GranularShareGrains);
+                        auto const btn = DoMidPanelIconButton(
+                            g.builder,
+                            row,
+                            {
+                                .icon = MidPanelIcon::ShareGrains,
+                                .tooltip = ParamTooltipText(share_param, g.builder.arena),
+                                .is_on = share_param.BoolValue(),
+                            });
+                        if (btn.button_fired)
+                            SetParameterValue(g.engine.processor,
+                                              share_param.info.index,
+                                              share_param.BoolValue() ? 0.0f : 1.0f,
+                                              {});
+                        AddParamContextMenuBehaviour(g, btn, share_param);
+                    }
                     DoSeedButton(
                         g,
                         layer_index,

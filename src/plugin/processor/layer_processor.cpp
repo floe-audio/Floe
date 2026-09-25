@@ -844,6 +844,8 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.seed_mode = *p;
     if (auto p = changes.changed_params.IntValue<int>(layer.index, LayerParamIndex::GranularSeed))
         vmst.granular.seed = (u8)*p;
+    if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::GranularShareGrains))
+        vmst.granular.share_grains = *p;
 
     // EQ
     // =======================================================================================================

@@ -639,6 +639,9 @@ enum class StateVersion : u16 {
     // grains and random LFO shapes are unchanged.
     AddedGranularAndLfoSeeds,
 
+    // Added per-layer Share Grains. Older states have it off so each voice keeps its own grain stream.
+    AddedGranularShareGrains,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -653,7 +656,7 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 428,
+    static_assert(k_num_non_experimental_parameters == 431,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
@@ -896,6 +899,13 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
                 auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
                 state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
             }
+        }
+    }
+
+    if (version < StateVersion::AddedGranularShareGrains) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            auto const pi = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::GranularShareGrains);
+            state.param_values[ToInt(pi)] = 0;
         }
     }
 

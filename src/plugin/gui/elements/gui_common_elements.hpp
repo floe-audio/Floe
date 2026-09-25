@@ -55,7 +55,7 @@ struct MidPanelPrevNextButtonsOptions {
 MidPanelPrevNextButtonsResult
 DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options = {});
 
-enum class MidPanelIcon : u8 { Shuffle, Unload, Power, Seed };
+enum class MidPanelIcon : u8 { Shuffle, Unload, Power, Seed, ShareGrains };
 
 struct MidPanelIconButtonOptions {
     MidPanelIcon icon;

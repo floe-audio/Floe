@@ -99,6 +99,7 @@ struct VoiceProcessingController {
         HarmonyIntervalsBitset harmony_intervals {};
         param_values::SeedMode seed_mode {};
         u8 seed {};
+        bool share_grains {};
     } granular {};
 
     bool no_key_tracking = false;
