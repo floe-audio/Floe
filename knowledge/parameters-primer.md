@@ -10,7 +10,7 @@ Instead, when we want to change a parameter, we must:
 - Create a new parameter with our desired attributes
 - Set its `added_in_generation` to one more than the highest shipped generation (needed to avoid breaking AUv2 automation), and add its id to the snapshot in `TestParamGenerationsMatchSnapshot`
 - Consult what we need to change in legacy_param_logic.hpp/cpp file
-- Add new version to StateVersion and handle the case to ensure old presets/DAW saves sound identical to before
+- Add new version to StateVersion and handle the case to ensure old presets/DAW saves sound identical to before, explicitly handing 'if < version' in AdaptNewerParams
 
 The only occasion where we can modify the existing parameter (and reuse a StateVersion) is when the parameter has never been shipped (`gh release view --json name --jq .name`) and therefore no users will be effected.
 
