@@ -610,6 +610,9 @@ struct FilterCollectionOptions {
     FolderNode const* folder;
     String all_items_suffix {}; // Appended after "All <name>" in the tree, e.g. " Instruments".
     String collection_noun {}; // What the collection is: "library", "preset bank".
+    // For after all_items_suffix, which already names the item type: "All Presets in this bank". Defaults
+    // to collection_noun.
+    String collection_noun_after_items {};
     bool default_collapsed {};
     RightClickMenuState::Function right_click_menu {};
     persistent_store::Store* store {};
@@ -884,6 +887,7 @@ struct FilterTreeButtonOptions {
     Optional<FontType> font_override {};
     String display_text {}; // If set, rendered instead of common.text (common.text is still used for hashes).
     DeselectFallback deselect_fallback {};
+    bool stays_selected {}; // Clicking it while selected does nothing.
 };
 
 Box DoFilterButton(GuiBuilder& builder,

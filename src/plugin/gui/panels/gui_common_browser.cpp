@@ -1357,7 +1357,8 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                                                         .is_tab_item = false,
                                                     });
 
-    if (button.button_fired || fired_via_keyboard) {
+    if ((button.button_fired || fired_via_keyboard) &&
+        !(options.stays_selected && options.common.is_selected)) {
         HandleFilterButtonClick(builder, state, options.common);
         if (options.common.is_selected && options.deselect_fallback.filter) {
             options.deselect_fallback.filter->Add(
@@ -2422,6 +2423,56 @@ static void DoBrowseRootRows(GuiBuilder& builder,
     }
 }
 
+// The leaf above a collection's folders that selects the whole collection. In Browse mode the whole
+// collection is what drilling in shows, so the row marks that state rather than toggling it: it can't be
+// deselected, only clicked to go back to it from a folder.
+static void DoCollectionAllRow(GuiBuilder& builder,
+                               CommonBrowserState& state,
+                               FilterItemInfo const& info,
+                               FilterCollectionOptions const& options,
+                               Box const& parent,
+                               TreeLines const& lines) {
+    auto const browse_mode = state.mode == BrowserMode::Browse;
+    auto const is_selected = options.common.is_selected;
+    DoFilterTreeButton(
+        builder,
+        state,
+        info,
+        {
+            .common =
+                {
+                    .parent = parent,
+                    .id_extra = options.common.id_extra,
+                    .is_selected = is_selected,
+                    .text = fmt::Format(builder.arena,
+                                        "All {}{}"_s,
+                                        options.common.text,
+                                        options.all_items_suffix),
+                    .tooltip = browse_mode
+                                   ? (is_selected ? (String)fmt::Format(builder.arena,
+                                                                        "Showing everything in this {}.",
+                                                                        options.collection_noun)
+                                                  : (String)fmt::Format(builder.arena,
+                                                                        "Show everything in this {} again.",
+                                                                        options.collection_noun))
+                                   : TooltipString {k_nullopt},
+                    .match_phrase = fmt::Format(builder.arena, "in this {}", options.collection_noun),
+                    .filter = options.common.filter,
+                    .clicked_key = options.common.clicked_key,
+                    .filter_mode = options.common.filter_mode,
+                },
+            .lines = lines,
+            .font_override = FontType::BodyItalic,
+            .display_text =
+                fmt::Format(builder.arena,
+                            "All{} in this {}"_s,
+                            options.all_items_suffix,
+                            options.collection_noun_after_items.size ? options.collection_noun_after_items
+                                                                     : options.collection_noun),
+            .stays_selected = browse_mode,
+        });
+}
+
 // Filter mode: a collection is a tree. The header is its collapsible top node; the "All" row and the
 // folders are the leaves beneath it.
 static void DoFilterModeCollection(GuiBuilder& builder,
@@ -2540,30 +2591,7 @@ static void DoFilterModeCollection(GuiBuilder& builder,
         .gold_from = is_selected ? (u8)0 : TreeLines::k_no_gold,
     };
 
-    // "All" leaf: selects the root node (all children).
-    DoFilterTreeButton(
-        builder,
-        state,
-        info,
-        {
-            .common =
-                {
-                    .parent = body,
-                    .id_extra = options.common.id_extra,
-                    .is_selected = is_selected,
-                    .text = fmt::Format(builder.arena,
-                                        "All {}{}"_s,
-                                        options.common.text,
-                                        options.all_items_suffix),
-                    .match_phrase = fmt::Format(builder.arena, "in this {}", options.collection_noun),
-                    .filter = options.common.filter,
-                    .clicked_key = options.common.clicked_key,
-                    .filter_mode = options.common.filter_mode,
-                },
-            .lines = lines,
-            .font_override = FontType::BodyItalic,
-            .display_text = fmt::Format(builder.arena, "All{}"_s, options.all_items_suffix),
-        });
+    DoCollectionAllRow(builder, state, info, options, body, lines);
 
     if (options.folder) {
         FolderFilterTreeContext const context {.folder_infos = options.folder_infos, .lines = lines};
@@ -2617,6 +2645,7 @@ static void DoBrowseOpenCollectionTitle(GuiBuilder& builder,
 
 static void DoBrowseModeOpenCollection(GuiBuilder& builder,
                                        CommonBrowserState& state,
+                                       FilterItemInfo const& info,
                                        FilterCollectionOptions const& options) {
     auto const body = DoBox(builder,
                             {
@@ -2632,10 +2661,12 @@ static void DoBrowseModeOpenCollection(GuiBuilder& builder,
                                 .name = options.name,
                             });
 
+    // Top-level rows run from the panel edge, rather than reading as indented under the page title.
+    // Subfolders hang from their text like anywhere else.
+    DoCollectionAllRow(builder, state, info, options, body, {});
+
     bool any_folders = false;
     if (options.folder) {
-        // Top-level folders run from the panel edge, rather than reading as indented under the page title.
-        // Their subfolders hang from their text like anywhere else.
         FolderFilterTreeContext const context {.folder_infos = options.folder_infos};
         FolderFilterTreeOptions const folder_options {
             .do_right_click_menu = options.right_click_menu,
@@ -2658,7 +2689,7 @@ static void DoBrowseModeOpenCollection(GuiBuilder& builder,
                                              folder_options);
     }
 
-    // The collection is the whole page here, so an empty body would otherwise just look like something
+    // The collection is the whole page here, so a lone All row would otherwise just look like something
     // failed to load.
     if (!any_folders) {
         DoBox(builder,
@@ -2685,7 +2716,7 @@ void DoFilterCollection(GuiBuilder& builder,
             if (!state.browse_collection_open)
                 DoBrowseModeCollectionRow(builder, state, info, options);
             else if (IsBrowseModeOpenCollection(state, options))
-                DoBrowseModeOpenCollection(builder, state, options);
+                DoBrowseModeOpenCollection(builder, state, info, options);
             break;
         case BrowserMode::Filter: DoFilterModeCollection(builder, state, info, options); break;
         case BrowserMode::Count: PanicIfReached();
