@@ -93,7 +93,8 @@ struct ParamValuesH {
         fmt::Append(out, "  {} = {{ }}\n", name);
         fmt::Append(out,
                     "    Keyed by stable id_string (e.g. \"fx.distortion.drive\", \"l1.volume\").\n"
-                    "    Writes emit formatted display strings (\"50 %\", \"-12.0 dB\", \"Sine\"); reads\n"
+                    "    Writes emit formatted display strings with 6 decimal places (\"50.000000%\",\n"
+                    "    \"-12.000000 dB\", \"Sine\"); reads\n"
                     "    accept either a string or the underlying projected number. Run\n"
                     "    `preset-tool --print-params-json` for the full id_string + range catalog.\n");
     }
@@ -102,7 +103,7 @@ struct ParamValuesH {
         for (auto const i : Range<u16>(vals.size)) {
             auto const& d = k_param_descriptors[i];
             lua_pushlstring(lua, d.id_string.data, d.id_string.size);
-            if (auto const formatted = d.LinearValueToString(vals[i]))
+            if (auto const formatted = d.LinearValueToString(vals[i], {.full_precision = true}))
                 lua_pushlstring(lua, formatted->data, formatted->size);
             else
                 lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
@@ -897,10 +898,8 @@ ErrorCodeOr<void> WriteParamsJson(Writer out) {
 // Tests
 // ============================================================
 
-// The codec uses stable id_string keys with formatted display-string values ("-12.0 dB", "50 %", "Sine").
-// The format truncates precision so round-trips are only lossless when the source values land on the
-// format's grid (typical for hand-set or default values, not for arbitrary floats); for arbitrary floats
-// the stored numeric value will shift, but the audible result does not change.
+// The codec uses stable id_string keys with full-precision display-string values ("-12.000000 dB",
+// "50.000000%", "Sine"), so round-trips of arbitrary values are lossless.
 //
 // These tests bypass file I/O, so legacy→modern adaptation (AdaptNewerParams) does not apply; they verify
 // the codec layer in isolation.
@@ -935,8 +934,6 @@ static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& o
 }
 
 TEST_CASE(TestPresetLuaCodecRoundTripDefault) {
-    // Default snapshot values sit on the display-format grid (whole percents, exact dB defaults,
-    // "On"/"Off" for bools, etc.) so they must round-trip losslessly.
     auto const original = DefaultStateSnapshot();
     TRY(RoundTrip(tester, original));
     return k_success;
@@ -952,8 +949,16 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
         auto const mix = RandomFloat01<f32>(random_seed);
         auto const range = d.linear_range;
         auto const span = range.max - range.min;
-        auto const target_linear =
-            Clamp(d.default_linear_value + ((mix - 0.5f) * 0.4f * span), range.min, range.max);
+        auto const target_linear = ({
+            auto v = Clamp(d.default_linear_value + ((mix - 0.5f) * 0.4f * span), range.min, range.max);
+            switch (d.value_type) {
+                case ParamValueType::Float: break;
+                case ParamValueType::Menu:
+                case ParamValueType::Bool:
+                case ParamValueType::Int: v = Round(v); break;
+            }
+            v;
+        });
         s.param_values[i] = target_linear;
     }
 
@@ -1055,50 +1060,13 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
     return s;
 }
 
-// The encoder is lossy on arbitrary floats (truncated to display precision), so a single round-trip
-// of an arbitrary populated state won't equal the original. But the truncation must be idempotent:
-// once a value has been snapped to the display grid, encoding+decoding it again must be a no-op.
-// This guards against display formats that don't parse back to a value re-formatting identically.
-static ErrorCodeOr<void> RoundTripIsIdempotent(tests::Tester& tester, StateSnapshot const& original) {
-    auto encode_decode = [&](StateSnapshot const& in) {
-        auto lua = luaL_newstate();
-        DEFER { lua_close(lua); };
-        BuildPresetLuaTable(lua, in, {});
-        auto out = in;
-        lua_getglobal(lua, "preset");
-        ExtractPresetFromLuaTable(lua, -1, out);
-        lua_pop(lua, 1);
-        return out;
-    };
-
-    auto const first = encode_decode(original);
-    auto const second = encode_decode(first);
-
-    if (first != second) {
-        DynamicArray<char> diff {tester.scratch_arena};
-        AssignDiffDescription(diff, first, second);
-        tester.log.Error("round-trip not idempotent:\n{}", diff.Items());
-        for (auto const i : Range<u16>(k_num_parameters)) {
-            if (first.param_values[i] != second.param_values[i]) {
-                auto const& d = k_param_descriptors[i];
-                tester.log.Error("  {} first={} second={}",
-                                 d.id_string,
-                                 first.param_values[i],
-                                 second.param_values[i]);
-            }
-        }
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
-    return k_success;
-}
-
-TEST_CASE(TestPresetLuaCodecIdempotentPopulated) {
+TEST_CASE(TestPresetLuaCodecRoundTripPopulated) {
     auto const original = PopulatedSnapshot(tester.random_seed);
-    TRY(RoundTripIsIdempotent(tester, original));
+    TRY(RoundTrip(tester, original));
     return k_success;
 }
 
 TEST_REGISTRATION(RegisterPresetLuaCodecTests) {
     REGISTER_TEST(TestPresetLuaCodecRoundTripDefault);
-    REGISTER_TEST(TestPresetLuaCodecIdempotentPopulated);
+    REGISTER_TEST(TestPresetLuaCodecRoundTripPopulated);
 }

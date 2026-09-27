@@ -246,21 +246,44 @@ TEST_CASE(TestNumberStartsWithNegativeZero) {
 }
 
 Optional<DynamicArrayBounded<char, 128>>
-ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutoff_in_semitones) const {
+ParamDescriptor::LinearValueToString(f32 linear_value, ParamValueToStringOptions options) const {
     constexpr usize k_size = 128;
     using ResultType = DynamicArrayBounded<char, k_size>;
     ResultType result;
     auto const value = ProjectValue(linear_value);
 
-    if (flags.cutoff_frequency && show_cutoff_in_semitones) {
+    // In full-precision mode, "{.N}" becomes enough decimal places for about 7 significant figures - the
+    // precision of an f32.
+    auto const format = [&](String format_string, f32 number) {
+        if (!options.full_precision) return fmt::FormatInline<k_size>(format_string, number);
+        auto const decimal_places = number == 0 ? 6 : Clamp(6 - (int)Floor(Log10(Abs(number))), 0, 9);
+        DynamicArrayBounded<char, 32> full_precision_format {};
+        for (usize index = 0; index < format_string.size; ++index) {
+            dyn::Append(full_precision_format, format_string[index]);
+            if (index >= 1 && format_string[index - 1] == '{' && format_string[index] == '.' &&
+                index + 1 < format_string.size && IsDigit(format_string[index + 1])) {
+                dyn::Append(full_precision_format, (char)('0' + decimal_places));
+                ++index;
+            }
+        }
+        return fmt::FormatInline<k_size>(full_precision_format, number);
+    };
+
+    // Values this close to zero display as "0", "Off", etc.
+    auto const in_zero_snap_zone = [&](f32 scaled_value) {
+        if (options.full_precision) return scaled_value == 0;
+        return scaled_value > -0.5f && scaled_value < 0.5f;
+    };
+
+    if (flags.cutoff_frequency && options.show_cutoff_in_semitones) {
         auto const hz = display_format == ParamDisplayFormat::Semitones ? SemitonesToHz(value) : value;
-        if (*show_cutoff_in_semitones) {
+        if (*options.show_cutoff_in_semitones) {
             auto const note_number = RoundPositiveFloat(HzToSemitones(hz));
             result = fmt::FormatInline<k_size>("{} (note {})", NoteName(note_number), note_number);
         } else if (RoundPositiveFloat(hz) >= 1000)
-            result = fmt::FormatInline<k_size>("{.1} kHz", hz / 1000);
+            result = format("{.1} kHz", hz / 1000);
         else
-            result = fmt::FormatInline<k_size>("{.0} Hz", hz);
+            result = format("{.0} Hz", hz);
 
         if (NumberStartsWithNegativeZero(result)) dyn::Remove(result, 0);
         return result;
@@ -268,13 +291,13 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
 
     switch (display_format) {
         case ParamDisplayFormat::Float2dp: {
-            result = fmt::FormatInline<k_size>("{.2}", value);
+            result = format("{.2}", value);
             break;
         }
         case ParamDisplayFormat::None: {
             switch (value_type) {
                 case ParamValueType::Float: {
-                    result = fmt::FormatInline<k_size>("{.1}", value);
+                    result = format("{.1}", value);
                     break;
                 }
                 case ParamValueType::Menu: {
@@ -294,45 +317,45 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
             break;
         }
         case ParamDisplayFormat::Percent: {
-            result = fmt::FormatInline<k_size>("{.1}%", value * 100.0f);
+            result = format("{.1}%", value * 100.0f);
             break;
         }
         case ParamDisplayFormat::Percent2dp: {
-            result = fmt::FormatInline<k_size>("{.2}%", value * 100.0f);
+            result = format("{.2}%", value * 100.0f);
             break;
         }
         case ParamDisplayFormat::Pan: {
             auto const scaled_value = value * 100.0f;
-            if (scaled_value > -0.5f && scaled_value < 0.5f)
+            if (in_zero_snap_zone(scaled_value))
                 result = ResultType("0");
             else if (scaled_value < 0)
-                result = fmt::FormatInline<k_size>("{.0} L", -scaled_value);
+                result = format("{.0} L", -scaled_value);
             else
-                result = fmt::FormatInline<k_size>("{.0} R", scaled_value);
+                result = format("{.0} R", scaled_value);
             break;
         }
         case ParamDisplayFormat::SinevibesFilter: {
             auto const scaled_value = value * 100.0f;
-            if (scaled_value > -0.5f && scaled_value < 0.5f)
+            if (in_zero_snap_zone(scaled_value))
                 result = ResultType {"Off"};
             else if (scaled_value < 0)
-                result = fmt::FormatInline<k_size>("Lo-cut {.0}%", -scaled_value);
+                result = format("Lo-cut {.0}%", -scaled_value);
             else
-                result = fmt::FormatInline<k_size>("Hi-cut {.0}%", scaled_value);
+                result = format("Hi-cut {.0}%", scaled_value);
             break;
         }
         case ParamDisplayFormat::Ms: {
             if (RoundPositiveFloat(value) >= 1000)
-                result = fmt::FormatInline<k_size>("{.1} s", value / 1000);
+                result = format("{.1} s", value / 1000);
             else if (value < 20)
-                result = fmt::FormatInline<k_size>("{.2} ms", value);
+                result = format("{.2} ms", value);
             else
-                result = fmt::FormatInline<k_size>("{.0} ms", value);
+                result = format("{.0} ms", value);
             break;
         }
         case ParamDisplayFormat::VolumeAmp: {
             if (value > k_silence_amp_80) {
-                result = fmt::FormatInline<k_size>("{.1} dB", AmpToDb(value));
+                result = format("{.1} dB", AmpToDb(value));
                 break;
             } else
                 result = ResultType("-\u221E");
@@ -340,33 +363,33 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
         }
         case ParamDisplayFormat::Hz: {
             if (RoundPositiveFloat(value) >= 1000)
-                result = fmt::FormatInline<k_size>("{.1} kHz", value / 1000);
+                result = format("{.1} kHz", value / 1000);
             else if (projection->range.min < 0.01f && value < 0.01f)
-                result = fmt::FormatInline<k_size>("{.6} Hz", value);
+                result = format("{.6} Hz", value);
             else if (projection->range.min < 0.01f && value < 0.5f)
-                result = fmt::FormatInline<k_size>("{.3} Hz", value);
+                result = format("{.3} Hz", value);
             else if (value < 0.5f)
-                result = fmt::FormatInline<k_size>("{.2} Hz", value);
+                result = format("{.2} Hz", value);
             else if (projection->range.Delta() > 100)
-                result = fmt::FormatInline<k_size>("{.0} Hz", value);
+                result = format("{.0} Hz", value);
             else
-                result = fmt::FormatInline<k_size>("{.1} Hz", value);
+                result = format("{.1} Hz", value);
             break;
         }
         case ParamDisplayFormat::VolumeDbRange: {
-            result = fmt::FormatInline<k_size>("{.1} dB", value);
+            result = format("{.1} dB", value);
             break;
         }
         case ParamDisplayFormat::Cents: {
-            result = fmt::FormatInline<k_size>("{.0} cents", value);
+            result = format("{.0} cents", value);
             break;
         }
         case ParamDisplayFormat::Semitones: {
-            result = fmt::FormatInline<k_size>("{.0} semitones", value);
+            result = format("{.0} semitones", value);
             break;
         }
         case ParamDisplayFormat::Ratio: {
-            result = fmt::FormatInline<k_size>("{.2} : 1", value);
+            result = format("{.2} : 1", value);
             break;
         }
         case ParamDisplayFormat::CompressorAttackMs:
@@ -375,16 +398,16 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
                                 ? vitfx::compressor::AttackParamToMs(value)
                                 : vitfx::compressor::ReleaseParamToMs(value);
             if (RoundPositiveFloat(ms) >= 1000)
-                result = fmt::FormatInline<k_size>("{.1} s", ms / 1000);
+                result = format("{.1} s", ms / 1000);
             else if (ms < 10)
-                result = fmt::FormatInline<k_size>("{.2} ms", ms);
+                result = format("{.2} ms", ms);
             else
-                result = fmt::FormatInline<k_size>("{.0} ms", ms);
+                result = format("{.0} ms", ms);
             break;
         }
     }
 
-    if (!result.size) result = fmt::FormatInline<k_size>("{.1}", value);
+    if (!result.size) result = format("{.1}", value);
 
     if (NumberStartsWithNegativeZero(result)) dyn::Remove(result, 0);
 
@@ -979,6 +1002,46 @@ TEST_CASE(TestParamStringConversion) {
     return k_success;
 }
 
+TEST_CASE(TestFullPrecisionStringRoundTrip) {
+    for (auto const& descriptor : k_param_descriptors) {
+        auto const& range = descriptor.linear_range;
+        for (auto const position_01 : Array {0.0f, 0.001f, 0.1234f, 0.5f, 0.777f, 0.999f, 1.0f}) {
+            auto const linear_value = ({
+                auto v = range.min + (position_01 * range.Delta());
+                switch (descriptor.value_type) {
+                    case ParamValueType::Float: break;
+                    case ParamValueType::Menu:
+                    case ParamValueType::Bool:
+                    case ParamValueType::Int: v = Round(v); break;
+                }
+                v;
+            });
+            auto const str = descriptor.LinearValueToString(linear_value, {.full_precision = true});
+            REQUIRE(str);
+            auto const parsed = descriptor.StringToLinearValue(*str);
+            if (!parsed) {
+                tester.log.Error("{}: failed to parse '{}'", descriptor.id_string, *str);
+                REQUIRE(false);
+            }
+            // Compare projected values: some projections are flat near their ends, so different linear values
+            // can share one projected value.
+            auto const projected = descriptor.ProjectValue(linear_value);
+            auto const parsed_projected = descriptor.ProjectValue(*parsed);
+            auto const projected_range_delta =
+                descriptor.projection ? descriptor.projection->range.Delta() : range.Delta();
+            auto const tolerance = projected_range_delta * 0.00001f;
+            if (Abs(parsed_projected - projected) > tolerance)
+                tester.log.Error("{}: {} -> '{}' -> {}",
+                                 descriptor.id_string,
+                                 projected,
+                                 *str,
+                                 parsed_projected);
+            CHECK_APPROX_EQ(parsed_projected, projected, tolerance);
+        }
+    }
+    return k_success;
+}
+
 TEST_CASE(TestCutoffSemitonesNoteNameDisplay) {
     auto const& cutoff_param = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
     REQUIRE(cutoff_param.flags.cutoff_frequency);
@@ -987,7 +1050,7 @@ TEST_CASE(TestCutoffSemitonesNoteNameDisplay) {
     auto const linear_value = cutoff_param.LineariseValue(440.0f, true);
     REQUIRE(linear_value);
 
-    auto const str = cutoff_param.LinearValueToString(*linear_value, true);
+    auto const str = cutoff_param.LinearValueToString(*linear_value, {.show_cutoff_in_semitones = true});
     REQUIRE(str);
     tester.log.Debug("Cutoff note-name display: {}", *str);
     CHECK_EQ(String {*str}, "A3 (note 69)"_s);
@@ -1122,6 +1185,7 @@ TEST_REGISTRATION(RegisterParamDescriptorTests) {
     REGISTER_TEST(TestNumberStartsWithNegativeZero);
     REGISTER_TEST(TestLegacyConversion);
     REGISTER_TEST(TestParamStringConversion);
+    REGISTER_TEST(TestFullPrecisionStringRoundTrip);
     REGISTER_TEST(TestParamIdStringsUnique);
     REGISTER_TEST(TestParamGenerationsMatchSnapshot);
     REGISTER_TEST(TestDistortionTypeCategoriesComplete);

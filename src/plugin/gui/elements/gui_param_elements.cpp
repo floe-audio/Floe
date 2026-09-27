@@ -488,9 +488,9 @@ static void AppendMacroAdjustedValueLine(GuiState const& g,
                                               macro_destinations,
                                               param.LinearValue(),
                                               param.info.index);
-    auto const adjusted_string = *param.info.LinearValueToString(adjusted, show_cutoff_in_semitones);
-    if (adjusted_string == *param.info.LinearValueToString(param.LinearValue(), show_cutoff_in_semitones))
-        return;
+    ParamValueToStringOptions const to_string_options {.show_cutoff_in_semitones = show_cutoff_in_semitones};
+    auto const adjusted_string = *param.info.LinearValueToString(adjusted, to_string_options);
+    if (adjusted_string == *param.info.LinearValueToString(param.LinearValue(), to_string_options)) return;
     fmt::Append(buf, "\nMacro-adjusted to {} (M", adjusted_string);
     for (auto const [index, number] : Enumerate(macro_numbers)) {
         if (index) dyn::AppendSpan(buf, ", "_s);
@@ -505,7 +505,8 @@ ParamValuePopupText(GuiState const& g, Span<DescribedParamValue const*> params, 
     DynamicArray<char> buf {arena};
     for (auto param : params) {
         auto const value_string =
-            *param->info.LinearValueToString(param->LinearValue(), show_cutoff_in_semitones);
+            *param->info.LinearValueToString(param->LinearValue(),
+                                             {.show_cutoff_in_semitones = show_cutoff_in_semitones});
         if (params.size == 1) {
             dyn::AppendSpan(buf, value_string);
         } else {
@@ -902,7 +903,8 @@ Box DoKnobParameter(GuiState& g,
 
     auto val = param.LinearValue();
     auto const display_string =
-        param.info.LinearValueToString(val, ShowCutoffInSemitones(g.prefs)).ReleaseValueOr({});
+        param.info.LinearValueToString(val, {.show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs)})
+            .ReleaseValueOr({});
     Optional<f32> new_val {};
     Optional<imgui::TextInputResult> param_text_input_result {};
 
@@ -1097,7 +1099,8 @@ Box DoVerticalSliderParameter(GuiState& g,
 
     auto val = param.LinearValue();
     auto const display_string =
-        param.info.LinearValueToString(val, ShowCutoffInSemitones(g.prefs)).ReleaseValueOr({});
+        param.info.LinearValueToString(val, {.show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs)})
+            .ReleaseValueOr({});
     Optional<f32> new_val {};
     Optional<imgui::TextInputResult> param_text_input_result {};
 
@@ -1719,7 +1722,8 @@ void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const
                 auto const p_obj = g.engine.processor.main_params.DescribedValue(p);
                 auto const show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs);
                 auto const str =
-                    p_obj.info.LinearValueToString(p_obj.LinearValue(), show_cutoff_in_semitones);
+                    p_obj.info.LinearValueToString(p_obj.LinearValue(),
+                                                   {.show_cutoff_in_semitones = show_cutoff_in_semitones});
                 ASSERT(str.HasValue());
 
                 g.imgui.SetTextInputFocus(id, *str, false);

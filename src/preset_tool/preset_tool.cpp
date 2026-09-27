@@ -228,16 +228,12 @@ static ErrorCodeOr<void> PrintShape(ArenaAllocator& arena) {
         "'preset_path' (the current file), and can call inspect_library(path).\n"
         "\n"
         "Value encoding for param_values:\n"
-        "  Writes emit formatted display strings (\"50 %\", \"-12.0 dB\", \"Sine\") keyed by stable\n"
-        "  id_string. Reads accept either a formatted string or the underlying projected number\n"
-        "  (e.g. 0.5, -12.0, 440), so scripts can assign whichever is more convenient. String\n"
-        "  reads are permissive: extra precision and either unit are accepted (\"1.567 s\" or\n"
-        "  \"1567 ms\" both work even though writes emit \"1.6 s\").\n"
-        "\n"
-        "Round-trip note: display formats truncate precision, so saving a preset back will alter\n"
-        "the stored numeric value of many params (snapped to the display grid). This is\n"
-        "intentional and does not change perceived audio - the truncation sits well below audible\n"
-        "thresholds.\n"
+        "  Writes emit formatted display strings with 6 decimal places (\"50.000000%\",\n"
+        "  \"-12.000000 dB\", \"Sine\") keyed by stable id_string, so values keep their full\n"
+        "  precision and params the script doesn't change are saved back unaltered. Reads accept\n"
+        "  either a formatted string or the underlying projected number (e.g. 0.5, -12.0, 440), so\n"
+        "  scripts can assign whichever is more convenient. String reads are permissive: any\n"
+        "  precision and either unit are accepted (\"1.567 s\" or \"1567 ms\" both work).\n"
         "\n";
 
     DynamicArray<char> buf {arena};

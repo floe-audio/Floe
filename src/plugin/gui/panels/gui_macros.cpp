@@ -45,7 +45,9 @@ static void DoDestinationRangeEditor(GuiState& g, u8 macro_index, u8 destination
 
     auto const value_string = [&](f32 linear_value) -> String {
         auto const s =
-            descriptor.LinearValueToString(linear_value, show_cutoff_in_semitones).ReleaseValueOr({});
+            descriptor
+                .LinearValueToString(linear_value, {.show_cutoff_in_semitones = show_cutoff_in_semitones})
+                .ReleaseValueOr({});
         return builder.arena.Clone((String)s);
     };
 
@@ -703,8 +705,9 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                                 return AdjustedLinearValue(values, macro_dests, base_value, dest_param_index);
                             };
                             auto const to_string = [&](f32 linear_value) {
-                                return *descriptor.LinearValueToString(linear_value,
-                                                                       show_cutoff_in_semitones);
+                                return *descriptor.LinearValueToString(
+                                    linear_value,
+                                    {.show_cutoff_in_semitones = show_cutoff_in_semitones});
                             };
 
                             return fmt::Format(builder.arena,

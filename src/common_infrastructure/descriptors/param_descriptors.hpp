@@ -1461,6 +1461,15 @@ static_assert(k_arp_synced_rate_strings.size == ToInt(ArpSyncedRate::Count));
 
 } // namespace param_values
 
+struct ParamValueToStringOptions {
+    // Only has any effect on params with flags.cutoff_frequency set: nullopt keeps the param's native
+    // display_format, otherwise it overrides the unit to Hz (false) or semitones (true).
+    Optional<bool> show_cutoff_in_semitones {};
+    // About 7 significant figures in fixed notation instead of the display precision, and no snapping near
+    // zero to "0" or "Off", so the string parses back to (nearly) the same value.
+    bool full_precision {};
+};
+
 struct ParamDescriptor {
     enum class MenuType : u8 {
         None,
@@ -1734,7 +1743,7 @@ struct ParamDescriptor {
     // the param's native display_format, otherwise it overrides the unit to Hz (false) or semitones (true).
     Optional<f32> StringToLinearValue(String str, Optional<bool> show_cutoff_in_semitones = k_nullopt) const;
     Optional<DynamicArrayBounded<char, 128>>
-    LinearValueToString(f32 linear_value, Optional<bool> show_cutoff_in_semitones = k_nullopt) const;
+    LinearValueToString(f32 linear_value, ParamValueToStringOptions options = {}) const;
 
     constexpr bool IsEffectParam() const { return module_parts[0] == ParameterModule::Effect; }
     constexpr bool IsLayerParam() const { return LayerIndexFromModule(module_parts[0]).HasValue(); }
