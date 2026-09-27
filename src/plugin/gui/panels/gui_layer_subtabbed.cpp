@@ -1293,9 +1293,6 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     auto& params = g.engine.processor.main_params;
     bool const greyed_out = !params.BoolValue(layer_index, LayerParamIndex::LfoOn);
 
-    constexpr f32 k_menu_width = 135;
-    constexpr f32 k_menu_label_width = 70;
-
     auto const page = DoBox(g.builder,
                             {
                                 .parent = parent,
@@ -1356,7 +1353,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                       {
                                           .parent = row,
                                           .layout {
-                                              .size = {k_menu_label_width, k_font_body_size},
+                                              .size = {48, k_font_body_size},
                                               .contents_padding = {.r = k_page_row_gap_x},
                                               .contents_gap = 3,
                                               .contents_direction = layout::Direction::Row,
@@ -1394,7 +1391,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                         row,
                         param,
                         {
-                            .width = k_menu_width,
+                            .width = 145,
                             .greyed_out = greyed_out,
                             .label = false,
                             .override_tooltip = tooltip,
