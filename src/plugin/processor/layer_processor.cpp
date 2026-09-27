@@ -727,9 +727,10 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.lfo.dest = *dest;
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::LfoOn))
         layer.voice_controller.lfo.on = *p;
-    if (auto p = changes.changed_params.IntValue<param_values::SeedMode>(layer.index,
-                                                                         LayerParamIndex::LfoSeedMode))
-        vmst.lfo.seed_mode = *p;
+    if (auto p =
+            changes.changed_params.IntValue<param_values::VariationMode>(layer.index,
+                                                                         LayerParamIndex::LfoVariationMode))
+        vmst.lfo.variation_mode = *p;
     if (auto p = changes.changed_params.IntValue<int>(layer.index, LayerParamIndex::LfoSeed))
         vmst.lfo.seed = (u8)*p;
 
@@ -839,9 +840,10 @@ void ProcessLayerChanges(LayerProcessor& layer,
         vmst.granular.random_direction = *p;
     if (auto p = changes.changed_params.ProjectedValue(layer.index, LayerParamIndex::GranularHarmony))
         vmst.granular.harmony = *p;
-    if (auto p = changes.changed_params.IntValue<param_values::SeedMode>(layer.index,
-                                                                         LayerParamIndex::GranularSeedMode))
-        vmst.granular.seed_mode = *p;
+    if (auto p = changes.changed_params.IntValue<param_values::VariationMode>(
+            layer.index,
+            LayerParamIndex::GranularVariationMode))
+        vmst.granular.variation_mode = *p;
     if (auto p = changes.changed_params.IntValue<int>(layer.index, LayerParamIndex::GranularSeed))
         vmst.granular.seed = (u8)*p;
     if (auto p = changes.changed_params.BoolValue(layer.index, LayerParamIndex::GranularShareGrains))

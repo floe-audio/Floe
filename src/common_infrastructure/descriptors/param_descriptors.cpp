@@ -44,10 +44,10 @@ Optional<String> ParameterMenuItemDescription(ParamIndex param_index, u32 item_i
             auto const description = MpeDestinationDescription((param_values::MpeDestination)item_index);
             return description.size ? Optional<String> {description} : k_nullopt;
         }
-        case ParamDescriptor::MenuType::GranularSeedMode:
-            return GranularSeedModeDescription((param_values::SeedMode)item_index);
-        case ParamDescriptor::MenuType::LfoSeedMode:
-            return LfoSeedModeDescription((param_values::SeedMode)item_index);
+        case ParamDescriptor::MenuType::GranularVariationMode:
+            return GranularVariationModeDescription((param_values::VariationMode)item_index);
+        case ParamDescriptor::MenuType::LfoVariationMode:
+            return LfoVariationModeDescription((param_values::VariationMode)item_index);
         case ParamDescriptor::MenuType::ArpOctavePolyrate: {
             auto const description =
                 ArpOctavePolyrateDescription((param_values::ArpOctavePolyrate)item_index);
@@ -499,11 +499,11 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::LfoShape:
             case LayerParamIndex::LfoDestination: return layer_is_on(ln, LayerParamIndex::LfoOn);
 
-            case LayerParamIndex::LfoSeedMode: return lfo_is_random_shape(ln);
+            case LayerParamIndex::LfoVariationMode: return lfo_is_random_shape(ln);
             case LayerParamIndex::LfoSeed:
-                return lfo_is_random_shape(ln) &&
-                       ParamToInt<param_values::SeedMode>(layer_linear(ln, LayerParamIndex::LfoSeedMode)) !=
-                           param_values::SeedMode::Random;
+                return lfo_is_random_shape(ln) && ParamToInt<param_values::VariationMode>(
+                                                      layer_linear(ln, LayerParamIndex::LfoVariationMode)) !=
+                                                      param_values::VariationMode::DifferentOnEveryNote;
 
             case LayerParamIndex::LfoRateTempoSynced:
                 return layer_is_on(ln, LayerParamIndex::LfoOn) &&
@@ -545,12 +545,12 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::GranularRandomDetune:
             case LayerParamIndex::GranularRandomDirection:
             case LayerParamIndex::GranularHarmony:
-            case LayerParamIndex::GranularSeedMode:
+            case LayerParamIndex::GranularVariationMode:
             case LayerParamIndex::GranularShareGrains: return is_granular;
             case LayerParamIndex::GranularSeed:
-                return is_granular && ParamToInt<param_values::SeedMode>(
-                                          layer_linear(ln, LayerParamIndex::GranularSeedMode)) !=
-                                          param_values::SeedMode::Random;
+                return is_granular && ParamToInt<param_values::VariationMode>(
+                                          layer_linear(ln, LayerParamIndex::GranularVariationMode)) !=
+                                          param_values::VariationMode::DifferentOnEveryNote;
 
             case LayerParamIndex::ArpMode:
             case LayerParamIndex::ArpNoteOrder:

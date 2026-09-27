@@ -1176,32 +1176,33 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                    3);
 }
 
-struct SeedButtonOptions {
-    LayerParamIndex seed_mode_param;
+struct VariationButtonOptions {
+    LayerParamIndex variation_mode_param;
     LayerParamIndex seed_param;
     String description;
     bool greyed_out;
 };
 
-static void DoSeedButton(GuiState& g, u8 layer_index, Box row, SeedButtonOptions const& options) {
+static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationButtonOptions const& options) {
     auto& params = g.engine.processor.main_params;
-    auto const seed_mode = params.IntValue<param_values::SeedMode>(layer_index, options.seed_mode_param);
+    auto const variation_mode =
+        params.IntValue<param_values::VariationMode>(layer_index, options.variation_mode_param);
 
-    auto const btn =
-        DoMidPanelIconButton(g.builder,
-                             row,
-                             {
-                                 .icon = MidPanelIcon::Seed,
-                                 .tooltip = fmt::Format(g.scratch_arena,
-                                                        "{}\n\nCurrently: {}",
-                                                        options.description,
-                                                        param_values::k_seed_mode_strings[ToInt(seed_mode)]),
-                                 .greyed_out = options.greyed_out,
-                                 .is_on = seed_mode != param_values::SeedMode::Random,
-                             });
+    auto const btn = DoMidPanelIconButton(
+        g.builder,
+        row,
+        {
+            .icon = MidPanelIcon::Seed,
+            .tooltip = fmt::Format(g.scratch_arena,
+                                   "{}\n\nCurrently: {}",
+                                   options.description,
+                                   param_values::k_variation_mode_strings[ToInt(variation_mode)]),
+            .greyed_out = options.greyed_out,
+            .is_on = variation_mode != param_values::VariationMode::DifferentOnEveryNote,
+        });
 
-    auto const popup_id =
-        (imgui::Id)(SourceLocationHash() ^ ((u64)layer_index << 8) ^ (u64)ToInt(options.seed_mode_param));
+    auto const popup_id = (imgui::Id)(SourceLocationHash() ^ ((u64)layer_index << 8) ^
+                                      (u64)ToInt(options.variation_mode_param));
     if (btn.button_fired) g.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
 
     // bounds is a Box so the run lambda is deferred: locals must be captured by value.
@@ -1212,10 +1213,11 @@ static void DoSeedButton(GuiState& g, u8 layer_index, Box row, SeedButtonOptions
                 .run =
                     [&g,
                      layer_index,
-                     seed_mode_param_index = options.seed_mode_param,
+                     variation_mode_param_index = options.variation_mode_param,
                      seed_param_index = options.seed_param](GuiBuilder&) {
                         auto& params = g.engine.processor.main_params;
-                        auto const mode_param = params.DescribedValue(layer_index, seed_mode_param_index);
+                        auto const mode_param =
+                            params.DescribedValue(layer_index, variation_mode_param_index);
                         auto const seed_param = params.DescribedValue(layer_index, seed_param_index);
 
                         auto const root = DoBox(g.builder,
@@ -1229,8 +1231,8 @@ static void DoSeedButton(GuiState& g, u8 layer_index, Box row, SeedButtonOptions
                                                     },
                                                 });
 
-                        auto const seed_greyed_out =
-                            mode_param.IntValue<param_values::SeedMode>() == param_values::SeedMode::Random;
+                        auto const seed_greyed_out = mode_param.IntValue<param_values::VariationMode>() ==
+                                                     param_values::VariationMode::DifferentOnEveryNote;
 
                         auto const do_row = [&](DescribedParamValue const& param,
                                                 bool greyed_out,
@@ -1432,12 +1434,12 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
         param_values::LfoShapeIsRandom(
             params.IntValue<param_values::LfoShape>(layer_index, LayerParamIndex::LfoShape))
             ? FunctionRef<void(Box)> {[&](Box row) {
-                  DoSeedButton(
+                  DoVariationButton(
                       g,
                       layer_index,
                       row,
                       {
-                          .seed_mode_param = LayerParamIndex::LfoSeedMode,
+                          .variation_mode_param = LayerParamIndex::LfoVariationMode,
                           .seed_param = LayerParamIndex::LfoSeed,
                           .description =
                               "Choose whether each note gets a different random pattern or plays back the exact same pattern every time."_s,
@@ -2515,12 +2517,12 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                               {});
                         AddParamContextMenuBehaviour(g, btn, share_param);
                     }
-                    DoSeedButton(
+                    DoVariationButton(
                         g,
                         layer_index,
                         row,
                         {
-                            .seed_mode_param = LayerParamIndex::GranularSeedMode,
+                            .variation_mode_param = LayerParamIndex::GranularVariationMode,
                             .seed_param = LayerParamIndex::GranularSeed,
                             .description =
                                 "Choose whether each note scatters its grains differently or plays back the exact same grains every time."_s,

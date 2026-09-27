@@ -889,10 +889,11 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
     if (version < StateVersion::AddedGranularAndLfoSeeds) {
         for (auto const layer_index : Range(k_num_layers)) {
-            // Old version was to equivalent to Random mode.
-            for (auto const lpi : Array {LayerParamIndex::GranularSeedMode, LayerParamIndex::LfoSeedMode}) {
+            // Old version was to equivalent to DifferentOnEveryNote mode.
+            for (auto const lpi :
+                 Array {LayerParamIndex::GranularVariationMode, LayerParamIndex::LfoVariationMode}) {
                 auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
-                state.param_values[ToInt(pi)] = (f32)param_values::SeedMode::Random;
+                state.param_values[ToInt(pi)] = (f32)param_values::VariationMode::DifferentOnEveryNote;
             }
             // The rest can be default since they're not used.
             for (auto const lpi : Array {LayerParamIndex::GranularSeed, LayerParamIndex::LfoSeed}) {
