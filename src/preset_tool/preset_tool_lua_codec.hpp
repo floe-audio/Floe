@@ -17,6 +17,10 @@ void BuildPresetLuaTable(lua_State* lua,
                          BuildPresetLuaTableOptions options);
 void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset_state);
 
+// Globals param_to_linear(id_string, value), param_from_linear(id_string, linear) and
+// param_linear_range(id_string).
+void RegisterParamLuaFunctions(lua_State* lua);
+
 // Append a human-readable description of every field in the 'preset' Lua table. Each handler owns
 // its own help text, so read, write, and shape documentation live together. Text only (no JSON).
 void AppendPresetLuaTableShape(DynamicArray<char>& out);

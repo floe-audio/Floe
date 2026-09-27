@@ -50,6 +50,76 @@ static Optional<ParamIndex> FindParamByIdString(String key) {
     return k_nullopt;
 }
 
+// Accepts a formatted display string or a projected number.
+static Optional<f32> LinearValueFromLua(lua_State* lua, int stack_index, ParamDescriptor const& descriptor) {
+    // lua_isstring is true for numbers (auto-coerce), so check the exact type via lua_type.
+    switch (lua_type(lua, stack_index)) {
+        case LUA_TNUMBER: return descriptor.LineariseValue((f32)lua_tonumber(lua, stack_index), true);
+        case LUA_TSTRING: {
+            size_t size;
+            auto const str = lua_tolstring(lua, stack_index, &size);
+            return descriptor.StringToLinearValue({str, size});
+        }
+        default: return k_nullopt;
+    }
+}
+
+static ParamDescriptor const& CheckParamArg(lua_State* lua, int arg) {
+    size_t size;
+    auto const id_string = luaL_checklstring(lua, arg, &size);
+    auto const param_index = FindParamByIdString({id_string, size});
+    if (!param_index) luaL_error(lua, "unknown param id_string: %s", id_string);
+    return k_param_descriptors[ToInt(*param_index)];
+}
+
+// param_to_linear(id_string, value) -> number
+static int LuaParamToLinear(lua_State* lua) {
+    auto const& descriptor = CheckParamArg(lua, 1);
+    luaL_checkany(lua, 2);
+    auto const linear_value = LinearValueFromLua(lua, 2, descriptor);
+    if (!linear_value)
+        return luaL_error(lua,
+                          "invalid value for %s: %s",
+                          lua_tostring(lua, 1),
+                          luaL_tolstring(lua, 2, nullptr));
+    lua_pushnumber(lua, (f64)*linear_value);
+    return 1;
+}
+
+// The same form param_values holds.
+static void PushParamValue(lua_State* lua, ParamDescriptor const& descriptor, f32 linear_value) {
+    if (auto const formatted = descriptor.LinearValueToString(linear_value, {.full_precision = true}))
+        lua_pushlstring(lua, formatted->data, formatted->size);
+    else
+        lua_pushnumber(lua, (f64)descriptor.ProjectValue(linear_value));
+}
+
+// param_from_linear(id_string, linear) -> value, clamped to the linear range
+static int LuaParamFromLinear(lua_State* lua) {
+    auto const& descriptor = CheckParamArg(lua, 1);
+    auto const linear_value =
+        Clamp((f32)luaL_checknumber(lua, 2), descriptor.linear_range.min, descriptor.linear_range.max);
+    PushParamValue(lua, descriptor, linear_value);
+    return 1;
+}
+
+// param_linear_range(id_string) -> {min = number, max = number}
+static int LuaParamLinearRange(lua_State* lua) {
+    auto const& descriptor = CheckParamArg(lua, 1);
+    lua_newtable(lua);
+    lua_pushnumber(lua, (f64)descriptor.linear_range.min);
+    lua_setfield(lua, -2, "min");
+    lua_pushnumber(lua, (f64)descriptor.linear_range.max);
+    lua_setfield(lua, -2, "max");
+    return 1;
+}
+
+void RegisterParamLuaFunctions(lua_State* lua) {
+    lua_register(lua, "param_to_linear", LuaParamToLinear);
+    lua_register(lua, "param_from_linear", LuaParamFromLinear);
+    lua_register(lua, "param_linear_range", LuaParamLinearRange);
+}
+
 // In Read functions, the value is on top of the stack on entry. The caller pops it.
 
 struct StringH {
@@ -93,8 +163,8 @@ struct ParamValuesH {
         fmt::Append(out, "  {} = {{ }}\n", name);
         fmt::Append(out,
                     "    Keyed by stable id_string (e.g. \"fx.distortion.drive\", \"l1.volume\").\n"
-                    "    Writes emit formatted display strings with 6 decimal places (\"50.000000%\",\n"
-                    "    \"-12.000000 dB\", \"Sine\"); reads\n"
+                    "    Writes emit formatted display strings with about 7 significant figures\n"
+                    "    (\"50.00000%\", \"-12.00000 dB\", \"Sine\"); reads\n"
                     "    accept either a string or the underlying projected number. Run\n"
                     "    `preset-tool --print-params-json` for the full id_string + range catalog.\n");
     }
@@ -103,10 +173,7 @@ struct ParamValuesH {
         for (auto const i : Range<u16>(vals.size)) {
             auto const& d = k_param_descriptors[i];
             lua_pushlstring(lua, d.id_string.data, d.id_string.size);
-            if (auto const formatted = d.LinearValueToString(vals[i], {.full_precision = true}))
-                lua_pushlstring(lua, formatted->data, formatted->size);
-            else
-                lua_pushnumber(lua, (f64)d.ProjectValue(vals[i]));
+            PushParamValue(lua, d, vals[i]);
             lua_settable(lua, -3);
         }
     }
@@ -120,17 +187,8 @@ struct ParamValuesH {
                 size_t key_len;
                 auto const key_str = lua_tolstring(lua, -2, &key_len);
                 param_index = FindParamByIdString({key_str, key_len});
-                if (param_index) {
-                    auto const& d = k_param_descriptors[ToInt(*param_index)];
-                    // lua_isstring is true for numbers (auto-coerce), so check the exact type via lua_type.
-                    if (lua_type(lua, -1) == LUA_TNUMBER) {
-                        new_linear = d.LineariseValue((f32)lua_tonumber(lua, -1), true);
-                    } else if (lua_type(lua, -1) == LUA_TSTRING) {
-                        size_t val_len;
-                        auto const val_str = lua_tolstring(lua, -1, &val_len);
-                        new_linear = d.StringToLinearValue({val_str, val_len});
-                    }
-                }
+                if (param_index)
+                    new_linear = LinearValueFromLua(lua, -1, k_param_descriptors[ToInt(*param_index)]);
             }
             if (param_index && new_linear) {
                 // Don't write if only changed by rounding error.
@@ -898,8 +956,8 @@ ErrorCodeOr<void> WriteParamsJson(Writer out) {
 // Tests
 // ============================================================
 
-// The codec uses stable id_string keys with full-precision display-string values ("-12.000000 dB",
-// "50.000000%", "Sine"), so round-trips of arbitrary values are lossless.
+// The codec uses stable id_string keys with full-precision display-string values ("-12.00000 dB",
+// "50.00000%", "Sine"), so round-trips of arbitrary values are lossless.
 //
 // These tests bypass file I/O, so legacy→modern adaptation (AdaptNewerParams) does not apply; they verify
 // the codec layer in isolation.
@@ -1066,7 +1124,61 @@ TEST_CASE(TestPresetLuaCodecRoundTripPopulated) {
     return k_success;
 }
 
+TEST_CASE(TestParamLuaFunctions) {
+    auto lua = luaL_newstate();
+    DEFER { lua_close(lua); };
+    luaL_openlibs(lua);
+    RegisterParamLuaFunctions(lua);
+
+    auto const eval_number = [&](char const* expression) -> Optional<f64> {
+        DynamicArrayBounded<char, 256> source {"return "_s};
+        dyn::AppendSpan(source, FromNullTerminated(expression));
+        if (luaL_loadbuffer(lua, source.data, source.size, "test") != LUA_OK ||
+            lua_pcall(lua, 0, 1, 0) != LUA_OK) {
+            tester.log.Debug("{}: {}", expression, lua_tostring(lua, -1));
+            lua_pop(lua, 1);
+            return k_nullopt;
+        }
+        auto const result = lua_tonumber(lua, -1);
+        lua_pop(lua, 1);
+        return result;
+    };
+
+    auto const& cutoff =
+        k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(0, LayerParamIndex::FilterCutoff))];
+    auto const expected = *cutoff.LineariseValue(60, true);
+
+    auto const from_string = eval_number("param_to_linear('layer1.filter.cutoff', '60 Hz')");
+    REQUIRE(from_string);
+    CHECK_APPROX_EQ(*from_string, (f64)expected, 0.00001);
+
+    auto const from_number = eval_number("param_to_linear('layer1.filter.cutoff', 60)");
+    REQUIRE(from_number);
+    CHECK_APPROX_EQ(*from_number, (f64)expected, 0.00001);
+
+    auto const range_max = eval_number("param_linear_range('layer1.filter.cutoff').max");
+    REQUIRE(range_max);
+    CHECK_EQ(*range_max, (f64)cutoff.linear_range.max);
+
+    auto const round_trip = eval_number(
+        "param_to_linear('layer1.filter.cutoff', param_from_linear('layer1.filter.cutoff', 0.3))");
+    REQUIRE(round_trip);
+    CHECK_APPROX_EQ(*round_trip, 0.3, 0.00001);
+
+    auto const clamped =
+        eval_number("param_to_linear('layer1.filter.cutoff', param_from_linear('layer1.filter.cutoff', 5))");
+    REQUIRE(clamped);
+    CHECK_APPROX_EQ(*clamped, (f64)cutoff.linear_range.max, 0.00001);
+
+    CHECK(!eval_number("param_from_linear('layer1.filter.cutoff', 'not a number')"));
+    CHECK(!eval_number("param_to_linear('no.such.param', 1)"));
+    CHECK(!eval_number("param_to_linear('layer1.filter.cutoff', 'not a value')"));
+    CHECK(!eval_number("param_linear_range('no.such.param')"));
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterPresetLuaCodecTests) {
     REGISTER_TEST(TestPresetLuaCodecRoundTripDefault);
     REGISTER_TEST(TestPresetLuaCodecRoundTripPopulated);
+    REGISTER_TEST(TestParamLuaFunctions);
 }
