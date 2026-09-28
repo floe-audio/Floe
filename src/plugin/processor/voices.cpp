@@ -1839,6 +1839,13 @@ static void ScheduleSharedGrainClockSpawns(VoicePool& pool, u32 num_frames, f32 
                         });
         }
 
+        // Voice slot order depends on what else is sounding and the order of a chord's note-ons, so order by
+        // note instead. Otherwise the Identical variation modes wouldn't distribute grains identically.
+        Sort(candidates, [](Candidate const& a, Candidate const& b) {
+            if (a.voice->note_num != b.voice->note_num) return a.voice->note_num < b.voice->note_num;
+            return a.voice->time_started < b.voice->time_started;
+        });
+
         auto& clock = pool.shared_grain_clocks[layer_index];
         if (!candidates.size) {
             clock.phase_01 = 0;
@@ -2323,6 +2330,39 @@ TEST_CASE(TestGranularShareGrains) {
     CHECK_EQ(chord_total, single_total);
     for (auto const spawns : chord_spawns)
         CHECK_GT(spawns, 0u);
+
+    SUBCASE("identical variation distributes grains the same regardless of voice slot order") {
+        fix.controller.granular.variation_mode = param_values::VariationMode::IdenticalOnEachKey;
+        constexpr Array<u7, 3> k_chord = {60, 64, 67};
+
+        auto const spawn_pattern_per_note = [&](bool reverse_note_on_order) {
+            fix.pool->EndAllVoicesInstantly();
+            for (auto const note_index : Range(k_chord.size))
+                StartTestSamplerVoice(
+                    fix,
+                    region,
+                    audio_data,
+                    k_chord[reverse_note_on_order ? k_chord.size - 1 - note_index : note_index]);
+
+            Array<u64, k_chord.size> hashes {};
+            for (auto const block_index : Range(200u)) {
+                ProcessVoices(*fix.pool, k_block_size_max, fix.context, false);
+                for (auto& v : fix.pool->EnumerateActiveVoices()) {
+                    auto const note_index = (usize)(Find(k_chord, v.note_num).Value());
+                    for (auto const frame : Range(k_block_size_max))
+                        if (v.shared_clock_spawn_frames.Get(frame))
+                            hashes[note_index] =
+                                (hashes[note_index] * 31) + (block_index * k_block_size_max) + frame + 1;
+                }
+            }
+            return hashes;
+        };
+
+        auto const forward = spawn_pattern_per_note(false);
+        auto const reversed = spawn_pattern_per_note(true);
+        for (auto const note_index : Range(k_chord.size))
+            CHECK_EQ(forward[note_index], reversed[note_index]);
+    }
 
     return k_success;
 }
