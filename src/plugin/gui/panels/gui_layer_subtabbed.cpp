@@ -1266,16 +1266,18 @@ static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationBut
                             return param_row;
                         };
 
+                        constexpr f32 k_width = 190;
+
                         DoMenuParameter(g,
                                         do_row(mode_param, false),
                                         mode_param,
-                                        {.width = 140, .label = false});
+                                        {.width = k_width, .label = false});
 
                         DoIntParameter(g,
                                        do_row(seed_param, seed_greyed_out),
                                        seed_param,
                                        {
-                                           .width = 140,
+                                           .width = k_width,
                                            .greyed_out = seed_greyed_out,
                                            .label = false,
                                        });
