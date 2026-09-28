@@ -845,6 +845,19 @@ void DrawFullscreenDim(imgui::Context const& imgui) {
     imgui.draw_list->PopClipRect();
 }
 
+void DrawFloatingPanelDim(imgui::Context const& imgui) {
+    imgui.draw_list->PushClipRectFullScreen();
+    imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x3c0f0d0d);
+    imgui.draw_list->PopClipRect();
+}
+
+void DrawFloatingPanelOutline(imgui::Context const& imgui, Rect r, f32 rounding) {
+    imgui.draw_list->PushClipRectFullScreen();
+    imgui.draw_list->AddRect(r.Expanded(1.0f), ToU32(k_floating_panel_outline_edge_col), rounding + 1.0f);
+    imgui.draw_list->AddRect(r, ToU32(k_floating_panel_outline_highlight_col), rounding);
+    imgui.draw_list->PopClipRect();
+}
+
 void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui) {
     DrawFullscreenDim(imgui);
 
@@ -862,11 +875,12 @@ void DrawOverlayViewportBackground(imgui::Context const& imgui) {
 }
 
 void DrawDarkPopupMenuBackground(imgui::Context const& imgui) {
+    DrawFloatingPanelDim(imgui);
     auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
     DrawDropShadow(imgui, r, {.rounding = rounding});
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
-    imgui.draw_list->AddRect(r, ToU32(Col {.c = Col::White, .alpha = 28}), rounding);
+    DrawFloatingPanelOutline(imgui, r, rounding);
 }
 
 struct TooltipText {

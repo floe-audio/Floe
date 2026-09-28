@@ -5202,22 +5202,18 @@ Corners BrowserOpenerCornersToRound(imgui::Context const& imgui, imgui::Id brows
 static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener, Rect browser) {
     auto const tolerance = WwToPixels(1.0f);
     auto const rounding = WwToPixels(k_corner_rounding);
-    auto const highlight_colour = ToU32(Col {.c = Col::White, .alpha = 58});
-    auto const edge_colour = ToU32(Col {.c = Col::Black});
-    auto& draw_list = *imgui.draw_list;
-
-    draw_list.PushClipRectFullScreen();
-    DEFER { draw_list.PopClipRect(); };
 
     auto const opener_above = Abs(opener.Bottom() - browser.y) <= tolerance;
     auto const browser_above = Abs(browser.Bottom() - opener.y) <= tolerance;
     if (!opener_above && !browser_above) {
-        for (auto const r : Array {opener, browser}) {
-            draw_list.AddRect(r.Expanded(1.0f), edge_colour, rounding + 1.0f);
-            draw_list.AddRect(r, highlight_colour, rounding);
-        }
+        DrawFloatingPanelOutline(imgui, opener, rounding);
+        DrawFloatingPanelOutline(imgui, browser, rounding);
         return;
     }
+
+    auto& draw_list = *imgui.draw_list;
+    draw_list.PushClipRectFullScreen();
+    DEFER { draw_list.PopClipRect(); };
 
     auto const upper = opener_above ? opener : browser;
     auto const lower = opener_above ? browser : opener;
@@ -5283,8 +5279,8 @@ static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener
         draw_list.PathStroke(colour, true, 1.0f);
     };
 
-    stroke_union(1.0f, edge_colour);
-    stroke_union(0.0f, highlight_colour);
+    stroke_union(1.0f, ToU32(k_floating_panel_outline_edge_col));
+    stroke_union(0.0f, ToU32(k_floating_panel_outline_highlight_col));
 }
 
 void DoBrowserOpenerViewport(GuiBuilder& builder, BrowserOpenerViewportOptions const& options) {
@@ -5379,9 +5375,7 @@ void DoBrowserModal(GuiBuilder& builder, BrowserPopupContext context, BrowserPop
                     // browser's vertical span.
                     cfg.draw_background =
                         imgui::DrawViewportBackgroundFunction([opener_rect](imgui::Context const& imgui) {
-                            imgui.draw_list->PushClipRectFullScreen();
-                            imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x3c0f0d0d);
-                            imgui.draw_list->PopClipRect();
+                            DrawFloatingPanelDim(imgui);
                             DropShadowOptions const shadow_opts {
                                 .rounding = WwToPixels(k_panel_rounding),
                             };

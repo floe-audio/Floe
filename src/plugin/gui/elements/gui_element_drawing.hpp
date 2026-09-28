@@ -142,6 +142,14 @@ void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollba
 void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
 void DrawModalScrollbarsDarkMode(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
 void DrawFullscreenDim(imgui::Context const& imgui);
+
+// Panels that float over the main UI (browsers, dark popups): a lighter dim than a full modal, and an
+// outline of a black edge with a highlight inside it so the border stays clear over any background.
+constexpr Col k_floating_panel_outline_edge_col {.c = Col::Black};
+constexpr Col k_floating_panel_outline_highlight_col {.c = Col::White, .alpha = 58};
+void DrawFloatingPanelDim(imgui::Context const& imgui);
+void DrawFloatingPanelOutline(imgui::Context const& imgui, Rect r, f32 rounding);
+
 void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui);
 void DrawOverlayViewportBackground(imgui::Context const& imgui);
 void DrawDarkPopupMenuBackground(imgui::Context const& imgui);
