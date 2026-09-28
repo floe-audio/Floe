@@ -17,8 +17,9 @@ void BuildPresetLuaTable(lua_State* lua,
                          BuildPresetLuaTableOptions options);
 void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& preset_state);
 
-// Globals param_to_linear(id_string, value), param_from_linear(id_string, linear) and
-// param_linear_range(id_string).
+// Globals param_to_linear(id_string, value), param_from_linear(id_string, linear),
+// param_linear_range(id_string), macro_destination_range(preset, macro, destination) and
+// macro_destination_value(id_string, from, to).
 void RegisterParamLuaFunctions(lua_State* lua);
 
 // Append a human-readable description of every field in the 'preset' Lua table. Each handler owns

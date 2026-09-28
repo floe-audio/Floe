@@ -242,6 +242,15 @@ static ErrorCodeOr<void> PrintShape(ArenaAllocator& arena) {
         "  param_from_linear(id_string, linear) -> value in param_values form, with linear\n"
         "  clamped to the param's linear range.\n"
         "  param_linear_range(id_string) -> {min = number, max = number}\n"
+        "\n"
+        "Macro destinations:\n"
+        "  macro_destination_range(preset, macro, destination) -> {at_0 = value, at_100 = value}:\n"
+        "  the param's value (param_values form) with that macro at 0% and 100%, and every other\n"
+        "  macro at its current position. macro and destination are 1-indexed.\n"
+        "  macro_destination_value(id_string, from, to) -> number: the destination .value that\n"
+        "  moves the param from 'from' to 'to' as the macro goes from 0% to 100%, when the param's\n"
+        "  own value is 'from' and no other destination targets it. from and to are anything\n"
+        "  param_values accepts.\n"
         "\n";
 
     DynamicArray<char> buf {arena};
