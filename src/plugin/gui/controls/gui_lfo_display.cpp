@@ -155,13 +155,15 @@ static void DoLfoDisplayDrag(GuiState& g,
         window_r,
         {
             .value_popup = FunctionRef<String()> {[&]() -> String {
-                return ParamValuePopupText(g, popup_params, g.scratch_arena);
+                auto const values = ParamValuePopupText(g, popup_params, g.scratch_arena);
+                if (!is_random) return values;
+                return fmt::Format(g.scratch_arena, "{}\nThe shape is a representation only", values);
             }},
             .tooltip = FunctionRef<String()> {[&]() -> String {
                 constexpr String k_description =
                     "A preview of the LFO's settings: the current Shape at the current Amount, with faster Time settings showing more cycles."_s;
                 constexpr String k_random_note =
-                    "\n\nThis Shape is random, so the preview is just representative; the actual shape will be different."_s;
+                    "\n\nThis Shape is random, so the preview is just representative; the actual shape is an endlessly changing random sequence."_s;
                 constexpr String k_greyed_out_note =
                     "\n\nThe LFO is off right now, so this is only a preview."_s;
                 return fmt::Format(g.scratch_arena,
