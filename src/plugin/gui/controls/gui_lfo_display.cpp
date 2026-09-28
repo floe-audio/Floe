@@ -202,6 +202,22 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     auto const is_random =
         shape == param_values::LfoShape::RandomSteps || shape == param_values::LfoShape::RandomGlide;
 
+    // A negative amount mirrors the waveform. For a random shape that only matters when the pattern is
+    // fixed; otherwise the mirrored sequence is statistically identical, so don't show a flip.
+    auto const amount_sign_flips_shape = ({
+        bool flips = true;
+        if (is_random) {
+            switch (params.IntValue<param_values::VariationMode>(layer_index,
+                                                                 LayerParamIndex::LfoVariationMode)) {
+                case param_values::VariationMode::DifferentOnEveryNote: flips = false; break;
+                case param_values::VariationMode::IdenticalOnAllNotes:
+                case param_values::VariationMode::IdenticalOnEachKey: break;
+                case param_values::VariationMode::Count: PanicIfReached();
+            }
+        }
+        flips;
+    });
+
     if (!IsAnyLegacyOverriding(amount_param.info.index, params.values) &&
         !IsAnyLegacyOverriding(rate_param.info.index, params.values))
         DoLfoDisplayDrag(g, window_rect, drag_id, amount_param, rate_param, sync_on, is_random, greyed_out);
@@ -220,7 +236,10 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     auto const half_h = viewport_r.h * 0.5f;
 
     auto const curve_points_for = [&](f32 amount_linear, f32 rate_linear) {
-        auto const amount = Clamp(amount_linear, -1.0f, 1.0f);
+        auto const amount = ({
+            auto const clamped = Clamp(amount_linear, -1.0f, 1.0f);
+            amount_sign_flips_shape ? clamped : Fabs(clamped);
+        });
 
         // Convert rate to Hz at a reference tempo so the display speed scales with the actual rate
         // value rather than its linear position in the param range.

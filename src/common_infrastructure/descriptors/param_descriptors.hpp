@@ -4065,7 +4065,7 @@ consteval auto CreateParams() {
             .gui_label = "Amount"_s,
             .tooltip =
                 "Amount sets how far the LFO moves its target. 0% is no movement at all and 100% is the full range for that target: silence to full level for Volume, a semitone either way for Pitch, and so on.\n\n"
-                "Negative values flip the shape upside down, so a falling sawtooth becomes a rising one. The LFO display shows the shape at the current Amount."_s,
+                "Negative values flip the shape upside down, so a falling sawtooth becomes a rising one. For random Shapes this only makes a difference when Variation is set to one of the Identical options. The LFO display shows the shape at the current Amount."_s,
         };
         lp(LegacyLfoDestination) = Args {
             .id = id(region, 31), // never change
