@@ -5202,7 +5202,8 @@ Corners BrowserOpenerCornersToRound(imgui::Context const& imgui, imgui::Id brows
 static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener, Rect browser) {
     auto const tolerance = WwToPixels(1.0f);
     auto const rounding = WwToPixels(k_corner_rounding);
-    auto const colour = ToU32(Col {.c = Col::White, .alpha = 28});
+    auto const highlight_colour = ToU32(Col {.c = Col::White, .alpha = 28});
+    auto const edge_colour = ToU32(Col {.c = Col::Black});
     auto& draw_list = *imgui.draw_list;
 
     draw_list.PushClipRectFullScreen();
@@ -5211,8 +5212,10 @@ static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener
     auto const opener_above = Abs(opener.Bottom() - browser.y) <= tolerance;
     auto const browser_above = Abs(browser.Bottom() - opener.y) <= tolerance;
     if (!opener_above && !browser_above) {
-        draw_list.AddRect(opener, colour, rounding);
-        draw_list.AddRect(browser, colour, rounding);
+        for (auto const r : Array {opener, browser}) {
+            draw_list.AddRect(r.Expanded(1.0f), edge_colour, rounding + 1.0f);
+            draw_list.AddRect(r, highlight_colour, rounding);
+        }
         return;
     }
 
@@ -5224,57 +5227,64 @@ static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener
     constexpr Corners k_top_right = 0b0100;
     constexpr Corners k_bottom_right = 0b0010;
     constexpr Corners k_bottom_left = 0b0001;
-    auto const radius = [rounding](Corners corners, Corners corner) {
-        return (corners & corner) ? rounding : 0.0f;
-    };
-
-    // Pixel centres, so a 1px stroke lands on the edge pixel row/column.
-    auto const u = Rect {.pos = upper.pos + 0.5f, .size = upper.size - 1.0f};
-    auto const l = Rect {.pos = lower.pos + 0.5f, .size = lower.size - 1.0f};
     auto const aligned = [tolerance](f32 a, f32 b) { return Abs(a - b) <= tolerance; };
 
-    // Clockwise from the upper rect's top-left.
-    {
-        auto const r = radius(upper_corners, k_top_left);
-        draw_list.PathArcToFast({u.x + r, u.y + r}, r, 6, 9);
-    }
-    {
-        auto const r = radius(upper_corners, k_top_right);
-        draw_list.PathArcToFast({u.Right() - r, u.y + r}, r, 9, 12);
-    }
-    if (aligned(upper.Right(), lower.Right())) {
-        draw_list.PathLineTo({u.Right(), u.Bottom()});
-        draw_list.PathLineTo({l.Right(), l.y});
-    } else if (lower.Right() > upper.Right()) {
-        draw_list.PathLineTo({u.Right(), l.y});
-        auto const r = radius(lower_corners, k_top_right);
-        draw_list.PathArcToFast({l.Right() - r, l.y + r}, r, 9, 12);
-    } else {
-        auto const r = radius(upper_corners, k_bottom_right);
-        draw_list.PathArcToFast({u.Right() - r, u.Bottom() - r}, r, 0, 3);
-        draw_list.PathLineTo({l.Right(), u.Bottom()});
-    }
-    {
-        auto const r = radius(lower_corners, k_bottom_right);
-        draw_list.PathArcToFast({l.Right() - r, l.Bottom() - r}, r, 0, 3);
-    }
-    {
-        auto const r = radius(lower_corners, k_bottom_left);
-        draw_list.PathArcToFast({l.x + r, l.Bottom() - r}, r, 3, 6);
-    }
-    if (aligned(upper.x, lower.x)) {
-        draw_list.PathLineTo({l.x, l.y});
-        draw_list.PathLineTo({u.x, u.Bottom()});
-    } else if (lower.x < upper.x) {
-        auto const r = radius(lower_corners, k_top_left);
-        draw_list.PathArcToFast({l.x + r, l.y + r}, r, 6, 9);
-        draw_list.PathLineTo({u.x, l.y});
-    } else {
-        draw_list.PathLineTo({l.x, u.Bottom()});
-        auto const r = radius(upper_corners, k_bottom_left);
-        draw_list.PathArcToFast({u.x + r, u.Bottom() - r}, r, 3, 6);
-    }
-    draw_list.PathStroke(colour, true, 1.0f);
+    // Growing both rects by the same outset traces the union's contour that distance further out.
+    auto const stroke_union = [&](f32 outset, u32 colour) {
+        auto const radius = [rounding, outset](Corners corners, Corners corner) {
+            return (corners & corner) ? rounding + outset : 0.0f;
+        };
+
+        // Pixel centres, so a 1px stroke lands on the edge pixel row/column.
+        auto const u = Rect {.pos = upper.pos + 0.5f - outset, .size = upper.size - 1.0f + (outset * 2)};
+        auto const l = Rect {.pos = lower.pos + 0.5f - outset, .size = lower.size - 1.0f + (outset * 2)};
+
+        // Clockwise from the upper rect's top-left.
+        {
+            auto const r = radius(upper_corners, k_top_left);
+            draw_list.PathArcToFast({u.x + r, u.y + r}, r, 6, 9);
+        }
+        {
+            auto const r = radius(upper_corners, k_top_right);
+            draw_list.PathArcToFast({u.Right() - r, u.y + r}, r, 9, 12);
+        }
+        if (aligned(upper.Right(), lower.Right())) {
+            draw_list.PathLineTo({u.Right(), u.Bottom()});
+            draw_list.PathLineTo({l.Right(), l.y});
+        } else if (lower.Right() > upper.Right()) {
+            draw_list.PathLineTo({u.Right(), l.y});
+            auto const r = radius(lower_corners, k_top_right);
+            draw_list.PathArcToFast({l.Right() - r, l.y + r}, r, 9, 12);
+        } else {
+            auto const r = radius(upper_corners, k_bottom_right);
+            draw_list.PathArcToFast({u.Right() - r, u.Bottom() - r}, r, 0, 3);
+            draw_list.PathLineTo({l.Right(), u.Bottom()});
+        }
+        {
+            auto const r = radius(lower_corners, k_bottom_right);
+            draw_list.PathArcToFast({l.Right() - r, l.Bottom() - r}, r, 0, 3);
+        }
+        {
+            auto const r = radius(lower_corners, k_bottom_left);
+            draw_list.PathArcToFast({l.x + r, l.Bottom() - r}, r, 3, 6);
+        }
+        if (aligned(upper.x, lower.x)) {
+            draw_list.PathLineTo({l.x, l.y});
+            draw_list.PathLineTo({u.x, u.Bottom()});
+        } else if (lower.x < upper.x) {
+            auto const r = radius(lower_corners, k_top_left);
+            draw_list.PathArcToFast({l.x + r, l.y + r}, r, 6, 9);
+            draw_list.PathLineTo({u.x, l.y});
+        } else {
+            draw_list.PathLineTo({l.x, u.Bottom()});
+            auto const r = radius(upper_corners, k_bottom_left);
+            draw_list.PathArcToFast({u.x + r, u.Bottom() - r}, r, 3, 6);
+        }
+        draw_list.PathStroke(colour, true, 1.0f);
+    };
+
+    stroke_union(1.0f, edge_colour);
+    stroke_union(0.0f, highlight_colour);
 }
 
 void DoBrowserOpenerViewport(GuiBuilder& builder, BrowserOpenerViewportOptions const& options) {
