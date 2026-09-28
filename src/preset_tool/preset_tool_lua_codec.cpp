@@ -957,7 +957,7 @@ ErrorCodeOr<void> WriteParamsJson(Writer out) {
 // ============================================================
 
 // The codec uses stable id_string keys with full-precision display-string values ("-12.00000 dB",
-// "50.00000%", "Sine"), so round-trips of arbitrary values are lossless.
+// "50.00000%", "Sine"), so round-trips are lossless in projected-value space.
 //
 // These tests bypass file I/O, so legacy→modern adaptation (AdaptNewerParams) does not apply; they verify
 // the codec layer in isolation.
@@ -972,6 +972,14 @@ static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& o
     lua_getglobal(lua, "preset");
     ExtractPresetFromLuaTable(lua, -1, roundtripped);
     lua_pop(lua, 1);
+
+    // Params are stored as projected values, so distinct linear values that project to the same f32 (e.g.
+    // near the flat split of a LinearThenExponential curve) legitimately collapse.
+    for (auto const i : Range<u16>(k_num_parameters)) {
+        auto const& d = k_param_descriptors[i];
+        if (d.ProjectValue(roundtripped.param_values[i]) == d.ProjectValue(original.param_values[i]))
+            roundtripped.param_values[i] = original.param_values[i];
+    }
 
     if (roundtripped != original) {
         DynamicArray<char> diff {tester.scratch_arena};
