@@ -1,0 +1,20 @@
+# Sample Libraries
+
+> What is a Floe sample library
+
+Sample libraries are collections of mapped, playable sounds along with images, tags, and other metadata. Without sample libraries, Floe can't produce any sound.
+
+Sample libraries often have a theme or focus, such as 'Music Box Suite' — multisampled music box instruments, or 'Lost Reveries' — a collection of ambient single-sample ambient tones.
+
+A sample library may contain:
+
+-   Instruments
+-   Impulse Responses
+
+Sample libraries are not loaded directly; instead you load the instruments into Floe's layers, or impulse responses into Floe's convolution reverb. However, you can view your installed libraries by opening the 3-dots menu on Floe's main window and clicking "Info".
+
+Libraries typically focus on instruments, however, sometimes a sample library exclusively contains impulse responses for use in the convolution reverb - expanding the options for sound design.
+
+At a technical level, _Floe sample libraries_ are a new, custom format; they're open, portable folders of audio files and configuration files developed with Floe's [developer tools](/docs/beta/develop/develop-libraries). Typically, a sample library is in a folder with a name like `Developer Name - Library Name`.
+
+Sample libraries can contain thousands of audio files and can be many gigabytes in size. They typically have a `Samples` subfolder and a file called `floe.lua`.
