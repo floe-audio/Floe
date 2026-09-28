@@ -2508,6 +2508,10 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                             {
                                 .icon = MidPanelIcon::ShareGrains,
                                 .tooltip = ParamTooltipText(share_param, g.builder.arena),
+                                .value_popup =
+                                    share_param.BoolValue()
+                                        ? "Shared grains: same density however many notes you hold"_s
+                                        : "Per-voice grains: each held note adds its own grains"_s,
                                 .is_on = share_param.BoolValue(),
                             });
                         if (btn.button_fired)

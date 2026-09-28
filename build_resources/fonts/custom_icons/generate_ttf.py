@@ -17,6 +17,8 @@ icons = {
     "midi": (0xE000, 512),
     "square": (0xE001, 448),
     "square-check": (0xE002, 448),
+    "grains-sparse": (0xE003, 512),
+    "grains-dense": (0xE004, 512),
 }
 
 here = os.path.dirname(os.path.abspath(__file__))

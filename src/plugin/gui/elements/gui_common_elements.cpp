@@ -6,6 +6,7 @@
 #include <IconsFontAwesome6.h>
 
 #include "engine/engine_prefs.hpp"
+#include "gui/core/custom_icons.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -46,17 +47,21 @@ static Box DoMidIconButton(GuiBuilder& builder,
                            String tooltip,
                            bool greyed_out,
                            f32 font_size = 0,
-                           bool is_on = false) {
-    auto const btn = DoBox(builder,
-                           {
-                               .parent = parent,
-                               .id_extra = Hash(icon),
-                               .layout {
-                                   .size = layout::k_hug_contents,
-                               },
-                               .tooltip = tooltip,
-                               .button_behaviour = imgui::ButtonConfig {},
-                           });
+                           bool is_on = false,
+                           Optional<u64> id_extra = k_nullopt,
+                           String value_popup = {}) {
+    auto const btn =
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .id_extra = id_extra ? *id_extra : Hash(icon),
+                  .layout {
+                      .size = layout::k_hug_contents,
+                  },
+                  .value_popup = value_popup.size ? TooltipString {value_popup} : TooltipString {k_nullopt},
+                  .tooltip = tooltip,
+                  .button_behaviour = imgui::ButtonConfig {},
+              });
     DoBox(builder,
           {
               .parent = btn,
@@ -89,21 +94,35 @@ DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsO
 }
 
 Box DoMidPanelIconButton(GuiBuilder& builder, Box row, MidPanelIconButtonOptions const& options) {
-    auto const [icon, font_size] = ({
+    auto const [icon, font_size, highlight_when_on] = ({
         struct {
             String icon;
             f32 font_size;
+            bool highlight_when_on;
         } v;
         switch (options.icon) {
-            case MidPanelIcon::Shuffle: v = {ICON_FA_SHUFFLE, k_font_icons_size * 0.82f}; break;
-            case MidPanelIcon::Unload: v = {ICON_FA_XMARK, k_font_icons_size * 0.9f}; break;
-            case MidPanelIcon::Power: v = {ICON_FA_POWER_OFF, k_font_icons_size * 0.85f}; break;
-            case MidPanelIcon::Seed: v = {ICON_FA_SEEDLING, k_font_icons_size * 0.85f}; break;
-            case MidPanelIcon::ShareGrains: v = {ICON_FA_CIRCLE_NODES, k_font_icons_size * 0.85f}; break;
+            case MidPanelIcon::Shuffle: v = {ICON_FA_SHUFFLE, k_font_icons_size * 0.82f, true}; break;
+            case MidPanelIcon::Unload: v = {ICON_FA_XMARK, k_font_icons_size * 0.9f, true}; break;
+            case MidPanelIcon::Power: v = {ICON_FA_POWER_OFF, k_font_icons_size * 0.85f, true}; break;
+            case MidPanelIcon::Seed: v = {ICON_FA_SEEDLING, k_font_icons_size * 0.85f, true}; break;
+            // The glyph itself shows the state: shared grains stay sparse, per-voice grains pile up.
+            case MidPanelIcon::ShareGrains:
+                v = {options.is_on ? ICON_CUSTOM_GRAINS_SPARSE : ICON_CUSTOM_GRAINS_DENSE,
+                     k_font_icons_size * 0.85f,
+                     false};
+                break;
         }
         v;
     });
-    return DoMidIconButton(builder, row, icon, options.tooltip, options.greyed_out, font_size, options.is_on);
+    return DoMidIconButton(builder,
+                           row,
+                           icon,
+                           options.tooltip,
+                           options.greyed_out,
+                           font_size,
+                           options.is_on && highlight_when_on,
+                           Hash(options.icon),
+                           options.value_popup);
 }
 
 static String FormatDbOrNegInf(ArenaAllocator& arena, f32 amp, f32 db) {
