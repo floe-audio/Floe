@@ -469,20 +469,51 @@ static void DoDistortionTypeMenuItems(GuiState& g, ParamIndex param_index) {
     }
 }
 
+static void AppendMacroAdjustedValueLine(GuiState const& g,
+                                         DynamicArray<char>& buf,
+                                         DescribedParamValue const& param,
+                                         bool show_cutoff_in_semitones) {
+    auto const& macro_destinations = g.engine.processor.main_macro_destinations;
+    DynamicArrayBounded<usize, k_num_macros> macro_numbers {};
+    for (auto const [macro_index, dests] : Enumerate(macro_destinations)) {
+        for (auto const& dest : dests.items) {
+            if (dest.param_index != param.info.index) continue;
+            dyn::Append(macro_numbers, macro_index + 1);
+            break;
+        }
+    }
+    if (!macro_numbers.size) return;
+
+    auto const adjusted = AdjustedLinearValue(g.engine.processor.main_params.values,
+                                              macro_destinations,
+                                              param.LinearValue(),
+                                              param.info.index);
+    ParamValueToStringOptions const to_string_options {.show_cutoff_in_semitones = show_cutoff_in_semitones};
+    auto const adjusted_string = *param.info.LinearValueToString(adjusted, to_string_options);
+    if (adjusted_string == *param.info.LinearValueToString(param.LinearValue(), to_string_options)) return;
+    fmt::Append(buf, "\nMacro-adjusted to {} (M", adjusted_string);
+    for (auto const [index, number] : Enumerate(macro_numbers)) {
+        if (index) dyn::AppendSpan(buf, ", "_s);
+        fmt::Append(buf, "{}", number);
+    }
+    dyn::Append(buf, ')');
+}
+
 String
 ParamValuePopupText(GuiState const& g, Span<DescribedParamValue const*> params, ArenaAllocator& arena) {
     auto const show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs);
-    if (params.size == 1)
-        return arena.Clone(
-            *params[0]->info.LinearValueToString(params[0]->LinearValue(), show_cutoff_in_semitones));
-
     DynamicArray<char> buf {arena};
     for (auto param : params) {
-        if (MacroIndexFromParamIndex(param->info.index)) dyn::AppendSpan(buf, "Macro "_s);
-        fmt::Append(buf,
-                    "{}: {}",
-                    param->info.gui_label,
-                    *param->info.LinearValueToString(param->LinearValue(), show_cutoff_in_semitones));
+        auto const value_string =
+            *param->info.LinearValueToString(param->LinearValue(),
+                                             {.show_cutoff_in_semitones = show_cutoff_in_semitones});
+        if (params.size == 1) {
+            dyn::AppendSpan(buf, value_string);
+        } else {
+            if (MacroIndexFromParamIndex(param->info.index)) dyn::AppendSpan(buf, "Macro "_s);
+            fmt::Append(buf, "{}: {}", param->info.gui_label, value_string);
+        }
+        AppendMacroAdjustedValueLine(g, buf, *param, show_cutoff_in_semitones);
         if (param != Last(params)) dyn::Append(buf, '\n');
     }
     return buf.ToOwnedSpan();
@@ -766,9 +797,13 @@ Span<f32 const> VoiceBlips01(GuiState& g,
                     // volume_gain already includes any MPE volume expression, so every sounding voice
                     // gets exactly one blip.
                     auto const gain = (f32)marker.volume_gain / 255.0f;
+                    auto const macro_adjusted_projected = dest_knob_param.info.ProjectValue(
+                        AdjustedLinearValue(params.values,
+                                            g.engine.processor.main_macro_destinations,
+                                            dest_knob_param.LinearValue(),
+                                            dest_knob_param.info.index));
                     linear =
-                        dest_knob_param.info.LineariseValue(dest_knob_param.ProjectedValue() * gain, true)
-                            .ValueOr(0);
+                        dest_knob_param.info.LineariseValue(macro_adjusted_projected * gain, true).ValueOr(0);
                     break;
                 }
                 case param_values::MpeDestination::Filter:
@@ -868,7 +903,8 @@ Box DoKnobParameter(GuiState& g,
 
     auto val = param.LinearValue();
     auto const display_string =
-        param.info.LinearValueToString(val, ShowCutoffInSemitones(g.prefs)).ReleaseValueOr({});
+        param.info.LinearValueToString(val, {.show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs)})
+            .ReleaseValueOr({});
     Optional<f32> new_val {};
     Optional<imgui::TextInputResult> param_text_input_result {};
 
@@ -1063,7 +1099,8 @@ Box DoVerticalSliderParameter(GuiState& g,
 
     auto val = param.LinearValue();
     auto const display_string =
-        param.info.LinearValueToString(val, ShowCutoffInSemitones(g.prefs)).ReleaseValueOr({});
+        param.info.LinearValueToString(val, {.show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs)})
+            .ReleaseValueOr({});
     Optional<f32> new_val {};
     Optional<imgui::TextInputResult> param_text_input_result {};
 
@@ -1389,7 +1426,7 @@ Box DoIntParameter(GuiState& g,
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
-                      return ParamTooltipText(param, g.builder.arena);
+                      return ParamTooltipText(param, g.builder.arena, options.greyed_out);
                   }},
                   .tooltip_footer = k_dragger_tooltip_footer,
                   .tooltip_avoid_box = options.tooltip_avoid_box ? options.tooltip_avoid_box : &container,
@@ -1685,7 +1722,8 @@ void HandleShowingTextEditorForParams(GuiState& g, Rect r, Span<ParamIndex const
                 auto const p_obj = g.engine.processor.main_params.DescribedValue(p);
                 auto const show_cutoff_in_semitones = ShowCutoffInSemitones(g.prefs);
                 auto const str =
-                    p_obj.info.LinearValueToString(p_obj.LinearValue(), show_cutoff_in_semitones);
+                    p_obj.info.LinearValueToString(p_obj.LinearValue(),
+                                                   {.show_cutoff_in_semitones = show_cutoff_in_semitones});
                 ASSERT(str.HasValue());
 
                 g.imgui.SetTextInputFocus(id, *str, false);

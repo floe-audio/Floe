@@ -228,16 +228,20 @@ static ErrorCodeOr<void> PrintShape(ArenaAllocator& arena) {
         "'preset_path' (the current file), and can call inspect_library(path).\n"
         "\n"
         "Value encoding for param_values:\n"
-        "  Writes emit formatted display strings (\"50 %\", \"-12.0 dB\", \"Sine\") keyed by stable\n"
-        "  id_string. Reads accept either a formatted string or the underlying projected number\n"
-        "  (e.g. 0.5, -12.0, 440), so scripts can assign whichever is more convenient. String\n"
-        "  reads are permissive: extra precision and either unit are accepted (\"1.567 s\" or\n"
-        "  \"1567 ms\" both work even though writes emit \"1.6 s\").\n"
+        "  Writes emit formatted display strings with about 7 significant figures (\"50.00000%\",\n"
+        "  \"-12.00000 dB\", \"Sine\") keyed by stable id_string, so values keep their full\n"
+        "  precision and params the script doesn't change are saved back unaltered. Reads accept\n"
+        "  either a formatted string or the underlying projected number (e.g. 0.5, -12.0, 440), so\n"
+        "  scripts can assign whichever is more convenient. String reads are permissive: any\n"
+        "  precision and either unit are accepted (\"1.567 s\" or \"1567 ms\" both work).\n"
         "\n"
-        "Round-trip note: display formats truncate precision, so saving a preset back will alter\n"
-        "the stored numeric value of many params (snapped to the display grid). This is\n"
-        "intentional and does not change perceived audio - the truncation sits well below audible\n"
-        "thresholds.\n"
+        "Linear values:\n"
+        "  Macro destination amounts act on a param's linear value, the internal value its\n"
+        "  display value is projected from.\n"
+        "  param_to_linear(id_string, value) -> number: value is anything param_values accepts.\n"
+        "  param_from_linear(id_string, linear) -> value in param_values form, with linear\n"
+        "  clamped to the param's linear range.\n"
+        "  param_linear_range(id_string) -> {min = number, max = number}\n"
         "\n";
 
     DynamicArray<char> buf {arena};
@@ -283,6 +287,7 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
     luaL_openlibs(lua);
     TRY(RegisterJsonGlobal(lua));
     lua_register(lua, "inspect_library", LuaInspectLibrary);
+    RegisterParamLuaFunctions(lua);
     lua_pushlstring(lua, opts.preset_path.data, opts.preset_path.size);
     lua_setglobal(lua, "preset_path");
 
@@ -480,7 +485,9 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                      "Lua script path, followed by preset files or directories (scanned recursively). "
                      "If no preset paths are given, one path per line is read from stdin. The script "
                      "sees these globals: 'preset' (mutable), 'default_preset', 'preset_path', "
-                     "'inspect_library(path)', 'json'. Run 'docs-shape' for the table structure."_s,
+                     "'inspect_library(path)', 'param_to_linear(id_string, value)', "
+                     "'param_from_linear(id_string, linear)', "
+                     "'param_linear_range(id_string)', 'json'. Run 'docs-shape' for the table structure."_s,
                  .min_count = 1,
                  .out = &run_positionals},
         },

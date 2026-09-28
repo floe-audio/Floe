@@ -1145,6 +1145,11 @@ void DoWaveformElement(GuiState& g,
                                             icon_size,
                                             icon_size}};
 
+                auto const icon_id = g.imgui.MakeId("multisample-icon");
+                g.imgui.RegisterRectForMouseTracking(icon_r, false);
+                g.imgui.SetHot(icon_r, icon_id);
+                Tooltip(g, icon_id, icon_r, {.value_popup = "Showing a representation only"_s});
+
                 g.fonts.Push(g.fonts.atlas[ToInt(FontType::Icons)]);
                 DEFER { g.fonts.Pop(); };
                 auto icon_col = FromU32(LiveCol(UiColMap::WaveformMultisampleBadgeText));

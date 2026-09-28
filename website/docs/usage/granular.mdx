@@ -80,14 +80,22 @@ The Random section adds per-grain variation so the texture doesn't sound mechani
 - **Direction**: chance that a grain plays backwards. At 100% every grain has a 50/50 chance of forwards or backwards.
 - **Harmony**: chance that a grain spawns at one of the selected harmony intervals rather than at the root pitch. The **Intervals** menu next to the knob picks which intervals are active — pick from presets like _Octaves_, _Fifth_, _Major Triad_, _Pentatonic_, _Whole Tone_, _Chromatic_, _Cluster_, and many more, or toggle individual semitones on and off. The knob is greyed out until at least one non-unison interval is selected.
 
-### Seed
-Click the <FAIcon icon="fa-solid fa-seedling" /> seedling next to the play mode menu to choose where the grain randomness comes from. The icon lights up when the layer uses its own seed.
+### Variation
+Click the <FAIcon icon="fa-solid fa-seedling" /> seedling next to the play mode menu to choose how the grains vary from note to note. The icon lights up when the layer uses its own seed.
 
-- **Random**: the default. Every note scatters its grains in a fresh way, which suits most sounds, especially dense textures. To make a whole performance repeat exactly in your DAW, use the [Reproducibility](./reproducibility) settings in Performance Controls.
-- **Fixed**: every note plays exactly the same grains, chosen by **Seed**. Useful when Density is low and you can hear the individual grains. Hold a chord and all the notes follow the same movement, each at its own pitch.
-- **Fixed Per Key**: like Fixed, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it.
+- **Different on every note**: the default. Every note scatters its grains in a fresh way, which suits most sounds, especially dense textures. To make a whole performance repeat exactly in your DAW, use the [Reproducibility](./reproducibility) settings in Performance Controls.
+- **Identical on all notes**: every note plays exactly the same grains, chosen by **Seed**. Useful when Density is low and you can hear the individual grains. Hold a chord and each note plays the same grains at its own pitch. With [shared grains](#share-grains), the notes take turns, so you hear the same grains come back at different pitches.
+- **Identical on each key**: like Identical on all notes, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it.
 
-The seed is saved with the preset, so Fixed and Fixed Per Key let you save the exact grain scatter you heard while designing a sound. Different Seed values give different results.
+The random choices behind the grains, such as where each one starts and how it's panned and detuned, aren't truly random. They follow a sequence of numbers that only looks random, and from the same starting point it always unfolds the same way. **Seed** is that starting point: the same Seed always gives the same grains, and each different Seed gives a different pattern that's just as lively. The seed is saved with the preset, so the Identical options let you keep the exact grain scatter you heard while designing a sound. With shared grains, which note of a chord plays each grain repeats too. See [Reproducibility](./reproducibility) for more on seeds.
+
+### Share Grains
+The grains icon next to the play mode menu switches between two ways of handling several notes at once. Each suits different sounds:
+
+- **Shared grains**: the notes you hold share one stream of grains. The number of grains stays the same whether you play one note or many, so a chord keeps the same density however many notes you hold. Each grain plays from one of the held notes, using that note's own sample and pitch. At low Density you can hear the grains hop between the notes of the chord, and notes you've released gradually hand their grains over to the notes you're still holding. The icon shows a few sparse grains.
+- **Per-voice grains**: every note makes its own stream of grains, so each added note thickens the sound and a big chord builds up into a dense wash. The icon shows a dense cluster of grains.
+
+New layers start with shared grains. Presets and DAW projects saved before Share Grains existed use per-voice grains.
 
 ## Tips
 

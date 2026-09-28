@@ -55,11 +55,12 @@ struct MidPanelPrevNextButtonsOptions {
 MidPanelPrevNextButtonsResult
 DoMidPanelPrevNextButtons(GuiBuilder& builder, Box row, MidPanelPrevNextButtonsOptions const& options = {});
 
-enum class MidPanelIcon : u8 { Shuffle, Unload, Power, Seed };
+enum class MidPanelIcon : u8 { Shuffle, Unload, Power, Seed, ShareGrains };
 
 struct MidPanelIconButtonOptions {
     MidPanelIcon icon;
     String tooltip;
+    String value_popup;
     bool greyed_out = false;
     bool is_on = false; // Only meaningful for icons with an on/off state (e.g. Power).
 };

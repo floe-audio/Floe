@@ -130,6 +130,10 @@ struct Voice {
     OnePoleLowPassFilter<f32> expression_gain_smoother = {};
 
     GrainPool grain_pool {};
+    // Frames (relative to the voice's start within the block) at which the layer's shared grain clock
+    // assigned this voice a grain.
+    Bitset<k_block_size_max> shared_clock_spawn_frames {};
+    bool awaiting_first_shared_clock_tick = false;
 
     // Each voice has it's own buffer, allowing us to process voices in parallel.
     Array<f32x2, k_block_size_max> buffer {};
@@ -261,6 +265,8 @@ struct VoicePool {
     Array<Atomic<f32>, k_num_layers> last_velocity = {};
 
     Array<Atomic<u64>, k_num_layers> last_activated_audio_data_hash {};
+
+    Array<SharedGrainClock, k_num_layers> shared_grain_clocks {}; // Audio thread only.
 
     AtomicQueue<SampleLogItem, 32> sample_log_queue {};
 

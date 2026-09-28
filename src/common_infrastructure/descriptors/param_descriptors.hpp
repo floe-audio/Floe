@@ -48,7 +48,7 @@ enum class LayerParamIndex : u8 {
     LegacyLfoShapeV2,
     LfoShape,
     LfoDestination,
-    LfoSeedMode,
+    LfoVariationMode,
     LfoSeed,
     EqOn,
     LegacyEqFreq1,
@@ -92,8 +92,9 @@ enum class LayerParamIndex : u8 {
     GranularRandomDetune,
     GranularRandomDirection,
     GranularHarmony,
-    GranularSeedMode,
+    GranularVariationMode,
     GranularSeed,
+    GranularShareGrains,
 
     ArpOn,
     ArpMode,
@@ -1187,39 +1188,39 @@ constexpr auto k_play_mode_strings = ArrayT<String>({
 });
 static_assert(k_play_mode_strings.size == ToInt(PlayMode::Count));
 
-enum class SeedMode : u8 { // never reorder
-    Random,
-    Fixed,
-    FixedPerKey,
+enum class VariationMode : u8 { // never reorder
+    DifferentOnEveryNote,
+    IdenticalOnAllNotes,
+    IdenticalOnEachKey,
     Count,
 };
-constexpr auto k_seed_mode_strings = ArrayT<String>({
-    "Random",
-    "Fixed",
-    "Fixed Per Key",
+constexpr auto k_variation_mode_strings = ArrayT<String>({
+    "Different on every note",
+    "Identical on all notes",
+    "Identical on each key",
 });
-static_assert(k_seed_mode_strings.size == ToInt(SeedMode::Count));
-constexpr String GranularSeedModeDescription(SeedMode mode) {
+static_assert(k_variation_mode_strings.size == ToInt(VariationMode::Count));
+constexpr String GranularVariationModeDescription(VariationMode mode) {
     switch (mode) {
-        case SeedMode::Random:
+        case VariationMode::DifferentOnEveryNote:
             return "Every note scatters its grains in a fresh way, keeping the sound random and alive. The best choice for most sounds, especially dense, textural ones.\n\nTo make a whole performance repeat exactly in your DAW, use the Reproducibility settings in Performance Controls."_s;
-        case SeedMode::Fixed:
+        case VariationMode::IdenticalOnAllNotes:
             return "Every note plays exactly the same grains, down to each one's random pan, detune and direction. Useful when Density is low and you can hear the individual grains, so every note you press sounds the same.\n\nHold a chord and all the notes follow the same movement, each at its own pitch."_s;
-        case SeedMode::FixedPerKey:
-            return "Like Fixed, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it."_s;
-        case SeedMode::Count: break;
+        case VariationMode::IdenticalOnEachKey:
+            return "Like Identical on all notes, but each key gets its own pattern of grains. C3 always sounds the same, and D3 has a different pattern that also repeats every time you play it."_s;
+        case VariationMode::Count: break;
     }
     return {};
 }
-constexpr String LfoSeedModeDescription(SeedMode mode) {
+constexpr String LfoVariationModeDescription(VariationMode mode) {
     switch (mode) {
-        case SeedMode::Random:
+        case VariationMode::DifferentOnEveryNote:
             return "Every note gets a fresh random pattern, so the movement never repeats.\n\nTo make a whole performance repeat exactly in your DAW, use the Reproducibility settings in Performance Controls."_s;
-        case SeedMode::Fixed:
+        case VariationMode::IdenticalOnAllNotes:
             return "Every note moves through exactly the same random pattern, so the movement you hear while designing a sound is the movement saved with the preset."_s;
-        case SeedMode::FixedPerKey:
-            return "Like Fixed, but each key gets its own pattern. C3 always moves the same way, and D3 has a different pattern that also repeats every time you play it."_s;
-        case SeedMode::Count: break;
+        case VariationMode::IdenticalOnEachKey:
+            return "Like Identical on all notes, but each key gets its own pattern. C3 always moves the same way, and D3 has a different pattern that also repeats every time you play it."_s;
+        case VariationMode::Count: break;
     }
     return {};
 }
@@ -1460,6 +1461,15 @@ static_assert(k_arp_synced_rate_strings.size == ToInt(ArpSyncedRate::Count));
 
 } // namespace param_values
 
+struct ParamValueToStringOptions {
+    // Only has any effect on params with flags.cutoff_frequency set: nullopt keeps the param's native
+    // display_format, otherwise it overrides the unit to Hz (false) or semitones (true).
+    Optional<bool> show_cutoff_in_semitones {};
+    // About 7 significant figures in fixed notation instead of the display precision, and no snapping near
+    // zero to "0" or "Off", so the string parses back to (nearly) the same value.
+    bool full_precision {};
+};
+
 struct ParamDescriptor {
     enum class MenuType : u8 {
         None,
@@ -1496,8 +1506,8 @@ struct ParamDescriptor {
         ArpOctavePolyrate,
         ArpAutoRate,
         MpeDestination,
-        GranularSeedMode,
-        LfoSeedMode,
+        GranularVariationMode,
+        LfoVariationMode,
         Count,
     };
 
@@ -1733,7 +1743,7 @@ struct ParamDescriptor {
     // the param's native display_format, otherwise it overrides the unit to Hz (false) or semitones (true).
     Optional<f32> StringToLinearValue(String str, Optional<bool> show_cutoff_in_semitones = k_nullopt) const;
     Optional<DynamicArrayBounded<char, 128>>
-    LinearValueToString(f32 linear_value, Optional<bool> show_cutoff_in_semitones = k_nullopt) const;
+    LinearValueToString(f32 linear_value, ParamValueToStringOptions options = {}) const;
 
     constexpr bool IsEffectParam() const { return module_parts[0] == ParameterModule::Effect; }
     constexpr bool IsLayerParam() const { return LayerIndexFromModule(module_parts[0]).HasValue(); }
@@ -1854,8 +1864,8 @@ constexpr Span<String const> MenuItems(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpOctavePolyrate: return k_arp_octave_polyrate_strings;
         case ParamDescriptor::MenuType::ArpAutoRate: return k_arp_auto_rate_strings;
         case ParamDescriptor::MenuType::MpeDestination: return k_mpe_destination_strings;
-        case ParamDescriptor::MenuType::GranularSeedMode:
-        case ParamDescriptor::MenuType::LfoSeedMode: return k_seed_mode_strings;
+        case ParamDescriptor::MenuType::GranularVariationMode:
+        case ParamDescriptor::MenuType::LfoVariationMode: return k_variation_mode_strings;
         case ParamDescriptor::MenuType::None:
         case ParamDescriptor::MenuType::Count: break;
     }
@@ -1902,8 +1912,8 @@ constexpr bool MenuIsOrderedScale(ParamDescriptor::MenuType type) {
         case ParamDescriptor::MenuType::ArpOctavePolyrate:
         case ParamDescriptor::MenuType::ArpAutoRate:
         case ParamDescriptor::MenuType::MpeDestination:
-        case ParamDescriptor::MenuType::GranularSeedMode:
-        case ParamDescriptor::MenuType::LfoSeedMode:
+        case ParamDescriptor::MenuType::GranularVariationMode:
+        case ParamDescriptor::MenuType::LfoVariationMode:
         case ParamDescriptor::MenuType::Count: break;
     }
     return false;
@@ -2155,11 +2165,10 @@ constexpr ValConfig CustomProjected(CustomProjectedOptions opts) {
 
 using IdMapIntType = u16;
 constexpr IdMapIntType k_invalid_param_id = LargestRepresentableValue<IdMapIntType>();
+constexpr u32 k_param_ids_per_region = 160; // never change
 
 consteval auto CreateParams() {
     // =====================================================================================================
-    constexpr u32 k_ids_per_region = 160; // never change
-
     enum class IdRegion : u8 {
         Master = 0, // never change
         Layer1 = 1, // never change
@@ -2171,8 +2180,8 @@ consteval auto CreateParams() {
     };
 
     auto const id = [](IdRegion region, u32 index) {
-        if (index >= k_ids_per_region) throw "region overflow";
-        return ((u32)region * k_ids_per_region) + index;
+        if (index >= k_param_ids_per_region) throw "region overflow";
+        return ((u32)region * k_param_ids_per_region) + index;
     };
 
     // =====================================================================================================
@@ -2180,7 +2189,7 @@ consteval auto CreateParams() {
         Array<ParamDescriptor, k_num_parameters> params;
 
         // index is an ID, value is a ParamIndex
-        Array<IdMapIntType, k_ids_per_region * u32(IdRegion::Count)> id_map;
+        Array<IdMapIntType, k_param_ids_per_region * u32(IdRegion::Count)> id_map;
     };
     Result result {};
     for (auto& i : result.id_map)
@@ -4056,7 +4065,7 @@ consteval auto CreateParams() {
             .gui_label = "Amount"_s,
             .tooltip =
                 "Amount sets how far the LFO moves its target. 0% is no movement at all and 100% is the full range for that target: silence to full level for Volume, a semitone either way for Pitch, and so on.\n\n"
-                "Negative values flip the shape upside down, so a falling sawtooth becomes a rising one. The LFO display shows the shape at the current Amount."_s,
+                "Negative values flip the shape upside down, so a falling sawtooth becomes a rising one. For random Shapes this only makes a difference when Variation is set to one of the Identical options. The LFO display shows the shape at the current Amount."_s,
         };
         lp(LegacyLfoDestination) = Args {
             .id = id(region, 31), // never change
@@ -4165,30 +4174,30 @@ consteval auto CreateParams() {
                 "Choose the Target: what the LFO modulates.\n\n"
                 "The modulation is applied relative to the target's current knob/slider. For example, when Volume is chosen, the movement will occur around wherever the layer's volume slider is currently set. Hover over each option for details."_s,
         };
-        lp(LfoSeedMode) = Args {
+        lp(LfoVariationMode) = Args {
             .id = id(region, 105), // never change
             .id_string = LAYER_ID("lfo.seed_mode"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Menu({
-                .type = ParamDescriptor::MenuType::LfoSeedMode,
-                .default_val = (u32)param_values::SeedMode::Random,
+                .type = ParamDescriptor::MenuType::LfoVariationMode,
+                .default_val = (u32)param_values::VariationMode::DifferentOnEveryNote,
             }),
             .modules = {layer_module, ParameterModule::Lfo},
-            .name = "Seed Mode"_s,
-            .gui_label = "Seed Mode"_s,
+            .name = "Variation"_s,
+            .gui_label = "Variation"_s,
             .tooltip =
-                "Seed Mode decides whether the random shapes move differently on each note or play back the exact same pattern every time. Random suits most sounds, while Fixed and Fixed Per Key let you capture a particular pattern and save it with the preset.\n\nIn Free mode, a note that joins already-sounding notes follows their pattern.\n\nOpen the menu and hover over each option for details."_s,
+                "Variation decides whether the random shapes move differently on each note or play back the exact same pattern every time. Different on every note suits most sounds, while the Identical options let you capture a particular pattern and save it with the preset.\n\nIn Free mode, a note that joins already-sounding notes follows their pattern.\n\nOpen the menu and hover over each option for details."_s,
         };
         lp(LfoSeed) = Args {
             .id = id(region, 106), // never change
             .id_string = LAYER_ID("lfo.seed"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Lfo},
             .name = "Seed"_s,
             .gui_label = "Seed"_s,
             .tooltip =
-                "Seed picks which random pattern Fixed and Fixed Per Key repeat. Try a few numbers until you find one you like: it's saved with the preset, so the movement you choose is the movement everyone hears.\n\nSet Seed Mode to Fixed or Fixed Per Key for this to take effect."_s,
+                "Seed picks which random pattern repeats. Try a few numbers until you find one you like: it's saved with the preset, so the movement you choose is the movement everyone hears.\n\nSet Variation to one of the Identical options for this to take effect."_s,
         };
 
         // =================================================================================================
@@ -4700,30 +4709,41 @@ consteval auto CreateParams() {
                 "At 0% every grain plays at the root. Turning it up shifts more of the grains, until at 100% every grain picks at random from the root and the intervals you've chosen.\n\n"
                 "Choose which intervals are allowed with the Intervals menu next to this knob: pick a preset such as Octaves or Major Triad, or toggle individual semitones yourself."_s,
         };
-        lp(GranularSeedMode) = Args {
+        lp(GranularVariationMode) = Args {
             .id = id(region, 103), // never change
             .id_string = LAYER_ID("granular.seed_mode"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Menu({
-                .type = ParamDescriptor::MenuType::GranularSeedMode,
-                .default_val = (u32)param_values::SeedMode::Random,
+                .type = ParamDescriptor::MenuType::GranularVariationMode,
+                .default_val = (u32)param_values::VariationMode::DifferentOnEveryNote,
             }),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
-            .name = "Seed Mode"_s,
-            .gui_label = "Seed Mode"_s,
+            .name = "Variation"_s,
+            .gui_label = "Variation"_s,
             .tooltip =
-                "Seed Mode decides whether each note scatters its grains differently or plays back the exact same grains every time. Random suits most sounds, while Fixed and Fixed Per Key let you capture a particular pattern of grains and save it with the preset.\n\nOpen the menu and hover over each option for details."_s,
+                "Variation decides whether each note scatters its grains differently or plays back the exact same grains every time. Different on every note suits most sounds, while the Identical options let you capture a particular pattern of grains and save it with the preset.\n\nOpen the menu and hover over each option for details."_s,
         };
         lp(GranularSeed) = Args {
             .id = id(region, 104), // never change
             .id_string = LAYER_ID("granular.seed"),
-            .added_in_generation = 1,
+            .added_in_generation = 8,
             .value_config = val_config_helpers::Int({.range = {0, 99}, .default_val = 0}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Seed"_s,
             .gui_label = "Seed"_s,
             .tooltip =
-                "Seed picks which pattern of grains Fixed and Fixed Per Key repeat. Try a few numbers until you find one you like: it's saved with the preset, so the grains you choose are the grains everyone hears.\n\nSet Seed Mode to Fixed or Fixed Per Key for this to take effect."_s,
+                "Seed picks which pattern of grains repeats. Try a few numbers until you find one you like: it's saved with the preset, so the grains you choose are the grains everyone hears.\n\nSet Variation to one of the Identical options for this to take effect."_s,
+        };
+        lp(GranularShareGrains) = Args {
+            .id = id(region, 107), // never change
+            .id_string = LAYER_ID("granular.share_grains"),
+            .added_in_generation = 9,
+            .value_config = val_config_helpers::Bool({.default_state = true}),
+            .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
+            .name = "Share Grains"_s,
+            .gui_label = "Share Grains"_s,
+            .tooltip =
+                "Share Grains keeps the number of grains the same whether you play one note or a chord, so the sound keeps the same density however many notes you hold. Each grain plays from one of the held notes, weaving the chord's pitches together.\n\nAt low Density you can hear the grains hop between the notes of the chord."_s,
         };
 
         // Arpeggiator

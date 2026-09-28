@@ -958,8 +958,9 @@ static bool ClapParamsValueToText(clap_plugin_t const* plugin,
         auto const& desc = k_param_descriptors[index];
         if (!desc.linear_range.Contains((f32)value)) return false;
 
-        auto const str =
-            desc.LinearValueToString((f32)value, g_show_cutoff_in_semitones.Load(LoadMemoryOrder::Relaxed));
+        auto const str = desc.LinearValueToString(
+            (f32)value,
+            {.show_cutoff_in_semitones = g_show_cutoff_in_semitones.Load(LoadMemoryOrder::Relaxed)});
         if (!str) return false;
 
         if (out_buffer_capacity < (str->size + 1)) return false;

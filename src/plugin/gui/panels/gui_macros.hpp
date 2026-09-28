@@ -40,6 +40,27 @@ struct MacrosGuiState {
     };
     Optional<DestinationTextEditor> destination_text_editor_to_open {};
 
+    // If set, open the range editor popup for this destination knob on the next frame.
+    struct DestinationRangeEditor {
+        u8 macro_index;
+        u8 destination_index;
+    };
+    Optional<DestinationRangeEditor> range_editor_to_open {};
+
+    bool range_editor_keeps_current_value = false;
+
+    // Captured when a range knob starts dragging so every frame of the drag solves from the same starting
+    // state.
+    struct RangeEditDragStart {
+        Array<f32, k_num_parameters> param_values;
+        MacroDestinations macros;
+    };
+    Optional<RangeEditDragStart> range_edit_drag_start {};
+
+    // Set each frame by whatever wants to audition a macro position; sent to the audio thread at the end of
+    // the frame.
+    Optional<MacroPositionOverride> macro_audition_request {};
+
     imgui::Id open_remove_destination_button_id {0};
 };
 

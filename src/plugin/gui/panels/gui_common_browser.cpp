@@ -1357,7 +1357,8 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                                                         .is_tab_item = false,
                                                     });
 
-    if (button.button_fired || fired_via_keyboard) {
+    if ((button.button_fired || fired_via_keyboard) &&
+        !(options.stays_selected && options.common.is_selected)) {
         HandleFilterButtonClick(builder, state, options.common);
         if (options.common.is_selected && options.deselect_fallback.filter) {
             options.deselect_fallback.filter->Add(
@@ -2422,6 +2423,56 @@ static void DoBrowseRootRows(GuiBuilder& builder,
     }
 }
 
+// The leaf above a collection's folders that selects the whole collection. In Browse mode the whole
+// collection is what drilling in shows, so the row marks that state rather than toggling it: it can't be
+// deselected, only clicked to go back to it from a folder.
+static void DoCollectionAllRow(GuiBuilder& builder,
+                               CommonBrowserState& state,
+                               FilterItemInfo const& info,
+                               FilterCollectionOptions const& options,
+                               Box const& parent,
+                               TreeLines const& lines) {
+    auto const browse_mode = state.mode == BrowserMode::Browse;
+    auto const is_selected = options.common.is_selected;
+    DoFilterTreeButton(
+        builder,
+        state,
+        info,
+        {
+            .common =
+                {
+                    .parent = parent,
+                    .id_extra = options.common.id_extra,
+                    .is_selected = is_selected,
+                    .text = fmt::Format(builder.arena,
+                                        "All {}{}"_s,
+                                        options.common.text,
+                                        options.all_items_suffix),
+                    .tooltip = browse_mode
+                                   ? (is_selected ? (String)fmt::Format(builder.arena,
+                                                                        "Showing everything in this {}.",
+                                                                        options.collection_noun)
+                                                  : (String)fmt::Format(builder.arena,
+                                                                        "Show everything in this {} again.",
+                                                                        options.collection_noun))
+                                   : TooltipString {k_nullopt},
+                    .match_phrase = fmt::Format(builder.arena, "in this {}", options.collection_noun),
+                    .filter = options.common.filter,
+                    .clicked_key = options.common.clicked_key,
+                    .filter_mode = options.common.filter_mode,
+                },
+            .lines = lines,
+            .font_override = FontType::BodyItalic,
+            .display_text =
+                fmt::Format(builder.arena,
+                            "All{} in this {}"_s,
+                            options.all_items_suffix,
+                            options.collection_noun_after_items.size ? options.collection_noun_after_items
+                                                                     : options.collection_noun),
+            .stays_selected = browse_mode,
+        });
+}
+
 // Filter mode: a collection is a tree. The header is its collapsible top node; the "All" row and the
 // folders are the leaves beneath it.
 static void DoFilterModeCollection(GuiBuilder& builder,
@@ -2540,30 +2591,7 @@ static void DoFilterModeCollection(GuiBuilder& builder,
         .gold_from = is_selected ? (u8)0 : TreeLines::k_no_gold,
     };
 
-    // "All" leaf: selects the root node (all children).
-    DoFilterTreeButton(
-        builder,
-        state,
-        info,
-        {
-            .common =
-                {
-                    .parent = body,
-                    .id_extra = options.common.id_extra,
-                    .is_selected = is_selected,
-                    .text = fmt::Format(builder.arena,
-                                        "All {}{}"_s,
-                                        options.common.text,
-                                        options.all_items_suffix),
-                    .match_phrase = fmt::Format(builder.arena, "in this {}", options.collection_noun),
-                    .filter = options.common.filter,
-                    .clicked_key = options.common.clicked_key,
-                    .filter_mode = options.common.filter_mode,
-                },
-            .lines = lines,
-            .font_override = FontType::BodyItalic,
-            .display_text = fmt::Format(builder.arena, "All{}"_s, options.all_items_suffix),
-        });
+    DoCollectionAllRow(builder, state, info, options, body, lines);
 
     if (options.folder) {
         FolderFilterTreeContext const context {.folder_infos = options.folder_infos, .lines = lines};
@@ -2617,6 +2645,7 @@ static void DoBrowseOpenCollectionTitle(GuiBuilder& builder,
 
 static void DoBrowseModeOpenCollection(GuiBuilder& builder,
                                        CommonBrowserState& state,
+                                       FilterItemInfo const& info,
                                        FilterCollectionOptions const& options) {
     auto const body = DoBox(builder,
                             {
@@ -2632,10 +2661,12 @@ static void DoBrowseModeOpenCollection(GuiBuilder& builder,
                                 .name = options.name,
                             });
 
+    // Top-level rows run from the panel edge, rather than reading as indented under the page title.
+    // Subfolders hang from their text like anywhere else.
+    DoCollectionAllRow(builder, state, info, options, body, {});
+
     bool any_folders = false;
     if (options.folder) {
-        // Top-level folders run from the panel edge, rather than reading as indented under the page title.
-        // Their subfolders hang from their text like anywhere else.
         FolderFilterTreeContext const context {.folder_infos = options.folder_infos};
         FolderFilterTreeOptions const folder_options {
             .do_right_click_menu = options.right_click_menu,
@@ -2658,7 +2689,7 @@ static void DoBrowseModeOpenCollection(GuiBuilder& builder,
                                              folder_options);
     }
 
-    // The collection is the whole page here, so an empty body would otherwise just look like something
+    // The collection is the whole page here, so a lone All row would otherwise just look like something
     // failed to load.
     if (!any_folders) {
         DoBox(builder,
@@ -2685,7 +2716,7 @@ void DoFilterCollection(GuiBuilder& builder,
             if (!state.browse_collection_open)
                 DoBrowseModeCollectionRow(builder, state, info, options);
             else if (IsBrowseModeOpenCollection(state, options))
-                DoBrowseModeOpenCollection(builder, state, options);
+                DoBrowseModeOpenCollection(builder, state, info, options);
             break;
         case BrowserMode::Filter: DoFilterModeCollection(builder, state, info, options); break;
         case BrowserMode::Count: PanicIfReached();
@@ -5171,19 +5202,18 @@ Corners BrowserOpenerCornersToRound(imgui::Context const& imgui, imgui::Id brows
 static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener, Rect browser) {
     auto const tolerance = WwToPixels(1.0f);
     auto const rounding = WwToPixels(k_corner_rounding);
-    auto const colour = ToU32(Col {.c = Col::White, .alpha = 28});
-    auto& draw_list = *imgui.draw_list;
-
-    draw_list.PushClipRectFullScreen();
-    DEFER { draw_list.PopClipRect(); };
 
     auto const opener_above = Abs(opener.Bottom() - browser.y) <= tolerance;
     auto const browser_above = Abs(browser.Bottom() - opener.y) <= tolerance;
     if (!opener_above && !browser_above) {
-        draw_list.AddRect(opener, colour, rounding);
-        draw_list.AddRect(browser, colour, rounding);
+        DrawFloatingPanelOutline(imgui, opener, rounding);
+        DrawFloatingPanelOutline(imgui, browser, rounding);
         return;
     }
+
+    auto& draw_list = *imgui.draw_list;
+    draw_list.PushClipRectFullScreen();
+    DEFER { draw_list.PopClipRect(); };
 
     auto const upper = opener_above ? opener : browser;
     auto const lower = opener_above ? browser : opener;
@@ -5193,57 +5223,64 @@ static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener
     constexpr Corners k_top_right = 0b0100;
     constexpr Corners k_bottom_right = 0b0010;
     constexpr Corners k_bottom_left = 0b0001;
-    auto const radius = [rounding](Corners corners, Corners corner) {
-        return (corners & corner) ? rounding : 0.0f;
-    };
-
-    // Pixel centres, so a 1px stroke lands on the edge pixel row/column.
-    auto const u = Rect {.pos = upper.pos + 0.5f, .size = upper.size - 1.0f};
-    auto const l = Rect {.pos = lower.pos + 0.5f, .size = lower.size - 1.0f};
     auto const aligned = [tolerance](f32 a, f32 b) { return Abs(a - b) <= tolerance; };
 
-    // Clockwise from the upper rect's top-left.
-    {
-        auto const r = radius(upper_corners, k_top_left);
-        draw_list.PathArcToFast({u.x + r, u.y + r}, r, 6, 9);
-    }
-    {
-        auto const r = radius(upper_corners, k_top_right);
-        draw_list.PathArcToFast({u.Right() - r, u.y + r}, r, 9, 12);
-    }
-    if (aligned(upper.Right(), lower.Right())) {
-        draw_list.PathLineTo({u.Right(), u.Bottom()});
-        draw_list.PathLineTo({l.Right(), l.y});
-    } else if (lower.Right() > upper.Right()) {
-        draw_list.PathLineTo({u.Right(), l.y});
-        auto const r = radius(lower_corners, k_top_right);
-        draw_list.PathArcToFast({l.Right() - r, l.y + r}, r, 9, 12);
-    } else {
-        auto const r = radius(upper_corners, k_bottom_right);
-        draw_list.PathArcToFast({u.Right() - r, u.Bottom() - r}, r, 0, 3);
-        draw_list.PathLineTo({l.Right(), u.Bottom()});
-    }
-    {
-        auto const r = radius(lower_corners, k_bottom_right);
-        draw_list.PathArcToFast({l.Right() - r, l.Bottom() - r}, r, 0, 3);
-    }
-    {
-        auto const r = radius(lower_corners, k_bottom_left);
-        draw_list.PathArcToFast({l.x + r, l.Bottom() - r}, r, 3, 6);
-    }
-    if (aligned(upper.x, lower.x)) {
-        draw_list.PathLineTo({l.x, l.y});
-        draw_list.PathLineTo({u.x, u.Bottom()});
-    } else if (lower.x < upper.x) {
-        auto const r = radius(lower_corners, k_top_left);
-        draw_list.PathArcToFast({l.x + r, l.y + r}, r, 6, 9);
-        draw_list.PathLineTo({u.x, l.y});
-    } else {
-        draw_list.PathLineTo({l.x, u.Bottom()});
-        auto const r = radius(upper_corners, k_bottom_left);
-        draw_list.PathArcToFast({u.x + r, u.Bottom() - r}, r, 3, 6);
-    }
-    draw_list.PathStroke(colour, true, 1.0f);
+    // Growing both rects by the same outset traces the union's contour that distance further out.
+    auto const stroke_union = [&](f32 outset, u32 colour) {
+        auto const radius = [rounding, outset](Corners corners, Corners corner) {
+            return (corners & corner) ? rounding + outset : 0.0f;
+        };
+
+        // Pixel centres, so a 1px stroke lands on the edge pixel row/column.
+        auto const u = Rect {.pos = upper.pos + 0.5f - outset, .size = upper.size - 1.0f + (outset * 2)};
+        auto const l = Rect {.pos = lower.pos + 0.5f - outset, .size = lower.size - 1.0f + (outset * 2)};
+
+        // Clockwise from the upper rect's top-left.
+        {
+            auto const r = radius(upper_corners, k_top_left);
+            draw_list.PathArcToFast({u.x + r, u.y + r}, r, 6, 9);
+        }
+        {
+            auto const r = radius(upper_corners, k_top_right);
+            draw_list.PathArcToFast({u.Right() - r, u.y + r}, r, 9, 12);
+        }
+        if (aligned(upper.Right(), lower.Right())) {
+            draw_list.PathLineTo({u.Right(), u.Bottom()});
+            draw_list.PathLineTo({l.Right(), l.y});
+        } else if (lower.Right() > upper.Right()) {
+            draw_list.PathLineTo({u.Right(), l.y});
+            auto const r = radius(lower_corners, k_top_right);
+            draw_list.PathArcToFast({l.Right() - r, l.y + r}, r, 9, 12);
+        } else {
+            auto const r = radius(upper_corners, k_bottom_right);
+            draw_list.PathArcToFast({u.Right() - r, u.Bottom() - r}, r, 0, 3);
+            draw_list.PathLineTo({l.Right(), u.Bottom()});
+        }
+        {
+            auto const r = radius(lower_corners, k_bottom_right);
+            draw_list.PathArcToFast({l.Right() - r, l.Bottom() - r}, r, 0, 3);
+        }
+        {
+            auto const r = radius(lower_corners, k_bottom_left);
+            draw_list.PathArcToFast({l.x + r, l.Bottom() - r}, r, 3, 6);
+        }
+        if (aligned(upper.x, lower.x)) {
+            draw_list.PathLineTo({l.x, l.y});
+            draw_list.PathLineTo({u.x, u.Bottom()});
+        } else if (lower.x < upper.x) {
+            auto const r = radius(lower_corners, k_top_left);
+            draw_list.PathArcToFast({l.x + r, l.y + r}, r, 6, 9);
+            draw_list.PathLineTo({u.x, l.y});
+        } else {
+            draw_list.PathLineTo({l.x, u.Bottom()});
+            auto const r = radius(upper_corners, k_bottom_left);
+            draw_list.PathArcToFast({u.x + r, u.Bottom() - r}, r, 3, 6);
+        }
+        draw_list.PathStroke(colour, true, 1.0f);
+    };
+
+    stroke_union(1.0f, ToU32(k_floating_panel_outline_edge_col));
+    stroke_union(0.0f, ToU32(k_floating_panel_outline_highlight_col));
 }
 
 void DoBrowserOpenerViewport(GuiBuilder& builder, BrowserOpenerViewportOptions const& options) {
@@ -5338,10 +5375,12 @@ void DoBrowserModal(GuiBuilder& builder, BrowserPopupContext context, BrowserPop
                     // browser's vertical span.
                     cfg.draw_background =
                         imgui::DrawViewportBackgroundFunction([opener_rect](imgui::Context const& imgui) {
-                            DrawFullscreenDim(imgui);
-                            auto const rounding = WwToPixels(k_panel_rounding);
+                            DrawFloatingPanelDim(imgui);
+                            DropShadowOptions const shadow_opts {
+                                .rounding = WwToPixels(k_panel_rounding),
+                            };
                             auto const r = imgui.curr_viewport->unpadded_bounds;
-                            DrawDropShadow(imgui, r, rounding);
+                            DrawDropShadow(imgui, r, shadow_opts);
                             auto const window_size = GuiIo().in.window_size.ToFloat2();
                             imgui.draw_list->PushClipRect(opener_rect.y < r.y
                                                               ? Rect {.pos = 0, .size = {window_size.x, r.y}}
@@ -5349,7 +5388,7 @@ void DoBrowserModal(GuiBuilder& builder, BrowserPopupContext context, BrowserPop
                                                                                r.Bottom(),
                                                                                window_size.x,
                                                                                window_size.y - r.Bottom()}});
-                            DrawDropShadow(imgui, opener_rect, rounding);
+                            DrawDropShadow(imgui, opener_rect, shadow_opts);
                             imgui.draw_list->PopClipRect();
                         }).CloneObject(builder.arena);
                 }

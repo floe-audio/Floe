@@ -163,15 +163,7 @@ struct DrawList {
                        u32 col,
                        f32 blur_size,
                        f32 rounding = 0.0f,
-                       Corners corners_to_round = 0b1111) {
-        PushClipRectFullScreen();
-        auto const aa = renderer.fill_anti_alias;
-        renderer.fill_anti_alias = blur_size;
-        auto const offs = f32x2 {blur_size} / f32x2 {7.0f, 5.0f};
-        AddRectFilled(a + offs, b + offs, col, rounding, corners_to_round);
-        renderer.fill_anti_alias = aa;
-        PopClipRect();
-    }
+                       Corners corners_to_round = 0b1111);
 
     void AddLine(f32x2 a, f32x2 b, u32 colour, f32 thickness = 1.0f);
 

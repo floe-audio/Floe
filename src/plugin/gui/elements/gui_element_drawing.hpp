@@ -13,7 +13,7 @@
 
 // Drawing functions always need window coordinates, not viewport coordinates.
 
-void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {}, f32 opacity = 1);
+void DrawDropShadow(imgui::Context const& imgui, Rect r, DropShadowOptions const& options = {});
 
 // Three diagonal lines filling the rect's bottom-right triangle, the classic corner grip.
 void DrawResizeCornerGrip(imgui::Context const& imgui, Rect r, u32 colour);
@@ -142,5 +142,14 @@ void DrawMidPanelScrollbars(imgui::Context const& imgui, imgui::ViewportScrollba
 void DrawModalScrollbars(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
 void DrawModalScrollbarsDarkMode(imgui::Context const& imgui, imgui::ViewportScrollbars const& bars);
 void DrawFullscreenDim(imgui::Context const& imgui);
+
+// Panels that float over the main UI (browsers, dark popups): a lighter dim than a full modal, and an
+// outline of a black edge with a highlight inside it so the border stays clear over any background.
+constexpr Col k_floating_panel_outline_edge_col {.c = Col::Black};
+constexpr Col k_floating_panel_outline_highlight_col {.c = Col::White, .alpha = 58};
+void DrawFloatingPanelDim(imgui::Context const& imgui);
+void DrawFloatingPanelOutline(imgui::Context const& imgui, Rect r, f32 rounding);
+
 void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui);
 void DrawOverlayViewportBackground(imgui::Context const& imgui);
+void DrawDarkPopupMenuBackground(imgui::Context const& imgui);

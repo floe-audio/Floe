@@ -532,6 +532,7 @@ Font::CalcWordWrapPositionA(f32 scale, char const* text, char const* text_end, f
     char const* word_end = text;
     char const* prev_word_end = nullptr;
     bool inside_word = true;
+    bool after_wrap_punctuation = false;
 
     char const* s = text;
     while (s < text_end) {
@@ -564,9 +565,13 @@ Font::CalcWordWrapPositionA(f32 scale, char const* text, char const* text_end, f
             }
             blank_width += char_width;
             inside_word = false;
+            after_wrap_punctuation = false;
         } else {
+            bool const is_wrap_punctuation =
+                c == '.' || c == ',' || c == ';' || c == '!' || c == '?' || c == '\"';
             word_width += char_width;
-            if (inside_word) {
+            // Punctuation runs like "..." or "\"." stay together so a line never starts with punctuation.
+            if (inside_word || (is_wrap_punctuation && after_wrap_punctuation)) {
                 word_end = next_s;
             } else {
                 prev_word_end = word_end;
@@ -575,7 +580,8 @@ Font::CalcWordWrapPositionA(f32 scale, char const* text, char const* text_end, f
             }
 
             // Allow wrapping after punctuation.
-            inside_word = !(c == '.' || c == ',' || c == ';' || c == '!' || c == '?' || c == '\"');
+            inside_word = !is_wrap_punctuation;
+            after_wrap_punctuation = is_wrap_punctuation;
         }
 
         // We ignore blank width at the end of the line (they can be skipped)

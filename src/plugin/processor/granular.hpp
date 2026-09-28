@@ -14,6 +14,13 @@ constexpr u32 k_max_grains_per_voice = 150;
 constexpr u32 k_grain_steal_threshold = k_max_grains_per_voice * 3 / 4;
 constexpr f32 k_grain_steal_fadeout_ms = 5.0f;
 
+// One grain stream per layer, with each grain handed to one of the layer's voices, so a chord has the same
+// grain density as a single note.
+struct SharedGrainClock {
+    f32 phase_01 {};
+    u32x4 random_seed {1, 2, 3, 4};
+};
+
 inline bool IsGranular(param_values::PlayMode mode) {
     switch (mode) {
         case param_values::PlayMode::Standard: return false;

@@ -639,6 +639,9 @@ enum class StateVersion : u16 {
     // grains and random LFO shapes are unchanged.
     AddedGranularAndLfoSeeds,
 
+    // Added per-layer Share Grains. Older states have it off so each voice keeps its own grain stream.
+    AddedGranularShareGrains,
+
     LatestPlusOne,
     Latest = LatestPlusOne - 1,
 };
@@ -653,11 +656,13 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     // Experimental params don't need a state version bump or adaptation code here. They
     // are automatically defaulted on load if not present in the file (see CodeState).
     // Non-experimental params DO require a version bump and adaptation code.
-    static_assert(k_num_non_experimental_parameters == 428,
+    static_assert(k_num_non_experimental_parameters == 431,
                   "You have changed the number of non-experimental parameters. You "
                   "must bump the state version number and handle setting the new "
                   "parameters to backwards-compatible states so old presets don't "
-                  "sound different. Then update this static_assert.");
+                  "sound different. Explicitly set the params to be equivalent to how "
+                  "Floe used to work; use default_linear_value only for inactive values. "
+                  "Then update this static_assert.");
 
     // We don't need to adapt parameters if the state is already aware of the new change.
     if (version < StateVersion::AddedLayerVelocityCurves) {
@@ -801,6 +806,8 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
         // Seed Attack and Release (Modern-only params that did not exist yet) to their defaults so
         // switching modes later gives a sensible starting point rather than zero.
         state.param_values[ToInt(ParamIndex::CompressorType)] = (f32)param_values::CompressorType::Vintage;
+
+        // The rest can be default.
         for (auto const pi : Array {ParamIndex::CompressorAttack, ParamIndex::CompressorRelease})
             state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
     }
@@ -823,6 +830,8 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     }
 
     if (version < StateVersion::AddedEqEffect) {
+        // Turn it off, but fill it's contents with default_value so if it's turned on it starts with nice
+        // settings.
         state.param_values[ToInt(ParamIndex::EqOn)] = 0;
         for (auto const pi : Array {ParamIndex::EqMix,
                                     ParamIndex::EqType1,
@@ -859,6 +868,8 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
     }
 
     if (version < StateVersion::AddedLimiterEffect) {
+        // Turn it off, but fill it's contents with default_value so if it's turned on it starts with nice
+        // settings.
         state.param_values[ToInt(ParamIndex::LimiterOn)] = 0;
         for (auto const pi : Array {
                  ParamIndex::LimiterCeiling,
@@ -878,10 +889,37 @@ static void AdaptNewerParams(StateSnapshot& state, StateVersion version, StateSo
 
     if (version < StateVersion::AddedGranularAndLfoSeeds) {
         for (auto const layer_index : Range(k_num_layers)) {
-            for (auto const lpi : Array {LayerParamIndex::GranularSeedMode,
-                                         LayerParamIndex::GranularSeed,
-                                         LayerParamIndex::LfoSeedMode,
-                                         LayerParamIndex::LfoSeed}) {
+            // Old version was to equivalent to DifferentOnEveryNote mode.
+            for (auto const lpi :
+                 Array {LayerParamIndex::GranularVariationMode, LayerParamIndex::LfoVariationMode}) {
+                auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
+                state.param_values[ToInt(pi)] = (f32)param_values::VariationMode::DifferentOnEveryNote;
+            }
+            // The rest can be default since they're not used.
+            for (auto const lpi : Array {LayerParamIndex::GranularSeed, LayerParamIndex::LfoSeed}) {
+                auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
+                state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
+            }
+        }
+    }
+
+    if (version < StateVersion::AddedGranularShareGrains) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            auto const pi = ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::GranularShareGrains);
+            state.param_values[ToInt(pi)] = 0;
+        }
+    }
+
+    if (version < StateVersion::AddedMpe) {
+        for (auto const layer_index : Range(k_num_layers)) {
+            // Turn off.
+            for (auto const lpi :
+                 Array {LayerParamIndex::MpePressDestination, LayerParamIndex::MpeSlideDestination}) {
+                auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
+                state.param_values[ToInt(pi)] = (f32)param_values::MpeDestination::Off;
+            }
+            // The rest default.
+            for (auto const lpi : Array {LayerParamIndex::MpePressAmount, LayerParamIndex::MpeSlideAmount}) {
                 auto const pi = ParamIndexFromLayerParamIndex(layer_index, lpi);
                 state.param_values[ToInt(pi)] = k_param_descriptors[ToInt(pi)].default_linear_value;
             }

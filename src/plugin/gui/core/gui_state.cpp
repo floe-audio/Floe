@@ -66,6 +66,7 @@ static constexpr auto k_used_icons = Array {
     String {ICON_FA_CHEVRON_UP},
     String {ICON_FA_CIRCLE_INFO},
     String {ICON_FA_CIRCLE_MINUS},
+    String {ICON_FA_CIRCLE_NODES},
     String {ICON_FA_CIRCLE_PLUS},
     String {ICON_FA_CIRCLE_QUESTION},
     String {ICON_FA_DRUM_STEELPAN},
@@ -238,6 +239,7 @@ GuiState::~GuiState() {
         engine.processor.gui_note_click_state.Store({.is_held = false}, StoreMemoryOrder::Release);
         engine.host.request_process(&engine.host);
     }
+    SetMacroAudition(engine.processor, k_nullopt);
 }
 
 void GuiState::OnEngineChange() {

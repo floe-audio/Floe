@@ -414,7 +414,7 @@ inline f32x4 EqualPanGains2(f32x2 pan_pos) {
 enum class FixedSeedDomain : u8 { Granular, Lfo };
 
 struct FixedSeedArgs {
-    param_values::SeedMode mode;
+    param_values::VariationMode mode;
     u8 seed;
     u7 note;
     FixedSeedDomain domain;
@@ -422,9 +422,9 @@ struct FixedSeedArgs {
 
 // Local state only: drawing from the master seed for a fixed seed would shift every later draw.
 static u64 FixedSeedRandomState(FixedSeedArgs const& args) {
-    ASSERT(args.mode != param_values::SeedMode::Random);
+    ASSERT(args.mode != param_values::VariationMode::DifferentOnEveryNote);
     u64 state = ((u64)args.domain << 16) | ((u64)args.seed << 8);
-    if (args.mode == param_values::SeedMode::FixedPerKey) state |= (u64)args.note + 1;
+    if (args.mode == param_values::VariationMode::IdenticalOnEachKey) state |= (u64)args.note + 1;
     return state;
 }
 
@@ -459,12 +459,12 @@ void StartVoice(VoicePool& pool,
 
     voice.granular_random_seed = ({
         u32x4 seed;
-        switch (voice_controller.granular.seed_mode) {
-            case param_values::SeedMode::Random: seed = voice.random_seed; break;
-            case param_values::SeedMode::Fixed:
-            case param_values::SeedMode::FixedPerKey: {
+        switch (voice_controller.granular.variation_mode) {
+            case param_values::VariationMode::DifferentOnEveryNote: seed = voice.random_seed; break;
+            case param_values::VariationMode::IdenticalOnAllNotes:
+            case param_values::VariationMode::IdenticalOnEachKey: {
                 auto state = FixedSeedRandomState({
-                    .mode = voice_controller.granular.seed_mode,
+                    .mode = voice_controller.granular.variation_mode,
                     .seed = voice_controller.granular.seed,
                     .note = params.midi_key_trigger.note,
                     .domain = FixedSeedDomain::Granular,
@@ -479,7 +479,7 @@ void StartVoice(VoicePool& pool,
                 };
                 break;
             }
-            case param_values::SeedMode::Count: PanicIfReached();
+            case param_values::VariationMode::Count: PanicIfReached();
         }
         seed;
     });
@@ -497,12 +497,12 @@ void StartVoice(VoicePool& pool,
         // seed so reproducibility (Reset on Transport / Reset Keyswitch / Seed) extends to
         // random LFO waveforms. Bootstrap next_random so the very first cycle has a target.
         voice.lfo.random_state = (u32)RandomU64(*pool.master_random_seed) | 1u;
-        switch (voice_controller.lfo.seed_mode) {
-            case param_values::SeedMode::Random: break;
-            case param_values::SeedMode::Fixed:
-            case param_values::SeedMode::FixedPerKey: {
+        switch (voice_controller.lfo.variation_mode) {
+            case param_values::VariationMode::DifferentOnEveryNote: break;
+            case param_values::VariationMode::IdenticalOnAllNotes:
+            case param_values::VariationMode::IdenticalOnEachKey: {
                 auto state = FixedSeedRandomState({
-                    .mode = voice_controller.lfo.seed_mode,
+                    .mode = voice_controller.lfo.variation_mode,
                     .seed = voice_controller.lfo.seed,
                     .note = params.midi_key_trigger.note,
                     .domain = FixedSeedDomain::Lfo,
@@ -510,7 +510,7 @@ void StartVoice(VoicePool& pool,
                 voice.lfo.random_state = (u32)RandomU64(state) | 1u;
                 break;
             }
-            case param_values::SeedMode::Count: PanicIfReached();
+            case param_values::VariationMode::Count: PanicIfReached();
         }
         voice.lfo.prev_random = 0;
         voice.lfo.next_random = voice.lfo.NextRandomBipolar();
@@ -531,6 +531,7 @@ void StartVoice(VoicePool& pool,
     voice.midi_key_trigger = params.midi_key_trigger;
     voice.note_num = params.note_num;
     voice.frames_before_starting = params.num_frames_before_starting;
+    voice.awaiting_first_shared_clock_tick = true;
     voice.filters = {};
     voice.filter_coeffs_cutoff_linear = -1;
     voice.filter_coeffs_resonance = -1;
@@ -755,6 +756,25 @@ void NoteOff(VoicePool& pool, VoiceProcessingController& controller, MidiChannel
             v.track_expression = false;
             EndVoice(v);
         }
+}
+
+static u32 GrainLengthSamples(VoiceProcessingController const& ctrl, f32 sample_rate) {
+    return Max(1u, (u32)(ctrl.granular.length_ms * 0.001f * sample_rate));
+}
+
+// Spawn interval is relative to grain length: density 0 = end-to-end, density 1 = lots of overlap.
+static f32 GrainSpawnIntervalRatio(f32 density) {
+    constexpr f32 k_max_density_ratio = 1.0f;
+    constexpr f32 k_min_density_ratio = 0.02f;
+    constexpr f32 k_density_curve_exponent = 0.15f;
+    auto const t = Pow(density, k_density_curve_exponent);
+    return k_max_density_ratio + (t * (k_min_density_ratio - k_max_density_ratio));
+}
+
+static bool IsGranularSampleSource(VoiceSoundSource const& s) {
+    return s.is_active && s.source_data.tag == InstrumentType::Sampler &&
+           s.source_data.Get<VoiceSoundSource::SampleSource>().region->trigger.trigger_event !=
+               sample_lib::TriggerEvent::NoteOff;
 }
 
 struct VoiceProcessor {
@@ -1086,8 +1106,7 @@ struct VoiceProcessor {
         auto const num_frames = sampler.data->num_frames;
         ASSERT_HOT(ctrl.granular.length_ms > 0);
 
-        auto const grain_length_samples =
-            Max(1u, (u32)(ctrl.granular.length_ms * 0.001f * context.sample_rate));
+        auto const grain_length_samples = GrainLengthSamples(ctrl, context.sample_rate);
 
 #ifdef TRACY_ENABLE
         {
@@ -1153,6 +1172,7 @@ struct VoiceProcessor {
             ZoneNamedN(granular_pass1, "Granular: Spawn Grains", true);
 
             auto const has_grain_pos_lfo = HasGranularPositionLfo(voice);
+            auto const share_grains = ctrl.granular.share_grains;
 
             if (is_fixed) {
                 auto position = (f64)ctrl.granular.position;
@@ -1174,7 +1194,9 @@ struct VoiceProcessor {
                     break;
                 }
 
-                if (pool.spawn_counters[source_index] == 0) {
+                auto const should_spawn = share_grains ? voice.shared_clock_spawn_frames.Get(frame_index)
+                                                       : pool.spawn_counters[source_index] == 0;
+                if (should_spawn) {
                     auto const new_grain_index = pool.active_grains.FirstUnsetBit();
 
                     // It's unlikely we couldn't find an inactive grain since we have a stealing process that
@@ -1183,7 +1205,8 @@ struct VoiceProcessor {
                     if (new_grain_index == k_max_grains_per_voice) {
                         // Push the spawn counter to the next block since it's wasteful to keep checking for
                         // inactive grains every frame - activeness only changes at the end of this block.
-                        pool.spawn_counters[source_index] = (u32)(buffer.size - frame_index);
+                        if (!share_grains)
+                            pool.spawn_counters[source_index] = (u32)(buffer.size - frame_index);
                         continue;
                     }
 
@@ -1307,23 +1330,17 @@ struct VoiceProcessor {
                         }
                     }
 
-                    // Update spawn counter.
-                    pool.spawn_counters[source_index] = ({
-                        // Spawn interval is relative to grain length: density 0 = end-to-end, density 1 =
-                        // lots of overlap.
-                        constexpr f32 k_max_density_ratio = 1.0f;
-                        constexpr f32 k_min_density_ratio = 0.02f;
-                        constexpr f32 k_density_curve_exponent = 0.15f;
-                        auto const t = Pow(ctrl.granular.density, k_density_curve_exponent);
-                        auto const ratio =
-                            k_max_density_ratio + (t * (k_min_density_ratio - k_max_density_ratio));
-                        constexpr f32 k_density_jitter_amount = 0.0f;
-                        auto const jitter_scale =
-                            1.0f + ((density_jitter_rand * 2.0f - 1.0f) * k_density_jitter_amount);
+                    if (!share_grains) {
+                        pool.spawn_counters[source_index] = ({
+                            auto const ratio = GrainSpawnIntervalRatio(ctrl.granular.density);
+                            constexpr f32 k_density_jitter_amount = 0.0f;
+                            auto const jitter_scale =
+                                1.0f + ((density_jitter_rand * 2.0f - 1.0f) * k_density_jitter_amount);
 
-                        Max(1u, (u32)(jitter_scale * (f32)grain_length_samples * ratio));
-                    });
-                } else {
+                            Max(1u, (u32)(jitter_scale * (f32)grain_length_samples * ratio));
+                        });
+                    }
+                } else if (!share_grains) {
                     pool.spawn_counters[source_index]--;
                 }
 
@@ -1774,6 +1791,132 @@ void Reset(VoicePool& pool) {
     pool.voice_blip_markers_for_gui.Publish();
 }
 
+// Runs single-threaded before voices are processed (possibly in parallel), so the voices only ever read
+// their assigned spawn frames.
+static void ScheduleSharedGrainClockSpawns(VoicePool& pool, u32 num_frames, f32 sample_rate) {
+    for (auto& v : pool.voices)
+        v.shared_clock_spawn_frames.ClearAll();
+
+    for (auto const layer_index : Range(k_num_layers)) {
+        struct Candidate {
+            Voice* voice;
+            u32 start_frame;
+            f32 weight;
+        };
+        DynamicArrayBounded<Candidate, k_num_voices> candidates;
+        for (auto& v : pool.voices) {
+            if (!v.is_active || v.controller->layer_index != layer_index) continue;
+            if (!IsGranular(v.controller->play_mode) || !v.controller->granular.share_grains) continue;
+            if (v.frames_before_starting >= num_frames) continue;
+            if (!({
+                    bool any = false;
+                    for (auto const& s : v.sound_sources)
+                        if (IsGranularSampleSource(s)) any = true;
+                    any;
+                }))
+                continue;
+
+            // Released voices get a share that fades with their envelope so that held notes take over.
+            auto const weight = ({
+                f32 w = 1;
+                if (!v.disable_vol_env) {
+                    switch (v.vol_env.state) {
+                        case adsr::State::Idle: w = 0; break;
+                        case adsr::State::Attack:
+                        case adsr::State::Decay:
+                        case adsr::State::Sustain: w = 1; break;
+                        case adsr::State::Release: w = v.vol_env.output; break;
+                    }
+                }
+                w;
+            });
+
+            dyn::Append(candidates,
+                        Candidate {
+                            .voice = &v,
+                            .start_frame = v.frames_before_starting,
+                            .weight = weight,
+                        });
+        }
+
+        // Voice slot order depends on what else is sounding and the order of a chord's note-ons, so order by
+        // note instead. Otherwise the Identical variation modes wouldn't distribute grains identically.
+        Sort(candidates, [](Candidate const& a, Candidate const& b) {
+            if (a.voice->note_num != b.voice->note_num) return a.voice->note_num < b.voice->note_num;
+            return a.voice->time_started < b.voice->time_started;
+        });
+
+        auto& clock = pool.shared_grain_clocks[layer_index];
+        if (!candidates.size) {
+            clock.phase_01 = 0;
+            continue;
+        }
+
+        auto const& ctrl = *candidates[0].voice->controller;
+        auto const phase_inc = 1.0f / Max(1.0f,
+                                          (f32)GrainLengthSamples(ctrl, sample_rate) *
+                                              GrainSpawnIntervalRatio(ctrl.granular.density));
+
+        auto const next_note_start_frame = [&]() {
+            auto result = num_frames;
+            for (auto const& c : candidates)
+                if (c.voice->awaiting_first_shared_clock_tick) result = Min(result, c.start_frame);
+            return result;
+        };
+
+        auto note_start_frame = next_note_start_frame();
+        for (auto const frame : Range(num_frames)) {
+            if (frame == note_start_frame) {
+                // Like a lone note, a new note spawns a grain immediately and the clock restarts from it. If
+                // several notes start together (a chord), only one of them gets this first grain.
+                u32 num_starting = 0;
+                Voice* first_starting = nullptr;
+                for (auto const& c : candidates) {
+                    if (!c.voice->awaiting_first_shared_clock_tick || c.start_frame != frame) continue;
+                    if (!first_starting) first_starting = c.voice;
+                    ++num_starting;
+                }
+                ASSERT_HOT(first_starting);
+
+                clock.random_seed = (first_starting->granular_random_seed * 0x9E3779B1u) | 1u;
+                clock.phase_01 = 0;
+
+                auto const pick = Min((u32)(VoiceProcessor::Rand01(clock.random_seed)[0] * (f32)num_starting),
+                                      num_starting - 1);
+                u32 index = 0;
+                for (auto const& c : candidates) {
+                    if (!c.voice->awaiting_first_shared_clock_tick || c.start_frame != frame) continue;
+                    if (index++ == pick) c.voice->shared_clock_spawn_frames.Set(frame - c.start_frame);
+                    c.voice->awaiting_first_shared_clock_tick = false;
+                }
+
+                note_start_frame = next_note_start_frame();
+                continue;
+            }
+
+            clock.phase_01 += phase_inc;
+            if (clock.phase_01 < 1) continue;
+            clock.phase_01 -= 1;
+
+            f32 total_weight = 0;
+            for (auto const& c : candidates)
+                if (c.start_frame <= frame) total_weight += c.weight;
+            if (total_weight <= 0) continue;
+
+            auto target = VoiceProcessor::Rand01(clock.random_seed)[0] * total_weight;
+            Candidate const* chosen = nullptr;
+            for (auto const& c : candidates) {
+                if (c.start_frame > frame || c.weight <= 0) continue;
+                chosen = &c;
+                target -= c.weight;
+                if (target < 0) break;
+            }
+            ASSERT_HOT(chosen);
+            chosen->voice->shared_clock_spawn_frames.Set(frame - chosen->start_frame);
+        }
+    }
+}
+
 void ProcessVoices(VoicePool& pool,
                    u32 num_frames,
                    AudioProcessingContext const& context,
@@ -1795,6 +1938,8 @@ void ProcessVoices(VoicePool& pool,
                 ? 1.0f
                 : OnePoleLowPassFilter<f32>::MsToCutoff(smoothing_ms / (f32)num_frames, context.sample_rate);
     }
+
+    ScheduleSharedGrainClockSpawns(pool, num_frames, context.sample_rate);
 
     if (auto const thread_pool =
             (clap_host_thread_pool const*)context.host.get_extension(&context.host, CLAP_EXT_THREAD_POOL);
@@ -2131,6 +2276,97 @@ TEST_CASE(TestVoiceProcessingSampler) {
     return k_success;
 }
 
+TEST_CASE(TestGranularShareGrains) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+
+    Array<f32, 4096> sample_buf {};
+    sample_lib::Region const region {.root_key = 60};
+    auto const audio_data = CreateTestAudioData(sample_buf, 4096);
+
+    fix.controller.play_mode = param_values::PlayMode::GranularFixed;
+    fix.controller.vol_env_on = false;
+    fix.controller.granular = {
+        .position = 0.5f,
+        .density = 0.5f,
+        .length_ms = 50.0f,
+        .smoothing = 0.5f,
+        .share_grains = true,
+    };
+    DEFER {
+        fix.pool->EndAllVoicesInstantly();
+        fix.controller.granular = {};
+    };
+
+    constexpr u32 k_num_blocks = 1000;
+    constexpr u32 k_chord_size = 4;
+
+    auto const count_spawns = [&](u32 num_notes, Array<u32, k_chord_size>& spawns_per_voice) {
+        fix.pool->EndAllVoicesInstantly();
+        for (auto const note_index : Range(num_notes))
+            StartTestSamplerVoice(fix, region, audio_data, (u7)(60 + (note_index * 4)));
+
+        u32 total = 0;
+        for (auto const _ : Range(k_num_blocks)) {
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, false);
+            Bitset<k_block_size_max> frames_seen {};
+            u32 voice_index = 0;
+            for (auto& v : fix.pool->EnumerateActiveVoices()) {
+                // Each tick goes to exactly one voice.
+                CHECK((frames_seen & v.shared_clock_spawn_frames).NumSet() == 0);
+                frames_seen |= v.shared_clock_spawn_frames;
+                spawns_per_voice[voice_index++] += (u32)v.shared_clock_spawn_frames.NumSet();
+            }
+            total += (u32)frames_seen.NumSet();
+        }
+        return total;
+    };
+
+    Array<u32, k_chord_size> single_spawns {};
+    Array<u32, k_chord_size> chord_spawns {};
+    auto const single_total = count_spawns(1, single_spawns);
+    auto const chord_total = count_spawns(k_chord_size, chord_spawns);
+
+    CHECK_GT(single_total, 0u);
+    CHECK_EQ(chord_total, single_total);
+    for (auto const spawns : chord_spawns)
+        CHECK_GT(spawns, 0u);
+
+    SUBCASE("identical variation distributes grains the same regardless of voice slot order") {
+        fix.controller.granular.variation_mode = param_values::VariationMode::IdenticalOnEachKey;
+        constexpr Array<u7, 3> k_chord = {60, 64, 67};
+
+        auto const spawn_pattern_per_note = [&](bool reverse_note_on_order) {
+            fix.pool->EndAllVoicesInstantly();
+            for (auto const note_index : Range(k_chord.size))
+                StartTestSamplerVoice(
+                    fix,
+                    region,
+                    audio_data,
+                    k_chord[reverse_note_on_order ? k_chord.size - 1 - note_index : note_index]);
+
+            Array<u64, k_chord.size> hashes {};
+            for (auto const block_index : Range(200u)) {
+                ProcessVoices(*fix.pool, k_block_size_max, fix.context, false);
+                for (auto& v : fix.pool->EnumerateActiveVoices()) {
+                    auto const note_index = (usize)(Find(k_chord, v.note_num).Value());
+                    for (auto const frame : Range(k_block_size_max))
+                        if (v.shared_clock_spawn_frames.Get(frame))
+                            hashes[note_index] =
+                                (hashes[note_index] * 31) + (block_index * k_block_size_max) + frame + 1;
+                }
+            }
+            return hashes;
+        };
+
+        auto const forward = spawn_pattern_per_note(false);
+        auto const reversed = spawn_pattern_per_note(true);
+        for (auto const note_index : Range(k_chord.size))
+            CHECK_EQ(forward[note_index], reversed[note_index]);
+    }
+
+    return k_success;
+}
+
 TEST_CASE(TestVoiceProcessingGranular) {
     auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
 
@@ -2284,8 +2520,8 @@ TEST_CASE(TestVoiceRandomDrawsAreStable) {
     auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
     fix.controller.play_mode = param_values::PlayMode::Standard;
     fix.controller.vol_env_on = false;
-    fix.controller.granular.seed_mode = param_values::SeedMode::Random;
-    fix.controller.lfo.seed_mode = param_values::SeedMode::Random;
+    fix.controller.granular.variation_mode = param_values::VariationMode::DifferentOnEveryNote;
+    fix.controller.lfo.variation_mode = param_values::VariationMode::DifferentOnEveryNote;
 
     auto const active_voice = [&]() -> Voice& {
         for (auto& v : fix.pool->EnumerateActiveVoices())
@@ -2390,7 +2626,7 @@ TEST_CASE(TestVoiceRandomDrawsAreStable) {
 }
 
 // Presets bake in a granular seed, so the stream it produces is pinned like the master-seed draws above.
-TEST_CASE(TestGranularSeedModes) {
+TEST_CASE(TestGranularVariationModes) {
     auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
     fix.controller.play_mode = param_values::PlayMode::GranularPlayback;
     fix.controller.vol_env_on = false;
@@ -2416,8 +2652,8 @@ TEST_CASE(TestGranularSeedModes) {
     };
     auto const same = [](u32x4 a, u32x4 b) { return All(a == b); };
 
-    SUBCASE("fixed") {
-        fix.controller.granular.seed_mode = param_values::SeedMode::Fixed;
+    SUBCASE("identical on all notes") {
+        fix.controller.granular.variation_mode = param_values::VariationMode::IdenticalOnAllNotes;
         auto const a = start(1234, 60);
         CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
         CHECK(same(a.granular_random_seed, start(1234, 64).granular_random_seed));
@@ -2434,8 +2670,8 @@ TEST_CASE(TestGranularSeedModes) {
         CHECK(!same(a.granular_random_seed, start(1234, 60).granular_random_seed));
     }
 
-    SUBCASE("fixed per key") {
-        fix.controller.granular.seed_mode = param_values::SeedMode::FixedPerKey;
+    SUBCASE("identical on each key") {
+        fix.controller.granular.variation_mode = param_values::VariationMode::IdenticalOnEachKey;
         auto const a = start(1234, 60);
         CHECK(same(a.granular_random_seed, start(999, 60).granular_random_seed));
         CHECK(!same(a.granular_random_seed, start(1234, 64).granular_random_seed));
@@ -2447,12 +2683,12 @@ TEST_CASE(TestGranularSeedModes) {
         CHECK_EQ(a.granular_random_seed[3], 2816732097u);
     }
 
-    fix.controller.granular.seed_mode = param_values::SeedMode::Random;
+    fix.controller.granular.variation_mode = param_values::VariationMode::DifferentOnEveryNote;
     return k_success;
 }
 
 // Presets bake in an LFO seed, so the random LFO state it produces is pinned too.
-TEST_CASE(TestLfoSeedModes) {
+TEST_CASE(TestLfoVariationModes) {
     auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
     fix.controller.play_mode = param_values::PlayMode::Standard;
     fix.controller.vol_env_on = false;
@@ -2477,8 +2713,8 @@ TEST_CASE(TestLfoSeedModes) {
         return result;
     };
 
-    SUBCASE("fixed") {
-        fix.controller.lfo.seed_mode = param_values::SeedMode::Fixed;
+    SUBCASE("identical on all notes") {
+        fix.controller.lfo.variation_mode = param_values::VariationMode::IdenticalOnAllNotes;
         auto const a = start(1234, 60);
         CHECK_EQ(a.lfo_random_state, start(999, 60).lfo_random_state);
         CHECK_EQ(a.lfo_random_state, start(1234, 64).lfo_random_state);
@@ -2492,8 +2728,8 @@ TEST_CASE(TestLfoSeedModes) {
         CHECK_NEQ(a.lfo_random_state, start(1234, 60).lfo_random_state);
     }
 
-    SUBCASE("fixed per key") {
-        fix.controller.lfo.seed_mode = param_values::SeedMode::FixedPerKey;
+    SUBCASE("identical on each key") {
+        fix.controller.lfo.variation_mode = param_values::VariationMode::IdenticalOnEachKey;
         auto const a = start(1234, 60);
         CHECK_EQ(a.lfo_random_state, start(999, 60).lfo_random_state);
         CHECK_NEQ(a.lfo_random_state, start(1234, 64).lfo_random_state);
@@ -2502,7 +2738,7 @@ TEST_CASE(TestLfoSeedModes) {
         CHECK_EQ(a.lfo_random_state, 3984787369u);
     }
 
-    fix.controller.lfo.seed_mode = param_values::SeedMode::Random;
+    fix.controller.lfo.variation_mode = param_values::VariationMode::DifferentOnEveryNote;
     return k_success;
 }
 
@@ -2510,8 +2746,9 @@ TEST_REGISTRATION(RegisterVoiceTests) {
     REGISTER_TEST(TestEqualPanGains);
     REGISTER_TEST(TestVoiceProcessingSampler);
     REGISTER_TEST(TestVoiceProcessingGranular);
+    REGISTER_TEST(TestGranularShareGrains);
     REGISTER_TEST(TestVoiceProcessingNonTypicalBufferSizes);
     REGISTER_TEST(TestVoiceRandomDrawsAreStable);
-    REGISTER_TEST(TestGranularSeedModes);
-    REGISTER_TEST(TestLfoSeedModes);
+    REGISTER_TEST(TestGranularVariationModes);
+    REGISTER_TEST(TestLfoVariationModes);
 }

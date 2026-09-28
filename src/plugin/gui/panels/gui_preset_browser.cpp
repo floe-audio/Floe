@@ -1069,6 +1069,7 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                 .folder = folder,
                 .all_items_suffix = " Presets"_s,
                 .collection_noun = "preset bank"_s,
+                .collection_noun_after_items = "bank"_s,
                 .default_collapsed = true,
                 .right_click_menu = PresetFolderRightClickMenu,
                 .store = &context.persistent_store,

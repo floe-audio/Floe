@@ -44,10 +44,10 @@ Optional<String> ParameterMenuItemDescription(ParamIndex param_index, u32 item_i
             auto const description = MpeDestinationDescription((param_values::MpeDestination)item_index);
             return description.size ? Optional<String> {description} : k_nullopt;
         }
-        case ParamDescriptor::MenuType::GranularSeedMode:
-            return GranularSeedModeDescription((param_values::SeedMode)item_index);
-        case ParamDescriptor::MenuType::LfoSeedMode:
-            return LfoSeedModeDescription((param_values::SeedMode)item_index);
+        case ParamDescriptor::MenuType::GranularVariationMode:
+            return GranularVariationModeDescription((param_values::VariationMode)item_index);
+        case ParamDescriptor::MenuType::LfoVariationMode:
+            return LfoVariationModeDescription((param_values::VariationMode)item_index);
         case ParamDescriptor::MenuType::ArpOctavePolyrate: {
             auto const description =
                 ArpOctavePolyrateDescription((param_values::ArpOctavePolyrate)item_index);
@@ -246,21 +246,44 @@ TEST_CASE(TestNumberStartsWithNegativeZero) {
 }
 
 Optional<DynamicArrayBounded<char, 128>>
-ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutoff_in_semitones) const {
+ParamDescriptor::LinearValueToString(f32 linear_value, ParamValueToStringOptions options) const {
     constexpr usize k_size = 128;
     using ResultType = DynamicArrayBounded<char, k_size>;
     ResultType result;
     auto const value = ProjectValue(linear_value);
 
-    if (flags.cutoff_frequency && show_cutoff_in_semitones) {
+    // In full-precision mode, "{.N}" becomes enough decimal places for about 7 significant figures - the
+    // precision of an f32.
+    auto const format = [&](String format_string, f32 number) {
+        if (!options.full_precision) return fmt::FormatInline<k_size>(format_string, number);
+        auto const decimal_places = number == 0 ? 6 : Clamp(6 - (int)Floor(Log10(Abs(number))), 0, 9);
+        DynamicArrayBounded<char, 32> full_precision_format {};
+        for (usize index = 0; index < format_string.size; ++index) {
+            dyn::Append(full_precision_format, format_string[index]);
+            if (index >= 1 && format_string[index - 1] == '{' && format_string[index] == '.' &&
+                index + 1 < format_string.size && IsDigit(format_string[index + 1])) {
+                dyn::Append(full_precision_format, (char)('0' + decimal_places));
+                ++index;
+            }
+        }
+        return fmt::FormatInline<k_size>(full_precision_format, number);
+    };
+
+    // Values this close to zero display as "0", "Off", etc.
+    auto const in_zero_snap_zone = [&](f32 scaled_value) {
+        if (options.full_precision) return scaled_value == 0;
+        return scaled_value > -0.5f && scaled_value < 0.5f;
+    };
+
+    if (flags.cutoff_frequency && options.show_cutoff_in_semitones) {
         auto const hz = display_format == ParamDisplayFormat::Semitones ? SemitonesToHz(value) : value;
-        if (*show_cutoff_in_semitones) {
+        if (*options.show_cutoff_in_semitones) {
             auto const note_number = RoundPositiveFloat(HzToSemitones(hz));
             result = fmt::FormatInline<k_size>("{} (note {})", NoteName(note_number), note_number);
         } else if (RoundPositiveFloat(hz) >= 1000)
-            result = fmt::FormatInline<k_size>("{.1} kHz", hz / 1000);
+            result = format("{.1} kHz", hz / 1000);
         else
-            result = fmt::FormatInline<k_size>("{.0} Hz", hz);
+            result = format("{.0} Hz", hz);
 
         if (NumberStartsWithNegativeZero(result)) dyn::Remove(result, 0);
         return result;
@@ -268,13 +291,13 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
 
     switch (display_format) {
         case ParamDisplayFormat::Float2dp: {
-            result = fmt::FormatInline<k_size>("{.2}", value);
+            result = format("{.2}", value);
             break;
         }
         case ParamDisplayFormat::None: {
             switch (value_type) {
                 case ParamValueType::Float: {
-                    result = fmt::FormatInline<k_size>("{.1}", value);
+                    result = format("{.1}", value);
                     break;
                 }
                 case ParamValueType::Menu: {
@@ -294,45 +317,45 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
             break;
         }
         case ParamDisplayFormat::Percent: {
-            result = fmt::FormatInline<k_size>("{.1}%", value * 100.0f);
+            result = format("{.1}%", value * 100.0f);
             break;
         }
         case ParamDisplayFormat::Percent2dp: {
-            result = fmt::FormatInline<k_size>("{.2}%", value * 100.0f);
+            result = format("{.2}%", value * 100.0f);
             break;
         }
         case ParamDisplayFormat::Pan: {
             auto const scaled_value = value * 100.0f;
-            if (scaled_value > -0.5f && scaled_value < 0.5f)
+            if (in_zero_snap_zone(scaled_value))
                 result = ResultType("0");
             else if (scaled_value < 0)
-                result = fmt::FormatInline<k_size>("{.0} L", -scaled_value);
+                result = format("{.0} L", -scaled_value);
             else
-                result = fmt::FormatInline<k_size>("{.0} R", scaled_value);
+                result = format("{.0} R", scaled_value);
             break;
         }
         case ParamDisplayFormat::SinevibesFilter: {
             auto const scaled_value = value * 100.0f;
-            if (scaled_value > -0.5f && scaled_value < 0.5f)
+            if (in_zero_snap_zone(scaled_value))
                 result = ResultType {"Off"};
             else if (scaled_value < 0)
-                result = fmt::FormatInline<k_size>("Lo-cut {.0}%", -scaled_value);
+                result = format("Lo-cut {.0}%", -scaled_value);
             else
-                result = fmt::FormatInline<k_size>("Hi-cut {.0}%", scaled_value);
+                result = format("Hi-cut {.0}%", scaled_value);
             break;
         }
         case ParamDisplayFormat::Ms: {
             if (RoundPositiveFloat(value) >= 1000)
-                result = fmt::FormatInline<k_size>("{.1} s", value / 1000);
+                result = format("{.1} s", value / 1000);
             else if (value < 20)
-                result = fmt::FormatInline<k_size>("{.2} ms", value);
+                result = format("{.2} ms", value);
             else
-                result = fmt::FormatInline<k_size>("{.0} ms", value);
+                result = format("{.0} ms", value);
             break;
         }
         case ParamDisplayFormat::VolumeAmp: {
             if (value > k_silence_amp_80) {
-                result = fmt::FormatInline<k_size>("{.1} dB", AmpToDb(value));
+                result = format("{.1} dB", AmpToDb(value));
                 break;
             } else
                 result = ResultType("-\u221E");
@@ -340,33 +363,33 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
         }
         case ParamDisplayFormat::Hz: {
             if (RoundPositiveFloat(value) >= 1000)
-                result = fmt::FormatInline<k_size>("{.1} kHz", value / 1000);
+                result = format("{.1} kHz", value / 1000);
             else if (projection->range.min < 0.01f && value < 0.01f)
-                result = fmt::FormatInline<k_size>("{.6} Hz", value);
+                result = format("{.6} Hz", value);
             else if (projection->range.min < 0.01f && value < 0.5f)
-                result = fmt::FormatInline<k_size>("{.3} Hz", value);
+                result = format("{.3} Hz", value);
             else if (value < 0.5f)
-                result = fmt::FormatInline<k_size>("{.2} Hz", value);
+                result = format("{.2} Hz", value);
             else if (projection->range.Delta() > 100)
-                result = fmt::FormatInline<k_size>("{.0} Hz", value);
+                result = format("{.0} Hz", value);
             else
-                result = fmt::FormatInline<k_size>("{.1} Hz", value);
+                result = format("{.1} Hz", value);
             break;
         }
         case ParamDisplayFormat::VolumeDbRange: {
-            result = fmt::FormatInline<k_size>("{.1} dB", value);
+            result = format("{.1} dB", value);
             break;
         }
         case ParamDisplayFormat::Cents: {
-            result = fmt::FormatInline<k_size>("{.0} cents", value);
+            result = format("{.0} cents", value);
             break;
         }
         case ParamDisplayFormat::Semitones: {
-            result = fmt::FormatInline<k_size>("{.0} semitones", value);
+            result = format("{.0} semitones", value);
             break;
         }
         case ParamDisplayFormat::Ratio: {
-            result = fmt::FormatInline<k_size>("{.2} : 1", value);
+            result = format("{.2} : 1", value);
             break;
         }
         case ParamDisplayFormat::CompressorAttackMs:
@@ -375,16 +398,16 @@ ParamDescriptor::LinearValueToString(f32 linear_value, Optional<bool> show_cutof
                                 ? vitfx::compressor::AttackParamToMs(value)
                                 : vitfx::compressor::ReleaseParamToMs(value);
             if (RoundPositiveFloat(ms) >= 1000)
-                result = fmt::FormatInline<k_size>("{.1} s", ms / 1000);
+                result = format("{.1} s", ms / 1000);
             else if (ms < 10)
-                result = fmt::FormatInline<k_size>("{.2} ms", ms);
+                result = format("{.2} ms", ms);
             else
-                result = fmt::FormatInline<k_size>("{.0} ms", ms);
+                result = format("{.0} ms", ms);
             break;
         }
     }
 
-    if (!result.size) result = fmt::FormatInline<k_size>("{.1}", value);
+    if (!result.size) result = format("{.1}", value);
 
     if (NumberStartsWithNegativeZero(result)) dyn::Remove(result, 0);
 
@@ -476,11 +499,11 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::LfoShape:
             case LayerParamIndex::LfoDestination: return layer_is_on(ln, LayerParamIndex::LfoOn);
 
-            case LayerParamIndex::LfoSeedMode: return lfo_is_random_shape(ln);
+            case LayerParamIndex::LfoVariationMode: return lfo_is_random_shape(ln);
             case LayerParamIndex::LfoSeed:
-                return lfo_is_random_shape(ln) &&
-                       ParamToInt<param_values::SeedMode>(layer_linear(ln, LayerParamIndex::LfoSeedMode)) !=
-                           param_values::SeedMode::Random;
+                return lfo_is_random_shape(ln) && ParamToInt<param_values::VariationMode>(
+                                                      layer_linear(ln, LayerParamIndex::LfoVariationMode)) !=
+                                                      param_values::VariationMode::DifferentOnEveryNote;
 
             case LayerParamIndex::LfoRateTempoSynced:
                 return layer_is_on(ln, LayerParamIndex::LfoOn) &&
@@ -522,11 +545,12 @@ bool IsParamCurrentlyRelevant(ParamIndex index, StaticSpan<f32 const, k_num_para
             case LayerParamIndex::GranularRandomDetune:
             case LayerParamIndex::GranularRandomDirection:
             case LayerParamIndex::GranularHarmony:
-            case LayerParamIndex::GranularSeedMode: return is_granular;
+            case LayerParamIndex::GranularVariationMode:
+            case LayerParamIndex::GranularShareGrains: return is_granular;
             case LayerParamIndex::GranularSeed:
-                return is_granular && ParamToInt<param_values::SeedMode>(
-                                          layer_linear(ln, LayerParamIndex::GranularSeedMode)) !=
-                                          param_values::SeedMode::Random;
+                return is_granular && ParamToInt<param_values::VariationMode>(
+                                          layer_linear(ln, LayerParamIndex::GranularVariationMode)) !=
+                                          param_values::VariationMode::DifferentOnEveryNote;
 
             case LayerParamIndex::ArpMode:
             case LayerParamIndex::ArpNoteOrder:
@@ -978,6 +1002,46 @@ TEST_CASE(TestParamStringConversion) {
     return k_success;
 }
 
+TEST_CASE(TestFullPrecisionStringRoundTrip) {
+    for (auto const& descriptor : k_param_descriptors) {
+        auto const& range = descriptor.linear_range;
+        for (auto const position_01 : Array {0.0f, 0.001f, 0.1234f, 0.5f, 0.777f, 0.999f, 1.0f}) {
+            auto const linear_value = ({
+                auto v = range.min + (position_01 * range.Delta());
+                switch (descriptor.value_type) {
+                    case ParamValueType::Float: break;
+                    case ParamValueType::Menu:
+                    case ParamValueType::Bool:
+                    case ParamValueType::Int: v = Round(v); break;
+                }
+                v;
+            });
+            auto const str = descriptor.LinearValueToString(linear_value, {.full_precision = true});
+            REQUIRE(str);
+            auto const parsed = descriptor.StringToLinearValue(*str);
+            if (!parsed) {
+                tester.log.Error("{}: failed to parse '{}'", descriptor.id_string, *str);
+                REQUIRE(false);
+            }
+            // Compare projected values: some projections are flat near their ends, so different linear values
+            // can share one projected value.
+            auto const projected = descriptor.ProjectValue(linear_value);
+            auto const parsed_projected = descriptor.ProjectValue(*parsed);
+            auto const projected_range_delta =
+                descriptor.projection ? descriptor.projection->range.Delta() : range.Delta();
+            auto const tolerance = projected_range_delta * 0.00001f;
+            if (Abs(parsed_projected - projected) > tolerance)
+                tester.log.Error("{}: {} -> '{}' -> {}",
+                                 descriptor.id_string,
+                                 projected,
+                                 *str,
+                                 parsed_projected);
+            CHECK_APPROX_EQ(parsed_projected, projected, tolerance);
+        }
+    }
+    return k_success;
+}
+
 TEST_CASE(TestCutoffSemitonesNoteNameDisplay) {
     auto const& cutoff_param = k_param_descriptors[ToInt(ParamIndex::FilterCutoff)];
     REQUIRE(cutoff_param.flags.cutoff_frequency);
@@ -986,7 +1050,7 @@ TEST_CASE(TestCutoffSemitonesNoteNameDisplay) {
     auto const linear_value = cutoff_param.LineariseValue(440.0f, true);
     REQUIRE(linear_value);
 
-    auto const str = cutoff_param.LinearValueToString(*linear_value, true);
+    auto const str = cutoff_param.LinearValueToString(*linear_value, {.show_cutoff_in_semitones = true});
     REQUIRE(str);
     tester.log.Debug("Cutoff note-name display: {}", *str);
     CHECK_EQ(String {*str}, "A3 (note 69)"_s);
@@ -1033,6 +1097,75 @@ TEST_CASE(TestParamIdStringsUnique) {
     return k_success;
 }
 
+TEST_CASE(TestParamGenerationsMatchSnapshot) {
+    // The AUv2 parameter order is derived from added_in_generation, so a released generation's ids must never
+    // change. New params go in the latest generation if it's unreleased, otherwise append a new one. Ids are
+    // relative to their region; layer ids apply to every layer.
+    struct GenerationIds {
+        Span<u8 const> master;
+        Span<u8 const> layer;
+    };
+
+    static constexpr u8 k_gen0_master[] = {
+        0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,  19,  20,  21,  22,
+        23, 24, 25, 26, 27, 28, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,  78,  79,  80,  81,
+        82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+    };
+    static constexpr u8 k_gen0_layer[] = {
+        0,  1,  2,  3,  4,  5,  7,  8,  9,  11, 12, 13, 14, 15, 16, 17, 18, 19,
+        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
+        38, 39, 40, 41, 42, 43, 44, 45, 46, 48, 49, 50, 51, 52, 53, 54, 55,
+    };
+    static constexpr u8 k_gen1_master[] = {
+        29,  30,  31,  32,  33,  34,  35,  36,  105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
+        116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133,
+    };
+    static constexpr u8 k_gen1_layer[] = {
+        56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
+        76, 77, 78, 79, 80, 81, 82, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95,
+    };
+    static constexpr u8 k_gen2_layer[] = {96, 97, 98, 99};
+    static constexpr u8 k_gen3_layer[] = {100, 101};
+    static constexpr u8 k_gen5_master[] = {146, 147};
+    static constexpr u8 k_gen6_master[] = {140, 141, 142, 143, 148, 149, 150, 151, 152};
+    static constexpr u8 k_gen6_layer[] = {102};
+    static constexpr u8 k_gen7_master[] = {153, 154};
+    static constexpr u8 k_gen8_layer[] = {103, 104, 105, 106};
+    static constexpr u8 k_gen9_layer[] = {107};
+
+    static constexpr GenerationIds k_generations[] = {
+        {.master = k_gen0_master, .layer = k_gen0_layer},
+        {.master = k_gen1_master, .layer = k_gen1_layer},
+        {.layer = k_gen2_layer},
+        {.layer = k_gen3_layer},
+        {},
+        {.master = k_gen5_master},
+        {.master = k_gen6_master, .layer = k_gen6_layer},
+        {.master = k_gen7_master},
+        {.layer = k_gen8_layer},
+        {.layer = k_gen9_layer},
+    };
+
+    usize num_snapshot_params = 0;
+    for (auto const& generation : k_generations)
+        num_snapshot_params += generation.master.size + (generation.layer.size * k_num_layers);
+    CHECK_EQ(num_snapshot_params, (usize)k_num_parameters);
+
+    for (auto const& desc : k_param_descriptors) {
+        CAPTURE(desc.id_string);
+        auto const id_in_region = (u8)(desc.id % k_param_ids_per_region);
+        u32 num_matches = 0;
+        for (auto const [generation_index, generation] : Enumerate<u8>(k_generations)) {
+            if (!Contains(desc.IsLayerParam() ? generation.layer : generation.master, id_in_region)) continue;
+            ++num_matches;
+            CHECK_EQ(desc.added_in_generation, generation_index);
+        }
+        CHECK_EQ(num_matches, 1u);
+    }
+
+    return k_success;
+}
+
 TEST_CASE(TestDistortionTypeCategoriesComplete) {
     using namespace param_values;
 
@@ -1052,7 +1185,9 @@ TEST_REGISTRATION(RegisterParamDescriptorTests) {
     REGISTER_TEST(TestNumberStartsWithNegativeZero);
     REGISTER_TEST(TestLegacyConversion);
     REGISTER_TEST(TestParamStringConversion);
+    REGISTER_TEST(TestFullPrecisionStringRoundTrip);
     REGISTER_TEST(TestParamIdStringsUnique);
+    REGISTER_TEST(TestParamGenerationsMatchSnapshot);
     REGISTER_TEST(TestDistortionTypeCategoriesComplete);
     REGISTER_TEST(TestCutoffSemitonesNoteNameDisplay);
 }

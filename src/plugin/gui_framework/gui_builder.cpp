@@ -411,7 +411,8 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                                           : k_auto_active_white_overlay;
                 }
 
-                if (config.drop_shadow) builder.config.draw_drop_shadow(builder.imgui, r, rounding, 1);
+                if (config.drop_shadow)
+                    builder.config.draw_drop_shadow(builder.imgui, r, {.rounding = rounding});
 
                 switch (config.background_shape) {
                     case BackgroundShape::Rectangle:

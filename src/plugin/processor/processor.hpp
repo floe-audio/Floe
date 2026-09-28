@@ -265,6 +265,21 @@ struct AudioProcessor {
     Array<Array<audio_thread_inbox::MacroDestinationUpdate, k_max_macro_destinations>, k_num_macros>
         macro_dest_inbox {};
 
+    // Lets the GUI audition a macro at a position without changing the macro's parameter.
+    // Flat rather than containing a MacroPositionOverride so that it fits in a lock-free atomic.
+    struct MacroAudition {
+        bool operator==(MacroAudition const&) const = default;
+        Optional<MacroPositionOverride> Position() const {
+            if (!active) return k_nullopt;
+            return MacroPositionOverride {.macro_index = macro_index, .value = value};
+        }
+        f32 value;
+        u8 macro_index;
+        bool active;
+    };
+    Atomic<MacroAudition> macro_audition {}; // Set by main-thread.
+    MacroAudition audio_macro_audition {}; // Audio-thread.
+
     struct ChangedParam {
         f32 value;
         ParamIndex index;
@@ -377,6 +392,9 @@ struct MacroDestinationValueChangedConfig {
 
 // Doesn't actually change the value, just sends the event to the audio thread.
 void MacroDestinationValueChanged(AudioProcessor& processor, MacroDestinationValueChangedConfig config);
+
+// Pass nullopt to stop auditioning.
+void SetMacroAudition(AudioProcessor& processor, Optional<MacroPositionOverride> position);
 
 // Retargets any macro destinations currently pointing at `from` to instead point at `to`. Used by
 // the modernise action so macros that were modulating a legacy parameter continue to modulate the
