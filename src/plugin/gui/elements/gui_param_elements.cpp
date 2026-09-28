@@ -1426,7 +1426,7 @@ Box DoIntParameter(GuiState& g,
                   },
                   .tooltip = FunctionRef<String()> {[&]() -> String {
                       if (options.override_tooltip.size) return options.override_tooltip;
-                      return ParamTooltipText(param, g.builder.arena);
+                      return ParamTooltipText(param, g.builder.arena, options.greyed_out);
                   }},
                   .tooltip_footer = k_dragger_tooltip_footer,
                   .tooltip_avoid_box = options.tooltip_avoid_box ? options.tooltip_avoid_box : &container,

@@ -1260,7 +1260,7 @@ static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationBut
                                           .size = {70, k_font_body_size},
                                       },
                                       .tooltip = FunctionRef<String()> {[&]() -> String {
-                                          return param.info.tooltip;
+                                          return ParamTooltipText(param, g.builder.arena, greyed_out);
                                       }},
                                   });
                             return param_row;
