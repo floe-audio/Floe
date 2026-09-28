@@ -5202,7 +5202,7 @@ Corners BrowserOpenerCornersToRound(imgui::Context const& imgui, imgui::Id brows
 static void DrawBrowserAndOpenerOutline(imgui::Context const& imgui, Rect opener, Rect browser) {
     auto const tolerance = WwToPixels(1.0f);
     auto const rounding = WwToPixels(k_corner_rounding);
-    auto const highlight_colour = ToU32(Col {.c = Col::White, .alpha = 28});
+    auto const highlight_colour = ToU32(Col {.c = Col::White, .alpha = 58});
     auto const edge_colour = ToU32(Col {.c = Col::Black});
     auto& draw_list = *imgui.draw_list;
 
@@ -5379,10 +5379,14 @@ void DoBrowserModal(GuiBuilder& builder, BrowserPopupContext context, BrowserPop
                     // browser's vertical span.
                     cfg.draw_background =
                         imgui::DrawViewportBackgroundFunction([opener_rect](imgui::Context const& imgui) {
-                            DrawFullscreenDim(imgui);
-                            auto const rounding = WwToPixels(k_panel_rounding);
+                            imgui.draw_list->PushClipRectFullScreen();
+                            imgui.draw_list->AddRectFilled(0, GuiIo().in.window_size.ToFloat2(), 0x3c0f0d0d);
+                            imgui.draw_list->PopClipRect();
+                            DropShadowOptions const shadow_opts {
+                                .rounding = WwToPixels(k_panel_rounding),
+                            };
                             auto const r = imgui.curr_viewport->unpadded_bounds;
-                            DrawDropShadow(imgui, r, rounding);
+                            DrawDropShadow(imgui, r, shadow_opts);
                             auto const window_size = GuiIo().in.window_size.ToFloat2();
                             imgui.draw_list->PushClipRect(opener_rect.y < r.y
                                                               ? Rect {.pos = 0, .size = {window_size.x, r.y}}
@@ -5390,7 +5394,7 @@ void DoBrowserModal(GuiBuilder& builder, BrowserPopupContext context, BrowserPop
                                                                                r.Bottom(),
                                                                                window_size.x,
                                                                                window_size.y - r.Bottom()}});
-                            DrawDropShadow(imgui, opener_rect, rounding);
+                            DrawDropShadow(imgui, opener_rect, shadow_opts);
                             imgui.draw_list->PopClipRect();
                         }).CloneObject(builder.arena);
                 }

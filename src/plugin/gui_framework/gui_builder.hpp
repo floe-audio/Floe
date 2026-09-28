@@ -139,7 +139,12 @@ struct DrawTooltipArgs {
 using DrawOverlayTooltipForRectFunc = void(imgui::Context const& imgui,
                                            Fonts& fonts,
                                            DrawTooltipArgs const& args);
-using DrawDropShadowFunc = void(imgui::Context const& imgui, Rect r, Optional<f32> rounding, f32 opacity);
+struct DropShadowOptions {
+    Optional<f32> rounding {};
+    f32 opacity = 1;
+    f32 blur_radius_ww = 9;
+};
+using DrawDropShadowFunc = void(imgui::Context const& imgui, Rect r, DropShadowOptions const& options);
 
 struct GuiBuilder {
     struct WordWrappedText {

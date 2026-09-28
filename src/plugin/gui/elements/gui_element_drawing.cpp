@@ -14,14 +14,12 @@
 #include "gui_framework/gui_imgui.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
-void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding_opt, f32 opacity) {
-    auto const rounding = rounding_opt ? *rounding_opt : WwToPixels(k_corner_rounding);
-    auto const blur = WwToPixels(7.84f);
+void DrawDropShadow(imgui::Context const& imgui, Rect r, DropShadowOptions const& options) {
     imgui.draw_list->AddDropShadow(r.Min(),
                                    r.Max(),
-                                   ChangeAlpha(LiveCol(UiColMap::ViewportDropShadow), opacity),
-                                   blur,
-                                   rounding);
+                                   ChangeAlpha(LiveCol(UiColMap::ViewportDropShadow), options.opacity),
+                                   WwToPixels(options.blur_radius_ww),
+                                   options.rounding.ValueOr(WwToPixels(k_corner_rounding)));
 }
 
 void DrawResizeCornerGrip(imgui::Context const& imgui, Rect r, u32 colour) {
@@ -852,21 +850,21 @@ void DrawModalViewportBackgroundWithFullscreenDim(imgui::Context const& imgui) {
 
     auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
-    DrawDropShadow(imgui, r, rounding);
+    DrawDropShadow(imgui, r, {.rounding = rounding});
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0}), rounding);
 }
 
 void DrawOverlayViewportBackground(imgui::Context const& imgui) {
     auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
-    DrawDropShadow(imgui, r, rounding);
+    DrawDropShadow(imgui, r, {.rounding = rounding});
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background0}), rounding);
 }
 
 void DrawDarkPopupMenuBackground(imgui::Context const& imgui) {
     auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
-    DrawDropShadow(imgui, r, rounding);
+    DrawDropShadow(imgui, r, {.rounding = rounding});
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
     imgui.draw_list->AddRect(r, ToU32(Col {.c = Col::White, .alpha = 28}), rounding);
 }
@@ -906,7 +904,7 @@ static void DrawTooltipBox(imgui::Context const& imgui,
     fonts.Push(ToInt(font));
     DEFER { fonts.Pop(); };
 
-    DrawDropShadow(imgui, r, k_nullopt, opacity);
+    DrawDropShadow(imgui, r, {.opacity = opacity});
     imgui.overlay_draw_list->AddRectFilled(r,
                                            ChangeAlpha(ToU32(Col {.c = Col::Background0}), opacity),
                                            WwToPixels(k_corner_rounding));

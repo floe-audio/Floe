@@ -20,7 +20,7 @@
 static void DrawDarkModePanelBackground(imgui::Context const& imgui) {
     auto const rounding = WwToPixels(k_panel_rounding);
     auto const r = imgui.curr_viewport->unpadded_bounds;
-    DrawDropShadow(imgui, r, rounding);
+    DrawDropShadow(imgui, r, {.rounding = rounding});
     imgui.draw_list->AddRectFilled(r, ToU32({.c = Col::Background1, .dark_mode = true}), rounding);
 }
 

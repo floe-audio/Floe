@@ -13,7 +13,7 @@
 
 // Drawing functions always need window coordinates, not viewport coordinates.
 
-void DrawDropShadow(imgui::Context const& imgui, Rect r, Optional<f32> rounding = {}, f32 opacity = 1);
+void DrawDropShadow(imgui::Context const& imgui, Rect r, DropShadowOptions const& options = {});
 
 // Three diagonal lines filling the rect's bottom-right triangle, the classic corner grip.
 void DrawResizeCornerGrip(imgui::Context const& imgui, Rect r, u32 colour);
