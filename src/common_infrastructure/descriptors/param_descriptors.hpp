@@ -4738,7 +4738,7 @@ consteval auto CreateParams() {
             .id = id(region, 107), // never change
             .id_string = LAYER_ID("granular.share_grains"),
             .added_in_generation = 9,
-            .value_config = val_config_helpers::Bool({.default_state = false}),
+            .value_config = val_config_helpers::Bool({.default_state = true}),
             .modules = {layer_module, ParameterModule::Playback, ParameterModule::Granular},
             .name = "Share Grains"_s,
             .gui_label = "Share Grains"_s,
