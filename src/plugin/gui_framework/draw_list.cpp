@@ -1043,6 +1043,106 @@ void DrawList::AddQuadFilledMultiColor(f32x2 upr_left,
     PrimWriteVtx(bot_left, uv, col_bot_left);
 }
 
+// Each ring is the rect's outline pushed outwards by a distance, with every corner an arc around a fixed
+// centre. The centres are inset by at least half the blur so inner rings can shrink to a point but never
+// fold over themselves; a folded ring overdraws and shows up as dark spikes at the corners.
+void DrawList::AddDropShadow(f32x2 a,
+                             f32x2 b,
+                             u32 col,
+                             f32 blur_size,
+                             f32 rounding,
+                             Corners corners_to_round) {
+    if ((col & k_alpha_mask) == 0) return;
+    ASSERT(blur_size >= 0);
+
+    constexpr u32 k_num_rings = 4;
+    constexpr u32 k_segments_per_corner = 8;
+    constexpr u32 k_points_per_ring = 4 * (k_segments_per_corner + 1);
+
+    auto const offset = f32x2 {blur_size} / f32x2 {7.0f, 5.0f};
+    a += offset;
+    b += offset;
+
+    auto const half_blur = blur_size * 0.5f;
+    auto const max_inset = Max(Min(b.x - a.x, b.y - a.y) * 0.5f, 0.0f);
+
+    struct Corner {
+        f32x2 centre;
+        f32 radius_at_edge;
+        f32 start_angle;
+    };
+    auto const corner = [&](f32x2 point, f32x2 inwards, Corners flag, f32 start_angle) {
+        auto const corner_rounding = (corners_to_round & flag) ? rounding : 0.0f;
+        auto const inset = Min(Max(corner_rounding, half_blur), max_inset);
+        return Corner {
+            .centre = point + (inwards * inset),
+            .radius_at_edge = inset,
+            .start_angle = start_angle,
+        };
+    };
+    Corner const corners[] = {
+        corner(a, f32x2 {1, 1}, 8, k_pi<>),
+        corner(f32x2 {b.x, a.y}, f32x2 {-1, 1}, 4, k_pi<> * 1.5f),
+        corner(b, f32x2 {-1, -1}, 2, 0),
+        corner(f32x2 {a.x, b.y}, f32x2 {1, -1}, 1, k_pi<> * 0.5f),
+    };
+
+    auto const colour_no_alpha = col & k_alpha_mask_inv;
+    auto const base_alpha = (f32)((col >> k_alpha_shift) & 0xFF);
+    auto const uv = fonts.atlas.tex_uv_white_pixel;
+
+    constexpr u32 k_idx_count = ((k_points_per_ring - 2) * 3) + ((k_num_rings - 1) * k_points_per_ring * 6);
+    constexpr u32 k_vtx_count = k_num_rings * k_points_per_ring;
+
+    PushClipRectFullScreen();
+    PrimReserve(k_idx_count, k_vtx_count);
+    auto const first_vtx_idx = vtx_current_idx;
+
+    for (auto const ring_index : Range(k_num_rings)) {
+        auto const t = (f32)ring_index / (f32)(k_num_rings - 1);
+        auto const distance_from_edge = (t * 2.0f - 1.0f) * half_blur;
+        auto const fade = 1.0f - (t * t * (3.0f - 2.0f * t));
+        auto const ring_col = colour_no_alpha | ((u32)(base_alpha * fade) << k_alpha_shift);
+
+        for (auto const& c : corners) {
+            auto const radius = Max(c.radius_at_edge + distance_from_edge, 0.0f);
+            for (auto const segment_index : Range(k_segments_per_corner + 1)) {
+                auto const angle =
+                    c.start_angle + ((f32)segment_index / (f32)k_segments_per_corner * k_pi<> * 0.5f);
+                vtx_write_ptr->pos = c.centre + f32x2 {Cos(angle), Sin(angle)} * radius;
+                vtx_write_ptr->uv = uv;
+                vtx_write_ptr->col = ring_col;
+                ++vtx_write_ptr;
+            }
+        }
+    }
+
+    for (u32 point_index = 2; point_index < k_points_per_ring; ++point_index) {
+        idx_write_ptr[0] = (DrawIdx)first_vtx_idx;
+        idx_write_ptr[1] = (DrawIdx)(first_vtx_idx + point_index - 1);
+        idx_write_ptr[2] = (DrawIdx)(first_vtx_idx + point_index);
+        idx_write_ptr += 3;
+    }
+
+    for (auto const ring_index : Range(k_num_rings - 1)) {
+        auto const inner_ring = first_vtx_idx + (ring_index * k_points_per_ring);
+        auto const outer_ring = inner_ring + k_points_per_ring;
+        for (auto const point_index : Range(k_points_per_ring)) {
+            auto const next_point_index = (point_index + 1) % k_points_per_ring;
+            idx_write_ptr[0] = (DrawIdx)(inner_ring + point_index);
+            idx_write_ptr[1] = (DrawIdx)(outer_ring + point_index);
+            idx_write_ptr[2] = (DrawIdx)(outer_ring + next_point_index);
+            idx_write_ptr[3] = (DrawIdx)(inner_ring + point_index);
+            idx_write_ptr[4] = (DrawIdx)(outer_ring + next_point_index);
+            idx_write_ptr[5] = (DrawIdx)(inner_ring + next_point_index);
+            idx_write_ptr += 6;
+        }
+    }
+
+    vtx_current_idx += k_vtx_count;
+    PopClipRect();
+}
+
 void DrawList::AddVignetteRect(Rect r, u32 colour, f32 inner_radius_fraction, u32 subdivisions) {
     if ((colour & k_alpha_mask) == 0) return;
     if (subdivisions == 0) return;
