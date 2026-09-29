@@ -1229,6 +1229,7 @@ Box DoButtonParameter(GuiState& g,
                   .layout {
                       .size = {options.width, options.height},
                       .margins = options.margins,
+                      .contents_padding = {.r = options.extra_clickable_width},
                       .contents_direction = layout::Direction::Row,
                       .contents_align = layout::Alignment::Start,
                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
