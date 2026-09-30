@@ -222,7 +222,7 @@ static void DoBotPanel(GuiState& g) {
         if (tab_button(BottomPanelType::Play, "Play tab: core UI for playing sounds"_s).button_fired)
             new_panel = BottomPanelType::Play;
 
-        if (tab_button(BottomPanelType::EditMacros, "Edit macros tabs: change macro destinations and names"_s)
+        if (tab_button(BottomPanelType::EditMacros, "Edit macros tab: change macro destinations and names"_s)
                 .button_fired)
             new_panel = BottomPanelType::EditMacros;
 

@@ -625,7 +625,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
             ICON_FA_ARROW_ROTATE_LEFT,
             fmt::Format(
                 builder.arena,
-                "Undo your most recent change.\n\nFloe keeps a history of changes to its sound, including parameter tweaks and loading Instruments or effects, going back up to {} steps. That means you can experiment freely and step back at any point..",
+                "Undo your most recent change.\n\nFloe keeps a history of changes to its sound, including parameter tweaks and loading Instruments or effects, going back up to {} steps. That means you can experiment freely and step back at any point.",
                 k_undo_max_entries),
             0.9f,
             5,
