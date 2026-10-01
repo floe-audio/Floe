@@ -16,3 +16,6 @@ void DestroyBgfxPlatformHandles(BgfxPlatformHandles& handles);
 // The window was created on the windowing library's own connection; make sure the server knows about it
 // before bgfx's connection creates a surface for it.
 void SyncWindowDisplayForBgfx(void* window_display);
+
+// The handle to give bgfx::createFrameBuffer for a window.
+void* BgfxSwapChainWindowHandle(void* native_window);

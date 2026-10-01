@@ -33,3 +33,5 @@ void SyncWindowDisplayForBgfx(void* window_display) {
     ASSERT(window_display);
     XSync((Display*)window_display, False);
 }
+
+void* BgfxSwapChainWindowHandle(void* native_window) { return native_window; }

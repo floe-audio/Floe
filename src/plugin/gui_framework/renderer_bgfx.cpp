@@ -588,7 +588,8 @@ struct BgfxRenderer : public Renderer {
     }
 
     static bgfx::FrameBufferHandle CreateFramebuffer(void* native_window, UiSize size) {
-        if (native_window) return bgfx::createFrameBuffer(native_window, size.width, size.height);
+        if (native_window)
+            return bgfx::createFrameBuffer(BgfxSwapChainWindowHandle(native_window), size.width, size.height);
         return bgfx::createFrameBuffer(size.width,
                                        size.height,
                                        bgfx::TextureFormat::RGBA8,

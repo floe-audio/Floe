@@ -10,3 +10,5 @@ void DestroyBgfxPlatformHandles(BgfxPlatformHandles& handles) {
 }
 
 void SyncWindowDisplayForBgfx(void*) {}
+
+void* BgfxSwapChainWindowHandle(void* native_window) { return native_window; }
