@@ -251,7 +251,8 @@ struct BgfxRenderer : public Renderer {
         TRY(g_shared_renderer.Acquire());
         acquired_shared_renderer = true;
 
-        SyncWindowDisplayForBgfx(native_display);
+        offscreen = native_window == nullptr;
+        if (!offscreen) SyncWindowDisplayForBgfx(native_display);
 
         ASSERT(!bgfx::isValid(window_framebuffer));
         ASSERT(size.width > 0 && size.height > 0);
@@ -262,7 +263,7 @@ struct BgfxRenderer : public Renderer {
                  size.height,
                  native_window);
 
-        window_framebuffer = bgfx::createFrameBuffer(native_window, size.width, size.height);
+        window_framebuffer = CreateFramebuffer(native_window, size);
 
         if (!bgfx::isValid(window_framebuffer)) return Error("failed to create window framebuffer");
 
@@ -426,8 +427,7 @@ struct BgfxRenderer : public Renderer {
 
             bgfx::frame();
 
-            window_framebuffer =
-                bgfx::createFrameBuffer(native_window, window_size.width, window_size.height);
+            window_framebuffer = CreateFramebuffer(native_window, window_size);
             if (!bgfx::isValid(window_framebuffer)) return Error("failed to create window framebuffer");
 
             last_window_size = window_size;
@@ -519,8 +519,86 @@ struct BgfxRenderer : public Renderer {
         return k_success;
     }
 
-    static inline u16 const k_view_id = 200;
+    // Only offscreen framebuffers are readable; window framebuffers are swap chains.
+    Optional<ScreenshotPixels>
+    Screenshot(Optional<Rect> region, UiSize window_size, Allocator& arena) override {
+        ZoneScoped;
+        if (!offscreen || !bgfx::isValid(window_framebuffer)) return k_nullopt;
+        ASSERT(window_size == last_window_size);
 
+        auto const caps = bgfx::getCaps();
+        ASSERT(!caps->originBottomLeft);
+        if (!(caps->supported & BGFX_CAPS_TEXTURE_BLIT) || !(caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)) {
+            LogError(ModuleName::Bgfx, "Screenshot needs texture blit and read-back support");
+            return k_nullopt;
+        }
+
+        int x = 0;
+        int y = 0;
+        int w = window_size.width;
+        int h = window_size.height;
+        if (region) {
+            x = Max(0, (int)region->x);
+            y = Max(0, (int)region->y);
+            w = Min((int)region->w, (int)window_size.width - x);
+            h = Min((int)region->h, (int)window_size.height - y);
+        }
+        if (w <= 0 || h <= 0) return k_nullopt;
+
+        auto const read_back_texture = bgfx::createTexture2D((u16)w,
+                                                             (u16)h,
+                                                             false,
+                                                             1,
+                                                             bgfx::TextureFormat::RGBA8,
+                                                             BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
+        if (!bgfx::isValid(read_back_texture)) {
+            LogError(ModuleName::Bgfx, "Failed to create screenshot read-back texture");
+            return k_nullopt;
+        }
+        DEFER { bgfx::destroy(read_back_texture); };
+
+        // The rendered contents persist in the framebuffer texture because the GUI view isn't touched again
+        // until the next Render.
+        bgfx::blit(k_blit_view_id,
+                   read_back_texture,
+                   0,
+                   0,
+                   bgfx::getTexture(window_framebuffer),
+                   (u16)x,
+                   (u16)y,
+                   (u16)w,
+                   (u16)h);
+
+        auto const rgba = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 4);
+        auto const ready_frame = bgfx::readTexture(read_back_texture, rgba.data);
+        while (bgfx::frame() < ready_frame) {
+        }
+
+        auto const rgb = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 3);
+        for (auto const pixel_index : Range((usize)w * (usize)h)) {
+            rgb[(pixel_index * 3) + 0] = rgba[(pixel_index * 4) + 0];
+            rgb[(pixel_index * 3) + 1] = rgba[(pixel_index * 4) + 1];
+            rgb[(pixel_index * 3) + 2] = rgba[(pixel_index * 4) + 2];
+        }
+
+        return ScreenshotPixels {
+            .rgb = rgb,
+            .size = {(u16)w, (u16)h},
+        };
+    }
+
+    static bgfx::FrameBufferHandle CreateFramebuffer(void* native_window, UiSize size) {
+        if (native_window) return bgfx::createFrameBuffer(native_window, size.width, size.height);
+        return bgfx::createFrameBuffer(size.width,
+                                       size.height,
+                                       bgfx::TextureFormat::RGBA8,
+                                       BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+    }
+
+    static inline u16 const k_view_id = 200;
+    static inline u16 const k_blit_view_id = k_view_id + 1;
+
+    bool offscreen {};
     bool acquired_shared_renderer {};
     bgfx::FrameBufferHandle window_framebuffer = BGFX_INVALID_HANDLE;
     UiSize last_window_size {0, 0};

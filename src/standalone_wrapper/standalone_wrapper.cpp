@@ -8,6 +8,7 @@
 #include <clap/ext/params.h>
 #include <clap/ext/state.h>
 #include <clap/ext/thread-check.h>
+#include <clap/ext/timer-support.h>
 #include <clap/factory/plugin-factory.h>
 #include <clap/host.h>
 #include <clap/plugin.h>
@@ -92,6 +93,40 @@ struct PluginInstance {
 
     clap_host_thread_check host_thread_check {};
 
+    struct HostTimer {
+        clap_id id;
+        f64 period_seconds;
+        TimePoint next_fire;
+    };
+    DynamicArrayBounded<HostTimer, 4> timers {};
+    clap_id next_timer_id {};
+
+    clap_host_timer_support const host_timer_support {
+        .register_timer =
+            [](clap_host_t const* h, uint32_t period_ms, clap_id* timer_id) {
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
+                ASSERT(timer_id);
+                auto const period_seconds = (f64)period_ms / 1000.0;
+                if (!dyn::Append(inst.timers,
+                                 {
+                                     .id = inst.next_timer_id,
+                                     .period_seconds = period_seconds,
+                                     .next_fire = TimePoint::Now() + period_seconds,
+                                 }))
+                    return false;
+                *timer_id = inst.next_timer_id++;
+                return true;
+            },
+        .unregister_timer =
+            [](clap_host_t const* h, clap_id timer_id) {
+                auto& inst = *(PluginInstance*)h->host_data;
+                ASSERT(inst.plugin_created);
+                return dyn::RemoveValueIf(inst.timers,
+                                          [&](HostTimer const& t) { return t.id == timer_id; }) != 0;
+            },
+    };
+
     clap_host_t host {
         .clap_version = CLAP_VERSION,
         .host_data = this,
@@ -110,6 +145,9 @@ struct PluginInstance {
                 return &inst.host_gui;
             else if (NullTermStringsEqual(extension_id, CLAP_EXT_THREAD_CHECK))
                 return &inst.host_thread_check;
+            // A windowed GUI is driven by our shared pugl world, so timers would double-update it.
+            else if (NullTermStringsEqual(extension_id, CLAP_EXT_TIMER_SUPPORT) && inst.offscreen_gui)
+                return &inst.host_timer_support;
             else if (NullTermStringsEqual(extension_id, k_floe_clap_extension_id))
                 return &inst.floe_host_ext;
 
@@ -140,6 +178,7 @@ struct PluginInstance {
     bool plugin_created = false; // plugins are forbidden to call host APIs while creating
     clap_plugin const* plugin {};
     clap_plugin_gui const* gui {};
+    bool offscreen_gui = false;
 
     ClapEntrySource entry_source; // owns the library handle for this load cycle
 };
@@ -169,12 +208,16 @@ struct Standalone {
     // then re-interleave the result. Allocated once at startup.
     Array<Span<f32>, 2> render_scratch {};
 
+    // Created on first need: the offscreen GUI doesn't use them.
     PuglWorld* gui_world {};
     PuglView* gui_view {};
     bool view_realized {};
+    char const* app_id {};
 
     Optional<UiSize> fixed_window_size {};
     bool headless = false;
+    // Attempt to render the GUI without a window; cleared if the plugin doesn't support it.
+    bool offscreen_gui = false;
     bool quit = false;
 
     // Handshake with the stdin MIDI reader thread. Reader sets `eof` on stdin close; main sets
@@ -450,6 +493,25 @@ static ErrorCodeOr<ClapEntrySource> LoadClapEntry(Optional<String> dso_path, Are
     };
 }
 
+static ErrorCodeOr<void> CreateGuiWorldAndView(Standalone& standalone) {
+    if (standalone.gui_world) return k_success;
+
+    standalone.gui_world = puglNewWorld(PUGL_PROGRAM, 0);
+    if (!standalone.gui_world) {
+        LogError(ModuleName::Standalone, "Could not setup window state");
+        return ErrorCode {StandaloneError::WindowError};
+    }
+    TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, standalone.app_id));
+
+    standalone.gui_view = puglNewView(standalone.gui_world);
+    TRY_PUGL(puglSetViewHint(standalone.gui_view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON));
+    TRY_PUGL(puglSetBackend(standalone.gui_view, puglStubBackend()));
+    puglSetHandle(standalone.gui_view, &standalone);
+    TRY_PUGL(puglSetEventFunc(standalone.gui_view, OnEvent));
+    TRY_PUGL(puglSetViewString(standalone.gui_view, PUGL_WINDOW_TITLE, "Floe"));
+    return k_success;
+}
+
 static ErrorCodeOr<void>
 LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAllocator& arena) {
     ASSERT(standalone.plugin_instance_state.Load(LoadMemoryOrder::Relaxed) == PluginInstanceState::Inactive);
@@ -493,7 +555,6 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
             },
     };
 
-    inst->floe_host_ext.pugl_world = standalone.gui_world;
     inst->floe_host_ext.error_notifications = &standalone.devices.error_notifications;
     SetupHostDeviceCallbacks(inst->floe_host_ext, standalone.devices);
 
@@ -528,6 +589,29 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
     // Set up GUI
     inst->gui = (clap_plugin_gui const*)inst->plugin->get_extension(inst->plugin, CLAP_EXT_GUI);
     TRY_CLAP(inst->gui);
+
+    if (standalone.offscreen_gui &&
+        inst->gui->is_api_supported(inst->plugin, k_floe_offscreen_gui_api, false)) {
+        inst->offscreen_gui = true;
+        TRY_CLAP(inst->gui->create(inst->plugin, k_floe_offscreen_gui_api, false));
+        if (standalone.fixed_window_size)
+            TRY_CLAP(inst->gui->set_size(inst->plugin,
+                                         standalone.fixed_window_size->width,
+                                         standalone.fixed_window_size->height));
+        TRY_CLAP(inst->gui->show(inst->plugin));
+
+        standalone.plugin_instance = inst;
+        standalone.plugin_instance_state.Store(PluginInstanceState::Active, StoreMemoryOrder::Release);
+        success = true;
+        return k_success;
+    }
+    if (standalone.offscreen_gui) {
+        LogInfo(ModuleName::Standalone, "Offscreen GUI not supported, using a window");
+        standalone.offscreen_gui = false;
+    }
+
+    TRY(CreateGuiWorldAndView(standalone));
+    inst->floe_host_ext.pugl_world = standalone.gui_world;
 
     TRY_CLAP(inst->gui->create(inst->plugin, k_supported_gui_api, false));
 
@@ -816,6 +900,7 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
         standalone.render_scratch[1] = alloc.SubSpan(k_max_audio_buffer_frames, k_max_audio_buffer_frames);
     }
     standalone.fixed_window_size = options.fixed_window_size;
+    standalone.offscreen_gui = options.screenshot_region.HasValue();
 
     // Modify detection if given a plugin path.
     bool const is_external_plugin = dso_path.HasValue();
@@ -852,25 +937,8 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     InitDevices(standalone.devices, arena);
     DEFER { DeinitDevices(standalone.devices); };
 
-    if (!options.headless) {
-        standalone.gui_world = puglNewWorld(PUGL_PROGRAM, 0);
-        if (!standalone.gui_world) {
-            LogError(ModuleName::Standalone, "Could not setup window state");
-            return ErrorCode {StandaloneError::WindowError};
-        }
-        {
-            char const* app_id = k_floe_standalone_default_app_id;
-            if (options.app_id) app_id = NullTerminated(*options.app_id, arena);
-            TRY_PUGL(puglSetWorldString(standalone.gui_world, PUGL_CLASS_NAME, app_id));
-        }
-
-        standalone.gui_view = puglNewView(standalone.gui_world);
-        TRY_PUGL(puglSetViewHint(standalone.gui_view, PUGL_CONTEXT_DEBUG, RUNTIME_SAFETY_CHECKS_ON));
-        TRY_PUGL(puglSetBackend(standalone.gui_view, puglStubBackend()));
-        puglSetHandle(standalone.gui_view, &standalone);
-        TRY_PUGL(puglSetEventFunc(standalone.gui_view, OnEvent));
-        TRY_PUGL(puglSetViewString(standalone.gui_view, PUGL_WINDOW_TITLE, "Floe"));
-    }
+    standalone.app_id =
+        options.app_id ? NullTerminated(*options.app_id, arena) : k_floe_standalone_default_app_id;
     DEFER {
         if (standalone.gui_view && standalone.view_realized) puglUnrealize(standalone.gui_view);
         if (standalone.gui_view) puglFreeView(standalone.gui_view);
@@ -949,7 +1017,22 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
                 }
             }
 
-            if (inst->resize_hints_changed.Exchange(false, RmwMemoryOrder::Relaxed) &&
+            if (inst->timers.size) {
+                auto const timer_ext =
+                    (clap_plugin_timer_support const*)inst->plugin->get_extension(inst->plugin,
+                                                                                  CLAP_EXT_TIMER_SUPPORT);
+                auto const now = TimePoint::Now();
+                // Copy: the plugin may unregister timers from inside on_timer.
+                auto const timers = inst->timers;
+                for (auto const& timer : timers) {
+                    if (now < timer.next_fire) continue;
+                    for (auto& t : inst->timers)
+                        if (t.id == timer.id) t.next_fire = now + timer.period_seconds;
+                    if (timer_ext && timer_ext->on_timer) timer_ext->on_timer(inst->plugin, timer.id);
+                }
+            }
+
+            if (inst->resize_hints_changed.Exchange(false, RmwMemoryOrder::Relaxed) && standalone.gui_view &&
                 !standalone.fixed_window_size) {
                 clap_gui_resize_hints resize_hints;
                 if (inst->gui->get_resize_hints(inst->plugin, &resize_hints)) {
@@ -972,7 +1055,8 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
 
             if (auto const requested_clap_size =
                     inst->requested_resize.Exchange(k_invalid_ui_size, RmwMemoryOrder::AcquireRelease);
-                requested_clap_size != k_invalid_ui_size && !standalone.fixed_window_size) {
+                requested_clap_size != k_invalid_ui_size && standalone.gui_view &&
+                !standalone.fixed_window_size) {
                 auto const physical_pixels = *ClapPixelsToPhysicalPixels(standalone.gui_view,
                                                                          requested_clap_size.width,
                                                                          requested_clap_size.height);
@@ -1023,7 +1107,7 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
             standalone.stdin_midi.eof.Load(LoadMemoryOrder::Acquire)) {
             SleepThisThread(250); // Tail to help avoid abrupt ends in audio.
             standalone.quit = true;
-        } else if (options.headless) {
+        } else if (!standalone.gui_world) {
             SleepThisThread(16);
         } else {
             auto const st = puglUpdate(standalone.gui_world, 1.0 / 60.0);

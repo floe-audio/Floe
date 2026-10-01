@@ -42,6 +42,9 @@ struct AppWindow {
     Optional<clap_id> clap_timer_id {};
     Optional<int> clap_posix_fd {};
     bool pugl_timer_running {};
+    // No pugl world or view: the GUI renders into a framebuffer.
+    bool offscreen {};
+    UiSize offscreen_size {};
     bool inside_update {};
     bool first_update_made {};
     bool wanted_focus_last_update {};
@@ -71,6 +74,11 @@ Optional<UiSize> ScreenSizeForWindow(AppWindow& window, void* native_handle_hint
 
 ErrorCodeOr<void> Init(AppWindow& window);
 void Deinit(AppWindow& window);
+
+// Alternative to Init: no window, the GUI renders into a framebuffer. Updates are driven by the host's CLAP
+// timer. Use the rest of the API as normal, except SetParent.
+bool OffscreenSupported();
+ErrorCodeOr<void> InitOffscreen(AppWindow& window);
 
 void OnClapTimer(AppWindow& window, clap_id timer_id);
 

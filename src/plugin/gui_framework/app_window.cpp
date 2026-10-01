@@ -92,9 +92,30 @@ extern "C" PuglBackend const* puglGlBackend(); // NOLINT
 
 enum class SetTimerType : u8 { Start, Stop };
 
+static void RegisterClapTimer(AppWindow& window) {
+    if (window.clap_timer_id) return;
+    if (auto const timer_support_extension =
+            (clap_host_timer_support const*)window.host.get_extension(&window.host, CLAP_EXT_TIMER_SUPPORT);
+        timer_support_extension && timer_support_extension->register_timer) {
+        clap_id timer_id;
+        if (timer_support_extension->register_timer(&window.host,
+                                                    (u32)(1000.0 / k_gui_refresh_rate_hz),
+                                                    &timer_id)) {
+            window.clap_timer_id = timer_id;
+        } else
+            LogError(ModuleName::Gui, "failed to register timer");
+    }
+}
+
 static void SetTimers(AppWindow& window, SetTimerType type) {
     switch (type) {
         case SetTimerType::Start: {
+            // Offscreen, the host's CLAP timer is the only thing that drives updates.
+            if (window.offscreen) {
+                RegisterClapTimer(window);
+                break;
+            }
+
             // Set the timer if not already running.
             if (!window.pugl_timer_running) {
                 if (auto const status =
@@ -134,20 +155,7 @@ static void SetTimers(AppWindow& window, SetTimerType type) {
                     }
                 }
 
-                if (!window.clap_timer_id) {
-                    if (auto const timer_support_extension =
-                            (clap_host_timer_support const*)window.host.get_extension(&window.host,
-                                                                                      CLAP_EXT_TIMER_SUPPORT);
-                        timer_support_extension && timer_support_extension->register_timer) {
-                        clap_id timer_id;
-                        if (timer_support_extension->register_timer(&window.host,
-                                                                    (u32)(1000.0 / k_gui_refresh_rate_hz),
-                                                                    &timer_id)) {
-                            window.clap_timer_id = timer_id;
-                        } else
-                            LogError(ModuleName::Gui, "failed to register timer");
-                    }
-                }
+                RegisterClapTimer(window);
             }
             break;
         }
@@ -163,17 +171,17 @@ static void SetTimers(AppWindow& window, SetTimerType type) {
                     }
                     window.clap_posix_fd = k_nullopt;
                 }
+            }
 
-                if (window.clap_timer_id) {
-                    auto const ext =
-                        (clap_host_timer_support const*)window.host.get_extension(&window.host,
-                                                                                  CLAP_EXT_TIMER_SUPPORT);
-                    if (ext && ext->unregister_timer) {
-                        bool const success = ext->unregister_timer(&window.host, *window.clap_timer_id);
-                        if (!success) LogError(ModuleName::Gui, "failed to unregister timer");
-                    }
-                    window.clap_timer_id = k_nullopt;
+            if (window.clap_timer_id) {
+                auto const ext =
+                    (clap_host_timer_support const*)window.host.get_extension(&window.host,
+                                                                              CLAP_EXT_TIMER_SUPPORT);
+                if (ext && ext->unregister_timer) {
+                    bool const success = ext->unregister_timer(&window.host, *window.clap_timer_id);
+                    if (!success) LogError(ModuleName::Gui, "failed to unregister timer");
                 }
+                window.clap_timer_id = k_nullopt;
             }
 
             if (window.view) {
@@ -419,10 +427,11 @@ static void CreateRenderer(AppWindow& window) {
     ZoneScoped;
     auto renderer = CreateNewRenderer(window.renderer_backend);
 
-    if (auto const outcome = renderer->Init(GetSize(window),
-                                            (void*)puglGetNativeView(window.view),
-                                            puglGetNativeWorld(puglGetWorld(window.view)));
-        outcome.HasError()) {
+    auto const outcome = window.offscreen ? renderer->Init(GetSize(window), nullptr, nullptr)
+                                          : renderer->Init(GetSize(window),
+                                                           (void*)puglGetNativeView(window.view),
+                                                           puglGetNativeWorld(puglGetWorld(window.view)));
+    if (outcome.HasError()) {
         LogError(ModuleName::Gui, "Failed to init renderer: {}", outcome.Error());
         delete renderer;
         return;
@@ -552,6 +561,8 @@ static void RequestAllKeyboardEvents(AppWindow& window, bool wants_focus) {
 }
 
 static void HandlePostUpdateRequests(AppWindow& window) {
+    if (window.offscreen) return;
+
     if (window.last_result.wants.cursor_type != window.current_cursor) {
         window.current_cursor = window.last_result.wants.cursor_type;
         puglSetCursor(window.view, ({
@@ -602,7 +613,7 @@ static void HandlePostUpdateRequests(AppWindow& window) {
 static void UpdateAndRender(AppWindow& window) {
     if (!window.renderer) return;
     if constexpr (!IS_MACOS) // Doesn't seem to work on macOS.
-        if (!puglGetVisible(window.view)) return;
+        if (!window.offscreen && !puglGetVisible(window.view)) return;
 
     Stopwatch sw {};
     DEFER {
@@ -617,6 +628,8 @@ static void UpdateAndRender(AppWindow& window) {
         return;
     }
 
+    auto const native_window = window.offscreen ? nullptr : (void*)puglGetNativeView(window.view);
+
     if (window.frame_state.window_size != window_size) {
         // When Floe resizes, all graphics scale up. Resizing is really 'rescaling'. Therefore, we delete our
         // textures if the window size changes so fonts/images are more appropriate for the new window size.
@@ -627,11 +640,11 @@ static void UpdateAndRender(AppWindow& window) {
         // We notify the renderer of the resize here because it gives the renderer freer scope in this
         // PUGL_EXPOSE event rather than in a PUGL_CONFIGURE event (where some graphics usage might be
         // invalid).
-        window.renderer->OnResize(window_size, (void*)puglGetNativeView(window.view));
+        window.renderer->OnResize(window_size, native_window);
     }
 
     window.frame_state.renderer = window.renderer;
-    window.frame_state.native_window = (void*)puglGetNativeView(window.view);
+    window.frame_state.native_window = native_window;
     window.frame_state.window_size = window_size;
     window.frame_state.pugl_view = window.view;
 
@@ -922,6 +935,32 @@ Optional<UiSize> ScreenSizeForWindow(AppWindow& window, void* native_handle_hint
 
 static constexpr u16 k_invalid_size = 12345;
 
+static RendererBackend ChooseRendererBackend() {
+    RendererBackend b {};
+
+    constexpr bool k_use_experimental_bgfx = true;
+    if constexpr (k_use_experimental_bgfx) {
+        if constexpr (IS_WINDOWS) b = RendererBackend::Bgfx;
+        if constexpr (IS_LINUX) b = RendererBackend::Bgfx;
+        if constexpr (IS_MACOS) {
+            // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
+            // for older systems. We've only ever seen kernel_version in the format x.x.x, so we can
+            // reasonably assume that this simple parsing will work. If it doesn't, it's likely something
+            // newer.
+            auto const darwin_version = ParseInt(GetOsInfo().kernel_version, ParseIntBase::Decimal);
+            if (!darwin_version || darwin_version.Value() >= 22)
+                b = RendererBackend::Bgfx;
+            else
+                b = RendererBackend::OpenGl;
+        }
+    } else {
+        if constexpr (IS_WINDOWS) b = RendererBackend::Direct3D9;
+        if constexpr (IS_MACOS) b = RendererBackend::OpenGl;
+        if constexpr (IS_LINUX) b = RendererBackend::OpenGl;
+    }
+    return b;
+}
+
 ErrorCodeOr<void> Init(AppWindow& window) {
     Trace(ModuleName::Gui);
 
@@ -965,31 +1004,7 @@ ErrorCodeOr<void> Init(AppWindow& window) {
     puglSetHandle(window.view, &window);
     TRY(Required(puglSetEventFunc(window.view, EventHandler)));
 
-    window.renderer_backend = ({
-        RendererBackend b {};
-
-        constexpr bool k_use_experimental_bgfx = false;
-        if constexpr (k_use_experimental_bgfx) {
-            if constexpr (IS_WINDOWS) b = RendererBackend::Bgfx;
-            if constexpr (IS_LINUX) b = RendererBackend::Bgfx;
-            if constexpr (IS_MACOS) {
-                // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
-                // for older systems. We've only ever seen kernel_version in the format x.x.x, so we can
-                // reasonably assume that this simple parsing will work. If it doesn't, it's likely something
-                // newer.
-                auto const darwin_version = ParseInt(GetOsInfo().kernel_version, ParseIntBase::Decimal);
-                if (!darwin_version || darwin_version.Value() >= 22)
-                    b = RendererBackend::Bgfx;
-                else
-                    b = RendererBackend::OpenGl;
-            }
-        } else {
-            if constexpr (IS_WINDOWS) b = RendererBackend::Direct3D9;
-            if constexpr (IS_MACOS) b = RendererBackend::OpenGl;
-            if constexpr (IS_LINUX) b = RendererBackend::OpenGl;
-        }
-        b;
-    });
+    window.renderer_backend = ChooseRendererBackend();
 
     LogInfo(ModuleName::Gui, "Selected backend {}", EnumToString(window.renderer_backend));
 
@@ -1035,6 +1050,7 @@ void Deinit(AppWindow& window) {
     }
 
     SetTimers(window, SetTimerType::Stop);
+    if (window.offscreen) DestroyRenderer(window);
 
     if (window.gui) {
         window.gui.Clear();
@@ -1051,6 +1067,11 @@ void Deinit(AppWindow& window) {
     window.first_update_made = false;
     window.wanted_focus_last_update = false;
 
+    if (window.offscreen) {
+        window.offscreen = false;
+        return;
+    }
+
     if (!CustomFloeHost(window.host)) {
         LogInfo(ModuleName::Gui, "freeing world");
         puglFreeWorld(window.world);
@@ -1058,9 +1079,45 @@ void Deinit(AppWindow& window) {
     }
 }
 
+bool OffscreenSupported() {
+    switch (ChooseRendererBackend()) {
+        case RendererBackend::Bgfx: return true;
+        case RendererBackend::OpenGl:
+        case RendererBackend::Direct3D9: return false;
+        case RendererBackend::Count: PanicIfReached();
+    }
+    return false;
+}
+
+ErrorCodeOr<void> InitOffscreen(AppWindow& window) {
+    Trace(ModuleName::Gui);
+
+    ASSERT(window.world == nullptr);
+    ASSERT(window.view == nullptr);
+    ASSERT(window.renderer == nullptr);
+    ASSERT(!window.gui);
+    ASSERT(OffscreenSupported());
+
+    window.renderer_backend = ChooseRendererBackend();
+    window.offscreen = true;
+    window.offscreen_size = DesiredWindowSize(window.prefs).ValueOr(native::DefaultUiSizeFromDpi(nullptr));
+    native::InitNativeState(window);
+    return k_success;
+}
+
 void OnClapTimer(AppWindow& window, clap_id timer_id) {
     Stopwatch stopwatch {};
-    if (window.clap_timer_id && *window.clap_timer_id == timer_id) puglUpdate(window.world, 0);
+    if (window.clap_timer_id && *window.clap_timer_id == timer_id) {
+        if (window.offscreen) {
+            if (!window.inside_update && IsUpdateNeeded(window)) {
+                window.inside_update = true;
+                UpdateAndRender(window);
+                window.inside_update = false;
+            }
+        } else {
+            puglUpdate(window.world, 0);
+        }
+    }
     LogIfSlow(stopwatch, "OnClapTimer");
 }
 
@@ -1102,10 +1159,15 @@ ErrorCodeOr<void> SetParent(AppWindow& window, clap_window_t const& new_parent) 
 }
 
 bool SetSize(AppWindow& window, UiSize new_size) {
+    if (window.offscreen) {
+        window.offscreen_size = new_size;
+        return true;
+    }
     return puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, new_size.width, new_size.height) == PUGL_SUCCESS;
 }
 
 UiSize GetSize(AppWindow& window) {
+    if (window.offscreen) return window.offscreen_size;
     auto const size = puglGetSizeHint(window.view, PUGL_CURRENT_SIZE);
     if (size.width == k_invalid_size)
         return ClampWindowSizeToScreen(DesiredWindowSize(window.prefs).ValueOr(DefaultUiSize(window)),
@@ -1114,11 +1176,14 @@ UiSize GetSize(AppWindow& window) {
 }
 
 ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
-    ASSERT(window.view);
+    ASSERT(window.view || window.offscreen);
 
     if (visible) {
-        // Realise if not already done.
-        if (!puglGetNativeView(window.view)) {
+        if (window.offscreen) {
+            if (!window.renderer) CreateRenderer(window);
+            if (!window.renderer) return ErrorCode {AppWindowErrorCode::BackendFailed};
+        } else if (!puglGetNativeView(window.view)) {
+            // Realise if not already done.
             TRY(Required(puglRealize(window.view)));
             window.double_click_time_ms = native::DoubleClickTimeMs(window);
             if constexpr (IS_LINUX) native::X11SetParent(window.view, puglGetParent(window.view));
@@ -1135,6 +1200,8 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
         native::CloseNativeFilePicker(window);
         SetTimers(window, SetTimerType::Stop);
     }
+
+    if (window.offscreen) return k_success;
 
     if (puglGetVisible(window.view) == visible) {
         LogInfo(ModuleName::Gui, "SetVisible called with same visibility state, ignoring");

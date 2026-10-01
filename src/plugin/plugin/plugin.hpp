@@ -100,6 +100,10 @@ struct PluginCallbacks {
 constexpr char const* k_supported_gui_api =
     IS_WINDOWS ? CLAP_WINDOW_API_WIN32 : (IS_MACOS ? CLAP_WINDOW_API_COCOA : CLAP_WINDOW_API_X11);
 
+// Non-standard clap_plugin_gui API: no window, the GUI renders into an offscreen framebuffer. Never given a
+// parent; the host drives updates via timer-support.
+constexpr char const* k_floe_offscreen_gui_api = "floe-offscreen";
+
 // CLAP uses logical pixels on macOS or physical pixel on Windows/Linux. We always use physical pixels, and so
 // need to convert. See gui.h definitions of CLAP_WINDOW_API_WIN32, CLAP_WINDOW_API_COCOA,
 // CLAP_WINDOW_API_X11.
