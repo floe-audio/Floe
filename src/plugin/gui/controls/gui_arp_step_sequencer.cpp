@@ -582,8 +582,8 @@ void DoArpStepSequencer(GuiState& g,
                 note_id,
                 note_click_rect,
                 note_str,
-                is_fixed ? "Reset this note to C4 (60)"_s : "Reset this pitch offset to 0"_s,
-                is_fixed ? "Reset every step's note to C4 (60)"_s : "Reset every step's pitch offset to 0"_s,
+                is_fixed ? "Reset this note to C3 (60)"_s : "Reset this pitch offset to 0"_s,
+                is_fixed ? "Reset every step's note to C3 (60)"_s : "Reset every step's pitch offset to 0"_s,
                 [&]() {
                     if (is_fixed)
                         ModifyStep(arp_state, i, [](ArpStep& s) { s.note = 60; });
