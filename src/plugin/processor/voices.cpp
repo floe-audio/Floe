@@ -628,10 +628,7 @@ void StartVoice(VoicePool& pool,
                     auto const loop = ({
                         Optional<BoundsCheckedLoop> l {};
                         if (s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff)
-                            l = ConfigureLoop(voice_controller.loop_mode,
-                                              s_sampler.region->loop,
-                                              s_sampler.data->num_frames,
-                                              voice_controller.loop);
+                            l = LoopForSource(voice_controller, s_sampler);
                         l;
                     });
 
@@ -2191,6 +2188,27 @@ TEST_CASE(TestVoiceProcessingSampler) {
         };
 
         StartTestSamplerVoice(fix, note_off_region, short_data);
+
+        for (int i = 0; i < 10; ++i)
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
+    }
+
+    SUBCASE("loop mode is ignored when volume envelope is off") {
+        Array<f32, 64> short_buf {};
+        auto short_data = CreateTestAudioData(short_buf, 64);
+
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        fix.controller.loop_mode = param_values::LoopMode::Standard;
+        fix.controller.loop = {.start = 0.0f, .end = 1.0f, .crossfade_size = 0.0f};
+        DEFER {
+            fix.controller.loop_mode = {};
+            fix.controller.loop = {};
+        };
+
+        StartTestSamplerVoice(fix, region, short_data);
 
         for (int i = 0; i < 10; ++i)
             ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
