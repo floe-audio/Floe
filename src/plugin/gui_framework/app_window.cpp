@@ -1185,6 +1185,14 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
         } else if (!puglGetNativeView(window.view)) {
             // Realise if not already done.
             TRY(Required(puglRealize(window.view)));
+            if constexpr (IS_MACOS) {
+                // Pugl's macOS child views only dispatch PUGL_CONFIGURE once the draw view is reshaped.
+                // NSOpenGLView reshapes on init, but the stub view (used by bgfx) doesn't, so the first
+                // drawRect would dispatch PUGL_EXPOSE before any configure and trip pugl's stage assertion.
+                // Setting the current size dispatches the configure.
+                auto const size = GetSize(window);
+                TRY(Required(puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, size.width, size.height)));
+            }
             window.double_click_time_ms = native::DoubleClickTimeMs(window);
             if constexpr (IS_LINUX) native::X11SetParent(window.view, puglGetParent(window.view));
         }
