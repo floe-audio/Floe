@@ -496,7 +496,7 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                   .tooltip = options.tooltip,
                   .tooltip_footer = options.tooltip_footer,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_placement = TooltipPlacement::LeftThenRight,
+                  .tooltip_placement = k_browser_results_tooltip_placement,
                   .button_behaviour = imgui::ButtonConfig {.dont_fire_on_double_click = true},
               });
 
@@ -613,7 +613,7 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                   .tooltip =
                       "Mark this as a favourite. Favourites are shared by every Floe instance, and the star button in the toolbar shows only them."_s,
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_placement = TooltipPlacement::LeftThenRight,
+                  .tooltip_placement = k_browser_results_tooltip_placement,
                   .button_behaviour = imgui::ButtonConfig {},
               })
               .button_fired;
@@ -1164,7 +1164,7 @@ Box DoFilterButton(GuiBuilder& builder,
                   .value_popup = options.common.value_popup,
                   .tooltip = FilterValueTooltip(builder.arena, state, options.common, num_used),
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_placement = TooltipPlacement::RightThenLeft,
+                  .tooltip_placement = k_browser_filters_tooltip_placement,
                   .button_behaviour = imgui::ButtonConfig {},
               });
 
@@ -1287,7 +1287,7 @@ Box DoFilterTreeButton(GuiBuilder& builder,
                   .value_popup = options.common.value_popup,
                   .tooltip = FilterValueTooltip(builder.arena, state, options.common, num_used),
                   .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                  .tooltip_placement = TooltipPlacement::RightThenLeft,
+                  .tooltip_placement = k_browser_filters_tooltip_placement,
                   .button_behaviour = imgui::ButtonConfig {},
               });
 
@@ -1509,7 +1509,7 @@ static bool DoBrowseDrillDownRow(GuiBuilder& builder,
             .tooltip = compact ? (String)fmt::Format(builder.arena, "{}\n\n{}", entry.name, entry.tooltip)
                                : entry.tooltip,
             .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-            .tooltip_placement = TooltipPlacement::RightThenLeft,
+            .tooltip_placement = k_browser_filters_tooltip_placement,
             .button_behaviour = imgui::ButtonConfig {},
             .name = options.name,
         });
@@ -1741,7 +1741,7 @@ static Box DoBrowsePageTitle(GuiBuilder& builder, BrowsePageTitleOptions const& 
                                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                },
                                .value_popup = options.value_popup,
-                               .tooltip_placement = TooltipPlacement::RightThenLeft,
+                               .tooltip_placement = k_browser_filters_tooltip_placement,
                            });
 
     if (options.collection_icon) {
@@ -2171,7 +2171,7 @@ static void DoBrowseBreadcrumb(GuiBuilder& builder,
                          },
                          .tooltip = tooltip,
                          .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-                         .tooltip_placement = TooltipPlacement::RightThenLeft,
+                         .tooltip_placement = k_browser_filters_tooltip_placement,
                          .button_behaviour =
                              clickable ? Optional<imgui::ButtonConfig> {imgui::ButtonConfig {}} : k_nullopt,
                          .name = "browser.breadcrumb"_s,
@@ -2526,7 +2526,7 @@ static void DoFilterModeCollection(GuiBuilder& builder,
                 options.collection_noun,
                 options.collection_noun),
             .tooltip_avoid_viewport_id = builder.imgui.curr_viewport->root_viewport->id,
-            .tooltip_placement = TooltipPlacement::RightThenLeft,
+            .tooltip_placement = k_browser_filters_tooltip_placement,
             .button_behaviour = imgui::ButtonConfig {},
         });
 
@@ -4229,6 +4229,23 @@ struct BrowserSize {
     f32 height; // WW
 };
 
+// Works on anything with the two panel widths: BrowserSize, the stored resize, the options' defaults.
+template <typename Size>
+static auto& LeftPanelWidth(Size& size) {
+    if constexpr (k_browser_results_panel_on_right)
+        return size.filters_col_width;
+    else
+        return size.results_width;
+}
+
+template <typename Size>
+static auto& RightPanelWidth(Size& size) {
+    if constexpr (k_browser_results_panel_on_right)
+        return size.results_width;
+    else
+        return size.filters_col_width;
+}
+
 static constexpr u64 k_browser_results_width_store_id = HashFnv1a("browser-results-width");
 static constexpr u64 k_browser_width_store_id = HashFnv1a("browser-filters-width");
 static constexpr u64 k_browser_height_store_id = HashFnv1a("browser-height");
@@ -4293,8 +4310,8 @@ static void SaveBrowserSize(BrowserPopupContext& context, BrowserPopupOptions co
     save(k_browser_height_store_id ^ options.store_id, context.state.size.height);
 }
 
-// The filters panel's bottom-right corner is the only one the browser doesn't share with the opener or the
-// results panel, so it's the handle: drag it to resize, double-click it to reset. The results width is the
+// The right panel's bottom-right corner is the only one the browser doesn't share with the opener or the
+// left panel, so it's the handle: drag it to resize, double-click it to reset. The left panel's width is the
 // border's to set (DoBrowserPanelSplitter), so this leaves it alone. The grip overlays the corner itself
 // rather than sitting in the toolbar's flow, so it's flush with the browser's edges.
 static void DoBrowserResizeGrip(GuiBuilder& builder,
@@ -4325,12 +4342,12 @@ static void DoBrowserResizeGrip(GuiBuilder& builder,
     if (grip.button_fired) {
         state.resize_drag = {
             .cursor_origin = input.cursor_pos,
-            .size_at_origin = {current_size.filters_col_width, current_size.height},
+            .size_at_origin = {RightPanelWidth(current_size), current_size.height},
         };
         if (input.Mouse(MouseButton::Left).last_press.is_double_click) {
-            state.size.filters_col_width = k_nullopt;
+            RightPanelWidth(state.size) = k_nullopt;
             state.size.height = k_nullopt;
-            state.resize_drag.size_at_origin = {options.filters_col_width, options.height};
+            state.resize_drag.size_at_origin = {RightPanelWidth(options), options.height};
         }
     }
 
@@ -4342,12 +4359,11 @@ static void DoBrowserResizeGrip(GuiBuilder& builder,
         auto const above_opener = builder.imgui.curr_viewport->unpadded_bounds.Bottom() <=
                                   state.absolute_button_rect.y + WwToPixels(1.0f);
         auto const origin = state.resize_drag.size_at_origin;
-        auto const size = ClampBrowserSize({.results_width = current_size.results_width,
-                                            .filters_col_width = origin.x + delta.x,
-                                            .height = origin.y + (above_opener ? -delta.y : delta.y)},
-                                           options,
-                                           state.absolute_button_rect);
-        state.size.filters_col_width = size.filters_col_width;
+        auto unclamped = current_size;
+        RightPanelWidth(unclamped) = origin.x + delta.x;
+        unclamped.height = origin.y + (above_opener ? -delta.y : delta.y);
+        auto const size = ClampBrowserSize(unclamped, options, state.absolute_button_rect);
+        RightPanelWidth(state.size) = RightPanelWidth(size);
         state.size.height = size.height;
     }
 
@@ -4361,19 +4377,19 @@ static void DoBrowserResizeGrip(GuiBuilder& builder,
             builder.imgui.ViewportRectToWindowRect(*viewport_r).CutRight(inset).CutBottom(inset),
             ToU32(Col {
                 .c = builder.imgui.IsHotOrActive(grip.imgui_id) ? Col::Text : Col::Subtext0,
-                .dark_mode = true,
+                .dark_mode = !k_browser_results_panel_on_right,
             }));
     }
 }
 
-// The hit strip straddles the panel border. It reaches less into the results panel, whose scrollbar sits
-// against the border, than into the filters panel, where only row padding does.
-static constexpr f32 k_browser_splitter_reach_into_results = 3;
-static constexpr f32 k_browser_splitter_reach_into_filters = 5;
+// The hit strip straddles the panel border. It reaches less into the left panel, whose scrollbar sits
+// against the border, than into the right panel, where only row padding does.
+static constexpr f32 k_browser_splitter_reach_into_left = 3;
+static constexpr f32 k_browser_splitter_reach_into_right = 5;
 
-// The border between the panels sets the results width: drag it, double-click it to reset. It's a viewport
-// of its own, made after the panels' list viewports, so that it's what the cursor hovers where its strip
-// overlaps them. Nothing is drawn until it's hovered: the border alone marks the place.
+// The border between the panels sets the left panel's width: drag it, double-click it to reset. It's a
+// viewport of its own, made after the panels' list viewports, so that it's what the cursor hovers where its
+// strip overlaps them. Nothing is drawn until it's hovered: the border alone marks the place.
 static void DoBrowserPanelSplitter(GuiBuilder& builder,
                                    BrowserPopupContext& context,
                                    BrowserPopupOptions const& options,
@@ -4386,7 +4402,9 @@ static void DoBrowserPanelSplitter(GuiBuilder& builder,
                 .size = layout::k_fill_parent,
             },
             .tooltip =
-                "Drag to resize the results panel. Double-click to reset its width. Floe remembers the size."_s,
+                k_browser_results_panel_on_right
+                    ? "Drag to resize the filters panel. Double-click to reset its width. Floe remembers the size."_s
+                    : "Drag to resize the results panel. Double-click to reset its width. Floe remembers the size."_s,
             .button_behaviour =
                 imgui::ButtonConfig {
                     .event = MouseButtonEvent::Down,
@@ -4400,24 +4418,21 @@ static void DoBrowserPanelSplitter(GuiBuilder& builder,
     if (splitter.button_fired) {
         state.resize_drag = {
             .cursor_origin = input.cursor_pos,
-            .results_width_at_origin = current_size.results_width,
+            .left_panel_width_at_origin = LeftPanelWidth(current_size),
         };
         if (input.Mouse(MouseButton::Left).last_press.is_double_click) {
-            state.size.results_width = k_nullopt;
-            state.resize_drag.results_width_at_origin = options.results_width;
+            LeftPanelWidth(state.size) = k_nullopt;
+            state.resize_drag.left_panel_width_at_origin = LeftPanelWidth(options);
         }
     }
 
     if (splitter.is_active && All(input.cursor_pos != -1) &&
         Any(input.cursor_pos != state.resize_drag.cursor_origin)) {
         auto const delta = PixelsToWw(input.cursor_pos - state.resize_drag.cursor_origin);
-        state.size.results_width =
-            ClampBrowserSize({.results_width = state.resize_drag.results_width_at_origin + delta.x,
-                              .filters_col_width = current_size.filters_col_width,
-                              .height = current_size.height},
-                             options,
-                             state.absolute_button_rect)
-                .results_width;
+        auto unclamped = current_size;
+        LeftPanelWidth(unclamped) = state.resize_drag.left_panel_width_at_origin + delta.x;
+        auto const size = ClampBrowserSize(unclamped, options, state.absolute_button_rect);
+        LeftPanelWidth(state.size) = LeftPanelWidth(size);
     }
 
     if (builder.imgui.WasJustDeactivated(splitter.imgui_id)) SaveBrowserSize(context, options);
@@ -4425,7 +4440,7 @@ static void DoBrowserPanelSplitter(GuiBuilder& builder,
     if (auto const viewport_r = BoxRect(builder, splitter);
         viewport_r && builder.imgui.IsHotOrActive(splitter.imgui_id)) {
         auto const r = builder.imgui.ViewportRectToWindowRect(*viewport_r);
-        auto const border_x = r.x + WwToPixels(k_browser_splitter_reach_into_results);
+        auto const border_x = r.x + WwToPixels(k_browser_splitter_reach_into_left);
         builder.imgui.draw_list->AddRectFilled(
             Rect {.xywh = {border_x - WwToPixels(1.0f), r.y, WwToPixels(2.0f), r.h}},
             ToU32(Col {
@@ -4554,8 +4569,10 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                                   });
 
     // A strip along the bottom of each panel. The two halves share a height and a rule above them, so they
-    // read as one toolbar split by the panel border: each half's controls act on the panel it sits in.
-    auto const do_toolbar = [&](Box const& panel, bool dark_mode, String name) {
+    // read as one toolbar split by the panel border: each half's controls act on the panel it sits in. The
+    // right half's controls stop short of the row's end so the resize grip overlaying the corner never sits
+    // on top of them, even when a search has grown to fill the row.
+    auto const do_toolbar = [&](Box const& panel, bool dark_mode, bool on_right, String name) {
         DoBox(builder,
               {
                   .parent = panel,
@@ -4565,19 +4582,21 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                   },
               });
 
-        return DoBox(builder,
-                     {
-                         .parent = panel,
-                         .layout {
-                             .size = {layout::k_fill_parent, layout::k_hug_contents},
-                             .contents_padding = {.lr = k_browser_spacing / 2},
-                             .contents_gap = k_browser_spacing / 2,
-                             .contents_direction = layout::Direction::Row,
-                             .contents_align = layout::Alignment::Start,
-                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                         },
-                         .name = name,
-                     });
+        return DoBox(
+            builder,
+            {
+                .parent = panel,
+                .layout {
+                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                    .contents_padding = {.l = k_browser_spacing / 2,
+                                         .r = (k_browser_spacing / 2) + (on_right ? k_browser_spacing : 0)},
+                    .contents_gap = k_browser_spacing / 2,
+                    .contents_direction = layout::Direction::Row,
+                    .contents_align = layout::Alignment::Start,
+                    .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                },
+                .name = name,
+            });
     };
 
     // Each panel fills its own half with its own colour rather than one background spanning the browser
@@ -4585,59 +4604,72 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
     // instead of letting a lighter layer show through along it.
     auto const browser_corners =
         CornersNotTouching(builder.imgui.curr_viewport->unpadded_bounds, context.state.absolute_button_rect);
+    auto const left_panel_corners = (Corners)(browser_corners & 0b1001);
+    // The right panel's top-right corner is the browser's, so it rounds only when the opener isn't flush
+    // against it.
+    auto const right_panel_corners = (Corners)(0b0010 | (browser_corners & 0b0100));
 
-    // The results come first so they sit under the box that opened the browser: picking an item is a
-    // straight move down, like a menu. The filters are beside them, past a border the user can drag.
-    auto const results_panel = DoBox(builder,
-                                     {
-                                         .parent = panels_row,
-                                         .background_fill_colours = Col {.c = Col::Background0},
-                                         // The panel owns the browser's left corners.
-                                         .round_background_corners = (Corners)(browser_corners & 0b1001),
-                                         .corner_rounding = k_corner_rounding,
-                                         .layout {
-                                             .size = {size.results_width, layout::k_fill_parent},
-                                             .contents_padding = {.b = k_browser_spacing},
-                                             .contents_gap = k_browser_spacing,
-                                             .contents_direction = layout::Direction::Column,
-                                             .contents_align = layout::Alignment::Start,
-                                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                         },
-                                         .name = "browser.results-panel"_s,
-                                     });
+    auto const do_results_panel = [&]() {
+        return DoBox(builder,
+                     {
+                         .parent = panels_row,
+                         .background_fill_colours = Col {.c = Col::Background0},
+                         .round_background_corners =
+                             k_browser_results_panel_on_right ? right_panel_corners : left_panel_corners,
+                         .corner_rounding = k_corner_rounding,
+                         .layout {
+                             .size = {size.results_width, layout::k_fill_parent},
+                             .contents_padding = {.b = k_browser_spacing},
+                             .contents_gap = k_browser_spacing,
+                             .contents_direction = layout::Direction::Column,
+                             .contents_align = layout::Alignment::Start,
+                             .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                         },
+                         .name = "browser.results-panel"_s,
+                     });
+    };
+
+    auto const do_filters_panel = [&]() {
+        return DoBox(builder,
+                     {
+                         .parent = panels_row,
+                         .background_fill_colours = Col {.c = Col::Background1, .dark_mode = true},
+                         .round_background_corners =
+                             k_browser_results_panel_on_right ? left_panel_corners : right_panel_corners,
+                         .corner_rounding = k_corner_rounding,
+                         .layout {
+                             .size = {size.filters_col_width, layout::k_fill_parent},
+                             .margins = {.lrtb = 0},
+                             .contents_padding = {.b = k_browser_spacing},
+                             .contents_gap = k_browser_spacing,
+                             .contents_direction = layout::Direction::Column,
+                             .contents_align = layout::Alignment::Start,
+                         },
+                         .name = "browser.filters-panel"_s,
+                     });
+    };
+
+    // By default the results come first so they sit under the box that opened the browser: picking an item
+    // is a straight move down, like a menu. The other panel is beside them, past a border the user can drag.
+    // Boxes lay out in the order they're made.
+    auto const left_panel = k_browser_results_panel_on_right ? do_filters_panel() : do_results_panel();
+    auto const right_panel = k_browser_results_panel_on_right ? do_results_panel() : do_filters_panel();
+    auto const& results_panel = k_browser_results_panel_on_right ? right_panel : left_panel;
 
     auto const splitter_strip =
         DoBox(builder,
               {
                   .parent = main_section,
                   .layout {
-                      .size = {k_browser_splitter_reach_into_results + k_browser_splitter_reach_into_filters,
+                      .size = {k_browser_splitter_reach_into_left + k_browser_splitter_reach_into_right,
                                layout::k_fill_parent},
-                      .margins = {.l = size.results_width - k_browser_splitter_reach_into_results},
+                      .margins = {.l = LeftPanelWidth(size) - k_browser_splitter_reach_into_left},
                       .anchor = layout::Anchor::Left,
                   },
               });
 
     {
-        auto const filters_panel =
-            DoBox(builder,
-                  {
-                      .parent = panels_row,
-                      .background_fill_colours = Col {.c = Col::Background1, .dark_mode = true},
-                      // The panel's top-right corner is the browser's, so it rounds only when
-                      // the opener isn't flush against it.
-                      .round_background_corners = (Corners)(0b0010 | (browser_corners & 0b0100)),
-                      .corner_rounding = k_corner_rounding,
-                      .layout {
-                          .size = {size.filters_col_width, layout::k_fill_parent},
-                          .margins = {.lrtb = 0},
-                          .contents_padding = {.b = k_browser_spacing},
-                          .contents_gap = k_browser_spacing,
-                          .contents_direction = layout::Direction::Column,
-                          .contents_align = layout::Alignment::Start,
-                      },
-                      .name = "browser.filters-panel"_s,
-                  });
+        auto const& filters_panel = k_browser_results_panel_on_right ? left_panel : right_panel;
 
         // Each browse level uses its own viewport, which is how a level keeps its scroll position while
         // you're inside another one: going back lands where you left off. Entering a level always
@@ -4773,15 +4805,13 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                           });
         }
 
-        // The controls stop short of the row's end so the resize grip overlaying the corner never sits on
-        // top of them, even when the search has grown to fill the row.
-        auto const toolbar_row = do_toolbar(filters_panel, true, "browser.filters-toolbar"_s);
+        auto const toolbar_row =
+            do_toolbar(filters_panel, true, !k_browser_results_panel_on_right, "browser.filters-toolbar"_s);
         auto const toolbar = DoBox(builder,
                                    {
                                        .parent = toolbar_row,
                                        .layout {
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .margins = {.r = k_browser_spacing},
                                            .contents_gap = k_browser_spacing / 2,
                                            .contents_direction = layout::Direction::Row,
                                            .contents_align = layout::Alignment::Start,
@@ -4800,8 +4830,9 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
         // itself until it's closed.
         auto const search_width =
             filter_mode ? ToolbarSearchWidth(builder, filter_search_id, context.state.filter_search) : 0.0f;
-        // Less the row padding and the margin the controls keep clear of the resize grip.
-        auto const available_width = size.filters_col_width - (k_browser_spacing * 2);
+        // Less the row padding, including what keeps the controls clear of the resize grip.
+        auto const available_width = size.filters_col_width - k_browser_spacing -
+                                     (k_browser_results_panel_on_right ? 0 : k_browser_spacing);
         auto const controls_fit = ({
             auto const mode_toggle_width = (k_browser_item_height * 1.3f * 2) + 2 + 4;
             auto needed = mode_toggle_width + search_width;
@@ -4936,7 +4967,8 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
 
         DoResultsFooter(builder, context, options, results_panel, size.results_width);
 
-        auto const toolbar = do_toolbar(results_panel, false, "browser.results-toolbar"_s);
+        auto const toolbar =
+            do_toolbar(results_panel, false, k_browser_results_panel_on_right, "browser.results-toolbar"_s);
 
         auto const search_input_id = builder.imgui.MakeId("items-search");
         auto const favourites_count = NumUsedForFilterString(builder,
@@ -4959,23 +4991,26 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
                 pixels_per_ww;
             k_browser_spacing + star_width + 3 + favourites_count.size.x;
         });
-        auto const available_width = size.results_width - k_browser_spacing;
+        auto const available_width = size.results_width - k_browser_spacing -
+                                     (k_browser_results_panel_on_right ? k_browser_spacing : 0);
         auto const show_favourites = current_item_width + favourites_width + search_width <= available_width;
         auto const show_current_item =
             has_current_item && current_item_width + search_width <= available_width;
 
         // Jumps to the current item, clearing whatever hides it first. In Browse mode it also opens the
-        // collection the item belongs to in the right panel.
+        // collection the item belongs to in the filters panel.
         if (show_current_item) {
             auto const& current_item = options.current_item;
             auto const type = options.item_type_name;
             auto const shows_collection =
                 current_item.collection.HasValue() && context.state.mode == BrowserMode::Browse;
-            auto const collection_note = shows_collection
-                                             ? (String)fmt::Format(builder.arena,
-                                                                   " Also shows its {} in the right panel.",
-                                                                   options.browse_scope.collection_noun)
-                                             : ""_s;
+            auto const collection_note =
+                shows_collection
+                    ? (String)fmt::Format(builder.arena,
+                                          " Also shows its {} in the {} panel.",
+                                          options.browse_scope.collection_noun,
+                                          k_browser_results_panel_on_right ? "left"_s : "right"_s)
+                    : ""_s;
 
             auto const tooltip = ({
                 String s {};

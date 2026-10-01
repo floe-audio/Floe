@@ -70,6 +70,15 @@ enum class BrowserMode : u8 {
 struct BrowserPopupContext;
 struct BrowserPopupOptions;
 
+// Off: results on the left, under the opener, with filters to their right. On: the mirror image.
+constexpr bool k_browser_results_panel_on_right = true;
+
+// A panel's tooltips go beyond the browser's edge on that panel's side.
+constexpr auto k_browser_results_tooltip_placement =
+    k_browser_results_panel_on_right ? TooltipPlacement::RightThenLeft : TooltipPlacement::LeftThenRight;
+constexpr auto k_browser_filters_tooltip_placement =
+    k_browser_results_panel_on_right ? TooltipPlacement::LeftThenRight : TooltipPlacement::RightThenLeft;
+
 // How much room the filters panel has, derived from its width each frame rather than measured. Elements
 // query it to decide what to show: Compact drops anything an icon or a tooltip can stand in for.
 enum class BrowserWidthTier : u8 {
@@ -343,9 +352,10 @@ struct CommonBrowserState {
     RightClickMenuState right_click_menu_state {};
     BrowserKeyboardNavigation keyboard_navigation {};
 
-    // The user's resize, in WW; unset means the browser's default. The corner grip sets the filters width
-    // and the height the panels share; the border between the panels sets the results width. Clamped each
-    // frame to what the window has room for, so a size from a bigger window is kept rather than lost.
+    // The user's resize, in WW; unset means the browser's default. The corner grip sets the right panel's
+    // width and the height the panels share; the border between the panels sets the left panel's width.
+    // Clamped each frame to what the window has room for, so a size from a bigger window is kept rather than
+    // lost.
     struct Size {
         Optional<f32> results_width {};
         Optional<f32> filters_col_width {};
@@ -355,8 +365,8 @@ struct CommonBrowserState {
     bool size_loaded_from_store {};
     struct ResizeDrag {
         f32x2 cursor_origin {};
-        f32x2 size_at_origin {}; // WW: filters width, height.
-        f32 results_width_at_origin {}; // WW.
+        f32x2 size_at_origin {}; // WW: right panel width, height.
+        f32 left_panel_width_at_origin {}; // WW.
     };
     ResizeDrag resize_drag {};
     BrowserWidthTier filters_width_tier = BrowserWidthTier::Full; // Derived each frame.
@@ -670,7 +680,7 @@ struct CurrentItemStatus {
     u64 section_id {}; // Folder section containing the item, so it can be expanded.
     String not_in_list_reason {}; // Completes "isn't listed because ...".
 
-    // The collection the item belongs to. The locate button also shows it in the right panel: Browse mode
+    // The collection the item belongs to. The locate button also shows it in the filters panel: Browse mode
     // opens it, Filter mode expands it.
     Optional<BrowserCollection> collection {};
 };
@@ -803,7 +813,7 @@ struct BrowserSection {
     bool skip_heading {};
     bool dark_mode {};
     bool keyboard_focusable {};
-    TooltipPlacement tooltip_placement {TooltipPlacement::LeftThenRight};
+    TooltipPlacement tooltip_placement {k_browser_filters_tooltip_placement};
     RightClickMenuState::Function right_click_menu {};
     persistent_store::Store* store {};
 
