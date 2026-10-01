@@ -9,13 +9,17 @@
 
 #include "renderer_bgfx_init_window.hpp"
 
-void* GetBgfxInitWindowHandle(void*) {
-    static CAMetalLayer* metal_layer = nullptr;
-
-    if (!metal_layer) {
-        metal_layer = [CAMetalLayer layer];
-        metal_layer.colorspace = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
-    }
-
-    return (__bridge void*)metal_layer;
+BgfxPlatformHandles CreateBgfxPlatformHandles() {
+    CAMetalLayer* metal_layer = [CAMetalLayer layer];
+    auto colour_space = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
+    metal_layer.colorspace = colour_space;
+    CGColorSpaceRelease(colour_space);
+    return {.init_window = (__bridge_retained void*)metal_layer, .display = nullptr};
 }
+
+void DestroyBgfxPlatformHandles(BgfxPlatformHandles& handles) {
+    if (handles.init_window) CFRelease(handles.init_window);
+    handles = {.init_window = nullptr, .display = nullptr};
+}
+
+void SyncWindowDisplayForBgfx(void*) {}

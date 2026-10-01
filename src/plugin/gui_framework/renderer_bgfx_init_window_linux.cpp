@@ -8,21 +8,28 @@
 
 #include "renderer_bgfx_init_window.hpp"
 
-void* GetBgfxInitWindowHandle(void* native_display) {
-    static ::Window window_handle = 0;
-    static Display* g_display = nullptr;
+BgfxPlatformHandles CreateBgfxPlatformHandles() {
+    auto* display = XOpenDisplay(nullptr);
+    if (!display) return {.init_window = nullptr, .display = nullptr};
 
-    if (!window_handle && native_display) {
-        auto* display = (Display*)native_display;
-        auto const screen = DefaultScreen(display);
-        auto const root = RootWindow(display, screen);
+    auto const root = RootWindow(display, DefaultScreen(display));
+    auto const window = XCreateSimpleWindow(display, root, -100, -100, 1, 1, 0, 0, 0);
+    XSelectInput(display, window, StructureNotifyMask);
+    XFlush(display);
 
-        window_handle = XCreateSimpleWindow(display, root, -100, -100, 1, 1, 0, 0, 0);
-        XSelectInput(display, window_handle, StructureNotifyMask);
-        XFlush(display);
+    return {.init_window = (void*)window, .display = display};
+}
+
+void DestroyBgfxPlatformHandles(BgfxPlatformHandles& handles) {
+    if (handles.display) {
+        auto* display = (Display*)handles.display;
+        if (handles.init_window) XDestroyWindow(display, (::Window)handles.init_window);
+        XCloseDisplay(display);
     }
+    handles = {.init_window = nullptr, .display = nullptr};
+}
 
-    ASSERT_EQ(native_display, g_display);
-
-    return (void*)window_handle;
+void SyncWindowDisplayForBgfx(void* window_display) {
+    ASSERT(window_display);
+    XSync((Display*)window_display, False);
 }

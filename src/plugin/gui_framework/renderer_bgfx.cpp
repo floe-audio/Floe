@@ -97,9 +97,13 @@ struct Callback : public bgfx::CallbackI {
 constexpr u32 k_reset_flags = BGFX_RESET_VSYNC;
 
 struct SharedRendererState {
-    ErrorCodeOr<void> InitIfNeeded(void* native_window, void* native_display) {
-        if (init) return k_success;
-        (void)native_window;
+    ErrorCodeOr<void> Acquire() {
+        if (num_users) {
+            ++num_users;
+            return k_success;
+        }
+
+        bool success = false;
 
         {
             bx::setAssertHandler(
@@ -124,10 +128,14 @@ struct SharedRendererState {
                           });
                 });
 
+            platform_handles = CreateBgfxPlatformHandles();
+            if constexpr (IS_LINUX)
+                if (!platform_handles.display) return Error("failed to open X11 display for bgfx");
+
             bgfx::Init cfg {};
 
-            cfg.platformData.nwh = GetBgfxInitWindowHandle(native_display);
-            cfg.platformData.ndt = native_display;
+            cfg.platformData.nwh = platform_handles.init_window;
+            cfg.platformData.ndt = platform_handles.display;
             cfg.platformData.type = bgfx::NativeWindowHandleType::Default;
 
             if constexpr (FLOE_BGFX_API_VULKAN) cfg.type = bgfx::RendererType::Vulkan;
@@ -141,8 +149,17 @@ struct SharedRendererState {
             cfg.resolution.reset = k_reset_flags;
             cfg.callback = &callbacks;
 
-            if (!bgfx::init(cfg)) return Error("bgfx::init failed");
+            if (!bgfx::init(cfg)) {
+                DestroyBgfxPlatformHandles(platform_handles);
+                return Error("bgfx::init failed");
+            }
         }
+        DEFER {
+            if (!success) {
+                bgfx::shutdown();
+                DestroyBgfxPlatformHandles(platform_handles);
+            }
+        };
 
         static_assert(offsetof(DrawVert, pos) == 0);
         static_assert(offsetof(DrawVert, uv) == 8);
@@ -159,8 +176,6 @@ struct SharedRendererState {
                  vertex_layout.getStride());
 
         ASSERT_EQ(vertex_layout.getStride(), sizeof(DrawVert));
-
-        bool success = false;
 
         texture_uniform = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
         if (!bgfx::isValid(texture_uniform)) return Error("failed to create texture uniform");
@@ -190,12 +205,15 @@ struct SharedRendererState {
 
         ASSERT(bgfx::getCaps()->supported & BGFX_CAPS_SWAP_CHAIN);
 
-        init = true;
+        num_users = 1;
         success = true;
         return k_success;
     }
 
-    void Shutdown() {
+    void Release() {
+        ASSERT(num_users);
+        if (--num_users) return;
+
         if (bgfx::isValid(texture_uniform)) {
             bgfx::destroy(texture_uniform);
             texture_uniform = BGFX_INVALID_HANDLE;
@@ -205,13 +223,14 @@ struct SharedRendererState {
             bgfx::destroy(shader_program);
             shader_program = BGFX_INVALID_HANDLE;
         }
+
+        bgfx::shutdown();
+        DestroyBgfxPlatformHandles(platform_handles);
     }
 
-    void Render() {}
-
-    bool init {};
+    u32 num_users {};
+    BgfxPlatformHandles platform_handles {};
     Callback callbacks {};
-    u16 view_id {};
 
     bgfx::VertexLayout vertex_layout {};
     bgfx::UniformHandle texture_uniform = BGFX_INVALID_HANDLE;
@@ -229,7 +248,10 @@ struct BgfxRenderer : public Renderer {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
-        TRY(g_shared_renderer.InitIfNeeded(native_window, native_display));
+        TRY(g_shared_renderer.Acquire());
+        acquired_shared_renderer = true;
+
+        SyncWindowDisplayForBgfx(native_display);
 
         ASSERT(!bgfx::isValid(window_framebuffer));
         ASSERT(size.width > 0 && size.height > 0);
@@ -262,6 +284,9 @@ struct BgfxRenderer : public Renderer {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
+        if (!acquired_shared_renderer) return;
+
+        DestroyAllTextures();
         DestroyFontTexture();
 
         if (bgfx::isValid(window_framebuffer)) {
@@ -275,14 +300,21 @@ struct BgfxRenderer : public Renderer {
 
             LogDebug(ModuleName::Bgfx, "Framebuffer destroyed and flushed");
         }
+
+        g_shared_renderer.Release();
+        acquired_shared_renderer = false;
     }
 
-    void OnResize(UiSize size, void*) override { bgfx::reset(size.width, size.height, k_reset_flags); }
+    // Elsewhere the backbuffer is the hidden 1x1 init window; the real window's framebuffer is recreated in
+    // Render.
+    void OnResize(UiSize size, void*) override {
+        if constexpr (IS_MACOS) bgfx::reset(size.width, size.height, k_reset_flags);
+    }
 
     ErrorCodeOr<void> CreateFontTexture(FontAtlas& atlas) override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
-        ASSERT(font_texture != invalid_texture);
+        ASSERT(font_texture == invalid_texture);
         ASSERT(atlas.fonts.size > 0);
 
         // Build texture atlas
@@ -489,6 +521,7 @@ struct BgfxRenderer : public Renderer {
 
     static inline u16 const k_view_id = 200;
 
+    bool acquired_shared_renderer {};
     bgfx::FrameBufferHandle window_framebuffer = BGFX_INVALID_HANDLE;
     UiSize last_window_size {0, 0};
 };
