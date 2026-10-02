@@ -1,8 +1,5 @@
 // Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include <pugl/pugl.h>
-#include <pugl/stub.h>
-
 #include "os/filesystem.hpp"
 #include "tests/framework.hpp"
 #include "utils/reader.hpp"
@@ -16,6 +13,7 @@
 #include "clap/ext/params.h"
 #include "clap/ext/state.h"
 #include "clap/ext/thread-check.h"
+#include "clap/ext/timer-support.h"
 #include "clap/factory/plugin-factory.h"
 #include "plugin/plugin.hpp"
 #include "plugin/processing_utils/midi.hpp"
@@ -72,6 +70,24 @@ struct TestHost {
             },
     };
 
+    clap_host_timer_support const host_timer_support {
+        .register_timer =
+            [](clap_host_t const* h, uint32_t, clap_id* timer_id) {
+                auto& test_host = *(TestHost*)h->host_data;
+                ASSERT(test_host.plugin_created);
+                ASSERT(timer_id);
+                if (!dyn::Append(test_host.timer_ids, test_host.next_timer_id)) return false;
+                *timer_id = test_host.next_timer_id++;
+                return true;
+            },
+        .unregister_timer =
+            [](clap_host_t const* h, clap_id timer_id) {
+                auto& test_host = *(TestHost*)h->host_data;
+                ASSERT(test_host.plugin_created);
+                return dyn::RemoveValue(test_host.timer_ids, timer_id) != 0;
+            },
+    };
+
     clap_host_t const host {
         .clap_version = CLAP_VERSION,
         .host_data = this,
@@ -90,6 +106,8 @@ struct TestHost {
                 return &test_host.host_gui;
             else if (NullTermStringsEqual(extension_id, CLAP_EXT_THREAD_CHECK))
                 return &test_host.host_thread_check;
+            else if (NullTermStringsEqual(extension_id, CLAP_EXT_TIMER_SUPPORT))
+                return &test_host.host_timer_support;
             else if (NullTermStringsEqual(extension_id, k_floe_clap_extension_id))
                 return &test_host.floe_host_ext;
 
@@ -113,6 +131,8 @@ struct TestHost {
     u64 main_thread_id {CurrentThreadId()};
     Atomic<bool> callback_requested {false};
     FloeClapExtensionHost floe_host_ext {};
+    DynamicArrayBounded<clap_id, 4> timer_ids {};
+    clap_id next_timer_id {};
     bool plugin_created = false;
 };
 
@@ -472,16 +492,6 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
     return buffer.ToOwnedSpan();
 }
 
-static PuglStatus OnGuiTestEvent(PuglView* view, PuglEvent const* event) {
-    auto& quit_flag = *(bool*)puglGetHandle(view);
-
-    switch (event->type) {
-        case PUGL_CLOSE: quit_flag = true; break;
-        default: break;
-    }
-    return PUGL_SUCCESS;
-}
-
 static void LoadState(tests::Tester& tester, clap_plugin const* plugin, Span<u8 const> state) {
     auto const state_ext = (clap_plugin_state const*)plugin->get_extension(plugin, CLAP_EXT_STATE);
     REQUIRE(state_ext);
@@ -832,75 +842,42 @@ TEST_CASE(TestHostingClap) {
                     }
 
                     SUBCASE("gui basic") {
-                        // On CI machines, X11 is rarely available and so opening a GUI will fail. We got
+                        // On CI machines, X11 is rarely available and so creating a GUI will fail. We got
                         // quite far using xvfb and Mesa software renderer setups but never sucessfully got it
                         // working reliably.
-                        if (!(IS_LINUX && !GetEnvironmentVariable("DISPLAY", tester.scratch_arena))) {
-                            // Create pugl world for hosting the CLAP GUI
-                            PuglWorld* world = puglNewWorld(PUGL_PROGRAM, 0);
-                            REQUIRE(world);
-                            DEFER { puglFreeWorld(world); };
-
-                            REQUIRE(puglSetWorldString(world, PUGL_CLASS_NAME, "FloeGuiTest") ==
-                                    PUGL_SUCCESS);
-
-                            // Set up the floe host extension with the pugl world
-                            test_host.floe_host_ext.pugl_world = world;
-
-                            PuglView* view = puglNewView(world);
-                            REQUIRE(view);
-                            DEFER { puglFreeView(view); };
-
-                            // Configure the view
-                            REQUIRE(puglSetViewString(view, PUGL_WINDOW_TITLE, "Floe GUI Test") ==
-                                    PUGL_SUCCESS);
-                            REQUIRE(puglSetBackend(view, puglStubBackend()) == PUGL_SUCCESS);
-
-                            bool quit = false;
-                            puglSetHandle(view, &quit);
-                            REQUIRE(puglSetEventFunc(view, OnGuiTestEvent) == PUGL_SUCCESS);
-
-                            // Get the CLAP GUI extension
-                            auto gui = (clap_plugin_gui const*)plugin->get_extension(plugin, CLAP_EXT_GUI);
-                            REQUIRE(gui);
-
-                            // Create the CLAP GUI
-                            REQUIRE(gui->create(plugin, k_supported_gui_api, false));
+                        auto const gui = (clap_plugin_gui const*)plugin->get_extension(plugin, CLAP_EXT_GUI);
+                        REQUIRE(gui);
+                        if (!(IS_LINUX && !GetEnvironmentVariable("DISPLAY", tester.scratch_arena)) &&
+                            gui->is_api_supported(plugin, k_floe_offscreen_gui_api, false)) {
+                            // Offscreen so that running the tests doesn't flash a window up.
+                            REQUIRE(gui->create(plugin, k_floe_offscreen_gui_api, false));
                             DEFER { gui->destroy(plugin); };
 
-                            // Get the GUI size from CLAP
                             u32 clap_width;
                             u32 clap_height;
                             REQUIRE(gui->get_size(plugin, &clap_width, &clap_height));
+                            REQUIRE(gui->set_size(plugin, clap_width, clap_height));
 
-                            // Set the pugl view size to match CLAP's requirements
-                            REQUIRE(puglSetSizeHint(view, PUGL_DEFAULT_SIZE, clap_width, clap_height) ==
-                                    PUGL_SUCCESS);
-
-                            // Realize the pugl view
-                            REQUIRE(puglRealize(view) == PUGL_SUCCESS);
-
-                            // Set the CLAP GUI's parent to our pugl view
-                            clap_window const clap_window = {
-                                .api = k_supported_gui_api,
-                                .ptr = (void*)puglGetNativeView(view),
-                            };
-                            REQUIRE(gui->set_parent(plugin, &clap_window));
-
-                            // Show both the pugl view and CLAP GUI
-                            REQUIRE(puglShow(view, PUGL_SHOW_RAISE) == PUGL_SUCCESS);
                             REQUIRE(gui->show(plugin));
+                            REQUIRE(test_host.timer_ids.size);
 
-                            // Run a couple of updates to pump messages
+                            auto const timer_ext = (clap_plugin_timer_support const*)plugin->get_extension(
+                                plugin,
+                                CLAP_EXT_TIMER_SUPPORT);
+                            REQUIRE(timer_ext);
+
                             for (auto _ : Range(5)) {
                                 if (test_host.callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
                                     plugin->on_main_thread(plugin);
 
-                                auto status = puglUpdate(world, 0.010);
-                                CHECK(status == PUGL_SUCCESS || status == PUGL_FAILURE);
+                                // Copy: the plugin may unregister timers from inside on_timer.
+                                auto const timer_ids = test_host.timer_ids;
+                                for (auto const timer_id : timer_ids)
+                                    timer_ext->on_timer(plugin, timer_id);
+                                SleepThisThread(10);
                             }
 
-                            // Our DEFERs will close and clean everything up.
+                            REQUIRE(gui->hide(plugin));
                         }
                     }
                 }
