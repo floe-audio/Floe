@@ -176,6 +176,30 @@ Optional<SyncedTimes> ArpAutoRateAnchor(sample_lib::Region const* sliced_region,
 // the raw tempo-derived shift (no consumers in that case).
 int ComputeSharedArpAutoRateShift(Span<Optional<SyncedTimes> const> anchors, f64 tempo);
 
+struct ArpBlock {
+    DynamicArrayBounded<MidiChannelNote, 128 * 16> held_notes;
+    Span<sample_lib::Region::Slice const> slices;
+    param_values::ArpMode effective_type;
+    Bitset<ArpeggiatorState::k_octave_polyrate_num_playheads> active_octaves;
+    u32 gui_playhead_oct;
+    Optional<u32> slowest_active_oct;
+    bool active;
+};
+
+// Random draws happen as each frame is processed, so callers running several arpeggiators should step them
+// frame-by-frame in lockstep: the order of draws then follows the timeline, not the block size.
+void ArpBeginBlock(ArpeggiatorState& arp,
+                   AudioProcessingContext const& context,
+                   sample_lib::Region const* sliced_region,
+                   ArpBlock& out_block);
+
+void ArpProcessFrame(ArpeggiatorState& arp,
+                     ArpBlock& block,
+                     AudioProcessingContext const& context,
+                     u64& random_seed,
+                     u32 frame_index,
+                     ArpNoteCommands& out_commands);
+
 void ArpProcessBlock(ArpeggiatorState& arp,
                      AudioProcessingContext const& context,
                      sample_lib::Region const* sliced_region,

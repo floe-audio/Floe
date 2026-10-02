@@ -1593,8 +1593,10 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
     ProcessorHandleChanges(processor, changes);
 
-    for (auto& l : processor.layer_processors)
-        ProcessLayerPreVoices(l, processor.audio_processing_context, processor.voice_pool, sub_block_size);
+    ProcessLayersPreVoices(processor.layer_processors,
+                           processor.audio_processing_context,
+                           processor.voice_pool,
+                           sub_block_size);
 
     // Voices and layers
     // ======================================================================================================
@@ -1722,6 +1724,28 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     return result;
 }
 
+static bool EventChangesNotes(clap_event_header const& event) {
+    if (event.space_id != CLAP_CORE_EVENT_SPACE_ID) return false;
+    switch (event.type) {
+        case CLAP_EVENT_NOTE_ON:
+        case CLAP_EVENT_NOTE_OFF:
+        case CLAP_EVENT_NOTE_CHOKE: return true;
+        case CLAP_EVENT_MIDI: {
+            auto const& midi = (clap_event_midi const&)event;
+            if (midi.data[0] < 0x80) return false;
+            MidiMessage const message {
+                .status = midi.data[0],
+                .data1 = midi.data[1],
+                .data2 = midi.data[2],
+            };
+            auto const type = message.Type();
+            if (type == MidiMessageType::NoteOn || type == MidiMessageType::NoteOff) return true;
+            return type == MidiMessageType::ControlChange && message.CCNum() == 64;
+        }
+    }
+    return false;
+}
+
 clap_process_status Process(AudioProcessor& processor, clap_process const& process) {
     ZoneScoped;
     ASSERT_EQ(process.audio_outputs_count, 1u);
@@ -1734,8 +1758,19 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     ProcessorListener::ChangeFlags change_flags = ProcessorListener::None;
     ChangedParams changes_for_main_thread {processor.audio_params};
 
-    for (u32 frame_index = 0; frame_index < process.frames_count; frame_index += k_block_size_max) {
-        auto const sub_block_size = Min(k_block_size_max, process.frames_count - frame_index);
+    for (u32 frame_index = 0; frame_index < process.frames_count;) {
+        // Sub-blocks start at note events so each note is handled at its exact frame. Otherwise, the order of
+        // random draws within a sub-block would depend on where the host's buffers happen to begin, and a
+        // different order changes every random choice that follows.
+        auto const sub_block_size = ({
+            auto end = Min(frame_index + k_block_size_max, process.frames_count);
+            for (auto const event_index : Range(process.in_events->size(process.in_events))) {
+                auto const e = process.in_events->get(process.in_events, event_index);
+                if (!e) continue;
+                if (e->time > frame_index && e->time < end && EventChangesNotes(*e)) end = e->time;
+            }
+            end - frame_index;
+        });
         result = ProcessSubBlock(processor,
                                  process,
                                  frame_index,
@@ -1743,6 +1778,7 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
                                  change_flags,
                                  changes_for_main_thread);
         if (result == CLAP_PROCESS_ERROR) break;
+        frame_index += sub_block_size;
     }
 
     processor.notes_currently_held.AssignBlockwise(

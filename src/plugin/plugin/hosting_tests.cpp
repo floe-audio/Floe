@@ -181,6 +181,7 @@ struct ProcessTestOptions {
     u32 max_block_size;
     u32 constant_block_size; // 0 means random block size
     EventQueue events; // ordered by time, time is in overall frames not per-block
+    bool transport_playing = false;
     bool capture_output = false;
 };
 
@@ -274,10 +275,22 @@ Process(tests::Tester& tester, clap_plugin const* plugin, ArenaAllocator& arena,
             .constant_mask = 0,
         };
 
+        clap_event_transport const transport {
+            .header =
+                {
+                    .size = sizeof(clap_event_transport),
+                    .time = 0,
+                    .space_id = CLAP_CORE_EVENT_SPACE_ID,
+                    .type = CLAP_EVENT_TRANSPORT,
+                },
+            .flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_IS_PLAYING,
+            .tempo = 120,
+        };
+
         clap_process process {
             .steady_time = -1,
             .frames_count = block_size,
-            .transport = nullptr,
+            .transport = options.transport_playing ? &transport : nullptr,
             .audio_inputs = nullptr,
             .audio_outputs = &out,
             .audio_inputs_count = 0,
@@ -363,6 +376,7 @@ enum class StateProperties : u8 {
     WhiteNoise = 1 << 2,
     SampleInst = 1 << 3,
     SoundShapersOn = 1 << 4,
+    ArpWithRandomness = 1 << 5, // Arpeggiator on the first layer, using random note order and humanise
 };
 
 inline StateProperties operator|(StateProperties a, StateProperties b) {
@@ -434,6 +448,16 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
         }
     }
 
+    if (properties & StateProperties::ArpWithRandomness) {
+        auto const param = [&](LayerParamIndex p) -> f32& {
+            return state.param_values[ToInt(ParamIndexFromLayerParamIndex(0, p))];
+        };
+        param(LayerParamIndex::ArpOn) = 1;
+        param(LayerParamIndex::ArpNoteOrder) = (f32)param_values::ArpNoteOrder::Random;
+        param(LayerParamIndex::ArpRate) = (f32)param_values::ArpSyncedRate::_1_64;
+        param(LayerParamIndex::ArpHumanise) = 1;
+    }
+
     DynamicArray<u8> buffer {arena};
     TRY(CodeState(state,
                   CodeStateArguments {
@@ -478,11 +502,11 @@ static void LoadState(tests::Tester& tester, clap_plugin const* plugin, Span<u8 
     REQUIRE(state_ext->load(plugin, &stream));
 }
 
-static void ProcessWithState(tests::Tester& tester,
-                             clap_plugin const* plugin,
-                             TestHost& test_host,
-                             StateProperties state_properties,
-                             ProcessTestOptions options) {
+static Span<Span<f32>> ProcessWithState(tests::Tester& tester,
+                                        clap_plugin const* plugin,
+                                        TestHost& test_host,
+                                        StateProperties state_properties,
+                                        ProcessTestOptions options) {
     CheckProcessTestOptions(options);
 
     LoadState(tester, plugin, REQUIRE_UNWRAP(MakeState(tester.scratch_arena, state_properties)));
@@ -504,7 +528,7 @@ static void ProcessWithState(tests::Tester& tester,
             constexpr f64 k_timeout_ms = 10000;
             if ((TimePoint::Now() - start) > (k_timeout_ms / 1000.0)) {
                 LOG_WARNING("Timeout waiting for state change to complete");
-                return;
+                return {};
             }
 
             SleepThisThread(10);
@@ -543,6 +567,8 @@ static void ProcessWithState(tests::Tester& tester,
                                          .data = captured_output,
                                      }));
     }
+
+    return captured_output;
 }
 
 TEST_CASE(TestHostingClap) {
@@ -639,6 +665,92 @@ TEST_CASE(TestHostingClap) {
                                          .events = {},
                                          .capture_output = false,
                                      });
+                }
+
+                SUBCASE("render does not depend on block size") {
+                    // Notes are staggered like a hand-played chord so they land at different points within
+                    // the internal sub-blocks. Layer 1 plays them directly; layer 0 arpeggiates them with
+                    // random note order and humanise. White noise voices take their seed from the master
+                    // random seed, so any change in the order of random draws makes the noise different.
+                    auto const make_events = [&]() {
+                        EventQueue events {};
+                        auto const on = [&](u32 time, u7 note) {
+                            events.AppendMidiMessage(tester.scratch_arena,
+                                                     time,
+                                                     MidiMessage::NoteOn(note, 90));
+                        };
+                        auto const off = [&](u32 time, u7 note) {
+                            events.AppendMidiMessage(tester.scratch_arena, time, MidiMessage::NoteOff(note));
+                        };
+                        on(1000, 60);
+                        on(1003, 64);
+                        on(1011, 67);
+                        on(1030, 71);
+                        off(9000, 60);
+                        off(9005, 64);
+                        on(9013, 62);
+                        off(9020, 67);
+                        off(9021, 71);
+                        on(14000, 65);
+                        on(14002, 69);
+                        on(14019, 72);
+                        off(22000, 62);
+                        off(22010, 65);
+                        off(22011, 69);
+                        off(22030, 72);
+                        return events;
+                    };
+
+                    auto const render = [&](u32 constant_block_size, u64 seed) {
+                        return ProcessWithState(tester,
+                                                plugin,
+                                                test_host,
+                                                StateProperties::Sine | StateProperties::WhiteNoise |
+                                                    StateProperties::ArpWithRandomness,
+                                                {
+                                                    .seed = seed,
+                                                    .num_frames = 30000,
+                                                    .num_channels = 2,
+                                                    .sample_rate = 44100,
+                                                    .min_block_size = 1,
+                                                    .max_block_size = 1024,
+                                                    .constant_block_size = constant_block_size,
+                                                    .events = make_events(),
+                                                    .transport_playing = true,
+                                                    .capture_output = true,
+                                                });
+                    };
+
+                    auto const reference = render(512, 0);
+                    REQUIRE(reference.size == 2);
+                    {
+                        f32 peak = 0;
+                        for (auto const channel : reference)
+                            for (auto const sample : channel)
+                                peak = Max(peak, Abs(sample));
+                        CHECK_GT(peak, 0.01f);
+                    }
+
+                    struct BlockSizes {
+                        u32 constant_block_size;
+                        u64 seed;
+                    };
+                    for (auto const block_sizes :
+                         ArrayT<BlockSizes>({{512, 0}, {441, 0}, {0, 0xf00d}, {0, 0xbead}})) {
+                        auto const other = render(block_sizes.constant_block_size, block_sizes.seed);
+                        REQUIRE(other.size == 2);
+                        f32 max_difference = 0;
+                        for (auto const channel_index : Range(2u))
+                            for (auto const frame : Range(30000u))
+                                max_difference =
+                                    Max(max_difference,
+                                        Abs(reference[channel_index][frame] - other[channel_index][frame]));
+                        tester.log.Info("block size {} (seed {}): max difference {}",
+                                        block_sizes.constant_block_size,
+                                        block_sizes.seed,
+                                        max_difference);
+                        CHECK_LT(max_difference, 0.01f);
+                    }
                 }
 
                 SUBCASE("note on") {
