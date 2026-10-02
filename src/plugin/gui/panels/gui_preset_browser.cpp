@@ -400,7 +400,7 @@ void PresetFolderRightClickMenu(GuiBuilder& builder,
             auto const error_id = Hash(Array {SourceLocationHash(), folder->Hash()});
             if (auto item = context.engine.error_notifications.BeginWriteError(error_id)) {
                 DEFER { context.engine.error_notifications.EndWriteError(*item); };
-                item->title = "Cannot to delete preset folder"_s;
+                item->title = "Cannot delete preset folder"_s;
                 item->message =
                     "This folder contains one or more preset banks as subfolders. Please delete them first."_s;
             }
