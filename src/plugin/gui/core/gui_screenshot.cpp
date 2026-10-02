@@ -29,12 +29,8 @@ static bool AsyncLoadsInProgress(GuiState& g) {
     if (sample_lib_server::AreLibrariesScanning(g.shared_engine_systems.sample_library_server)) return true;
     for (auto& pct : g.engine.sample_lib_server_async_channel.instrument_loading_percents)
         if (pct.Load(LoadMemoryOrder::Relaxed) != -1) return true;
-    for (auto const& [_, imgs, _] : g.library_images.table) {
-        if (imgs.loading_icon && imgs.loading_icon->IsInProgress()) return true;
-        if (imgs.loading_backgrounds && imgs.loading_backgrounds->IsInProgress()) return true;
-        if (imgs.icon_load.failure == LibraryImages::LoadFailure::Unavailable) return true;
-        if (imgs.backgrounds_load.failure == LibraryImages::LoadFailure::Unavailable) return true;
-    }
+    for (auto const& [_, imgs, _] : g.library_images.table)
+        if (!IsSettled(imgs)) return true;
     for (auto const& [_, w, _] : g.waveform_images.table)
         if (w.loading_pixels && w.loading_pixels->IsInProgress()) return true;
     return false;
