@@ -9,6 +9,7 @@
 #include <link.h>
 #include <linux/limits.h>
 #include <mntent.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/inotify.h>
@@ -57,17 +58,52 @@ ErrorCodeOr<void> CopyFile(String from, String to, ExistingDestinationHandling e
     return k_success;
 }
 
+static Span<char> PasswdBuffer(ArenaAllocator& arena) {
+    return arena.AllocateExactSizeUninitialised<char>(({
+        auto const size = sysconf(_SC_GETPW_R_SIZE_MAX);
+        size > 0 ? (usize)size : (usize)1024;
+    }));
+}
+
+static Optional<String> PasswdHomeDirectory(int lookup_result, passwd const* found_entry) {
+    if (lookup_result != 0 || !found_entry || !found_entry->pw_dir) return k_nullopt;
+    return FromNullTerminated(found_entry->pw_dir);
+}
+
+static Optional<String> CurrentUserHomeDirectory(ArenaAllocator& arena) {
+    if (auto const home = secure_getenv("HOME"); home && *home) return FromNullTerminated(home);
+    auto const buffer = PasswdBuffer(arena);
+    passwd entry {};
+    passwd* found_entry = nullptr;
+    auto const lookup_result = getpwuid_r(getuid(), &entry, buffer.data, buffer.size, &found_entry);
+    return PasswdHomeDirectory(lookup_result, found_entry);
+}
+
+static Optional<String> NamedUserHomeDirectory(String username, ArenaAllocator& arena) {
+    auto const buffer = PasswdBuffer(arena);
+    passwd entry {};
+    passwd* found_entry = nullptr;
+    auto const lookup_result =
+        getpwnam_r(NullTerminated(username, arena), &entry, buffer.data, buffer.size, &found_entry);
+    return PasswdHomeDirectory(lookup_result, found_entry);
+}
+
 ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
     ASSERT(path.size);
 
     PathArena temp_path_allocator {Malloc::Instance()};
     DynamicArray<char> path_nt(path, temp_path_allocator);
 
+    // Like macOS, a ~ or ~user that can't be expanded is left as-is.
     if (StartsWith(path_nt, '~')) {
-        char const* home = secure_getenv("HOME");
-        if (home == nullptr) return ErrorCode(FilesystemError::PathDoesNotExist);
-        dyn::Remove(path_nt, 0, 1);
-        dyn::PrependSpan(path_nt, FromNullTerminated(home));
+        auto const first_component_end = Find((String)path_nt, '/').ValueOr(path_nt.size);
+        auto const username = String {path_nt.data + 1, first_component_end - 1};
+        auto const home = username.size ? NamedUserHomeDirectory(username, temp_path_allocator)
+                                        : CurrentUserHomeDirectory(temp_path_allocator);
+        if (home) {
+            dyn::Remove(path_nt, 0, first_component_end);
+            dyn::PrependSpan(path_nt, *home);
+        }
     }
 
     auto const trimmed_path = path::TrimDirectorySeparatorsEnd(path_nt);

@@ -1310,6 +1310,30 @@ TEST_CASE(TestFilesystemApi) {
             }
 
             CHECK(CanonicalizePath(a, "/nonexistent_a/nonexistent_b").HasError());
+
+            {
+                auto const o = AbsolutePath(a, "~root/foo");
+                REQUIRE(o.HasValue());
+                CHECK_EQ(o.Value(), IS_MACOS ? "/var/root/foo"_s : "/root/foo"_s);
+            }
+
+            {
+                auto const o = AbsolutePath(a, "~nonexistent_user_floe/foo");
+                REQUIRE(o.HasValue());
+                CHECK(EndsWithSpan(o.Value(), "/~nonexistent_user_floe/foo"_s));
+            }
+        }
+
+        if constexpr (IS_LINUX) {
+            if (auto const home = GetEnvironmentVariable("HOME", a); home && home->size) {
+                auto const o = AbsolutePath(a, "~");
+                REQUIRE(o.HasValue());
+                CHECK_EQ(o.Value(), path::TrimDirectorySeparatorsEnd(*home));
+
+                auto const o2 = AbsolutePath(a, "~/foo");
+                REQUIRE(o2.HasValue());
+                CHECK_EQ(o2.Value(), path::Join(a, Array {(String)*home, "foo"}));
+            }
         }
     }
 
