@@ -92,21 +92,25 @@ ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
     ASSERT(path.size);
 
     PathArena temp_path_allocator {Malloc::Instance()};
-    DynamicArray<char> path_nt(path, temp_path_allocator);
 
     // Like macOS, a ~ or ~user that can't be expanded is left as-is.
-    if (StartsWith(path_nt, '~')) {
-        auto const first_component_end = Find((String)path_nt, '/').ValueOr(path_nt.size);
-        auto const username = String {path_nt.data + 1, first_component_end - 1};
-        auto const home = username.size ? NamedUserHomeDirectory(username, temp_path_allocator)
-                                        : CurrentUserHomeDirectory(temp_path_allocator);
-        if (home) {
-            dyn::Remove(path_nt, 0, first_component_end);
-            dyn::PrependSpan(path_nt, *home);
+    auto const expanded_path = ({
+        String result = path;
+        if (StartsWith(path, '~')) {
+            auto const first_component_end = Find(path, '/').ValueOr(path.size);
+            auto const username = path.SubSpan(1, first_component_end - 1);
+            auto const home = username.size ? NamedUserHomeDirectory(username, temp_path_allocator)
+                                            : CurrentUserHomeDirectory(temp_path_allocator);
+            if (home) {
+                DynamicArray<char> expanded {*home, temp_path_allocator};
+                path::JoinAppend(expanded, path.SubSpan(first_component_end));
+                result = expanded.ToOwnedSpan();
+            }
         }
-    }
+        result;
+    });
 
-    auto const trimmed_path = path::TrimDirectorySeparatorsEnd(path_nt);
+    auto const trimmed_path = path::TrimDirectorySeparatorsEnd(expanded_path);
     if (path::IsAbsolute(trimmed_path)) return a.Clone(trimmed_path);
 
     char cwd[PATH_MAX] {};
