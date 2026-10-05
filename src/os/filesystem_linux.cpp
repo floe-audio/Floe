@@ -70,15 +70,25 @@ ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
         dyn::PrependSpan(path_nt, FromNullTerminated(home));
     }
 
-    char result[PATH_MAX] {};
-    auto _ = realpath(dyn::NullTerminated(path_nt), result);
-    auto const result_path = FromNullTerminated(result);
-    if (path::IsAbsolute(result_path)) return result_path.Clone(a);
+    auto const trimmed_path = path::TrimDirectorySeparatorsEnd(path_nt);
+    if (path::IsAbsolute(trimmed_path)) return a.Clone(trimmed_path);
 
-    return FilesystemErrnoErrorCode(errno);
+    char cwd[PATH_MAX] {};
+    if (!getcwd(cwd, sizeof(cwd))) return FilesystemErrnoErrorCode(errno);
+    auto const joined = path::Join(a, Array {(String)FromNullTerminated(cwd), trimmed_path});
+    ASSERT(path::IsAbsolute(joined));
+    return joined;
 }
 
-ErrorCodeOr<MutableString> CanonicalizePath(Allocator& a, String path) { return AbsolutePath(a, path); }
+ErrorCodeOr<MutableString> CanonicalizePath(Allocator& a, String path) {
+    PathArena temp_path_allocator {Malloc::Instance()};
+    auto const absolute_path = TRY(AbsolutePath(temp_path_allocator, path));
+
+    char result[PATH_MAX] {};
+    if (!realpath(NullTerminated(absolute_path, temp_path_allocator), result))
+        return FilesystemErrnoErrorCode(errno);
+    return FromNullTerminated(result).Clone(a);
+}
 
 static Optional<String> TrashDir(ArenaAllocator& arena) {
     // "For every user  [2]_ a “home trash” directory MUST be available. Its name and location are

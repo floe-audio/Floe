@@ -1292,6 +1292,25 @@ TEST_CASE(TestFilesystemApi) {
         check("foo", true);
         check("something/foo.bar", true);
         check("/something/foo.bar", true);
+
+        auto const nonexistent_relative = path::Join(a, Array {"nonexistent_a"_s, "nonexistent_b"});
+        {
+            auto const o = AbsolutePath(a, nonexistent_relative);
+            REQUIRE(o.HasValue());
+            CHECK(EndsWithSpan(o.Value(), nonexistent_relative));
+        }
+
+        if constexpr (!IS_WINDOWS) {
+            for (auto const input :
+                 Array {"/nonexistent_a/nonexistent_b"_s, "/nonexistent_a/nonexistent_b/"}) {
+                CAPTURE(input);
+                auto const o = AbsolutePath(a, input);
+                REQUIRE(o.HasValue());
+                CHECK_EQ(o.Value(), "/nonexistent_a/nonexistent_b"_s);
+            }
+
+            CHECK(CanonicalizePath(a, "/nonexistent_a/nonexistent_b").HasError());
+        }
     }
 
     SUBCASE("KnownDirectory") {
