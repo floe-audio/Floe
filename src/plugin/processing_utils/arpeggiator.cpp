@@ -689,12 +689,12 @@ void ArpProcessFrame(ArpeggiatorState& arp,
         ArpProcessFramePolyrate(arp, block, context, random_seed, frame_index, out_commands);
 }
 
-void ArpProcessBlock(ArpeggiatorState& arp,
-                     AudioProcessingContext const& context,
-                     sample_lib::Region const* sliced_region,
-                     u64& random_seed,
-                     u32 num_frames,
-                     ArpNoteCommands& out_commands) {
+static void ArpProcessBlock(ArpeggiatorState& arp,
+                            AudioProcessingContext const& context,
+                            sample_lib::Region const* sliced_region,
+                            u64& random_seed,
+                            u32 num_frames,
+                            ArpNoteCommands& out_commands) {
     if (num_frames == 0) return;
     ArpBlock block;
     ArpBeginBlock(arp, context, sliced_region, block);

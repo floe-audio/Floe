@@ -200,13 +200,6 @@ void ArpProcessFrame(ArpeggiatorState& arp,
                      u32 frame_index,
                      ArpNoteCommands& out_commands);
 
-void ArpProcessBlock(ArpeggiatorState& arp,
-                     AudioProcessingContext const& context,
-                     sample_lib::Region const* sliced_region,
-                     u64& random_seed,
-                     u32 num_frames,
-                     ArpNoteCommands& out_commands);
-
 void ResetArpAudioPlayback(ArpeggiatorState& arp);
 
 void ArpApplyState(ArpeggiatorState& arp, StateSnapshot const& state, u8 layer_index);
