@@ -1276,6 +1276,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                            clap_process const& process,
                                            u32 frame_index,
                                            u32 sub_block_size,
+                                           Range<u32> event_indices,
                                            ProcessorListener::ChangeFlags& change_flags,
                                            ChangedParams& changes_for_main_thread) {
     clap_process_status result = CLAP_PROCESS_CONTINUE;
@@ -1341,13 +1342,12 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 changes.tempo_changed = true;
             }
         }
-        for (auto const event_index : Range(process.in_events->size(process.in_events))) {
+        for (auto const event_index : event_indices) {
             auto e = process.in_events->get(process.in_events, event_index);
             if (!e) continue;
 
             if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
             if (e->type != CLAP_EVENT_TRANSPORT) continue;
-            if (e->time < frame_index || e->time >= (frame_index + sub_block_size)) continue;
 
             auto const transport = CheckedPointerCast<clap_event_transport const*>(e);
             if (transport->tempo != processor.audio_processing_context.tempo) {
@@ -1489,11 +1489,10 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     }
 
     {
-        for (auto const i : Range(process.in_events->size(process.in_events))) {
-            auto e = process.in_events->get(process.in_events, i);
+        for (auto const event_index : event_indices) {
+            auto e = process.in_events->get(process.in_events, event_index);
             if (!e) continue;
             if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
-            if (e->time < frame_index || e->time >= (frame_index + sub_block_size)) continue;
             ProcessClapNoteOrMidi(processor,
                                   *e,
                                   *process.out_events,
@@ -1758,27 +1757,42 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     ProcessorListener::ChangeFlags change_flags = ProcessorListener::None;
     ChangedParams changes_for_main_thread {processor.audio_params};
 
+    // CLAP requires input events to be sorted by time, so a single forward cursor covers them all.
+    auto const num_events = process.in_events->size(process.in_events);
+    u32 event_cursor = 0;
     for (u32 frame_index = 0; frame_index < process.frames_count;) {
         // Sub-blocks start at note events so each note is handled at its exact frame. Otherwise, the order of
         // random draws within a sub-block would depend on where the host's buffers happen to begin, and a
         // different order changes every random choice that follows.
         auto const sub_block_size = ({
             auto end = Min(frame_index + k_block_size_max, process.frames_count);
-            for (auto const event_index : Range(process.in_events->size(process.in_events))) {
+            for (auto const event_index : Range(event_cursor, num_events)) {
                 auto const e = process.in_events->get(process.in_events, event_index);
                 if (!e) continue;
-                if (e->time > frame_index && e->time < end && EventChangesNotes(*e)) end = e->time;
+                if (e->time >= end) break;
+                if (e->time > frame_index && EventChangesNotes(*e)) end = e->time;
             }
             end - frame_index;
+        });
+        auto const sub_block_end_event = ({
+            auto end_event = event_cursor;
+            while (end_event < num_events) {
+                auto const e = process.in_events->get(process.in_events, end_event);
+                if (e && e->time >= frame_index + sub_block_size) break;
+                ++end_event;
+            }
+            end_event;
         });
         result = ProcessSubBlock(processor,
                                  process,
                                  frame_index,
                                  sub_block_size,
+                                 Range(event_cursor, sub_block_end_event),
                                  change_flags,
                                  changes_for_main_thread);
         if (result == CLAP_PROCESS_ERROR) break;
         frame_index += sub_block_size;
+        event_cursor = sub_block_end_event;
     }
 
     processor.notes_currently_held.AssignBlockwise(
