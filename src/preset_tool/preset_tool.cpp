@@ -360,7 +360,7 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
 // filter via PresetFormatFromPath.
 static ErrorCodeOr<void>
 CollectPresetFiles(ArenaAllocator& arena, String input_path, DynamicArray<String>& out_files) {
-    auto const abs = TRY(AbsolutePath(arena, input_path));
+    auto const abs = TRY(CanonicalizePath(arena, input_path));
     auto const ft = TRY(GetFileType(abs));
     switch (ft) {
         case FileType::File: dyn::Append(out_files, (String)abs); break;

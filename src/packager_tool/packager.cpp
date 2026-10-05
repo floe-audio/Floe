@@ -705,7 +705,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     sample_lib::Library* lib_for_package_name = nullptr;
 
     for (auto const path : inputs.library_folders) {
-        auto const library_path = TRY_OR(AbsolutePath(scratch, path), {
+        auto const library_path = TRY_OR(CanonicalizePath(scratch, path), {
             StdPrintF(StdStream::Err, "Error: failed to resolve library path '{}'\n", path);
             return error;
         });
@@ -816,7 +816,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     }
 
     for (auto const p : inputs.preset_folders) {
-        auto const preset_folder = TRY_OR(AbsolutePath(scratch, p), {
+        auto const preset_folder = TRY_OR(CanonicalizePath(scratch, p), {
             StdPrintF(StdStream::Err, "Error: failed to resolve preset folder '{}'\n", p);
             return error;
         });
@@ -875,7 +875,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     // We do input packages last because we prioritise file from libraries/presets. We ignore files from
     // packages if they already exist from the libraries/presets.
     for (auto const path : inputs.input_packages) {
-        auto const package_path = TRY_OR(AbsolutePath(scratch, path), {
+        auto const package_path = TRY_OR(CanonicalizePath(scratch, path), {
             StdPrintF(StdStream::Err, "Error: failed to resolve input package path '{}'\n", path);
             return error;
         });

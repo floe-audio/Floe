@@ -20,7 +20,7 @@ namespace ld = library_dump;
 using CliArgId = LibraryInspectorCliArgId;
 
 static ErrorCodeOr<String> ResolveLibraryFile(ArenaAllocator& arena, String input_path) {
-    auto const abs = TRY(AbsolutePath(arena, input_path));
+    auto const abs = TRY(CanonicalizePath(arena, input_path));
     auto const info = TRY(GetFileType(abs));
     if (info != FileType::File) return ErrorCode {CommonError::NotFound};
     return abs;
