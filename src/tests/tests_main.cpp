@@ -73,6 +73,7 @@ __attribute__((section(".preinit_array"), used)) static void (*g_tsan_preinit)()
     X(RegisterMidiNoteStateTests)                                                                            \
     X(RegisterMiscTests)                                                                                     \
     X(RegisterMpeTests)                                                                                      \
+    X(RegisterOfflineRenderTests)                                                                            \
     X(RegisterOptionalTests)                                                                                 \
     X(RegisterPackageFormatTests)                                                                            \
     X(RegisterPackageInstallationTests)                                                                      \

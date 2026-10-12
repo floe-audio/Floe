@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Whole-plugin benchmarks: create a Floe instance in-process, load a preset from disk, and run the CLAP
-// process callback as fast as the machine allows. Unlike the standalone's --render, nothing here is paced to
-// realtime, so wall-clock time is a measure of DSP cost.
+// process callback as fast as the machine allows, so wall-clock time is a measure of DSP cost.
 
 #include "os/threading.hpp"
 

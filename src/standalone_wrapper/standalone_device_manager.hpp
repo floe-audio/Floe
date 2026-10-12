@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <FLAC/stream_encoder.h>
 #include <clap/events.h>
 #include <miniaudio.h>
 #include <portmidi.h>
@@ -54,9 +53,6 @@ struct DeviceManager {
         DynamicArray<char> selected_backend_name {Malloc::Instance()};
 
         bool failed = false;
-
-        Optional<String> render_flac_path {}; // Non owning.
-        FLAC__StreamEncoder* render_encoder {}; // Render to FLAC rather than audio device.
 
         // Cross-thread data.
         struct Stream {

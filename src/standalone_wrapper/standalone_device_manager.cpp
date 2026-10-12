@@ -3,14 +3,10 @@
 
 #include "standalone_device_manager.hpp"
 
-#include <FLAC/stream_encoder.h>
-
 #include "foundation/memory/allocators.hpp"
 #include "utils/logger/logger.hpp"
 
 #include "common_infrastructure/error_reporting.hpp"
-
-static bool RenderEnabled(DeviceManager const& dm) { return dm.audio.render_flac_path.HasValue(); }
 
 constexpr persistent_store::Id k_audio_device_store_key = HashFnv1a("standalone-audio-output-device");
 constexpr persistent_store::Id k_midi_device_store_key = HashFnv1a("standalone-midi-input-device");
@@ -133,19 +129,6 @@ AudioCallback(ma_device* device, void* output_buffer, void const* input, ma_uint
                                   frames_done == 0 ? (u32)num_events : 0);
         frames_done += chunk_frames;
     }
-
-    if (auto* enc = dm->audio.render_encoder) {
-        constexpr u32 k_chunk_frames = 512;
-        FLAC__int32 buf[k_chunk_frames * 2];
-        u32 written = 0;
-        while (written < num_buffer_frames) {
-            auto const n = Min(num_buffer_frames - written, k_chunk_frames);
-            for (u32 i = 0; i < n * 2; ++i)
-                buf[i] = (FLAC__int32)(Clamp(output[(written * 2) + i], -1.0f, 1.0f) * 32767.0f);
-            FLAC__stream_encoder_process_interleaved(enc, buf, n);
-            written += n;
-        }
-    }
 }
 
 static Optional<ma_backend> FindAudioBackend(String name) {
@@ -161,11 +144,6 @@ static Optional<ma_backend> FindAudioBackend(String name) {
 
 static void EnumerateAudioBackends(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
-    if (RenderEnabled(dm)) {
-        dm.audio.backends = {};
-        dm.audio.backend_ids = {};
-        return;
-    }
     ma_backend enabled[MA_BACKEND_COUNT];
     size_t count = 0;
     if (ma_get_enabled_backends(enabled, MA_BACKEND_COUNT, &count) != MA_SUCCESS) {
@@ -214,18 +192,12 @@ static void EnumerateAudioDevices(DeviceManager& dm) {
     if (!dm.audio.context_initialised) {
         bool ok = false;
         Optional<ma_backend> chosen_backend {};
-        if (RenderEnabled(dm)) {
-            ma_backend backends[1] = {ma_backend_null};
+        chosen_backend = FindAudioBackend(dm.audio.selected_backend_name);
+        if (chosen_backend) {
+            ma_backend backends[1] = {*chosen_backend};
             ok = ma_context_init(backends, 1, nullptr, &dm.audio.context) == MA_SUCCESS;
-            ASSERT(ok, "ma_backend_null must be available in render mode");
-        } else {
-            chosen_backend = FindAudioBackend(dm.audio.selected_backend_name);
-            if (chosen_backend) {
-                ma_backend backends[1] = {*chosen_backend};
-                ok = ma_context_init(backends, 1, nullptr, &dm.audio.context) == MA_SUCCESS;
-            }
-            if (!ok) ok = ma_context_init(nullptr, 0, nullptr, &dm.audio.context) == MA_SUCCESS;
         }
+        if (!ok) ok = ma_context_init(nullptr, 0, nullptr, &dm.audio.context) == MA_SUCCESS;
         if (!ok) {
             if (chosen_backend)
                 ReportAudioError(
@@ -312,13 +284,6 @@ static void AudioNotificationCallback(ma_device_notification const* notification
     dm->audio.stream.lost.Store(true, StoreMemoryOrder::Release);
 }
 
-static void FinaliseFlacEncoder(DeviceManager& dm) {
-    if (!dm.audio.render_encoder) return;
-    FLAC__stream_encoder_finish(dm.audio.render_encoder);
-    FLAC__stream_encoder_delete(dm.audio.render_encoder);
-    dm.audio.render_encoder = nullptr;
-}
-
 static void CloseAudio(DeviceManager& dm) {
     ASSERT(g_is_logical_main_thread);
     if (!dm.audio.stream.device) return;
@@ -328,32 +293,8 @@ static void CloseAudio(DeviceManager& dm) {
     ma_device_uninit(&*dm.audio.stream.device);
     dm.audio.stream.device = k_nullopt;
 
-    // ma_device_uninit blocks until the audio thread has stopped, so the encoder is no longer in
-    // use here.
-    FinaliseFlacEncoder(dm);
-
     dm.audio.stream.thread_setup_done.Store(false, StoreMemoryOrder::Relaxed);
     dm.audio.stream.lost.Store(false, StoreMemoryOrder::Release);
-}
-
-static bool InitFlacEncoder(DeviceManager& dm) {
-    ASSERT(!dm.audio.render_encoder);
-    auto* enc = FLAC__stream_encoder_new();
-    if (!enc) return false;
-    FLAC__stream_encoder_set_channels(enc, 2);
-    FLAC__stream_encoder_set_bits_per_sample(enc, 16);
-    FLAC__stream_encoder_set_sample_rate(enc, dm.audio.stream.device->sampleRate);
-    FLAC__stream_encoder_set_compression_level(enc, 5);
-
-    auto const path = NullTerminated(*dm.audio.render_flac_path, dm.enum_arena);
-    auto const status = FLAC__stream_encoder_init_file(enc, path, nullptr, nullptr);
-    if (status != FLAC__STREAM_ENCODER_INIT_STATUS_OK) {
-        LogError(ModuleName::Standalone, "FLAC encoder init failed ({})", (int)status);
-        FLAC__stream_encoder_delete(enc);
-        return false;
-    }
-    dm.audio.render_encoder = enc;
-    return true;
 }
 
 static bool InitAudioDevice(DeviceManager& dm, String name) {
@@ -369,7 +310,7 @@ static bool InitAudioDevice(DeviceManager& dm, String name) {
     config.playback.format = ma_format_f32;
     config.playback.channels = 2;
     config.playback.pDeviceID = chosen_id ? &*chosen_id : nullptr;
-    config.sampleRate = RenderEnabled(dm) ? 44100u : 0u; // 0 = use device default
+    config.sampleRate = 0; // use device default
     config.dataCallback = AudioCallback;
     config.notificationCallback = AudioNotificationCallback;
     config.pUserData = &dm;
@@ -392,11 +333,6 @@ static bool InitAudioDevice(DeviceManager& dm, String name) {
                  "audio device period size {} exceeds maximum {}",
                  dm.audio.stream.device->playback.internalPeriodSizeInFrames,
                  k_max_audio_buffer_frames);
-        CloseAudio(dm);
-        return false;
-    }
-
-    if (RenderEnabled(dm) && !InitFlacEncoder(dm)) {
         CloseAudio(dm);
         return false;
     }

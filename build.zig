@@ -2226,6 +2226,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
         .files = &.{
             "src/standalone_wrapper/standalone_wrapper.cpp",
             "src/standalone_wrapper/standalone_device_manager.cpp",
+            "src/standalone_wrapper/offline_render.cpp",
             "src/plugin/plugin/plugin_entry.cpp",
             "src/common_infrastructure/final_binary_type.cpp",
         },
@@ -2935,6 +2936,7 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/foundation/utils/writer.cpp",
             "src/plugin/plugin/plugin_entry.cpp",
             "src/preset_tool/preset_tool_lua_codec.cpp",
+            "src/standalone_wrapper/offline_render.cpp",
             "src/tests/tests_main.cpp",
             "src/utils/error_notifications.cpp",
             "src/utils/json/json_reader.cpp",
