@@ -1475,6 +1475,33 @@ static FloeClapExtension const floe_custom_ext {
             return false;
         }
     },
+    .set_ui_dump_path = [](clap_plugin_t const* plugin, String out_path) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "set_ui_dump_path", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "set_ui_dump_path",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "set_ui_dump_path", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
+            if (!floe.app_window) return false;
+            auto& dump_path = floe.app_window->frame_state.ui_dump_output_path;
+            if (!dump_path.Reserve(out_path.size)) return false;
+            dyn::Assign(dump_path, out_path);
+            return true;
+        } catch (PanicException) {
+            return false;
+        }
+    },
 };
 
 static bool ClapInit(const struct clap_plugin* plugin) {

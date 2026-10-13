@@ -177,6 +177,7 @@ struct FloeClapExtension {
     bool (*request_screenshot)(clap_plugin const* plugin, String id_name, String out_path) = nullptr;
     bool (*screenshot_request_pending)(clap_plugin const* plugin) = nullptr;
     bool (*load_preset_file)(clap_plugin const* plugin, String path) = nullptr;
+    bool (*set_ui_dump_path)(clap_plugin const* plugin, String out_path) = nullptr;
 };
 
 enum class IsThreadResult : u8 { No, Yes, Unknown };

@@ -4,6 +4,8 @@
 #include "gui/core/gui_screenshot.hpp"
 
 #include "foundation/foundation.hpp"
+#include "os/filesystem.hpp"
+#include "utils/json/json_writer.hpp"
 
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 
@@ -23,24 +25,23 @@ bool IsAnyScreenshotInProgress() {
     return GuiIo().in.requested_screenshot_id_name.size != 0 || GuiIo().out.request_screenshot.HasValue();
 }
 
-static bool ScreenshotPreconditionsMet(GuiState& g) {
-    auto const clear_this_frame = [&]() {
-        if (sample_lib_server::AreLibrariesScanning(g.shared_engine_systems.sample_library_server))
-            return false;
-        for (auto& pct : g.engine.sample_lib_server_async_channel.instrument_loading_percents)
-            if (pct.Load(LoadMemoryOrder::Relaxed) != -1) return false;
-        for (auto const& [_, imgs, _] : g.library_images.table) {
-            if (imgs.loading_icon && imgs.loading_icon->IsInProgress()) return false;
-            if (imgs.loading_backgrounds && imgs.loading_backgrounds->IsInProgress()) return false;
-            if (imgs.icon_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
-            if (imgs.backgrounds_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
-        }
-        for (auto const& [_, w, _] : g.waveform_images.table)
-            if (w.loading_pixels && w.loading_pixels->IsInProgress()) return false;
-        return true;
-    }();
+static bool AsyncLoadsInProgress(GuiState& g) {
+    if (sample_lib_server::AreLibrariesScanning(g.shared_engine_systems.sample_library_server)) return true;
+    for (auto& pct : g.engine.sample_lib_server_async_channel.instrument_loading_percents)
+        if (pct.Load(LoadMemoryOrder::Relaxed) != -1) return true;
+    for (auto const& [_, imgs, _] : g.library_images.table) {
+        if (imgs.loading_icon && imgs.loading_icon->IsInProgress()) return true;
+        if (imgs.loading_backgrounds && imgs.loading_backgrounds->IsInProgress()) return true;
+        if (imgs.icon_load.failure == LibraryImages::LoadFailure::Unavailable) return true;
+        if (imgs.backgrounds_load.failure == LibraryImages::LoadFailure::Unavailable) return true;
+    }
+    for (auto const& [_, w, _] : g.waveform_images.table)
+        if (w.loading_pixels && w.loading_pixels->IsInProgress()) return true;
+    return false;
+}
 
-    if (!clear_this_frame) {
+static bool ScreenshotPreconditionsMet(GuiState& g) {
+    if (AsyncLoadsInProgress(g)) {
         g.screenshot_clear_since = k_nullopt;
         return false;
     }
@@ -290,4 +291,56 @@ void MaybeFireScreenshot(GuiState& g) {
     for (auto const& o : spec->overlays)
         dyn::Append(req.overlays, o);
     GuiIo().out.request_screenshot = req;
+}
+
+void MaybeWriteUiDump(GuiState& g) {
+    auto const out_path = String {GuiIo().in.ui_dump_output_path};
+    if (!out_path.size) return;
+
+    auto const loading = g.engine.pending_state_change.HasValue() || AsyncLoadsInProgress(g);
+    // Keep updating while loading so that the dump reports when loading finishes.
+    if (loading) GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+
+    auto& arena = g.scratch_arena;
+    DynamicArray<char> json_buf {arena};
+    auto writer = dyn::WriterFor(json_buf);
+    json::WriteContext ctx {.out = writer, .add_whitespace = true};
+    auto const write_json = [&]() -> ErrorCodeOr<void> {
+        TRY(json::WriteObjectBegin(ctx));
+        TRY(json::WriteKeyValue(ctx, "window_width", GuiIo().in.window_size.width));
+        TRY(json::WriteKeyValue(ctx, "window_height", GuiIo().in.window_size.height));
+        TRY(json::WriteKeyValue(ctx, "loading", loading));
+        TRY(json::WriteKeyArrayBegin(ctx, "elements"));
+        for (auto const& element : g.imgui.interactive_elements) {
+            TRY(json::WriteObjectBegin(ctx));
+            TRY(json::WriteKeyValue(ctx, "x", (s32)Round(element.rect.x)));
+            TRY(json::WriteKeyValue(ctx, "y", (s32)Round(element.rect.y)));
+            TRY(json::WriteKeyValue(ctx, "w", (s32)Round(element.rect.w)));
+            TRY(json::WriteKeyValue(ctx, "h", (s32)Round(element.rect.h)));
+            if (element.name.size) TRY(json::WriteKeyValue(ctx, "name", element.name));
+            if (element.text.size) TRY(json::WriteKeyValue(ctx, "text", element.text));
+            if (element.value.size) TRY(json::WriteKeyValue(ctx, "value", element.value));
+            if (element.tooltip.size) TRY(json::WriteKeyValue(ctx, "tooltip", element.tooltip));
+            TRY(json::WriteObjectEnd(ctx));
+        }
+        TRY(json::WriteArrayEnd(ctx));
+        TRY(json::WriteObjectEnd(ctx));
+        return k_success;
+    };
+    if (auto const r = write_json(); r.HasError()) {
+        LogError(ModuleName::Gui, "Failed to build UI dump JSON: {}", r.Error());
+        return;
+    }
+
+    if (String {json_buf} == String {g.last_ui_dump}) return;
+    dyn::Assign(g.last_ui_dump, json_buf);
+
+    // Write then rename so that readers never see a partially written file.
+    DynamicArray<char> temp_path {arena};
+    dyn::AppendSpan(temp_path, out_path);
+    dyn::AppendSpan(temp_path, ".tmp"_s);
+    if (auto const w = WriteFile(temp_path, json_buf); w.HasError())
+        LogError(ModuleName::Gui, "Failed to write UI dump: {}", w.Error());
+    else if (auto const rn = Rename(temp_path, out_path); rn.HasError())
+        LogError(ModuleName::Gui, "Failed to rename UI dump: {}", rn.Error());
 }

@@ -11,3 +11,6 @@ bool IsAnyScreenshotInProgress();
 
 void PrepareSubsystemsForScreenshot(GuiState& g);
 void MaybeFireScreenshot(GuiState& g);
+
+// Writes the interactive elements recorded this frame as JSON, if a dump path was requested.
+void MaybeWriteUiDump(GuiState& g);

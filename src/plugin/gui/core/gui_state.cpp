@@ -388,6 +388,7 @@ void GuiUpdate(GuiState& g) {
     StartFrame(g.waveform_images, *frame_input.renderer);
     DEFER { EndFrame(g.waveform_images, *frame_input.renderer, available_instruments); };
 
+    imgui.record_interactive_elements = frame_input.ui_dump_output_path.size != 0;
     imgui.BeginFrame(
         {
             .draw_background =
@@ -592,6 +593,7 @@ void GuiUpdate(GuiState& g) {
     DoDeveloperPanel(g.dev_gui);
 
     MaybeFireScreenshot(g);
+    MaybeWriteUiDump(g);
 
     prefs::WriteIfNeeded(g.prefs);
 }

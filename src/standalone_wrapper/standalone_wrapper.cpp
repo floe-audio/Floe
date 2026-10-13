@@ -217,6 +217,7 @@ struct Standalone {
     char const* app_id {};
 
     Optional<UiSize> fixed_window_size {};
+    Optional<String> ui_dump_path {};
     Optional<f64> offline_sample_rate {};
     bool headless = false;
     // Attempt to render the GUI without a window; cleared if the plugin doesn't support it.
@@ -707,6 +708,14 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
     TRY_PUGL(puglShow(standalone.gui_view, PUGL_SHOW_RAISE));
     TRY_CLAP(inst->gui->show(inst->plugin));
 
+    if (standalone.ui_dump_path) {
+        auto const floe_ext =
+            (FloeClapExtension const*)inst->plugin->get_extension(inst->plugin, k_floe_clap_extension_id);
+        if (!floe_ext || !floe_ext->set_ui_dump_path ||
+            !floe_ext->set_ui_dump_path(inst->plugin, *standalone.ui_dump_path))
+            LogWarning(ModuleName::Standalone, "Failed to set UI dump path");
+    }
+
     // Make visible to audio thread last. The Release ensures the plugin_instance pointer write
     // is visible before the state becomes Active.
     standalone.plugin_instance = inst;
@@ -858,6 +867,7 @@ struct RunOptions {
     Optional<String> preset_path;
     Optional<UiSize> fixed_window_size;
     Optional<String> app_id;
+    Optional<String> ui_dump_path;
     bool headless;
     bool midi_stdin;
 };
@@ -1141,6 +1151,7 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     }
     standalone.fixed_window_size = options.fixed_window_size;
     standalone.offscreen_gui = options.screenshot_region.HasValue();
+    standalone.ui_dump_path = options.ui_dump_path;
 
     switch (options.tail.tag) {
         case RenderTailType::Seconds: break;
@@ -1395,6 +1406,7 @@ static int Main(ArgsCstr args) {
         Preset,
         FixedWindowSize,
         AppId,
+        UiDump,
         Headless,
         MidiStdin,
         Render,
@@ -1462,6 +1474,15 @@ static int Main(ArgsCstr args) {
             .description =
                 "Override the windowing system class/app ID (Wayland xdg-shell app_id, X11 WM_CLASS, Windows window class). Defaults to 'org.floe-audio.floe'.",
             .value_type = "id",
+            .required = false,
+            .num_values = 1,
+        },
+        {
+            .id = (u32)CommandLineArgId::UiDump,
+            .key = "ui-dump",
+            .description =
+                "Write a JSON description of the GUI to the given path whenever it changes: window size, whether anything is still loading, and every interactive element's window-pixel rect with its text, name, value and tooltip. For automation tools that drive the GUI.",
+            .value_type = "path",
             .required = false,
             .num_values = 1,
         },
@@ -1618,6 +1639,7 @@ static int Main(ArgsCstr args) {
             .preset_path = cli_args[ToInt(CommandLineArgId::Preset)].Value(),
             .fixed_window_size = fixed_window_size,
             .app_id = cli_args[ToInt(CommandLineArgId::AppId)].Value(),
+            .ui_dump_path = cli_args[ToInt(CommandLineArgId::UiDump)].Value(),
             .headless = cli_args[ToInt(CommandLineArgId::Headless)].was_provided,
             .midi_stdin = midi_stdin,
         },

@@ -750,6 +750,9 @@ void Context::BeginFrame(ViewportConfig cfg, Fonts& fonts) {
     }
 
     named_rects.DeleteAll();
+    dyn::Clear(interactive_elements);
+    interactive_element_indices.DeleteAll();
+    interactive_elements_arena.ResetCursorAndConsolidateRegions();
     tab_just_used_to_focus = false;
     viewport_just_created = nullptr;
     curr_viewport = nullptr;
@@ -1246,6 +1249,15 @@ static void HandleHoverPopupMenuClosing(Context& imgui, Id id) {
 }
 
 void Context::SetHot(Rect r, Id id, bool32 is_not_viewport_content) {
+    if (record_interactive_elements && !interactive_element_indices.Find(id) &&
+        !IsBlockedByExclusiveFocus(curr_viewport)) {
+        auto visible_r = r;
+        if (Rect::Intersection(visible_r, curr_viewport->clipping_rect) && All(visible_r.size > 0.0f)) {
+            interactive_element_indices.Insert(id, interactive_elements.size);
+            dyn::Append(interactive_elements, {.id = id, .rect = visible_r});
+        }
+    }
+
     if (temp_hovered_item == id) return; // Already called SetHot this frame for this ID.
 
     if (IsBlockedByExclusiveFocus(curr_viewport)) return;
