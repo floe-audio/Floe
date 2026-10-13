@@ -1247,7 +1247,13 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
                 TRY(Required(puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, size.width, size.height)));
             }
             window.double_click_time_ms = native::DoubleClickTimeMs(window);
-            if constexpr (IS_LINUX) native::X11SetParent(window.view, puglGetParent(window.view));
+            if constexpr (IS_LINUX) {
+                native::X11SetParent(window.view, puglGetParent(window.view));
+                // Force pugl to actually apply the cursor to the window: it records arrow at creation without
+                // applying it, and skips requests that match the recorded cursor.
+                puglSetCursor(window.view, PUGL_CURSOR_CARET);
+                puglSetCursor(window.view, PUGL_CURSOR_ARROW);
+            }
         }
 
         // Start timers if needed.
