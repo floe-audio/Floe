@@ -1867,7 +1867,9 @@ bool Context::ButtonBehaviour(Rect r, Id id, ButtonConfig cfg) {
             }
 
             case MouseButtonEvent::Up: {
-                if (WasJustDeactivated(id, cfg.mouse_button) && r.Contains(GuiIo().in.cursor_pos))
+                // The cursor may have moved on since the release, especially if the GUI is slow.
+                if (WasJustDeactivated(id, cfg.mouse_button) &&
+                    r.Contains(GuiIo().in.Mouse(cfg.mouse_button).last_release.point))
                     fired = true;
                 break;
             }

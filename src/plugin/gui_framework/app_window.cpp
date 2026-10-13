@@ -351,6 +351,7 @@ EventMouseButton(AppWindow& window, PuglButtonEvent const& button_event, bool is
         btn.presses.Append(e, window.frame_state.event_arena);
     } else {
         btn.is_down = k_nullopt;
+        btn.last_release = e;
         if (btn.is_dragging) btn.dragging_ended = true;
         btn.is_dragging = false;
         btn.releases.Append(e, window.frame_state.event_arena);

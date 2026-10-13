@@ -105,6 +105,7 @@ struct GuiFrameInput {
         ArenaStack<Event> presses {}; // mouse-down events since last frame, cleared every frame
         ArenaStack<Event> releases {}; // mouse-up events since last frame, cleared every frame
         Event last_press {};
+        Event last_release {};
         Optional<Event> is_down {}; // current state
         bool is_dragging {};
         bool dragging_started {}; // cleared every frame
