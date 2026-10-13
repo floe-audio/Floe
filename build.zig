@@ -3241,7 +3241,7 @@ fn doTarget(
                     });
                     run.addArg(ctx.b.fmt("--preset={s}", .{preset_path}));
                 }
-                run.addArg("--fixed-window-size=18");
+                run.addArg("--fixed-window-size=1800");
                 run.addArg("--log-level=warning");
                 if (shot.chord.len != 0) {
                     run.addArg("--midi-stdin");

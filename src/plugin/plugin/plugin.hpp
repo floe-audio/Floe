@@ -152,6 +152,9 @@ struct FloeClapExtensionHost {
     void* pugl_world;
     void* context;
 
+    // The host has fixed the window size: don't shrink it to fit the screen or resize it from preferences.
+    bool fixed_window_size;
+
     ThreadsafeErrorNotifications* error_notifications;
 
     // All main-thread only.

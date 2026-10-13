@@ -217,6 +217,7 @@ struct Standalone {
     char const* app_id {};
 
     Optional<UiSize> fixed_window_size {};
+    bool warned_fixed_window_size_mismatch {};
     Optional<String> ui_dump_path {};
     Optional<f64> offline_sample_rate {};
     bool headless = false;
@@ -396,7 +397,24 @@ static PuglStatus OnEvent(PuglView* view, PuglEvent const* event) {
                      event->configure.style & PUGL_VIEW_STYLE_RESIZING);
             if (event->configure.style & PUGL_VIEW_STYLE_MAPPED) {
                 ASSERT(inst->gui);
-                if (inst->gui->can_resize(inst->plugin)) {
+                if (standalone.fixed_window_size) {
+                    // Commit the size as-is: adjust_size would shrink it to fit the screen.
+                    auto const fixed = *standalone.fixed_window_size;
+                    inst->gui->set_size(inst->plugin, fixed.width, fixed.height);
+
+                    auto const expected = *ClapPixelsToPhysicalPixels(view, fixed.width, fixed.height);
+                    if ((event->configure.width != expected.width ||
+                         event->configure.height != expected.height) &&
+                        !Exchange(standalone.warned_fixed_window_size_mismatch, true)) {
+                        StdPrintF(StdStream::Err,
+                                  "Warning: --fixed-window-size requested {}x{} but the window is {}x{}; the "
+                                  "window manager may have limited it to the screen\n",
+                                  expected.width,
+                                  expected.height,
+                                  event->configure.width,
+                                  event->configure.height);
+                    }
+                } else if (inst->gui->can_resize(inst->plugin)) {
                     // CLAP always wants window sizes in the OS's pixel units.
                     auto const scale_factor = puglGetScaleFactor(view);
                     auto width = (u32)(event->configure.width / scale_factor);
@@ -640,6 +658,7 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
 
     TRY(CreateGuiWorldAndView(standalone));
     inst->floe_host_ext.pugl_world = standalone.gui_world;
+    inst->floe_host_ext.fixed_window_size = standalone.fixed_window_size.HasValue();
 
     TRY_CLAP(inst->gui->create(inst->plugin, k_supported_gui_api, false));
 
@@ -1056,10 +1075,10 @@ RunOfflineRender(Standalone& standalone, RunOptions const& run_options, ArenaAll
         auto const text = TRY(ReadEntireFile(options.events_path, arena));
         auto const outcome = ParseOfflineRenderEvents(text, options.sample_rate, arena);
         if (outcome.HasError()) {
-            LogError(ModuleName::Standalone,
-                     "Events file, line {}: {}",
-                     outcome.Error().line_number,
-                     outcome.Error().message);
+            StdPrintF(StdStream::Err,
+                      "Error: events file, line {}: {}\n",
+                      outcome.Error().line_number,
+                      outcome.Error().message);
             return ErrorCode {CommonError::InvalidFileFormat};
         }
         outcome.ReleaseValue();
@@ -1075,7 +1094,7 @@ RunOfflineRender(Standalone& standalone, RunOptions const& run_options, ArenaAll
     };
 
     if (run_options.preset_path && !LoadPresetFile(inst, *run_options.preset_path)) {
-        LogError(ModuleName::Standalone, "Failed to load preset");
+        StdPrintF(StdStream::Err, "Error: failed to load preset\n");
         return ErrorCode {StandaloneError::PluginInterfaceError};
     }
 
@@ -1089,7 +1108,7 @@ RunOfflineRender(Standalone& standalone, RunOptions const& run_options, ArenaAll
             service_main_thread_callbacks();
             if (!floe_ext->state_change_is_pending(inst.plugin)) break;
             if ((TimePoint::Now() - start) > k_timeout_seconds) {
-                LogError(ModuleName::Standalone, "Timed out waiting for the preset's libraries to load");
+                StdPrintF(StdStream::Err, "Error: timed out waiting for the preset's libraries to load\n");
                 return ErrorCode {StandaloneError::PluginInterfaceError};
             }
             SleepThisThread(5);
@@ -1463,8 +1482,8 @@ static int Main(ArgsCstr args) {
             .id = (u32)CommandLineArgId::FixedWindowSize,
             .key = "fixed-window-size",
             .description =
-                "Force a fixed (non-resizable) window size. The value is the abstract size number from the 'Window size' field in Floe's preferences.",
-            .value_type = "size",
+                "Force a fixed (non-resizable) window width in pixels; the height follows the GUI's 10:7 aspect ratio. Must be a multiple of 10. Floe doesn't shrink the window to fit the screen, but the window manager may; a warning is printed if the window ends up a different size.",
+            .value_type = "width",
             .required = false,
             .num_values = 1,
         },
@@ -1548,25 +1567,27 @@ static int Main(ArgsCstr args) {
     auto const screenshot_region = cli_args[ToInt(CommandLineArgId::Screenshot)].Value();
     auto const screenshot_out_path = cli_args[ToInt(CommandLineArgId::ScreenshotOut)].Value();
     if (screenshot_region.HasValue() != screenshot_out_path.HasValue()) {
-        LogError(ModuleName::Standalone, "--screenshot and --screenshot-out must be provided together");
+        StdPrintF(StdStream::Err, "Error: --screenshot and --screenshot-out must be provided together\n");
         return 1;
     }
 
     Optional<UiSize> fixed_window_size {};
     if (auto const width_str = cli_args[ToInt(CommandLineArgId::FixedWindowSize)].Value()) {
-        auto const parsed = ParseInt(*width_str, ParseIntBase::Decimal);
-        s64 pixels;
-        if (!parsed || __builtin_mul_overflow(*parsed, k_window_width_step, &pixels) ||
-            pixels < k_min_gui_width || pixels > (s64)k_max_gui_width) {
-            LogError(ModuleName::Standalone,
-                     "Invalid --fixed-window-size '{}': value * {} pixels must be in [{}, {}]",
-                     *width_str,
-                     k_window_width_step,
-                     k_min_gui_width,
-                     k_max_gui_width);
+        auto const width = ParseInt(*width_str, ParseIntBase::Decimal);
+        if (!width || *width < k_min_gui_width || *width > (s64)k_max_gui_width ||
+            *width % k_gui_aspect_ratio.width != 0) {
+            StdPrintF(
+                StdStream::Err,
+                "Error: invalid --fixed-window-size '{}': must be a width in pixels that is a multiple of "
+                "{}, in [{}, {}]\n",
+                *width_str,
+                k_gui_aspect_ratio.width,
+                k_min_gui_width,
+                k_max_gui_width);
             return 1;
         }
-        fixed_window_size = SizeWithAspectRatio((u16)pixels, k_gui_aspect_ratio);
+        fixed_window_size = SizeWithAspectRatio((u16)*width, k_gui_aspect_ratio);
+        ASSERT_EQ(fixed_window_size->width, *width);
     }
 
     auto const midi_stdin = cli_args[ToInt(CommandLineArgId::MidiStdin)].was_provided;
@@ -1578,12 +1599,12 @@ static int Main(ArgsCstr args) {
         auto const sample_rate_str = cli_args[ToInt(CommandLineArgId::SampleRate)].Value();
         if (out_path) {
             if (!events_path) {
-                LogError(ModuleName::Standalone, "--render requires --events");
+                StdPrintF(StdStream::Err, "Error: --render requires --events\n");
                 return 1;
             }
             if (midi_stdin || screenshot_region) {
-                LogError(ModuleName::Standalone,
-                         "--render can't be combined with --midi-stdin or --screenshot");
+                StdPrintF(StdStream::Err,
+                          "Error: --render can't be combined with --midi-stdin or --screenshot\n");
                 return 1;
             }
             result = OfflineRenderOptions {
@@ -1594,15 +1615,15 @@ static int Main(ArgsCstr args) {
             if (sample_rate_str) {
                 auto const sample_rate = ParseWholeFloat(*sample_rate_str);
                 if (!sample_rate || !(*sample_rate >= 8000 && *sample_rate <= 384000)) {
-                    LogError(ModuleName::Standalone,
-                             "Invalid --sample-rate '{}': must be in [8000, 384000]",
-                             *sample_rate_str);
+                    StdPrintF(StdStream::Err,
+                              "Error: invalid --sample-rate '{}': must be in [8000, 384000]\n",
+                              *sample_rate_str);
                     return 1;
                 }
                 result->sample_rate = *sample_rate;
             }
         } else if (events_path || sample_rate_str) {
-            LogError(ModuleName::Standalone, "--events and --sample-rate require --render");
+            StdPrintF(StdStream::Err, "Error: --events and --sample-rate require --render\n");
             return 1;
         }
         result;
@@ -1613,14 +1634,15 @@ static int Main(ArgsCstr args) {
             offline_render ? RenderTail {RenderTailUntilSilent {.threshold_db = -90}} : RenderTail {0.25};
         if (auto const tail_str = cli_args[ToInt(CommandLineArgId::Tail)].Value()) {
             if (!offline_render && !midi_stdin) {
-                LogError(ModuleName::Standalone, "--tail requires --render or --midi-stdin");
+                StdPrintF(StdStream::Err, "Error: --tail requires --render or --midi-stdin\n");
                 return 1;
             }
             auto const parsed = ParseRenderTail(*tail_str);
             if (!parsed) {
-                LogError(ModuleName::Standalone,
-                         "Invalid --tail '{}': expected seconds in [0, 3600] or a threshold like -90dB",
-                         *tail_str);
+                StdPrintF(
+                    StdStream::Err,
+                    "Error: invalid --tail '{}': expected seconds in [0, 3600] or a threshold like -90dB\n",
+                    *tail_str);
                 return 1;
             }
             result = *parsed;
@@ -1645,7 +1667,7 @@ static int Main(ArgsCstr args) {
         },
         arena);
     if (o.HasError()) {
-        LogError(ModuleName::Standalone, "Standalone error: {}", o.Error());
+        StdPrintF(StdStream::Err, "Error: {}\n", o.Error());
         return 1;
     }
     return 0;

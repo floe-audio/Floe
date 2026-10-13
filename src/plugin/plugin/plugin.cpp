@@ -490,6 +490,12 @@ static bool ClapGuiGetResizeHints(clap_plugin_t const* plugin, clap_gui_resize_h
     }
 }
 
+static bool HostFixedWindowSize(FloePluginInstance const& floe) {
+    auto const floe_host =
+        (FloeClapExtensionHost const*)floe.host.get_extension(&floe.host, k_floe_clap_extension_id);
+    return floe_host && floe_host->fixed_window_size;
+}
+
 static Optional<UiSize>
 GetUsableSizeWithinClapDimensions(AppWindow& app_window, u32 clap_width, u32 clap_height) {
     auto const size = ClapPixelsToPhysicalPixels(app_window.view, clap_width, clap_height);
@@ -639,8 +645,8 @@ static bool ClapGuiShow(clap_plugin_t const* plugin) {
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         // It may be possible that the size is invalid, we check that here to be sure.
-        if (floe.app_window->offscreen) {
-            // There's no screen or host window to fit.
+        if (floe.app_window->offscreen || HostFixedWindowSize(floe)) {
+            // There's no screen or host window to fit, or the host has deliberately chosen the size.
         } else if (auto const size = GetSize(*floe.app_window); size.width < k_min_gui_width) {
             auto const new_size = DefaultUiSize(*floe.app_window);
             ASSERT(new_size.width >= k_min_gui_width);
@@ -1956,7 +1962,7 @@ void OnPollThread(FloeInstanceIndex index) {
 
 static void
 HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, prefs::Value const* value) {
-    if (!floe.app_window || floe.app_window->offscreen) return;
+    if (!floe.app_window || floe.app_window->offscreen || HostFixedWindowSize(floe)) return;
 
     auto const host_gui = (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI);
     if (!host_gui) return;
