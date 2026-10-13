@@ -23,6 +23,11 @@ constexpr f32 k_max_gui_size_screen_fraction = 0.6f;
 
 struct NativeAppWindowState;
 
+struct DeferredMouseEvent {
+    PuglEvent event;
+    TimePoint time;
+};
+
 struct AppWindow {
     static constexpr uintptr k_pugl_timer_id = 200;
     static constexpr char const* k_window_class_name = "FloeSampler";
@@ -38,6 +43,7 @@ struct AppWindow {
     f64 double_click_time_ms {300.0};
     GuiFrameOutput last_result {};
     GuiFrameInput frame_state {};
+    DynamicArrayBounded<DeferredMouseEvent, 64> deferred_mouse_events {};
     Optional<GuiState> gui {};
     Optional<clap_id> clap_timer_id {};
     Optional<int> clap_posix_fd {};
