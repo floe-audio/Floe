@@ -40,6 +40,7 @@ void SharedEngineSystems::StartPollingThreadIfNeeded() {
 
 void SharedEngineSystems::AddMirageFoldersIfNeeded() {
     if constexpr (IS_LINUX) return; // Mirage didn't exist on Linux.
+    if (FloeHomeOverride()) return;
 
     // When Mirage opens, it scans its libraries/presets folder and adds all the paths to its
     // preferences file. It's possible that Mirage hasn't been opened after libraries/presets were

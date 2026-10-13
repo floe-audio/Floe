@@ -18,11 +18,10 @@ constexpr String k_cache_filename = "library_id_cache.bin"_s;
 String LibraryIdCachePath(ArenaAllocator& arena, bool create_parent_dir) {
     DynamicArrayBounded<char, Kb(1)> error_log;
     auto writer = dyn::WriterFor(error_log);
-    auto const path = KnownDirectoryWithSubdirectories(arena,
-                                                       KnownDirectoryType::UserData,
-                                                       Array {"Floe"_s},
-                                                       k_cache_filename,
-                                                       {.create = create_parent_dir, .error_log = &writer});
+    auto const path = FloeKnownDirectory(arena,
+                                         FloeKnownDirectoryType::State,
+                                         k_cache_filename,
+                                         {.create = create_parent_dir, .error_log = &writer});
     return path;
 }
 

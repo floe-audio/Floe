@@ -122,10 +122,60 @@ MutableString KnownDirectoryWithSubdirectories(Allocator& a,
     return full_path;
 }
 
+Optional<String> FloeHomeOverride() {
+    static Optional<String> const result = []() -> Optional<String> {
+        static FixedSizeAllocator<1000> allocator {&PageAllocator::Instance()};
+        auto const value = GetEnvironmentVariable("FLOE_HOME", allocator);
+        if (!value || !value->size) return k_nullopt;
+        auto const absolute = TRY_OR(AbsolutePath(allocator, *value), return k_nullopt);
+        return (String)absolute;
+    }();
+    return result;
+}
+
+static Optional<String> FloeHomeSubdirectory(FloeKnownDirectoryType type) {
+    switch (type) {
+        case FloeKnownDirectoryType::Logs: return "Logs"_s;
+        case FloeKnownDirectoryType::Preferences: return "Preferences"_s;
+        case FloeKnownDirectoryType::Libraries: return "Libraries"_s;
+        case FloeKnownDirectoryType::Presets: return "Presets"_s;
+        case FloeKnownDirectoryType::Autosaves: return "Autosaves"_s;
+        case FloeKnownDirectoryType::State: return "State"_s;
+        case FloeKnownDirectoryType::MirageDefaultLibraries:
+        case FloeKnownDirectoryType::MirageDefaultPresets: return k_nullopt;
+    }
+    PanicIfReached();
+}
+
 MutableString FloeKnownDirectory(Allocator& a,
                                  FloeKnownDirectoryType type,
                                  Optional<String> filename,
                                  KnownDirectoryOptions options) {
+    if (auto const home = FloeHomeOverride()) {
+        if (auto const subdirectory = FloeHomeSubdirectory(type)) {
+            DynamicArrayBounded<String, 3> parts;
+            dyn::Append(parts, *home);
+            dyn::Append(parts, *subdirectory);
+            if (filename) dyn::Append(parts, *filename);
+            auto const result = path::Join(a, parts);
+            if (options.create) {
+                auto const dir = filename ? *path::Directory(result) : (String)result;
+                auto const o = CreateDirectory(dir,
+                                               {
+                                                   .create_intermediate_directories = true,
+                                                   .fail_if_exists = false,
+                                               });
+                if (o.HasError() && options.error_log) {
+                    auto _ = fmt::FormatToWriter(*options.error_log,
+                                                 "Failed to create directory '{}': {}\n",
+                                                 dir,
+                                                 o.Error());
+                }
+            }
+            return result;
+        }
+    }
+
     KnownDirectoryType known_dir_type {};
     Span<String const> subdirectories {};
     switch (type) {
@@ -161,6 +211,12 @@ MutableString FloeKnownDirectory(Allocator& a,
         case FloeKnownDirectoryType::Autosaves: {
             known_dir_type = KnownDirectoryType::GlobalData;
             static constexpr auto k_dirs = Array {"Floe"_s, "Autosaves"};
+            subdirectories = k_dirs;
+            break;
+        }
+        case FloeKnownDirectoryType::State: {
+            known_dir_type = KnownDirectoryType::UserData;
+            static constexpr auto k_dirs = Array {"Floe"_s};
             subdirectories = k_dirs;
             break;
         }

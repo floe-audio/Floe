@@ -12,11 +12,7 @@
 namespace sentry {
 
 String DeviceIdPath(ArenaAllocator& arena, bool create) {
-    return KnownDirectoryWithSubdirectories(arena,
-                                            KnownDirectoryType::UserData,
-                                            Array {"Floe"_s},
-                                            "device_id",
-                                            {.create = create});
+    return FloeKnownDirectory(arena, FloeKnownDirectoryType::State, "device_id"_s, {.create = create});
 }
 
 // A random string that we save to disk to identify if errors occur for multiple 'users'.

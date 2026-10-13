@@ -442,11 +442,10 @@ static Optional<String> StorePath(ArenaAllocator& arena) {
     DynamicArrayBounded<char, Kb(1)> error_log;
     auto writer = dyn::WriterFor(error_log);
 
-    auto const result = KnownDirectoryWithSubdirectories(arena,
-                                                         KnownDirectoryType::UserData,
-                                                         Array {"Floe"_s},
-                                                         "standalone_persistent_store",
-                                                         {.create = true, .error_log = &writer});
+    auto const result = FloeKnownDirectory(arena,
+                                           FloeKnownDirectoryType::State,
+                                           "standalone_persistent_store"_s,
+                                           {.create = true, .error_log = &writer});
     if (error_log.size) {
         ReportError(ErrorLevel::Warning,
                     HashFnv1a("persistent store path"),
