@@ -482,7 +482,7 @@ static ErrorCodeOr<String> ReaderInstallComponent(PackageReader& package,
 
 #define TRY_J(expression)                                                                                    \
     TRY_OR(expression, {                                                                                     \
-        fmt::Append(job.error_buffer, "{}\n", error);                                                        \
+        fmt::Append(job.error_buffer, "{u}\n", error);                                                       \
         return InstallJob::State::DoneError;                                                                 \
     })
 
@@ -517,14 +517,14 @@ static bool MirageIsInstalled() {
 
 static InstallJob::State OpenPackageFile(InstallJob& job) {
     job.file_reader = TRY_OR(Reader::FromFile(job.path), {
-        fmt::Append(job.error_buffer, "Couldn't read file {}: {}\n", path::Filename(job.path), error);
+        fmt::Append(job.error_buffer, "Couldn't read file: {u}\n", error);
         return InstallJob::State::DoneError;
     });
 
     if (encrypted_package::HasEncryptedPackageExtension(job.path)) {
         job.is_encrypted = true;
         job.encrypted_header = TRY_OR(encrypted_package::ReadHeader(*job.file_reader), {
-            fmt::Append(job.error_buffer, "Invalid encrypted package: {}\n", error);
+            fmt::Append(job.error_buffer, "Invalid encrypted package: {u}\n", error);
             return InstallJob::State::DoneError;
         });
         return InstallJob::State::AwaitingLicenseKey;
@@ -999,7 +999,7 @@ ResumeWithMatchedLicense(InstallJob& job, license::LicensePayload const& payload
     if (dr_result.HasError()) {
         job.file_reader = Move(job.encrypted_file_reader);
         dyn::Clear(job.error_buffer);
-        fmt::Append(job.error_buffer, "Failed to set up decryption: {}", dr_result.Error());
+        fmt::Append(job.error_buffer, "Failed to set up decryption: {u}", dr_result.Error());
         return false;
     }
     job.decrypting_reader = dr_result.Value();
@@ -1033,7 +1033,7 @@ bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
     auto const license_result = license::ParseAndVerify(job.pasted_license_text);
     if (license_result.HasError()) {
         dyn::Clear(job.error_buffer);
-        fmt::Append(job.error_buffer, "Invalid license key: {}", license_result.Error());
+        fmt::Append(job.error_buffer, "Invalid license key: {u}", license_result.Error());
         return false;
     }
 

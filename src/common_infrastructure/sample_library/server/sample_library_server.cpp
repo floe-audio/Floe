@@ -789,7 +789,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     DEFER { error_notifications.EndWriteError(*err); };
                     err->error_code = CommonError::NotFound;
                     auto const lib_name = sample_lib::LookupLibraryIdString(library_id).ValueOr("Unknown"_s);
-                    fmt::Assign(err->title, "{} library not found"_s, lib_name);
+                    dyn::AssignFitInCapacity(err->title, "Library not found"_s);
                     fmt::Assign(
                         err->message,
                         "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
@@ -840,7 +840,11 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     } else {
                         if (auto err = error_notifications.BeginWriteError(find_inst_error_id)) {
                             DEFER { error_notifications.EndWriteError(*err); };
-                            fmt::Assign(err->title, "Cannot find instrument \"{}\""_s, inst_id);
+                            dyn::AssignFitInCapacity(err->title, "Instrument not found"_s);
+                            fmt::Assign(err->message,
+                                        "\"{}\" in library \"{}\" could not be found.",
+                                        inst_id,
+                                        sample_lib::LookupLibraryIdString(library_id).ValueOr("Unknown"));
                             err->error_code = CommonError::NotFound;
                         }
 
@@ -868,9 +872,9 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     } else {
                         if (auto err = error_notifications.BeginWriteError(find_ir_error_id)) {
                             DEFER { error_notifications.EndWriteError(*err); };
-                            fmt::Assign(err->title, "Cannot find IR \"{}\""_s, ir_id.ir_id);
+                            dyn::AssignFitInCapacity(err->title, "IR not found"_s);
                             fmt::Assign(err->message,
-                                        "Could not find reverb impulse response: {}, in library: {}",
+                                        "\"{}\" in library \"{}\" could not be found.",
                                         ir_id.ir_id,
                                         sample_lib::LookupLibraryIdString(library_id).ValueOr("Unknown"));
                             err->error_code = CommonError::NotFound;
