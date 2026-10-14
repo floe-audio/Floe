@@ -71,7 +71,7 @@ struct BrowserPopupContext;
 struct BrowserPopupOptions;
 
 // Off: results on the left, under the opener, with filters to their right. On: the mirror image.
-constexpr bool k_browser_results_panel_on_right = true;
+constexpr bool k_browser_results_panel_on_right = false;
 
 // A panel's tooltips go beyond the browser's edge on that panel's side.
 constexpr auto k_browser_results_tooltip_placement =
