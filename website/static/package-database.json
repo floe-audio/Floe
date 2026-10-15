@@ -404,5 +404,21 @@
         "instruments": 30,
         "presets": 81,
         "irs": 0
+    },
+    {
+        "name": "Helsinki 1967 Tube/Ribbon Edition upright piano",
+        "slug": "helsinki-1967",
+        "last_updated": "2026-10-11",
+        "developer": "Mikko Patama",
+        "developer_website": "https://www.mikkopatama.com/helsinki1967",
+        "background_image": "https://mikkopatama.com/helsinki1967/img/piano.jpg",
+        "attribution_required": false,
+        "description": "Small Finnish upright piano sampled with vintage-style tube and ribbon mics. Original focus in high-quality mono samples, stereo ribbon also included.",
+        "category": "community",
+        "direct_download_link": null,
+        "external_product_page": "https://www.mikkopatama.com/helsinki1967#download",
+        "instruments": 8,
+        "presets": 5,
+        "irs": 6
     }
 ]
