@@ -9,6 +9,7 @@
 #include "common_infrastructure/encrypted_package.hpp"
 #include "common_infrastructure/error_reporting.hpp"
 #include "common_infrastructure/license.hpp"
+#include "common_infrastructure/state/state_coding.hpp"
 
 namespace fmt {
 
@@ -806,6 +807,15 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
     return InstallJob::State::Installing;
 }
 
+static String FirstPresetAlphabetically(Component const& component) {
+    String first {};
+    for (auto const& [relative_path, _, _] : component.checksum_values) {
+        if (!PresetFormatFromPath(relative_path)) continue;
+        if (!first.size || CompareCaseInsensitiveAscii(relative_path, first) < 0) first = relative_path;
+    }
+    return first;
+}
+
 static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
     for (auto& component : job.components) {
         if (job.abort.Load(LoadMemoryOrder::Acquire)) {
@@ -866,12 +876,16 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
             case ComponentType::Presets: {
                 RescanFolder(job.preset_server, component.install_config.folder);
 
-                if (component.component.preset_bank && component.component.preset_bank->default_preset.size) {
-                    auto const path = path::Join(
-                        job.arena,
-                        Array {component.installed_path, component.component.preset_bank->default_preset});
-                    if (GetFileType(path).ValueOr(FileType::Directory) == FileType::File)
-                        component.suggested_default_preset_path = path;
+                if (auto const& bank = component.component.preset_bank) {
+                    auto const default_preset = bank->default_preset.size
+                                                    ? bank->default_preset
+                                                    : FirstPresetAlphabetically(component.component);
+                    if (default_preset.size) {
+                        auto const path =
+                            path::Join(job.arena, Array {component.installed_path, default_preset});
+                        if (GetFileType(path).ValueOr(FileType::Directory) == FileType::File)
+                            component.suggested_default_preset_path = path;
+                    }
                 }
                 break;
             }
@@ -1602,7 +1616,8 @@ TEST_CASE(TestPackageInstallationDefaultPresetSuggestion) {
     constexpr String k_presets_folder_name = "suggesting-presets";
     constexpr String k_preset_filename = "sine.floe-preset";
 
-    auto const create_zip_file = [&](String default_preset) -> ErrorCodeOr<String> {
+    auto const create_zip_file = [&](String default_preset,
+                                     bool with_bank_ini = true) -> ErrorCodeOr<String> {
         DynamicArray<u8> data {tester.scratch_arena};
         auto writer = dyn::WriterFor(data);
         auto package = WriterCreate(writer);
@@ -1612,18 +1627,29 @@ TEST_CASE(TestPackageInstallationDefaultPresetSuggestion) {
             (String)path::Join(tester.scratch_arena,
                                Array {tests::TempFolderUnique(tester), k_presets_folder_name});
         TRY(CreateDirectory(folder, {.create_intermediate_directories = false}));
-        TRY(CopyFile(
-            path::Join(
-                tester.scratch_arena,
-                Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir, k_preset_filename}),
-            path::Join(tester.scratch_arena, Array {folder, k_preset_filename}),
-            ExistingDestinationHandling::Fail));
-        TRY(WriteFile(path::Join(tester.scratch_arena, Array {folder, k_preset_bank_filename}),
-                      fmt::Format(tester.scratch_arena,
-                                  "revision = 1\n"_s
-                                  "id = org.floe-audio.test-default-preset\n"
-                                  "default_preset = {}\n",
-                                  default_preset)));
+        auto const source_preset = path::Join(
+            tester.scratch_arena,
+            Array {tests::TestFilesFolder(tester), tests::k_preset_test_files_subdir, k_preset_filename});
+        TRY(CopyFile(source_preset,
+                     path::Join(tester.scratch_arena, Array {folder, k_preset_filename}),
+                     ExistingDestinationHandling::Fail));
+        TRY(CreateDirectory(path::Join(tester.scratch_arena, Array {folder, "Bass"_s}),
+                            {.create_intermediate_directories = false}));
+        TRY(CopyFile(source_preset,
+                     path::Join(tester.scratch_arena, Array {folder, "Bass"_s, "zeta.floe-preset"_s}),
+                     ExistingDestinationHandling::Fail));
+        TRY(WriteFile(path::Join(tester.scratch_arena, Array {folder, "Alpha.txt"_s}), "not a preset"_s));
+        if (with_bank_ini) {
+            TRY(WriteFile(path::Join(tester.scratch_arena, Array {folder, k_preset_bank_filename}),
+                          fmt::Format(tester.scratch_arena,
+                                      "revision = 1\n"_s
+                                      "id = org.floe-audio.test-default-preset\n"
+                                      "{}",
+                                      default_preset.size ? (String)fmt::Format(tester.scratch_arena,
+                                                                                "default_preset = {}\n",
+                                                                                default_preset)
+                                                          : ""_s)));
+        }
         TRY(WriterAddPresetsFolder(package, folder, tester.scratch_arena, "tester"));
 
         WriterFinalise(package);
@@ -1650,6 +1676,42 @@ TEST_CASE(TestPackageInstallationDefaultPresetSuggestion) {
         REQUIRE(comp.suggested_default_preset_path.size);
         CHECK_EQ(TRY(GetFileType(comp.suggested_default_preset_path)), FileType::File);
         CHECK(path::IsWithinDirectory(comp.suggested_default_preset_path, destination_folder));
+    }
+
+    SUBCASE("without a default_preset, the first preset alphabetically is suggested") {
+        CreateJobOptions job_opts {
+            .package_path = TRY(create_zip_file({})),
+            .install_folders = {destination_folder, destination_folder},
+            .sample_lib_server = server,
+            .preset_server = preset_server,
+        };
+
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+
+        auto const& comp = job->components.first->data;
+        REQUIRE(comp.suggested_default_preset_path.size);
+        CHECK_EQ(TRY(GetFileType(comp.suggested_default_preset_path)), FileType::File);
+        CHECK(path::Equal(path::Filename(comp.suggested_default_preset_path), "zeta.floe-preset"_s));
+    }
+
+    SUBCASE("without a preset bank ini, nothing is suggested") {
+        CreateJobOptions job_opts {
+            .package_path = TRY(create_zip_file({}, false)),
+            .install_folders = {destination_folder, destination_folder},
+            .sample_lib_server = server,
+            .preset_server = preset_server,
+        };
+
+        auto const job = CreateInstallJob(tester.scratch_arena, job_opts);
+        DEFER { DestroyInstallJob(job); };
+        DoJobPhase1(*job);
+        CHECK_EQ(job->state.Load(LoadMemoryOrder::Acquire), InstallJob::State::DoneSuccess);
+
+        auto const& comp = job->components.first->data;
+        CHECK_EQ(comp.suggested_default_preset_path.size, 0uz);
     }
 
     SUBCASE("a suggestion naming a missing file is ignored") {
