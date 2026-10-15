@@ -765,6 +765,28 @@ static void AppendNoteOffEvent(AudioProcessor& processor, ProcessBlockChanges& c
     }
 }
 
+// Silences immediately, with no release. A latched layer would otherwise refuse the next note-on since its
+// latch voice no longer exists.
+static void ChokeChannelNotes(AudioProcessor& processor, Optional<u4> channel) {
+    auto& note_state = processor.audio_processing_context.midi_note_state;
+    for (auto const chan : Range(16u)) {
+        if (channel && chan != *channel) continue;
+        note_state.keys_held[chan].ClearAll();
+        note_state.sustain_keys[chan].ClearAll();
+    }
+
+    if (channel) {
+        for (auto& v : processor.voice_pool.EnumerateActiveVoices())
+            if (v.midi_key_trigger.channel == *channel) EndVoiceInstantly(v);
+    } else {
+        processor.voice_pool.EndAllVoicesInstantly();
+    }
+
+    if (!note_state.NotesCurrentlyHeldAllChannels().AnyValuesSet())
+        for (auto& layer : processor.layer_processors)
+            layer.monophonic_latch = false;
+}
+
 static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
@@ -830,20 +852,10 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             auto const note = (clap_event_note const&)event;
 
             if (note.key == -1) {
-                if (note.channel == -1) {
-                    for (auto const chan : Range(16u)) {
-                        processor.audio_processing_context.midi_note_state.keys_held[chan].ClearAll();
-                        processor.audio_processing_context.midi_note_state.sustain_keys[chan].ClearAll();
-                    }
-                    processor.voice_pool.EndAllVoicesInstantly();
-                } else if (note.channel >= 0 && note.channel < 16) {
-                    processor.audio_processing_context.midi_note_state.keys_held[(usize)note.channel]
-                        .ClearAll();
-                    processor.audio_processing_context.midi_note_state.sustain_keys[(usize)note.channel]
-                        .ClearAll();
-                    for (auto& v : processor.voice_pool.EnumerateActiveVoices())
-                        if (v.midi_key_trigger.channel == note.channel) EndVoiceInstantly(v);
-                }
+                if (note.channel == -1)
+                    ChokeChannelNotes(processor, k_nullopt);
+                else if (note.channel >= 0 && note.channel < 16)
+                    ChokeChannelNotes(processor, (u4)note.channel);
             } else if (note.key < 128 && note.key >= 0) {
                 if (note.channel == -1) {
                     for (auto const chan : Range(16u)) {
@@ -982,6 +994,23 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                         });
                     };
 
+                    auto const release_all_notes = [&](u4 notes_channel) {
+                        auto const notes_to_end = context.midi_note_state.HandleAllNotesOff(notes_channel);
+                        notes_to_end.ForEachSetBit([&](usize note) {
+                            AppendNoteOffEvent(processor,
+                                               changes,
+                                               {
+                                                   .velocity = 0.0f,
+                                                   .offset = event.time - block_start_frame,
+                                                   .note = {CheckedCast<u7>(note), notes_channel},
+                                                   .type = NoteEvent::Type::Off,
+                                               });
+                        });
+                    };
+
+                    if (cc_num == 120) ChokeChannelNotes(processor, channel);
+                    if (cc_num == 123) release_all_notes(channel);
+
                     if (cc_num == 64) {
                         // In MPE mode, sustain on a zone's master channel applies to the whole zone.
                         auto const sustain_channels = ({
@@ -1027,19 +1056,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                             context.mpe.HandleRpn(channel, *rpn);
                             (prev_zone_channels ^ context.mpe.AllZoneChannels())
                                 .ForEachSetBit([&](usize changed_channel) {
-                                    auto const notes_to_end =
-                                        context.midi_note_state.HandleAllNotesOff((u4)changed_channel);
-                                    notes_to_end.ForEachSetBit([&](usize note) {
-                                        AppendNoteOffEvent(
-                                            processor,
-                                            changes,
-                                            {
-                                                .velocity = 0.0f,
-                                                .offset = event.time - block_start_frame,
-                                                .note = {CheckedCast<u7>(note), (u4)changed_channel},
-                                                .type = NoteEvent::Type::Off,
-                                            });
-                                    });
+                                    release_all_notes((u4)changed_channel);
                                     context.mpe.ResetChannelExpression((u4)changed_channel);
                                     context.pitchwheel_position[changed_channel] = 0.0f;
                                 });
@@ -1739,7 +1756,13 @@ static bool EventChangesNotes(clap_event_header const& event) {
             };
             auto const type = message.Type();
             if (type == MidiMessageType::NoteOn || type == MidiMessageType::NoteOff) return true;
-            return type == MidiMessageType::ControlChange && message.CCNum() == 64;
+            if (type != MidiMessageType::ControlChange) return false;
+            switch (message.CCNum()) {
+                case 64:
+                case 120:
+                case 123: return true;
+            }
+            return false;
         }
     }
     return false;

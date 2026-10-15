@@ -18,6 +18,7 @@ For instance: 0.0.1. Don't change the headings.
 - Fix clicks sometimes being ignored when Floe is busy, for example very quick clicks or moving the mouse away straight after clicking
 - Fix notes looping forever when a loop mode is set but the volume envelope is off
 - Fix the arpeggiator's step right-click menu not opening in Overview
+- Respond to MIDI All Notes Off (CC 123) and All Sound Off (CC 120), so a DAW or controller's panic or stop can silence stuck notes
 - Fix renders sometimes coming out with different random variations (grains, random LFO shapes, the arpeggiator's Humanise and Random orders, and more) depending on your DAW's buffer size, such as between playback and bouncing. Some DAW projects that use these may play a different variation than in earlier versions
 - Make error messages easier to read: short titles, no repeated package names, and no internal source code details
 - Installing a preset bank that doesn't name a default preset now suggests its first preset alphabetically, so a blank Floe opens straight onto something playable

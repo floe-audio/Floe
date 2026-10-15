@@ -30,8 +30,7 @@ struct MidiNoteState {
         return Exchange(sustain_keys[channel], {});
     }
 
-    // Ends every held-down and sustained note on a channel, and resets sustain to off. Used when a
-    // channel enters or leaves MPE Zone control, to avoid hanging notes across the reconfiguration.
+    // Ends every held-down and sustained note on a channel, and resets sustain to off.
     Bitset<128> HandleAllNotesOff(u4 channel) {
         sustain_pedal_on.Clear(channel);
         return Exchange(keys_held[channel], {}) | Exchange(sustain_keys[channel], {});

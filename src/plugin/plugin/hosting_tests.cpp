@@ -763,6 +763,43 @@ TEST_CASE(TestHostingClap) {
                     }
                 }
 
+                SUBCASE("all notes off and all sound off") {
+                    auto const tail_peak = [&](Optional<u7> cc_num) {
+                        EventQueue events {};
+                        events.AppendMidiMessage(tester.scratch_arena, 0, MidiMessage::NoteOn(60, 100, 3));
+                        if (cc_num) {
+                            MidiMessage cc {};
+                            cc.SetTypeAndChannelNum(MidiMessageType::ControlChange, 3);
+                            cc.SetCCNum(*cc_num);
+                            events.AppendMidiMessage(tester.scratch_arena, 4410, cc);
+                        }
+                        auto const output = ProcessWithState(tester,
+                                                             plugin,
+                                                             test_host,
+                                                             StateProperties::Sine,
+                                                             {
+                                                                 .seed = 0x5107,
+                                                                 .num_frames = 88200,
+                                                                 .num_channels = 2,
+                                                                 .sample_rate = 44100,
+                                                                 .min_block_size = 1,
+                                                                 .max_block_size = 1024,
+                                                                 .constant_block_size = 0,
+                                                                 .events = events,
+                                                                 .capture_output = true,
+                                                             });
+                        f32 peak = 0;
+                        for (auto const channel : output)
+                            for (auto const sample : channel.SubSpan(77175))
+                                peak = Max(peak, Abs(sample));
+                        return peak;
+                    };
+
+                    CHECK_GT(tail_peak(k_nullopt), 0.01f);
+                    CHECK_LT(tail_peak((u7)123), 0.0001f);
+                    CHECK_LT(tail_peak((u7)120), 0.0001f);
+                }
+
                 SUBCASE("note on") {
                     EventQueue events {};
                     events.AppendMidiMessage(tester.scratch_arena, 0, MidiMessage::NoteOn(60, 100, 0));
