@@ -747,6 +747,7 @@ struct Context {
 
     void OpenModalViewport(Id id);
     bool IsModalOpen(Id id) const;
+    bool IsTopModal(Id id) const;
     bool IsAnyModalOpen();
     void CloseModal(Id id);
     void CloseTopModal();

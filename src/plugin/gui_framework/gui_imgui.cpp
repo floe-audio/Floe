@@ -2520,6 +2520,8 @@ bool Context::IsModalOpen(Id id) const {
     return false;
 }
 
+bool Context::IsTopModal(Id id) const { return open_modals.size && Last(open_modals)->id == id; }
+
 bool Context::IsAnyModalOpen() { return open_modals.size; }
 
 void Context::CloseModal(Id id) {

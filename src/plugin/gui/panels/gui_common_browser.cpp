@@ -5323,8 +5323,10 @@ void DoBrowserOpenerViewport(GuiBuilder& builder, BrowserOpenerViewportOptions c
         .scrollbar_visibility = imgui::ViewportScrollbarVisibility::Never,
     };
 
+    // Only while the browser is on top: another modal stacked above it (e.g. the save panel) must cover the
+    // opener and the outline along with the browser.
     auto const browser_id = options.browser_id;
-    auto const browser_open = builder.imgui.IsModalOpen(browser_id);
+    auto const browser_on_top = builder.imgui.IsTopModal(browser_id);
     auto const draw_background = [browser_id](imgui::Context const& imgui) {
         auto const r = imgui.curr_viewport->unpadded_bounds;
         imgui.draw_list->AddRectFilled(r,
@@ -5332,7 +5334,7 @@ void DoBrowserOpenerViewport(GuiBuilder& builder, BrowserOpenerViewportOptions c
                                        WwToPixels(k_corner_rounding),
                                        BrowserOpenerCornersToRound(imgui, browser_id, r));
     };
-    if (browser_open) {
+    if (browser_on_top) {
         cfg.mode = imgui::ViewportMode::Floating;
         cfg.draw_background = draw_background;
         cfg.z_order = 100;
@@ -5341,7 +5343,7 @@ void DoBrowserOpenerViewport(GuiBuilder& builder, BrowserOpenerViewportOptions c
 
     // The run function is deferred and cloned by DoBoxViewport, so the caller's is cloned first for the
     // wrapper to hold onto.
-    auto const inner_run = browser_open ? options.run.CloneObject(builder.arena) : options.run;
+    auto const inner_run = browser_on_top ? options.run.CloneObject(builder.arena) : options.run;
     auto const outlined_run = [inner_run, browser_id](GuiBuilder& builder) {
         inner_run(builder);
         if (!builder.IsInputAndRenderPass()) return;
@@ -5354,7 +5356,7 @@ void DoBrowserOpenerViewport(GuiBuilder& builder, BrowserOpenerViewportOptions c
 
     DoBoxViewport(builder,
                   {
-                      .run = browser_open ? BoxViewportConfig::RunFunction {outlined_run} : options.run,
+                      .run = browser_on_top ? BoxViewportConfig::RunFunction {outlined_run} : options.run,
                       .bounds = options.bounds,
                       .imgui_id = options.viewport_id,
                       .viewport_config = cfg,
