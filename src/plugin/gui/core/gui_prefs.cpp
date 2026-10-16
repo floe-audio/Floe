@@ -60,6 +60,15 @@ prefs::Descriptor SettingDescriptor(GuiPreference setting) {
                 .long_description =
                     "Display filter and EQ cutoff/centre frequency parameters in semitones instead of Hz.",
             };
+        case GuiPreference::DefaultBackgroundForMixedLibraries:
+            return {
+                .key = "default-background-for-mixed-libraries"_s,
+                .value_requirements = prefs::ValueType::Bool,
+                .default_value = false,
+                .gui_label = "Use Floe's background when layers use different libraries",
+                .long_description =
+                    "When layers use Instruments from different libraries, show Floe's default background behind every layer on the Layers page rather than each layer's own library background.",
+            };
         case GuiPreference::WindowWidth:
             return {
                 .key = prefs::key::k_window_width,

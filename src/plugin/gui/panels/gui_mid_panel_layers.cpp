@@ -1,6 +1,7 @@
 // Copyright 2018-2026 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/panels/gui_inst_browser.hpp"
@@ -11,6 +12,8 @@
 static void
 DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_context, Box parent) {
     auto const overall_lib = LibraryForOverallBackground(g.engine);
+    auto const all_layers_use_overall_lib =
+        prefs::GetBool(g.prefs, SettingDescriptor(GuiPreference::DefaultBackgroundForMixedLibraries));
 
     auto const layers_row = DoBox(builder,
                                   {
@@ -42,7 +45,10 @@ DoLayersContainer(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame
         if (auto const r = BoxRect(builder, layer_box)) {
             auto const window_r = builder.imgui.ViewportRectToWindowRect(*r);
             auto const layer_lib = g.engine.Layer(layer_index).LibId();
-            DrawMidBlurredPanelSurface(g, frame_context, window_r, layer_lib ? *layer_lib : overall_lib);
+            DrawMidBlurredPanelSurface(g,
+                                       frame_context,
+                                       window_r,
+                                       (layer_lib && !all_layers_use_overall_lib) ? *layer_lib : overall_lib);
         }
 
         DoLayerPanel(g, frame_context, layer_index, layer_box);
