@@ -932,6 +932,26 @@ void RunFunctionOnMainThread(Engine& engine, ThreadsafeFunctionQueue::Function f
     engine.host.request_callback(&engine.host);
 }
 
+// Gives the host time to send us its state before we decide this is a fresh instance.
+static void LoadDefaultPresetAfterActivationIfNeeded(Engine& engine) {
+    if (engine.default_preset_load_attempted || engine.host_state_received) return;
+    if (!engine.processor.activated) {
+        engine.first_seen_activated_at = {};
+        return;
+    }
+
+    constexpr f64 k_delay_seconds = 1.5;
+    if (!engine.first_seen_activated_at) {
+        engine.first_seen_activated_at = TimePoint::Now();
+        engine.request_main_thread_callback_at.Store(engine.first_seen_activated_at + k_delay_seconds,
+                                                     StoreMemoryOrder::Release);
+        return;
+    }
+    if (engine.first_seen_activated_at.SecondsFromNow() < k_delay_seconds) return;
+
+    LoadDefaultPresetIfNeeded(engine);
+}
+
 static void OnMainThread(Engine& engine) {
     ArenaAllocatorWithInlineStorage<4000> scratch_arena {PageAllocator::Instance()};
     while (auto f = engine.main_thread_callbacks.TryPop(scratch_arena))
@@ -963,6 +983,8 @@ static void OnMainThread(Engine& engine) {
         else
             engine.request_main_thread_callback_at.Store(TimePoint::Now() + 2.0, StoreMemoryOrder::Release);
     }
+
+    LoadDefaultPresetAfterActivationIfNeeded(engine);
 
     if (AutosaveNeeded(engine.autosave_state, engine.shared_engine_systems.prefs))
         QueueAutosave(engine.autosave_state, CurrentStateSnapshot(engine));
