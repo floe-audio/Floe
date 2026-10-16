@@ -3210,13 +3210,13 @@ static void DoFilterTreeLibraries(GuiBuilder& builder,
 }
 
 // Browse mode's root: the collection sections, then the flat attributes, each one a row that opens a
-// page. Anything with nothing in it is left out.
+// page. Anything with nothing in it is left out, unless it asks to stay listed.
 static BrowseRootRowList BrowseRootRows(BrowserPopupContext const& context,
                                         BrowserPopupOptions const& options) {
     BrowseRootRowList result {};
 
     for (auto const& section : options.browse_collection_sections) {
-        if (!section.entry.count) continue;
+        if (!section.entry.count && !section.listed_when_empty) continue;
         dyn::Append(result.rows,
                     {.id = section.id, .entry = section.entry, .right_click_menu = section.right_click_menu});
     }
@@ -4480,8 +4480,8 @@ static void DoBrowserPopupInternal(GuiBuilder& builder,
         });
     }
 
-    // A section can stop existing while it's open, such as when preset banks are no longer split into
-    // factory and user groups. Not while a scan is still adding items: the sections are derived from the
+    // A section can stop existing while it's open, such as when the last factory preset bank is
+    // uninstalled. Not while a scan is still adding items: the sections are derived from the
     // items, so a restored section may simply not have appeared yet.
     if (browse.open_collection_section && !context.state.items_still_loading &&
         !CollectionSectionTitle(context, options, *browse.open_collection_section).text.size) {

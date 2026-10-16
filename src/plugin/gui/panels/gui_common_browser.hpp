@@ -659,6 +659,7 @@ struct BrowseCollectionSection {
     BrowseEntry entry;
     RightClickMenuState::Function right_click_menu {};
     TrivialFunctionRef<void(GuiBuilder&, Box const& parent)> do_collections;
+    bool listed_when_empty {}; // do_collections then shows its own empty-state message.
 };
 
 constexpr usize k_max_browse_collection_sections = 4;
