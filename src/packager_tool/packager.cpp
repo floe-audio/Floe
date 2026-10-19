@@ -856,22 +856,6 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                });
     }
 
-    {
-        auto const how_to_install_doc = ({
-            auto data = EmbeddedPackageInstallationRtf();
-            arena.Clone(Span {(char const*)data.data, data.size});
-        });
-        constexpr String k_installation_doc_name = "Installation.rtf"_s;
-        if (!package::WriterAddFile(package, k_installation_doc_name, how_to_install_doc.ToByteSpan())) {
-            StdPrintF(StdStream::Err,
-                      "Error: auto-generated {} already exists - remove it\n",
-                      k_installation_doc_name);
-            return ErrorCode {FilesystemError::PathAlreadyExists};
-        }
-        auto r = package_info.extra_files.FindOrInsertGrowIfNeeded(arena, k_installation_doc_name);
-        if (r.inserted) r.element.key = arena.Clone(k_installation_doc_name);
-    }
-
     // We do input packages last because we prioritise file from libraries/presets. We ignore files from
     // packages if they already exist from the libraries/presets.
     for (auto const path : inputs.input_packages) {

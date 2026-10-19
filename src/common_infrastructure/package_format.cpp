@@ -194,6 +194,12 @@ Optional<String> RelativePathIfInFolder(String path, String folder) {
     return result;
 }
 
+static bool IsInComponentSubdir(String path_in_zip) {
+    for (auto const subdir : k_component_subdirs)
+        if (RelativePathIfInFolder(path_in_zip, subdir)) return true;
+    return false;
+}
+
 static void WriterAddChecksumForFolder(mz_zip_archive& zip,
                                        String folder_in_archive,
                                        ArenaAllocator& scratch_arena,
@@ -542,6 +548,9 @@ ErrorCodeOr<void> WriterAddPackage(mz_zip_archive& zip,
 
         auto const path = PathWithoutTrailingSlash(file_stat.m_filename);
 
+        // Root-level files such as old installation docs aren't carried over into merged packages.
+        if (!IsInComponentSubdir(path)) continue;
+
         auto file_data = TRY(ExtractFileToMem(package, file_stat, scratch_arena));
         if (file_read_hook) file_read_hook(path, file_data);
 
@@ -669,6 +678,16 @@ TEST_CASE(TestRelativePathIfInFolder) {
     return k_success;
 }
 
+TEST_CASE(TestIsInComponentSubdir) {
+    CHECK(IsInComponentSubdir("Libraries/Lib/file.flac"));
+    CHECK(IsInComponentSubdir("Presets/Bank/preset.floe-preset"));
+    CHECK(!IsInComponentSubdir("Installation.rtf"));
+    CHECK(!IsInComponentSubdir("README.txt"));
+    CHECK(!IsInComponentSubdir("Libraries"));
+    CHECK(!IsInComponentSubdir("LibrariesExtra/file"));
+    return k_success;
+}
+
 TEST_CASE(TestPackageFormat) {
     SUBCASE("valid package") {
         auto const zip_data = TRY(CreateValidTestPackage(tester));
@@ -696,4 +715,5 @@ TEST_CASE(TestPackageFormat) {
 TEST_REGISTRATION(RegisterPackageFormatTests) {
     REGISTER_TEST(package::TestPackageFormat);
     REGISTER_TEST(package::TestRelativePathIfInFolder);
+    REGISTER_TEST(package::TestIsInComponentSubdir);
 }

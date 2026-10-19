@@ -111,7 +111,8 @@ ErrorCodeOr<void> WriterAddPresetsFolder(mz_zip_archive& zip,
                                          FunctionRef<void(String, Span<u8 const>)> file_read_hook = {},
                                          FunctionRef<bool(String subpath)> include_file = {});
 
-// If a file already exists in the zip, we don't replace it, we just skip it.
+// Only files inside the component subdirs are copied. If a file already exists in the zip, we don't
+// replace it, we just skip it.
 ErrorCodeOr<void>
 WriterAddPackage(mz_zip_archive& zip,
                  PackageReader& package,

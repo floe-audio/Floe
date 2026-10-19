@@ -43,7 +43,6 @@ BinaryData EmbeddedDefaultBackground();
 BinaryData EmbeddedLogoImage();
 BinaryData EmbeddedIconImage();
 BinaryData EmbeddedAboutLibraryTemplateRtf();
-BinaryData EmbeddedPackageInstallationRtf();
 BinaryData EmbeddedJsonLua();
 
 EmbeddedIrs GetEmbeddedIrs();
