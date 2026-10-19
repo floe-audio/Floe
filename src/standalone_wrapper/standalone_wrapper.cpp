@@ -1038,7 +1038,7 @@ static void RenderOfflineAudio(Standalone& standalone,
 
     if (!fixed_end_frame) {
         auto const audible_end_frame = output_level.audible_end_frame.Load(LoadMemoryOrder::Relaxed);
-        dyn::Resize(output, Min(output.size, Max(audible_end_frame, last_event_frame) * 2));
+        dyn::Resize(output, Min(output.size, (usize)(Max(audible_end_frame, last_event_frame) * 2)));
     }
 }
 
