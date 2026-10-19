@@ -21,6 +21,7 @@ pub const Options = struct {
     no_runtime_safety_checks: bool,
     include_git_hash: ?bool,
     use_system_pluginval: bool,
+    bgfx_renderer: bool,
     targets: ?[]const u8,
 };
 
@@ -124,6 +125,7 @@ pub const TargetConfig = struct {
             hasher.update(std.mem.asBytes(&options.sanitize_thread));
             hasher.update(std.mem.asBytes(&options.windows_installer_require_admin));
             hasher.update(std.mem.asBytes(&options.no_runtime_safety_checks));
+            hasher.update(std.mem.asBytes(&options.bgfx_renderer));
             break :blk hasher.final();
         };
 
@@ -166,6 +168,7 @@ pub const TargetConfig = struct {
                 }),
                 .FLOE_VENDOR = constants.floe_vendor,
                 .FLOE_CLAP_ID = constants.floe_clap_id,
+                .FLOE_USE_BGFX_RENDERER = options.bgfx_renderer,
                 .FLOE_BGFX_API_METAL = bgfx_api == .metal,
                 .FLOE_BGFX_API_VULKAN = bgfx_api == .vulkan,
                 .FLOE_BGFX_API_DIRECT3D11 = bgfx_api == .direct3d11,

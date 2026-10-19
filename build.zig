@@ -460,6 +460,11 @@ pub fn build(b: *std.Build) void {
             "use-system-pluginval",
             "Use a pluginval found on PATH rather than the build.zig.zon release artifact",
         ) orelse onNixOS(),
+        .bgfx_renderer = b.option(
+            bool,
+            "bgfx-renderer",
+            "Use the bgfx GUI renderer rather than OpenGL/Direct3D 9",
+        ) orelse true,
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 

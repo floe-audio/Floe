@@ -991,8 +991,7 @@ static constexpr u16 k_invalid_size = 12345;
 static RendererBackend ChooseRendererBackend() {
     RendererBackend b {};
 
-    constexpr bool k_use_experimental_bgfx = true;
-    if constexpr (k_use_experimental_bgfx) {
+    if constexpr (FLOE_USE_BGFX_RENDERER) {
         if constexpr (IS_WINDOWS) b = RendererBackend::Bgfx;
         if constexpr (IS_LINUX) b = RendererBackend::Bgfx;
         if constexpr (IS_MACOS) {

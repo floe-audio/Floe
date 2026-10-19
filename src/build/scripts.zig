@@ -780,7 +780,7 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
     defer if (gha_out_file) |path| std.fs.deleteFileAbsolute(path) catch {};
 
     var child = std.process.Child.init(blk: {
-        var num_args = args.len + 2;
+        var num_args = args.len + 3;
         if (gha_out_file != null) num_args += 2;
         const full_args = try allocator.alloc([]const u8, num_args);
         var pos: usize = 0;
@@ -792,6 +792,8 @@ fn tryRunZigBuild(ci_report: *CiReport, args: []const []const u8) !void {
             full_args[pos] = arg;
             pos += 1;
         }
+        full_args[pos] = "-Dbgfx-renderer=false";
+        pos += 1;
         if (gha_out_file) |path| {
             full_args[pos] = "--";
             pos += 1;
@@ -1267,7 +1269,7 @@ fn runBenchmarkCi(context: *Context) !u8 {
 
         const result = try std.process.Child.run(.{
             .allocator = allocator,
-            .argv = &.{ zig_exe, "build", "install:all", targets_arg, "-Dbuild-mode=performance_profiling" },
+            .argv = &.{ zig_exe, "build", "install:all", targets_arg, "-Dbuild-mode=performance_profiling", "-Dbgfx-renderer=false" },
         });
 
         if (result.term != .Exited or result.term.Exited != 0) {
