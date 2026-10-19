@@ -1144,7 +1144,7 @@ RunOfflineRender(Standalone& standalone, RunOptions const& run_options, ArenaAll
 
     LogInfo(ModuleName::Standalone,
             "Rendered {.2} seconds of audio in {.2} seconds",
-            (f64)(output.size / 2) / options.sample_rate,
+            (f64)output.size / 2 / options.sample_rate,
             TimePoint::Now() - render_start);
 
     return k_success;
