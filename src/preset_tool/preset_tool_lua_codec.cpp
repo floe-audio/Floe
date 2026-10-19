@@ -12,6 +12,7 @@
 #include "tests/framework.hpp"
 #include "utils/json/json_writer.hpp"
 
+#include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
@@ -1078,11 +1079,20 @@ RoundTrip(tests::Tester& tester, StateSnapshot const& original, RoundTripVia via
     ExtractPresetFromLuaTable(lua, -1, roundtripped);
     lua_pop(lua, 1);
 
-    // Params are stored as projected values, so distinct linear values that project to the same f32 (e.g.
-    // near the flat split of a LinearThenExponential curve) legitimately collapse.
+    // Params are stored as ~7 significant figure projected values, so distinct linear values that project
+    // to nearly the same value (e.g. near the flat split of a LinearThenExponential curve) legitimately
+    // collapse. Likewise, volumes below the -80 dB silence floor are written as "-∞" and read back as 0.
     for (auto const i : Range<u16>(k_num_parameters)) {
         auto const& d = k_param_descriptors[i];
-        if (d.ProjectValue(roundtripped.param_values[i]) == d.ProjectValue(original.param_values[i]))
+        auto const original_projected = d.ProjectValue(original.param_values[i]);
+        auto const roundtripped_projected = d.ProjectValue(roundtripped.param_values[i]);
+        auto const projected_range_delta =
+            d.projection ? d.projection->range.Delta() : d.linear_range.Delta();
+        auto const collapsed_to_silence = d.display_format == ParamDisplayFormat::VolumeAmp &&
+                                          original_projected <= k_silence_amp_80 &&
+                                          roundtripped_projected == 0;
+        if (Abs(roundtripped_projected - original_projected) <= projected_range_delta * 0.00001f ||
+            collapsed_to_silence)
             roundtripped.param_values[i] = original.param_values[i];
     }
 
