@@ -12,6 +12,7 @@ enum class PackArgId : u8 {
     Prune,
     PackageName,
     PackageKey,
+    NoAboutDoc,
     Count,
 };
 
@@ -91,6 +92,14 @@ auto constexpr k_pack_arg_defs = MakeCommandLineArgDefs<PackArgId>({
         .required = false,
         .num_values = 1,
     },
+    {
+        .id = (u32)PackArgId::NoAboutDoc,
+        .key = "no-about-doc",
+        .description = "Don't add the auto-generated 'About' PDF to each library folder.",
+        .value_type = {},
+        .required = false,
+        .num_values = 0,
+    },
 });
 
 auto constexpr k_info_arg_defs = MakeCommandLineArgDefs<InfoArgId>({
@@ -162,8 +171,7 @@ constexpr String k_packager_description =
     "are supported. Additionally:\n"
     "- Validates any Lua files.\n"
     "- Ensures libraries have a License file.\n"
-    "- Adds an 'About' document for each library.\n"
-    "- Adds an 'Installation' document for the package.\n"
+    "- Adds an 'About' document for each library (unless --no-about-doc).\n"
     "- Embeds a checksum file into the package for better change detection if the package\n"
     "  is installed manually.\n"
     "\n"

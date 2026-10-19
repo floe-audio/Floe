@@ -61,6 +61,10 @@
             .url = "https://github.com/richgel999/miniz/archive/refs/tags/3.1.2.tar.gz",
             .hash = "N-V-__8AAJmKFgANnVgLMCG4IKGFiSk_OceSUlZrQfI_Lo-r",
         },
+        .pdfgen = .{
+            .url = "git+https://github.com/AndreRenaud/PDFGen#b3413daead722a0fba9515f36dc44c51afcba6f9",
+            .hash = "N-V-__8AAOp1IQAWS232E252MiUiqLlHjRdsB9bGhonTc1H0",
+        },
         .lua = .{
             .url = "https://github.com/lua/lua/archive/refs/tags/v5.4.7.tar.gz",
             .hash = "N-V-__8AAA2SGQDIowqfBdNuGGJ03b-aevlPIR3TaFV3knJ9",

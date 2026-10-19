@@ -58,10 +58,6 @@ export fn EmbeddedIconImage() c.BinaryData {
     }
 }
 
-export fn EmbeddedAboutLibraryTemplateRtf() c.BinaryData {
-    return embeddedFile("about_library_template.rtf");
-}
-
 export fn EmbeddedJsonLua() c.BinaryData {
     return embeddedFile("json.lua");
 }

@@ -49,6 +49,7 @@ pub const BuildContext = struct {
     dep_flac: *std.Build.Dependency,
     dep_icon_font_cpp_headers: *std.Build.Dependency,
     dep_miniz: *std.Build.Dependency,
+    dep_pdfgen: *std.Build.Dependency,
     dep_lua: *std.Build.Dependency,
     dep_pugl: *std.Build.Dependency,
     dep_pffft: *std.Build.Dependency,

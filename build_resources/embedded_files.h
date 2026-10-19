@@ -42,7 +42,6 @@ BinaryData EmbeddedOutfitSemiBold();
 BinaryData EmbeddedDefaultBackground();
 BinaryData EmbeddedLogoImage();
 BinaryData EmbeddedIconImage();
-BinaryData EmbeddedAboutLibraryTemplateRtf();
 BinaryData EmbeddedJsonLua();
 
 EmbeddedIrs GetEmbeddedIrs();

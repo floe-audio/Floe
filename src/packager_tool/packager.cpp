@@ -4,6 +4,7 @@
 #include "packager.hpp"
 
 #include <miniz.h>
+#include <pdfgen.h>
 
 #include "foundation/foundation.hpp"
 #include "foundation/utils/path.hpp"
@@ -203,31 +204,94 @@ static ErrorCodeOr<AboutLibraryDocument> WriteAboutLibraryDocument(sample_lib::L
                                                                    String library_folder_in_zip) {
     ASSERT(lib.file_format_specifics.tag == sample_lib::FileFormat::Lua);
 
-    auto const about_library_doc = ({
-        auto data = EmbeddedAboutLibraryTemplateRtf();
-        arena.Clone(Span {(char const*)data.data, data.size});
-    });
+    auto pdf = pdf_create(PDF_A4_WIDTH, PDF_A4_HEIGHT, nullptr);
+    ASSERT(pdf);
+    DEFER { pdf_destroy(pdf); };
+    pdf_append_page(pdf);
 
-    auto const file_data =
-        fmt::FormatStringReplace(arena,
-                                 about_library_doc,
-                                 ArrayT<fmt::StringReplacement>({
-                                     {"__LIBRARY_NAME__", lib.name},
-                                     {"__LIBRARY_DESCRIPTION__", lib.description.ValueOr("")},
-                                     {"__LUA_FILENAME__", path::Filename(paths.lua)},
-                                     {"__LICENSE_FILENAME__", path::Filename(paths.license)},
-                                     {"__FLOE_HOMEPAGE_URL__", FLOE_HOMEPAGE_URL},
-                                     {"__FLOE_MANUAL_URL__", FLOE_MANUAL_URL},
-                                     {"__FLOE_DOWNLOAD_URL__", FLOE_DOWNLOAD_URL},
-                                 }));
+    constexpr f32 k_margin = 56;
+    auto y = PDF_A4_HEIGHT - k_margin;
+
+    auto const add_text = [&](char const* font, f32 size, String text) {
+        pdf_set_font(pdf, font);
+        f32 height = 0;
+        pdf_add_text_wrap(pdf,
+                          nullptr,
+                          NullTerminated(text, arena),
+                          size,
+                          k_margin,
+                          y - size,
+                          0,
+                          PDF_BLACK,
+                          PDF_A4_WIDTH - (2 * k_margin),
+                          PDF_ALIGN_LEFT,
+                          &height);
+        y -= height + (size * 0.6f);
+    };
+    auto const add_heading = [&](String text) {
+        y -= 10;
+        add_text("Helvetica-Bold", 15, text);
+    };
+    auto const add_paragraph = [&](String text) { add_text("Helvetica", 11, text); };
+    auto const add_link = [&](String text, String url) {
+        pdf_set_font(pdf, "Helvetica");
+        pdf_add_bbcode(pdf,
+                       nullptr,
+                       NullTerminated(fmt::Format(arena, "[url={}]{}[/url]", url, text), arena),
+                       11,
+                       k_margin,
+                       y - 11,
+                       PDF_RGB(0x1a, 0x5f, 0xb4));
+        y -= 11 * 1.6f;
+    };
+
+    add_text("Helvetica-Bold", 24, fmt::Format(arena, "About {}", lib.name));
+    add_text("Helvetica-Oblique", 12, "What this folder is, and how to use it.");
+    if (lib.description) add_paragraph(*lib.description);
+
+    add_heading("What is this folder?");
+    add_paragraph("This is a sample library for Floe, a free and open source sample library plugin.");
+    add_link("Download Floe", FLOE_DOWNLOAD_URL);
+    add_paragraph("You can move, back up, or copy this whole folder to another computer.");
+    add_paragraph(fmt::Format(arena,
+                              "The file called {} tells Floe how to load the samples in this folder, so "
+                              "it's best not to rearrange, rename or delete the files inside it.",
+                              path::Filename(paths.lua)));
+
+    add_heading("Using these sounds outside Floe");
+    add_paragraph("The samples in this folder are ordinary audio files, so you can open them in other "
+                  "software too.");
+
+    add_heading("License");
+    add_paragraph(fmt::Format(arena,
+                              "The license for this library is in {}, in this folder.",
+                              path::Filename(paths.license)));
+
+    add_heading("Learn more");
+    add_link("Floe User Manual", FLOE_MANUAL_URL);
+
+    // PDFGen can only save to a file.
+    auto const temp_path = ({
+        auto const temp_dir = KnownDirectory(arena, KnownDirectoryType::Temporary, {.create = true});
+        auto seed = RandomSeed();
+        path::Join(arena, Array {String(temp_dir), String(UniqueFilename("about-", ".pdf", seed))});
+    });
+    pdf_save(pdf, NullTerminated(temp_path, arena));
+    DEFER { auto _ = Delete(temp_path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false}); };
+
+    int pdf_error = 0;
+    if (auto const message = pdf_get_err(pdf, &pdf_error)) {
+        StdPrintF(StdStream::Err, "Error: failed to create PDF: {}\n", FromNullTerminated(message));
+        return ErrnoErrorCode(-pdf_error);
+    }
 
     return AboutLibraryDocument {
         .filename_in_zip = path::Join(
             arena,
             Array {library_folder_in_zip,
-                   fmt::Format(arena, "About {}.rtf"_s, path::MakeSafeForFilename(lib.name, arena))},
+                   fmt::Format(arena, "About {}.pdf"_s, path::MakeSafeForFilename(lib.name, arena))},
             path::Format::Posix),
-        .file_data = file_data,
+        .file_data = TRY(ReadEntireFile(temp_path, arena)),
     };
 }
 
@@ -237,6 +301,7 @@ struct VerbInputs {
     Span<String> input_packages;
     Optional<String> package_name_override;
     bool prune {};
+    bool omit_about_doc {};
 };
 
 static ErrorCodeOr<void> CheckHasAnyInputSource(VerbInputs const& inputs) {
@@ -673,6 +738,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             inputs.preset_folders = parsed.args[ToInt(PackArgId::PresetFolder)].values;
             inputs.input_packages = parsed.args[ToInt(PackArgId::InputPackages)].values;
             inputs.prune = parsed.args[ToInt(PackArgId::Prune)].was_provided;
+            inputs.omit_about_doc = parsed.args[ToInt(PackArgId::NoAboutDoc)].was_provided;
             if (parsed.args[ToInt(PackArgId::PackageName)].was_provided)
                 inputs.package_name_override = parsed.args[ToInt(PackArgId::PackageName)].values[0];
             break;
@@ -800,18 +866,23 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
                                  error);
                        return error;
                    });
-        auto const about_doc = TRY_OR(WriteAboutLibraryDocument(*lib, arena, paths, *library_folder_in_zip), {
-            StdPrintF(StdStream::Err,
-                      "Error: failed to write about document for library {}: {}\n",
-                      lib->name,
-                      error);
-            return error;
-        });
-        if (!package::WriterAddFile(package, about_doc.filename_in_zip, about_doc.file_data.ToByteSpan())) {
-            StdPrintF(StdStream::Err,
-                      "Error: auto-generated {} already exists - remove it\n",
-                      about_doc.filename_in_zip);
-            return ErrorCode {FilesystemError::PathAlreadyExists};
+        if (!inputs.omit_about_doc) {
+            auto const about_doc =
+                TRY_OR(WriteAboutLibraryDocument(*lib, arena, paths, *library_folder_in_zip), {
+                    StdPrintF(StdStream::Err,
+                              "Error: failed to write about document for library {}: {}\n",
+                              lib->name,
+                              error);
+                    return error;
+                });
+            if (!package::WriterAddFile(package,
+                                        about_doc.filename_in_zip,
+                                        about_doc.file_data.ToByteSpan())) {
+                StdPrintF(StdStream::Err,
+                          "Error: auto-generated {} already exists - remove it or use --no-about-doc\n",
+                          about_doc.filename_in_zip);
+                return ErrorCode {FilesystemError::PathAlreadyExists};
+            }
         }
     }
 

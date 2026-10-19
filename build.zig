@@ -511,6 +511,7 @@ pub fn build(b: *std.Build) void {
         .dep_flac = b.dependency("flac", .{}),
         .dep_icon_font_cpp_headers = b.dependency("icon_font_cpp_headers", .{}),
         .dep_miniz = b.dependency("miniz", .{}),
+        .dep_pdfgen = b.dependency("pdfgen", .{}),
         .dep_lua = b.dependency("lua", .{}),
         .dep_pugl = b.dependency("pugl", .{}),
         .dep_pffft = b.dependency("pffft", .{}),
@@ -1960,9 +1961,14 @@ fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
             .gen_cdb_fragments = true,
         }).flags.items,
     });
+    exe.addCSourceFile(.{
+        .file = ctx.dep_pdfgen.path("pdfgen.c"),
+        .flags = FlagsBuilder.init(ctx, cfg, .{}).flags.items,
+    });
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
     exe.linkLibrary(deps.common_infrastructure);
     exe.addIncludePath(ctx.b.path("src"));
+    exe.addIncludePath(ctx.dep_pdfgen.path(""));
     exe.addConfigHeader(cfg.floe_config_h);
     exe.addObject(deps.embedded_files);
 
