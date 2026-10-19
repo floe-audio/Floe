@@ -115,8 +115,10 @@ void GlobalInit(GlobalInitOptions options) {
         }
     });
 
-    if (auto const err = InitStacktraceState())
-        LogWarning(ModuleName::Global, "Failed to initialize stacktrace state: {}", *err);
+    if (options.init_stacktraces) {
+        if (auto const err = InitStacktraceState())
+            LogWarning(ModuleName::Global, "Failed to initialize stacktrace state: {}", *err);
+    }
 
     InitLogger({});
 
@@ -190,7 +192,7 @@ void GlobalDeinit(GlobalShutdownOptions options) {
 
     EndCrashDetection(); // before tracy
 
-    ShutdownStacktraceState();
+    if (options.shutdown_stacktraces) ShutdownStacktraceState();
 
     ShutdownLogger();
 

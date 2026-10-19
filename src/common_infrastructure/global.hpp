@@ -21,6 +21,7 @@ enum class PanicResponse : u8 { Quarantine, Abort };
 struct GlobalInitOptions {
     bool init_error_reporting = false;
     bool set_main_thread = false;
+    bool init_stacktraces = true;
     PanicResponse panic_response = PanicResponse::Quarantine;
 };
 
@@ -33,6 +34,7 @@ PanicResponse GetPanicResponse();
 
 struct GlobalShutdownOptions {
     bool shutdown_error_reporting = false;
+    bool shutdown_stacktraces = true;
 };
 
 void GlobalDeinit(GlobalShutdownOptions options);

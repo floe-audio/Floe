@@ -24,9 +24,11 @@ ErrorCodeOr<int> Main(ArgsCstr args) {
     GlobalInit({
         .init_error_reporting = false,
         .set_main_thread = true,
+        // Benchmarks are timed as whole processes, so startup cost would distort every result.
+        .init_stacktraces = false,
         .panic_response = PanicResponse::Abort,
     });
-    DEFER { GlobalDeinit({.shutdown_error_reporting = false}); };
+    DEFER { GlobalDeinit({.shutdown_error_reporting = false, .shutdown_stacktraces = false}); };
 
     benchmarks::Benchmarker benchmarker;
 
