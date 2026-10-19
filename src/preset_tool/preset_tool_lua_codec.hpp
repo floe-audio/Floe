@@ -22,6 +22,10 @@ void ExtractPresetFromLuaTable(lua_State* lua, int table_index, StateSnapshot& p
 // macro_destination_value(id_string, from, to).
 void RegisterParamLuaFunctions(lua_State* lua);
 
+// Load the embedded rxi/json.lua module and bind it as a 'json' global so scripts (and the
+// --json print serializer) can call json.encode / json.decode. Requires the Lua standard libs.
+ErrorCodeOr<void> RegisterJsonGlobal(lua_State* lua);
+
 // Append a human-readable description of every field in the 'preset' Lua table. Each handler owns
 // its own help text, so read, write, and shape documentation live together. Text only (no JSON).
 void AppendPresetLuaTableShape(DynamicArray<char>& out);

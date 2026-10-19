@@ -19,7 +19,6 @@
 #include "common_infrastructure/state/state_coding.hpp"
 #include "common_infrastructure/state/state_snapshot.hpp"
 
-#include "build_resources/embedded_files.h"
 #include "preset_tool_lua_codec.hpp"
 
 // IMPROVE: export a Lua LSP def file for the preset table.
@@ -202,22 +201,6 @@ print("return preset")
 )lua";
 
 constexpr auto k_lua_json_serializer = "print(json.encode(preset))\n";
-
-// Load the embedded rxi/json.lua module and bind it as a 'json' global so scripts (and the
-// --json print serializer) can call json.encode / json.decode.
-static ErrorCodeOr<void> RegisterJsonGlobal(lua_State* lua) {
-    auto const data = EmbeddedJsonLua();
-    if (luaL_loadbuffer(lua, (char const*)data.data, data.size, "json.lua") != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: failed to load json.lua: {}\n", lua_tostring(lua, -1));
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
-    if (lua_pcall(lua, 0, 1, 0) != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: failed to run json.lua: {}\n", lua_tostring(lua, -1));
-        return ErrorCode {CommonError::InvalidFileFormat};
-    }
-    lua_setglobal(lua, "json");
-    return k_success;
-}
 
 static ErrorCodeOr<void> PrintShape(ArenaAllocator& arena) {
     constexpr auto k_header =

@@ -16,6 +16,8 @@
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
 
+#include "build_resources/embedded_files.h"
+
 // Two-way Lua <-> StateSnapshot codec.
 //
 // The schema lives in one place (VisitPreset). LuaWriter pushes the preset into a new table; LuaReader
@@ -871,6 +873,20 @@ void RegisterParamLuaFunctions(lua_State* lua) {
     lua_register(lua, "macro_destination_value", LuaMacroDestinationValue);
 }
 
+ErrorCodeOr<void> RegisterJsonGlobal(lua_State* lua) {
+    auto const data = EmbeddedJsonLua();
+    if (luaL_loadbuffer(lua, (char const*)data.data, data.size, "json.lua") != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: failed to load json.lua: {}\n", lua_tostring(lua, -1));
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    if (lua_pcall(lua, 0, 1, 0) != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: failed to run json.lua: {}\n", lua_tostring(lua, -1));
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    lua_setglobal(lua, "json");
+    return k_success;
+}
+
 // One declaration drives both directions. Adding a new field means: write one handler, add one line here.
 template <typename V, typename S>
 static void VisitPreset(V& v, S& s) {
@@ -1020,13 +1036,44 @@ ErrorCodeOr<void> WriteParamsJson(Writer out) {
 // These tests bypass file I/O, so legacy→modern adaptation (AdaptNewerParams) does not apply; they verify
 // the codec layer in isolation.
 
-static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& original) {
+enum class RoundTripVia : u8 { LuaTable, Json };
+
+static ErrorCodeOr<void>
+RoundTrip(tests::Tester& tester, StateSnapshot const& original, RoundTripVia via = RoundTripVia::LuaTable) {
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
 
     BuildPresetLuaTable(lua, original, {});
 
-    auto roundtripped = original;
+    switch (via) {
+        case RoundTripVia::LuaTable: break;
+        case RoundTripVia::Json: {
+            luaL_openlibs(lua);
+            TRY(RegisterJsonGlobal(lua));
+            constexpr auto k_script = "preset = json.decode(json.encode(preset))"_s;
+            if (luaL_loadbuffer(lua, k_script.data, k_script.size, "json-round-trip") != LUA_OK ||
+                lua_pcall(lua, 0, 0, 0) != LUA_OK) {
+                tester.log.Error("json round-trip failed: {}", lua_tostring(lua, -1));
+                return ErrorCode {CommonError::InvalidFileFormat};
+            }
+            break;
+        }
+    }
+
+    // Starting from defaults (as apply-json does) means a field the reader skips shows up as a diff.
+    auto roundtripped = ({
+        StateSnapshot s;
+        switch (via) {
+            case RoundTripVia::LuaTable: s = original; break;
+            case RoundTripVia::Json:
+                s = DefaultStateSnapshot();
+                // Param display strings are rounded; the reader's epsilon guard only absorbs that when
+                // compared against the original values.
+                s.param_values = original.param_values;
+                break;
+        }
+        s;
+    });
     lua_getglobal(lua, "preset");
     ExtractPresetFromLuaTable(lua, -1, roundtripped);
     lua_pop(lua, 1);
@@ -1119,7 +1166,8 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
     // ir_id
     {
         sample_lib::IrId ir;
-        ir.library = sample_lib::HashLibraryIdString("Reverb Library"_s);
+        // Unregistered, so it's written as a raw 64-bit integer rather than an "Author/Library" string.
+        ir.library = sample_lib::HashLibraryIdStringWithoutRegistration("Unregistered Reverb Library"_s);
         dyn::Assign(ir.ir_id, "hall1"_s);
         s.ir_id = Move(ir);
     }
@@ -1187,6 +1235,12 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
 TEST_CASE(TestPresetLuaCodecRoundTripPopulated) {
     auto const original = PopulatedSnapshot(tester.random_seed);
     TRY(RoundTrip(tester, original));
+    return k_success;
+}
+
+TEST_CASE(TestPresetLuaCodecRoundTripJson) {
+    auto const original = PopulatedSnapshot(tester.random_seed);
+    TRY(RoundTrip(tester, original, RoundTripVia::Json));
     return k_success;
 }
 
@@ -1306,6 +1360,7 @@ TEST_CASE(TestMacroLuaFunctions) {
 TEST_REGISTRATION(RegisterPresetLuaCodecTests) {
     REGISTER_TEST(TestPresetLuaCodecRoundTripDefault);
     REGISTER_TEST(TestPresetLuaCodecRoundTripPopulated);
+    REGISTER_TEST(TestPresetLuaCodecRoundTripJson);
     REGISTER_TEST(TestParamLuaFunctions);
     REGISTER_TEST(TestMacroLuaFunctions);
 }
