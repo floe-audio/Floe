@@ -177,16 +177,12 @@ Floe doesn't generate this kind of audio data for you because it can be slow to 
 ## Library inspector
 `floe-library-inspector` is a small CLI tool for debugging libraries. It parses your library and dumps everything Floe loaded as JSON (or Lua with `--format=lua`) — surfacing parse errors, captured `print()` output, and any orphan or missing audio files.
 
-{data["latest-beta-release-version"]?.["Floe-Library-Inspector-Windows"] ? (
-<ul>
-  <li><FAIcon icon="fa-brands fa-windows" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-Windows"].size})</li>
-  <li><FAIcon icon="fa-brands fa-apple" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Apple-Silicon"].size})</li>
-  <li><FAIcon icon="fa-brands fa-apple" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-macOS-Intel"].size})</li>
-  <li><FAIcon icon="fa-brands fa-linux" /> <a href={data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].url}>{data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].name}</a> ({data["latest-beta-release-version"]["Floe-Library-Inspector-Linux"].size})</li>
-</ul>
-) : (
-<p><em>Downloads will appear here with the next beta release.</em></p>
-)}
+- **<FAIcon icon="fa-brands fa-windows" /> Floe Library Inspector Windows**: <a href={data["Floe-Library-Inspector-Windows"]["url"]}>{data["Floe-Library-Inspector-Windows"]["name"]}</a> ({data["Floe-Library-Inspector-Windows"]["size"]})
+- **<FAIcon icon="fa-brands fa-apple" /> Floe Library Inspector macOS Apple Silicon**: <a href={data["Floe-Library-Inspector-macOS-Apple-Silicon"]["url"]}>{data["Floe-Library-Inspector-macOS-Apple-Silicon"]["name"]}</a> ({data["Floe-Library-Inspector-macOS-Apple-Silicon"]["size"]})
+- **<FAIcon icon="fa-brands fa-apple" /> Floe Library Inspector macOS Intel**: <a href={data["Floe-Library-Inspector-macOS-Intel"]["url"]}>{data["Floe-Library-Inspector-macOS-Intel"]["name"]}</a> ({data["Floe-Library-Inspector-macOS-Intel"]["size"]})
+- **<FAIcon icon="fa-brands fa-linux" /> Floe Library Inspector Linux**: <a href={data["Floe-Library-Inspector-Linux"]["url"]}>{data["Floe-Library-Inspector-Linux"]["name"]}</a> ({data["Floe-Library-Inspector-Linux"]["size"]})
+
+Download the program, extract it, and run it from the command line.
 
 <CodeBlock>
 {data["library-inspector-help"]}
