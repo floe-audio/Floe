@@ -10,108 +10,74 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-import data from "@site/static/generated-data.json";
-import staticData from '@site/static/generated-data.json';
 import OSTabs, { OSPanel } from '@site/src/components/OSTabs';
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
+import LibraryName from '@site/src/components/LibraryName';
 
-# Installing Floe
+Installing Floe is quick: [download](https://floe.audio/download) the installer for your computer, run it, and open Floe in your DAW. This page has the details for each operating system, in case you need them.
 
-Simply [download](/download) and run the installer for your operating system.
+Before you start, check that your computer meets Floe's [System Requirements](../getting-started/system-requirements).
 
-For thoroughness, this page provides detailed installation instructions for each platform.
+## Installing
 
 <OSTabs>
   <OSPanel os="windows">
-    ## Requirements
-    On Windows, Floe is available in the CLAP and VST3 formats. We recommend using the CLAP version where possible. Requirements:
-    - {data["min-windows-version"]} or later
-    - 64-bit computer
-    - x86-64 processor with SSE2 support (almost all processors in a Windows PC since ~2006 have this)
-    - 64-bit CLAP or VST3 host.  CLAP hosts include Reaper, Bitwig, FL Studio (2024 or newer) and Studio One Pro (v7 or newer). VST3 hosts include Cubase, Studio One, Ableton Live, Reason, and more.
+    1. Download the installer from the [download page](https://floe.audio/download).
+    1. Extract the downloaded zip file, usually by double-clicking it.
+    1. Run the installer and follow its steps. It installs both the CLAP and VST3 versions.
+    1. Open your DAW and add Floe to an instrument track. If it doesn't appear, ask your DAW to rescan its plugins.
 
-    Just to be extra clear: there's no 'standalone' application and no AAX (Pro Tools) support. We hope to expand Floe's compatibility in the future.
-
-    ## Overview
-    To install Floe, download the installer from the [downloads](/download) page and extract it (normally double-click). Double click on the installer EXE file and follow the instructions.
-
-
-    ### Alternative: Manual Installation (Advanced)
-
-    Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide a zip file that contains Floe's plugin files; these can also be found on the [downloads](/download) page. Extract it and move the files to your plugin folders.
-
-    - **CLAP:** Move `Floe.clap` into `C:\Program Files\Common Files\CLAP`
-    - **VST3:** Move `Floe.vst3` into `C:\Program Files\Common Files\VST3`
+    To install by hand instead, download the manual-install zip from the same page, extract it, and move the files into your plugin folders:
+    - `Floe.clap` into `C:\Program Files\Common Files\CLAP`
+    - `Floe.vst3` into `C:\Program Files\Common Files\VST3`
   </OSPanel>
-  
+
   <OSPanel os="macos">
-    ## Requirements
-    On macOS, Floe is available in the CLAP, VST3 and AU (v2) formats. We recommend using the CLAP version where possible. Requirements:
-    - {data["min-macos-version"]} or later
-    - Apple Silicon or Intel
-    - CLAP, AU (v2) or VST3 host. CLAP hosts include Reaper, Bitwig, FL Studio (2024 or newer) and Studio One Pro (v7 or newer). VST3 hosts include Cubase, Studio One, Ableton Live, and more. AU hosts include Logic Pro and GarageBand.
+    1. Download the installer for your Mac from the [download page](https://floe.audio/download). There are two versions: _Apple Silicon_ for M1, M2 and later Macs (most Macs since late 2020), and _Intel_ for older Macs. [Apple's guide](https://support.apple.com/en-us/116943) shows how to check which one you have.
+    1. Double-click the download to extract it.
+    1. Run the PKG installer and follow its steps. Install it to your main drive (usually _Macintosh HD_). Your libraries and presets can live on any drive.
+    1. Open your DAW and add Floe to an instrument track. If it doesn't appear, ask your DAW to rescan its plugins.
 
-    Just to be extra clear: there's no 'standalone' application and no AAX (Pro Tools) support. We hope to expand Floe's compatibility in the future.
-
-    ## Overview
-    To install Floe, download the correct installer for your Mac from the [downloads](/download) page. Double-click it to extract it, and then double click the PKG installer program and follow the instructions. **You must install to your main MachintoshHD harddrive** (libraries and presets can be installed to other locations).
-
-    You must choose the right download for your machine:
-    - **Apple Silicon** (M1, M2, M3, etc.): Most Macs since late 2020
-    - **Intel**: Most Macs before late 2020
-
-    See [Apple's documentation](https://support.apple.com/en-us/116943) for help determining your Mac's processor type.
-
-    ### Alternative: Manual Installation (Advanced)
-
-    Normally you'll want to use the installer, but there could be some cases where you'd prefer to install Floe manually. To allow for this, we provide zip files that contain Floe's plugin files. Extract them and move the files to your plugin folders.
-    - **CLAP:** Move `Floe.clap` into `/Library/Audio/Plug-Ins/CLAP`
-    - **VST3:** Move `Floe.vst3` into `/Library/Audio/Plug-Ins/VST3`
-    - **AU:** Move `Floe.component` into `/Library/Audio/Plug-Ins/Components`
+    To install by hand instead, download the manual-install zip files from the same page, extract them, and move the files into your plugin folders:
+    - `Floe.clap` into `/Library/Audio/Plug-Ins/CLAP`
+    - `Floe.vst3` into `/Library/Audio/Plug-Ins/VST3`
+    - `Floe.component` into `/Library/Audio/Plug-Ins/Components`
   </OSPanel>
-  
+
   <OSPanel os="linux">
-    ## Requirements
-    On Linux, Floe is available in the CLAP and VST3 formats. We recommend using the CLAP version where possible. The requirements are quite minimal and you might find you already have everything you need. Requirements:
-    - x86-64 processor
-    - A reasonably recent distribution with glibc 2.29 or later
-    - libcurl, OpenGL, X11 and GLX libraries installed
-    - `zenity` and `xdg-open` installed
-    - A CLAP or VST3 host. CLAP hosts include Reaper and Bitwig. VST3 hosts include Ardour.
+    1. Copy the installation command from the [download page](https://floe.audio/download). There's one for CLAP and one for VST3.
+    1. Paste it into a terminal and run it. It creates your plugin folder if needed, downloads Floe and extracts it there.
+    1. Open your DAW and add Floe to an instrument track. If it doesn't appear, ask your DAW to rescan its plugins.
 
-    Just to be extra clear: there's no 'standalone' application at the moment. We hope to expand Floe's compatibility in the future.
-
-    ## Overview
-    To install Floe, visit the [downloads](/download) page and copy-and-paste the installation command into a terminal and run it. This command does this: creates the standard folder for plugins, downloads the Floe `tar.gz`, and extracts it to the plugin folder.
-
-
-    ### Alternative: Manual Installation
-    You can also do this manually if you prefer by downloading the manual-install file from the [download](/download) page and extracting it to the relevant folder:
-    - **CLAP:** Move `Floe.clap` into `~/.clap` or `/usr/lib/clap`
-    - **VST3:** Move `Floe.vst3` into `~/.vst3` or `/usr/lib/vst3` or `/usr/local/lib/vst3`
+    To install by hand instead, download the manual-install file from the same page and extract it into your plugin folders:
+    - `Floe.clap` into `~/.clap` or `/usr/lib/clap`
+    - `Floe.vst3` into `~/.vst3`, `/usr/lib/vst3` or `/usr/local/lib/vst3`
   </OSPanel>
 </OSTabs>
 
----
+<ManualExclude types={['library']}>
+Once Floe is installed, it needs some sounds. See [Install Packages](./install-packages) to add your sample libraries and presets.
+</ManualExclude>
+<ManualOnly types={['library']}>
+Next, see [Install <LibraryName /> Package](./install-packages).
+</ManualOnly>
 
-### How to update Floe
-To update Floe, simply download and run the latest installer again. It will replace the old version in a backwards-compatible way — your DAW projects won't break.
+## Updating
 
-Alternatively, if you manually installed Floe, install the latest files - replacing the old ones.
+To update Floe, download and run the latest installer, or run the Linux command again. The new version replaces the old one and is fully backwards-compatible. If you installed by hand, replace the old files with the new ones.
 
-### Checking for updates
-Floe can automatically check for available updates. It does this in a simple, non-intrusive way.
+Floe checks for new versions for you. When one is available, a red dot appears on the <FAIcon icon="fa-solid fa-ellipsis-v" /> menu in the top panel.
 
-When a newer version is available, a red dot will appear on the <FAIcon icon="fa-solid fa-ellipsis-v" /> 3-dots menu in Floe's window.
+<GeneratedScreenshot name="update-indicator" alt="The red update dot on Floe's menu button" />
 
-<GeneratedScreenshot name="update-indicator" alt="Floe red dot update indicator" />
+Open the menu and choose _Info_. The _About_ tab names the new version and gives you three options: _Download page_, _Changelog_ to see what's new, and _Ignore_, which hides the dot until an even newer version comes out.
 
-Open the menu and click "Info" to show you the options: ignore the update, or visit the download or changelog pages. Ignoring the update means the red dot will disappear until a newer version is available.
+<GeneratedScreenshot name="check-for-updates" alt="The About tab of Floe's Info panel, showing a new version" />
 
-<GeneratedScreenshot name="check-for-updates" alt="Floe info panel update info" />
+To stop Floe checking, untick _Check for updates_ in <FAIcon icon="fa-solid fa-cog" /> Preferences.
 
-### Disabling automatic update checks
-You can disable automatic update checks by unchecking the "Check for updates" option in Floe's preferences panel.
-
-### Beta updates
-There is also a checkbox on the preferences panel for receiving update notifications for the latest release, including if there's a newer beta version available. This is only recommended in certain situations. See the [Beta Testing](../about-the-project/beta-testing) page for more information.
+<ManualExclude types={['library']}>
+The same place has an option to be told about beta versions too if you want to try new features early: see [Beta Testing](../about-the-project/beta-testing).
+</ManualExclude>

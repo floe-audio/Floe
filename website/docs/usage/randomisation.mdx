@@ -2,7 +2,7 @@
 id: randomisation
 title: Randomisation
 hide_table_of_contents: true
-description: How to use Floe's randomisation features to explore new sounds
+description: Use an element of chance to find sounds you might not have found yourself
 ---
 
 {/*
@@ -11,50 +11,56 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
+import LibraryName from '@site/src/components/LibraryName';
 
-## Random Variation (PERFORM page)
+<LibraryName>Floe</LibraryName> has a few features that bring in an element of chance. It's a way to find spontaneous inspiration, and sounds you might not have reached for yourself. They're also good fun.
 
-<GeneratedScreenshot name="perform-variation-strip" alt="The Random Variation strip on the PERFORM page" />
+As with anything left to chance, sometimes the results are great and sometimes they're a bit too wacky. The <FAIcon icon="fa-solid fa-undo" /> _Undo_ button in the top panel is always available.
 
-The PERFORM page hosts the **Random Variation** strip. Click anywhere on the strip to generate a new variation of the current sound. Where you click matters:
+All of these randomisation buttons use the same <FAIcon icon="fa-solid fa-shuffle" /> shuffle icon, so you can identify them at a glance.
 
-- **Further left** stays close to the current preset — small, related tweaks.
-- **Further right** strays much further — wilder instrument swaps, more effects toggled, bigger parameter moves.
+## Random variation
 
-Hovering the strip shows a percentage and a short description: _small_, _medium_, _large_, _huge_, or _extreme variation_. The shuffle icon at the left of the strip repeats the most recent amount, so you can keep rolling fresh variations at the same intensity without having to re-click the strip.
+The main random feature is the _Random Variation_ strip on the [_Perform_](./perform) page. It takes the preset you've loaded and changes some of its properties, giving you a fresh take on the sound.
 
-A Random Variation is built from the last loaded presets — its instruments, parameter values, effects, and macros — rather than from scratch. Concretely, it may:
+<GeneratedScreenshot name="perform-variation-strip" alt="The Random Variation strip on the Perform page" />
 
-- **Swap instruments**: each layer's instrument is replaced with another one. Closer matches (same library or folder, overlapping tags) are favoured; the strip position controls how far the picker is allowed to roam.
-- **Add or remove layers**: blank layers may be filled in; populated layers may occasionally be cleared. Filling in is much more likely than emptying out, so wilder variations tend to add detail rather than thin the sound.
-- **Nudge macros**: a subset of your active [macros](./macros) is shifted by a moderate-to-large amount, picking up the rest of the patch with them.
-- **Toggle effects**: a small number of effects are flipped on or off — newly enabled effects get a fresh set of randomised parameters (within safe ranges, so you won't get a sudden +30 dB gain blast).
-- **Shift octaves**: occasionally a layer is transposed up or down an octave or two for flavour.
+Click anywhere on the strip. Where you click sets how far the variation strays from the preset. Towards the left, the changes are mostly subtle and the sound keeps its character. Move towards the right to venture into wilder changes. As you hover, the strip shows the amount and a word for it, from _small variation_ to _extreme variation_.
 
-Every variation creates a single undo step, so you can roll variations rapidly and step back to the previous state with the undo button in the top bar.
+The <FAIcon icon="fa-solid fa-shuffle" /> button at the left of the strip rolls another variation at the same amount as last time, so you can try several takes at an intensity you like.
 
-## All-layers instrument shuffle (LAYERS page)
+Every variation starts from the preset as you loaded it, not from the previous variation, so you can keep clicking without drifting ever further away. When you find one you like, save it as a preset. That keeps it, and makes it the new starting point for further variations.
 
-The LAYERS page has a **shuffle button** in the top-right that loads a random instrument into every layer in one go. It's equivalent to clicking each layer's individual shuffle button (see below) in turn. Each layer's selection honours that layer's own browser filters, so if one layer is filtered to a specific library and another to a specific tag, the shuffle respects both at once.
+If nothing is loaded, the strip builds a random sound instead, around an Instrument picked at random.
 
-## Per-layer instrument shuffle (LAYERS page)
+### What a variation changes
 
-Each layer has its own shuffle button in the layer top controls. It loads a random instrument into that layer only, based on the currently selected filters in that layer's [instrument browser](./browsers). For example, filter a layer to the _Music Box Suite_ library and the layer shuffle will only pick instruments from there. The left/right arrows next to the shuffle button step through the same filtered list one item at a time.
+A variation reworks the preset rather than starting from scratch, so it usually keeps something of the original's feel. Depending on how far right you click, it may:
 
-## Effects shuffle (EFFECTS page)
+- **Swap Instruments** — each layer can get a different Instrument. Further left, the new one is usually a close relative, from the same <ManualExclude types={['library']}>library or </ManualExclude>folder or with similar tags. Further right, it can come from anywhere. With more than one layer in use, one is sometimes left as it is. Layers using a built-in waveform are never changed.
+- **Fill or empty layers** — an empty layer may get an Instrument, and occasionally a layer is cleared. Filling is much more likely than emptying, so wilder variations tend to add to the sound rather than thin it out. At least one layer always keeps an Instrument.
+- **Move the macros** — some of the preset's [macros](./macros) are turned by a noticeable amount, taking everything they control with them.
+- **Change the effects** — some effects' mix levels move, and a few effects are switched on or off. An effect that's switched on gets fresh settings, kept within sensible limits so it won't suddenly jump in level.
+- **Shift octaves** — now and then, a layer's _Transpose_ moves up or down an octave or two.
 
-The EFFECTS page has a shuffle button in the top-right of the tab bar. It **randomly turns each effect on or off** and **shuffles their order in the rack**. Parameter values inside each effect are left alone, so anything you've dialled in is preserved when an effect is re-enabled later.
+## Jumping to a random item in a browser
 
-If you do want more dramatic effect changes — including new internal parameter values — use the [Random Variation](#random-variation-perform-page) strip on the PERFORM page; it'll touch effects as part of the broader patch variation.
+Wherever you can choose a preset, an Instrument or an impulse response, there's a <FAIcon icon="fa-solid fa-shuffle" /> button that jumps to a random one:
 
-## Impulse response shuffle
+- **Presets** — in the top panel, next to the preset name.
+- **Instruments** — in each layer's header on the [_Layers_](./layers#layer-header) page. It loads a random Instrument into that layer only.
+- **Impulse responses** — on the [Convolution Reverb](./effects#convolution-reverb) effect.
 
-The Convolution Reverb effect's impulse response selector has a shuffle button alongside its menu. Click it to load a random impulse response, honouring the currently selected filters in the [IR browser](./browsers).
+Each button is linked to its [browser](./browsers): it only picks from what that browser's filters allow, so you can set the bounds of what "random" means. Filter the preset browser to one <ManualExclude types={['library']}>library</ManualExclude><ManualOnly types={['library']}>folder</ManualOnly> and a tag such as _ambient_, say, then keep clicking <FAIcon icon="fa-solid fa-shuffle" /> to jump around within that selection. The same goes for the browser's own <FAIcon icon="fa-solid fa-shuffle" /> button while it's open.
 
-## Preset browser shuffle
+## Layers and effects
 
-The Presets browser, like every browser, has its own shuffle button to load a random preset from the currently filtered results. The same controls are duplicated above the browser on the main GUI so you can shuffle without opening the browser. Use the filters in the browser to narrow down what _random_ means — for example, only ambient presets from a chosen library.
+The <FAIcon icon="fa-solid fa-shuffle" /> button at the top right of the [_Layers_](./layers) page loads a random Instrument into all three layers at once, as if you'd clicked each layer's button in turn. Each layer has its own Instrument browser filters, so narrow the first layer to bass sounds and the second to textures, for example, then click it to roll through combinations that stay within those bounds.
 
-## Tips
-- Use browser filters to keep the browser-based shuffles within a chosen library, folder, or tag.
-- Use the undo button in the top bar to step back through variations — every roll is a single undoable change.
+The <FAIcon icon="fa-solid fa-shuffle" /> button at the top right of the [_Effects_](./effects) page randomly puts each effect in or takes it out of the rack, and shuffles their order. It leaves each effect's settings alone, so anything you've dialled in is still there when the effect comes back.
+
+## Randomness in the sound itself
+
+Parts of the audio engine, such as the [granular engine](./playback-tab#granular-synthesis), also use randomness while you play, to create varied, natural-sounding performances. See [Reproducibility](./reproducibility).

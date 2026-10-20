@@ -1,0 +1,599 @@
+{
+    "aspect-find.png": {
+        "hash": "dea38d5863af01c4"
+    },
+    "aspect-perform.png": {
+        "hash": "77993197a9602613"
+    },
+    "aspect-transform.png": {
+        "hash": "a44b76b99e022fa5"
+    },
+    "attributions-gui.png": {
+        "hash": "9ac958f1481aaf52"
+    },
+    "blog/2026-02-27-floe-1-2-0-beta-1.png": {
+        "hash": "8276ecad09215a48"
+    },
+    "blog/inst-browser-1.0.0.png": {
+        "hash": "9d53772cf6a8477b"
+    },
+    "browser-multi-select-or.png": {
+        "hash": "523d3a3276944c1c"
+    },
+    "effects-reorder.mp4": {
+        "hash": "579ac5d5d5b3b41c"
+    },
+    "encrypted-package-installed.png": {
+        "hash": "1599be026fb8545f"
+    },
+    "encrypted-package-key-required.png": {
+        "hash": "789df6076817630a"
+    },
+    "hero-background.jpg": {
+        "hash": "b835cc0fe83dda82"
+    },
+    "installer-macos-gui.png": {
+        "hash": "004ef764bef4877e"
+    },
+    "installer-windows-gui.png": {
+        "hash": "2797c529167f8f6e"
+    },
+    "macros-connect.png": {
+        "hash": "72c1bf8125a0bf8d"
+    },
+    "macros-destination-amount.png": {
+        "hash": "b889e4fa0458724c"
+    },
+    "macros-rename.png": {
+        "hash": "420204e893a93c7f"
+    },
+    "macros-workflow.mp4": {
+        "hash": "ca7750c2b281410b"
+    },
+    "package-installation.mp4": {
+        "hash": "ac61fc6818174805"
+    },
+    "screenshots/all-layers.png": {
+        "hash": "3f4b326d40c4ac64"
+    },
+    "screenshots/browser-browse.png": {
+        "hash": "5c588bdc09297ed8",
+        "overlay": {
+            "width": 990,
+            "height": 1050,
+            "overlays": [
+                {
+                    "name": "results-list",
+                    "x": 0,
+                    "y": 0.0380952358,
+                    "w": 0.545454562,
+                    "h": 0.856190443
+                },
+                {
+                    "name": "filters-page",
+                    "x": 0.545454562,
+                    "y": 0.0380952358,
+                    "w": 0.454545468,
+                    "h": 0.856190443
+                },
+                {
+                    "name": "opener",
+                    "x": 0,
+                    "y": 0,
+                    "w": 0.563636363,
+                    "h": 0.0380952358
+                },
+                {
+                    "name": "breadcrumb",
+                    "x": 0.545454562,
+                    "y": 0.894285679,
+                    "w": 0.454545468,
+                    "h": 0.034285713
+                },
+                {
+                    "name": "mode-toggle",
+                    "x": 0.551515162,
+                    "y": 0.953333318,
+                    "w": 0.106060609,
+                    "h": 0.034285713
+                }
+            ]
+        }
+    },
+    "screenshots/browser-full.png": {
+        "hash": "2e9d6d9e3cc51e79",
+        "overlay": {
+            "width": 990,
+            "height": 1050,
+            "overlays": [
+                {
+                    "name": "filters-tree",
+                    "x": 0.545454562,
+                    "y": 0.0380952358,
+                    "w": 0.454545468,
+                    "h": 0.915238082
+                },
+                {
+                    "name": "results-summary",
+                    "x": 0,
+                    "y": 0.863809526,
+                    "w": 0.545454562,
+                    "h": 0.0647619069
+                },
+                {
+                    "name": "mode-toggle",
+                    "x": 0.551515162,
+                    "y": 0.953333318,
+                    "w": 0.106060609,
+                    "h": 0.034285713
+                },
+                {
+                    "name": "match-button",
+                    "x": 0.663636386,
+                    "y": 0.953333318,
+                    "w": 0.062626265,
+                    "h": 0.034285713
+                }
+            ]
+        }
+    },
+    "screenshots/browser-menu.png": {
+        "hash": "5ef644a9f8155d92"
+    },
+    "screenshots/check-for-updates.png": {
+        "hash": "1660e83056330d6b"
+    },
+    "screenshots/effect-bit-crush.png": {
+        "hash": "b6efb4aadfea027e"
+    },
+    "screenshots/effect-chorus.png": {
+        "hash": "3cf0e1a798fa2f02"
+    },
+    "screenshots/effect-compressor.png": {
+        "hash": "bbe2cb2b4c7f5dd6"
+    },
+    "screenshots/effect-convolution-reverb.png": {
+        "hash": "c88e3d25c2ac9302"
+    },
+    "screenshots/effect-delay.png": {
+        "hash": "12ca4bc7f78895f6"
+    },
+    "screenshots/effect-distortion.png": {
+        "hash": "58ed27d10e931b08"
+    },
+    "screenshots/effect-eq.png": {
+        "hash": "745ac68d9a2efb68"
+    },
+    "screenshots/effect-filter.png": {
+        "hash": "f9eccb0441c531e0"
+    },
+    "screenshots/effect-limiter.png": {
+        "hash": "24e43352de64689a"
+    },
+    "screenshots/effect-phaser.png": {
+        "hash": "f988fa06bd24d76f"
+    },
+    "screenshots/effect-reverb.png": {
+        "hash": "0830ddc6e54ec5b4"
+    },
+    "screenshots/effect-stereo-widen.png": {
+        "hash": "33927027d39124b0"
+    },
+    "screenshots/effects.png": {
+        "hash": "636f408f5c75ca36",
+        "overlay": {
+            "width": 1800,
+            "height": 1034,
+            "overlays": [
+                {
+                    "name": "switchboard",
+                    "x": 0.00833333377,
+                    "y": 0.0647969097,
+                    "w": 0.165555567,
+                    "h": 0.924564838
+                },
+                {
+                    "name": "rack",
+                    "x": 0.182222232,
+                    "y": 0.0647969097,
+                    "w": 0.809444487,
+                    "h": 0.924564838
+                },
+                {
+                    "name": "heading",
+                    "x": 0.182222232,
+                    "y": 0.225338504,
+                    "w": 0.0711111128,
+                    "h": 0.0309477765
+                },
+                {
+                    "name": "common-controls",
+                    "x": 0.904444456,
+                    "y": 0.0647969097,
+                    "w": 0.0772222206,
+                    "h": 0.160541594
+                },
+                {
+                    "name": "all-effects-buttons",
+                    "x": 0.940555573,
+                    "y": 0.0154738883,
+                    "w": 0.0516666695,
+                    "h": 0.0328820124
+                }
+            ]
+        }
+    },
+    "screenshots/floe-whole-gui-1.png": {
+        "hash": "23203e26b9cf1e03"
+    },
+    "screenshots/floe-whole-gui-2.png": {
+        "hash": "47bcffb306376f37"
+    },
+    "screenshots/floe-whole-gui-3.png": {
+        "hash": "333cad056a3fbc54"
+    },
+    "screenshots/floe-whole-gui-4.png": {
+        "hash": "474488db933b79e0"
+    },
+    "screenshots/floe-whole-gui-5.png": {
+        "hash": "3c89ad7b4c40cdd5"
+    },
+    "screenshots/floe-whole-gui-6.png": {
+        "hash": "faf5d30ca8c814dd",
+        "overlay": {
+            "width": 1800,
+            "height": 1260,
+            "overlays": [
+                {
+                    "name": "filters-tree",
+                    "x": 0.314444453,
+                    "y": 0.169841275,
+                    "w": 0.25,
+                    "h": 0.762698412
+                },
+                {
+                    "name": "results-summary",
+                    "x": 0.0144444443,
+                    "y": 0.857936502,
+                    "w": 0.300000012,
+                    "h": 0.0539682545
+                },
+                {
+                    "name": "mode-toggle",
+                    "x": 0.317777783,
+                    "y": 0.932539701,
+                    "w": 0.0583333336,
+                    "h": 0.0285714287
+                },
+                {
+                    "name": "match-button",
+                    "x": 0.37944445,
+                    "y": 0.932539701,
+                    "w": 0.0344444439,
+                    "h": 0.0285714287
+                }
+            ]
+        }
+    },
+    "screenshots/floe-whole-gui-7.png": {
+        "hash": "c371b6f663545fe2"
+    },
+    "screenshots/folders.png": {
+        "hash": "7649dd67043f6569"
+    },
+    "screenshots/install-packages.png": {
+        "hash": "36ff02bb524f7b4a"
+    },
+    "screenshots/instance-config.png": {
+        "hash": "376d7d60476c4d24"
+    },
+    "screenshots/key-range-bars.png": {
+        "hash": "a230a37ca87d3aba"
+    },
+    "screenshots/key-range-controls.png": {
+        "hash": "d775f00a792c31fe"
+    },
+    "screenshots/key-range-enlarged.png": {
+        "hash": "ae4c176a1f635ee1"
+    },
+    "screenshots/knob.png": {
+        "hash": "190b123eac691bed"
+    },
+    "screenshots/layer-arp.png": {
+        "hash": "0c5277366af0f03d"
+    },
+    "screenshots/layer-config.png": {
+        "hash": "dd75399cdc092aa8"
+    },
+    "screenshots/layer-eq.png": {
+        "hash": "8c48a22b5e0581f3"
+    },
+    "screenshots/layer-lfo.png": {
+        "hash": "4faacd6a7e18b08d"
+    },
+    "screenshots/layer-main.png": {
+        "hash": "b4fbea63e566545b"
+    },
+    "screenshots/layer-playback-granular-fixed.png": {
+        "hash": "ab4546efeebce898"
+    },
+    "screenshots/layer-playback-granular-speed.png": {
+        "hash": "1079f198f395c47d"
+    },
+    "screenshots/layer-playback.png": {
+        "hash": "cb72067319e2a0da"
+    },
+    "screenshots/layer-top-controls.png": {
+        "hash": "3700ea7a08487b6d",
+        "overlay": {
+            "width": 580,
+            "height": 274,
+            "overlays": [
+                {
+                    "name": "inst-selector",
+                    "x": 0.0189655162,
+                    "y": 0.0437956192,
+                    "w": 0.770689666,
+                    "h": 0.145985395
+                },
+                {
+                    "name": "inst-navigation",
+                    "x": 0.789655149,
+                    "y": 0.0474452563,
+                    "w": 0.181034476,
+                    "h": 0.138686135
+                },
+                {
+                    "name": "mute-solo",
+                    "x": 0.153448269,
+                    "y": 0.44890511,
+                    "w": 0.068965517,
+                    "h": 0.295620441
+                },
+                {
+                    "name": "volume",
+                    "x": 0.296551734,
+                    "y": 0.350364953,
+                    "w": 0.127586201,
+                    "h": 0.492700726
+                },
+                {
+                    "name": "pan-stereo",
+                    "x": 0.498275846,
+                    "y": 0.270072997,
+                    "w": 0.0931034461,
+                    "h": 0.653284669
+                },
+                {
+                    "name": "tuning",
+                    "x": 0.667241395,
+                    "y": 0.284671545,
+                    "w": 0.179310352,
+                    "h": 0.624087572
+                }
+            ]
+        }
+    },
+    "screenshots/layers.png": {
+        "hash": "f1bcc707758ebcd8",
+        "overlay": {
+            "width": 1800,
+            "height": 1034,
+            "overlays": [
+                {
+                    "name": "layer-top",
+                    "x": 0.00833333377,
+                    "y": 0.0647969097,
+                    "w": 0.322222233,
+                    "h": 0.26499033
+                },
+                {
+                    "name": "page-tabs",
+                    "x": 0.00833333377,
+                    "y": 0.329787254,
+                    "w": 0.322222233,
+                    "h": 0.0464216657
+                },
+                {
+                    "name": "page",
+                    "x": 0.00833333377,
+                    "y": 0.376208901,
+                    "w": 0.322222233,
+                    "h": 0.613152802
+                },
+                {
+                    "name": "all-layers-buttons",
+                    "x": 0.958888888,
+                    "y": 0.0145067703,
+                    "w": 0.0333333351,
+                    "h": 0.0338491313
+                }
+            ]
+        }
+    },
+    "screenshots/loop-mode-menu.png": {
+        "hash": "82ef4bc6f69b7fbd"
+    },
+    "screenshots/midi-cc-assignments.png": {
+        "hash": "396637818bf18f3e"
+    },
+    "screenshots/overview.png": {
+        "hash": "ffcba2f3034a99a8",
+        "overlay": {
+            "width": 1800,
+            "height": 1260,
+            "overlays": [
+                {
+                    "name": "top-panel",
+                    "x": 0,
+                    "y": 0,
+                    "w": 1,
+                    "h": 0.0753968284
+                },
+                {
+                    "name": "main-content",
+                    "x": 0,
+                    "y": 0.0753968284,
+                    "w": 1,
+                    "h": 0.820634961
+                },
+                {
+                    "name": "bot-panel",
+                    "x": 0,
+                    "y": 0.896031737,
+                    "w": 1,
+                    "h": 0.103968255
+                },
+                {
+                    "name": "tab-row",
+                    "x": 0.407222241,
+                    "y": 0.0825396851,
+                    "w": 0.185555562,
+                    "h": 0.0373015888
+                },
+                {
+                    "name": "resize-corner",
+                    "x": 0.985630035,
+                    "y": 0.979471445,
+                    "w": 0.01437,
+                    "h": 0.0205285717
+                }
+            ]
+        }
+    },
+    "screenshots/perform-variation-strip.png": {
+        "hash": "86af72892de1f41d"
+    },
+    "screenshots/perform.png": {
+        "hash": "9afadb5758e6c9d7",
+        "overlay": {
+            "width": 1800,
+            "height": 1034,
+            "overlays": [
+                {
+                    "name": "preset-nav",
+                    "x": 0.217777789,
+                    "y": 0.080270797,
+                    "w": 0.564444482,
+                    "h": 0.116054162
+                },
+                {
+                    "name": "folder-badge",
+                    "x": 0.470555574,
+                    "y": 0.210831732,
+                    "w": 0.0588888898,
+                    "h": 0.041586075
+                },
+                {
+                    "name": "macros",
+                    "x": 0.00833333377,
+                    "y": 0.693423629,
+                    "w": 0.159999996,
+                    "h": 0.295938104
+                },
+                {
+                    "name": "layers",
+                    "x": 0.168333337,
+                    "y": 0.693423629,
+                    "w": 0.663333356,
+                    "h": 0.187620893
+                },
+                {
+                    "name": "variation-strip",
+                    "x": 0.178333342,
+                    "y": 0.933268905,
+                    "w": 0.478333354,
+                    "h": 0.038684722
+                },
+                {
+                    "name": "compare",
+                    "x": 0.677777767,
+                    "y": 0.883945882,
+                    "w": 0.143888891,
+                    "h": 0.102514513
+                },
+                {
+                    "name": "description",
+                    "x": 0.831666708,
+                    "y": 0.693423629,
+                    "w": 0.159999996,
+                    "h": 0.295938104
+                }
+            ]
+        }
+    },
+    "screenshots/performance-controls.png": {
+        "hash": "5a8233e256ffeb19"
+    },
+    "screenshots/resize-corner.png": {
+        "hash": "9e07542f8b30a9e2",
+        "overlay": {
+            "width": 450,
+            "height": 315,
+            "overlays": [
+                {
+                    "name": "grabber",
+                    "x": 0.942520082,
+                    "y": 0.91788584,
+                    "w": 0.05748,
+                    "h": 0.0821142867
+                }
+            ]
+        }
+    },
+    "screenshots/save-preset.png": {
+        "hash": "f3a672bc3b1004c6"
+    },
+    "screenshots/top-panel.png": {
+        "hash": "1f0affceb6bf3fce"
+    },
+    "screenshots/uninstall-library.png": {
+        "hash": "cbe1beaaa640a994"
+    },
+    "screenshots/uninstall-preset-bank.png": {
+        "hash": "f4acfffad7e99937"
+    },
+    "screenshots/update-indicator.png": {
+        "hash": "5edbedf91c16a58d"
+    },
+    "screenshots/velocity-curve.png": {
+        "hash": "01bb9a40016e51ea"
+    },
+    "screenshots/workflow-presets.png": {
+        "hash": "802661dd1fe29a7f",
+        "overlay": {
+            "width": 1800,
+            "height": 1034,
+            "overlays": [
+                {
+                    "name": "preset-nav",
+                    "x": 0.217777789,
+                    "y": 0.080270797,
+                    "w": 0.564444482,
+                    "h": 0.116054162
+                },
+                {
+                    "name": "macros",
+                    "x": 0.00833333377,
+                    "y": 0.693423629,
+                    "w": 0.159999996,
+                    "h": 0.295938104
+                },
+                {
+                    "name": "layers",
+                    "x": 0.168333337,
+                    "y": 0.693423629,
+                    "w": 0.663333356,
+                    "h": 0.187620893
+                },
+                {
+                    "name": "variation-strip",
+                    "x": 0.178333342,
+                    "y": 0.933268905,
+                    "w": 0.478333354,
+                    "h": 0.038684722
+                }
+            ]
+        }
+    }
+}

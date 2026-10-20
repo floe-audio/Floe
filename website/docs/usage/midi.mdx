@@ -12,22 +12,31 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 import data from "@site/static/generated-data.json";
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import LibraryFeature from '@site/src/components/LibraryFeature';
+import LibraryName from '@site/src/components/LibraryName';
 
-Floe is controllable via MIDI in the typical ways you'd expect from a software instrument.
+Floe responds to MIDI the way you'd expect from a software instrument: notes and velocity, the sustain pedal and pitch wheel, CC controllers mapped to its parameters, and MPE for expressive controllers.
+
+- **Velocity** — how hard you play sets each note's volume, shaped by each layer's [velocity to volume curve](./config-tab#velocity-to-volume-curve) on its _CONFIG_ tab.<LibraryFeature has="velocity-layers"> On multi-sampled Instruments with velocity layers, it also picks which samples play.</LibraryFeature>
+- **Sustain pedal** — CC-64 holds notes after you release the keys, until you lift the pedal, just like a piano's sustain pedal.
+- **Pitch wheel** — how far it bends is set per layer with _Pitch Bend Range_ on the layer's [_CONFIG_ tab](./config-tab), so one layer can bend a whole tone while another underneath it stays put. A range of 0 disables pitch bend for that layer.
+- **All Notes Off and All Sound Off** — the channel messages that DAWs and controllers send to stop stuck notes. All Notes Off (CC-123) releases every note on that channel, including sustained ones, so they fade out naturally; All Sound Off (CC-120) silences them immediately.
 
 ## MIDI CC
 
-All automatable parameters can be assigned to a MIDI CC, so you can control Floe from a MIDI controller.
+All automatable parameters can be assigned to a MIDI CC, so you can move them with the knobs and faders on your MIDI controller.
 
 ### Creating a mapping
 
-Right-click a parameter and select **MIDI CC Learn**, then move the control on your MIDI controller you want to assign — this creates the mapping. To remove a mapping, right-click the parameter and select **Remove MIDI CC**.
+Right-click a parameter (a knob or slider anywhere on the UI) and select _MIDI CC Learn_, then move the dial on your MIDI controller that you want to assign. To remove a mapping, right-click the parameter and select _Remove MIDI CC_ (followed by the CC number). A mapped CC works on any MIDI channel.
 
 You can also add and remove mappings from the [Performance Controls](./performance-controls) panel, which lists every mapping on the current instance in one place.
 
+<GeneratedScreenshot name="midi-cc" alt="MIDI CC tab of the Performance Controls panel" />
+
 ### Default mappings
 
-Unless you have changed you default Performance Controls, these mappings will be assigned:
+Unless you have changed your default Performance Controls, these mappings will be assigned:
 
 <ul>
 {[...data["default-cc-mappings"]].sort((a, b) => a.cc - b.cc).map((mapping, index) => (
@@ -37,70 +46,30 @@ Unless you have changed you default Performance Controls, these mappings will be
 
 ### How mappings are saved
 
-MIDI CC mappings are part of the [Performance Controls](./performance-controls) system. They apply only the current instance of Floe. However, you can easily set up a 'default' configuration that all new instances of Floe will start with. As with all performance controls, preset files never touch them so that you can browse presets without your settings changing each time.
-
-## Sustain Pedal
-
-Floe supports sustain pedal control via MIDI CC-64. When the sustain pedal is pressed, currently held notes will continue playing even after key release, until the pedal is released. This mimics standard piano sustain pedal behaviour.
-
-## All Notes Off and All Sound Off
-
-Floe responds to the MIDI channel messages that DAWs and controllers send to stop stuck notes. All Notes Off (CC-123) releases every note on that channel, including sustained ones, so they fade out naturally. All Sound Off (CC-120) silences that channel's notes immediately.
-
-## Pitch Wheel
-
-Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configured individually for each layer by using the pitch bend range parameter on the [Config tab of each layer](./layers#config-tab). This per-layer configuration allows for interesting sound design possibilities. A pitch bend range of 0 will disable pitch bend for that layer.
+MIDI CC mappings are part of the [Performance Controls](./performance-controls) system. They apply only to the current instance of Floe, but you can set up a default configuration that all new instances start with. Presets never touch them, so you can browse presets without your settings changing each time.
 
 ## MPE
 
-Floe supports MIDI Polyphonic Expression (MPE), letting compatible controllers (such as Seaboard, LinnStrument, Osmose, and others) control each note independently.
+MIDI Polyphonic Expression (MPE) lets compatible controllers, such as the Seaboard, LinnStrument, Osmose and Haken Continuum, shape each note independently.
 
-Enable MPE from the [Performance Controls](./performance-controls) panel.
+To switch it on, open the [Performance Controls](./performance-controls) panel with <FAIcon icon="fa-solid fa-gauge" /> in the top panel, click the _MPE_ tab, and tick _MPE (MIDI Polyphonic Expression)_.
 
-When enabled, Floe responds to the standard MPE per-note messages:
+<GeneratedScreenshot name="mpe" alt="The MPE tab of the Performance Controls panel" />
+
+Once it's on, each note responds to the standard MPE per-note messages:
 
 - **Glide**: pitch bend on a note's channel bends just that note, following the MPE ±48-semitone convention (or whatever range your controller negotiates). The master channel's pitch wheel still bends everything, using each layer's pitch bend range parameter.
 - **Press**: each note's channel pressure (aftertouch).
 - **Slide**: each note's CC74.
 
-Choose what press and slide control per layer on the [Config tab](./layers#config-tab). You can set a target (volume, filter cutoff, timbre, or LFO amount) and an amount (which can be negative to invert the response, and even have values beyond 100% to reach the full effect with a smaller gesture).
+Choose what press and slide control for each layer with the _MPE_ button on its [_CONFIG_ tab](./config-tab). Each has a target (_Volume_, _Filter_, _Timbre_ or _LFO Amount_) and an amount. The amount can be negative to invert the response, or beyond 100% to reach the full effect with a smaller gesture.<LibraryFeature lacks="timbre-layers"> _Timbre_ sweeps between an Instrument's crossfade layers: recordings of the same sound played in different ways, such as soft to hard. <LibraryName />'s Instruments don't have crossfade layers, so the _Timbre_ target has no effect, and a <FAIcon icon="fa-solid fa-triangle-exclamation" /> warning appears beside it when it's chosen.</LibraryFeature>
 
-For the volume target, press restores volume up to the layer's Volume slider, and slide acts as a per-note fader — the top of its travel is the layer's Volume level. For the filter cutoff, timbre and LFO amount targets, press adds an offset and slide is bipolar with its centre position neutral. The timbre target offsets the master timbre control per note, and the LFO amount target offsets the layer's LFO Amount per note.
+With the _Volume_ target, press brings each note up to the level of the layer's _Volume_ slider, and slide works like a fader for each note, topping out at the slider's level. So until you apply expression, notes play quieter than the slider. The _Filter_<LibraryFeature has="timbre-layers">, _Timbre_</LibraryFeature> and _LFO Amount_ targets nudge a setting for each note individually: _Filter_ moves the layer's filter cutoff, <LibraryFeature has="timbre-layers">_Timbre_ the master _Timbre_ control, </LibraryFeature>and _LFO Amount_ the layer's LFO _Amount_. Press adds to the setting, while slide can move it either way, with its centre position leaving it unchanged.
 
-The smoothing setting in the [Performance Controls](./performance-controls) panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
+The _MPE smoothing_ setting in the [Performance Controls](./performance-controls) panel sets how gradually press and slide respond: lower is more responsive, higher is smoother.
 
-While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob, the LFO Amount knob, or the master Timbre knob in the top panel — so you can see the expression from each voice.
+While notes are sounding, each active voice gets a red line on whichever control press or slide is routed to — the filter cutoff knob<LibraryFeature has="timbre-layers">, the LFO Amount knob, or the master Timbre knob in the top panel</LibraryFeature><LibraryFeature lacks="timbre-layers"> or the LFO Amount knob</LibraryFeature> — so you can see the expression from each voice.
 
-Floe also understands the MPE Configuration Message for zone setup, and a sustain pedal on a zone's master channel sustains the whole zone.
+The MPE Configuration Message for zone setup is supported too, and a sustain pedal on a zone's master channel sustains the whole zone.
 
 CLAP note expressions (per-note pitch, pressure, and brightness) work the same way in supporting hosts regardless of the MPE setting.
-
-## Velocity
-
-[Each layer](./layers#config-tab) has a customisable velocity-to-volume curve that shapes how hard you play (MIDI velocity) into the volume of each note.
-
-<GeneratedScreenshot name="velocity-curve" alt="Velocity to volume curve editor" />
-
-### How the curve works
-
-The horizontal axis is velocity — far left is the softest possible velocity (MIDI value 1), far right is the hardest (MIDI value 127), and higher-resolution velocity from DAWs that support it works too. The vertical axis is the resulting note volume. When you play a note, a red indicator appears at its velocity position on the curve so you can see where you're playing.
-
-While notes are sounding, each active voice also gets a red line on the layer's volume slider, showing the level that voice is currently playing at after the curve (and, in MPE mode, any per-note volume expression) has been applied.
-
-A straight line from bottom-left to top-right gives a 1:1 response — the harder you play, the louder the note, in equal proportion. By moving, adding, or removing control points (and reshaping the curve between them), you can change this relationship: make soft playing louder than it would be naturally, cap the volume of hard hits, or create a non-linear response that emphasises a particular dynamic range. Setting different curves across the 3 layers also opens up creative sound design — for example, fading one layer in as you play harder while another fades out.
-
-By default the curve doesn't start at zero, so even a zero-velocity note still produces a quiet sound. You can drag the left-most point down to silence if you want zero-velocity notes to be inaudible.
-
-### Velocity and multisampled instruments
-
-It's worth noting that velocity does more than just control volume. For multisampled instruments that contain separate velocity layers, a note's velocity also selects *which* sample is played — not just how loud it is. A low-velocity note on a piano, for instance, plays the soft-velocity samples (with their distinct tone and character) rather than a quieter version of the hard-hit samples. The velocity curve only reshapes the volume response; it doesn't change which velocity layer gets triggered.
-
-### Editing velocity curves
-
-Find the velocity curve editor on the **Config tab** for each layer.
-
-- **Double-click** anywhere on the curve to add a control point (up to 6 per layer)
-- **Drag control points** to move them
-- **Drag between points** to adjust curve shape
-- **Double-click a point** to remove it
-- **Right-click** for menu options

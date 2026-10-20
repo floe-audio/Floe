@@ -8,6 +8,7 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import PackageCard from '../components/PackageCard';
+import useAssetUrl from '@site/src/components/useAssetUrl';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWindows, faApple, faLinux } from '@fortawesome/free-brands-svg-icons';
 import packageDatabase from '@site/static/package-database.json';
@@ -15,8 +16,11 @@ import styles from './index.module.css';
 
 function HeroSection() {
     const { siteConfig } = useDocusaurusContext();
+    const assetUrl = useAssetUrl();
     return (
-        <section className={styles.hero}>
+        <section
+            className={styles.hero}
+            style={{ '--hero-background-image': `url('${assetUrl('hero-background.jpg')}')` }}>
             <div className="container">
                 <div className={styles.heroContent}>
                     <div className={styles.logoContainer}>
@@ -55,12 +59,11 @@ function HeroSection() {
     );
 }
 
-const showcaseSlides = Array.from(
-    { length: 7 },
-    (_, slideIndex) => `/images/screenshots/floe-whole-gui-${slideIndex + 1}.png`
-);
-
 function ShowcaseSlideshow() {
+    const assetUrl = useAssetUrl();
+    const showcaseSlides = Array.from({ length: 7 }, (_, slideIndex) =>
+        assetUrl(`screenshots/floe-whole-gui-${slideIndex + 1}.png`)
+    );
     const [activeIndex, setActiveIndex] = useState(0);
 
     useEffect(() => {
@@ -151,6 +154,7 @@ function AspectSection({ eyebrow, title, image, imageAlt, description, bullets, 
 
 export default function Home() {
     const { siteConfig } = useDocusaurusContext();
+    const assetUrl = useAssetUrl();
     return (
         <>
             <Layout
@@ -198,14 +202,14 @@ export default function Home() {
                 <AspectSection
                     eyebrow="Find"
                     title="Find the right sound"
-                    image="/images/aspect-find.png"
+                    image={assetUrl('aspect-find.png')}
                     imageAlt="Floe's search and browse interface"
                     description="Floe's unified browser works across all your libraries with comprehensive search, tags (mood, type, genre), and categorisation. The sound you need is always a few clicks away, whether you're hunting for something specific or exploring new territory."
                 />
                 <AspectSection
                     eyebrow="Perform"
                     title="Performance-ready"
-                    image="/images/aspect-perform.png"
+                    image={assetUrl('aspect-perform.png')}
                     imageAlt="Floe's performance controls and interface"
                     description="Expressively play sample-based instruments: velocity, modulation, and pitch bend work as expected. Use MIDI controllers, DAW automation and Floe's macro knobs to shape lively performances."
                     bullets={[
@@ -221,7 +225,7 @@ export default function Home() {
                 <AspectSection
                     eyebrow="Transform"
                     title="Transform with sample-based synthesis"
-                    image="/images/aspect-transform.png"
+                    image={assetUrl('aspect-transform.png')}
                     imageAlt="Floe's sound transformation features"
                     description="Take sounds beyond their natural boundaries. Layer instruments across libraries, sculpt with loop and granular controls that bridge multisampling and synthesis, and process with built-in effects."
                     bullets={[

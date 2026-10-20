@@ -1,8 +1,8 @@
 ---
 id: layers
-title: Layers
+title: Layers Page
 hide_table_of_contents: true
-description: Information about Floe's three-layer architecture and how to use layers
+description: How to build and shape sounds with Floe's three layers
 ---
 
 {/*
@@ -10,115 +10,67 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-import NumberedOverlay from '@site/src/components/NumberedOverlay';
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import LibraryFeature from '@site/src/components/LibraryFeature';
+import LibraryName from '@site/src/components/LibraryName';
 
-At the core of Floe are the 3 independent layers, each with their own instrument and sound-shaping options. This structure allows for blending multiple sounds together to create dynamic, rich, and complex tones.
+<GeneratedScreenshot name="page-layers" alt="Floe's window with the LAYERS page tab highlighted" />
 
-<GeneratedScreenshot name="layers" alt="Floe's three layers" />
+<LibraryName>Floe</LibraryName> is built around three layers, each holding a sound of its own, playing together as one.
 
-These are displayed in three columns on the main panel. Each layer is identical. Floe’s layers are the first things in the processing chain; each layer is processed in parallel, and then the three streams of audio are mixed together and fed through the effects rack, from top to bottom.
+For each layer, you pick a sound source, its _Instrument_, then shape it further with envelopes, filters, an LFO, looping and more.
 
-When you play a note into Floe, all layers are triggered simultaneously.
+A sound can use a single layer or blend two or three together. The LAYERS page is where you control all aspects of these identical layers.
 
-If a layer doesn't have an [instrument](../reference/instruments) (the sound-generator at the heart of a layer), it is inactive. Click the x-mark icon button at the top right of a layer to clear it.
+## How sound flows through the engine
 
-## Top Controls
+When you play a note, all three layers play at once (unless a layer is limited to a [key range](./config-tab#key-ranges)). Each is processed on its own, then the three are mixed together and sent through the [effects rack](./effects) and the master volume. A layer with no Instrument is simply silent.
 
-A permanent fixture on each layer are the _top controls_, which provide quick access to key functions.
+```mermaid
+graph LR
+    X[Input<br/>#40;MIDI keyboard, piano roll, etc.#41;] --> A
+    X --> B
+    X --> C
+    A["Layer 1<br/>#40;Instrument, ADSR, tuning, filter, LFO, etc.#41;"] --> D["Effects Rack<br/>#40;customisable ordering#41;"]
+    B["Layer 2<br/>#40;Instrument, ADSR, tuning, filter, LFO, etc.#41;"] --> D
+    C["Layer 3<br/>#40;Instrument, ADSR, tuning, filter, LFO, etc.#41;"] --> D
+    D --> E[Master Volume]
+    E --> F[Output]
+```
 
-<GeneratedScreenshot name="layer-top-controls" alt="Layer Top Controls" />
+## The layer layout
 
-- **1**: the _instrument_ selector: click this to open the [browser](./browsers) and select a new instrument for this layer - or unload the current one. You can also right-click and choose 'Unload' from the menu, or click the x-mark. The right-click menu also lets you copy and paste the instrument or the whole layer, and swap this layer with the one to its left or right - macro assignments move with the layer, so nothing changes about how it sounds.
-- **2**: instrument navigation: left/right arrows to quickly switch between instruments, a randomise button to load a random instrument, and an unload button to clear this layer. The navigation and randomise buttons are based on the current filter settings in the browser. For example, if you have selected the 'Distant Signals' sample library on the browser's filters, the navigation buttons will only cycle through instruments from that library.
-- **3**: mute/solo buttons: buttons to mute or solo this layer. Soloing a layer automatically mutes the other two layers.
-- **Volume**: adjust the layer's output volume. While notes are sounding, a red line on the slider marks each active voice's current level. Visit the [MIDI](./midi#velocity) page for details.
-- **Pitch**: adjust the layer's pitch in semitones. Double click the number to type in a precise value. Or click and drag to change the value, or use the left/right buttons.
-- **Detune**: adjust the layer's pitch in cents (hundredths of a semitone).
-- **Pan**: adjust the layer's stereo position. Uses a constant power pan law (AKA -3dB centre).
-- **Stereo**: increase or decrease the stereo width of the layer.
+<GeneratedScreenshot name="layers" alt="Floe's Layers page with the parts of a layer numbered" />
 
-## Playback Tab
+1. **Layer header** — the layer's Instrument and its mixing controls, always visible.
+1. **Tabs** — switch between the layer's groups of controls: _PLAYBACK_, _MAIN_, _LFO_, _EQ_, _ARP_ and _CONFIG_. A dot on the _EQ_, _LFO_ or _ARP_ tab shows that it's switched on.
+1. **Tab controls** — the controls for the selected tab. Each tab has its own chapter. You can right-click these to copy, paste or reset all of its settings at once. It's a quick way to give two layers the same configuration.
+1. **All-layer buttons** — these act on all three layers together. <FAIcon icon="fa-solid fa-shuffle" /> loads a random Instrument into every layer, with each layer following its own Instrument browser filters (see [Randomisation](./randomisation)). <FAIcon icon="fa-solid fa-xmark" /> clears every layer.
 
-The Playback tab controls how the loaded instrument's samples are played back.
+## Layer header
 
-<GeneratedScreenshot name="layer-playback" alt="Layer Playback Tab" />
+<GeneratedScreenshot name="layer-top-controls" alt="A layer's header with its controls numbered" />
 
-- **Play mode** (top selector): switches between _Standard Playback_ (normal sample playback) and [granular modes](./granular) for time-stretching or frozen-position playback. The waveform will often have [looping](./looping) controls on it.
-- **Waveform display**: shows the waveform and voice markers. For a single-sample instrument this is the actual sample; for a multisampled instrument it often displays the last played sample, although it will sometimes deliberately lock with a checkered overlay to avoid rapid flickering images. The arrow on the left edge is the sample-start handle — drag it to adjust where playback begins. When you play a note, red voice markers track across the waveform.
-- **Sample info caption**: shows _single sample_ or _multisample_, the sample length, and the root key of the loaded instrument.
-- **Reverse**: toggle to play the sample(s) in reverse.
-- **Loop mode** (bottom selector): select the looping mode — _No Loop_, _Standard_, _Ping-Pong_, etc. Visit the [looping](./looping) page for full details.
+1. **Instrument selector** — shows the layer's Instrument. Click it to open the [Instrument browser](./browsers) and choose a different one. Right-click for more options: unload the Instrument, copy and paste the Instrument or the whole layer, or swap this layer with the one to its left or right (macro assignments move with a swapped layer).
+1. **Instrument navigation** — the arrows <FAIcon icon="fa-solid fa-caret-left" /> <FAIcon icon="fa-solid fa-caret-right" /> step to the previous or next Instrument, and <FAIcon icon="fa-solid fa-shuffle" /> jumps to a random one: a quick way to audition sounds without opening the browser. They follow the filters you've set in the Instrument browser, so they only move between the Instruments that match. <FAIcon icon="fa-solid fa-xmark" /> unloads the Instrument, leaving the layer empty and silent.
+1. **Mute and Solo** — _Mute_ silences this layer, and _Solo_ lets you hear it on its own. Silenced layers keep running in the background, so if you unmute or unsolo them they carry on seamlessly from wherever they've got to. To save CPU, unload the Instrument instead. It's simplest to just use either Solo or Mute across the layers, not both — if you do mix them, Solo is prioritised over Mute.
+1. **Volume** — the layer's level, with its level meter alongside. While notes are sounding, red marks on the slider show the level of each voice. A voice's level depends on its velocity, where it falls in a [key range](./config-tab#key-ranges) fade, and any MPE volume expression.
+1. **Pan and Stereo** — _Pan_ places the layer anywhere from left to right. It uses a constant-power pan law (-3 dB at centre), so the layer keeps the same perceived loudness wherever you put it. _Stereo_ narrows or widens the layer: negative values pull it toward mono, positive values push it wider. Pan comes after Stereo, so you can narrow a wide sound and then place it as a single point. A mono sound has nothing to widen, so pushing it to maximum stereo width silences it.
+1. **Detune and Pitch** — _Pitch_ moves the layer up or down in semitones, and _Detune_ fine-tunes it in cents (hundredths of a semitone). Both work by speeding up or slowing down the audio. Right-click _Pitch_ to jump up or down an octave. Right-click _Detune_ and choose _Fold into Pitch_ to move any whole semitones from _Detune_ into _Pitch_, leaving the overall tuning unchanged.<LibraryFeature has="pitched-multisamples"> For a multi-sampled Instrument, _Transpose_ on the [CONFIG tab](./config-tab) may sound more natural.</LibraryFeature>
 
-When the layer holds a waveform Instrument (a built-in oscillator rather than a sampled sound), only the waveform display and its caption are shown. Play mode, reverse and loop mode don't apply to a waveform, so those controls are hidden and the caption says so. Since a waveform has no playhead, its red voice markers are placed left to right by pitch instead.
+See [Controls](./controls) for the ways to adjust knobs, sliders and number fields.
 
-It's typically a good idea to add a small attack using the volume envelope to avoid clicks if you change the sample-start position.
+## The tabs
 
-## Main Tab
+Below the header, each layer's controls are grouped into six tabs. Each has its own chapter:
 
-The Main tab houses the volume envelope and the per-voice filter.
+- [**PLAYBACK**](./playback-tab) — how the layer plays its samples: play mode, sample start, reverse, [granular synthesis](./playback-tab#granular-synthesis) and [looping](./playback-tab#looping).
+- [**MAIN**](./main-tab) — the [volume envelope](./main-tab#volume-envelope) and [filter](./main-tab#filter).
+- [**LFO**](./lfo-tab) — add movement to various aspects.
+- [**EQ**](./eq-tab) — a three-band equaliser to shape the layer's tone.
+- [**ARP**](./arp-tab) — the arpeggiator, which turns held notes into rhythmic patterns.
+- [**CONFIG**](./config-tab) — how the layer responds to your playing: transpose, pitch bend, keytracking, monophonic, MPE, [key ranges](./config-tab#key-ranges) and the velocity curve.
 
-<GeneratedScreenshot name="layer-main" alt="Layer Main Tab" />
+Right-click a tab to copy, paste or reset all of its settings at once. Copy a tab on one layer and paste it into another to give both layers the same settings, or reset a tab to start it afresh.
 
-### Volume Envelope
-
-- **Volume Envelope on/off**: typically it's best to leave the volume envelope enabled, but in some situations you can turn it off to allow samples to play unaltered in their entirety.
-- **ADSR graph**: 3 draggable points representing Attack, Decay+Sustain, and Release. Use these to shape this layer's voices volume over time. Hold `shift` for fine adjustments.
-
-### Filter
-
-Each voice belonging to this layer can be processed by a filter to shape its frequency content.
-
-- **Filter on/off**: toggle to enable or disable the filter for this layer.
-- **Filter graph**: an interactable frequency-response graph.
-- **Filter type selector**: click to open a menu of available filter types such as low-pass, high-pass, band-pass.
-- **Cut**: adjust the filter's cutoff frequency. If MPE press or slide is routed to filter cutoff (see the [Config tab](#config-tab)), a red line marks each active voice's current cutoff.
-- **Res**: adjust the filter's resonance (emphasis around the cutoff frequency).
-- **Env**: this bi-directional control adjusts how much the filter's cutoff is modulated by the filter envelope to the right. At the middle position the envelope has no effect; positive values open the cutoff up as the envelope progresses, negative values close it down.
-- **Filter envelope ADSR**: in the same manner as the volume envelope, 3 draggable points representing Attack, Decay+Sustain, and Release shape how the filter cutoff moves over time, scaled by _Env_.
-
-## LFO Tab
-
-The Low Frequency Oscillator (LFO) can modulate various parameters to add movement and interest to the sound.
-
-<GeneratedScreenshot name="layer-lfo" alt="Layer LFO Tab" />
-
-- **LFO on/off**: enable/disable the Low Frequency Oscillator.
-- **Waveform display**: a live representative preview of the current LFO shape and rate. Drag it left or right to change the _Time_, and up or down to change the _Amount_.
-- **Target**: select the parameter that the LFO will modulate: Volume, Filter, Pan, Pitch, or Grain Position. Some targets require their associated feature to be active (e.g. the filter must be enabled, or the play mode must be Granular Fixed).
-- **Shape**: choose the LFO waveform shape.
-- **Variation** <FAIcon icon="fa-solid fa-seedling" />: shown next to the Shape menu when a random shape (Random Steps or Random Glide) is selected. _Different on every note_ gives every note a fresh random pattern. _Identical on all notes_ makes every note move through exactly the same pattern, chosen by the **Seed** number. The random steps follow a sequence of numbers that only looks random, and the Seed is where that sequence starts, so the same Seed always gives the same movement, and it's saved with the preset. _Identical on each key_ gives each key its own repeatable pattern. In Free mode, a note that joins already-sounding notes follows their pattern.
-- **Mode**: switch between _Retrigger_ — new notes always start with the LFO at the beginning of its cycle — and _Free_ — a new note joins in wherever the layer's sounding notes have reached in the cycle, so all notes share the same LFO phase.
-- **Amount**: control the intensity of the LFO effect on the target parameter. If MPE press or slide is routed to LFO amount (see the [Config tab](#config-tab)), a red line marks each active voice's current amount.
-- **Time**: adjust the LFO rate. When Sync is enabled, this is synced to the host tempo (e.g., 1/4 note); when disabled, it operates in Hz.
-- **Sync**: toggle to sync the LFO speed to the host tempo.
-
-## EQ Tab
-
-Each layer includes a simple 3-band equaliser to sculpt the frequency content of the audio.
-
-<GeneratedScreenshot name="layer-eq" alt="Layer EQ Tab" />
-
-- **EQ on/off**: toggle to enable or disable the equaliser for this layer.
-- **EQ graph**: a frequency-response display showing the combined effect of all 3 bands. Each band has a draggable point you can move directly on the graph. Use the mouse scroll wheel to change the resonance of the node. For band types without a gain control, dragging the point up/down also changes its resonance.
-
-The 3 bands have identical controls:
-
-- **Band type selector**: click to open a menu of available EQ band types such as peak, low shelf, high shelf.
-- **Freq**: adjust the centre frequency of the EQ band.
-- **Reso**: adjust the resonance (Q factor) of the EQ band, controlling how narrow or wide the frequency band is.
-- **Gain**: this bi-directional control adjusts the gain (boost or cut) applied at the frequency.
-
-## Config Tab
-
-The Config tab contains MIDI and playback behaviour settings for this layer.
-
-<GeneratedScreenshot name="layer-config" alt="Layer Config Tab" />
-
-- **Transpose**: transpose the mapping of samples by the given semitone offset. This is particularly useful for multi-sampled instruments as it triggers different samples rather than algorithmically pitch-shifting the audio (which is what the layer's top control _pitch_ does).
-- **Pitch Bend Range**: set the pitch range in semitones for the MIDI pitch wheel.
-- **Keytrack**: when enabled, tunes the sound to match the key played. When disabled, the sound always plays at its root pitch regardless of the MIDI note. This is not typically useful if the instrument is multi-sampled.
-- **Monophonic**: select the voice behaviour when notes overlap. _Off_ (polyphonic): multiple voices can play simultaneously. _Retrigger_ (monophonic): new notes stop previous notes, triggering their volume envelope Release section. _Latch_ (monophonic): the first note plays until all keys are released; new notes are ignored — useful for drones and textural elements.
-- **MPE**: opens a menu where you can choose what per-note press (channel pressure) and slide (CC74) control on this layer — volume, filter cutoff, timbre, or LFO amount — along with an amount; negative amounts invert the response. Visit the [MIDI](./midi#mpe) page for full details about MPE.
-- **Range** and **Key Fade**: visit the [key ranges](./key-ranges) page for full details about these settings.
-- **Velocity to volume curve**: graphical control showing how MIDI velocity affects the layer's volume. A straight line from bottom-left to top-right means there's a 1:1 relationship with velocity and volume. The curve can be adjusted to create different velocity response characteristics. Visit the [MIDI](./midi) page for full details about editing velocity curves.
+<GeneratedScreenshot name="layer-tab-menu" alt="The menu that opens when you right-click a layer's MAIN tab" />

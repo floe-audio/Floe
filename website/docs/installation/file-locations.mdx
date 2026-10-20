@@ -1,0 +1,126 @@
+---
+id: file-locations
+title: File Locations
+hide_table_of_contents: true
+description: Quick reference guide for where Floe stores its files on Windows, macOS, and Linux
+---
+
+{/*
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+*/}
+
+import OSTabs, { OSPanel } from '@site/src/components/OSTabs';
+import ManualExclude from '@site/src/components/ManualExclude';
+
+You rarely need to know where Floe keeps its files, but it's handy when you're backing up, moving to a new computer or troubleshooting. This page lists them for each operating system. To change where your sample libraries and presets live, see [Folders](./folders) instead.
+
+## Your files
+
+<OSTabs>
+  <OSPanel os="windows">
+    - Default sample library folder: `C:\Users\Public\Floe\Libraries\`
+    - Default preset folder: `C:\Users\Public\Floe\Presets\`
+    - Preferences: `C:\Users\Public\Floe\Preferences\floe.ini`
+    - Autosaves: `C:\Users\Public\Floe\Autosaves\`
+  </OSPanel>
+
+  <OSPanel os="macos">
+    - Default sample library folder: `/Users/Shared/Floe/Libraries/`
+    - Default preset folder: `/Users/Shared/Floe/Presets/`
+    - Preferences: `/Users/Shared/Floe/Preferences/floe.ini`
+    - Autosaves: `/Users/Shared/Floe/Autosaves/`
+  </OSPanel>
+
+  <OSPanel os="linux">
+    - Default sample library folder: `~/Floe/Libraries/`
+    - Default preset folder: `~/Floe/Presets/`
+    - Preferences: `~/Floe/Preferences/floe.ini`
+    - Autosaves: `~/Floe/Autosaves/`
+  </OSPanel>
+</OSTabs>
+
+- **Default folders** — where packages install sample libraries and presets unless you've chosen other folders. See [Folders](./folders).
+- **Preferences** — `floe.ini` holds everything you set in Floe's Preferences panel. It's a text file you can edit by hand, and Floe picks up your changes straight away, though its contents aren't documented yet.
+- **Autosaves** — recent snapshots of each Floe instance's state, for recovering a lost sound. See [Autosave](../support/autosave).
+
+## Plugins
+
+<OSTabs>
+  <OSPanel os="windows">
+    - CLAP: `C:\Program Files\Common Files\CLAP\Floe.clap`
+    - VST3: `C:\Program Files\Common Files\VST3\Floe.vst3`
+  </OSPanel>
+
+  <OSPanel os="macos">
+    - CLAP: `/Library/Audio/Plug-Ins/CLAP/Floe.clap`
+    - VST3: `/Library/Audio/Plug-Ins/VST3/Floe.vst3`
+    - AU: `/Library/Audio/Plug-Ins/Components/Floe.component`
+  </OSPanel>
+
+  <OSPanel os="linux">
+    - CLAP (just you): `~/.clap/Floe.clap`
+    - CLAP (all users): `/usr/lib/clap/Floe.clap`
+    - VST3 (just you): `~/.vst3/Floe.vst3`
+    - VST3 (all users): `/usr/lib/vst3/Floe.vst3` or `/usr/local/lib/vst3/Floe.vst3`
+  </OSPanel>
+</OSTabs>
+
+## Small background files
+
+<OSTabs>
+  <OSPanel os="windows">
+    - Persistent store: `%APPDATA%\Floe\persistent_store`
+    - Device ID: `%APPDATA%\Floe\device_id`
+    - Logs: `%LOCALAPPDATA%\Floe\Logs\`
+  </OSPanel>
+
+  <OSPanel os="macos">
+    - Persistent store: `~/Library/Application Support/Floe/persistent_store`
+    - Device ID: `~/Library/Application Support/Floe/device_id`
+    - Logs: `~/Library/Logs/Floe/`
+  </OSPanel>
+
+  <OSPanel os="linux">
+    - Persistent store: `~/.local/state/Floe/persistent_store`
+    - Device ID: `~/.local/state/Floe/device_id`
+    - Logs: `~/.local/state/Floe/Logs/`
+  </OSPanel>
+</OSTabs>
+
+- **Persistent store** — a small file for things Floe remembers between sessions.
+- **Device ID** — a random ID used only when error reporting is on, so that we can measure how often each release crashes. See [Error Reporting](../support/error-reporting).
+- **Logs** — small text files describing what Floe has been doing. They can help when troubleshooting a problem.
+
+These are safe to delete at any time. Floe recreates them the next time it starts, though you may need to set a few things again.
+
+<ManualExclude types={['library']}>
+
+## Mirage files
+
+These only matter if you used to have [Mirage](../about-the-project/mirage), Floe's predecessor, installed.
+
+<OSTabs>
+  <OSPanel os="windows">
+    - Preferences: `C:\ProgramData\FrozenPlain\Mirage\Settings\mirage.json`
+    - Preferences (alternative): `%APPDATA%\FrozenPlain\Mirage\mirage.json`
+    - VST2: `C:\Program Files\VSTPlugins\mirage64.dll`
+    - VST2 (alternative): `C:\Program Files\Steinberg\VSTPlugins\mirage64.dll`
+    - VST2 (alternative): `C:\Program Files\Common Files\VST2\mirage64.dll`
+    - VST2 (alternative): `C:\Program Files\Common Files\Steinberg\VST2\mirage64.dll`
+  </OSPanel>
+
+  <OSPanel os="macos">
+    - Preferences: `/Library/Application Support/FrozenPlain/Mirage/Settings/mirage.json`
+    - Preferences (alternative): `~/Music/Audio Music Apps/Plug-In Settings/FrozenPlain/mirage.json`
+    - Preferences (alternative): `~/Library/Application Support/FrozenPlain/Mirage/mirage.json`
+    - VST2: `/Library/Audio/Plug-Ins/VST/Mirage.vst`
+    - AU: `/Library/Audio/Plug-Ins/Components/FrozenPlain Mirage.component`
+  </OSPanel>
+
+  <OSPanel os="linux">
+    Mirage wasn't available on Linux.
+  </OSPanel>
+</OSTabs>
+
+</ManualExclude>

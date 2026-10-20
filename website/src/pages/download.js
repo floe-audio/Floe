@@ -9,6 +9,7 @@ import data from '@site/static/generated-data.json';
 import staticData from '@site/static/generated-data.json';
 import OSTabs, { OSPanel } from '@site/src/components/OSTabs';
 import styles from './download.module.css';
+import useAssetUrl from '@site/src/components/useAssetUrl';
 
 function DownloadButton({ href, dataEvent, children, size }) {
     return (
@@ -147,6 +148,7 @@ function AdditionalDownloads({ os }) {
 }
 
 export default function Download() {
+    const assetUrl = useAssetUrl();
     return (
         <Layout
             title="Download"
@@ -161,7 +163,7 @@ export default function Download() {
                             <OSTabs>
                                 <OSPanel os="windows">
                                     <div className={styles.installerImage}>
-                                        <img src="/images/installer-windows-gui.png" alt="Windows installer screenshot" />
+                                        <img src={assetUrl('installer-windows-gui.png')} alt="Windows installer screenshot" />
                                     </div>
 
                                     <div className={styles.downloadButtons}>
@@ -180,7 +182,7 @@ export default function Download() {
 
                                 <OSPanel os="macos">
                                     <div className={styles.installerImage}>
-                                        <img src="/images/installer-macos-gui.png" alt="macOS installer screenshot" />
+                                        <img src={assetUrl('installer-macos-gui.png')} alt="macOS installer screenshot" />
                                     </div>
 
                                     <div className={styles.downloadButtons}>

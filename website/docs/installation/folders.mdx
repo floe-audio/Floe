@@ -1,0 +1,69 @@
+---
+id: folders
+title: Folders
+hide_table_of_contents: true
+description: Managing sample library and preset folders in Floe
+---
+
+{/*
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+*/}
+
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
+import LibraryName from '@site/src/components/LibraryName';
+import LibraryInsert from '@site/src/components/LibraryInsert';
+
+Floe keeps your sample libraries and presets as ordinary files in ordinary folders. You choose which folders it looks in, so you can keep large libraries on an external drive, keep your own presets somewhere you back up, and organise everything with your usual file manager.
+
+There are two separate kinds of folder: sample library folders and preset folders. Floe scans each one, including all its subfolders, and shows what it finds in the browsers. It also watches them, so anything you add, remove or change appears in Floe straight away, without a restart. Floe keeps no separate record of what's installed: whatever is in your folders is what Floe has.
+
+You manage the folders on the _Folders_ tab of <FAIcon icon="fa-solid fa-cog" /> Preferences.
+
+<GeneratedScreenshot name="folders" alt="The Folders tab of Floe's preferences" />
+
+Each kind of folder has its own list. The first folder in each list is Floe's default one, which is always scanned. Under each folder, Floe shows how many presets or sample libraries it contains.
+
+- **Add folder** — choose a folder for Floe to scan. Pick a top-level folder, such as "Floe Libraries", rather than each library inside it, since the subfolders are scanned too. You can select several folders at once.
+- <FAIcon icon="fa-solid fa-up-right-from-square" /> **Open folder** — show the folder in your file manager.
+- <FAIcon icon="fa-solid fa-trash" /> **Stop scanning this folder** — remove a folder you've added from the list. Nothing is deleted from your computer; Floe simply stops looking there. The default folders can't be removed.
+
+## Installing to your own folders
+
+<ManualExclude types={['library']}>When you install a package, Floe puts its sample libraries and presets</ManualExclude><ManualOnly types={['library']}>When you install <LibraryName />, Floe puts the library and its presets</ManualOnly> in the install folders chosen on the _Packages_ tab. They start as Floe's default folders on your main drive. To install somewhere else, such as an external drive, choose a different folder from the _Sample library install folder_ and _Preset install folder_ menus. Each menu lists the folders Floe already scans, plus _Add folder_ to add a new one and select it in a single step. See [Installing to a different drive](./install-packages#installing-to-a-different-drive).
+
+## Moving your libraries or presets
+
+For now, moving is done using your file manager (Finder, File Explorer, etc.). Floe doesn't have a 'move' button.
+
+1. **Create the new folder** in your file manager. For example, "Floe Libraries" on your external drive.
+1. **Add it to Floe** with _Add folder_ on the _Folders_ tab. Be sure to use the right list: sample libraries and presets are separate.
+1. **Open the old folder** with its <FAIcon icon="fa-solid fa-up-right-from-square" /> button.
+1. **Move everything across** in your file manager, usually by selecting it all and dragging it, or by cutting and pasting.
+
+Floe notices the change and updates its browsers instantly. If anything is missing, restart your DAW. To have future packages install into the new folder too, choose it as the install folder on the _Packages_ tab.
+
+## Telling libraries and presets apart
+
+If you lose track of which files are which:
+
+<LibraryInsert slot="folder-names">
+- **Sample libraries** are folders, usually named like `Developer Name - Library Name`. They usually contain a `floe.lua` file and a `Samples` folder.
+- **Preset banks** are folders, usually named like `Library Name Factory Presets`. They usually contain category subfolders full of small `.floe-preset` files.
+</LibraryInsert>
+
+We recommend keeping libraries and presets in separate folders, but Floe copes if they're mixed: add the same folder to both lists.
+
+## Why libraries and presets are separate
+
+<ManualExclude types={['library']}>Most sample libraries come with a preset bank, so it's fair to wonder why they live apart.</ManualExclude><ManualOnly types={['library']}><LibraryName />'s presets are installed in a separate folder from the library itself, so it's fair to wonder why.</ManualOnly> There are a few good reasons:
+
+- **They're edited differently.** Libraries are built by developers with programming tools and you rarely change them. Presets are made and changed by musicians all the time. Keeping them apart means you can save and reorganise presets freely without touching a library.
+- **They're different sizes.** A sample library can be large, with hundreds of audio files, so it often belongs on a big external drive. Presets are tiny, easy to back up and easy to share.
+<ManualExclude types={['library']}>
+- **A preset bank can use several libraries.** Its presets aren't tied to a single library, so they don't belong inside one.
+</ManualExclude>
+
+See [How Presets Are Stored](../presets/preset-storage) for more about preset files, and [File Locations](./file-locations) for where the default folders are.

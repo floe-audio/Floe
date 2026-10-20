@@ -1,0 +1,40 @@
+---
+id: autosave
+title: Autosave
+hide_table_of_contents: true
+description: How Floe autosaves your sound, and how to get it back
+---
+
+{/*
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+*/}
+
+Floe saves a copy of each instance's sound every few seconds while you work, so a sound you've spent time on is never lost for good. That helps if Floe or your DAW crashes, but it's just as handy for everyday accidents: deleting the wrong track, closing a project without saving, or tweaking a sound past the point you liked it.
+
+Autosaves are ordinary preset files. Floe only saves when something has changed, and the files are tiny, so autosaving won't slow your computer down or fill up your drive.
+
+## Getting a sound back
+
+1. In the [preset box](../presets/loading-presets#the-preset-box), click <FAIcon icon="fa-solid fa-file-import" /> _Load from file_.
+2. Go to Floe's autosave folder:
+   - Windows: `C:\Users\Public\Floe\Autosaves`
+   - macOS: `/Users/Shared/Floe/Autosaves`
+   - Linux: `~/Floe/Autosaves`
+3. Pick the autosave you want. Each file name holds the time and date it was saved, followed by the instance name, such as `autosave 14-32-05 Thu 2 Oct 2026 dawn-205 (4821).floe-preset`.
+
+The autosave folder isn't one of Floe's preset folders, so autosaves don't clutter the preset browser. Once you've loaded the sound you wanted, [save it](../presets/saving-presets) as a normal preset to keep it.
+
+## Instance names
+
+Every instance of Floe has a name of its own, such as `dawn-205`. It's saved with your DAW project, so the same instance keeps its name each time you open the project. When you have several instances of Floe running, the name in an autosave's file name tells you which one it came from.
+
+To see each instance's name in the top panel, turn on _Show instance name_ on the _General_ tab of Preferences. It's worth turning on if you often use several instances of Floe at once.
+
+## Settings
+
+The defaults suit most people, but you can change them on the _General_ tab of Preferences:
+
+- **Autosave interval (seconds)** — how often Floe checks for changes and saves.
+- **Max autosaves per instance** — how many autosaves to keep for each instance. When an instance reaches the limit, its oldest autosave is deleted to make room.
+- **Autosave delete after days** — how long to keep autosaves before deleting them.

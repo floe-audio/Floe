@@ -139,3 +139,12 @@ h2, h3, h4, h5, h6 {
 .blog-list-page header h2  {
     font-size: 1.5rem;
 }
+
+/* A list item wrapped in a conditional component (such as LibraryFeature) splits its list in two, so
+   join the halves back up. */
+.markdown ul:has(+ ul) {
+    margin-bottom: 0;
+}
+.markdown ul + ul > li:first-child {
+    margin-top: var(--ifm-list-item-margin);
+}

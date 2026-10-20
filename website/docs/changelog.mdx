@@ -1,5 +1,6 @@
 ---
 id: changelog
+manual_exclude: [floe, library]
 title: Changelog
 hide_table_of_contents: true
 description: A detailed changelog of all versions of Floe
@@ -40,6 +41,7 @@ This release includes all changes listed in the beta changelogs below: 2.0.4-bet
 - Fix clicks sometimes being ignored when Floe is busy, for example very quick clicks or moving the mouse away straight after clicking
 - Fix notes looping forever when a loop mode is set but the volume envelope is off
 - Fix the arpeggiator's step right-click menu not opening in Overview
+- Fix a granular Harmony interval you've just clicked off still looking on until you move the mouse away
 - Respond to MIDI All Notes Off (CC 123) and All Sound Off (CC 120), so a DAW or controller's panic or stop can silence stuck notes
 - Fix renders sometimes coming out with different random variations (grains, random LFO shapes, the arpeggiator's Humanise and Random orders, and more) depending on your DAW's buffer size, such as between playback and bouncing. Some DAW projects that use these may play a different variation than in earlier versions
 - Make error messages easier to read: short titles, no repeated package names, and no internal source code details

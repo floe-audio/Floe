@@ -1,0 +1,40 @@
+---
+id: system-requirements
+title: System Requirements
+hide_table_of_contents: true
+description: The operating systems, processors and plugin hosts Floe runs on
+---
+
+{/*
+SPDX-FileCopyrightText: 2026 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+*/}
+
+import data from "@site/static/generated-data.json";
+import LibraryInsert from '@site/src/components/LibraryInsert';
+import LibraryName from '@site/src/components/LibraryName';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
+
+<ManualExclude types={['library']}>
+Floe is a plugin, so it runs inside your DAW or another plugin host. Here's what it needs:
+</ManualExclude>
+<ManualOnly types={['library']}>
+<LibraryName /> runs inside Floe, our free plugin for playing sample libraries. These are Floe's requirements:
+</ManualOnly>
+
+- **macOS:** {data["min-macos-version"]} or later, on an Apple Silicon or Intel Mac.
+- **Windows:** {data["min-windows-version"]} or later, on a processor with SSE2 support (almost every PC since about 2006).
+- **Linux:** an x86 distribution with glibc 2.31 or later. Floe also needs the libcurl, OpenGL, GLX and X11 libraries (including Xcursor and Xext), plus `zenity` and `xdg-open`, which most desktop distributions already have.
+
+Floe is 64-bit only, so your DAW needs to be 64-bit too.
+
+<LibraryInsert slot="requirements" />
+
+## Plugin formats
+
+Floe comes as a CLAP and a VST3 plugin, plus an AU (v2) plugin on macOS. If your DAW supports CLAP, we recommend using that version. There's no standalone application and no AAX (Pro Tools) support at the moment.
+
+- **CLAP** hosts include Reaper, Bitwig, FL Studio (2024 or newer) and Studio One Pro (v7 or newer).
+- **VST3** hosts include Cubase, Studio One, Ableton Live, Reason and Ardour.
+- **AU** hosts include Logic Pro and GarageBand.
