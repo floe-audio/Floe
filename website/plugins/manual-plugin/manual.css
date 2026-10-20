@@ -1,0 +1,452 @@
+/* SPDX-FileCopyrightText: 2026 Sam Windell */
+/* SPDX-License-Identifier: MIT */
+
+/* Paged media rules for the manual. Not part of the site's CSS bundle: the manual plugin hands
+   it to the manual page, which gives it to Paged.js to polyfill @page margin boxes, string-set and
+   target-counter. */
+
+@page {
+    size: A4;
+    margin: 22mm 20mm 24mm 20mm;
+
+    @top-left {
+        content: string(chapter);
+        font-family: 'Source Sans 3', sans-serif;
+        font-size: 7.5pt;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #7a8a96;
+        vertical-align: bottom;
+        padding-bottom: 8mm;
+    }
+
+    @top-right {
+        content: string(sectiontitle);
+        font-family: 'Source Sans 3', sans-serif;
+        font-size: 7.5pt;
+        color: #7a8a96;
+        vertical-align: bottom;
+        padding-bottom: 8mm;
+    }
+
+    /* @bottom-left's content (the manual title) is appended by the manual plugin */
+    @bottom-right {
+        content: counter(page);
+    }
+}
+
+/* Paged.js keeps only the last @bottom-left block per page, so the footers are styled here
+   rather than alongside the plugin's content rules. */
+html.floe-manual .pagedjs_margin-bottom-left,
+html.floe-manual .pagedjs_margin-bottom-right {
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 7.5pt;
+    color: #7a8a96;
+    align-items: flex-start;
+    padding-top: 8mm;
+}
+
+@page cover {
+    margin: 0;
+
+    @top-left { content: none; }
+    @top-right { content: none; }
+    @bottom-left { content: none; }
+    @bottom-right { content: none; }
+}
+
+@page toc {
+    @top-left { content: none; }
+    @top-right { content: none; }
+}
+
+@page :blank {
+    @top-left { content: none; }
+    @top-right { content: none; }
+}
+
+/* Base */
+
+html.floe-manual {
+    --ifm-font-family-base: 'Source Sans 3', sans-serif;
+    --ifm-heading-font-family: 'Source Sans 3', sans-serif;
+    --ifm-font-family-monospace: 'JetBrains Mono', monospace;
+    --ifm-font-size-base: 10pt;
+    --ifm-line-height-base: 1.55;
+    --ifm-font-color-base: #1d2a33;
+    --ifm-heading-color: #14222c;
+    --ifm-link-color: #366285;
+    --ifm-code-font-size: 88%;
+    --ifm-spacing-vertical: 0.7rem;
+    --ifm-leading: 0.7rem;
+    --manual-rule: #d9e0e5;
+    --manual-muted: #6b7b87;
+    --manual-brand: #366285;
+    --manual-brand-deep: #1b3243;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+html.floe-manual body {
+    background: white;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal;
+    hyphens: auto;
+}
+
+html.floe-manual .manual-source {
+    display: none;
+}
+
+@media screen {
+    html.floe-manual body {
+        background: #5d646b;
+    }
+
+    html.floe-manual .pagedjs_page {
+        background: white;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+        margin: 10mm auto;
+    }
+}
+
+/* Anything after the last page, or a break after it, prints as a trailing blank page. */
+html.floe-manual .pagedjs_page:last-of-type {
+    break-after: avoid;
+}
+
+html.floe-manual .mermaidTooltip {
+    display: none;
+}
+
+html.floe-manual .pagedjs_page_content a {
+    color: var(--manual-brand);
+    text-decoration: none;
+}
+
+html.floe-manual p,
+html.floe-manual li {
+    orphans: 3;
+    widows: 3;
+}
+
+/* For a page that runs just over, such as a library's story page: wrap its content in
+   <div className="manual-compact">. */
+html.floe-manual .manual-compact {
+    --ifm-leading: 0.35rem;
+    line-height: 1.4;
+}
+
+/* Forces a page break in the PDF; renders as nothing on the website: <div className="manual-page-break" /> */
+html.floe-manual .manual-page-break {
+    break-before: page;
+}
+
+/* Cover */
+
+.manual-cover {
+    page: cover;
+    height: 297mm;
+    box-sizing: border-box;
+    padding: 30mm 26mm 24mm;
+    display: flex;
+    flex-direction: column;
+    background: white;
+}
+
+.manual-cover-logo {
+    width: 30mm;
+}
+
+.manual-cover-title {
+    margin-top: 62mm;
+    padding-top: 6mm;
+    border-top: 0.25mm solid var(--ifm-heading-color);
+}
+
+html.floe-manual .manual-cover-title h1 {
+    font-size: 30pt;
+    font-weight: 400;
+    letter-spacing: -0.015em;
+    line-height: 1.1;
+    color: var(--ifm-heading-color);
+    margin: 0;
+}
+
+.manual-cover-tagline {
+    margin: 3mm 0 0;
+    font-size: 12pt;
+    color: var(--manual-muted);
+}
+
+.manual-cover-screenshot {
+    margin-top: auto;
+    width: 100%;
+    border: 0.25mm solid var(--manual-rule);
+}
+
+.manual-cover-footer {
+    margin-top: 12mm;
+    display: flex;
+    justify-content: space-between;
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--manual-muted);
+}
+
+/* Front and back pages */
+
+.manual-mdx-page,
+.manual-mdx-page > h1 {
+    break-before: page;
+}
+
+/* Table of contents */
+
+.manual-toc {
+    page: toc;
+    break-before: page;
+}
+
+html.floe-manual .manual-toc-title {
+    font-size: 17pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8mm;
+}
+
+.manual-toc ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.manual-toc-chapter {
+    margin: 0 0 5mm;
+    break-inside: avoid;
+}
+
+.manual-toc-chapter-label,
+.manual-toc-chapter > a {
+    display: flex;
+    font-size: 10.5pt;
+    font-weight: 600;
+    color: var(--ifm-heading-color) !important;
+    padding-bottom: 1.5mm;
+    margin-bottom: 1.5mm;
+    border-bottom: 0.25mm solid var(--manual-rule);
+}
+
+.manual-toc-sections li {
+    margin: 0;
+    padding: 0.6mm 0 0.6mm 5mm;
+}
+
+.manual-toc-sections a {
+    display: flex;
+    color: var(--ifm-font-color-base) !important;
+}
+
+.manual-toc-headings li {
+    padding: 0.4mm 0 0.4mm 5mm;
+}
+
+.manual-toc-headings a {
+    display: flex;
+    font-size: 0.92em;
+    color: var(--ifm-font-color-base) !important;
+}
+
+.manual-toc a::after {
+    content: target-counter(attr(href url), page);
+    margin-left: auto;
+    padding-left: 4mm;
+    font-variant-numeric: tabular-nums;
+    color: var(--manual-muted);
+    font-weight: 400;
+}
+
+/* Sections */
+
+.manual-section {
+    break-before: page;
+    string-set: chapter attr(data-chapter);
+}
+
+.manual-section-title {
+    string-set: sectiontitle content(text);
+}
+
+/* Exists only for the PDF outline, which nests sections under it. The outline skips clipped or
+   unrendered headings, so it is transparent instead. */
+html.floe-manual .manual-chapter-outline-heading {
+    position: absolute;
+    margin: 0;
+    font-size: 1pt;
+    line-height: 1;
+    color: transparent;
+}
+
+/* Front and back pages are whole MDX pages, so their headings are a level higher than in the doc
+   sections, whose h2s are demoted. */
+html.floe-manual .manual-section-title,
+html.floe-manual .manual-mdx-page h1 {
+    font-size: 17pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin: 0 0 6mm;
+}
+
+html.floe-manual .manual-section-body h3,
+html.floe-manual .manual-section-body h4,
+html.floe-manual .manual-section-body h5,
+html.floe-manual .manual-section-body h6,
+html.floe-manual .manual-mdx-page h2,
+html.floe-manual .manual-mdx-page h3,
+html.floe-manual .manual-mdx-page h4 {
+    break-after: avoid;
+    break-inside: avoid;
+    line-height: 1.25;
+    font-weight: 600;
+    color: var(--ifm-heading-color);
+}
+
+html.floe-manual .manual-section-body h3,
+html.floe-manual .manual-mdx-page h2 {
+    font-size: 12.5pt;
+    margin: 7mm 0 2mm;
+}
+
+html.floe-manual .manual-section-body > :first-child,
+html.floe-manual .manual-mdx-page > :first-child {
+    margin-top: 0;
+}
+
+html.floe-manual .manual-section-body h4,
+html.floe-manual .manual-mdx-page h3 {
+    font-size: 10.5pt;
+    margin: 5mm 0 1.5mm;
+}
+
+html.floe-manual .manual-section-body h5,
+html.floe-manual .manual-mdx-page h4 {
+    font-size: 10pt;
+    margin: 4mm 0 1mm;
+}
+
+html.floe-manual .manual-section-body h6 {
+    font-size: 10pt;
+    margin: 4mm 0 1mm;
+    color: var(--manual-muted);
+}
+
+/* Content blocks */
+
+html.floe-manual .markdown img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+    border-radius: 2mm;
+}
+
+html.floe-manual .generated-screenshot {
+    margin: 4mm auto 5mm;
+}
+
+html.floe-manual .manual-keep-together,
+html.floe-manual .markdown img,
+html.floe-manual .generated-screenshot,
+html.floe-manual .docusaurus-mermaid-container,
+html.floe-manual .theme-admonition,
+html.floe-manual figure,
+html.floe-manual tr {
+    break-inside: avoid;
+}
+
+html.floe-manual .docusaurus-mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
+html.floe-manual .theme-admonition {
+    box-shadow: none;
+    border-radius: 1.2mm;
+    padding: 3mm 4mm;
+    font-size: 9.5pt;
+}
+
+html.floe-manual .markdown table {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    line-height: 1.4;
+    margin: 4mm 0 6mm;
+}
+
+html.floe-manual .markdown table thead tr {
+    border-bottom: 0.4mm solid var(--manual-brand);
+}
+
+html.floe-manual .markdown table th {
+    background: #eef3f7;
+    color: var(--manual-brand-deep);
+    text-align: left;
+}
+
+html.floe-manual .markdown table th,
+html.floe-manual .markdown table td {
+    border: none;
+    border-bottom: 0.2mm solid var(--manual-rule);
+    padding: 1.6mm 2.4mm;
+    vertical-align: top;
+}
+
+html.floe-manual .markdown table tr:nth-child(2n) {
+    background: #f8fafb;
+}
+
+html.floe-manual .markdown pre,
+html.floe-manual .markdown pre code {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+html.floe-manual .markdown pre {
+    font-size: 8pt;
+    line-height: 1.5;
+    border: 0.25mm solid var(--manual-rule);
+    border-radius: 1.2mm;
+    box-shadow: none;
+}
+
+html.floe-manual .markdown code {
+    border: none;
+    background: #eef2f5;
+}
+
+html.floe-manual .manual-video-note {
+    font-size: 9pt;
+    font-style: italic;
+    color: var(--manual-muted);
+    border-left: 0.4mm solid var(--manual-rule);
+    padding-left: 3mm;
+}
+
+html.floe-manual .os-tabs-manual-panel {
+    break-inside: avoid;
+    margin-bottom: 4mm;
+}
+
+/* Not uppercased: "macOS" must keep its casing. */
+html.floe-manual .os-tabs-manual-heading {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: var(--manual-brand);
+    margin: 5mm 0 2mm;
+}

@@ -4,6 +4,9 @@
 import React, { useState, useEffect } from 'react';
 import './OSTabs.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { useIsManual } from './ManualContext';
+
+const k_os_labels = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
 
 /**
  * OS Detection and Tab Management Component for Download Page
@@ -30,6 +33,24 @@ export default function OSTabs({ children }) {
 
         setActiveOS(detectOS());
     }, []);
+
+    const isManual = useIsManual();
+    if (isManual) {
+        return (
+            <div className="os-tabs-manual">
+                {React.Children.map(children, (child) =>
+                    React.isValidElement(child) ? (
+                        <section className="os-tabs-manual-panel">
+                            <h4 className="os-tabs-manual-heading">{k_os_labels[child.props.os]}</h4>
+                            {React.cloneElement(child, {
+                                className: `download-panel active ${child.props.className || ''}`
+                            })}
+                        </section>
+                    ) : null
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="os-tabs-container">

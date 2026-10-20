@@ -3,8 +3,56 @@
 // SPDX-FileCopyrightText: 2025 Sam Windell
 // SPDX-License-Identifier: MIT
 
+import fs from "node:fs";
+import path from "node:path";
 import { themes as prismThemes } from "prism-react-renderer";
 import versionsConfig from "./versions-config.js";
+import {
+    remarkAssetUrls,
+    resolveAssetUrls,
+    warnAboutUnuploadedAssets,
+    writeResolvedAssetsCacheKey,
+} from "./plugins/asset-urls.mjs";
+
+warnAboutUnuploadedAssets();
+
+// Set by scripts/generate-manual.mjs; see plugins/manual-plugin.
+const k_manual_options = process.env.FLOE_MANUAL ? JSON.parse(process.env.FLOE_MANUAL) : undefined;
+const k_asset_options = { manualScreenshotsDir: k_manual_options?.screenshotsDir };
+const k_remark_asset_urls = [remarkAssetUrls, k_asset_options];
+
+// Docs moved to a new path in the beta docs. Stable redirects only exist once the move has been
+// promoted to stable, because Docusaurus rejects redirects to routes that don't exist.
+const k_moved_docs = {
+    "getting-started/overview": "introduction/about-floe",
+    "usage/presets": "presets/loading-presets",
+    "usage/folders": "installation/folders",
+    "reference/file-locations": "installation/file-locations",
+    "getting-started/faq": "support/faq",
+    "reference/error-reporting": "support/error-reporting",
+    "reference/autosave": "support/autosave",
+    "getting-started/glossary": "reference/glossary",
+    "usage/workflow": "usage/layers",
+    "usage/granular": "usage/playback-tab",
+    "usage/looping": "usage/playback-tab",
+    "usage/arpeggiator": "usage/arp-tab",
+    "usage/key-ranges": "usage/config-tab",
+    "usage/the-window": "getting-started/quick-start-guide",
+};
+
+const isInStableDocs = (docPath) =>
+    fs.existsSync(new URL(`./versioned_docs/version-stable/${docPath}.mdx`, import.meta.url));
+
+// The stable route of a doc, following its move once that's been promoted.
+const stableDocRoute = (docPath) => {
+    const movedTo = k_moved_docs[docPath];
+    return `/docs/${movedTo && isInStableDocs(movedTo) ? movedTo : docPath}`;
+};
+
+const movedDocRedirects = Object.entries(k_moved_docs).flatMap(([from, to]) => [
+    { to: `/docs/beta/${to}`, from: `/docs/beta/${from}` },
+    ...(isInStableDocs(to) ? [{ to: `/docs/${to}`, from: `/docs/${from}` }] : []),
+]);
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -12,6 +60,11 @@ const config = {
     tagline:
         "Floe is a free, open-source sample library engine. Available as an audio plugin for Windows, macOS and Linux.",
     favicon: "images/favicon.svg",
+
+    // Read through the useAssetUrl hook.
+    customFields: {
+        assetUrls: resolveAssetUrls("current", k_asset_options),
+    },
 
     // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
     future: {
@@ -28,7 +81,11 @@ const config = {
     organizationName: "floe-audio", // Usually your GitHub org/user name.
     projectName: "Floe", // Usually your repo name.
 
-    onBrokenLinks: "throw",
+    // The manual build's /manual page holds every doc, so the docs' relative links only resolve once
+    // the manual page rewrites them in the browser.
+    onBrokenLinks: k_manual_options ? "ignore" : "throw",
+
+    staticDirectories: ["static", ...(k_asset_options.manualScreenshotsDir ? [path.dirname(k_asset_options.manualScreenshotsDir)] : [])],
 
     headTags: [
         {
@@ -66,9 +123,11 @@ const config = {
                     sidebarPath: "./sidebars.js",
                     routeBasePath: "docs",
                     sidebarCollapsed: false,
+                    beforeDefaultRemarkPlugins: [k_remark_asset_urls],
                     ...versionsConfig,
                 },
                 blog: {
+                    beforeDefaultRemarkPlugins: [k_remark_asset_urls],
                     showReadingTime: true,
                     feedOptions: {
                         type: ["rss", "atom"],
@@ -78,6 +137,9 @@ const config = {
                     onInlineTags: "warn",
                     onInlineAuthors: "warn",
                     onUntruncatedBlogPosts: "warn",
+                },
+                pages: {
+                    beforeDefaultRemarkPlugins: [k_remark_asset_urls],
                 },
                 theme: {
                     customCss: "./src/css/custom.css",
@@ -182,13 +244,21 @@ const config = {
         }),
     plugins: [
         "./plugins/packages-plugin",
+        "./plugins/manual-plugin",
+        () => ({
+            name: "asset-urls-cache-key",
+            configureWebpack: () => ({
+                experiments: { cache: { buildDependencies: [writeResolvedAssetsCacheKey(k_asset_options)] } },
+            }),
+        }),
         [
             "@docusaurus/plugin-client-redirects",
             {
                 fromExtensions: ["html", "htm"], // /myPage.html -> /myPage
                 redirects: [
+                    ...movedDocRedirects,
                     {
-                        to: "/docs/beta/getting-started/overview",
+                        to: "/docs/beta/introduction/about-floe",
                         from: [
                             "/docs/beta/key-concepts/general-usage",
                         ],
@@ -200,19 +270,19 @@ const config = {
                         ],
                     },
                     {
-                        to: "/docs/beta/usage/folders",
+                        to: "/docs/beta/installation/folders",
                         from: [
                             "/docs/beta/key-concepts/folders",
                         ],
                     },
                     {
-                        to: "/docs/beta/getting-started/glossary",
+                        to: "/docs/beta/reference/glossary",
                         from: [
                             "/docs/beta/key-concepts/components",
                         ],
                     },
                     {
-                        to: "/docs/getting-started/overview",
+                        to: stableDocRoute("getting-started/overview"),
                         from: [
                             "/docs/key-concepts/general-usage",
                         ],
@@ -224,13 +294,13 @@ const config = {
                         ],
                     },
                     {
-                        to: "/docs/usage/folders",
+                        to: stableDocRoute("usage/folders"),
                         from: [
                             "/docs/key-concepts/folders",
                         ],
                     },
                     {
-                        to: "/docs/getting-started/glossary",
+                        to: stableDocRoute("getting-started/glossary"),
                         from: [
                             "/docs/key-concepts/components",
                         ],
@@ -245,14 +315,14 @@ const config = {
                         ],
                     },
                     {
-                        to: "/docs/usage/presets",
+                        to: stableDocRoute("usage/presets"),
                         from: [
                             "/usage/presets",
                             "/usage/presets.html",
                         ],
                     },
                     {
-                        to: "/docs/getting-started/glossary",
+                        to: stableDocRoute("getting-started/glossary"),
                         from: [
                             "/docs/usage/sample-libraries",
                             "/usage/sample-libraries",
@@ -263,7 +333,7 @@ const config = {
                         ],
                     },
                     {
-                        to: "/docs/reference/autosave",
+                        to: stableDocRoute("reference/autosave"),
                         from: [
                             "/docs/usage/autosave",
                             "/usage/autosave",
@@ -279,7 +349,7 @@ const config = {
                         ],
                     },
                     {
-                        to: "/docs/reference/error-reporting",
+                        to: stableDocRoute("reference/error-reporting"),
                         from: [
                             "/docs/usage/error-reporting",
                             "/usage/error-reporting",
