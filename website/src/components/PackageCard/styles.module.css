@@ -20,7 +20,7 @@
 .imageContainer {
   position: relative;
   width: 100%;
-  height: 200px;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background: var(--ifm-color-emphasis-100);
 }

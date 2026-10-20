@@ -25,16 +25,6 @@ export default function Packages() {
                         </div>
                     </section>
 
-                    {/* Professional Section */}
-                    <section className={styles.section}>
-                        <div className={styles.sectionHeader}>
-                            <h2>Professional Packages ({packageDatabase.filter(pkg => pkg.category === 'professional' && !pkg.hidden).length})</h2>
-                        </div>
-                        <div className={styles.wideContent}>
-                            <PackageGrid pageSize={6} packages={packageDatabase.filter(pkg => pkg.category === 'professional').sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))} />
-                        </div>
-                    </section>
-
                     {/* Community Section */}
                     <section id="community-packages" className={styles.section}>
                         <div className={styles.sectionHeader}>
@@ -45,6 +35,16 @@ export default function Packages() {
                         </div>
                         <div className={styles.wideContent}>
                             <PackageGrid pageSize={6} packages={packageDatabase.filter(pkg => pkg.category === 'community').sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))} />
+                        </div>
+                    </section>
+
+                    {/* Professional Section */}
+                    <section className={styles.section}>
+                        <div className={styles.sectionHeader}>
+                            <h2>Professional Packages ({packageDatabase.filter(pkg => pkg.category === 'professional' && !pkg.hidden).length})</h2>
+                        </div>
+                        <div className={styles.wideContent}>
+                            <PackageGrid pageSize={6} packages={packageDatabase.filter(pkg => pkg.category === 'professional').sort((a, b) => new Date(b.last_updated) - new Date(a.last_updated))} />
                         </div>
                     </section>
 
