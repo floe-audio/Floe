@@ -465,6 +465,15 @@ const config = {
     ],
     markdown: {
         mermaid: true,
+        // A doc with `manual_only: true` is left out of website builds as a draft. Drafts still show in
+        // the dev server.
+        parseFrontMatter: async (params) => {
+            const result = await params.defaultParseFrontMatter(params);
+            if (!k_manual_options && result.frontMatter.manual_only === true) {
+                result.frontMatter.draft = true;
+            }
+            return result;
+        },
     },
     themes: ["@docusaurus/theme-mermaid"],
 };
