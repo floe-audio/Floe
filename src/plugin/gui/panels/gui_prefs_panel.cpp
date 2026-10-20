@@ -499,12 +499,22 @@ static void PackagesPreferencesPanel(GuiBuilder& builder, PreferencesPanelContex
         PreferencesLhsTextWidget(builder, row, "Install");
         auto const rhs = PreferencesRhsColumn(builder, row, k_small_gap);
         PreferencesRhsText(builder, rhs, "Install libraries and presets from a package file");
-        if (!context.package_install_jobs.Full() &&
-            TextButton(builder,
-                       rhs,
-                       {.text = "Install package",
-                        .tooltip = "Install libraries and presets from a package file"_s})) {
-            OpenFilePickerInstallPackage(context.file_picker_state, context.persistent_store);
+        if (!context.package_install_jobs.Full()) {
+            auto const button_container =
+                DoBox(builder,
+                      {
+                          .parent = rhs,
+                          .layout {.size = {layout::k_hug_contents, layout::k_hug_contents}},
+                      });
+            if (TextButton(builder,
+                           button_container,
+                           {.text = "Install package",
+                            .tooltip = "Install libraries and presets from a package file"_s})) {
+                OpenFilePickerInstallPackage(context.file_picker_state, context.persistent_store);
+            }
+            if (auto const r = BoxRect(builder, button_container))
+                builder.imgui.RegisterNamedRect("prefs-install.install-button"_s,
+                                                builder.imgui.ViewportRectToWindowRect(*r));
         }
     }
 

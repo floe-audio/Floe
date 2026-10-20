@@ -634,9 +634,12 @@ static Optional<CaptureSpec> ResolveCapture(GuiState& g) {
     if (IsScreenshotRequest("install-packages"_s)) {
         auto const modal = named("prefs-panel.modal"_s);
         auto const last_row = named("prefs-install.last-row"_s);
-        if (!(modal && last_row)) return k_nullopt;
+        auto const install_button = named("prefs-install.install-button"_s);
+        if (!(modal && last_row && install_button)) return k_nullopt;
         auto const bottom_y = last_row->Bottom() + WwToPixels(16.0f);
-        return CaptureSpec {.rect = {.xywh {modal->x, modal->y, modal->w, bottom_y - modal->y}}};
+        CaptureSpec spec {.rect = {.xywh {modal->x, modal->y, modal->w, bottom_y - modal->y}}};
+        AppendOverlay(spec, "install-button"_s, install_button->Expanded(WwToPixels(3.0f)));
+        return spec;
     }
 
     // --- Top-panel dots-menu update indicator ----------------------------------------------------------
