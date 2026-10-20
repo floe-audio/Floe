@@ -1,7 +1,7 @@
 ---
 slug: floe-2-0-4
 title: "Floe v2.0.4: Redesigned Browsers, Distortion and Limiter"
-description: Redesigned browsers, a reworked Distortion effect, a new Limiter, clearer macros and a faster audio engine.
+description: Redesigned browsers, a reworked Distortion effect, a new Limiter, shared grains, a redesigned effects rack and a faster audio engine.
 authors: [windell]
 ---
 
@@ -10,58 +10,54 @@ SPDX-FileCopyrightText: 2026 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-Floe 2.0.4 is out now - a big update with redesigned browsers, a reworked Distortion effect, a new Limiter and lots of improvements throughout.
+Floe 2.0.4 is out now - a big update with redesigned browsers, a reworked Distortion effect, a new Limiter, shared grains and lots of improvements throughout.
 
 {/* truncate */}
 
-:::danger[Screenshot needed]
-Hero image: the preset browser open in Browse mode on the Layers page, showing the items list on the left dropped down beneath the preset selector, with the "Showing from ..." line visible.
-:::
+![Floe v2.0.4 preset browser in Browse mode](/images/blog/2026-10-20-floe-2-0-4-browser.png)
 
 ## Browsers
 
-The preset, Instrument and IR browsers have been redesigned. The new Browse mode gets you to a library, preset bank, folder or tag in a few clicks, rather than scanning a long tree of filters. The browsers now feel more like a menu, open right beneath the selector you clicked, and can be resized. Filter mode is still there if you prefer the previous way of working. See the [browsers docs](/docs/usage/browsers) for a full walkthrough.
+The preset, Instrument and IR browsers have had another rework, shaped by your feedback. With several libraries installed, finding things took a lot of scrolling, and most of the time you don't want to combine filters - you just want to pick one thing and see what's in it.
+
+The new Browse mode is much cleaner and feels more like a menu, opening right beneath the selector you clicked. It gets you to a library, preset bank, folder or tag in fewer clicks. The browsers can be resized too. Filter mode is still there if you prefer the previous way of working. See the [browsers docs](/docs/usage/browsers) for a full walkthrough.
 
 ## Distortion and Limiter
 
-The [Distortion](/docs/usage/effects#distortion) effect has been overhauled: 10 new or upgraded types, a cleaner sound with 4x oversampling, new Punish and Tilt controls, and Auto Gain to keep the volume steady as you turn up the drive. A new display previews the current shape. Existing presets and DAW projects load with the older types, kept as Legacy types.
+We've improved the [Distortion](/docs/usage/effects#distortion) effect to be richer and avoid volume changes as you turn up the drive. There are 10 new or upgraded types, a cleaner sound with 4x oversampling, new Punish and Tilt controls, and Auto Gain. Additionally, a new display shows you the real distortion shape. Existing presets and DAW projects load with the older types, kept as Legacy types.
 
-:::danger[Screenshot needed]
-The Distortion effect in the FX rack using one of the new types (e.g. Tape or Wavefolder), with the shape preview display visible and Punish/Tilt turned up enough to make the curve interesting.
-:::
+![Distortion effect with shape preview](/images/blog/2026-10-20-floe-2-0-4-distortion.png)
 
 There's also a new [Limiter](/docs/usage/effects#limiter) effect, mainly for the end of the effects chain, with input, gain-reduction and output meters.
 
-:::danger[Screenshot needed]
-The Limiter effect in the FX rack while audio plays, with all three meters showing activity and some visible gain reduction.
-:::
+![Limiter effect with meters](/images/blog/2026-10-20-floe-2-0-4-limiter.png)
 
-## Clearer macros
+## Shared grains
 
-You can now see macros move things: the filters, EQ, LFO, envelopes and waveform show macro modulation directly. A parameter's value popup shows its macro-adjusted value and which macros are changing it, and [Edit Range](/docs/usage/macros#editing-the-range) lets you set a destination's 0% and 100% values directly while hearing each end.
+Granular layers have a new [Share Grains](/docs/usage/playback-tab#share-grains) option. With shared grains, the number of grains stays the same however many notes you play. So a sparse, delicate granular texture keeps its sparseness and intricate character even when you play wide chords, rather than building up into a dense wash with every note you add. It's lovely for creating fragile, detailed textures.
 
-:::danger[Screenshot needed]
-A layer's filter or EQ display with a macro assigned to the cutoff, showing the faint 'ghost line' of the macro-modulated response alongside the normal response.
-:::
+![Share Grains button tooltip on a granular layer](/images/blog/2026-10-20-floe-2-0-4-shared-grains.png)
+
+## Redesigned effects rack
+
+The Effects page has an improved switchboard where you can now click an effect to make the rack [jump straight to it](/docs/usage/effects#adding-and-removing-effects) - really handy for finding your way around once you've got a few effects going.
+
+![Effects page with the effects switches and FX rack](/images/blog/2026-10-20-floe-2-0-4-effects.png)
 
 ## Other highlights
 
 - **Faster audio engine**: up to 2.5x faster in heavy granular use
-- **[Share Grains](/docs/usage/playback-tab#share-grains)**: shared grains keep the same density however many notes you play, per-voice grains build chords into a dense wash
+- **Clearer macros**: displays and value popups show what macros are doing, and [Edit Range](/docs/usage/macros#editing-the-range) lets you set a destination's range while hearing each end
 - **[Variation](/docs/usage/playback-tab#variation)** for granular layers and random LFO shapes, so a preset can repeat the exact same grain scatter or LFO movement on every note or on each key
 - **[Default preset](/docs/presets/loading-presets#default-preset)**: choose what new instances of Floe open with
 - More descriptive tooltips, with values shown straight away on hover
-- New displays and meters: a LUFS meter, peak-hold lines, Compressor meters, a High-pass filter graph and a Bitcrush shape preview
-- Redesigned effects switches: bypass, add/remove and jump to an effect in the rack from one place
+- New displays and meters: a LUFS meter, peak-hold lines, Compressor meters, a High-pass filter graph and a Bit Crush shape preview
+- Overhauled documentation
 - Smoother, more useful Bit Crush controls
 - Swap layers and macros from their right-click menus
 - LFO Amount as an MPE press and slide target
 - Wider layer Pitch range of ±88 semitones
 - Respond to MIDI panic messages (All Notes Off and All Sound Off)
-
-:::danger[Screenshot needed]
-The Effects page showing the redesigned effects switchboard (several effects enabled, one bypassed so its light is off) next to the FX rack with the Compressor's meters visible.
-:::
 
 And loads more besides - see the full [changelog](/docs/changelog) for everything.
 
