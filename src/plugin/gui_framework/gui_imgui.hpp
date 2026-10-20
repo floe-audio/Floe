@@ -747,6 +747,7 @@ struct Context {
 
     void OpenModalViewport(Id id);
     bool IsModalOpen(Id id) const;
+    bool IsTopModal(Id id) const;
     bool IsAnyModalOpen();
     void CloseModal(Id id);
     void CloseTopModal();
@@ -899,6 +900,30 @@ struct Context {
         auto const e = named_rects.Find(name);
         if (!e) return k_nullopt;
         return *e;
+    }
+
+    // Introspection for automation tools. While enabled, every element that calls SetHot is recorded with
+    // its visible window-space rect; higher-level code annotates the records with labels. Cleared at the
+    // start of every frame. Elements are in registration order, so later ones are drawn on top.
+    struct InteractiveElement {
+        Id id;
+        Rect rect;
+        String text;
+        String tooltip;
+        String value;
+        String name;
+    };
+    bool record_interactive_elements = false;
+    ArenaAllocator interactive_elements_arena {Malloc::Instance()};
+    DynamicArray<InteractiveElement> interactive_elements {Malloc::Instance()};
+    DynamicHashTable<Id, usize, NoHash> interactive_element_indices {Malloc::Instance()};
+
+    // Returns null if recording is disabled or the element wasn't recorded this frame.
+    InteractiveElement* FindInteractiveElement(Id id) {
+        if (!record_interactive_elements) return nullptr;
+        auto const index = interactive_element_indices.Find(id);
+        if (!index) return nullptr;
+        return &interactive_elements[*index];
     }
 
     TimePoint button_repeat_counter = {};

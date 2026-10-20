@@ -97,9 +97,13 @@ struct Callback : public bgfx::CallbackI {
 constexpr u32 k_reset_flags = BGFX_RESET_VSYNC;
 
 struct SharedRendererState {
-    ErrorCodeOr<void> InitIfNeeded(void* native_window, void* native_display) {
-        if (init) return k_success;
-        (void)native_window;
+    ErrorCodeOr<void> Acquire() {
+        if (num_users) {
+            ++num_users;
+            return k_success;
+        }
+
+        bool success = false;
 
         {
             bx::setAssertHandler(
@@ -124,10 +128,14 @@ struct SharedRendererState {
                           });
                 });
 
+            platform_handles = CreateBgfxPlatformHandles();
+            if constexpr (IS_LINUX)
+                if (!platform_handles.display) return Error("failed to open X11 display for bgfx");
+
             bgfx::Init cfg {};
 
-            cfg.platformData.nwh = GetBgfxInitWindowHandle(native_display);
-            cfg.platformData.ndt = native_display;
+            cfg.platformData.nwh = platform_handles.init_window;
+            cfg.platformData.ndt = platform_handles.display;
             cfg.platformData.type = bgfx::NativeWindowHandleType::Default;
 
             if constexpr (FLOE_BGFX_API_VULKAN) cfg.type = bgfx::RendererType::Vulkan;
@@ -141,8 +149,17 @@ struct SharedRendererState {
             cfg.resolution.reset = k_reset_flags;
             cfg.callback = &callbacks;
 
-            if (!bgfx::init(cfg)) return Error("bgfx::init failed");
+            if (!bgfx::init(cfg)) {
+                DestroyBgfxPlatformHandles(platform_handles);
+                return Error("bgfx::init failed");
+            }
         }
+        DEFER {
+            if (!success) {
+                bgfx::shutdown();
+                DestroyBgfxPlatformHandles(platform_handles);
+            }
+        };
 
         static_assert(offsetof(DrawVert, pos) == 0);
         static_assert(offsetof(DrawVert, uv) == 8);
@@ -159,8 +176,6 @@ struct SharedRendererState {
                  vertex_layout.getStride());
 
         ASSERT_EQ(vertex_layout.getStride(), sizeof(DrawVert));
-
-        bool success = false;
 
         texture_uniform = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
         if (!bgfx::isValid(texture_uniform)) return Error("failed to create texture uniform");
@@ -190,12 +205,15 @@ struct SharedRendererState {
 
         ASSERT(bgfx::getCaps()->supported & BGFX_CAPS_SWAP_CHAIN);
 
-        init = true;
+        num_users = 1;
         success = true;
         return k_success;
     }
 
-    void Shutdown() {
+    void Release() {
+        ASSERT(num_users);
+        if (--num_users) return;
+
         if (bgfx::isValid(texture_uniform)) {
             bgfx::destroy(texture_uniform);
             texture_uniform = BGFX_INVALID_HANDLE;
@@ -205,13 +223,14 @@ struct SharedRendererState {
             bgfx::destroy(shader_program);
             shader_program = BGFX_INVALID_HANDLE;
         }
+
+        bgfx::shutdown();
+        DestroyBgfxPlatformHandles(platform_handles);
     }
 
-    void Render() {}
-
-    bool init {};
+    u32 num_users {};
+    BgfxPlatformHandles platform_handles {};
     Callback callbacks {};
-    u16 view_id {};
 
     bgfx::VertexLayout vertex_layout {};
     bgfx::UniformHandle texture_uniform = BGFX_INVALID_HANDLE;
@@ -229,7 +248,11 @@ struct BgfxRenderer : public Renderer {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
-        TRY(g_shared_renderer.InitIfNeeded(native_window, native_display));
+        TRY(g_shared_renderer.Acquire());
+        acquired_shared_renderer = true;
+
+        offscreen = native_window == nullptr;
+        if (!offscreen) SyncWindowDisplayForBgfx(native_display);
 
         ASSERT(!bgfx::isValid(window_framebuffer));
         ASSERT(size.width > 0 && size.height > 0);
@@ -240,7 +263,7 @@ struct BgfxRenderer : public Renderer {
                  size.height,
                  native_window);
 
-        window_framebuffer = bgfx::createFrameBuffer(native_window, size.width, size.height);
+        window_framebuffer = CreateFramebuffer(native_window, size);
 
         if (!bgfx::isValid(window_framebuffer)) return Error("failed to create window framebuffer");
 
@@ -262,6 +285,9 @@ struct BgfxRenderer : public Renderer {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
 
+        if (!acquired_shared_renderer) return;
+
+        DestroyAllTextures();
         DestroyFontTexture();
 
         if (bgfx::isValid(window_framebuffer)) {
@@ -275,14 +301,21 @@ struct BgfxRenderer : public Renderer {
 
             LogDebug(ModuleName::Bgfx, "Framebuffer destroyed and flushed");
         }
+
+        g_shared_renderer.Release();
+        acquired_shared_renderer = false;
     }
 
-    void OnResize(UiSize size, void*) override { bgfx::reset(size.width, size.height, k_reset_flags); }
+    // Elsewhere the backbuffer is the hidden 1x1 init window; the real window's framebuffer is recreated in
+    // Render.
+    void OnResize(UiSize size, void*) override {
+        if constexpr (IS_MACOS) bgfx::reset(size.width, size.height, k_reset_flags);
+    }
 
     ErrorCodeOr<void> CreateFontTexture(FontAtlas& atlas) override {
         ZoneScoped;
         Trace(ModuleName::Bgfx);
-        ASSERT(font_texture != invalid_texture);
+        ASSERT(font_texture == invalid_texture);
         ASSERT(atlas.fonts.size > 0);
 
         // Build texture atlas
@@ -394,8 +427,7 @@ struct BgfxRenderer : public Renderer {
 
             bgfx::frame();
 
-            window_framebuffer =
-                bgfx::createFrameBuffer(native_window, window_size.width, window_size.height);
+            window_framebuffer = CreateFramebuffer(native_window, window_size);
             if (!bgfx::isValid(window_framebuffer)) return Error("failed to create window framebuffer");
 
             last_window_size = window_size;
@@ -487,8 +519,88 @@ struct BgfxRenderer : public Renderer {
         return k_success;
     }
 
-    static inline u16 const k_view_id = 200;
+    // Only offscreen framebuffers are readable; window framebuffers are swap chains.
+    Optional<ScreenshotPixels>
+    Screenshot(Optional<Rect> region, UiSize window_size, Allocator& arena) override {
+        ZoneScoped;
+        if (!offscreen || !bgfx::isValid(window_framebuffer)) return k_nullopt;
+        ASSERT(window_size == last_window_size);
 
+        auto const caps = bgfx::getCaps();
+        ASSERT(!caps->originBottomLeft);
+        if (!(caps->supported & BGFX_CAPS_TEXTURE_BLIT) || !(caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)) {
+            LogError(ModuleName::Bgfx, "Screenshot needs texture blit and read-back support");
+            return k_nullopt;
+        }
+
+        int x = 0;
+        int y = 0;
+        int w = window_size.width;
+        int h = window_size.height;
+        if (region) {
+            x = Max(0, (int)region->x);
+            y = Max(0, (int)region->y);
+            w = Min((int)region->w, (int)window_size.width - x);
+            h = Min((int)region->h, (int)window_size.height - y);
+        }
+        if (w <= 0 || h <= 0) return k_nullopt;
+
+        auto const read_back_texture = bgfx::createTexture2D((u16)w,
+                                                             (u16)h,
+                                                             false,
+                                                             1,
+                                                             bgfx::TextureFormat::RGBA8,
+                                                             BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
+        if (!bgfx::isValid(read_back_texture)) {
+            LogError(ModuleName::Bgfx, "Failed to create screenshot read-back texture");
+            return k_nullopt;
+        }
+        DEFER { bgfx::destroy(read_back_texture); };
+
+        // The rendered contents persist in the framebuffer texture because the GUI view isn't touched again
+        // until the next Render.
+        bgfx::blit(k_blit_view_id,
+                   read_back_texture,
+                   0,
+                   0,
+                   bgfx::getTexture(window_framebuffer),
+                   (u16)x,
+                   (u16)y,
+                   (u16)w,
+                   (u16)h);
+
+        auto const rgba = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 4);
+        auto const ready_frame = bgfx::readTexture(read_back_texture, rgba.data);
+        while (bgfx::frame() < ready_frame) {
+        }
+
+        auto const rgb = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 3);
+        for (auto const pixel_index : Range((usize)w * (usize)h)) {
+            rgb[(pixel_index * 3) + 0] = rgba[(pixel_index * 4) + 0];
+            rgb[(pixel_index * 3) + 1] = rgba[(pixel_index * 4) + 1];
+            rgb[(pixel_index * 3) + 2] = rgba[(pixel_index * 4) + 2];
+        }
+
+        return ScreenshotPixels {
+            .rgb = rgb,
+            .size = {(u16)w, (u16)h},
+        };
+    }
+
+    static bgfx::FrameBufferHandle CreateFramebuffer(void* native_window, UiSize size) {
+        if (native_window)
+            return bgfx::createFrameBuffer(BgfxSwapChainWindowHandle(native_window), size.width, size.height);
+        return bgfx::createFrameBuffer(size.width,
+                                       size.height,
+                                       bgfx::TextureFormat::RGBA8,
+                                       BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+    }
+
+    static inline u16 const k_view_id = 200;
+    static inline u16 const k_blit_view_id = k_view_id + 1;
+
+    bool offscreen {};
+    bool acquired_shared_renderer {};
     bgfx::FrameBufferHandle window_framebuffer = BGFX_INVALID_HANDLE;
     UiSize last_window_size {0, 0};
 };

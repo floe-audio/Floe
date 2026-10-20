@@ -487,26 +487,44 @@ static void HandleArpCommands(LayerProcessor& layer,
     }
 }
 
-void ProcessLayerPreVoices(LayerProcessor& layer,
-                           AudioProcessingContext const& context,
-                           VoicePool& voice_pool,
-                           u32 num_frames) {
+void ProcessLayersPreVoices(Span<LayerProcessor> layers,
+                            AudioProcessingContext const& context,
+                            VoicePool& voice_pool,
+                            u32 num_frames) {
     // Harmony intervals are not a parameter - always sync from the AtomicBitset to the voice controller.
-    layer.voice_controller.granular.harmony_intervals = layer.harmony_intervals.GetBlockwise();
+    for (auto& layer : layers)
+        layer.voice_controller.granular.harmony_intervals = layer.harmony_intervals.GetBlockwise();
 
-    // Arpeggiator.
+    // Arpeggiators. Every arp step and the voices it starts draw from the master random seed, so all layers
+    // advance one frame at a time together: draws then happen in timeline order whatever the block size.
     {
         ASSERT(voice_pool.master_random_seed);
+        ASSERT(layers.size <= k_num_layers);
+
+        Array<ArpBlock, k_num_layers> blocks;
+        bool any_active = false;
+        for (auto [layer_index, layer] : Enumerate(layers)) {
+            ArpBeginBlock(layer.arp_state,
+                          context,
+                          SlicesForInstrument(layer.audio_thread_inst),
+                          blocks[layer_index]);
+            any_active |= blocks[layer_index].active;
+        }
+        if (!any_active) return;
 
         ArpNoteCommands commands;
-        ArpProcessBlock(layer.arp_state,
-                        context,
-                        SlicesForInstrument(layer.audio_thread_inst),
-                        *voice_pool.master_random_seed,
-                        num_frames,
-                        commands);
-
-        HandleArpCommands(layer, context, voice_pool, commands, true);
+        for (auto const frame_index : Range(num_frames)) {
+            for (auto [layer_index, layer] : Enumerate(layers)) {
+                dyn::Clear(commands);
+                ArpProcessFrame(layer.arp_state,
+                                blocks[layer_index],
+                                context,
+                                *voice_pool.master_random_seed,
+                                frame_index,
+                                commands);
+                HandleArpCommands(layer, context, voice_pool, commands, true);
+            }
+        }
     }
 }
 

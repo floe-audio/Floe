@@ -400,7 +400,7 @@ void PresetFolderRightClickMenu(GuiBuilder& builder,
             auto const error_id = Hash(Array {SourceLocationHash(), folder->Hash()});
             if (auto item = context.engine.error_notifications.BeginWriteError(error_id)) {
                 DEFER { context.engine.error_notifications.EndWriteError(*item); };
-                item->title = "Cannot to delete preset folder"_s;
+                item->title = "Cannot delete preset folder"_s;
                 item->message =
                     "This folder contains one or more preset banks as subfolders. Please delete them first."_s;
             }
@@ -504,7 +504,7 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                 .folder = &preset_folder->node,
                 .skip_root_folder = true,
                 .skip_heading = IsSingleFolderFilterSelected(state.common_state, folder_hash),
-                .tooltip_placement = TooltipPlacement::RightThenLeft,
+                .tooltip_placement = k_browser_results_tooltip_placement,
                 .right_click_menu = PresetFolderRightClickMenu,
             };
         }
@@ -775,15 +775,13 @@ PresetBrowserExtraFilters(GuiBuilder& builder,
 }
 
 void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetBrowserState& state) {
-    constexpr auto k_folders_section_id = HashFnv1a("preset-folders-section");
     constexpr auto k_factory_banks_section_id = HashFnv1a("preset-factory-banks-section");
     constexpr auto k_user_banks_section_id = HashFnv1a("preset-user-banks-section");
 
     bool const is_screenshot_request = IsScreenshotRequest("uninstall-preset-bank"_s);
     if (is_screenshot_request) {
         if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
-        for (auto const id :
-             Array {k_folders_section_id, k_factory_banks_section_id, k_user_banks_section_id})
+        for (auto const id : Array {k_factory_banks_section_id, k_user_banks_section_id})
             if (!Contains(state.common_state.expanded_filter_headers, id))
                 dyn::Append(state.common_state.expanded_filter_headers, id);
     }
@@ -902,18 +900,19 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
 
     state.common_state.items_still_loading = AreFoldersScanning(context.preset_server);
 
-    // Factory and user-made banks get their own sections, but only when both kinds exist: a single-kind
-    // pool shouldn't pay for a distinction it doesn't have.
-    auto const grouped_banks = ({
-        bool any_factory = false;
-        bool any_user = false;
+    // The user section is always there, even empty, so the layout doesn't shift as banks come and go and
+    // so it shows where saved presets go.
+    auto const bank_kinds_present = ({
+        struct {
+            bool factory;
+            bool user;
+        } present {};
         for (auto const listing : context.presets_snapshot.banks)
-            (IsFactoryPresetBank(listing->node) ? any_factory : any_user) = true;
-        any_factory&& any_user;
+            (IsFactoryPresetBank(listing->node) ? present.factory : present.user) = true;
+        present;
     });
 
     auto const bank_section_id = [&](FolderNode const& bank) -> u64 {
-        if (!grouped_banks) return k_folders_section_id;
         return IsFactoryPresetBank(bank) ? k_factory_banks_section_id : k_user_banks_section_id;
     };
     // The library whose artwork stands in for the bank's.
@@ -1024,8 +1023,8 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
         }
     }
 
-    auto const bank_matches_group = [&](FolderNode const& folder, Optional<bool> factory_only) {
-        if (factory_only && IsFactoryPresetBank(folder) != *factory_only) return false;
+    auto const bank_matches_group = [&](FolderNode const& folder, bool factory) {
+        if (IsFactoryPresetBank(folder) != factory) return false;
         if (!folders.Find(&folder)) return false;
         return MatchesFilterSearch(folder.display_name.size ? folder.display_name : folder.name,
                                    state.common_state.filter_search);
@@ -1082,12 +1081,12 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
     // nothing back when collapsed. first_group names its first bank for the screenshot that wants a bank
     // and its menu.
     auto const do_banks = [&](GuiBuilder& builder,
-                              Optional<bool> factory_only,
+                              bool factory,
                               bool first_group,
                               TrivialFunctionRef<Optional<Box>()> get_parent) {
         bool named_a_bank = false;
         for (auto const listing : context.presets_snapshot.banks) {
-            if (!bank_matches_group(listing->node, factory_only)) continue;
+            if (!bank_matches_group(listing->node, factory)) continue;
             auto const parent = get_parent();
             if (!parent) break;
             do_bank(builder,
@@ -1099,26 +1098,42 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
         }
     };
 
-    auto const num_banks = [&](Optional<bool> factory_only) {
+    auto const num_banks = [&](bool factory) {
         u32 count = 0;
         for (auto const listing : context.presets_snapshot.banks)
-            if (bank_matches_group(listing->node, factory_only)) ++count;
+            if (bank_matches_group(listing->node, factory)) ++count;
         return count;
+    };
+
+    auto const do_no_user_banks_message = [&](GuiBuilder& builder, Box const& parent) {
+        DoBox(builder,
+              {
+                  .parent = parent,
+                  .text = "Presets you save appear here."_s,
+                  .wrap_width = k_wrap_to_parent,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+                  .text_colours = Col {.c = Col::Subtext0},
+                  .layout {
+                      .margins = {.lr = k_browser_row_pad_x, .tb = k_browser_spacing},
+                  },
+              });
     };
 
     auto const do_factory_banks = [&](GuiBuilder& builder, Box const& parent) {
         do_banks(builder, true, true, [&]() -> Optional<Box> { return parent; });
     };
     auto const do_user_banks = [&](GuiBuilder& builder, Box const& parent) {
-        do_banks(builder, false, false, [&]() -> Optional<Box> { return parent; });
-    };
-    auto const do_all_banks = [&](GuiBuilder& builder, Box const& parent) {
-        do_banks(builder, k_nullopt, true, [&]() -> Optional<Box> { return parent; });
+        if (!bank_kinds_present.user) {
+            do_no_user_banks_message(builder, parent);
+            return;
+        }
+        do_banks(builder, false, !bank_kinds_present.factory, [&]() -> Optional<Box> { return parent; });
     };
 
     auto const browse_collection_sections = ({
         DynamicArrayBounded<BrowseCollectionSection, 2> sections {};
-        if (grouped_banks) {
+        if (bank_kinds_present.factory) {
             dyn::Append(sections,
                         {
                             .id = k_factory_banks_section_id,
@@ -1132,136 +1147,128 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
                             .right_click_menu = PresetFolderRightClickMenu,
                             .do_collections = do_factory_banks,
                         });
-            dyn::Append(sections,
-                        {
-                            .id = k_user_banks_section_id,
-                            .entry =
-                                {
-                                    .name = "User presets"_s,
-                                    .icon = ICON_FA_USER,
-                                    .count = num_banks(false),
-                                    .tooltip = "Preset banks you've made or installed yourself."_s,
-                                },
-                            .right_click_menu = PresetFolderRightClickMenu,
-                            .do_collections = do_user_banks,
-                        });
-        } else {
-            dyn::Append(
-                sections,
-                {
-                    .id = k_folders_section_id,
-                    .entry =
-                        {
-                            .name = "Preset banks"_s,
-                            .icon = ICON_FA_BOX_OPEN,
-                            .count = num_banks(k_nullopt),
-                            .tooltip =
-                                "Your preset banks, one per row. A preset bank is a folder of presets, either from a library or one you've added yourself."_s,
-                        },
-                    .right_click_menu = PresetFolderRightClickMenu,
-                    .do_collections = do_all_banks,
-                });
         }
+        dyn::Append(sections,
+                    {
+                        .id = k_user_banks_section_id,
+                        .entry =
+                            {
+                                .name = "User presets"_s,
+                                .icon = ICON_FA_USER,
+                                .count = num_banks(false),
+                                .tooltip = "Preset banks you've made or installed yourself."_s,
+                            },
+                        .right_click_menu = PresetFolderRightClickMenu,
+                        .do_collections = do_user_banks,
+                        .listed_when_empty = true,
+                    });
         sections;
     });
 
     // IMPORTANT: we create the options struct inside the call so that lambdas and values from
     // statement-expressions live long enough.
-    DoBrowserModal(
-        builder,
-        {
-            .browser_id = state.k_panel_id,
-            .sample_library_server = context.sample_library_server,
-            .library_images = context.library_images,
-            .preferences = context.prefs,
-            .store = context.persistent_store,
-            .state = state.common_state,
-            .instance_index = context.engine.instance_index,
-        },
-        BrowserPopupOptions {
-            .height = ({
-                auto const window_height = GuiIo().in.window_size.height;
-                auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
-                auto const available_height = window_height - button_bottom - WwToPixels(20.0f);
-                PixelsToWw(available_height);
-            }),
-            .results_width = 320,
-            .filters_col_width = 320,
-            .store_id = state.k_store_id,
-            .flush_with_opener = true,
-            .item_type_name = "preset",
-            .plural_item_type_name = "presets",
-            .do_items = [&](GuiBuilder& builder) { PresetBrowserItems(builder, context, state); },
-            .filter_search_placeholder_text = "Search preset banks/tags",
-            .item_search_placeholder_text = "Search presets",
-            .item_search_tooltip = "Search the current results by preset name only. " MODIFIER_KEY_NAME
-                                   "+F jumps here from anywhere in the browser.",
-            .current_item = current_item,
-            .browse_scope = CurrentBrowseScope(state.common_state,
-                                               {
-                                                   .collection_noun = "preset bank"_s,
-                                                   .folders = folders,
-                                                   .collection_of_root = collection_of_bank,
-                                               }),
-            .library_filters =
-                LibraryFilters {
-                    .libraries_table = context.frame_context.lib_table,
-                    .library_images = context.library_images,
-                    .instance_index = context.engine.instance_index,
-                    .libraries = libraries,
-                    .library_authors = library_authors,
-                    .error_notifications = context.engine.error_notifications,
-                    .notifications = context.notifications,
-                    .confirmation_dialog_state = context.confirmation_dialog_state,
-                },
-            .tags_filters = tags_filters,
-            .extra_browse_attributes = extra_browse_attributes,
-            .browse_collection_sections = browse_collection_sections,
-            .do_extra_filters_top =
-                [&](GuiBuilder& builder, Box const& parent) {
-                    auto const do_section =
-                        [&](u64 id, String heading, String icon, Optional<bool> group, bool first_group) {
-                            BrowserSection section {
-                                .state = state.common_state,
-                                .id = id,
-                                .parent = parent,
-                                .heading = heading,
-                                .icon = icon,
-                                .multiline_contents = false,
-                                .dark_mode = true,
-                                .keyboard_focusable = true,
-                                .right_click_menu = PresetFolderRightClickMenu,
-                                .store = &context.persistent_store,
-                            };
-                            do_banks(builder, group, first_group, [&]() -> Optional<Box> {
-                                if (section.Do(builder).tag == BrowserSection::State::Collapsed)
-                                    return k_nullopt;
-                                return section.Do(builder).Get<Box>();
-                            });
-                        };
+    DoBrowserModal(builder,
+                   {
+                       .browser_id = state.k_panel_id,
+                       .sample_library_server = context.sample_library_server,
+                       .library_images = context.library_images,
+                       .preferences = context.prefs,
+                       .store = context.persistent_store,
+                       .state = state.common_state,
+                       .instance_index = context.engine.instance_index,
+                   },
+                   BrowserPopupOptions {
+                       .height = ({
+                           auto const window_height = GuiIo().in.window_size.height;
+                           auto const button_bottom = state.common_state.absolute_button_rect.Bottom();
+                           auto const available_height = window_height - button_bottom - WwToPixels(20.0f);
+                           PixelsToWw(available_height);
+                       }),
+                       .results_width = 320,
+                       .filters_col_width = 320,
+                       .store_id = state.k_store_id,
+                       .flush_with_opener = true,
+                       .item_type_name = "preset",
+                       .plural_item_type_name = "presets",
+                       .do_items = [&](GuiBuilder& builder) { PresetBrowserItems(builder, context, state); },
+                       .filter_search_placeholder_text = "Search preset banks/tags",
+                       .item_search_placeholder_text = "Search presets",
+                       .item_search_tooltip =
+                           "Search the current results by preset name only. " MODIFIER_KEY_NAME
+                           "+F jumps here from anywhere in the browser.",
+                       .current_item = current_item,
+                       .browse_scope = CurrentBrowseScope(state.common_state,
+                                                          {
+                                                              .collection_noun = "preset bank"_s,
+                                                              .folders = folders,
+                                                              .collection_of_root = collection_of_bank,
+                                                          }),
+                       .library_filters =
+                           LibraryFilters {
+                               .libraries_table = context.frame_context.lib_table,
+                               .library_images = context.library_images,
+                               .instance_index = context.engine.instance_index,
+                               .libraries = libraries,
+                               .library_authors = library_authors,
+                               .error_notifications = context.engine.error_notifications,
+                               .notifications = context.notifications,
+                               .confirmation_dialog_state = context.confirmation_dialog_state,
+                           },
+                       .tags_filters = tags_filters,
+                       .extra_browse_attributes = extra_browse_attributes,
+                       .browse_collection_sections = browse_collection_sections,
+                       .do_extra_filters_top =
+                           [&](GuiBuilder& builder, Box const& parent) {
+                               auto const do_section =
+                                   [&](u64 id, String heading, String icon, bool factory, bool first_group) {
+                                       BrowserSection section {
+                                           .state = state.common_state,
+                                           .id = id,
+                                           .parent = parent,
+                                           .heading = heading,
+                                           .icon = icon,
+                                           .multiline_contents = false,
+                                           .dark_mode = true,
+                                           .keyboard_focusable = true,
+                                           .right_click_menu = PresetFolderRightClickMenu,
+                                           .store = &context.persistent_store,
+                                       };
+                                       auto const get_parent = [&]() -> Optional<Box> {
+                                           if (section.Do(builder).tag == BrowserSection::State::Collapsed)
+                                               return k_nullopt;
+                                           return section.Do(builder).Get<Box>();
+                                       };
+                                       if (!factory && !bank_kinds_present.user) {
+                                           if (auto const box = get_parent())
+                                               do_no_user_banks_message(builder, *box);
+                                           return;
+                                       }
+                                       do_banks(builder, factory, first_group, get_parent);
+                                   };
 
-                    if (!grouped_banks) {
-                        do_section(k_folders_section_id, "PRESET BANKS"_s, ICON_FA_BOX_OPEN, k_nullopt, true);
-                    } else {
-                        do_section(k_factory_banks_section_id,
-                                   "FACTORY PRESET BANKS"_s,
-                                   ICON_FA_INDUSTRY,
-                                   true,
-                                   true);
-                        do_section(k_user_banks_section_id, "USER PRESETS"_s, ICON_FA_USER, false, false);
-                    }
-                },
-            .do_extra_filters_bottom =
-                [&](GuiBuilder& builder, Box const& parent) {
-                    PresetBrowserExtraFilters(builder,
-                                              context,
-                                              preset_authors,
-                                              preset_type_filter_info,
-                                              state,
-                                              parent);
-                },
-            .favourites_filter_info = favourites_info,
-            .num_results = num_results,
-            .right_click_menu_user_data = &context,
-        });
+                               if (bank_kinds_present.factory)
+                                   do_section(k_factory_banks_section_id,
+                                              "FACTORY PRESET BANKS"_s,
+                                              ICON_FA_INDUSTRY,
+                                              true,
+                                              true);
+                               do_section(k_user_banks_section_id,
+                                          "USER PRESETS"_s,
+                                          ICON_FA_USER,
+                                          false,
+                                          !bank_kinds_present.factory);
+                           },
+                       .do_extra_filters_bottom =
+                           [&](GuiBuilder& builder, Box const& parent) {
+                               PresetBrowserExtraFilters(builder,
+                                                         context,
+                                                         preset_authors,
+                                                         preset_type_filter_info,
+                                                         state,
+                                                         parent);
+                           },
+                       .favourites_filter_info = favourites_info,
+                       .num_results = num_results,
+                       .right_click_menu_user_data = &context,
+                   });
 }

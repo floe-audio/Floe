@@ -27,7 +27,7 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
     // Paths that Mirage used.
     // Some of these are actually a bit problematic for reading/writing due to permissions but it doesn't
     // matter for this case. We're just doing our best to retain any existing preferences.
-    {
+    if (!FloeHomeOverride()) {
         auto add_path = [&](KnownDirectoryType known_dir, Span<String const> sub_paths, String filename) {
             dyn::Append(result,
                         KnownDirectoryWithSubdirectories(arena,
@@ -116,12 +116,10 @@ FloePaths CreateFloePaths(ArenaAllocator& arena, bool create_folders) {
     {
         DynamicArrayBounded<char, Kb(1)> error_log;
         auto writer = dyn::WriterFor(error_log);
-        result.persistent_store_path =
-            KnownDirectoryWithSubdirectories(arena,
-                                             KnownDirectoryType::UserData,
-                                             Array {"Floe"_s},
-                                             "persistent_store",
-                                             {.create = create_folders, .error_log = &writer});
+        result.persistent_store_path = FloeKnownDirectory(arena,
+                                                          FloeKnownDirectoryType::State,
+                                                          "persistent_store"_s,
+                                                          {.create = create_folders, .error_log = &writer});
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
                         HashFnv1a("persistent store path"),

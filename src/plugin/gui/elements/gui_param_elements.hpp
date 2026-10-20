@@ -61,6 +61,7 @@ struct ButtonParameterComponentOptions {
     f32 width = layout::k_hug_contents;
     f32 height = k_mid_button_height;
     Margins margins {};
+    f32 extra_clickable_width = 0; // Clickable space after the label.
     bool greyed_out = false;
     Optional<Col> on_colour {}; // Custom colour for the toggle icon "on" state.
     Optional<bool> locked_state {}; // If set, shows this state instead of the param's and the button becomes

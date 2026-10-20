@@ -305,10 +305,10 @@ LayerProcessResult ProcessLayer(LayerProcessor& layer,
 void ResetLayerAudioProcessing(LayerProcessor& layer);
 bool LayerHasAudioActivity(LayerProcessor const& layer);
 
-void ProcessLayerPreVoices(LayerProcessor& layer,
-                           AudioProcessingContext const& context,
-                           VoicePool& voice_pool,
-                           u32 num_frames);
+void ProcessLayersPreVoices(Span<LayerProcessor> layers,
+                            AudioProcessingContext const& context,
+                            VoicePool& voice_pool,
+                            u32 num_frames);
 
 void LayerApplyState(LayerProcessor& layer, StateSnapshot const& state, StateSource source);
 

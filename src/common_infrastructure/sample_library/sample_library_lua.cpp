@@ -3166,11 +3166,7 @@ ErrorCodeOr<void> WriteDocumentedLuaExample(Writer writer, bool include_comments
 }
 
 String LuaDefinitionsFilepath(ArenaAllocator& arena) {
-    return KnownDirectoryWithSubdirectories(arena,
-                                            KnownDirectoryType::UserData,
-                                            Array {"Floe"_s},
-                                            "floe_api.lua",
-                                            {.create = true});
+    return FloeKnownDirectory(arena, FloeKnownDirectoryType::State, "floe_api.lua"_s, {.create = true});
 }
 
 ErrorCodeOr<void> WriteLuaLspDefintionsFile(ArenaAllocator& scratch) {

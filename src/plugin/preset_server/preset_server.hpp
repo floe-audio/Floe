@@ -86,6 +86,7 @@ struct PresetServer {
     Span<FolderNode> folder_nodes {};
     Span<usize> folder_node_order_indices {};
     Span<usize> folder_node_preset_bank_indices {};
+    Span<usize> folder_display_order {}; // Indices into folders.
 
     DynamicSet<u64, NoHash> preset_file_hashes {arena};
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
@@ -143,11 +144,12 @@ bool HasNestedBank(FolderNode const& node);
 Optional<String> FolderPath(FolderNode const* folder, ArenaAllocator& arena);
 
 struct PresetsSnapshot {
-    // Folders that contain presets, sorted. These will have non-null PresetFolderListing::folder.
+    // Folders that contain presets, grouped by bank in bank order, then sorted by path. These will have
+    // non-null PresetFolderListing::folder.
     Span<PresetFolderListing const*> folders;
 
-    // Root nodes of all preset banks. All presets are guaranteed to be inside one of these nodes. Presets
-    // that aren't explicitly put into banks will be smartly grouped into "misc" banks.
+    // Root nodes of all preset banks, sorted by display name. All presets are guaranteed to be inside one of
+    // these nodes. Presets that aren't explicitly put into banks will be smartly grouped into "misc" banks.
     Span<PresetFolderListing const*> banks;
 
     // Additional convenience data

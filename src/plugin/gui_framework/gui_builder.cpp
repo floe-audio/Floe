@@ -182,6 +182,14 @@ static String ResolveTooltipString(TooltipString const& tooltip_str) {
 
 bool Tooltip(GuiBuilder& builder, imgui::Id id, Rect rect_in_window_coords, TooltipArgs const& args) {
     ZoneScoped;
+    if (auto const element = builder.imgui.FindInteractiveElement(id)) {
+        auto& arena = builder.imgui.interactive_elements_arena;
+        if (args.tooltip.tag != TooltipStringType::None && !element->tooltip.size)
+            element->tooltip = arena.Clone(ResolveTooltipString(args.tooltip));
+        if (args.value_popup.tag != TooltipStringType::None && !element->value.size)
+            element->value = arena.Clone(ResolveTooltipString(args.value_popup));
+    }
+
     auto const has_value_popup = args.value_popup.tag != TooltipStringType::None;
     auto const has_tooltip = builder.config.show_tooltips && args.tooltip.tag != TooltipStringType::None;
     if (!has_value_popup && !has_tooltip) return false;
@@ -368,6 +376,23 @@ NO_UBSAN Box DoBox(GuiBuilder& builder, BoxConfig const& config, u64 loc_hash) {
                 // see the originating button's state through us, not a default-false value.
                 box.is_active = config.parent->is_active;
                 box.is_hot = config.parent->is_hot;
+            }
+
+            if (builder.imgui.record_interactive_elements) {
+                auto& arena = builder.imgui.interactive_elements_arena;
+                auto const own_element = builder.imgui.FindInteractiveElement(box.imgui_id);
+                if (own_element && config.name.size) own_element->name = arena.Clone(config.name);
+
+                // Text labels the element itself, or failing that the button this box sits inside. Icon
+                // glyphs aren't meaningful as labels.
+                if (config.text.size && config.font != FontType::Icons) {
+                    auto const text_element =
+                        own_element     ? own_element
+                        : config.parent ? builder.imgui.FindInteractiveElement(config.parent->imgui_id)
+                                        : nullptr;
+                    if (text_element && !text_element->text.size)
+                        text_element->text = arena.Clone(config.text);
+                }
             }
 
             //

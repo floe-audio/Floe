@@ -31,6 +31,7 @@
 constexpr f32 k_page_row_gap_y = 7;
 constexpr f32 k_page_row_gap_x = 7;
 constexpr f32 k_knob_width = 36;
+constexpr f32 k_section_toggle_extra_clickable_width = 20;
 
 static void DoTabRightClickMenu(GuiState& g,
                                 Box tab_button,
@@ -903,7 +904,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
     DoButtonParameter(g,
                       page,
                       params.DescribedValue(layer_index, LayerParamIndex::FilterOn),
-                      {.width = layout::k_fill_parent});
+                      {.extra_clickable_width = k_section_toggle_extra_clickable_width});
 
     DoWhitespace(g.builder, page, 8);
 
@@ -1047,9 +1048,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
     DoButtonParameter(g,
                       page,
                       params.DescribedValue(layer_index, LayerParamIndex::EqOn),
-                      {
-                          .width = layout::k_fill_parent,
-                      });
+                      {.extra_clickable_width = k_section_toggle_extra_clickable_width});
 
     DoWhitespace(g.builder, page, 8);
 
@@ -1311,11 +1310,17 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
 
     // LfoOn
     DoButtonParameter(g,
-                      page,
+                      DoBox(g.builder,
+                            {
+                                .parent = page,
+                                .layout {
+                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .contents_direction = layout::Direction::Row,
+                                    .contents_align = layout::Alignment::Start,
+                                },
+                            }),
                       params.DescribedValue(layer_index, LayerParamIndex::LfoOn),
-                      {
-                          .width = layout::k_fill_parent,
-                      });
+                      {.extra_clickable_width = k_section_toggle_extra_clickable_width});
 
     DoWhitespace(g.builder, page, 6);
 
@@ -2571,7 +2576,18 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     if (!is_waveform_synth) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::Reverse);
 
-        DoButtonParameter(g, page, param, {.width = layout::k_fill_parent});
+        DoButtonParameter(g,
+                          DoBox(g.builder,
+                                {
+                                    .parent = page,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_direction = layout::Direction::Row,
+                                        .contents_align = layout::Alignment::Start,
+                                    },
+                                }),
+                          param,
+                          {.extra_clickable_width = k_section_toggle_extra_clickable_width});
     }
 
     if (!is_waveform_synth && play_mode != param_values::PlayMode::GranularFixed)
@@ -2755,7 +2771,7 @@ static void DoEnvelopeSection(GuiState& g, u8 layer_index, Box parent) {
             section,
             vol_env_on_param,
             {
-                .width = layout::k_fill_parent,
+                .extra_clickable_width = k_section_toggle_extra_clickable_width,
                 .override_tooltip =
                     layer.instrument.tag == InstrumentType::WaveformSynth
                         ? (String)fmt::Format(
@@ -2855,13 +2871,13 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                                            .layout {
                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
                                                .contents_direction = layout::Direction::Row,
-                                               .contents_align = layout::Alignment::Start,
+                                               .contents_align = layout::Alignment::Justify,
                                            },
                                        });
         DoButtonParameter(g,
                           heading_row,
                           params.DescribedValue(layer_index, LayerParamIndex::ArpOn),
-                          {.width = layout::k_fill_parent});
+                          {.extra_clickable_width = k_section_toggle_extra_clickable_width});
         DoMenuParameter(g,
                         heading_row,
                         params.DescribedValue(layer_index, LayerParamIndex::ArpMode),

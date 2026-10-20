@@ -83,6 +83,7 @@ struct GuiState : EngineListener {
     MacrosGuiState macros_gui_state {};
     DistortionDisplayState distortion_display_state {};
     Optional<TimePoint> screenshot_clear_since {};
+    DynamicArray<char> last_ui_dump {Malloc::Instance()};
     f32x2 curve_map_add_point_click_pos {};
 
     // Snapshotted once at the start of each frame; consuming the swap buffer at every use site could

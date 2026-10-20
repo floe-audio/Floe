@@ -281,6 +281,7 @@ static bool ClapGuiIsApiSupported(clap_plugin_t const* plugin, char const* api, 
         LogClapFunction(floe, ClapFunctionType::Any, k_func, "api: {}, is_floating: {}", api, is_floating);
 
         if (is_floating) return false;
+        if (NullTermStringsEqual(k_floe_offscreen_gui_api, api)) return OffscreenSupported();
         return NullTermStringsEqual(k_supported_gui_api, api);
     } catch (PanicException) {
         return false;
@@ -323,8 +324,9 @@ static bool ClapGuiCreate(clap_plugin_t const* plugin, char const* api, bool is_
             f;
         });
 
+        bool const offscreen = NullTermStringsEqual(k_floe_offscreen_gui_api, api) && OffscreenSupported();
         if (!Check(floe,
-                   NullTermStringsEqual(k_supported_gui_api, api) && !is_floating,
+                   (NullTermStringsEqual(k_supported_gui_api, api) || offscreen) && !is_floating,
                    k_func,
                    "unsupported api"))
             return false;
@@ -345,7 +347,8 @@ static bool ClapGuiCreate(clap_plugin_t const* plugin, char const* api, bool is_
 
         floe.app_window.Emplace(floe.host, g_shared_engine_systems->prefs);
         floe.gui_opened = true;
-        return ReportIfError(Init(*floe.app_window), "CreateView");
+        return ReportIfError(offscreen ? InitOffscreen(*floe.app_window) : Init(*floe.app_window),
+                             "CreateView");
     } catch (PanicException) {
         return false;
     }
@@ -421,7 +424,8 @@ static bool ClapGuiGetSize(clap_plugin_t const* plugin, u32* width, u32* height)
         LogClapFunction(floe, ClapFunctionType::Any, k_func);
 
         auto const size = GetSize(*floe.app_window);
-        auto const clap_size = PhysicalPixelsToClapPixels(floe.app_window->view, size);
+        auto const clap_size =
+            floe.app_window->offscreen ? size : PhysicalPixelsToClapPixels(floe.app_window->view, size);
 
         if (width) *width = clap_size.width;
         if (height) *height = clap_size.height;
@@ -484,6 +488,12 @@ static bool ClapGuiGetResizeHints(clap_plugin_t const* plugin, clap_gui_resize_h
     } catch (PanicException) {
         return false;
     }
+}
+
+static bool HostFixedWindowSize(FloePluginInstance const& floe) {
+    auto const floe_host =
+        (FloeClapExtensionHost const*)floe.host.get_extension(&floe.host, k_floe_clap_extension_id);
+    return floe_host && floe_host->fixed_window_size;
 }
 
 static Optional<UiSize>
@@ -574,7 +584,15 @@ static bool ClapGuiSetSize(clap_plugin_t const* plugin, u32 clap_width, u32 clap
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func, "{} x {}", clap_width, clap_height);
 
-        auto size = ClapPixelsToPhysicalPixels(floe.app_window->view, clap_width, clap_height);
+        auto size = ({
+            Optional<UiSize> s {};
+            if (!floe.app_window->offscreen)
+                s = ClapPixelsToPhysicalPixels(floe.app_window->view, clap_width, clap_height);
+            else if (clap_width <= LargestRepresentableValue<u16>() &&
+                     clap_height <= LargestRepresentableValue<u16>())
+                s = UiSize {(u16)clap_width, (u16)clap_height};
+            s;
+        });
 
         if (!size || size->width < k_min_gui_width) return false;
 
@@ -627,7 +645,9 @@ static bool ClapGuiShow(clap_plugin_t const* plugin) {
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
         // It may be possible that the size is invalid, we check that here to be sure.
-        if (auto const size = GetSize(*floe.app_window); size.width < k_min_gui_width) {
+        if (floe.app_window->offscreen || HostFixedWindowSize(floe)) {
+            // There's no screen or host window to fit, or the host has deliberately chosen the size.
+        } else if (auto const size = GetSize(*floe.app_window); size.width < k_min_gui_width) {
             auto const new_size = DefaultUiSize(*floe.app_window);
             ASSERT(new_size.width >= k_min_gui_width);
             SetSize(*floe.app_window, new_size);
@@ -686,6 +706,7 @@ static bool ClapGuiSetParent(clap_plugin_t const* plugin, clap_window_t const* w
         if (!Check(floe, EnterLogicalMainThread(), k_func, "multiple main threads")) return false;
         DEFER { LeaveLogicalMainThread(); };
         if (!Check(floe, floe.app_window.HasValue(), k_func, "no gui created")) return false;
+        if (!Check(floe, !floe.app_window->offscreen, k_func, "offscreen gui has no parent")) return false;
 
         LogClapFunction(floe, ClapFunctionType::NonRecurring, k_func);
 
@@ -1460,6 +1481,33 @@ static FloeClapExtension const floe_custom_ext {
             return false;
         }
     },
+    .set_ui_dump_path = [](clap_plugin_t const* plugin, String out_path) -> bool {
+        ZoneScoped;
+        if (PanicOccurred()) return false;
+
+        try {
+            auto& floe = *({
+                auto f = ExtractFloe(plugin);
+                if (!Check(f, "set_ui_dump_path", "plugin ptr is invalid")) return false;
+                f;
+            });
+            if (!Check(floe,
+                       IsMainThread(floe.host) != IsThreadResult::No,
+                       "set_ui_dump_path",
+                       "not main thread"))
+                return false;
+            if (!Check(floe, EnterLogicalMainThread(), "set_ui_dump_path", "multiple main threads"))
+                return false;
+            DEFER { LeaveLogicalMainThread(); };
+            if (!floe.app_window) return false;
+            auto& dump_path = floe.app_window->frame_state.ui_dump_output_path;
+            if (!dump_path.Reserve(out_path.size)) return false;
+            dyn::Assign(dump_path, out_path);
+            return true;
+        } catch (PanicException) {
+            return false;
+        }
+    },
 };
 
 static bool ClapInit(const struct clap_plugin* plugin) {
@@ -1914,7 +1962,7 @@ void OnPollThread(FloeInstanceIndex index) {
 
 static void
 HandleSizePreferenceChanged(FloePluginInstance& floe, prefs::Key const& key, prefs::Value const* value) {
-    if (!floe.app_window) return;
+    if (!floe.app_window || floe.app_window->offscreen || HostFixedWindowSize(floe)) return;
 
     auto const host_gui = (clap_host_gui const*)floe.host.get_extension(&floe.host, CLAP_EXT_GUI);
     if (!host_gui) return;

@@ -354,6 +354,135 @@ void DoArpStepSequencer(GuiState& g,
             }
         }
 
+        // Per-step right-click context menu (opened from the global bar right-click handler above).
+        {
+            auto const step_popup_id = step_popup_id_for(i);
+            if (imgui.IsPopupMenuOpen(step_popup_id)) {
+                auto const step_window_rect = imgui.ViewportRectToWindowRect({
+                    .x = x_vp,
+                    .y = 0,
+                    .w = step_width,
+                    .h = bar_area_height,
+                });
+                DoBoxViewport(
+                    g.builder,
+                    {
+                        .run =
+                            [&](GuiBuilder&) {
+                                auto const root =
+                                    DoBox(g.builder,
+                                          {
+                                              .layout {
+                                                  .size = layout::k_hug_contents,
+                                                  .contents_direction = layout::Direction::Column,
+                                                  .contents_align = layout::Alignment::Start,
+                                              },
+                                          });
+
+                                MenuItem(g.builder,
+                                         root,
+                                         {
+                                             .text = fmt::Format(g.scratch_arena, "Step {}", i + 1),
+                                             .mode = MenuItemOptions::Mode::Disabled,
+                                             .no_icon_gap = true,
+                                         });
+
+                                if (MenuItem(g.builder,
+                                             root,
+                                             {
+                                                 .text = "Reset Step"_s,
+                                                 .tooltip = "Reset all values of this step to defaults"_s,
+                                                 .no_icon_gap = true,
+                                             })
+                                        .button_fired) {
+                                    ModifyStep(arp_state, i, [](ArpStep& s) { s = {}; });
+                                    RecordUndoableStep(g.engine, "Reset arp step"_s);
+                                }
+
+                                if (MenuItem(
+                                        g.builder,
+                                        root,
+                                        {
+                                            .text = "Apply Step to All Steps"_s,
+                                            .tooltip =
+                                                "Copy every value of this step to all other steps (except tie)"_s,
+                                            .no_icon_gap = true,
+                                        })
+                                        .button_fired) {
+                                    auto const this_step = snapshot.StepAt(i);
+                                    for (u32 j = 0; j < active_steps; ++j) {
+                                        if (j == i) continue;
+                                        ModifyStep(arp_state, j, [this_step](ArpStep& s) {
+                                            s.velocity = this_step.velocity;
+                                            s.gate = this_step.gate;
+                                            s.on = this_step.on;
+                                            s.interval = this_step.interval;
+                                            s.note = this_step.note;
+                                        });
+                                    }
+                                    RecordUndoableStep(g.engine, "Apply arp step to all"_s);
+                                }
+
+                                if (MenuItem(g.builder,
+                                             root,
+                                             {
+                                                 .text = "Reset All Steps"_s,
+                                                 .tooltip = "Reset every step to its defaults"_s,
+                                                 .no_icon_gap = true,
+                                             })
+                                        .button_fired) {
+                                    for (u32 j = 0; j < active_steps; ++j)
+                                        ModifyStep(arp_state, j, [](ArpStep& s) { s = {}; });
+                                    RecordUndoableStep(g.engine, "Reset all arp steps"_s);
+                                }
+
+                                auto const rotate_steps = [&](bool forwards) {
+                                    DynamicArray<ArpStep> snap {g.scratch_arena};
+                                    snap.Reserve(active_steps);
+                                    for (u32 j = 0; j < active_steps; ++j)
+                                        dyn::Append(snap, arp_state.steps[j].Load(LoadMemoryOrder::Relaxed));
+                                    for (u32 j = 0; j < active_steps; ++j) {
+                                        auto const src = forwards ? (j + active_steps - 1) % active_steps
+                                                                  : (j + 1) % active_steps;
+                                        arp_state.steps[j].Store(snap[src], StoreMemoryOrder::Relaxed);
+                                    }
+                                };
+
+                                if (MenuItem(
+                                        g.builder,
+                                        root,
+                                        {
+                                            .text = "Rotate Steps Forwards"_s,
+                                            .tooltip =
+                                                "Shift every step's data one position forwards; the last step wraps to the first"_s,
+                                            .no_icon_gap = true,
+                                        })
+                                        .button_fired) {
+                                    rotate_steps(true);
+                                    RecordUndoableStep(g.engine, "Rotate arp steps forwards"_s);
+                                }
+
+                                if (MenuItem(
+                                        g.builder,
+                                        root,
+                                        {
+                                            .text = "Rotate Steps Backwards"_s,
+                                            .tooltip =
+                                                "Shift every step's data one position backwards; the first step wraps to the last"_s,
+                                            .no_icon_gap = true,
+                                        })
+                                        .button_fired) {
+                                    rotate_steps(false);
+                                    RecordUndoableStep(g.engine, "Rotate arp steps backwards"_s);
+                                }
+                            },
+                        .bounds = step_window_rect,
+                        .imgui_id = step_popup_id,
+                        .viewport_config = k_default_popup_menu_viewport,
+                    });
+            }
+        }
+
         if (show_all) {
             // Overview mode: same step number row as edit mode but without interaction,
             // only at non-tied steps spaced at least 4 apart, plus always the last step.
@@ -582,8 +711,8 @@ void DoArpStepSequencer(GuiState& g,
                 note_id,
                 note_click_rect,
                 note_str,
-                is_fixed ? "Reset this note to C4 (60)"_s : "Reset this pitch offset to 0"_s,
-                is_fixed ? "Reset every step's note to C4 (60)"_s : "Reset every step's pitch offset to 0"_s,
+                is_fixed ? "Reset this note to C3 (60)"_s : "Reset this pitch offset to 0"_s,
+                is_fixed ? "Reset every step's note to C3 (60)"_s : "Reset every step's pitch offset to 0"_s,
                 [&]() {
                     if (is_fixed)
                         ModifyStep(arp_state, i, [](ArpStep& s) { s.note = 60; });
@@ -877,135 +1006,6 @@ void DoArpStepSequencer(GuiState& g,
             draw_list.PathStroke(fill_col, false, WwToPixels(1.5f));
 
             if (gate_text_input_result) DrawParameterTextInput(imgui, knob_rect, *gate_text_input_result);
-        }
-
-        // Per-step right-click context menu (opened from the global bar right-click handler above).
-        {
-            auto const step_popup_id = step_popup_id_for(i);
-            if (imgui.IsPopupMenuOpen(step_popup_id)) {
-                auto const step_window_rect = imgui.ViewportRectToWindowRect({
-                    .x = x_vp,
-                    .y = 0,
-                    .w = step_width,
-                    .h = bar_area_height,
-                });
-                DoBoxViewport(
-                    g.builder,
-                    {
-                        .run =
-                            [&](GuiBuilder&) {
-                                auto const root =
-                                    DoBox(g.builder,
-                                          {
-                                              .layout {
-                                                  .size = layout::k_hug_contents,
-                                                  .contents_direction = layout::Direction::Column,
-                                                  .contents_align = layout::Alignment::Start,
-                                              },
-                                          });
-
-                                MenuItem(g.builder,
-                                         root,
-                                         {
-                                             .text = fmt::Format(g.scratch_arena, "Step {}", i + 1),
-                                             .mode = MenuItemOptions::Mode::Disabled,
-                                             .no_icon_gap = true,
-                                         });
-
-                                if (MenuItem(g.builder,
-                                             root,
-                                             {
-                                                 .text = "Reset Step"_s,
-                                                 .tooltip = "Reset all values of this step to defaults"_s,
-                                                 .no_icon_gap = true,
-                                             })
-                                        .button_fired) {
-                                    ModifyStep(arp_state, i, [](ArpStep& s) { s = {}; });
-                                    RecordUndoableStep(g.engine, "Reset arp step"_s);
-                                }
-
-                                if (MenuItem(
-                                        g.builder,
-                                        root,
-                                        {
-                                            .text = "Apply Step to All Steps"_s,
-                                            .tooltip =
-                                                "Copy every value of this step to all other steps (except tie)"_s,
-                                            .no_icon_gap = true,
-                                        })
-                                        .button_fired) {
-                                    auto const this_step = snapshot.StepAt(i);
-                                    for (u32 j = 0; j < active_steps; ++j) {
-                                        if (j == i) continue;
-                                        ModifyStep(arp_state, j, [this_step](ArpStep& s) {
-                                            s.velocity = this_step.velocity;
-                                            s.gate = this_step.gate;
-                                            s.on = this_step.on;
-                                            s.interval = this_step.interval;
-                                            s.note = this_step.note;
-                                        });
-                                    }
-                                    RecordUndoableStep(g.engine, "Apply arp step to all"_s);
-                                }
-
-                                if (MenuItem(g.builder,
-                                             root,
-                                             {
-                                                 .text = "Reset All Steps"_s,
-                                                 .tooltip = "Reset every step to its defaults"_s,
-                                                 .no_icon_gap = true,
-                                             })
-                                        .button_fired) {
-                                    for (u32 j = 0; j < active_steps; ++j)
-                                        ModifyStep(arp_state, j, [](ArpStep& s) { s = {}; });
-                                    RecordUndoableStep(g.engine, "Reset all arp steps"_s);
-                                }
-
-                                auto const rotate_steps = [&](bool forwards) {
-                                    DynamicArray<ArpStep> snap {g.scratch_arena};
-                                    snap.Reserve(active_steps);
-                                    for (u32 j = 0; j < active_steps; ++j)
-                                        dyn::Append(snap, arp_state.steps[j].Load(LoadMemoryOrder::Relaxed));
-                                    for (u32 j = 0; j < active_steps; ++j) {
-                                        auto const src = forwards ? (j + active_steps - 1) % active_steps
-                                                                  : (j + 1) % active_steps;
-                                        arp_state.steps[j].Store(snap[src], StoreMemoryOrder::Relaxed);
-                                    }
-                                };
-
-                                if (MenuItem(
-                                        g.builder,
-                                        root,
-                                        {
-                                            .text = "Rotate Steps Forwards"_s,
-                                            .tooltip =
-                                                "Shift every step's data one position forwards; the last step wraps to the first"_s,
-                                            .no_icon_gap = true,
-                                        })
-                                        .button_fired) {
-                                    rotate_steps(true);
-                                    RecordUndoableStep(g.engine, "Rotate arp steps forwards"_s);
-                                }
-
-                                if (MenuItem(
-                                        g.builder,
-                                        root,
-                                        {
-                                            .text = "Rotate Steps Backwards"_s,
-                                            .tooltip =
-                                                "Shift every step's data one position backwards; the first step wraps to the last"_s,
-                                            .no_icon_gap = true,
-                                        })
-                                        .button_fired) {
-                                    rotate_steps(false);
-                                    RecordUndoableStep(g.engine, "Rotate arp steps backwards"_s);
-                                }
-                            },
-                        .bounds = step_window_rect,
-                        .imgui_id = step_popup_id,
-                        .viewport_config = k_default_popup_menu_viewport,
-                    });
-            }
         }
     }
 

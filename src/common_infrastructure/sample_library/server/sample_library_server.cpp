@@ -83,27 +83,24 @@ UpdateLibraryJobs(Server& server, ArenaAllocator& scratch_arena, Optional<Direct
                                "adding new library {}",
                                path::Filename(r->path));
 
-                bool not_wanted = false;
+                auto const is_replaced_by_lib = [&](sample_lib::Library const& existing) {
+                    if (path::Equal(existing.path, lib->path)) return true;
+                    return existing.id == lib->id && existing.revision <= lib->revision;
+                };
 
                 // Check if we actually want this library.
-                for (auto it = server.libraries.begin(); it != server.libraries.end();)
-                    if (path::Equal(it->value.lib->path, lib->path)) {
-                        it = server.libraries.Remove(it);
-                        NotifyAllChannelsOfLibraryChange(server, lib->id);
-                    } else if (it->value.lib->id == lib->id) {
-                        if (it->value.lib->revision > lib->revision) {
-                            not_wanted = true; // The existing library is newer.
-                            ++it;
-                        } else {
-                            it = server.libraries.Remove(it);
-                            NotifyAllChannelsOfLibraryChange(server, lib->id);
-                        }
-                    } else {
-                        ++it;
-                    }
+                bool const existing_is_newer = ({
+                    bool newer = false;
+                    for (auto const& node : server.libraries)
+                        if (!is_replaced_by_lib(*node.value.lib) && node.value.lib->id == lib->id)
+                            newer = true;
+                    newer;
+                });
 
-                if (!not_wanted) {
-                    auto new_node = server.libraries.AllocateUninitialised();
+                // Insert before removing so that readers looking up this library ID always find a live node.
+                LibrariesAtomicList::Node* new_node = nullptr;
+                if (!existing_is_newer) {
+                    new_node = server.libraries.AllocateUninitialised();
                     PLACEMENT_NEW(&new_node->value)
                     ListedLibrary {
                         .arena = Move(r->arena),
@@ -112,6 +109,14 @@ UpdateLibraryJobs(Server& server, ArenaAllocator& scratch_arena, Optional<Direct
                     };
                     server.libraries.Insert(new_node);
                 }
+
+                for (auto it = server.libraries.begin(); it != server.libraries.end();)
+                    if (&*it != new_node && is_replaced_by_lib(*it->value.lib)) {
+                        it = server.libraries.Remove(it);
+                        NotifyAllChannelsOfLibraryChange(server, lib->id);
+                    } else {
+                        ++it;
+                    }
 
                 server.error_notifications.RemoveError(error_id);
                 break;
@@ -789,7 +794,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     DEFER { error_notifications.EndWriteError(*err); };
                     err->error_code = CommonError::NotFound;
                     auto const lib_name = sample_lib::LookupLibraryIdString(library_id).ValueOr("Unknown"_s);
-                    fmt::Assign(err->title, "{} library not found"_s, lib_name);
+                    dyn::AssignFitInCapacity(err->title, "Library not found"_s);
                     fmt::Assign(
                         err->message,
                         "\"{}\" is not installed or is otherwise unavailable. Check your preferences or consult the library installation instructions.",
@@ -840,7 +845,11 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     } else {
                         if (auto err = error_notifications.BeginWriteError(find_inst_error_id)) {
                             DEFER { error_notifications.EndWriteError(*err); };
-                            fmt::Assign(err->title, "Cannot find instrument \"{}\""_s, inst_id);
+                            dyn::AssignFitInCapacity(err->title, "Instrument not found"_s);
+                            fmt::Assign(err->message,
+                                        "\"{}\" in library \"{}\" could not be found.",
+                                        inst_id,
+                                        sample_lib::LookupLibraryIdString(library_id).ValueOr("Unknown"));
                             err->error_code = CommonError::NotFound;
                         }
 
@@ -868,9 +877,9 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                     } else {
                         if (auto err = error_notifications.BeginWriteError(find_ir_error_id)) {
                             DEFER { error_notifications.EndWriteError(*err); };
-                            fmt::Assign(err->title, "Cannot find IR \"{}\""_s, ir_id.ir_id);
+                            dyn::AssignFitInCapacity(err->title, "IR not found"_s);
                             fmt::Assign(err->message,
-                                        "Could not find reverb impulse response: {}, in library: {}",
+                                        "\"{}\" in library \"{}\" could not be found.",
                                         ir_id.ir_id,
                                         sample_lib::LookupLibraryIdString(library_id).ValueOr("Unknown"));
                             err->error_code = CommonError::NotFound;
@@ -1485,13 +1494,25 @@ ResourcePointer<sample_lib::Library> FindLibraryRetained(Server& server, sample_
     // IMPROVE: is this slow to do at every request for a library?
     RequestScanningOfUnscannedFolders(server);
 
-    server.libraries_by_id_mutex.Lock();
-    DEFER { server.libraries_by_id_mutex.Unlock(); };
-    auto l = server.libraries_by_id.Find(id);
-    if (!l) return {};
-    auto& node = **l;
-    if (!node.TryRetain()) return {};
-    return ResourcePointer<sample_lib::Library>(*node.value.lib, node.reader_uses);
+    {
+        server.libraries_by_id_mutex.Lock();
+        DEFER { server.libraries_by_id_mutex.Unlock(); };
+        if (auto l = server.libraries_by_id.Find(id)) {
+            auto& node = **l;
+            if (node.TryRetain())
+                return ResourcePointer<sample_lib::Library>(*node.value.lib, node.reader_uses);
+        }
+    }
+
+    // When the server thread replaces a library, the by-ID table points at the removed node until the table
+    // is rebuilt later in the same update. The list itself already contains the replacement.
+    for (auto& node : server.libraries) {
+        if (!node.TryRetain()) continue;
+        if (node.value.lib->id == id)
+            return ResourcePointer<sample_lib::Library>(*node.value.lib, node.reader_uses);
+        node.Release();
+    }
+    return {};
 }
 
 void LoadResult::ChangeRefCount(RefCountChange t) {

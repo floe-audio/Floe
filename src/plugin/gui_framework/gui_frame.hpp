@@ -105,6 +105,7 @@ struct GuiFrameInput {
         ArenaStack<Event> presses {}; // mouse-down events since last frame, cleared every frame
         ArenaStack<Event> releases {}; // mouse-up events since last frame, cleared every frame
         Event last_press {};
+        Event last_release {};
         Optional<Event> is_down {}; // current state
         bool is_dragging {};
         bool dragging_started {}; // cleared every frame
@@ -158,6 +159,9 @@ struct GuiFrameInput {
     DynamicArrayBounded<char, 64> requested_screenshot_id_name {};
     DynamicArrayBounded<char, 256> requested_screenshot_output_path {};
     bool requested_screenshot_full_window {};
+
+    // When set, a JSON description of the window's interactive elements is written here after each frame.
+    DynamicArrayBounded<char, 256> ui_dump_output_path {};
 
     // WW = Window Width.
     // Similar to CSS vw units, we have a concept of 'window width' relative units. They allow us to make our

@@ -486,6 +486,11 @@ void StartVoice(VoicePool& pool,
 
     voice.controller = &voice_controller;
     voice.lfo.phase = params.lfo_start_state.phase;
+
+    // Drawn even when inheriting: whether a previous voice is still sounding can differ between block sizes
+    // (voices end at the end of a block), so it mustn't change the number of draws.
+    auto const fresh_lfo_random_state = (u32)RandomU64(*pool.master_random_seed) | 1u;
+
     if (params.lfo_start_state.random_state != 0) {
         // Free-mode: inherit random state from a previously active voice in this layer
         // so the random sequence feels continuous across overlapping notes.
@@ -496,7 +501,7 @@ void StartVoice(VoicePool& pool,
         // Retrigger or first voice: derive a fresh seed deterministically from the master
         // seed so reproducibility (Reset on Transport / Reset Keyswitch / Seed) extends to
         // random LFO waveforms. Bootstrap next_random so the very first cycle has a target.
-        voice.lfo.random_state = (u32)RandomU64(*pool.master_random_seed) | 1u;
+        voice.lfo.random_state = fresh_lfo_random_state;
         switch (voice_controller.lfo.variation_mode) {
             case param_values::VariationMode::DifferentOnEveryNote: break;
             case param_values::VariationMode::IdenticalOnAllNotes:
@@ -628,10 +633,7 @@ void StartVoice(VoicePool& pool,
                     auto const loop = ({
                         Optional<BoundsCheckedLoop> l {};
                         if (s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff)
-                            l = ConfigureLoop(voice_controller.loop_mode,
-                                              s_sampler.region->loop,
-                                              s_sampler.data->num_frames,
-                                              voice_controller.loop);
+                            l = LoopForSource(voice_controller, s_sampler);
                         l;
                     });
 
@@ -1314,8 +1316,12 @@ struct VoiceProcessor {
                             // If the grain pool is nearing full, we initiate quick fade-outs for grains to
                             // that hopefully by the time we next want to spawn a grain, we have inactive ones
                             // to pick from. We pick one randomly to avoid any unpleasant-sounding regularity.
+                            // The pick reuses a value already drawn for this grain: the active count depends
+                            // on block boundaries (grains are freed at the end of a block), so a separate
+                            // draw here would change every later random choice depending on the block size.
                             auto const pick =
-                                Rand(voice.granular_random_seed).x % pool.num_active_non_stealing;
+                                Min((u32)(density_jitter_rand * (f32)pool.num_active_non_stealing),
+                                    pool.num_active_non_stealing - 1);
                             u32 index = 0;
                             for (auto [gi, g] : Enumerate(pool.grains)) {
                                 if (!pool.active_grains.Get(gi) || g.IsStealing() || &g == new_grain)
@@ -2198,6 +2204,27 @@ TEST_CASE(TestVoiceProcessingSampler) {
         REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
     }
 
+    SUBCASE("loop mode is ignored when volume envelope is off") {
+        Array<f32, 64> short_buf {};
+        auto short_data = CreateTestAudioData(short_buf, 64);
+
+        fix.controller.play_mode = param_values::PlayMode::Standard;
+        fix.controller.vol_env_on = false;
+        fix.controller.loop_mode = param_values::LoopMode::Standard;
+        fix.controller.loop = {.start = 0.0f, .end = 1.0f, .crossfade_size = 0.0f};
+        DEFER {
+            fix.controller.loop_mode = {};
+            fix.controller.loop = {};
+        };
+
+        StartTestSamplerVoice(fix, region, short_data);
+
+        for (int i = 0; i < 10; ++i)
+            ProcessVoices(*fix.pool, k_block_size_max, fix.context, true);
+
+        REQUIRE_EQ(fix.pool->num_active_voices.Load(LoadMemoryOrder::Relaxed), 0u);
+    }
+
     SUBCASE("output stays within bounds") {
         fix.controller.play_mode = param_values::PlayMode::Standard;
         fix.controller.vol_env_on = false;
@@ -2569,7 +2596,8 @@ TEST_CASE(TestVoiceRandomDrawsAreStable) {
                    },
                    fix.context);
         CHECK_EQ(active_voice().lfo.random_state, 99u);
-        CHECK_EQ(fix.master_random_seed, 4354685564936846588ull);
+        // Same draws as a voice that doesn't inherit.
+        CHECK_EQ(fix.master_random_seed, 15755400384260045073ull);
         fix.pool->EndAllVoicesInstantly();
     }
 

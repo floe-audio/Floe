@@ -66,6 +66,9 @@ stdenv.mkDerivation {
     libXext
   ];
 
+  # bgfx dlopens libvulkan rather than linking it, so autoPatchelfHook wouldn't otherwise keep it in the RUNPATH.
+  appendRunpaths = [ "${lib.getLib vulkan-loader}/lib" ];
+
   dontConfigure = true;
 
   buildPhase = ''

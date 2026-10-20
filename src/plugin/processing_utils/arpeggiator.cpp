@@ -462,12 +462,6 @@ static void ArpExecuteStep(ArpeggiatorState& arp, ArpExecuteStepArgs args, ArpNo
     advance_step();
 }
 
-struct ArpProcessBlockData {
-    DynamicArrayBounded<MidiChannelNote, 128 * 16> held_notes;
-    Span<sample_lib::Region::Slice const> slices;
-    param_values::ArpMode effective_type;
-};
-
 static f32 OctavePolyrateRatio(param_values::ArpOctavePolyrate mode) {
     switch (mode) {
         case param_values::ArpOctavePolyrate::Double: return 2.0f;
@@ -489,21 +483,17 @@ static u32 OctavePolyrateFramesPerStep(u32 base_frames_per_step, u32 octave_inde
         return (u32)((f32)base_frames_per_step * multiplier);
 }
 
-static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
-                                    AudioProcessingContext const& context,
-                                    u64& random_seed,
-                                    ArpProcessBlockData const& block,
-                                    u32 num_frames,
-                                    ArpNoteCommands& out_commands) {
+static void
+ArpBeginBlockPolyrate(ArpeggiatorState& arp, AudioProcessingContext const& context, ArpBlock& block) {
     // Determine which octaves have held notes.
-    auto const active_octaves = ({
+    block.active_octaves = ({
         Bitset<ArpeggiatorState::k_octave_polyrate_num_playheads> octs {};
         for (auto const note_index : Range(block.held_notes.size))
             octs.Set((u32)(block.held_notes[note_index].note / 12));
         octs;
     });
 
-    auto const gui_playhead_oct = block.held_notes.size ? (u32)(block.held_notes[0].note / 12) : (u32)0;
+    block.gui_playhead_oct = block.held_notes.size ? (u32)(block.held_notes[0].note / 12) : (u32)0;
 
     auto const base_frames = ArpFramesPerStep(arp.audio.rate, context);
     auto const ratio = OctavePolyrateRatio(arp.audio.octave_polyrate);
@@ -512,7 +502,7 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
 
     // In Free mode, sync newly-active octaves to existing playback position so they join in phase.
     if (arp.audio.trigger_mode == param_values::ArpTriggerMode::Free) {
-        auto const newly_active = active_octaves & ~arp.audio.prev_active_octaves;
+        auto const newly_active = block.active_octaves & ~arp.audio.prev_active_octaves;
         if (newly_active.AnyValuesSet()) {
             auto const ref_oct = ({
                 Optional<u32> r = {};
@@ -550,144 +540,166 @@ static void ArpProcessBlockPolyrate(ArpeggiatorState& arp,
             }
         }
     }
-    arp.audio.prev_active_octaves = active_octaves;
+    arp.audio.prev_active_octaves = block.active_octaves;
 
     // In one-shot polyrate mode, all octaves keep looping until the slowest (lowest) octave
     // completes, then everything stops together.
-    auto const slowest_active_oct = ({
-        Optional<u32> s {};
-        if (arp.audio.one_shot) s = (u32)active_octaves.FirstSetBit();
-        s;
-    });
-
-    for (auto const frame_index : Range(num_frames)) {
-        for (auto const oct : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
-            if (!active_octaves.Get(oct)) continue;
-            auto& head = arp.audio.playheads[oct];
-
-            if (!head.one_shot_finished && head.frames_until_next_step == 0) {
-                auto const oct_notes = ({
-                    DynamicArrayBounded<MidiChannelNote, 12 * 16> n;
-                    auto const low = (u7)(oct * 12);
-                    auto const high = (u7)Min(127u, ((oct + 1) * 12) - 1);
-                    for (auto const note_index : Range(block.held_notes.size))
-                        if (block.held_notes[note_index].note >= low &&
-                            block.held_notes[note_index].note <= high)
-                            n.data[n.size++] = block.held_notes[note_index];
-                    n;
-                });
-
-                ArpExecuteStep(arp,
-                               {
-                                   .context = context,
-                                   .random_seed = random_seed,
-                                   .playhead = head,
-                                   .type = block.effective_type,
-                                   .publish_gui_step = (oct == gui_playhead_oct),
-                                   .slices = block.slices,
-                                   .notes = oct_notes,
-                                   .frame_offset = frame_index,
-                               },
-                               out_commands);
-
-                if (slowest_active_oct && head.one_shot_finished && oct != *slowest_active_oct) {
-                    head.one_shot_finished = false;
-                    head.current_step = 0;
-                    head.note_index = 0;
-                }
-
-                head.frames_until_next_step = head.frames_per_step;
-                head.frames_into_current_step = 0;
-            }
-
-            if (head.gate_off_countdown > 0 && --head.gate_off_countdown == 0) {
-                EmitReleaseNotes(head.last_triggered_notes, out_commands);
-                if (head.one_shot_finished)
-                    arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
-            }
-
-            if (slowest_active_oct && oct == *slowest_active_oct && head.one_shot_finished &&
-                head.gate_off_countdown == 0) {
-                for (auto const o : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
-                    if (o == oct || !active_octaves.Get(o)) continue;
-                    EmitReleaseNotes(arp.audio.playheads[o].last_triggered_notes, out_commands);
-                    arp.audio.playheads[o].one_shot_finished = true;
-                    arp.audio.playheads[o].gate_off_countdown = 0;
-                }
-                return;
-            }
-
-            --head.frames_until_next_step;
-            ++head.frames_into_current_step;
-        }
-    }
+    if (arp.audio.one_shot) block.slowest_active_oct = (u32)block.active_octaves.FirstSetBit();
 }
 
-static void ArpProcessBlockRegular(ArpeggiatorState& arp,
-                                   AudioProcessingContext const& context,
-                                   u64& random_seed,
-                                   ArpProcessBlockData const& block,
-                                   u32 num_frames,
-                                   ArpNoteCommands& out_commands) {
-    auto& playhead = arp.audio.playhead;
-    for (auto const frame_index : Range(num_frames)) {
-        if (!playhead.one_shot_finished && playhead.frames_until_next_step == 0) {
+static void ArpProcessFramePolyrate(ArpeggiatorState& arp,
+                                    ArpBlock& block,
+                                    AudioProcessingContext const& context,
+                                    u64& random_seed,
+                                    u32 frame_index,
+                                    ArpNoteCommands& out_commands) {
+    for (auto const oct : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
+        if (!block.active_octaves.Get(oct)) continue;
+        auto& head = arp.audio.playheads[oct];
+
+        if (!head.one_shot_finished && head.frames_until_next_step == 0) {
+            auto const oct_notes = ({
+                DynamicArrayBounded<MidiChannelNote, 12 * 16> n;
+                auto const low = (u7)(oct * 12);
+                auto const high = (u7)Min(127u, ((oct + 1) * 12) - 1);
+                for (auto const note_index : Range(block.held_notes.size))
+                    if (block.held_notes[note_index].note >= low && block.held_notes[note_index].note <= high)
+                        n.data[n.size++] = block.held_notes[note_index];
+                n;
+            });
+
             ArpExecuteStep(arp,
                            {
                                .context = context,
                                .random_seed = random_seed,
-                               .playhead = playhead,
+                               .playhead = head,
                                .type = block.effective_type,
-                               .publish_gui_step = true,
+                               .publish_gui_step = (oct == block.gui_playhead_oct),
                                .slices = block.slices,
-                               .notes = block.held_notes,
+                               .notes = oct_notes,
                                .frame_offset = frame_index,
                            },
                            out_commands);
-            playhead.frames_until_next_step = playhead.frames_per_step;
-            playhead.frames_into_current_step = 0;
+
+            if (block.slowest_active_oct && head.one_shot_finished && oct != *block.slowest_active_oct) {
+                head.one_shot_finished = false;
+                head.current_step = 0;
+                head.note_index = 0;
+            }
+
+            head.frames_until_next_step = head.frames_per_step;
+            head.frames_into_current_step = 0;
         }
 
-        // Gate-off: release notes when the countdown elapses. Counts across tied steps.
-        if (playhead.gate_off_countdown > 0 && --playhead.gate_off_countdown == 0) {
-            EmitReleaseNotes(playhead.last_triggered_notes, out_commands);
-            if (playhead.one_shot_finished)
+        if (head.gate_off_countdown > 0 && --head.gate_off_countdown == 0) {
+            EmitReleaseNotes(head.last_triggered_notes, out_commands);
+            if (head.one_shot_finished)
                 arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
         }
 
-        --playhead.frames_until_next_step;
-        ++playhead.frames_into_current_step;
+        if (block.slowest_active_oct && oct == *block.slowest_active_oct && head.one_shot_finished &&
+            head.gate_off_countdown == 0) {
+            for (auto const o : Range(ArpeggiatorState::k_octave_polyrate_num_playheads)) {
+                if (o == oct || !block.active_octaves.Get(o)) continue;
+                EmitReleaseNotes(arp.audio.playheads[o].last_triggered_notes, out_commands);
+                arp.audio.playheads[o].one_shot_finished = true;
+                arp.audio.playheads[o].gate_off_countdown = 0;
+            }
+            block.active = false;
+            return;
+        }
+
+        --head.frames_until_next_step;
+        ++head.frames_into_current_step;
     }
 }
 
-void ArpProcessBlock(ArpeggiatorState& arp,
+static void ArpProcessFrameRegular(ArpeggiatorState& arp,
+                                   ArpBlock const& block,
+                                   AudioProcessingContext const& context,
+                                   u64& random_seed,
+                                   u32 frame_index,
+                                   ArpNoteCommands& out_commands) {
+    auto& playhead = arp.audio.playhead;
+    if (!playhead.one_shot_finished && playhead.frames_until_next_step == 0) {
+        ArpExecuteStep(arp,
+                       {
+                           .context = context,
+                           .random_seed = random_seed,
+                           .playhead = playhead,
+                           .type = block.effective_type,
+                           .publish_gui_step = true,
+                           .slices = block.slices,
+                           .notes = block.held_notes,
+                           .frame_offset = frame_index,
+                       },
+                       out_commands);
+        playhead.frames_until_next_step = playhead.frames_per_step;
+        playhead.frames_into_current_step = 0;
+    }
+
+    // Gate-off: release notes when the countdown elapses. Counts across tied steps.
+    if (playhead.gate_off_countdown > 0 && --playhead.gate_off_countdown == 0) {
+        EmitReleaseNotes(playhead.last_triggered_notes, out_commands);
+        if (playhead.one_shot_finished)
+            arp.current_step_for_gui.Store(k_arp_max_steps, StoreMemoryOrder::Relaxed);
+    }
+
+    --playhead.frames_until_next_step;
+    ++playhead.frames_into_current_step;
+}
+
+void ArpBeginBlock(ArpeggiatorState& arp,
+                   AudioProcessingContext const& context,
+                   sample_lib::Region const* sliced_region,
+                   ArpBlock& out_block) {
+    auto& block = out_block;
+    block.active = ArpIsOn(arp.audio.on, sliced_region) && arp.audio.any_notes_held;
+    if (!block.active) return;
+
+    dyn::Clear(block.held_notes);
+    for (auto const chan : Range<u8>(16)) {
+        auto const held = context.midi_note_state.NotesHeldIncludingSustained((u4)chan);
+        held.ForEachSetBit([&](usize bit) {
+            block.held_notes.data[block.held_notes.size++] = {.note = (u7)bit, .channel = (u4)chan};
+        });
+    }
+    Sort(block.held_notes, [](auto const& a, auto const& b) { return a.note < b.note; });
+    block.slices = {};
+    if (sliced_region) block.slices = sliced_region->slices;
+    block.effective_type = block.slices.size ? param_values::ArpMode::Played : arp.audio.type;
+    block.active_octaves = {};
+    block.gui_playhead_oct = 0;
+    block.slowest_active_oct = k_nullopt;
+
+    if (arp.audio.octave_polyrate != param_values::ArpOctavePolyrate::Off)
+        ArpBeginBlockPolyrate(arp, context, block);
+}
+
+void ArpProcessFrame(ArpeggiatorState& arp,
+                     ArpBlock& block,
                      AudioProcessingContext const& context,
-                     sample_lib::Region const* sliced_region,
                      u64& random_seed,
-                     u32 num_frames,
+                     u32 frame_index,
                      ArpNoteCommands& out_commands) {
-    if (!ArpIsOn(arp.audio.on, sliced_region)) return;
-    if (!arp.audio.any_notes_held) return;
-    if (num_frames == 0) return;
-
-    auto const block = ({
-        ArpProcessBlockData b {};
-        for (auto const chan : Range<u8>(16)) {
-            auto const held = context.midi_note_state.NotesHeldIncludingSustained((u4)chan);
-            held.ForEachSetBit([&](usize bit) {
-                b.held_notes.data[b.held_notes.size++] = {.note = (u7)bit, .channel = (u4)chan};
-            });
-        }
-        Sort(b.held_notes, [](auto const& a, auto const& b) { return a.note < b.note; });
-        if (sliced_region) b.slices = sliced_region->slices;
-        b.effective_type = b.slices.size ? param_values::ArpMode::Played : arp.audio.type;
-        b;
-    });
-
+    if (!block.active) return;
     if (arp.audio.octave_polyrate == param_values::ArpOctavePolyrate::Off)
-        ArpProcessBlockRegular(arp, context, random_seed, block, num_frames, out_commands);
+        ArpProcessFrameRegular(arp, block, context, random_seed, frame_index, out_commands);
     else
-        ArpProcessBlockPolyrate(arp, context, random_seed, block, num_frames, out_commands);
+        ArpProcessFramePolyrate(arp, block, context, random_seed, frame_index, out_commands);
+}
+
+static void ArpProcessBlock(ArpeggiatorState& arp,
+                            AudioProcessingContext const& context,
+                            sample_lib::Region const* sliced_region,
+                            u64& random_seed,
+                            u32 num_frames,
+                            ArpNoteCommands& out_commands) {
+    if (num_frames == 0) return;
+    ArpBlock block;
+    ArpBeginBlock(arp, context, sliced_region, block);
+    for (auto const frame_index : Range(num_frames))
+        ArpProcessFrame(arp, block, context, random_seed, frame_index, out_commands);
 }
 
 struct AutoRateResolution {

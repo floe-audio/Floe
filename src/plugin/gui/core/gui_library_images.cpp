@@ -40,6 +40,10 @@ static ImagePixelsOrFailure ImagePixelsFromLibrary(sample_lib::LibraryId lib_id,
                                                    bool log_failure) {
     auto const filename = FilenameForLibraryImageType(type);
 
+    // Must be read before the lookup: if scanning finishes in between, the library might have been added. The
+    // lookup can itself start scanning, so request that first.
+    sample_lib_server::RequestScanningOfUnscannedFolders(server);
+    auto const was_scanning = sample_lib_server::AreLibrariesScanning(server);
     auto lib = sample_lib_server::FindLibraryRetained(server, lib_id);
     DEFER { lib.Release(); };
     if (!lib) {
@@ -49,7 +53,8 @@ static ImagePixelsOrFailure ImagePixelsFromLibrary(sample_lib::LibraryId lib_id,
                 "{} not found when loading {}",
                 sample_lib::LookupLibraryIdString(lib_id).ValueOr("Unknown library"_s),
                 filename);
-        return LibraryImages::LoadFailure::Unavailable;
+        return was_scanning ? LibraryImages::LoadFailure::Unavailable
+                            : LibraryImages::LoadFailure::LibraryNotFound;
     }
 
     if (lib->file_format_specifics.tag == sample_lib::FileFormat::Mdata) {
@@ -353,23 +358,37 @@ void Shutdown(LibraryImagesTable& table) {
 static void
 RecordLoadFailure(LibraryImages::LoadState& state, LibraryImages::LoadFailure failure, u64 wakeup_id) {
     state.failure = failure;
-    switch (failure) {
-        case LibraryImages::LoadFailure::Missing: break;
-        case LibraryImages::LoadFailure::Unavailable:
-            state.retry_time = TimePoint::Now() + 1.0;
-            GuiIo().out.SetTimedWakeup(wakeup_id, state.retry_time);
-            break;
-    }
+    auto const retry_seconds = ({
+        f64 s = 0;
+        switch (failure) {
+            case LibraryImages::LoadFailure::Missing: break;
+            case LibraryImages::LoadFailure::LibraryNotFound: s = 10.0; break;
+            case LibraryImages::LoadFailure::Unavailable: s = 1.0; break;
+        }
+        s;
+    });
+    if (retry_seconds == 0) return;
+    state.retry_time = TimePoint::Now() + retry_seconds;
+    GuiIo().out.SetTimedWakeup(wakeup_id, state.retry_time);
 }
 
 static bool ShouldLoad(LibraryImages::LoadState const& state) {
     if (!state.failure) return true;
     switch (*state.failure) {
         case LibraryImages::LoadFailure::Missing: return false;
+        case LibraryImages::LoadFailure::LibraryNotFound:
         case LibraryImages::LoadFailure::Unavailable: return TimePoint::Now() >= state.retry_time;
     }
     PanicIfReached();
     return false;
+}
+
+bool IsSettled(LibraryImages const& imgs) {
+    if (imgs.loading_icon && imgs.loading_icon->IsInProgress()) return false;
+    if (imgs.loading_backgrounds && imgs.loading_backgrounds->IsInProgress()) return false;
+    if (imgs.icon_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
+    if (imgs.backgrounds_load.failure == LibraryImages::LoadFailure::Unavailable) return false;
+    return true;
 }
 
 void BeginFrame(LibraryImagesTable& table) {

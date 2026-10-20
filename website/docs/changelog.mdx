@@ -14,6 +14,20 @@ For instance: 0.0.1. Don't change the headings.
 */}
 
 # Changelog
+## 2.0.4
+- Fix clicks sometimes being ignored when Floe is busy, for example very quick clicks or moving the mouse away straight after clicking
+- Fix notes looping forever when a loop mode is set but the volume envelope is off
+- Fix the arpeggiator's step right-click menu not opening in Overview
+- Respond to MIDI All Notes Off (CC 123) and All Sound Off (CC 120), so a DAW or controller's panic or stop can silence stuck notes
+- Fix renders sometimes coming out with different random variations (grains, random LFO shapes, the arpeggiator's Humanise and Random orders, and more) depending on your DAW's buffer size, such as between playback and bouncing. Some DAW projects that use these may play a different variation than in earlier versions
+- Make error messages easier to read: short titles, no repeated package names, and no internal source code details
+- Installing a preset bank that doesn't name a default preset now suggests its first preset alphabetically, so a blank Floe opens straight onto something playable
+- Change the granular Harmony "Fifths" preset to a 5th above plus the same note an octave lower, so it reinforces the root rather than adding a 4th. Existing presets and DAW projects keep their intervals
+- Always show User presets in the preset browser, even before you've saved any, so the layout no longer changes as preset banks come and go and it's clear where saved presets go
+- Sort preset banks alphabetically by name in the preset browser, regardless of which folder they're installed in
+- Add a preference to show Floe's default background behind every layer when layers use different libraries, for a calmer, more consistent look on the Layers page
+- Packager: make each library's 'About' document a PDF, so it opens on any computer, and have it point to the library's license file rather than summarise it. Add `--no-about-doc` to leave it out
+
 ## 2.0.4-beta.3
 - Show a parameter's macro-adjusted value in its value popup, along with which macros are changing it
 - Add Edit Range to the right-click menu of macro destination knobs: set the parameter's value at 0% and 100% of the macro directly, and hear each end while you adjust it. Moving one end leaves the other where it is, and an option moves the macro so the sound stays as it is now

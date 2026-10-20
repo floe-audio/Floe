@@ -1,8 +1,5 @@
 // Copyright 2018-2025 Sam Windell
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include <pugl/pugl.h>
-#include <pugl/stub.h>
-
 #include "os/filesystem.hpp"
 #include "tests/framework.hpp"
 #include "utils/reader.hpp"
@@ -16,6 +13,7 @@
 #include "clap/ext/params.h"
 #include "clap/ext/state.h"
 #include "clap/ext/thread-check.h"
+#include "clap/ext/timer-support.h"
 #include "clap/factory/plugin-factory.h"
 #include "plugin/plugin.hpp"
 #include "plugin/processing_utils/midi.hpp"
@@ -72,6 +70,24 @@ struct TestHost {
             },
     };
 
+    clap_host_timer_support const host_timer_support {
+        .register_timer =
+            [](clap_host_t const* h, uint32_t, clap_id* timer_id) {
+                auto& test_host = *(TestHost*)h->host_data;
+                ASSERT(test_host.plugin_created);
+                ASSERT(timer_id);
+                if (!dyn::Append(test_host.timer_ids, test_host.next_timer_id)) return false;
+                *timer_id = test_host.next_timer_id++;
+                return true;
+            },
+        .unregister_timer =
+            [](clap_host_t const* h, clap_id timer_id) {
+                auto& test_host = *(TestHost*)h->host_data;
+                ASSERT(test_host.plugin_created);
+                return dyn::RemoveValue(test_host.timer_ids, timer_id) != 0;
+            },
+    };
+
     clap_host_t const host {
         .clap_version = CLAP_VERSION,
         .host_data = this,
@@ -90,6 +106,8 @@ struct TestHost {
                 return &test_host.host_gui;
             else if (NullTermStringsEqual(extension_id, CLAP_EXT_THREAD_CHECK))
                 return &test_host.host_thread_check;
+            else if (NullTermStringsEqual(extension_id, CLAP_EXT_TIMER_SUPPORT))
+                return &test_host.host_timer_support;
             else if (NullTermStringsEqual(extension_id, k_floe_clap_extension_id))
                 return &test_host.floe_host_ext;
 
@@ -113,6 +131,8 @@ struct TestHost {
     u64 main_thread_id {CurrentThreadId()};
     Atomic<bool> callback_requested {false};
     FloeClapExtensionHost floe_host_ext {};
+    DynamicArrayBounded<clap_id, 4> timer_ids {};
+    clap_id next_timer_id {};
     bool plugin_created = false;
 };
 
@@ -181,6 +201,7 @@ struct ProcessTestOptions {
     u32 max_block_size;
     u32 constant_block_size; // 0 means random block size
     EventQueue events; // ordered by time, time is in overall frames not per-block
+    bool transport_playing = false;
     bool capture_output = false;
 };
 
@@ -274,10 +295,22 @@ Process(tests::Tester& tester, clap_plugin const* plugin, ArenaAllocator& arena,
             .constant_mask = 0,
         };
 
+        clap_event_transport const transport {
+            .header =
+                {
+                    .size = sizeof(clap_event_transport),
+                    .time = 0,
+                    .space_id = CLAP_CORE_EVENT_SPACE_ID,
+                    .type = CLAP_EVENT_TRANSPORT,
+                },
+            .flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_IS_PLAYING,
+            .tempo = 120,
+        };
+
         clap_process process {
             .steady_time = -1,
             .frames_count = block_size,
-            .transport = nullptr,
+            .transport = options.transport_playing ? &transport : nullptr,
             .audio_inputs = nullptr,
             .audio_outputs = &out,
             .audio_inputs_count = 0,
@@ -363,6 +396,7 @@ enum class StateProperties : u8 {
     WhiteNoise = 1 << 2,
     SampleInst = 1 << 3,
     SoundShapersOn = 1 << 4,
+    ArpWithRandomness = 1 << 5, // Arpeggiator on the first layer, using random note order and humanise
 };
 
 inline StateProperties operator|(StateProperties a, StateProperties b) {
@@ -434,6 +468,16 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
         }
     }
 
+    if (properties & StateProperties::ArpWithRandomness) {
+        auto const param = [&](LayerParamIndex p) -> f32& {
+            return state.param_values[ToInt(ParamIndexFromLayerParamIndex(0, p))];
+        };
+        param(LayerParamIndex::ArpOn) = 1;
+        param(LayerParamIndex::ArpNoteOrder) = (f32)param_values::ArpNoteOrder::Random;
+        param(LayerParamIndex::ArpRate) = (f32)param_values::ArpSyncedRate::_1_64;
+        param(LayerParamIndex::ArpHumanise) = 1;
+    }
+
     DynamicArray<u8> buffer {arena};
     TRY(CodeState(state,
                   CodeStateArguments {
@@ -446,16 +490,6 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
                   }));
 
     return buffer.ToOwnedSpan();
-}
-
-static PuglStatus OnGuiTestEvent(PuglView* view, PuglEvent const* event) {
-    auto& quit_flag = *(bool*)puglGetHandle(view);
-
-    switch (event->type) {
-        case PUGL_CLOSE: quit_flag = true; break;
-        default: break;
-    }
-    return PUGL_SUCCESS;
 }
 
 static void LoadState(tests::Tester& tester, clap_plugin const* plugin, Span<u8 const> state) {
@@ -478,11 +512,11 @@ static void LoadState(tests::Tester& tester, clap_plugin const* plugin, Span<u8 
     REQUIRE(state_ext->load(plugin, &stream));
 }
 
-static void ProcessWithState(tests::Tester& tester,
-                             clap_plugin const* plugin,
-                             TestHost& test_host,
-                             StateProperties state_properties,
-                             ProcessTestOptions options) {
+static Span<Span<f32>> ProcessWithState(tests::Tester& tester,
+                                        clap_plugin const* plugin,
+                                        TestHost& test_host,
+                                        StateProperties state_properties,
+                                        ProcessTestOptions options) {
     CheckProcessTestOptions(options);
 
     LoadState(tester, plugin, REQUIRE_UNWRAP(MakeState(tester.scratch_arena, state_properties)));
@@ -504,7 +538,7 @@ static void ProcessWithState(tests::Tester& tester,
             constexpr f64 k_timeout_ms = 10000;
             if ((TimePoint::Now() - start) > (k_timeout_ms / 1000.0)) {
                 LOG_WARNING("Timeout waiting for state change to complete");
-                return;
+                return {};
             }
 
             SleepThisThread(10);
@@ -543,6 +577,8 @@ static void ProcessWithState(tests::Tester& tester,
                                          .data = captured_output,
                                      }));
     }
+
+    return captured_output;
 }
 
 TEST_CASE(TestHostingClap) {
@@ -641,6 +677,129 @@ TEST_CASE(TestHostingClap) {
                                      });
                 }
 
+                SUBCASE("render does not depend on block size") {
+                    // Notes are staggered like a hand-played chord so they land at different points within
+                    // the internal sub-blocks. Layer 1 plays them directly; layer 0 arpeggiates them with
+                    // random note order and humanise. White noise voices take their seed from the master
+                    // random seed, so any change in the order of random draws makes the noise different.
+                    auto const make_events = [&]() {
+                        EventQueue events {};
+                        auto const on = [&](u32 time, u7 note) {
+                            events.AppendMidiMessage(tester.scratch_arena,
+                                                     time,
+                                                     MidiMessage::NoteOn(note, 90));
+                        };
+                        auto const off = [&](u32 time, u7 note) {
+                            events.AppendMidiMessage(tester.scratch_arena, time, MidiMessage::NoteOff(note));
+                        };
+                        on(1000, 60);
+                        on(1003, 64);
+                        on(1011, 67);
+                        on(1030, 71);
+                        off(9000, 60);
+                        off(9005, 64);
+                        on(9013, 62);
+                        off(9020, 67);
+                        off(9021, 71);
+                        on(14000, 65);
+                        on(14002, 69);
+                        on(14019, 72);
+                        off(22000, 62);
+                        off(22010, 65);
+                        off(22011, 69);
+                        off(22030, 72);
+                        return events;
+                    };
+
+                    auto const render = [&](u32 constant_block_size, u64 seed) {
+                        return ProcessWithState(tester,
+                                                plugin,
+                                                test_host,
+                                                StateProperties::Sine | StateProperties::WhiteNoise |
+                                                    StateProperties::ArpWithRandomness,
+                                                {
+                                                    .seed = seed,
+                                                    .num_frames = 30000,
+                                                    .num_channels = 2,
+                                                    .sample_rate = 44100,
+                                                    .min_block_size = 1,
+                                                    .max_block_size = 1024,
+                                                    .constant_block_size = constant_block_size,
+                                                    .events = make_events(),
+                                                    .transport_playing = true,
+                                                    .capture_output = true,
+                                                });
+                    };
+
+                    auto const reference = render(512, 0);
+                    REQUIRE(reference.size == 2);
+                    {
+                        f32 peak = 0;
+                        for (auto const channel : reference)
+                            for (auto const sample : channel)
+                                peak = Max(peak, Abs(sample));
+                        CHECK_GT(peak, 0.01f);
+                    }
+
+                    struct BlockSizes {
+                        u32 constant_block_size;
+                        u64 seed;
+                    };
+                    for (auto const block_sizes :
+                         ArrayT<BlockSizes>({{512, 0}, {441, 0}, {0, 0xf00d}, {0, 0xbead}})) {
+                        auto const other = render(block_sizes.constant_block_size, block_sizes.seed);
+                        REQUIRE(other.size == 2);
+                        f32 max_difference = 0;
+                        for (auto const channel_index : Range(2u))
+                            for (auto const frame : Range(30000u))
+                                max_difference =
+                                    Max(max_difference,
+                                        Abs(reference[channel_index][frame] - other[channel_index][frame]));
+                        tester.log.Info("block size {} (seed {}): max difference {}",
+                                        block_sizes.constant_block_size,
+                                        block_sizes.seed,
+                                        max_difference);
+                        CHECK_LT(max_difference, 0.01f);
+                    }
+                }
+
+                SUBCASE("all notes off and all sound off") {
+                    auto const tail_peak = [&](Optional<u7> cc_num) {
+                        EventQueue events {};
+                        events.AppendMidiMessage(tester.scratch_arena, 0, MidiMessage::NoteOn(60, 100, 3));
+                        if (cc_num) {
+                            MidiMessage cc {};
+                            cc.SetTypeAndChannelNum(MidiMessageType::ControlChange, 3);
+                            cc.SetCCNum(*cc_num);
+                            events.AppendMidiMessage(tester.scratch_arena, 4410, cc);
+                        }
+                        auto const output = ProcessWithState(tester,
+                                                             plugin,
+                                                             test_host,
+                                                             StateProperties::Sine,
+                                                             {
+                                                                 .seed = 0x5107,
+                                                                 .num_frames = 88200,
+                                                                 .num_channels = 2,
+                                                                 .sample_rate = 44100,
+                                                                 .min_block_size = 1,
+                                                                 .max_block_size = 1024,
+                                                                 .constant_block_size = 0,
+                                                                 .events = events,
+                                                                 .capture_output = true,
+                                                             });
+                        f32 peak = 0;
+                        for (auto const channel : output)
+                            for (auto const sample : channel.SubSpan(77175))
+                                peak = Max(peak, Abs(sample));
+                        return peak;
+                    };
+
+                    CHECK_GT(tail_peak(k_nullopt), 0.01f);
+                    CHECK_LT(tail_peak((u7)123), 0.0001f);
+                    CHECK_LT(tail_peak((u7)120), 0.0001f);
+                }
+
                 SUBCASE("note on") {
                     EventQueue events {};
                     events.AppendMidiMessage(tester.scratch_arena, 0, MidiMessage::NoteOn(60, 100, 0));
@@ -720,75 +879,42 @@ TEST_CASE(TestHostingClap) {
                     }
 
                     SUBCASE("gui basic") {
-                        // On CI machines, X11 is rarely available and so opening a GUI will fail. We got
+                        // On CI machines, X11 is rarely available and so creating a GUI will fail. We got
                         // quite far using xvfb and Mesa software renderer setups but never sucessfully got it
                         // working reliably.
-                        if (!(IS_LINUX && !GetEnvironmentVariable("DISPLAY", tester.scratch_arena))) {
-                            // Create pugl world for hosting the CLAP GUI
-                            PuglWorld* world = puglNewWorld(PUGL_PROGRAM, 0);
-                            REQUIRE(world);
-                            DEFER { puglFreeWorld(world); };
-
-                            REQUIRE(puglSetWorldString(world, PUGL_CLASS_NAME, "FloeGuiTest") ==
-                                    PUGL_SUCCESS);
-
-                            // Set up the floe host extension with the pugl world
-                            test_host.floe_host_ext.pugl_world = world;
-
-                            PuglView* view = puglNewView(world);
-                            REQUIRE(view);
-                            DEFER { puglFreeView(view); };
-
-                            // Configure the view
-                            REQUIRE(puglSetViewString(view, PUGL_WINDOW_TITLE, "Floe GUI Test") ==
-                                    PUGL_SUCCESS);
-                            REQUIRE(puglSetBackend(view, puglStubBackend()) == PUGL_SUCCESS);
-
-                            bool quit = false;
-                            puglSetHandle(view, &quit);
-                            REQUIRE(puglSetEventFunc(view, OnGuiTestEvent) == PUGL_SUCCESS);
-
-                            // Get the CLAP GUI extension
-                            auto gui = (clap_plugin_gui const*)plugin->get_extension(plugin, CLAP_EXT_GUI);
-                            REQUIRE(gui);
-
-                            // Create the CLAP GUI
-                            REQUIRE(gui->create(plugin, k_supported_gui_api, false));
+                        auto const gui = (clap_plugin_gui const*)plugin->get_extension(plugin, CLAP_EXT_GUI);
+                        REQUIRE(gui);
+                        if (!(IS_LINUX && !GetEnvironmentVariable("DISPLAY", tester.scratch_arena)) &&
+                            gui->is_api_supported(plugin, k_floe_offscreen_gui_api, false)) {
+                            // Offscreen so that running the tests doesn't flash a window up.
+                            REQUIRE(gui->create(plugin, k_floe_offscreen_gui_api, false));
                             DEFER { gui->destroy(plugin); };
 
-                            // Get the GUI size from CLAP
                             u32 clap_width;
                             u32 clap_height;
                             REQUIRE(gui->get_size(plugin, &clap_width, &clap_height));
+                            REQUIRE(gui->set_size(plugin, clap_width, clap_height));
 
-                            // Set the pugl view size to match CLAP's requirements
-                            REQUIRE(puglSetSizeHint(view, PUGL_DEFAULT_SIZE, clap_width, clap_height) ==
-                                    PUGL_SUCCESS);
-
-                            // Realize the pugl view
-                            REQUIRE(puglRealize(view) == PUGL_SUCCESS);
-
-                            // Set the CLAP GUI's parent to our pugl view
-                            clap_window const clap_window = {
-                                .api = k_supported_gui_api,
-                                .ptr = (void*)puglGetNativeView(view),
-                            };
-                            REQUIRE(gui->set_parent(plugin, &clap_window));
-
-                            // Show both the pugl view and CLAP GUI
-                            REQUIRE(puglShow(view, PUGL_SHOW_RAISE) == PUGL_SUCCESS);
                             REQUIRE(gui->show(plugin));
+                            REQUIRE(test_host.timer_ids.size);
 
-                            // Run a couple of updates to pump messages
+                            auto const timer_ext = (clap_plugin_timer_support const*)plugin->get_extension(
+                                plugin,
+                                CLAP_EXT_TIMER_SUPPORT);
+                            REQUIRE(timer_ext);
+
                             for (auto _ : Range(5)) {
                                 if (test_host.callback_requested.Exchange(false, RmwMemoryOrder::Relaxed))
                                     plugin->on_main_thread(plugin);
 
-                                auto status = puglUpdate(world, 0.010);
-                                CHECK(status == PUGL_SUCCESS || status == PUGL_FAILURE);
+                                // Copy: the plugin may unregister timers from inside on_timer.
+                                auto const timer_ids = test_host.timer_ids;
+                                for (auto const timer_id : timer_ids)
+                                    timer_ext->on_timer(plugin, timer_id);
+                                SleepThisThread(10);
                             }
 
-                            // Our DEFERs will close and clean everything up.
+                            REQUIRE(gui->hide(plugin));
                         }
                     }
                 }

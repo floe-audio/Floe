@@ -43,6 +43,10 @@ MIDI CC mappings are part of the [Performance Controls](./performance-controls) 
 
 Floe supports sustain pedal control via MIDI CC-64. When the sustain pedal is pressed, currently held notes will continue playing even after key release, until the pedal is released. This mimics standard piano sustain pedal behaviour.
 
+## All Notes Off and All Sound Off
+
+Floe responds to the MIDI channel messages that DAWs and controllers send to stop stuck notes. All Notes Off (CC-123) releases every note on that channel, including sustained ones, so they fade out naturally. All Sound Off (CC-120) silences that channel's notes immediately.
+
 ## Pitch Wheel
 
 Floe supports the MIDI pitch wheel. The extent of the pitch bend can be configured individually for each layer by using the pitch bend range parameter on the [Config tab of each layer](./layers#config-tab). This per-layer configuration allows for interesting sound design possibilities. A pitch bend range of 0 will disable pitch bend for that layer.

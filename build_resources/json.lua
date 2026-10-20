@@ -104,6 +104,10 @@ end
 
 
 local function encode_number(val)
+    -- Floe: %.14g would turn 64-bit integers (e.g. hashed IDs) into lossy floats.
+    if math.type(val) == "integer" then
+        return string.format("%d", val)
+    end
     -- Check for NaN, -inf and inf
     if val ~= val or val <= -math.huge or val >= math.huge then
         error("unexpected number value '" .. tostring(val) .. "'")

@@ -100,6 +100,10 @@ struct PluginCallbacks {
 constexpr char const* k_supported_gui_api =
     IS_WINDOWS ? CLAP_WINDOW_API_WIN32 : (IS_MACOS ? CLAP_WINDOW_API_COCOA : CLAP_WINDOW_API_X11);
 
+// Non-standard clap_plugin_gui API: no window, the GUI renders into an offscreen framebuffer. Never given a
+// parent; the host drives updates via timer-support.
+constexpr char const* k_floe_offscreen_gui_api = "floe-offscreen";
+
 // CLAP uses logical pixels on macOS or physical pixel on Windows/Linux. We always use physical pixels, and so
 // need to convert. See gui.h definitions of CLAP_WINDOW_API_WIN32, CLAP_WINDOW_API_COCOA,
 // CLAP_WINDOW_API_X11.
@@ -148,6 +152,9 @@ struct FloeClapExtensionHost {
     void* pugl_world;
     void* context;
 
+    // The host has fixed the window size: don't shrink it to fit the screen or resize it from preferences.
+    bool fixed_window_size;
+
     ThreadsafeErrorNotifications* error_notifications;
 
     // All main-thread only.
@@ -173,6 +180,7 @@ struct FloeClapExtension {
     bool (*request_screenshot)(clap_plugin const* plugin, String id_name, String out_path) = nullptr;
     bool (*screenshot_request_pending)(clap_plugin const* plugin) = nullptr;
     bool (*load_preset_file)(clap_plugin const* plugin, String path) = nullptr;
+    bool (*set_ui_dump_path)(clap_plugin const* plugin, String out_path) = nullptr;
 };
 
 enum class IsThreadResult : u8 { No, Yes, Unknown };

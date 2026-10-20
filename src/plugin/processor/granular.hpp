@@ -89,7 +89,7 @@ constexpr Array k_harmony_presets = {
     HarmonyPreset {"Sub + Octave"_s,    "Octave above with deep sub three octaves below"_s,          MakeHarmonyPreset(Array {12, -36})},
 
     HarmonyPreset {"Fifth"_s,           "Perfect 5th above"_s,                                       MakeHarmonyPreset(Array {7}),                true},
-    HarmonyPreset {"Fifths"_s,          "Perfect 5th above and below"_s,                             MakeHarmonyPreset(Array {-7, 7})},
+    HarmonyPreset {"Fifths"_s,          "Perfect 5th above, doubled an octave lower"_s,              MakeHarmonyPreset(Array {-5, 7})},
     HarmonyPreset {"Power Chord"_s,     "Root + 5th + octave"_s,                                     MakeHarmonyPreset(Array {7, 12})},
 
     HarmonyPreset {"Major Triad"_s,     "Root + major 3rd + 5th"_s,                                  MakeHarmonyPreset(Array {4, 7}),             true},

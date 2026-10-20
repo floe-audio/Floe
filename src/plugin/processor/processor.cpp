@@ -765,6 +765,28 @@ static void AppendNoteOffEvent(AudioProcessor& processor, ProcessBlockChanges& c
     }
 }
 
+// Silences immediately, with no release. A latched layer would otherwise refuse the next note-on since its
+// latch voice no longer exists.
+static void ChokeChannelNotes(AudioProcessor& processor, Optional<u4> channel) {
+    auto& note_state = processor.audio_processing_context.midi_note_state;
+    for (auto const chan : Range(16u)) {
+        if (channel && chan != *channel) continue;
+        note_state.keys_held[chan].ClearAll();
+        note_state.sustain_keys[chan].ClearAll();
+    }
+
+    if (channel) {
+        for (auto& v : processor.voice_pool.EnumerateActiveVoices())
+            if (v.midi_key_trigger.channel == *channel) EndVoiceInstantly(v);
+    } else {
+        processor.voice_pool.EndAllVoicesInstantly();
+    }
+
+    if (!note_state.NotesCurrentlyHeldAllChannels().AnyValuesSet())
+        for (auto& layer : processor.layer_processors)
+            layer.monophonic_latch = false;
+}
+
 static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                   clap_event_header const& event,
                                   clap_output_events const& out,
@@ -830,20 +852,10 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             auto const note = (clap_event_note const&)event;
 
             if (note.key == -1) {
-                if (note.channel == -1) {
-                    for (auto const chan : Range(16u)) {
-                        processor.audio_processing_context.midi_note_state.keys_held[chan].ClearAll();
-                        processor.audio_processing_context.midi_note_state.sustain_keys[chan].ClearAll();
-                    }
-                    processor.voice_pool.EndAllVoicesInstantly();
-                } else if (note.channel >= 0 && note.channel < 16) {
-                    processor.audio_processing_context.midi_note_state.keys_held[(usize)note.channel]
-                        .ClearAll();
-                    processor.audio_processing_context.midi_note_state.sustain_keys[(usize)note.channel]
-                        .ClearAll();
-                    for (auto& v : processor.voice_pool.EnumerateActiveVoices())
-                        if (v.midi_key_trigger.channel == note.channel) EndVoiceInstantly(v);
-                }
+                if (note.channel == -1)
+                    ChokeChannelNotes(processor, k_nullopt);
+                else if (note.channel >= 0 && note.channel < 16)
+                    ChokeChannelNotes(processor, (u4)note.channel);
             } else if (note.key < 128 && note.key >= 0) {
                 if (note.channel == -1) {
                     for (auto const chan : Range(16u)) {
@@ -982,6 +994,23 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                         });
                     };
 
+                    auto const release_all_notes = [&](u4 notes_channel) {
+                        auto const notes_to_end = context.midi_note_state.HandleAllNotesOff(notes_channel);
+                        notes_to_end.ForEachSetBit([&](usize note) {
+                            AppendNoteOffEvent(processor,
+                                               changes,
+                                               {
+                                                   .velocity = 0.0f,
+                                                   .offset = event.time - block_start_frame,
+                                                   .note = {CheckedCast<u7>(note), notes_channel},
+                                                   .type = NoteEvent::Type::Off,
+                                               });
+                        });
+                    };
+
+                    if (cc_num == 120) ChokeChannelNotes(processor, channel);
+                    if (cc_num == 123) release_all_notes(channel);
+
                     if (cc_num == 64) {
                         // In MPE mode, sustain on a zone's master channel applies to the whole zone.
                         auto const sustain_channels = ({
@@ -1027,19 +1056,7 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                             context.mpe.HandleRpn(channel, *rpn);
                             (prev_zone_channels ^ context.mpe.AllZoneChannels())
                                 .ForEachSetBit([&](usize changed_channel) {
-                                    auto const notes_to_end =
-                                        context.midi_note_state.HandleAllNotesOff((u4)changed_channel);
-                                    notes_to_end.ForEachSetBit([&](usize note) {
-                                        AppendNoteOffEvent(
-                                            processor,
-                                            changes,
-                                            {
-                                                .velocity = 0.0f,
-                                                .offset = event.time - block_start_frame,
-                                                .note = {CheckedCast<u7>(note), (u4)changed_channel},
-                                                .type = NoteEvent::Type::Off,
-                                            });
-                                    });
+                                    release_all_notes((u4)changed_channel);
                                     context.mpe.ResetChannelExpression((u4)changed_channel);
                                     context.pitchwheel_position[changed_channel] = 0.0f;
                                 });
@@ -1276,6 +1293,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                            clap_process const& process,
                                            u32 frame_index,
                                            u32 sub_block_size,
+                                           Range<u32> event_indices,
                                            ProcessorListener::ChangeFlags& change_flags,
                                            ChangedParams& changes_for_main_thread) {
     clap_process_status result = CLAP_PROCESS_CONTINUE;
@@ -1341,13 +1359,12 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                 changes.tempo_changed = true;
             }
         }
-        for (auto const event_index : Range(process.in_events->size(process.in_events))) {
+        for (auto const event_index : event_indices) {
             auto e = process.in_events->get(process.in_events, event_index);
             if (!e) continue;
 
             if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
             if (e->type != CLAP_EVENT_TRANSPORT) continue;
-            if (e->time < frame_index || e->time >= (frame_index + sub_block_size)) continue;
 
             auto const transport = CheckedPointerCast<clap_event_transport const*>(e);
             if (transport->tempo != processor.audio_processing_context.tempo) {
@@ -1489,11 +1506,10 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     }
 
     {
-        for (auto const i : Range(process.in_events->size(process.in_events))) {
-            auto e = process.in_events->get(process.in_events, i);
+        for (auto const event_index : event_indices) {
+            auto e = process.in_events->get(process.in_events, event_index);
             if (!e) continue;
             if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) continue;
-            if (e->time < frame_index || e->time >= (frame_index + sub_block_size)) continue;
             ProcessClapNoteOrMidi(processor,
                                   *e,
                                   *process.out_events,
@@ -1593,8 +1609,10 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
 
     ProcessorHandleChanges(processor, changes);
 
-    for (auto& l : processor.layer_processors)
-        ProcessLayerPreVoices(l, processor.audio_processing_context, processor.voice_pool, sub_block_size);
+    ProcessLayersPreVoices(processor.layer_processors,
+                           processor.audio_processing_context,
+                           processor.voice_pool,
+                           sub_block_size);
 
     // Voices and layers
     // ======================================================================================================
@@ -1722,6 +1740,34 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
     return result;
 }
 
+static bool EventChangesNotes(clap_event_header const& event) {
+    if (event.space_id != CLAP_CORE_EVENT_SPACE_ID) return false;
+    switch (event.type) {
+        case CLAP_EVENT_NOTE_ON:
+        case CLAP_EVENT_NOTE_OFF:
+        case CLAP_EVENT_NOTE_CHOKE: return true;
+        case CLAP_EVENT_MIDI: {
+            auto const& midi = (clap_event_midi const&)event;
+            if (midi.data[0] < 0x80) return false;
+            MidiMessage const message {
+                .status = midi.data[0],
+                .data1 = midi.data[1],
+                .data2 = midi.data[2],
+            };
+            auto const type = message.Type();
+            if (type == MidiMessageType::NoteOn || type == MidiMessageType::NoteOff) return true;
+            if (type != MidiMessageType::ControlChange) return false;
+            switch (message.CCNum()) {
+                case 64:
+                case 120:
+                case 123: return true;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
 clap_process_status Process(AudioProcessor& processor, clap_process const& process) {
     ZoneScoped;
     ASSERT_EQ(process.audio_outputs_count, 1u);
@@ -1734,15 +1780,42 @@ clap_process_status Process(AudioProcessor& processor, clap_process const& proce
     ProcessorListener::ChangeFlags change_flags = ProcessorListener::None;
     ChangedParams changes_for_main_thread {processor.audio_params};
 
-    for (u32 frame_index = 0; frame_index < process.frames_count; frame_index += k_block_size_max) {
-        auto const sub_block_size = Min(k_block_size_max, process.frames_count - frame_index);
+    // CLAP requires input events to be sorted by time, so a single forward cursor covers them all.
+    auto const num_events = process.in_events->size(process.in_events);
+    u32 event_cursor = 0;
+    for (u32 frame_index = 0; frame_index < process.frames_count;) {
+        // Sub-blocks start at note events so each note is handled at its exact frame. Otherwise, the order of
+        // random draws within a sub-block would depend on where the host's buffers happen to begin, and a
+        // different order changes every random choice that follows.
+        auto const sub_block_size = ({
+            auto end = Min(frame_index + k_block_size_max, process.frames_count);
+            for (auto const event_index : Range(event_cursor, num_events)) {
+                auto const e = process.in_events->get(process.in_events, event_index);
+                if (!e) continue;
+                if (e->time >= end) break;
+                if (e->time > frame_index && EventChangesNotes(*e)) end = e->time;
+            }
+            end - frame_index;
+        });
+        auto const sub_block_end_event = ({
+            auto end_event = event_cursor;
+            while (end_event < num_events) {
+                auto const e = process.in_events->get(process.in_events, end_event);
+                if (e && e->time >= frame_index + sub_block_size) break;
+                ++end_event;
+            }
+            end_event;
+        });
         result = ProcessSubBlock(processor,
                                  process,
                                  frame_index,
                                  sub_block_size,
+                                 Range(event_cursor, sub_block_end_event),
                                  change_flags,
                                  changes_for_main_thread);
         if (result == CLAP_PROCESS_ERROR) break;
+        frame_index += sub_block_size;
+        event_cursor = sub_block_end_event;
     }
 
     processor.notes_currently_held.AssignBlockwise(

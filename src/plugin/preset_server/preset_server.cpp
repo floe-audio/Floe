@@ -242,15 +242,16 @@ BeginReadFoldersResult BeginReadFolders(PresetServer& server, ArenaAllocator& ar
     DEFER { server.mutex.Unlock(); };
 
     ASSERT_EQ(server.folder_node_order_indices.size, server.folders.size);
+    ASSERT_EQ(server.folder_display_order.size, server.folders.size);
 
     auto folders_nodes = CloneFolderNodes(server.folder_nodes, arena);
     auto preset_folders =
         arena.AllocateExactSizeUninitialised<PresetFolderListing const*>(server.folders.size);
-    for (auto const i : Range(server.folder_node_order_indices.size)) {
-        auto& node = folders_nodes[server.folder_node_order_indices[i]];
+    for (auto const [display_index, folder_index] : Enumerate(server.folder_display_order)) {
+        auto& node = folders_nodes[server.folder_node_order_indices[folder_index]];
         auto node_listing = node.user_data.As<PresetFolderListing>();
-        node_listing->folder = server.folders[i];
-        preset_folders[i] = node_listing;
+        node_listing->folder = server.folders[folder_index];
+        preset_folders[display_index] = node_listing;
     }
 
     auto preset_banks = arena.AllocateExactSizeUninitialised<PresetFolderListing const*>(
@@ -438,7 +439,8 @@ struct FoldersAggregateInfo {
     FoldersAggregateInfo(ArenaAllocator& arena, usize folders_used)
         : arena {arena}
         , folder_node_indices {arena}
-        , folder_node_preset_bank_indices {arena} {
+        , folder_node_preset_bank_indices {arena}
+        , folder_display_order {arena} {
         // We must know the full size up front so no reallocation happens.
         folder_node_allocator.folders = arena.AllocateExactSizeUninitialised<FolderNode>(folders_used);
         listing_allocator.folders = arena.AllocateExactSizeUninitialised<PresetFolderListing>(folders_used);
@@ -857,6 +859,37 @@ struct FoldersAggregateInfo {
                 node->Hash(); // Populate the hash cache.
             });
         }
+
+        // Banks are listed by display name, mixing banks from different scan folders.
+        Sort(folder_node_preset_bank_indices, [&](usize a, usize b) {
+            if (auto const cmp = CompareCaseInsensitiveAscii(folder_node_allocator.folders[a].display_name,
+                                                             folder_node_allocator.folders[b].display_name))
+                return cmp < 0;
+            return a < b;
+        });
+
+        // Folders are presented grouped by their bank in the same order as the banks, then in path order.
+        auto const bank_rank_of_folder = ({
+            auto ranks = scratch_arena.AllocateExactSizeUninitialised<usize>(folder_node_indices.size);
+            for (auto const [folder_index, node_index] : Enumerate(folder_node_indices)) {
+                Optional<usize> rank {};
+                for (auto node = &folder_node_allocator.folders[node_index]; node && !rank;
+                     node = node->parent)
+                    rank = Find(folder_node_preset_bank_indices,
+                                CheckedCast<usize>(node - folder_node_allocator.folders.data));
+                ASSERT(rank.HasValue());
+                ranks[folder_index] = *rank;
+            }
+            ranks;
+        });
+        dyn::Resize(folder_display_order, folder_node_indices.size);
+        for (auto const folder_index : Range(folder_display_order.size))
+            folder_display_order[folder_index] = folder_index;
+        Sort(folder_display_order, [&](usize a, usize b) {
+            if (bank_rank_of_folder[a] != bank_rank_of_folder[b])
+                return bank_rank_of_folder[a] < bank_rank_of_folder[b];
+            return a < b;
+        });
     }
 
     // Call under the mutex.
@@ -872,6 +905,7 @@ struct FoldersAggregateInfo {
         server.folder_node_order_indices = server.folder_node_arena.Clone(folder_node_indices);
         server.folder_node_preset_bank_indices =
             server.folder_node_arena.Clone(folder_node_preset_bank_indices);
+        server.folder_display_order = server.folder_node_arena.Clone(folder_display_order);
     }
 
     ArenaAllocator& arena;
@@ -883,6 +917,7 @@ struct FoldersAggregateInfo {
     OrderedHashTable<String, FolderNode*> scan_folder_nodes;
     DynamicArray<usize> folder_node_indices;
     DynamicArray<usize> folder_node_preset_bank_indices;
+    DynamicArray<usize> folder_display_order;
     Bitset<ToInt(PresetFormat::Count)> has_preset_type {};
 };
 

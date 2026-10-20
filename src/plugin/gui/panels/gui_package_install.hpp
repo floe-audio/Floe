@@ -708,10 +708,11 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                 case package::InstallJob::State::DoneError: {
                     if (auto err = error_notifs.BeginWriteError(job_id)) {
                         DEFER { error_notifs.EndWriteError(*err); };
-                        fmt::Assign(err->title,
-                                    "Failed to install {}",
-                                    path::FilenameWithoutExtension(job.job->path));
-                        dyn::AssignFitInCapacity(err->message, job.job->error_buffer);
+                        dyn::AssignFitInCapacity(err->title, "Failed to install package"_s);
+                        fmt::Assign(err->message,
+                                    "\"{}\": {}",
+                                    path::FilenameWithoutExtension(job.job->path),
+                                    job.job->error_buffer);
                     }
 
                     next = package::RemoveJob(package_install_jobs, it);

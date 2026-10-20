@@ -92,9 +92,30 @@ extern "C" PuglBackend const* puglGlBackend(); // NOLINT
 
 enum class SetTimerType : u8 { Start, Stop };
 
+static void RegisterClapTimer(AppWindow& window) {
+    if (window.clap_timer_id) return;
+    if (auto const timer_support_extension =
+            (clap_host_timer_support const*)window.host.get_extension(&window.host, CLAP_EXT_TIMER_SUPPORT);
+        timer_support_extension && timer_support_extension->register_timer) {
+        clap_id timer_id;
+        if (timer_support_extension->register_timer(&window.host,
+                                                    (u32)(1000.0 / k_gui_refresh_rate_hz),
+                                                    &timer_id)) {
+            window.clap_timer_id = timer_id;
+        } else
+            LogError(ModuleName::Gui, "failed to register timer");
+    }
+}
+
 static void SetTimers(AppWindow& window, SetTimerType type) {
     switch (type) {
         case SetTimerType::Start: {
+            // Offscreen, the host's CLAP timer is the only thing that drives updates.
+            if (window.offscreen) {
+                RegisterClapTimer(window);
+                break;
+            }
+
             // Set the timer if not already running.
             if (!window.pugl_timer_running) {
                 if (auto const status =
@@ -134,20 +155,7 @@ static void SetTimers(AppWindow& window, SetTimerType type) {
                     }
                 }
 
-                if (!window.clap_timer_id) {
-                    if (auto const timer_support_extension =
-                            (clap_host_timer_support const*)window.host.get_extension(&window.host,
-                                                                                      CLAP_EXT_TIMER_SUPPORT);
-                        timer_support_extension && timer_support_extension->register_timer) {
-                        clap_id timer_id;
-                        if (timer_support_extension->register_timer(&window.host,
-                                                                    (u32)(1000.0 / k_gui_refresh_rate_hz),
-                                                                    &timer_id)) {
-                            window.clap_timer_id = timer_id;
-                        } else
-                            LogError(ModuleName::Gui, "failed to register timer");
-                    }
-                }
+                RegisterClapTimer(window);
             }
             break;
         }
@@ -163,17 +171,17 @@ static void SetTimers(AppWindow& window, SetTimerType type) {
                     }
                     window.clap_posix_fd = k_nullopt;
                 }
+            }
 
-                if (window.clap_timer_id) {
-                    auto const ext =
-                        (clap_host_timer_support const*)window.host.get_extension(&window.host,
-                                                                                  CLAP_EXT_TIMER_SUPPORT);
-                    if (ext && ext->unregister_timer) {
-                        bool const success = ext->unregister_timer(&window.host, *window.clap_timer_id);
-                        if (!success) LogError(ModuleName::Gui, "failed to unregister timer");
-                    }
-                    window.clap_timer_id = k_nullopt;
+            if (window.clap_timer_id) {
+                auto const ext =
+                    (clap_host_timer_support const*)window.host.get_extension(&window.host,
+                                                                              CLAP_EXT_TIMER_SUPPORT);
+                if (ext && ext->unregister_timer) {
+                    bool const success = ext->unregister_timer(&window.host, *window.clap_timer_id);
+                    if (!success) LogError(ModuleName::Gui, "failed to unregister timer");
                 }
+                window.clap_timer_id = k_nullopt;
             }
 
             if (window.view) {
@@ -204,6 +212,8 @@ static bool IsUpdateNeeded(AppWindow& window) {
     if (!window.first_update_made) update_needed = true;
 
     if (window.gui && ConsumeGuiUpdateRequest(window.gui->engine.instance_index)) update_needed = true;
+
+    if (window.deferred_mouse_events.size) update_needed = true;
 
     if (window.last_result.wants.update_interval > GuiFrameOutput::UpdateInterval::Sleep)
         update_needed = true;
@@ -312,7 +322,8 @@ static Optional<MouseButton> RemapMouseButton(u32 button) {
     return k_nullopt;
 }
 
-static bool EventMouseButton(AppWindow& window, PuglButtonEvent const& button_event, bool is_down) {
+static bool
+EventMouseButton(AppWindow& window, PuglButtonEvent const& button_event, bool is_down, TimePoint time) {
     window.frame_state.modifiers = CreateModifierFlags(button_event.state);
 
     auto const button = RemapMouseButton(button_event.button);
@@ -320,11 +331,10 @@ static bool EventMouseButton(AppWindow& window, PuglButtonEvent const& button_ev
 
     auto& btn = window.frame_state.mouse_buttons[ToInt(*button)];
 
-    auto const now = TimePoint::Now();
     auto const point = f32x2 {(f32)button_event.x, (f32)button_event.y};
     GuiFrameInput::MouseButtonState::Event const e {
         .point = point,
-        .time = now,
+        .time = time,
         .modifiers = window.frame_state.modifiers,
         .is_double_click = is_down
                                ? (All(Abs(btn.last_press.point - point) < f32x2(7)) &&
@@ -341,12 +351,68 @@ static bool EventMouseButton(AppWindow& window, PuglButtonEvent const& button_ev
         btn.presses.Append(e, window.frame_state.event_arena);
     } else {
         btn.is_down = k_nullopt;
+        btn.last_release = e;
         if (btn.is_dragging) btn.dragging_ended = true;
         btn.is_dragging = false;
         btn.releases.Append(e, window.frame_state.event_arena);
     }
 
     return true;
+}
+
+static bool ApplyMouseEvent(AppWindow& window, DeferredMouseEvent const& mouse_event) {
+    auto const& event = mouse_event.event;
+    switch (event.type) {
+        case PUGL_BUTTON_PRESS:
+        case PUGL_BUTTON_RELEASE:
+            return EventMouseButton(window, event.button, event.type == PUGL_BUTTON_PRESS, mouse_event.time);
+        case PUGL_MOTION: return EventMotion(window, event.motion);
+        case PUGL_SCROLL: return EventWheel(window, event.scroll);
+        case PUGL_POINTER_IN: return EventPointerIn(window, event.crossing);
+        case PUGL_POINTER_OUT: return EventPointerOut(window);
+        default: PanicIfReached();
+    }
+    return false;
+}
+
+// A frame only sees the current is_down state of each button, so a press and its release arriving before the
+// same frame would cancel out.
+static bool ConflictsWithUnprocessedInput(GuiFrameInput const& frame_state, PuglEvent const& event) {
+    if (event.type != PUGL_BUTTON_PRESS && event.type != PUGL_BUTTON_RELEASE) return false;
+
+    auto const button = RemapMouseButton(event.button.button);
+    if (!button) return false;
+    auto const& btn = frame_state.Mouse(*button);
+
+    if (event.type == PUGL_BUTTON_RELEASE) return btn.presses.size != 0;
+    return btn.releases.size != 0;
+}
+
+static bool ApplyOrDeferMouseEvent(AppWindow& window, PuglEvent const& event) {
+    DeferredMouseEvent const mouse_event {.event = event, .time = TimePoint::Now()};
+
+    // Once one event is deferred, all following ones must be too to keep them in order.
+    if (window.deferred_mouse_events.size || ConflictsWithUnprocessedInput(window.frame_state, event)) {
+        if (dyn::Append(window.deferred_mouse_events, mouse_event)) return true;
+
+        for (auto const& deferred : window.deferred_mouse_events)
+            ApplyMouseEvent(window, deferred);
+        dyn::Clear(window.deferred_mouse_events);
+    }
+
+    return ApplyMouseEvent(window, mouse_event);
+}
+
+// Returns true if any events were applied.
+static bool ApplyDeferredMouseEvents(AppWindow& window) {
+    usize num_applied = 0;
+    for (auto const& deferred : window.deferred_mouse_events) {
+        if (ConflictsWithUnprocessedInput(window.frame_state, deferred.event)) break;
+        ApplyMouseEvent(window, deferred);
+        ++num_applied;
+    }
+    dyn::Remove(window.deferred_mouse_events, 0, num_applied);
+    return num_applied != 0;
 }
 
 static bool EventKeyRegular(AppWindow& window, KeyCode key_code, bool is_down, ModifierFlags modifiers) {
@@ -419,10 +485,11 @@ static void CreateRenderer(AppWindow& window) {
     ZoneScoped;
     auto renderer = CreateNewRenderer(window.renderer_backend);
 
-    if (auto const outcome = renderer->Init(GetSize(window),
-                                            (void*)puglGetNativeView(window.view),
-                                            puglGetNativeWorld(puglGetWorld(window.view)));
-        outcome.HasError()) {
+    auto const outcome = window.offscreen ? renderer->Init(GetSize(window), nullptr, nullptr)
+                                          : renderer->Init(GetSize(window),
+                                                           (void*)puglGetNativeView(window.view),
+                                                           puglGetNativeWorld(puglGetWorld(window.view)));
+    if (outcome.HasError()) {
         LogError(ModuleName::Gui, "Failed to init renderer: {}", outcome.Error());
         delete renderer;
         return;
@@ -552,6 +619,8 @@ static void RequestAllKeyboardEvents(AppWindow& window, bool wants_focus) {
 }
 
 static void HandlePostUpdateRequests(AppWindow& window) {
+    if (window.offscreen) return;
+
     if (window.last_result.wants.cursor_type != window.current_cursor) {
         window.current_cursor = window.last_result.wants.cursor_type;
         puglSetCursor(window.view, ({
@@ -602,7 +671,7 @@ static void HandlePostUpdateRequests(AppWindow& window) {
 static void UpdateAndRender(AppWindow& window) {
     if (!window.renderer) return;
     if constexpr (!IS_MACOS) // Doesn't seem to work on macOS.
-        if (!puglGetVisible(window.view)) return;
+        if (!window.offscreen && !puglGetVisible(window.view)) return;
 
     Stopwatch sw {};
     DEFER {
@@ -617,6 +686,8 @@ static void UpdateAndRender(AppWindow& window) {
         return;
     }
 
+    auto const native_window = window.offscreen ? nullptr : (void*)puglGetNativeView(window.view);
+
     if (window.frame_state.window_size != window_size) {
         // When Floe resizes, all graphics scale up. Resizing is really 'rescaling'. Therefore, we delete our
         // textures if the window size changes so fonts/images are more appropriate for the new window size.
@@ -627,11 +698,11 @@ static void UpdateAndRender(AppWindow& window) {
         // We notify the renderer of the resize here because it gives the renderer freer scope in this
         // PUGL_EXPOSE event rather than in a PUGL_CONFIGURE event (where some graphics usage might be
         // invalid).
-        window.renderer->OnResize(window_size, (void*)puglGetNativeView(window.view));
+        window.renderer->OnResize(window_size, native_window);
     }
 
     window.frame_state.renderer = window.renderer;
-    window.frame_state.native_window = (void*)puglGetNativeView(window.view);
+    window.frame_state.native_window = native_window;
     window.frame_state.window_size = window_size;
     window.frame_state.pugl_view = window.view;
 
@@ -639,9 +710,15 @@ static void UpdateAndRender(AppWindow& window) {
     window.frame_state.pixels_per_ww = (f32)window.frame_state.window_size.width / k_points_in_width;
 
     u32 num_repeats = 0;
+    bool immediate_update_requested = false;
     do {
-        // Mostly we'd only expect 1 or 2 updates but we set a hard limit of 4 as a fallback.
-        if (num_repeats++ >= 4) {
+        // Only give the GUI more input once it has settled from the previous input. For example, a widget
+        // needs a frame with the button still held to become active before it can see the release.
+        auto const applied_deferred_events = !immediate_update_requested && ApplyDeferredMouseEvents(window);
+
+        // Mostly we'd only expect 1 or 2 updates but we set a hard limit of 4 as a fallback. Draining the
+        // deferred queue always makes progress, so it doesn't count towards the limit.
+        if (!applied_deferred_events && num_repeats++ >= 4) {
             LogWarning(ModuleName::Gui, "GUI update loop repeated too many times");
             break;
         }
@@ -667,7 +744,10 @@ static void UpdateAndRender(AppWindow& window) {
         // It's important to do this after clearing the impermanent state because this might add new events to
         // the frame.
         HandlePostUpdateRequests(window);
-    } while (window.last_result.wants.update_interval == GuiFrameOutput::UpdateInterval::ImmediatelyUpdate);
+
+        immediate_update_requested =
+            window.last_result.wants.update_interval == GuiFrameOutput::UpdateInterval::ImmediatelyUpdate;
+    } while (immediate_update_requested || window.deferred_mouse_events.size);
 
     if (window.last_result.draw_lists.size) {
         ZoneNamedN(render, "render", true);
@@ -847,29 +927,15 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
                 break;
             }
 
-            case PUGL_POINTER_IN: {
-                post_redisplay = EventPointerIn(window, event->crossing);
-                break;
-            }
-            case PUGL_POINTER_OUT: {
-                post_redisplay = EventPointerOut(window);
-                break;
-            }
-
             case PUGL_BUTTON_PRESS:
-            case PUGL_BUTTON_RELEASE: {
+            case PUGL_BUTTON_RELEASE:
                 if (WantsKeyboardFocus(window.last_result)) RequestAllKeyboardEvents(window, true);
-                post_redisplay = EventMouseButton(window, event->button, event->type == PUGL_BUTTON_PRESS);
-                break;
-            }
-
-            case PUGL_MOTION: {
-                post_redisplay = EventMotion(window, event->motion);
-                break;
-            }
-
+                [[fallthrough]];
+            case PUGL_POINTER_IN:
+            case PUGL_POINTER_OUT:
+            case PUGL_MOTION:
             case PUGL_SCROLL: {
-                post_redisplay = EventWheel(window, event->scroll);
+                post_redisplay = ApplyOrDeferMouseEvent(window, *event);
                 break;
             }
 
@@ -922,6 +988,31 @@ Optional<UiSize> ScreenSizeForWindow(AppWindow& window, void* native_handle_hint
 
 static constexpr u16 k_invalid_size = 12345;
 
+static RendererBackend ChooseRendererBackend() {
+    RendererBackend b {};
+
+    if constexpr (FLOE_USE_BGFX_RENDERER) {
+        if constexpr (IS_WINDOWS) b = RendererBackend::Bgfx;
+        if constexpr (IS_LINUX) b = RendererBackend::Bgfx;
+        if constexpr (IS_MACOS) {
+            // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
+            // for older systems. We've only ever seen kernel_version in the format x.x.x, so we can
+            // reasonably assume that this simple parsing will work. If it doesn't, it's likely something
+            // newer.
+            auto const darwin_version = ParseInt(GetOsInfo().kernel_version, ParseIntBase::Decimal);
+            if (!darwin_version || darwin_version.Value() >= 22)
+                b = RendererBackend::Bgfx;
+            else
+                b = RendererBackend::OpenGl;
+        }
+    } else {
+        if constexpr (IS_WINDOWS) b = RendererBackend::Direct3D9;
+        if constexpr (IS_MACOS) b = RendererBackend::OpenGl;
+        if constexpr (IS_LINUX) b = RendererBackend::OpenGl;
+    }
+    return b;
+}
+
 ErrorCodeOr<void> Init(AppWindow& window) {
     Trace(ModuleName::Gui);
 
@@ -965,31 +1056,7 @@ ErrorCodeOr<void> Init(AppWindow& window) {
     puglSetHandle(window.view, &window);
     TRY(Required(puglSetEventFunc(window.view, EventHandler)));
 
-    window.renderer_backend = ({
-        RendererBackend b {};
-
-        constexpr bool k_use_experimental_bgfx = false;
-        if constexpr (k_use_experimental_bgfx) {
-            if constexpr (IS_WINDOWS) b = RendererBackend::Bgfx;
-            if constexpr (IS_LINUX) b = RendererBackend::Bgfx;
-            if constexpr (IS_MACOS) {
-                // bgfx only supports macOS 13 (Darwin version 22) and above. We use our old OpenGL backend
-                // for older systems. We've only ever seen kernel_version in the format x.x.x, so we can
-                // reasonably assume that this simple parsing will work. If it doesn't, it's likely something
-                // newer.
-                auto const darwin_version = ParseInt(GetOsInfo().kernel_version, ParseIntBase::Decimal);
-                if (!darwin_version || darwin_version.Value() >= 22)
-                    b = RendererBackend::Bgfx;
-                else
-                    b = RendererBackend::OpenGl;
-            }
-        } else {
-            if constexpr (IS_WINDOWS) b = RendererBackend::Direct3D9;
-            if constexpr (IS_MACOS) b = RendererBackend::OpenGl;
-            if constexpr (IS_LINUX) b = RendererBackend::OpenGl;
-        }
-        b;
-    });
+    window.renderer_backend = ChooseRendererBackend();
 
     LogInfo(ModuleName::Gui, "Selected backend {}", EnumToString(window.renderer_backend));
 
@@ -1035,6 +1102,7 @@ void Deinit(AppWindow& window) {
     }
 
     SetTimers(window, SetTimerType::Stop);
+    if (window.offscreen) DestroyRenderer(window);
 
     if (window.gui) {
         window.gui.Clear();
@@ -1051,6 +1119,11 @@ void Deinit(AppWindow& window) {
     window.first_update_made = false;
     window.wanted_focus_last_update = false;
 
+    if (window.offscreen) {
+        window.offscreen = false;
+        return;
+    }
+
     if (!CustomFloeHost(window.host)) {
         LogInfo(ModuleName::Gui, "freeing world");
         puglFreeWorld(window.world);
@@ -1058,9 +1131,45 @@ void Deinit(AppWindow& window) {
     }
 }
 
+bool OffscreenSupported() {
+    switch (ChooseRendererBackend()) {
+        case RendererBackend::Bgfx: return true;
+        case RendererBackend::OpenGl:
+        case RendererBackend::Direct3D9: return false;
+        case RendererBackend::Count: PanicIfReached();
+    }
+    return false;
+}
+
+ErrorCodeOr<void> InitOffscreen(AppWindow& window) {
+    Trace(ModuleName::Gui);
+
+    ASSERT(window.world == nullptr);
+    ASSERT(window.view == nullptr);
+    ASSERT(window.renderer == nullptr);
+    ASSERT(!window.gui);
+    ASSERT(OffscreenSupported());
+
+    window.renderer_backend = ChooseRendererBackend();
+    window.offscreen = true;
+    window.offscreen_size = DesiredWindowSize(window.prefs).ValueOr(native::DefaultUiSizeFromDpi(nullptr));
+    native::InitNativeState(window);
+    return k_success;
+}
+
 void OnClapTimer(AppWindow& window, clap_id timer_id) {
     Stopwatch stopwatch {};
-    if (window.clap_timer_id && *window.clap_timer_id == timer_id) puglUpdate(window.world, 0);
+    if (window.clap_timer_id && *window.clap_timer_id == timer_id) {
+        if (window.offscreen) {
+            if (!window.inside_update && IsUpdateNeeded(window)) {
+                window.inside_update = true;
+                UpdateAndRender(window);
+                window.inside_update = false;
+            }
+        } else {
+            puglUpdate(window.world, 0);
+        }
+    }
     LogIfSlow(stopwatch, "OnClapTimer");
 }
 
@@ -1102,10 +1211,15 @@ ErrorCodeOr<void> SetParent(AppWindow& window, clap_window_t const& new_parent) 
 }
 
 bool SetSize(AppWindow& window, UiSize new_size) {
+    if (window.offscreen) {
+        window.offscreen_size = new_size;
+        return true;
+    }
     return puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, new_size.width, new_size.height) == PUGL_SUCCESS;
 }
 
 UiSize GetSize(AppWindow& window) {
+    if (window.offscreen) return window.offscreen_size;
     auto const size = puglGetSizeHint(window.view, PUGL_CURRENT_SIZE);
     if (size.width == k_invalid_size)
         return ClampWindowSizeToScreen(DesiredWindowSize(window.prefs).ValueOr(DefaultUiSize(window)),
@@ -1114,14 +1228,31 @@ UiSize GetSize(AppWindow& window) {
 }
 
 ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
-    ASSERT(window.view);
+    ASSERT(window.view || window.offscreen);
 
     if (visible) {
-        // Realise if not already done.
-        if (!puglGetNativeView(window.view)) {
+        if (window.offscreen) {
+            if (!window.renderer) CreateRenderer(window);
+            if (!window.renderer) return ErrorCode {AppWindowErrorCode::BackendFailed};
+        } else if (!puglGetNativeView(window.view)) {
+            // Realise if not already done.
             TRY(Required(puglRealize(window.view)));
+            if constexpr (IS_MACOS) {
+                // Pugl's macOS child views only dispatch PUGL_CONFIGURE once the draw view is reshaped.
+                // NSOpenGLView reshapes on init, but the stub view (used by bgfx) doesn't, so the first
+                // drawRect would dispatch PUGL_EXPOSE before any configure and trip pugl's stage assertion.
+                // Setting the current size dispatches the configure.
+                auto const size = GetSize(window);
+                TRY(Required(puglSetSizeHint(window.view, PUGL_CURRENT_SIZE, size.width, size.height)));
+            }
             window.double_click_time_ms = native::DoubleClickTimeMs(window);
-            if constexpr (IS_LINUX) native::X11SetParent(window.view, puglGetParent(window.view));
+            if constexpr (IS_LINUX) {
+                native::X11SetParent(window.view, puglGetParent(window.view));
+                // Force pugl to actually apply the cursor to the window: it records arrow at creation without
+                // applying it, and skips requests that match the recorded cursor.
+                puglSetCursor(window.view, PUGL_CURSOR_CARET);
+                puglSetCursor(window.view, PUGL_CURSOR_ARROW);
+            }
         }
 
         // Start timers if needed.
@@ -1132,9 +1263,12 @@ ErrorCodeOr<void> SetVisible(AppWindow& window, bool visible, Engine& engine) {
 
     } else {
         window.frame_state.Reset();
+        dyn::Clear(window.deferred_mouse_events);
         native::CloseNativeFilePicker(window);
         SetTimers(window, SetTimerType::Stop);
     }
+
+    if (window.offscreen) return k_success;
 
     if (puglGetVisible(window.view) == visible) {
         LogInfo(ModuleName::Gui, "SetVisible called with same visibility state, ignoring");

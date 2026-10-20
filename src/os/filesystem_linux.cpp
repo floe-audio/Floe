@@ -9,6 +9,7 @@
 #include <link.h>
 #include <linux/limits.h>
 #include <mntent.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/inotify.h>
@@ -57,28 +58,77 @@ ErrorCodeOr<void> CopyFile(String from, String to, ExistingDestinationHandling e
     return k_success;
 }
 
+static Span<char> PasswdBuffer(ArenaAllocator& arena) {
+    return arena.AllocateExactSizeUninitialised<char>(({
+        auto const size = sysconf(_SC_GETPW_R_SIZE_MAX);
+        size > 0 ? (usize)size : (usize)1024;
+    }));
+}
+
+static Optional<String> PasswdHomeDirectory(int lookup_result, passwd const* found_entry) {
+    if (lookup_result != 0 || !found_entry || !found_entry->pw_dir) return k_nullopt;
+    return FromNullTerminated(found_entry->pw_dir);
+}
+
+static Optional<String> CurrentUserHomeDirectory(ArenaAllocator& arena) {
+    if (auto const home = secure_getenv("HOME"); home && *home) return FromNullTerminated(home);
+    auto const buffer = PasswdBuffer(arena);
+    passwd entry {};
+    passwd* found_entry = nullptr;
+    auto const lookup_result = getpwuid_r(getuid(), &entry, buffer.data, buffer.size, &found_entry);
+    return PasswdHomeDirectory(lookup_result, found_entry);
+}
+
+static Optional<String> NamedUserHomeDirectory(String username, ArenaAllocator& arena) {
+    auto const buffer = PasswdBuffer(arena);
+    passwd entry {};
+    passwd* found_entry = nullptr;
+    auto const lookup_result =
+        getpwnam_r(NullTerminated(username, arena), &entry, buffer.data, buffer.size, &found_entry);
+    return PasswdHomeDirectory(lookup_result, found_entry);
+}
+
 ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
     ASSERT(path.size);
 
     PathArena temp_path_allocator {Malloc::Instance()};
-    DynamicArray<char> path_nt(path, temp_path_allocator);
 
-    if (StartsWith(path_nt, '~')) {
-        char const* home = secure_getenv("HOME");
-        if (home == nullptr) return ErrorCode(FilesystemError::PathDoesNotExist);
-        dyn::Remove(path_nt, 0, 1);
-        dyn::PrependSpan(path_nt, FromNullTerminated(home));
-    }
+    // Like macOS, a ~ or ~user that can't be expanded is left as-is.
+    auto const expanded_path = ({
+        String result = path;
+        if (StartsWith(path, '~')) {
+            auto const first_component_end = Find(path, '/').ValueOr(path.size);
+            auto const username = path.SubSpan(1, first_component_end - 1);
+            auto const home = username.size ? NamedUserHomeDirectory(username, temp_path_allocator)
+                                            : CurrentUserHomeDirectory(temp_path_allocator);
+            if (home) {
+                DynamicArray<char> expanded {*home, temp_path_allocator};
+                path::JoinAppend(expanded, path.SubSpan(first_component_end));
+                result = expanded.ToOwnedSpan();
+            }
+        }
+        result;
+    });
 
-    char result[PATH_MAX] {};
-    auto _ = realpath(dyn::NullTerminated(path_nt), result);
-    auto const result_path = FromNullTerminated(result);
-    if (path::IsAbsolute(result_path)) return result_path.Clone(a);
+    auto const trimmed_path = path::TrimDirectorySeparatorsEnd(expanded_path);
+    if (path::IsAbsolute(trimmed_path)) return a.Clone(trimmed_path);
 
-    return FilesystemErrnoErrorCode(errno);
+    char cwd[PATH_MAX] {};
+    if (!getcwd(cwd, sizeof(cwd))) return FilesystemErrnoErrorCode(errno);
+    auto const joined = path::Join(a, Array {(String)FromNullTerminated(cwd), trimmed_path});
+    ASSERT(path::IsAbsolute(joined));
+    return joined;
 }
 
-ErrorCodeOr<MutableString> CanonicalizePath(Allocator& a, String path) { return AbsolutePath(a, path); }
+ErrorCodeOr<MutableString> CanonicalizePath(Allocator& a, String path) {
+    PathArena temp_path_allocator {Malloc::Instance()};
+    auto const absolute_path = TRY(AbsolutePath(temp_path_allocator, path));
+
+    char result[PATH_MAX] {};
+    if (!realpath(NullTerminated(absolute_path, temp_path_allocator), result))
+        return FilesystemErrnoErrorCode(errno);
+    return FromNullTerminated(result).Clone(a);
+}
 
 static Optional<String> TrashDir(ArenaAllocator& arena) {
     // "For every user  [2]_ a “home trash” directory MUST be available. Its name and location are

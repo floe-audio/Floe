@@ -315,6 +315,7 @@ enum class FloeKnownDirectoryType : u8 {
     Libraries,
     Presets,
     Autosaves,
+    State,
     MirageDefaultLibraries,
     MirageDefaultPresets,
 };
@@ -322,6 +323,11 @@ MutableString FloeKnownDirectory(Allocator& a,
                                  FloeKnownDirectoryType type,
                                  Optional<String> filename,
                                  KnownDirectoryOptions options);
+
+// The FLOE_HOME environment variable names a folder that holds every Floe-owned directory instead of the
+// usual OS locations, giving a self-contained filesystem such as for reproducible doc screenshots. Mirage's
+// locations aren't consulted while it's set. thread-safe
+Optional<String> FloeHomeOverride();
 
 // Path of Floe's preferences file. This is static and doesn't change during the lifetime of the program.
 // thread-safe

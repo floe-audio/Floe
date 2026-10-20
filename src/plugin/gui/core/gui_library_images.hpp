@@ -12,7 +12,10 @@
 struct LibraryImages {
     enum class LoadFailure : u8 {
         Missing, // The library doesn't have this image. Not retried.
-        Unavailable, // The library couldn't be found or read at the time, e.g. mid-rescan. Retried later.
+        // The library isn't installed. Slowly retried because a newly added library sends no change
+        // notification.
+        LibraryNotFound,
+        Unavailable, // The library couldn't be found mid-scan, or couldn't be read. Retried soon.
     };
 
     struct LoadedIcon {
@@ -78,6 +81,10 @@ LibraryImages GetLibraryImages(LibraryImagesTable& table,
                                sample_lib_server::Server& server,
                                FloeInstanceIndex instance_index,
                                LibraryImagesTypes needed_types = LibraryImagesTypes::All);
+
+// True when no load is in progress or pending a quick retry. Libraries that aren't installed count as
+// settled.
+bool IsSettled(LibraryImages const& imgs);
 
 void BeginFrame(LibraryImagesTable& table);
 void Shutdown(LibraryImagesTable& table);

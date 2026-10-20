@@ -13,6 +13,7 @@ enum class GuiPreference : u8 {
     ShowInstanceName,
     ShowLufsMeter,
     ShowCutoffInSemitones,
+    DefaultBackgroundForMixedLibraries,
     Count,
 };
 

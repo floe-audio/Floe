@@ -86,11 +86,13 @@ struct Engine : ProcessorListener {
     Optional<PendingStateChange> pending_state_change {};
     PinnedSnapshot pinned_snapshot {};
 
-    // A fresh instance opens on the default preset, if there is one. The DAW sending us state takes
-    // precedence. The attempt-latch lives here rather than on the GUI because the GUI is recreated every time
-    // the window is reopened.
+    // A fresh instance opens on the default preset, if there is one: when the GUI opens, or shortly after
+    // activation if the GUI hasn't opened by then. The DAW sending us state takes precedence. The
+    // attempt-latch lives here rather than on the GUI because the GUI is recreated every time the window is
+    // reopened.
     bool host_state_received {};
     bool default_preset_load_attempted {};
+    TimePoint first_seen_activated_at {};
     bool loading_default_preset {};
 
     // Holds the modified state set aside while auditioning the pinned snapshot.
@@ -187,7 +189,7 @@ void TogglePinnedView(Engine& engine);
 
 void LoadPresetFromFile(Engine& engine, String path);
 
-// [main thread] Call when the GUI opens. Does nothing unless this is a fresh instance with a default preset.
+// [main thread] Does nothing unless this is a fresh instance with a default preset.
 void LoadDefaultPresetIfNeeded(Engine& engine);
 
 void SaveCurrentStateToFile(Engine& engine, String path);

@@ -2595,7 +2595,7 @@ consteval auto CreateParams() {
         .name = "Type"_s,
         .gui_label = "Type"_s,
         .tooltip =
-            "The compressor algorithm to use. The Vintage type has a bit of character, and automatically set the attack and release. The Digital type offers more precision."_s,
+            "The compressor algorithm to use. The Vintage type has a bit of character, and automatically sets the attack and release. The Modern type offers more precision."_s,
     };
     mp(CompressorAttack) = Args {
         .id = id(IdRegion::Master, 34), // never change

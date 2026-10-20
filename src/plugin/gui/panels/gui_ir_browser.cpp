@@ -217,7 +217,7 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
                 .parent = root,
                 .folder = folder,
                 .skip_heading = IsSingleFolderFilterSelected(state.common_state, folder->Hash()),
-                .tooltip_placement = TooltipPlacement::RightThenLeft,
+                .tooltip_placement = k_browser_results_tooltip_placement,
             };
         }
 

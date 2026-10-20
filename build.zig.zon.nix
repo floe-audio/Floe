@@ -262,11 +262,20 @@ linkFarm name [
     };
   }
   {
+    name = "N-V-__8AAOp1IQAWS232E252MiUiqLlHjRdsB9bGhonTc1H0";
+    path = fetchZigArtifact {
+      name = "pdfgen";
+      url = "git+https://github.com/AndreRenaud/PDFGen#b3413daead722a0fba9515f36dc44c51afcba6f9";
+      hash = "sha256-1jbP+qEnqVm12o3066vjvCPbWzYpvjLcTOBDen/R3Uc=";
+      unpack = true;
+    };
+  }
+  {
     name = "N-V-__8AAN5xAwApRz_QkfXmd_6RJEz1Jh4YX3EwvaQ_Zolx";
     path = fetchZigArtifact {
       name = "pffft";
       url = "https://bitbucket.org/jpommier/pffft/get/fbc405860280.zip";
-      hash = "sha256-AylL4pp3KsUV19Xwe/R1sQ/mRN8TL/Vt7koYM452dTM=";
+      hash = "sha256-ezEhumdSntAy0NnYj3oOy3t+yoHBi5iE5EEcvWE1utg=";
       unpack = false;
     };
   }

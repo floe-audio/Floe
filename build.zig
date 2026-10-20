@@ -460,6 +460,11 @@ pub fn build(b: *std.Build) void {
             "use-system-pluginval",
             "Use a pluginval found on PATH rather than the build.zig.zon release artifact",
         ) orelse onNixOS(),
+        .bgfx_renderer = b.option(
+            bool,
+            "bgfx-renderer",
+            "Use the bgfx GUI renderer rather than OpenGL/Direct3D 9",
+        ) orelse true,
         .targets = b.option([]const u8, "targets", "Target operating system"),
     };
 
@@ -511,6 +516,7 @@ pub fn build(b: *std.Build) void {
         .dep_flac = b.dependency("flac", .{}),
         .dep_icon_font_cpp_headers = b.dependency("icon_font_cpp_headers", .{}),
         .dep_miniz = b.dependency("miniz", .{}),
+        .dep_pdfgen = b.dependency("pdfgen", .{}),
         .dep_lua = b.dependency("lua", .{}),
         .dep_pugl = b.dependency("pugl", .{}),
         .dep_pffft = b.dependency("pffft", .{}),
@@ -1960,9 +1966,14 @@ fn buildPackager(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struc
             .gen_cdb_fragments = true,
         }).flags.items,
     });
+    exe.addCSourceFile(.{
+        .file = ctx.dep_pdfgen.path("pdfgen.c"),
+        .flags = FlagsBuilder.init(ctx, cfg, .{}).flags.items,
+    });
     exe.root_module.addCMacro("FINAL_BINARY_TYPE", "Packager");
     exe.linkLibrary(deps.common_infrastructure);
     exe.addIncludePath(ctx.b.path("src"));
+    exe.addIncludePath(ctx.dep_pdfgen.path(""));
     exe.addConfigHeader(cfg.floe_config_h);
     exe.addObject(deps.embedded_files);
 
@@ -2226,6 +2237,7 @@ fn buildStandalone(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
         .files = &.{
             "src/standalone_wrapper/standalone_wrapper.cpp",
             "src/standalone_wrapper/standalone_device_manager.cpp",
+            "src/standalone_wrapper/offline_render.cpp",
             "src/plugin/plugin/plugin_entry.cpp",
             "src/common_infrastructure/final_binary_type.cpp",
         },
@@ -2935,6 +2947,7 @@ fn buildTests(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "src/foundation/utils/writer.cpp",
             "src/plugin/plugin/plugin_entry.cpp",
             "src/preset_tool/preset_tool_lua_codec.cpp",
+            "src/standalone_wrapper/offline_render.cpp",
             "src/tests/tests_main.cpp",
             "src/utils/error_notifications.cpp",
             "src/utils/json/json_reader.cpp",
@@ -3239,7 +3252,7 @@ fn doTarget(
                     });
                     run.addArg(ctx.b.fmt("--preset={s}", .{preset_path}));
                 }
-                run.addArg("--fixed-window-size=18");
+                run.addArg("--fixed-window-size=1800");
                 run.addArg("--log-level=warning");
                 if (shot.chord.len != 0) {
                     run.addArg("--midi-stdin");

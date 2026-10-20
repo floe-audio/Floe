@@ -12,9 +12,12 @@
 #include "tests/framework.hpp"
 #include "utils/json/json_writer.hpp"
 
+#include "common_infrastructure/audio_utils.hpp"
 #include "common_infrastructure/common_errors.hpp"
 #include "common_infrastructure/descriptors/effect_descriptors.hpp"
 #include "common_infrastructure/state/state_coding.hpp"
+
+#include "build_resources/embedded_files.h"
 
 // Two-way Lua <-> StateSnapshot codec.
 //
@@ -72,17 +75,21 @@ static ParamDescriptor const& CheckParamArg(lua_State* lua, int arg) {
     return k_param_descriptors[ToInt(*param_index)];
 }
 
+static f32 CheckParamValueArg(lua_State* lua, int arg, ParamDescriptor const& descriptor) {
+    luaL_checkany(lua, arg);
+    auto const linear_value = LinearValueFromLua(lua, arg, descriptor);
+    if (!linear_value) {
+        auto const value_string = luaL_tolstring(lua, arg, nullptr);
+        lua_pushlstring(lua, descriptor.id_string.data, descriptor.id_string.size);
+        luaL_error(lua, "invalid value for %s: %s", lua_tostring(lua, -1), value_string);
+    }
+    return *linear_value;
+}
+
 // param_to_linear(id_string, value) -> number
 static int LuaParamToLinear(lua_State* lua) {
     auto const& descriptor = CheckParamArg(lua, 1);
-    luaL_checkany(lua, 2);
-    auto const linear_value = LinearValueFromLua(lua, 2, descriptor);
-    if (!linear_value)
-        return luaL_error(lua,
-                          "invalid value for %s: %s",
-                          lua_tostring(lua, 1),
-                          luaL_tolstring(lua, 2, nullptr));
-    lua_pushnumber(lua, (f64)*linear_value);
+    lua_pushnumber(lua, (f64)CheckParamValueArg(lua, 2, descriptor));
     return 1;
 }
 
@@ -112,12 +119,6 @@ static int LuaParamLinearRange(lua_State* lua) {
     lua_pushnumber(lua, (f64)descriptor.linear_range.max);
     lua_setfield(lua, -2, "max");
     return 1;
-}
-
-void RegisterParamLuaFunctions(lua_State* lua) {
-    lua_register(lua, "param_to_linear", LuaParamToLinear);
-    lua_register(lua, "param_from_linear", LuaParamFromLinear);
-    lua_register(lua, "param_linear_range", LuaParamLinearRange);
 }
 
 // In Read functions, the value is on top of the stack on entry. The caller pops it.
@@ -754,7 +755,12 @@ struct MacroDestinationsH {
                     "    1-indexed per macro ({} macros). Each macro is a packed list of up to {}\n"
                     "    destination tables:\n"
                     "      .param_index = stable id_string (same key as in param_values)\n"
-                    "      .value       = number (linear amount the macro contributes to the param)\n",
+                    "      .value       = number from -1 to 1. With the macro at m (0 to 1), the param's\n"
+                    "                     linear value gets sign(value) * value^2 * (linear max - min) * m\n"
+                    "                     added, then is clamped to its linear range. Contributions from\n"
+                    "                     every destination on the same param add together. Use\n"
+                    "                     macro_destination_range() and macro_destination_value() rather\n"
+                    "                     than computing this by hand.\n",
                     k_num_macros,
                     k_max_macro_destinations);
     }
@@ -812,6 +818,75 @@ struct MacroDestinationsH {
         }
     }
 };
+
+// macro_destination_range(preset, macro, destination) -> {at_0 = value, at_100 = value}
+static int LuaMacroDestinationRange(lua_State* lua) {
+    luaL_checktype(lua, 1, LUA_TTABLE);
+    auto const macro_number = luaL_checkinteger(lua, 2);
+    auto const destination_number = luaL_checkinteger(lua, 3);
+
+    auto param_values = DefaultStateSnapshot().param_values;
+    lua_getfield(lua, 1, "param_values");
+    ParamValuesH::Read(lua, param_values);
+    lua_pop(lua, 1);
+
+    MacroDestinations macro_destinations {};
+    lua_getfield(lua, 1, "macro_destinations");
+    MacroDestinationsH::Read(lua, macro_destinations);
+    lua_pop(lua, 1);
+
+    if (macro_number < 1 || macro_number > k_num_macros)
+        return luaL_error(lua, "macro out of range: %d", (int)macro_number);
+    auto const macro_index = (u8)(macro_number - 1);
+    if (destination_number < 1 || (usize)destination_number > macro_destinations[macro_index].Size())
+        return luaL_error(lua, "macro %d has no destination %d", (int)macro_number, (int)destination_number);
+    auto const destination_index = (u8)(destination_number - 1);
+
+    auto const range =
+        UnclampedMacroDestinationRange(param_values, macro_destinations, macro_index, destination_index);
+    auto const& descriptor =
+        k_param_descriptors[ToInt(*macro_destinations[macro_index].items[destination_index].param_index)];
+    auto const& linear_range = descriptor.linear_range;
+
+    lua_newtable(lua);
+    PushParamValue(lua, descriptor, Clamp(range.at_0, linear_range.min, linear_range.max));
+    lua_setfield(lua, -2, "at_0");
+    PushParamValue(lua, descriptor, Clamp(range.at_100, linear_range.min, linear_range.max));
+    lua_setfield(lua, -2, "at_100");
+    return 1;
+}
+
+// macro_destination_value(id_string, from, to) -> number
+static int LuaMacroDestinationValue(lua_State* lua) {
+    auto const& descriptor = CheckParamArg(lua, 1);
+    auto const from = CheckParamValueArg(lua, 2, descriptor);
+    auto const to = CheckParamValueArg(lua, 3, descriptor);
+    auto const amount = (to - from) / descriptor.linear_range.Delta();
+    lua_pushnumber(lua, (f64)MacroDestination::ValueFromProjected(amount));
+    return 1;
+}
+
+void RegisterParamLuaFunctions(lua_State* lua) {
+    lua_register(lua, "param_to_linear", LuaParamToLinear);
+    lua_register(lua, "param_from_linear", LuaParamFromLinear);
+    lua_register(lua, "param_linear_range", LuaParamLinearRange);
+    lua_register(lua, "macro_destination_range", LuaMacroDestinationRange);
+    lua_register(lua, "macro_destination_value", LuaMacroDestinationValue);
+}
+
+ErrorCodeOr<void> RegisterJsonGlobal(lua_State* lua) {
+    auto const data = EmbeddedJsonLua();
+    if (luaL_loadbuffer(lua, (char const*)data.data, data.size, "json.lua") != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: failed to load json.lua: {}\n", lua_tostring(lua, -1));
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    if (lua_pcall(lua, 0, 1, 0) != LUA_OK) {
+        StdPrintF(StdStream::Err, "Error: failed to run json.lua: {}\n", lua_tostring(lua, -1));
+        return ErrorCode {CommonError::InvalidFileFormat};
+    }
+    lua_setglobal(lua, "json");
+    return k_success;
+}
 
 // One declaration drives both directions. Adding a new field means: write one handler, add one line here.
 template <typename V, typename S>
@@ -962,22 +1037,62 @@ ErrorCodeOr<void> WriteParamsJson(Writer out) {
 // These tests bypass file I/O, so legacy→modern adaptation (AdaptNewerParams) does not apply; they verify
 // the codec layer in isolation.
 
-static ErrorCodeOr<void> RoundTrip(tests::Tester& tester, StateSnapshot const& original) {
+enum class RoundTripVia : u8 { LuaTable, Json };
+
+static ErrorCodeOr<void>
+RoundTrip(tests::Tester& tester, StateSnapshot const& original, RoundTripVia via = RoundTripVia::LuaTable) {
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
 
     BuildPresetLuaTable(lua, original, {});
 
-    auto roundtripped = original;
+    switch (via) {
+        case RoundTripVia::LuaTable: break;
+        case RoundTripVia::Json: {
+            luaL_openlibs(lua);
+            TRY(RegisterJsonGlobal(lua));
+            constexpr auto k_script = "preset = json.decode(json.encode(preset))"_s;
+            if (luaL_loadbuffer(lua, k_script.data, k_script.size, "json-round-trip") != LUA_OK ||
+                lua_pcall(lua, 0, 0, 0) != LUA_OK) {
+                tester.log.Error("json round-trip failed: {}", lua_tostring(lua, -1));
+                return ErrorCode {CommonError::InvalidFileFormat};
+            }
+            break;
+        }
+    }
+
+    // Starting from defaults (as apply-json does) means a field the reader skips shows up as a diff.
+    auto roundtripped = ({
+        StateSnapshot s;
+        switch (via) {
+            case RoundTripVia::LuaTable: s = original; break;
+            case RoundTripVia::Json:
+                s = DefaultStateSnapshot();
+                // Param display strings are rounded; the reader's epsilon guard only absorbs that when
+                // compared against the original values.
+                s.param_values = original.param_values;
+                break;
+        }
+        s;
+    });
     lua_getglobal(lua, "preset");
     ExtractPresetFromLuaTable(lua, -1, roundtripped);
     lua_pop(lua, 1);
 
-    // Params are stored as projected values, so distinct linear values that project to the same f32 (e.g.
-    // near the flat split of a LinearThenExponential curve) legitimately collapse.
+    // Params are stored as ~7 significant figure projected values, so distinct linear values that project
+    // to nearly the same value (e.g. near the flat split of a LinearThenExponential curve) legitimately
+    // collapse. Likewise, volumes below the -80 dB silence floor are written as "-∞" and read back as 0.
     for (auto const i : Range<u16>(k_num_parameters)) {
         auto const& d = k_param_descriptors[i];
-        if (d.ProjectValue(roundtripped.param_values[i]) == d.ProjectValue(original.param_values[i]))
+        auto const original_projected = d.ProjectValue(original.param_values[i]);
+        auto const roundtripped_projected = d.ProjectValue(roundtripped.param_values[i]);
+        auto const projected_range_delta =
+            d.projection ? d.projection->range.Delta() : d.linear_range.Delta();
+        auto const collapsed_to_silence = d.display_format == ParamDisplayFormat::VolumeAmp &&
+                                          original_projected <= k_silence_amp_80 &&
+                                          roundtripped_projected == 0;
+        if (Abs(roundtripped_projected - original_projected) <= projected_range_delta * 0.00001f ||
+            collapsed_to_silence)
             roundtripped.param_values[i] = original.param_values[i];
     }
 
@@ -1061,7 +1176,8 @@ static StateSnapshot PopulatedSnapshot(u64 seed) {
     // ir_id
     {
         sample_lib::IrId ir;
-        ir.library = sample_lib::HashLibraryIdString("Reverb Library"_s);
+        // Unregistered, so it's written as a raw 64-bit integer rather than an "Author/Library" string.
+        ir.library = sample_lib::HashLibraryIdStringWithoutRegistration("Unregistered Reverb Library"_s);
         dyn::Assign(ir.ir_id, "hall1"_s);
         s.ir_id = Move(ir);
     }
@@ -1132,25 +1248,33 @@ TEST_CASE(TestPresetLuaCodecRoundTripPopulated) {
     return k_success;
 }
 
+TEST_CASE(TestPresetLuaCodecRoundTripJson) {
+    auto const original = PopulatedSnapshot(tester.random_seed);
+    TRY(RoundTrip(tester, original, RoundTripVia::Json));
+    return k_success;
+}
+
+static Optional<f64> EvalLuaNumber(tests::Tester& tester, lua_State* lua, char const* expression) {
+    DynamicArrayBounded<char, 512> source {"return "_s};
+    dyn::AppendSpan(source, FromNullTerminated(expression));
+    if (luaL_loadbuffer(lua, source.data, source.size, "test") != LUA_OK ||
+        lua_pcall(lua, 0, 1, 0) != LUA_OK) {
+        tester.log.Debug("{}: {}", expression, lua_tostring(lua, -1));
+        lua_pop(lua, 1);
+        return k_nullopt;
+    }
+    auto const result = lua_tonumber(lua, -1);
+    lua_pop(lua, 1);
+    return result;
+}
+
 TEST_CASE(TestParamLuaFunctions) {
     auto lua = luaL_newstate();
     DEFER { lua_close(lua); };
     luaL_openlibs(lua);
     RegisterParamLuaFunctions(lua);
 
-    auto const eval_number = [&](char const* expression) -> Optional<f64> {
-        DynamicArrayBounded<char, 256> source {"return "_s};
-        dyn::AppendSpan(source, FromNullTerminated(expression));
-        if (luaL_loadbuffer(lua, source.data, source.size, "test") != LUA_OK ||
-            lua_pcall(lua, 0, 1, 0) != LUA_OK) {
-            tester.log.Debug("{}: {}", expression, lua_tostring(lua, -1));
-            lua_pop(lua, 1);
-            return k_nullopt;
-        }
-        auto const result = lua_tonumber(lua, -1);
-        lua_pop(lua, 1);
-        return result;
-    };
+    auto const eval_number = [&](char const* expression) { return EvalLuaNumber(tester, lua, expression); };
 
     auto const& cutoff =
         k_param_descriptors[ToInt(ParamIndexFromLayerParamIndex(0, LayerParamIndex::FilterCutoff))];
@@ -1185,8 +1309,68 @@ TEST_CASE(TestParamLuaFunctions) {
     return k_success;
 }
 
+TEST_CASE(TestMacroLuaFunctions) {
+    auto lua = luaL_newstate();
+    DEFER { lua_close(lua); };
+    luaL_openlibs(lua);
+    RegisterParamLuaFunctions(lua);
+
+    auto const eval_number = [&](char const* expression) { return EvalLuaNumber(tester, lua, expression); };
+
+    auto const lfo_amount = ParamIndexFromLayerParamIndex(0, LayerParamIndex::LfoAmount);
+    auto const volume = ParamIndexFromLayerParamIndex(0, LayerParamIndex::Volume);
+
+    auto state = DefaultStateSnapshot();
+    state.LinearParam(lfo_amount) = 0.3f;
+    state.LinearParam(k_macro_params[0]) = 0;
+    state.macro_destinations[0].items[0] = {.param_index = volume, .value = 0.5f};
+    state.macro_destinations[0].items[1] = {.param_index = lfo_amount,
+                                            .value = MacroDestination::ValueFromProjected(-0.4f)};
+    state.macro_destinations[1].items[0] = {.param_index = lfo_amount,
+                                            .value = MacroDestination::ValueFromProjected(0.4f)};
+    BuildPresetLuaTable(lua, state, {});
+
+    // The sweep is scaled by the linear range width (2 for a bidirectional percent).
+    auto const at_0 =
+        eval_number("param_to_linear('layer1.lfo.amount', macro_destination_range(preset, 1, 2).at_0)");
+    REQUIRE(at_0);
+    CHECK_APPROX_EQ(*at_0, 0.3, 0.0001);
+    auto const at_100 =
+        eval_number("param_to_linear('layer1.lfo.amount', macro_destination_range(preset, 1, 2).at_100)");
+    REQUIRE(at_100);
+    CHECK_APPROX_EQ(*at_100, -0.5, 0.0001);
+
+    // Other macros are held at their current position.
+    auto const offset_at_0 = eval_number("(function() preset.param_values['macro.1'] = 0.5 "
+                                         "return param_to_linear('layer1.lfo.amount', "
+                                         "macro_destination_range(preset, 2, 1).at_0) end)()");
+    REQUIRE(offset_at_0);
+    CHECK_APPROX_EQ(*offset_at_0, -0.1, 0.0001);
+
+    // Clamped to the param's range.
+    auto const fully_clamped = eval_number("(function() preset.param_values['layer1.lfo.amount'] = '80%' "
+                                           "return param_to_linear('layer1.lfo.amount', "
+                                           "macro_destination_range(preset, 2, 1).at_100) end)()");
+    REQUIRE(fully_clamped);
+    CHECK_APPROX_EQ(*fully_clamped, 1.0, 0.0001);
+
+    auto const value = eval_number("macro_destination_value('layer1.lfo.amount', '30%', -0.5)");
+    REQUIRE(value);
+    CHECK_APPROX_EQ(*value, (f64)MacroDestination::ValueFromProjected(-0.4f), 0.0001);
+
+    CHECK(!eval_number("macro_destination_range(preset, 0, 1).at_0"));
+    CHECK(!eval_number("macro_destination_range(preset, 5, 1).at_0"));
+    CHECK(!eval_number("macro_destination_range(preset, 1, 3).at_0"));
+    CHECK(!eval_number("macro_destination_range(nil, 1, 1).at_0"));
+    CHECK(!eval_number("macro_destination_value('no.such.param', 0, 1)"));
+    CHECK(!eval_number("macro_destination_value('layer1.lfo.amount', 'not a value', 1)"));
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterPresetLuaCodecTests) {
     REGISTER_TEST(TestPresetLuaCodecRoundTripDefault);
     REGISTER_TEST(TestPresetLuaCodecRoundTripPopulated);
+    REGISTER_TEST(TestPresetLuaCodecRoundTripJson);
     REGISTER_TEST(TestParamLuaFunctions);
+    REGISTER_TEST(TestMacroLuaFunctions);
 }

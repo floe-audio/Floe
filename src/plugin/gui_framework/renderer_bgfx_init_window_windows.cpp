@@ -3,4 +3,12 @@
 
 #include "renderer_bgfx_init_window.hpp"
 
-void* GetBgfxInitWindowHandle(void*) { return nullptr; }
+BgfxPlatformHandles CreateBgfxPlatformHandles() { return {.init_window = nullptr, .display = nullptr}; }
+
+void DestroyBgfxPlatformHandles(BgfxPlatformHandles& handles) {
+    handles = {.init_window = nullptr, .display = nullptr};
+}
+
+void SyncWindowDisplayForBgfx(void*) {}
+
+void* BgfxSwapChainWindowHandle(void* native_window) { return native_window; }

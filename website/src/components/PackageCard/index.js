@@ -10,12 +10,14 @@ function PackageCard({ pkg }) {
     return (
         <div className={styles.packageCard}>
             {pkg.background_image && (
-                <a href={`/packages/${pkg.slug}`} className={styles.imageContainer}>
-                    <img
-                        src={pkg.background_image}
-                        alt={`${pkg.name} interface`}
-                        className={styles.packageImage}
-                    />
+                <div className={styles.imageContainer}>
+                    <a href={`/packages/${pkg.slug}`} className={styles.imageLink}>
+                        <img
+                            src={pkg.background_image}
+                            alt={`${pkg.name} interface`}
+                            className={styles.packageImage}
+                        />
+                    </a>
                     {pkg.image_attribution && (
                         <div className={styles.imageAttribution}>
                             <span
@@ -65,7 +67,7 @@ function PackageCard({ pkg }) {
                             </span>
                         </div>
                     )}
-                </a>
+                </div>
             )}
 
             <div className={styles.content}>
